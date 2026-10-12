@@ -20,7 +20,7 @@
  * 本 spec 即这份「必须重审」的强制提醒。
  */
 import { describe, expect, it } from 'vitest'
-import { auditEra } from './economySim'
+import { auditEra, fullEconomyAudit } from './economySim'
 
 /** 代表性大境界:早期(瓶颈 pole)/ 中期(过剩起势)/ 后期(闲置 pole) */
 const EARLY_REALM = 0
@@ -65,6 +65,19 @@ describe('经济两极化回归护栏 · income-vs-sink 不恶化', () => {
     const mid = stoneRatio(MID_REALM)
     expect(mid, '中期(~10)应已处于闲置带(>10)').toBeGreaterThan(10)
     expect(mid, '中期比值同样不得突破已记录 ceiling').toBeLessThanOrEqual(LATE_ACCEPTED_CEILING)
+  })
+
+  it('全程峰值被同一 ceiling 锁死(不漏采:任何大境界都不得突破已记录峰值)', () => {
+    // 单测只抽了代表性境界;全程峰值可能落在未采样的某处,故在此扫全进度,
+    // 直接锁住文档化的「全程峰值 18.84」上限(见文件头),杜绝漏网恶化。
+    const peek = Math.max(
+      ...fullEconomyAudit()
+        .map(e => e.flows.find(f => f.resource === 'stone')?.ratio ?? 0)
+        .filter(r => r !== Infinity && Number.isFinite(r))
+    )
+    expect(peek, '任何大境界的 stoneRatio 都不得突破已记录 ceiling').toBeLessThanOrEqual(LATE_ACCEPTED_CEILING)
+    // 确认确有全程峰值这一形态在(仍在过剩档),而非横盘塌陷掩盖回归。
+    expect(peek, '全程峰值应保持过剩档').toBeGreaterThan(10)
   })
 
   it('两极并存被文档化为已知偏离:后期过剩显著高于早期瓶颈', () => {
