@@ -8,6 +8,7 @@ import { toNum } from '@/utils/gnum'
 import { useBountyStore } from '@/stores/bounty'
 import { useResourcesStore } from '@/stores/resources'
 import { useInventoryStore } from '@/stores/inventory'
+import { usePlayerStore } from '@/stores/player'
 import { herbBountyReward } from '@/core/bountyService'
 
 const FAR = 4_102_444_800_000 // 2099-12-31
@@ -27,6 +28,7 @@ describe('坊市悬赏板 · 交货', () => {
     const b = useBountyStore()
     const res = useResourcesStore()
     seedSlots([mat('herb')])
+    usePlayerStore().major = 10 // 非零境:若 claim 忽略大境界、恒按 0 定价,此断言即红
     res.herbByGrade[1] = 10 // 不足 30
     res.spiritStone = { m: 0, e: 0 }
     expect(b.claim(0)).toBe('insufficient')
@@ -37,7 +39,7 @@ describe('坊市悬赏板 · 交货', () => {
     res.$patch({ herbByGrade: { 1: 30, 2: 0, 3: 0, 4: 0, 5: 5 } })
     expect(b.claim(0)).toBe('ok')
     expect(res.herb).toBe(5)
-    expect(toNum(res.spiritStone)).toBe(toNum(herbBountyReward(1, 30)))
+    expect(toNum(res.spiritStone)).toBe(toNum(herbBountyReward(1, 10, 30))) // claim 以当前境界 10 折算
     expect(b.orders[0]!.claimed).toBe(true)
     expect(b.claim(0), '已交不可再交').toBe('claimed')
   })
@@ -46,11 +48,12 @@ describe('坊市悬赏板 · 交货', () => {
     const b = useBountyStore()
     const res = useResourcesStore()
     seedSlots([mat('herb')])
+    usePlayerStore().major = 10
     res.$patch({ herbByGrade: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 30 } })
     res.spiritStone = { m: 0, e: 0 }
     expect(b.claim(0)).toBe('ok')
     expect(res.herb).toBe(0)
-    expect(toNum(res.spiritStone)).toBe(toNum(herbBountyReward(5, 30)))
+    expect(toNum(res.spiritStone)).toBe(toNum(herbBountyReward(5, 10, 30)))
   })
 
   it('募丹:扣足枚、入账灵石并附悟道', () => {

@@ -22,9 +22,10 @@ describe('悬赏板 · 订单生成与定价', () => {
     const board = generateBounty(3, 1)
     // 募草 reward 生成时为占位 0 —— 交货按**所交之品**现算(任意品可交),故订单不预定价
     expect(toNum(board[0]!.reward)).toBe(0)
-    // 真正担纲的是 herbBountyReward:凡品即给得出正数,高品更高
-    expect(toNum(herbBountyReward(1, BOUNTY_MAT_TARGET))).toBeGreaterThan(0)
-    expect(toNum(herbBountyReward(5, BOUNTY_MAT_TARGET))).toBeGreaterThan(toNum(herbBountyReward(1, BOUNTY_MAT_TARGET)))
+    // 真正担纲的是 herbBountyReward:凡品即给得出正数,高品更高(同境界层级折算)
+    const MAJOR = 5
+    expect(toNum(herbBountyReward(1, MAJOR, BOUNTY_MAT_TARGET))).toBeGreaterThan(0)
+    expect(toNum(herbBountyReward(5, MAJOR, BOUNTY_MAT_TARGET))).toBeGreaterThan(toNum(herbBountyReward(1, MAJOR, BOUNTY_MAT_TARGET)))
     expect(toNum(board[1]!.reward), '募铁按阶计价,仍给得出正数').toBeGreaterThan(0)
     expect(board[2]!.kindId).toBeTruthy()
     expect(toNum(board[2]!.reward)).toBeGreaterThan(0)

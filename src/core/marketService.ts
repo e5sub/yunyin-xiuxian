@@ -9,7 +9,8 @@ import type { EquipmentInstance, GNum } from '@/types'
 import { gn, gnZero, mulN } from '@/utils/gnum'
 import { stoneByTier } from './formulas'
 import { PILLS, pillDef } from '@/data/pills'
-import { herbBuyPrice, herbGradeOfMajor, type HerbGrade } from '@/data/herbGrades'
+import { herbGradeOfMajor, type HerbGrade } from '@/data/herbGrades'
+import { herbBuyPrice } from './herbPrice'
 import { mulberry32, RandomService } from '@/utils/random'
 import { generateEquipment, rollQuality } from './equipGen'
 import { qualityDef } from '@/data/qualities'
@@ -69,7 +70,7 @@ function buildSlot(
     // 灵草按品明码标价:当前境界的品阶,×10 阶梯一路到一千万封顶(见 data/herbGrades)
     const price =
       matId === 'herb'
-        ? mulN(gn(herbBuyPrice(herbGradeOfMajor(major))), MARKET_MAT_COUNT)
+        ? mulN(gn(herbBuyPrice(herbGradeOfMajor(major), major)), MARKET_MAT_COUNT)
         : mulN(stoneByTier(major, MARKET_MAT_STONE_UNITS), MARKET_MAT_COUNT)
     return { kind: 'material', idx, matId, count: MARKET_MAT_COUNT, price, sold: false }
   }
@@ -134,15 +135,16 @@ export function materialSellPrice(major: number): GNum {
 }
 
 /**
- * 灵草**任意品**的即时售价(株):= 该品购价 ×(售出档 3 / 购入档 6),恒低于购入不成环。
- * 摆摊放开到全部品 —— 旧品/凡人界的草也能按自己的价出手,不留死货(区域化的直接推论)。
+ * 灵草**任意品**的即时售价(株):= 该品购价 × 恒定比例(售出档 3 / 购入档 6 = 1/2),
+ * 恒低于购入不成环;价格随境界层级缩放(见 herbPrice)。摆摊放开到全部品 ——
+ * 旧品/凡人界的草也能按自己的价出手,不留死货(区域化的直接推论)。
  */
-export function herbSellPrice(grade: HerbGrade): number {
-  return herbBuyPrice(grade) * (MARKET_SELL_MAT_STONE_UNITS / MARKET_MAT_STONE_UNITS)
+export function herbSellPrice(grade: HerbGrade, major: number): number {
+  return herbBuyPrice(grade, major) * (MARKET_SELL_MAT_STONE_UNITS / MARKET_MAT_STONE_UNITS)
 }
 
 /** 一批(单位数同货架)任意品灵草的即时售价 */
-export function herbSellBatch(grade: HerbGrade): GNum {
-  return mulN(gn(herbSellPrice(grade)), MARKET_MAT_COUNT)
+export function herbSellBatch(grade: HerbGrade, major: number): GNum {
+  return mulN(gn(herbSellPrice(grade, major)), MARKET_MAT_COUNT)
 }
 

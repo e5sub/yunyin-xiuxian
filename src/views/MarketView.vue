@@ -298,7 +298,7 @@
       icon: 'leaf',
       name: HERB_GRADE_NAMES[g],
       count: resources.herbOf(g),
-      price: herbSellBatch(g)
+      price: herbSellBatch(g, player.major)
     }))
   ])
 

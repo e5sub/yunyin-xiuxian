@@ -108,7 +108,7 @@ export const useBountyStore = defineStore(
           const grade = pickHerbDeliverGrade(resources, slot.target)
           if (!grade) return 'insufficient'
           resources.spendHerb(grade, slot.target)
-          resources.addStone(herbBountyReward(grade, slot.target))
+          resources.addStone(herbBountyReward(grade, usePlayerStore().major, slot.target))
         }
       } else if (slot.kind === 'pill') {
         if ((inventory.pills[slot.kindId] ?? 0) < slot.target) return 'insufficient'

@@ -208,7 +208,7 @@ export const useMarketStore = defineStore(
       const resources = useResourcesStore()
       if (resources.herbOf(grade) < MARKET_MAT_COUNT) return false
       resources.spendHerb(grade, MARKET_MAT_COUNT)
-      resources.addStone(herbSellBatch(grade))
+      resources.addStone(herbSellBatch(grade, usePlayerStore().major))
       return true
     }
 

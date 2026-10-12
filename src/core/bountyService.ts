@@ -10,7 +10,8 @@ import { gn, gnZero, mulN } from '@/utils/gnum'
 import { stoneByTier } from './formulas'
 import { pillDef } from '@/data/pills'
 import { salePills } from './marketService'
-import { herbBuyPrice, type HerbGrade } from '@/data/herbGrades'
+import { herbBuyPrice } from './herbPrice'
+import type { HerbGrade } from '@/data/herbGrades'
 import { MARKET_MAT_STONE_UNITS } from '@/data/market'
 import {
   BOUNTY_SLOTS,
@@ -43,9 +44,10 @@ export function equipBountyReward(tier: number, qualityRank: number): { stone: G
   }
 }
 
-/** 募草交货可得:按**所交的品阶**计价,每株 = 购价 ×(悬赏档 4.5 / 购入档 6),恒在摆摊与购入之间 */
-export function herbBountyReward(grade: HerbGrade, target: number): GNum {
-  const unit = herbBuyPrice(grade) * (BOUNTY_MAT_UNIT_AMOUNT / MARKET_MAT_STONE_UNITS)
+/** 募草交货可得:按**所交的品阶**计价、按**当前境界层级**折算,每株 = 购价 ×(悬赏档 4.5 / 购入档 6),恒在摆摊与购入之间 */
+export function herbBountyReward(grade: HerbGrade, major: number, target: number): GNum {
+  // 购价是 4 的倍数 → 每株悬赏 = 购价 ×3/4 恒为整数;round 抹掉二进制小数的±尾差(真值恒整数)
+  const unit = Math.round(herbBuyPrice(grade, major) * (BOUNTY_MAT_UNIT_AMOUNT / MARKET_MAT_STONE_UNITS))
   return mulN(gn(unit), target)
 }
 

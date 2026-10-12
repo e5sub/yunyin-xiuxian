@@ -8,9 +8,6 @@ import {
   HERB_GRADE_BANDS,
   HERB_GRADE_NAMES,
   HERB_GRADE_SHORT,
-  HERB_GROUND_PRICE,
-  HERB_RARITY_GROWTH,
-  herbBuyPrice,
   herbGradeBandLabel,
   herbGradeOfMajor,
   isHerbGrade
@@ -18,6 +15,10 @@ import {
 import { MAX_MAJOR, REALMS } from './realms'
 import { PILLS } from './pills'
 import { pillCraftCost } from '@/core/pillService'
+import { herbBuyPrice } from '@/core/herbPrice'
+import { stoneByTier } from '@/core/formulas'
+import { maxTierForMajor } from './regions'
+import { toNum } from '@/utils/gnum'
 import { useResourcesStore } from '@/stores/resources'
 import { migrateHerbSlice } from '@/utils/storage'
 
@@ -76,12 +77,40 @@ describe('灵草 · 品阶与境界的换算口', () => {
   })
 })
 
-describe('灵草 · 购价阶梯(锚价 ×10 品距)', () => {
-  it('凡品即锚价,每一品贵十倍,道品封顶一千万', () => {
-    expect(herbBuyPrice(1)).toBe(HERB_GROUND_PRICE)
-    // 阶梯恰是锚价 × 10^品距:凡品 1000 → 道品 1000 万
-    for (const g of HERB_GRADES) {
-      expect(herbBuyPrice(g), `第 ${g} 品 = 锚价 ×10^品距`).toBe(HERB_GROUND_PRICE * HERB_RARITY_GROWTH ** (g - 1))
+describe('灵草 · 购价(随境界层级缩放 · 草比石贵恒常)', () => {
+  it('凡品 ≈6.4 战、道品 ≈100 战:草贵于一场战斗,且与层级无关', () => {
+    for (const major of [0, 9, 18]) {
+      const battle = toNum(stoneByTier(maxTierForMajor(major), 10))
+      // 凡品草 ≈ 6.4 战(4 的倍数取整下 ±~1),道品 ×2^4 ≈ 100 战 —— 草比石贵
+      const ratio1 = herbBuyPrice(1, major) / battle
+      expect(ratio1).toBeGreaterThan(5.5)
+      expect(ratio1).toBeLessThan(7.5)
+      const ratio5 = herbBuyPrice(5, major) / battle
+      expect(ratio5).toBeGreaterThan(80)
+      expect(ratio5).toBeLessThan(130)
+    }
+  })
+
+  it('逐品贵两倍、随层级单调不降,且恒为正整数(无分石漂移)', () => {
+    for (const major of [0, 9, 18]) {
+      for (let idx = 0; idx < HERB_GRADES.length - 1; idx += 1) {
+        const g = HERB_GRADES[idx]!
+        const next = HERB_GRADES[idx + 1]!
+        const lo = herbBuyPrice(g, major)
+        const hi = herbBuyPrice(next, major)
+        // 高一品难采两倍(2^(grade-1)):相邻品级比值须 ≈2。容差只为「取 4 的倍数」的 floor 舍入
+        // (早期小价最多 ≈3%),若中间品被改成 3x/5x/7x,此断言即红。
+        expect(hi / lo, `第 ${next} 品应约为第 ${g} 品的两倍`).toBeGreaterThan(1.9)
+        expect(hi / lo, `第 ${next} 品应约为第 ${g} 品的两倍`).toBeLessThan(2.1)
+        expect(Number.isInteger(lo)).toBe(true)
+      }
+    }
+    // 层级越高,同一品越贵:拿到更高界的战力,草也按那界的石粮计价
+    let prevMajor = 0
+    for (const major of [0, 9, 18]) {
+      const g = 1
+      expect(herbBuyPrice(g, major)).toBeGreaterThanOrEqual(herbBuyPrice(g, prevMajor))
+      prevMajor = major
     }
   })
 })

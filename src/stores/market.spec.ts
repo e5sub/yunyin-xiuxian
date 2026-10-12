@@ -10,6 +10,7 @@ import { marketRemainingSec, herbSellBatch, materialSellPrice } from '@/core/mar
 import { useMarketStore } from '@/stores/market'
 import { useResourcesStore } from '@/stores/resources'
 import { useInventoryStore } from '@/stores/inventory'
+import { usePlayerStore } from '@/stores/player'
 
 /** 一份远在将来的货架,让 sync 不重上货(测的是「买」,不是「刷新」) */
 const FAR = 4_102_444_800_000 // 2099-12-31
@@ -316,9 +317,10 @@ describe('即时售材/售草结算精额守恒', () => {
     const res = useResourcesStore()
     const N = 3
     const g = 3
+    usePlayerStore().major = 10 // 非零境:若 sellHerb 忽略大境界、恒按 0 定价,此断言即红
     res.herbByGrade[g] = N * MARKET_MAT_COUNT
     res.spiritStone = gn(0)
-    const batch = herbSellBatch(g)
+    const batch = herbSellBatch(g, 10) // 售草以当前境界 10 折算
     for (let i = 0; i < N; i += 1) expect(market.sellHerb(g)).toBe(true)
     expect(res.herbByGrade[g]).toBe(0)
     expect(toNum(res.spiritStone)).toBeCloseTo(toNum(batch) * N, 6) // 连售 N 批 = N×批价
@@ -327,10 +329,11 @@ describe('即时售材/售草结算精额守恒', () => {
   it('sellHerb 单批恰入 herbSellBatch(批价,不是单株价)', () => {
     const market = useMarketStore()
     const res = useResourcesStore()
+    usePlayerStore().major = 10
     res.herbByGrade[1] = MARKET_MAT_COUNT
     res.spiritStone = gn(0)
     expect(market.sellHerb(1)).toBe(true)
-    expect(toNum(res.spiritStone)).toBeCloseTo(toNum(herbSellBatch(1)), 6)
+    expect(toNum(res.spiritStone)).toBeCloseTo(toNum(herbSellBatch(1, 10)), 6)
   })
 
   it('sellMaterial:按 materialSellPrice 入账、扣恰 MARKER_MAT_COUNT ore', () => {

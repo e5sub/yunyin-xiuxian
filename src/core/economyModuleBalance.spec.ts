@@ -30,7 +30,8 @@ import {
 } from '@/data/bounty'
 import { pillSellPrice, consignPrice, herbSellPrice, materialSellPrice, herbSellBatch } from './marketService'
 import { herbBountyReward } from './bountyService'
-import { herbBuyPrice, HERB_GRADES } from '@/data/herbGrades'
+import { herbBuyPrice } from './herbPrice'
+import { HERB_GRADES } from '@/data/herbGrades'
 import { MARKET_MAT_COUNT, MARKET_SELL_PILL_FACTOR } from '@/data/market'
 import { PILLS } from '@/data/pills'
 
@@ -43,6 +44,12 @@ function toN(g: { m: number; e: number }): number {
 
 /** 全部 major 0..最大境界 */
 const MAJORS = Array.from({ length: 21 }, (_, i) => i)
+
+/**
+ * 灵草三价守卫的代表境界 —— 比值与境界无关(三价都随同一层级的 stoneByTier 缩放),
+ * 故任取一境即可;逐境界恒等这一性质由 herbGrades.spec 的「草比石贵恒常」补守。
+ */
+const HERB_MAJOR = 10
 
 describe('三模块经济审计 · 无套利与弟子不衰减', () => {
   it('① 材料:购(6/单位) > 悬赏(4.5) > 售(3),且比值逐境界恒一', () => {
@@ -108,28 +115,37 @@ describe('三模块经济审计 · 无套利与弟子不衰减', () => {
 })
 
 describe('灵草三价无套利守卫(购/悬赏/售)', () => {
-  it('每一品:售 = 购价×½、悬赏每株 = 购价×¾,且 购 > 悬赏 > 售(不搬砖)', () => {
+  it('每一品:售 = 购价×1/2、悬赏每株 = 购价×3/4,且 购 > 悬赏 > 售(不搬砖)', () => {
     for (const g of HERB_GRADES) {
-      const buy = herbBuyPrice(g)
-      const sell = herbSellPrice(g)
-      const bountyPer = toN(herbBountyReward(g, 1))
+      const buy = herbBuyPrice(g, HERB_MAJOR)
+      const sell = herbSellPrice(g, HERB_MAJOR)
+      const bountyPer = toN(herbBountyReward(g, HERB_MAJOR, 1))
       // 对购价直比固定倍率 —— 常数一旦改回 0.8/0.9(搬砖复活)此处即红
-      expect(sell, `第 ${g} 品售出应=购价×½`).toBe(buy / 2)
-      expect(bountyPer, `第 ${g} 品悬赏每株应=购价×¾`).toBe(buy * 0.75)
+      expect(sell, `第 ${g} 品售出应=购价×1/2`).toBe(buy / 2)
+      // 悬赏每株 = 购价×3/4(购价是 4 的倍数 → 恒整数)。GNum 大数 toNum 往返有 ±1e-8 相对漂移,
+      // 故 3/4 比用「4×悬赏 ≈ 3×购价」的相对容差比对,并单独断言取整后恰为「购价×3/4」(整数性)。
+      expect(4 * bountyPer).toBeGreaterThan(3 * buy - 0.5)
+      expect(4 * bountyPer).toBeLessThan(3 * buy + 0.5)
+      expect(Math.round(bountyPer)).toBe(
+        Math.floor(buy * (BOUNTY_MAT_UNIT_AMOUNT / MARKET_MAT_STONE_UNITS) + 0.5)
+      )
       // 无套利顺序:购 > 悬赏 > 售
       expect(buy, `第 ${g} 品购价应高于悬赏`).toBeGreaterThan(bountyPer)
       expect(bountyPer, `第 ${g} 品悬赏应高于售出`).toBeGreaterThan(sell)
-      // 且均为整数(无分石漂移)
+      // 均为整数(无分石漂移):售 = 购价/2 精确整数;悬赏每株逐株取整,相对漂移远小于 1 石
       expect(Number.isInteger(sell), `第 ${g} 品售出应为整数`).toBe(true)
-      expect(Number.isInteger(bountyPer), `第 ${g} 品悬赏每株应为整数`).toBe(true)
+      expect(Math.abs(bountyPer - Math.round(bountyPer)), `第 ${g} 品悬赏每株应为整数(±<1石)`).toBeLessThan(1e-3)
     }
   })
 
   it('公式口径与常数一致:售/悬赏就是「购价 × 该档 ÷ 购入档」', () => {
     for (const g of HERB_GRADES) {
-      const buy = herbBuyPrice(g)
-      expect(herbSellPrice(g)).toBe(buy * (MARKET_SELL_MAT_STONE_UNITS / MARKET_MAT_STONE_UNITS))
-      expect(toN(herbBountyReward(g, 1))).toBe(buy * (BOUNTY_MAT_UNIT_AMOUNT / MARKET_MAT_STONE_UNITS))
+      const buy = herbBuyPrice(g, HERB_MAJOR)
+      expect(herbSellPrice(g, HERB_MAJOR)).toBe(buy * (MARKET_SELL_MAT_STONE_UNITS / MARKET_MAT_STONE_UNITS))
+      // 同样:真值=购价×3/4(整数),比对抹掉 GNum toNum 的大数往返±尾差
+      expect(Math.round(toN(herbBountyReward(g, HERB_MAJOR, 1)))).toBe(
+        Math.floor(buy * (BOUNTY_MAT_UNIT_AMOUNT / MARKET_MAT_STONE_UNITS) + 0.5)
+      )
     }
   })
 })
@@ -171,7 +187,7 @@ describe('坊市定价单调性 + 有限(高阶/珍稀必卖更贵)', () => {
   it('灵草即售价随品级单调递增,且有限为正', () => {
     let prev = 0
     for (const g of HERB_GRADES) {
-      const p = herbSellPrice(g)
+      const p = herbSellPrice(g, HERB_MAJOR)
       expect(p, `herb grade=${g}`).toBeGreaterThan(prev)
       expect(Number.isFinite(p)).toBe(true)
       prev = p
@@ -180,7 +196,7 @@ describe('坊市定价单调性 + 有限(高阶/珍稀必卖更贵)', () => {
 
   it('逐批=单株×单位数:herbSellBatch(g) 恰为 herbSellPrice(g)×货架单位数', () => {
     for (const g of HERB_GRADES) {
-      expect(toN(herbSellBatch(g))).toBeCloseTo(herbSellPrice(g) * MARKET_MAT_COUNT, 6)
+      expect(toN(herbSellBatch(g, HERB_MAJOR))).toBeCloseTo(herbSellPrice(g, HERB_MAJOR) * MARKET_MAT_COUNT, 6)
     }
   })
 })
