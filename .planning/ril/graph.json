@@ -2,7 +2,7 @@
   "ril_version": 1,
   "round": 258,
   "created_at": "2026-09-09T11:22:32+00:00",
-  "updated_at": "2026-10-10T03:38:50+00:00",
+  "updated_at": "2026-10-12T08:31:26+00:00",
   "nodes": {
     "ISS-001": {
       "id": "ISS-001",
@@ -3096,7 +3096,7 @@
       "version": 1,
       "created_at": "2026-09-11T16:45:58+00:00",
       "updated_at": "2026-09-11T16:45:58+00:00",
-      "touched_round": 209,
+      "touched_round": 258,
       "summary": "属性汇总(statsCalc + player 各 mod 源:装备/功法/buff/建筑/灵脉/称号/师承/灵兽/天时/在身之卦/命格/天赋)"
     },
     "DEC-022": {
@@ -11958,7 +11958,7 @@
       "version": 1,
       "created_at": "2026-09-16T01:33:21+00:00",
       "updated_at": "2026-09-16T01:33:21+00:00",
-      "touched_round": 208,
+      "touched_round": 258,
       "summary": "src/core/pillService.ts + src/core/breakthrough.ts + src/core/save.ts(炼丹/突破/存档三条主干)"
     },
     "CHG-239": {
@@ -17145,6 +17145,204 @@
       "touched_round": 258,
       "title": "feat(explore): 自动结算事件奖励补 toast(勿扰/超时可见)",
       "commit": "eb08176"
+    },
+    "ISS-900": {
+      "id": "ISS-900",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-10-12T08:27:43+00:00",
+      "updated_at": "2026-10-12T08:30:39+00:00",
+      "touched_round": 258,
+      "label": "test",
+      "severity": 0.5,
+      "confidence": 0.95,
+      "effort": 3,
+      "summary": "GitHub setube/yunyin-xiuxian#84 丹药成本倒挂:真仙丹/渡劫丹在代码与历史中从不存在(全库仅太初丹,pills.ts:259 核对无误);'高等级修为丹每灵石更差'的定向论断为真,但属系统性能级问题且已在 pillValue.spec 的 ledger '未处置的账 #1' 标注为有意的跨档设计、非缺陷。本轮真正修复的是同 grade 带内 exp(修为)每-成本倒挂(5 枚丹)与功法 apex 回退,并新增带内守卫测试与仙韵丹填域 9-13 空档(2026-10-12,全测试通过)"
+    },
+    "EV-231": {
+      "id": "EV-231",
+      "type": "evidence",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-12T08:30:50+00:00",
+      "updated_at": "2026-10-12T08:30:50+00:00",
+      "touched_round": 258,
+      "source": "src/data/pills.ts + src/core/pillValue.spec.ts (2026-10-12)",
+      "confidence": 1,
+      "summary": "带内 exp(修为)每-成本倒挂实测(同 grade 带、perKsec 修复前后):一元始丹 R20 dao 0.372→0.274(herb760→560, stoneBase2600→1900,原为 混元丹0.279 的 33% 更差);道源丹 R18 0.314→0.279 ≈混元(herb460→410, stoneBase1400→1120,原被混元严格支配);太乙丹 R12 0.306→0.291 ≤太初丹(herb300→285, stoneBase850→800);大还丹 R4 g1 0.497→0.468(herb50→47,新守卫捕获);神炼金丹 R16 g4 0.303→0.288(herb400→380,新守卫捕获)。新增顶级测试 '带内 exp 线无每-成本倒挂' 断言每 HERB_GRADE_BANDS 带内 perKsec=(craftBattlesOf×EXPLORE_BATTLE_INTERVAL)/pillGainSecAt(p,minRealm) 非增(TOL 1e-3)"
+    },
+    "EV-232": {
+      "id": "EV-232",
+      "type": "evidence",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-12T08:30:51+00:00",
+      "updated_at": "2026-10-12T08:30:51+00:00",
+      "touched_round": 258,
+      "source": "src/data/gongfa.ts 道祖本源经 (2026-10-12)",
+      "confidence": 1,
+      "summary": "功法 apex cultivationSpeed 回退:道祖本源经(R20 主修)base 0.44/0.055,以致 apex 回退低于混元无极经(R18);修为外其余 combat 字段未动。修复后 0.50/0.06,apex 不再低于混元无极经"
+    },
+    "EV-233": {
+      "id": "EV-233",
+      "type": "evidence",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-12T08:30:51+00:00",
+      "updated_at": "2026-10-12T08:30:51+00:00",
+      "touched_round": 258,
+      "source": "src/core/pillValue.spec.ts(未处置的账#1) + artifactLadder.spec.ts(BUDGET_EPS)",
+      "confidence": 1,
+      "summary": "意图化/需人工确认的设计上下文:跨档位高界丹药每灵石更差属 ledger '未处置的账 #1',已文档化为有意的跨档设计(非本 bug);法器被动盾(神钟 t28 等)对云纹仙印 t23 保持非单调系设计,受 BUDGET_EPS=0.5 背书,属意图化的基于身份的产物设计,需 owner 签字;g2/g4 的 qi/wudao 炼制空洞未填(由 泉露/神露/仙尘散/玉道丹 覆盖,非真空洞)"
+    },
+    "DEC-062": {
+      "id": "DEC-062",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-12T08:31:09+00:00",
+      "updated_at": "2026-10-12T08:31:09+00:00",
+      "touched_round": 258,
+      "summary": "修复同 grade 带内丹药 exp(修为)每-成本倒挂:一元始丹/道源丹/太乙丹/大还丹/神炼金丹 五枚丹数值修正(perKsec 均不再劣于同带同位候选),新增顶级守卫测试 '带内 exp 线无每-成本倒挂'(按 HERB_GRADE_BANDS 断言 perKsec 非增),并新增 仙韵丹(R11 仙,herb200/stoneBase600,buff_xianyun cultivationSpeed,2/3×1800s=1200s,填 realm 9-13 无修为速度源空档)于 buffs.ts+pills.ts。2026-10-12 落地,全测试通过",
+      "rationale": "EV-231 实测同 grade 带内存在同类丹药每灵石更差的真正玩家选择倒挂(一元始丹比混元丹差33%、道源丹被混元严格支配等),属可修复的平衡缺陷;新守卫把 #84 一类复发挡在带内层面(带间差异由 ledger #1 背书,不并入守卫)",
+      "alternatives_rejected": "1)不动数值只改文案:倒挂本质是玩家为同样修为付出更多灵石,非呈现问题;2)把守卫扩到带间:会把 ledger#1 的有意跨档设计也判红,与本决策冲突,留待 owner"
+    },
+    "DEC-063": {
+      "id": "DEC-063",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-12T08:31:09+00:00",
+      "updated_at": "2026-10-12T08:31:09+00:00",
+      "touched_round": 258,
+      "summary": "对齐功法 apex cultivationSpeed:道祖本源经(R20 主修)base 0.44/0.055→0.50/0.06,使 apex 不再回退低于 混元无极经(R18);combat 字段不动。2026-10-12 落地",
+      "rationale": "EV-232 显示 apex 主修功法修炼速度反而低于次一档 R18,与阶序直觉相悖,属于同一平衡清扫内的数值回退;只调 cultivationSpeed、不动战斗字段以控风险",
+      "alternatives_rejected": "调低 混元无极经 以迁就 apex(削正常值来掩盖回退,不解决根因)/整批重排 gongfa 数值(超出本 bug 范围)"
+    },
+    "DEC-064": {
+      "id": "DEC-064",
+      "type": "decision",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-12T08:31:09+00:00",
+      "updated_at": "2026-10-12T08:31:09+00:00",
+      "touched_round": 258,
+      "summary": "接管#84 交叉排查:法器被动盾(神钟 t28 等)对云纹仙印 t23 保持非单调系是**有意设计**(BUDGET_EPS=0.5 在 artifactLadder.spec 文档化的基于身份产物设计),不改;作为 PENDING 产品决策待 owner 签字确认;g2/g4 的 qi/wudao 炼制空洞判定为伪空洞(泉露/神露/仙尘散/玉道丹 覆盖),不填",
+      "rationale": "EV-233:这类非预算单调是刻意留白的设计语言而非缺陷,擅自拉平会破坏法器身份差异;与 ledger#1 的处置口径一致——可观测但属设计意图,列 PENDING 需人类 owner 定夺而非自动修复",
+      "alternatives_rejected": "自动拉平法器盾使其预算单调(破坏身份化设计)/把 qi/wudao 空洞当缺陷补条目(已被现有丹药覆盖,非真空洞)"
+    },
+    "TASK-316": {
+      "id": "TASK-316",
+      "type": "task",
+      "status": "resolved",
+      "version": 1,
+      "created_at": "2026-10-12T08:31:19+00:00",
+      "updated_at": "2026-10-12T08:31:19+00:00",
+      "touched_round": 258,
+      "category": "correctness",
+      "severity": 0.4,
+      "confidence": 1,
+      "effort": 1,
+      "summary": "一元始丹(R20 dao)带内倒挂修复:perKsec 0.372→0.274,herb 760→560、stoneBase 2600→1900;不再比 混元丹(0.279) 差 33%。src/data/pills.ts"
+    },
+    "TASK-317": {
+      "id": "TASK-317",
+      "type": "task",
+      "status": "resolved",
+      "version": 1,
+      "created_at": "2026-10-12T08:31:19+00:00",
+      "updated_at": "2026-10-12T08:31:19+00:00",
+      "touched_round": 258,
+      "category": "correctness",
+      "severity": 0.4,
+      "confidence": 1,
+      "effort": 1,
+      "summary": "道源丹(R18)带内倒挂修复:perKsec 0.314→0.279≈混元,herb 460→410、stoneBase 1400→1120;不再被 混元丹 严格支配。src/data/pills.ts"
+    },
+    "TASK-318": {
+      "id": "TASK-318",
+      "type": "task",
+      "status": "resolved",
+      "version": 1,
+      "created_at": "2026-10-12T08:31:20+00:00",
+      "updated_at": "2026-10-12T08:31:20+00:00",
+      "touched_round": 258,
+      "category": "correctness",
+      "severity": 0.3,
+      "confidence": 1,
+      "effort": 1,
+      "summary": "太乙丹(R12)带内倒挂修复:perKsec 0.306→0.291≤太初丹,herb 300→285、stoneBase 850→800。src/data/pills.ts"
+    },
+    "TASK-319": {
+      "id": "TASK-319",
+      "type": "task",
+      "status": "resolved",
+      "version": 1,
+      "created_at": "2026-10-12T08:31:20+00:00",
+      "updated_at": "2026-10-12T08:31:20+00:00",
+      "touched_round": 258,
+      "category": "correctness",
+      "severity": 0.3,
+      "confidence": 1,
+      "effort": 1,
+      "summary": "大还丹(R4,g1 带)带内倒挂修复:perKsec 0.497→0.468≤玄元丹,herb 50→47;由新守卫测试捕获。src/data/pills.ts"
+    },
+    "TASK-320": {
+      "id": "TASK-320",
+      "type": "task",
+      "status": "resolved",
+      "version": 1,
+      "created_at": "2026-10-12T08:31:20+00:00",
+      "updated_at": "2026-10-12T08:31:20+00:00",
+      "touched_round": 258,
+      "category": "correctness",
+      "severity": 0.3,
+      "confidence": 1,
+      "effort": 1,
+      "summary": "神炼金丹(R16,g4 带)带内倒挂修复:perKsec 0.303→0.288≤仙成丹,herb 400→380;由新守卫测试捕获。src/data/pills.ts"
+    },
+    "TASK-321": {
+      "id": "TASK-321",
+      "type": "task",
+      "status": "resolved",
+      "version": 1,
+      "created_at": "2026-10-12T08:31:20+00:00",
+      "updated_at": "2026-10-12T08:31:20+00:00",
+      "touched_round": 258,
+      "category": "test-quality",
+      "severity": 0.25,
+      "confidence": 1,
+      "effort": 1,
+      "summary": "新增顶级守卫测试 '带内 exp 线无每-成本倒挂'(src/core/pillValue.spec.ts):断言每 HERB_GRADE_BANDS 带内 exp 炼制线 perKsec=(craftBattlesOf×EXPLORE_BATTLE_INTERVAL)/pillGainSecAt(p,minRealm) 非增,TOL 1e-3,防 #84 类复发"
+    },
+    "TASK-322": {
+      "id": "TASK-322",
+      "type": "task",
+      "status": "resolved",
+      "version": 1,
+      "created_at": "2026-10-12T08:31:20+00:00",
+      "updated_at": "2026-10-12T08:31:20+00:00",
+      "touched_round": 258,
+      "category": "core-feature",
+      "severity": 0.3,
+      "confidence": 1,
+      "effort": 2,
+      "summary": "新增 仙韵丹(R11 仙,herb 200/stoneBase 600,buff_xianyun cultivationSpeed 2/3×1800s=1200s)于 src/data/buffs.ts + pills.ts,填 realm 9-13 此前零 cultivation-speed 来源的空档"
+    },
+    "TASK-323": {
+      "id": "TASK-323",
+      "type": "task",
+      "status": "resolved",
+      "version": 1,
+      "created_at": "2026-10-12T08:31:20+00:00",
+      "updated_at": "2026-10-12T08:31:20+00:00",
+      "touched_round": 258,
+      "category": "correctness",
+      "severity": 0.3,
+      "confidence": 1,
+      "effort": 1,
+      "summary": "功法 apex 修复:道祖本源经(src/data/gongfa.ts,R20 主修)cultivationSpeed base 0.44/0.055→0.50/0.06,apex 不再回退低于 混元无极经(R18);combat 字段未动"
     }
   },
   "edges": [
@@ -25374,6 +25572,114 @@
       "to": "ISS-319",
       "type": "addresses",
       "created_at": "2026-10-10T03:38:49+00:00"
+    },
+    {
+      "from": "TASK-316",
+      "to": "ISS-900",
+      "type": "addresses",
+      "created_at": "2026-10-12T08:31:24+00:00"
+    },
+    {
+      "from": "TASK-317",
+      "to": "ISS-900",
+      "type": "addresses",
+      "created_at": "2026-10-12T08:31:24+00:00"
+    },
+    {
+      "from": "TASK-318",
+      "to": "ISS-900",
+      "type": "addresses",
+      "created_at": "2026-10-12T08:31:24+00:00"
+    },
+    {
+      "from": "TASK-319",
+      "to": "ISS-900",
+      "type": "addresses",
+      "created_at": "2026-10-12T08:31:24+00:00"
+    },
+    {
+      "from": "TASK-320",
+      "to": "ISS-900",
+      "type": "addresses",
+      "created_at": "2026-10-12T08:31:24+00:00"
+    },
+    {
+      "from": "TASK-321",
+      "to": "ISS-900",
+      "type": "addresses",
+      "created_at": "2026-10-12T08:31:24+00:00"
+    },
+    {
+      "from": "TASK-322",
+      "to": "ISS-900",
+      "type": "addresses",
+      "created_at": "2026-10-12T08:31:25+00:00"
+    },
+    {
+      "from": "TASK-323",
+      "to": "ISS-900",
+      "type": "addresses",
+      "created_at": "2026-10-12T08:31:25+00:00"
+    },
+    {
+      "from": "DEC-062",
+      "to": "TASK-316",
+      "type": "governs",
+      "created_at": "2026-10-12T08:31:25+00:00"
+    },
+    {
+      "from": "DEC-062",
+      "to": "TASK-317",
+      "type": "governs",
+      "created_at": "2026-10-12T08:31:25+00:00"
+    },
+    {
+      "from": "DEC-062",
+      "to": "TASK-318",
+      "type": "governs",
+      "created_at": "2026-10-12T08:31:25+00:00"
+    },
+    {
+      "from": "DEC-062",
+      "to": "TASK-319",
+      "type": "governs",
+      "created_at": "2026-10-12T08:31:25+00:00"
+    },
+    {
+      "from": "DEC-062",
+      "to": "TASK-320",
+      "type": "governs",
+      "created_at": "2026-10-12T08:31:25+00:00"
+    },
+    {
+      "from": "DEC-062",
+      "to": "TASK-321",
+      "type": "governs",
+      "created_at": "2026-10-12T08:31:25+00:00"
+    },
+    {
+      "from": "DEC-062",
+      "to": "TASK-322",
+      "type": "governs",
+      "created_at": "2026-10-12T08:31:25+00:00"
+    },
+    {
+      "from": "DEC-063",
+      "to": "TASK-323",
+      "type": "governs",
+      "created_at": "2026-10-12T08:31:26+00:00"
+    },
+    {
+      "from": "DEC-064",
+      "to": "COMP-013",
+      "type": "governs",
+      "created_at": "2026-10-12T08:31:26+00:00"
+    },
+    {
+      "from": "ISS-900",
+      "to": "COMP-024",
+      "type": "located_in",
+      "created_at": "2026-10-12T08:31:26+00:00"
     }
   ]
 }
