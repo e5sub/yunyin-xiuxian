@@ -311,7 +311,7 @@ describe('离线总结报数 == 实发', () => {
     }
   })
 
-  it('封顶段:capped/cappedSeconds/seconds 报数正确,实发按 cap 折算且寿元随封顶', () => {
+  it('封顶段:capped/cappedSeconds/seconds 报数正确,实发按 cap 折算且寿元不封顶', () => {
     const game = useGameStore()
     const player = usePlayerStore()
     const dongfu = useDongfuStore()
@@ -338,10 +338,9 @@ describe('离线总结报数 == 实发', () => {
     expect(toNum(sm.exp), '增益按 cap 折算').toBeCloseTo(rate * effSec, 3)
     expect(toNum(sm.exp), '不得越过 cap 多给').toBeLessThan(rate * (60 * 3600) * OFFLINE_EFFICIENCY * 0.5)
 
-    // 寿元与收益同口径封顶:60h 只按 8h 记账(≈8 年),而非 60h(≈60 年),且报数==实发
+    // 寿元不封顶:60h 全额记账(≈60 年),而非 8h(≈8 年),且报数==实发
     expect(sm.ageYears).toBe(Math.round(player.age - age0))
-    expect(sm.ageYears, '寿元按封顶 8h 记账').toBeGreaterThanOrEqual(7)
-    expect(sm.ageYears, '寿元不得越过封顶按完整 60h 记账').toBeLessThan(15)
+    expect(sm.ageYears, '寿元按完整 60h 记账').toBeGreaterThanOrEqual(50)
   })
 })
 

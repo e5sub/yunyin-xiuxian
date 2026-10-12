@@ -188,7 +188,7 @@ describe('离线总结 · 变动了多少就报多少', () => {
     expect(gradeDelta.reduce((s, e) => s + e.amount, 0), '逐品之和应等于总差额').toBe(summary.herb)
     expect(summary.ore).toBe(delta.ore)
     expect(summary.wudao).toBe(delta.wudao)
-    // 二 寿元:流逝多少就报多少(本档 60h 未达 72h 封顶,按真实时长核算;越过封顶会随收益一起截断)
+    // 二 寿元:流逝多少就报多少(它不受离线上限约束,按真实时长算)
     expect(summary.ageYears, '寿元流逝没报').toBeCloseTo(delta.age, 0)
     expect(summary.ageYears, '这一档离开 60 小时,寿元不该一点没动').toBeGreaterThan(50)
     expect(
