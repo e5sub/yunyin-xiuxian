@@ -8,6 +8,7 @@ function b(id: string, name: string, kind: BuffDef['kind'], durationSec: number,
 
 export const BUFFS: BuffDef[] = [
   b('buff_juling', '聚灵', 'pill', 1800, '灵气汇聚,修炼速度提升 50%', { cultivationSpeed: 0.5 }, 'wind'),
+  b('buff_xianyun', '仙韵', 'pill', 1800, '仙韵绕体,修炼速度提升 2/3', { cultivationSpeed: 2 / 3 }, 'wind'),
   b('buff_ningshen', '凝神', 'pill', 600, '心神凝定,小进阶成功率提升 8%(大关天劫,不与此益)', { breakthroughRate: 0.08 }, 'moon'),
   b('buff_zhanli', '战意沸腾', 'pill', 900, '攻击提升 20%,防御提升 10%', { attackPct: 0.2, defensePct: 0.1 }, 'sword'),
   b('buff_huxin', '护心', 'pill', 900, '受到伤害降低 15%', { damageReduction: 0.15 }, 'shield'),

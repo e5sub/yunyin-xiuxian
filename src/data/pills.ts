@@ -1,5 +1,5 @@
 /**
- * 丹药库 —— 71 味(含 14 味神/道品丹方补全与 7 味高界掉落)。
+ * 丹药库 —— 72 味(含 14 味神/道品丹方补全、7 味高界掉落与仙品修速丹补位)。
  *
  * ## 定价法则(Phase 32.6 丹药价值审计)
  *
@@ -179,7 +179,7 @@ export const PILLS: PillDef[] = [
   ),
   p('p_dahuan', '大还丹', 'profound', 4, '起死人肉白骨,服之如闭关一炷香(30 分钟)', {
     instant: { expSecs: 1800 },
-    recipe: { herb: 50, stoneBase: 100 },
+    recipe: { herb: 47, stoneBase: 100 },
     alchemyLevel: 6
   }),
   p('p_wudaodan', '悟道丹', 'profound', 3, '服之如聆道音,悟道点 +20', {
@@ -268,7 +268,7 @@ export const PILLS: PillDef[] = [
   }),
   p('p_daoyuan', '道源丹', 'divine', 18, '一炉道源,吞服者如闭关两个半时辰(5 小时)', {
     instant: { expSecs: 18000 },
-    recipe: { herb: 460, stoneBase: 1400 },
+    recipe: { herb: 410, stoneBase: 1120 },
     alchemyLevel: 10
   }),
   /** 混沌两境与神王境的补位:此前这三境一味本境丹都没有(见 contentDensity 的「每境一味」判据) */
@@ -344,17 +344,27 @@ export const PILLS: PillDef[] = [
   // 悟道线(悟道丹 20 → … → 道祖丹 150 → 天道金丹 200)。
   p('p_taiyi', '太乙丹', 'immortal', 12, '太乙近道,服之如闭关十三刻有余(200 分钟)', {
     instant: { expSecs: 12000 },
-    recipe: { herb: 300, stoneBase: 850 },
+    recipe: { herb: 285, stoneBase: 800 },
     alchemyLevel: 8
+  }),
+  // ---- 仙品修速丹(Phase 40):仙界带(9-13)此前一味修炼加速都没有,补上堵口 ----
+  // 增益 2/3×1800=1200 秒,落在聚灵丹 900(凡品)与神元丹 1260(神品)之间,
+  // 修速线的品质序连续(法则 B);定在 1200 而非中位 1080,是让掉落线白捡的
+  // 造化丹(720)对本品不过六成(法则 A),否则同带相邻可炼品会把它挤穿红线。
+  p('p_xianyun', '仙韵丹', 'immortal', 11, '仙韵绕体,服之修炼加速三分之二(30 分钟)', {
+    kind: 'buff',
+    buffId: 'buff_xianyun',
+    recipe: { herb: 200, stoneBase: 600 },
+    alchemyLevel: 10
   }),
   p('p_shenlian', '神炼金丹', 'divine', 16, '神火炼就的金丹,服之如闭关十八刻(270 分钟)', {
     instant: { expSecs: 16200 },
-    recipe: { herb: 400, stoneBase: 1160 },
+    recipe: { herb: 380, stoneBase: 1160 },
     alchemyLevel: 9
   }),
   p('p_yiyuan', '一元始丹', 'dao', 20, '一元复始,万象其中,服之如闭关三个半时辰(7 小时)', {
     instant: { expSecs: 25200 },
-    recipe: { herb: 760, stoneBase: 2600 },
+    recipe: { herb: 560, stoneBase: 1900 },
     alchemyLevel: 9
   }),
   p('p_shenshi', '神识丹', 'divine', 14, '神识洞明,悟道点 +85', {

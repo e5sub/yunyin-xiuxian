@@ -29,7 +29,8 @@ import {
 import { qualityDef } from '@/data/qualities'
 import { buffDef } from '@/data/buffs'
 import { MAX_MAJOR, WORLD_BREAK_MAJOR } from '@/data/realms'
-import { BATTLE_EXP_SECS, INSTANT_EXP_LAYER_CAP } from '@/data/constants'
+import { BATTLE_EXP_SECS, INSTANT_EXP_LAYER_CAP, EXPLORE_BATTLE_INTERVAL } from '@/data/constants'
+import { herbGradeOfMajor } from '@/data/herbGrades'
 import {
   DROP_CRAFT_RATIO,
   craftBattlesOf,
@@ -369,6 +370,49 @@ describe('定价法则', () => {
       expect(dropPeak, `${FAMILY_NAME[fam]}族最强的一味是白捡的,炼丹在这条线上失去意义`).toBeLessThanOrEqual(
         craftPeak + 1e-9
       )
+    }
+  })
+})
+
+/**
+ * 带内 exp 线无每-成本倒挂(issue #84)。
+ *
+ * 同品草带的草同价,玩家真正在这几味之间做取舍;若高一味的每-成本反超低一味,
+ * 就是「高一味却更不划算」的陷阱 —— 低一味反而成为最优解,高一味是死内容。
+ * 这条守卫把修为可炼线按品草带拆开,断言 perKsec 随境界单调不涨。
+ *
+ * perKsec = (炼成一枚的期望战斗场次 × 每场 12 秒) ÷ 该丹准入境界的药力(等效秒),
+ * 即「花一场战斗的代价能买到多少修炼秒数」里的成本侧 —— 越高越不划算。
+ *
+ * 相对容差 1e-3(0.1%):吸收同一带内「相持」线上的模型取整噪声 —— 例如道源丹与
+ * 混元丹本就设计在贴身相持(见数据校准),二者 perKsec 差不足千分之一,不该被算成倒挂。
+ */
+describe('带内 exp 线无每-成本倒挂', () => {
+  it('同品草带内,修为可炼丹的每-成本随境界单调不涨', () => {
+    const TOL = 1e-3
+    const expCraft = PILLS.filter(p => pillFamily(p) === 'exp' && p.recipe && p.instant?.expSecs).sort(
+      (a, b) => a.minRealm - b.minRealm
+    )
+    expect(expCraft.length).toBeGreaterThan(0)
+    let prevGrade: number | null = null
+    let prevPk = 0
+    let prevName = ''
+    for (const p of expCraft) {
+      const grade = herbGradeOfMajor(p.minRealm)
+      const pk = (craftBattlesOf(p) * EXPLORE_BATTLE_INTERVAL) / pillGainSecAt(p, p.minRealm)
+      if (prevGrade !== grade) {
+        prevGrade = grade
+        prevPk = pk
+        prevName = p.name
+        continue
+      }
+      expect(
+        pk,
+        `品${grade}草带内:${p.name}(境界 ${p.minRealm}) 每-成本 ${pk.toFixed(4)} ` +
+          `高于同带更低味 ${prevName} 的 ${prevPk.toFixed(4)} —— 高一味反而不如低一味划算`
+      ).toBeLessThanOrEqual(prevPk * (1 + TOL))
+      prevPk = pk
+      prevName = p.name
     }
   })
 })
