@@ -96,6 +96,13 @@ export function celestialDepthScale(playerMods: StatMods): number {
 /**
  * 这一界的判定:玩家的构筑厚度与境界,决定守关者额外做什么。
  *
+ * 反极端(minmax)是**有意的**:基准 CELESTIAL_BASE_DEPTH 之上,堆得越厚守关者
+ * 越有备 —— 加厚(≈depth/基准)+ 增伤/减伤(JUDGE_RATE 递增、JUDGE_CAP 封顶)。
+ * 但六大标准流派(buildSim)的构筑深度只有 1.02~2.43,全部低于基准,因此**标准构筑
+ * 不被罚**:thicken=1、增伤/减伤≈0。真正被阻尼的是越过基准的超额堆叠(实测真仙
+ * 常规档 ~4.76)。这条「标准不罚、极端阻尼」的不变式由 celestialJudgementInvariant.spec
+ * 锁死 —— 改判定的任何数值必须先过它,别让「反 minmax」静默变成「连标准都被罚」。
+ *
  * @param playerMajor 玩家此刻的大境界(用于境界压制)
  * @param anchorTier  本界锚点层级(它的境界即本界「该有的境界」)
  */
