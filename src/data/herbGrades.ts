@@ -54,6 +54,13 @@ export const HERB_RARITY_GROWTH = 10
  *
  * 顶价 = 公式在道品上的产出(1000 × 10^4 = 1000 万),**不另行封顶**。
  * 高点照「草比石贵」:石头是挂机油井、后期闲置;草是炼丹根本、高品稀缺。
+ *
+ * **[TRACKED known-deviation — 勿在不重审的情况下改价]**:草价是**与境界无关的
+ * 绝对锚**(1000×10^(grade-1)),而石头/装备随 stoneByTier 1.9^tier 指数成长 ——
+ * 两条定价标尺**交叉后永久分叉**,「草比石贵」只在凡界 realm 1 成立:
+ * realm 10 时一株草 vs 一场战斗灵石已约 1/27,realm 18 时最稀有 5 品草(1e7)
+ * 也远小于一场战斗的石头(≈4e8)。这是有意维持、待产品决策的已知偏离
+ * (是否让草锚随境界缩放,尚未拍板);改价会连锁扰动坊市与丹方,须先重审此点。
  */
 export function herbBuyPrice(grade: HerbGrade): number {
   return HERB_GROUND_PRICE * HERB_RARITY_GROWTH ** (grade - 1)
