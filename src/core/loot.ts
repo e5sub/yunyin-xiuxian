@@ -9,7 +9,7 @@ import { salvageYieldText } from '@/ui/forgeText'
 import { isRareQuality, qualityDef } from '@/data/qualities'
 import { equipmentTemplate } from '@/data/equipment'
 import { PILLS, pillRank } from '@/data/pills'
-import { herbGradeOfMajor } from '@/data/herbGrades'
+import { HERB_GRADE_SHORT, herbGradeOfMajor } from '@/data/herbGrades'
 import { ARTIFACTS, artifactDef } from '@/data/artifacts'
 import { lifeThemeDef } from '@/data/lifeThemes'
 import {
@@ -261,11 +261,15 @@ export function afterWin(region: RegionDef, rewardMult: number, isBoss: boolean)
   const exp = expFromSecs(player.expReq, expSecs, player.cultPerSec, INSTANT_EXP_LAYER_CAP)
   player.gainExp(exp)
 
-  // 材料 —— 数量进标量库存,同时抽出"你到底捡到了什么"推进认知
+  // 材料 —— 数量进标量库存,同时抽出"你到底捡到了什么"推进认知。
+  // 历练战报(本战所得)必须显式报品:五品经济里高 1 品 = 贵 10 倍,素写「灵草 ×N」
+  // 会让玩家分不清采到的是哪一品 —— 与 eventEngine 的 `${HERB_GRADE_SHORT[grade]}灵草 +N` 同口径
   if (rng.chance(0.5)) {
     const n = rng.int(1, 3) * doubled
-    resources.addHerb(herbGradeOfMajor(region.minRealm), n)
+    const grade = herbGradeOfMajor(region.minRealm)
+    resources.addHerb(grade, n)
     harvestMaterials(tier, 'herb', n)
+    lines.push(`${HERB_GRADE_SHORT[grade]}灵草 +${n}`)
   }
   if (rng.chance(0.35)) {
     const n = rng.int(1, 2) * doubled
