@@ -75,6 +75,19 @@ tsconfig paths `@/* → ./src/*`，开启 `strict` + `noUncheckedIndexedAccess` 
 - **数据流**：改数值去 `src/data/`，改逻辑去 `src/core/`，改展示去 `src/ui/`，不要跨层硬编码。
 - **测试**：`describe/it` 用中文 given-when-then，真实断言，刻意故障注入证明测试能抓 bug。
 
+## Commit Conventions
+
+- **Conventional Commits**; **message in English**; concise subject (`type(scope): summary`).
+- Body is a **list of bullets** (one point per line), clear and **without redundant padding** — filler destroys the retrievability of the information.
+- **Commit granularity (minimal, complete)**:
+    - One commit = one logically complete, self-contained change (code + its tests landed together).
+    - A one-line change does not get its own commit; fold it into a related small change to avoid fragmentation.
+    - Do not cram thousands / tens of thousands of lines into a single commit; unless a deep review confirms it is inherently minimal-and-complete (mechanical refactor, codegen, wholesale migration), in which case note the exception in the message.
+    - Don't split for splitting's sake; prefer merging like small changes together.
+- Workflow: `commit_message.txt` → `git commit -F` → delete; **only commit when the user explicitly asks**.
+- **NEVER** `--no-verify`, force-push `main`, or append a `Co-Authored-By` AI attribution.
+- **Batch RIL graph bookkeeping**: accumulate graph.json bookkeeping to roughly 10–50 entries (flexible guidance, not a hard cap), then land one `chore(ril): <summary>` commit; do not fold it into code commits. See the `graph-engineering` skill §LEARN.
+
 ## Important Files
 
 - `package.json` — 版本/脚本/依赖入口
