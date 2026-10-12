@@ -643,8 +643,8 @@ export const GONGFA: GongfaDef[] = [
     'divine',
     20,
     '道生一,一生万 —— 这部经从头到尾只讲一个字',
-    { cultivationSpeed: 0.44, attackPct: 0.26, defensePct: 0.24, maxHpPct: 0.24 },
-    { cultivationSpeed: 0.055, attackPct: 0.026, defensePct: 0.022 },
+    { cultivationSpeed: 0.5, attackPct: 0.26, defensePct: 0.24, maxHpPct: 0.24 },
+    { cultivationSpeed: 0.06, attackPct: 0.026, defensePct: 0.022 },
     { element: 'chaos', skill: { name: '本源一炁', mult: 4.0, rate: 0.29 } }
   )
 ]
