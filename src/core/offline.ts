@@ -318,9 +318,9 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
     }
   }
 
-  // ---- 寿元流逝(不受离线上限约束) ----
+  // ---- 寿元流逝(与收益同口径,按封顶时长结算;超长离线的寿元不再多扣) ----
   const ageBefore = player.age
-  player.addAge((dtSec / 3600) * AGE_YEARS_PER_HOUR)
+  player.addAge((capSec / 3600) * AGE_YEARS_PER_HOUR)
 
   // ---- Buff 过期 ----
   cultivation.pruneBuffs(nowMs)
