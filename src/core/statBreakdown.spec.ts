@@ -20,10 +20,11 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { AnyStatKey, StatMods } from '@/types'
-import { mergeMods, mergeModsDetailed } from './statsCalc'
-import { modOf } from './statsCalc'
+import { mergeMods, mergeModsDetailed, computeFinalStats, modOf } from './statsCalc'
 import { baseCultPerSec } from './formulas'
-import { SOFT_CAPS } from '@/data/constants'
+import { SOFT_CAPS, CULT_SPEED_SOFT_CAP_T, CULT_SPEED_SOFT_CAP_DIMINISH } from '@/data/constants'
+import { gnZero } from '@/utils/gnum'
+import type { StatsInput } from './statsCalc'
 import { usePlayerStore } from '@/stores/player'
 import { useInventoryStore } from '@/stores/inventory'
 import { useCultivationStore } from '@/stores/cultivation'
@@ -143,5 +144,51 @@ describe('属性来源明细 · 面板读的那一份', () => {
     expect(breakdownSum, '来源之和与面板上的总加成不符').toBeCloseTo(modOf(player.finalStats.mods, 'cultivationSpeed'), 8)
     const expected = baseCultPerSec(player.major, player.sub) * Math.max(0.05, 1 + breakdownSum)
     expect(player.cultPerSec, '基础 × (1 + 来源之和) 不等于引擎算出的速率').toBeCloseTo(expected, 6)
+  })
+})
+
+describe('修炼速度软阈值(computeFinalStats 那道防线)', () => {
+  /** 构造一个修炼速度合计可控的 StatsInput(其余字段取零基准) */
+  function cultInput(mods: StatMods): StatsInput {
+    return {
+      major: 0,
+      sub: 0,
+      linggenMult: 1,
+      modSources: [mods],
+      sourceNames: ['测试源'],
+      equipFlats: { attack: gnZero(), defense: gnZero(), maxHp: gnZero() },
+      daoFruit: 0,
+      qiRich: false
+    }
+  }
+
+  it('给定合计低于阈值:软阈值完全休眠,输出 == 输入(常规构筑分毫不动)', () => {
+    // 给定:低于阈值的修炼速度(T - 0.5),落在正常构筑区间
+    const raw = CULT_SPEED_SOFT_CAP_T - 0.5
+    const stats = computeFinalStats(cultInput({ cultivationSpeed: raw }))
+    // 那么:软阈值不介入,面板值与输入逐位一致(bit-identical)
+    expect(modOf(stats.mods, 'cultivationSpeed')).toBe(raw)
+  })
+
+  it('给定合计越过阈值:超出部分被削弱,增长衰减(极端轮回堆叠的兜底)', () => {
+    // 给定:多轮回堆叠把修炼速度推上阈值以上(T + 1)
+    const raw = CULT_SPEED_SOFT_CAP_T + 1
+    const stats = computeFinalStats(cultInput({ cultivationSpeed: raw }))
+    // 那么:只对超出 (raw - T) 的部分打折,面板值 = T + 超出 × diminish
+    const expected = CULT_SPEED_SOFT_CAP_T + (raw - CULT_SPEED_SOFT_CAP_T) * CULT_SPEED_SOFT_CAP_DIMINISH
+    expect(modOf(stats.mods, 'cultivationSpeed')).toBeCloseTo(expected, 8)
+    // 且:仍高于阈值(不是砍回阈值),但明显低于未封顶的原始值
+    expect(modOf(stats.mods, 'cultivationSpeed')).toBeGreaterThan(CULT_SPEED_SOFT_CAP_T)
+    expect(modOf(stats.mods, 'cultivationSpeed')).toBeLessThan(raw)
+  })
+
+  it('给定越过阈值的合计:折算同乘摊回来源,明细之和 == 面板值', () => {
+    // 给定:越过阈值的合计
+    const stats = computeFinalStats(cultInput({ cultivationSpeed: CULT_SPEED_SOFT_CAP_T + 1 }))
+    const sum = stats.breakdown
+      .filter(r => !r.onTop)
+      .reduce((s, r) => s + (r.mods.cultivationSpeed ?? 0), 0)
+    // 那么:来源明细之和依旧等于面板值,不合糊
+    expect(sum).toBeCloseTo(modOf(stats.mods, 'cultivationSpeed'), 8)
   })
 })
