@@ -246,7 +246,7 @@ async function clearOverlays(page) {
 /** 把 formatGN 渲染出来的文本还原成数值(万/亿/兆…按 10^4 递进) */
 async function readFormatted(page, title) {
   return page.evaluate(t => {
-    const el = document.querySelector(`[title="${t}"]`)
+    const el = document.querySelector(`[title^="${t}"]`)
     if (!el) return { text: `(找不到 ${t})`, value: null }
     const text = (el.textContent || '').trim().replace(/,/g, '')
     const UNITS = ['万', '亿', '兆', '京', '垓', '秭', '穰', '沟', '涧', '正', '载', '极']

@@ -28,7 +28,7 @@
         >,在其地历练际遇<span class="tabular" title="秘境等其他活动不受此加成">+{{ mansionLuckPct }}%</span>(他处不加)。
       </p>
       <p class="mt-1 flex items-center gap-2 text-[10px]">
-        <button class="chip-ink text-azure" aria-label="星象值日定向" @click="mansionRedirectOpen = !mansionRedirectOpen">
+        <button class="chip-ink min-h-[28px] text-azure" aria-label="星象值日定向" @click="mansionRedirectOpen = !mansionRedirectOpen">
           星象定向{{ redirectActiveText }} ▾
         </button>
       </p>
@@ -41,8 +41,13 @@
           <button
             v-for="w in WORLDS"
             :key="w.id"
-            class="chip-ink"
-            :class="w.id === effectiveWorldId ? 'text-gold-ink' : 'text-azure'"
+            class="chip-ink min-h-[28px]"
+            :class="redirectReason(w.id)
+              ? 'cursor-not-allowed border-ink/15 bg-ink/5 text-ink-faint'
+              : w.id === effectiveWorldId ? 'text-gold-ink' : 'text-azure'"
+            :disabled="redirectReason(w.id) !== null"
+            :title="redirectReason(w.id) ?? `今日定向到「${w.name}」`"
+            :aria-label="redirectReason(w.id) ? `${w.name} · ${redirectReason(w.id)}` : `今日定向到「${w.name}」`"
             @click="redirectTo(w.id)"
           >{{ w.name }}{{ w.id === effectiveWorldId ? ' ·' : '' }}</button>
         </div>
@@ -315,6 +320,8 @@
   import { useAdventureStore } from '@/stores/adventure'
   import { usePlayerStore } from '@/stores/player'
   import { useUiStore } from '@/stores/ui'
+  import { useGameStore } from '@/stores/game'
+  import { useResourcesStore } from '@/stores/resources'
   import { REGIONS, regionDef, DANGER_NAMES } from '@/data/regions'
   import { worldOf, WORLDS, type WorldDef } from '@/data/realms'
   import SectionTitle from '@/components/common/SectionTitle.vue'
@@ -358,6 +365,8 @@
   const router = useRouter()
   const player = usePlayerStore()
   const ui = useUiStore()
+  const game = useGameStore()
+  const resources = useResourcesStore()
 
   const modeTarget = ref<RegionDef | null>(null)
 
@@ -399,6 +408,18 @@
     const ok = player.redirectFavoredWorld(id)
     const name = worldDef(id).name
     ui.toast(ok ? `今日定向到「${name}」` : '今日次数已尽 / 已定向此界 / 灵石不足', ok ? 'info' : 'warn')
+  }
+  /** 该界此刻能否定向:不能则给出一句原因。判据与 redirectFavoredWorld 同一套(见 player.ts),
+   *  但改在点击前置灰标出 —— 灵石不足/次数已尽/已定向此界不该缩成一个点了没反应的死按钮。 */
+  function redirectReason(w: WorldId): string | null {
+    const day = Math.floor(game.totalPlaySec / 86400)
+    const cur = player.mansionRedirect
+    if (cur && cur.gameDay === day) {
+      if (cur.worldId === w) return '已定向此界'
+      if (cur.count >= mansionRedirectMax) return '今日次数已尽'
+    }
+    if (!resources.hasStone(gn(MANSION_REDIRECT_COST))) return '灵石不足'
+    return null
   }
   /** 区域适配原因点按展开(移动端无 hover) */
   const adaptExpand = ref<string | null>(null)
