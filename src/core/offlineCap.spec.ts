@@ -263,10 +263,17 @@ describe('离线总结报数 == 实发', () => {
   })
 
   it('非封顶段:stone/qi/herb/herbByGrade/ore/wudao/ageYears 报数==实发,cap 恒假', () => {
-    const game = useGameStore()
-    const player = usePlayerStore()
-    const resources = useResourcesStore()
-    const dongfu = useDongfuStore()
+    // 冻实 Date.now():lastActiveAt 与 settleOffline 各取一次真实时钟,并行下两次读数之间
+    // 一旦跨到不同的"现在",gap 会略超 3600s → 报数(整秒)与实发(带毫秒余量)偶发差 1
+    // (CI 间歇红、单跑又好,与离线修为冻时同款修法)。冻时让两处读同一时刻,gap 恰为 3600s。
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(1_800_000_000_000)
+      setActivePinia(createPinia())
+      const game = useGameStore()
+      const player = usePlayerStore()
+      const resources = useResourcesStore()
+      const dongfu = useDongfuStore()
     player.major = 3
     dongfu.setLevel('field', 3) // 灵田在产,让 herb/ore 真实走通
     dongfu.setLevel('library', 3) // 藏经阁让 wudao 真实走通
@@ -308,6 +315,9 @@ describe('离线总结报数 == 实发', () => {
     // 逐品净增 == 实际该品增量
     for (const e of sm.herbByGrade) {
       expect(resources.herbOf(e.grade) - (herbBefore[e.grade] ?? 0), `品${e.grade} 逐品实发`).toBe(e.amount)
+    }
+    } finally {
+      vi.useRealTimers()
     }
   })
 
