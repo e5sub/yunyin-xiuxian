@@ -756,9 +756,12 @@ for (const vp of VIEWPORTS) {
   watchPageErrors(page, pageErrors)
 
   await page.goto(INDEX, { waitUntil: 'load' })
-  // 欢迎页不进 ROUTES,触控目标从没被量到过(欢迎页底部三枚链接曾缩到 17px) —— 单独补一刀
+  // 欢迎页不进 ROUTES,触控目标从没被量到过(欢迎页底部三枚链接曾缩到 17px) —— 单独补一刀。
+  // 先等「开始游戏」渲染出来再量:欢迎页是懒挂载,量早了会量到一个空页(判据没跑到东西却全绿)。
+  await page.getByRole('button', { name: /开\s*始\s*游\s*戏/ }).first().waitFor()
   {
     const welcome = await measureSmallTargets(page)
+    checked += 1
     if (welcome.length) failures.push(`[${vp.tag}] 欢迎页 可点元素过小:${welcome.join(' | ')}`)
   }
   // 建号:同意隐私 → 传送门(约 2.5s)→ 命名 → 踏入仙途
@@ -778,6 +781,9 @@ for (const vp of VIEWPORTS) {
   await page.locator('input:not([type=file]):not([type=checkbox])').first().fill('排版自检')
   {
     const create = await measureSmallTargets(page)
+    checked += 1
+    // 建号页同样懒挂载:量到空页就让判据自己报错,不静默放过
+    if ((await page.locator('button').count()) === 0) failures.push(`[${vp.tag}] 建号页 没量到任何控件,判据没跑到东西`)
     if (create.length) failures.push(`[${vp.tag}] 建号页 可点元素过小:${create.join(' | ')}`)
   }
   await page.getByRole('button', { name: /踏\s*入\s*仙\s*途/ }).first().click()
