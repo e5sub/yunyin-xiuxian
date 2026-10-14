@@ -731,12 +731,36 @@ function zoomProblems(info, tag) {
   return problems
 }
 
+/**
+ * 仅量「可点元素够不够大」—— 欢迎/建号页不进 ROUTES(建号后才有游戏内路由),
+ * 此前从没被量到过(欢迎页底部三枚链接就是 17px 缩过来的)。量尺与 measurePage.smallTargets 同一条。
+ */
+async function measureSmallTargets(page) {
+  return page.evaluate(() =>
+    [...document.querySelectorAll('button, a, [role=button]')]
+      .map(el => {
+        const r = el.getBoundingClientRect()
+        const declared = parseFloat(getComputedStyle(el).minHeight) || 0
+        const ok = r.height >= 28 || (declared >= 28 && r.height >= 27.5)
+        return { el, r, ok }
+      })
+      .filter(({ r, ok }) => r.width > 0 && r.height > 0 && !ok)
+      .slice(0, 5)
+      .map(({ el, r }) => `${r.height.toFixed(1)}px «${(el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 14)}»`)
+  )
+}
+
 for (const vp of VIEWPORTS) {
   const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.dpr })
   const pageErrors = []
   watchPageErrors(page, pageErrors)
 
   await page.goto(INDEX, { waitUntil: 'load' })
+  // 欢迎页不进 ROUTES,触控目标从没被量到过(欢迎页底部三枚链接曾缩到 17px) —— 单独补一刀
+  {
+    const welcome = await measureSmallTargets(page)
+    if (welcome.length) failures.push(`[${vp.tag}] 欢迎页 可点元素过小:${welcome.join(' | ')}`)
+  }
   // 建号:同意隐私 → 传送门(约 2.5s)→ 命名 → 踏入仙途
   await page.getByRole('button', { name: /开\s*始\s*游\s*戏/ }).first().click()
   // 隐私弹窗也是弹窗:它的控件同样要过那两条尺子(页面上巡不到它)
@@ -752,6 +776,10 @@ for (const vp of VIEWPORTS) {
   await page.getByRole('button', { name: /同意并开始/ }).first().click()
   await page.waitForTimeout(3200)
   await page.locator('input:not([type=file]):not([type=checkbox])').first().fill('排版自检')
+  {
+    const create = await measureSmallTargets(page)
+    if (create.length) failures.push(`[${vp.tag}] 建号页 可点元素过小:${create.join(' | ')}`)
+  }
   await page.getByRole('button', { name: /踏\s*入\s*仙\s*途/ }).first().click()
   await page.waitForTimeout(1200)
 
