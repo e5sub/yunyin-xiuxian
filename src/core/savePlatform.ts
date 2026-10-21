@@ -13,14 +13,23 @@ import { saveAs } from 'file-saver'
 import { exportSaveText } from './save'
 import { useUiStore } from '@/stores/ui'
 
-/** 本机存档导出:按平台落到可被用户取走的地方,成功返回提示,失败返回 null */
+/**
+ * 本机存档导出:按平台落到可被用户取走的地方。
+ *
+ * 返回 `null` 表示存档真的落盘成功;返回字符串表示未形成持久备份,
+ * 内容为给玩家看的失败/退路说明。两条路都会给 toast 回执。
+ */
 export async function exportSaveToDevice(): Promise<string | null> {
   const text = exportSaveText()
   if (Capacitor.isNativePlatform()) {
     try {
       // Documents 在部分 Android 上需运行时授权,先问一句,被拒就如实告知
       const perm = await Filesystem.requestPermissions()
-      if (perm.publicStorage === 'denied') return '存储权限被拒绝,无法导出存档'
+      if (perm.publicStorage === 'denied') {
+        const reason = '存储权限被拒绝,无法导出存档'
+        useUiStore().toast(reason, 'warn')
+        return reason
+      }
       const stamp = new Date().toISOString().slice(0, 10)
       const file = `yunyin-xiuxian-${stamp}.save`
       await Filesystem.writeFile({

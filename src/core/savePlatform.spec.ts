@@ -31,7 +31,8 @@ Object.defineProperty(globalThis, 'localStorage', { value: new MemStorage(), con
 
 const mocks = vi.hoisted(() => ({
   writeFile: vi.fn().mockResolvedValue({ uri: 'out.save' }),
-  requestPermissions: vi.fn().mockResolvedValue({ publicStorage: 'granted' })
+  requestPermissions: vi.fn().mockResolvedValue({ publicStorage: 'granted' }),
+  isNativePlatform: vi.fn(() => false)
 }))
 
 // 替换 @capacitor/filesystem 为可追踪桩:断言 Web 端绝不调用它
@@ -48,7 +49,7 @@ vi.mock('@capacitor/core', async () => {
     ...actual,
     Capacitor: {
       ...actual.Capacitor,
-      isNativePlatform: () => false
+      isNativePlatform: mocks.isNativePlatform
     }
   }
 })
@@ -61,6 +62,8 @@ describe('savePlatform(Web 分支)', () => {
     setActivePinia(createPinia())
     mocks.writeFile.mockClear()
     mocks.requestPermissions.mockClear()
+    mocks.isNativePlatform.mockReset()
+    mocks.isNativePlatform.mockReturnValue(false)
   })
   afterEach(() => {
     vi.restoreAllMocks()
@@ -75,5 +78,20 @@ describe('savePlatform(Web 分支)', () => {
 
     expect(result).toBeNull()
     expect(mocks.writeFile).not.toHaveBeenCalled()
+  })
+
+  it('原生端存储权限被拒:不写盘,并给玩家明确警告回执', async () => {
+    mocks.isNativePlatform.mockReturnValue(true)
+    mocks.requestPermissions.mockResolvedValue({ publicStorage: 'denied' })
+
+    const { exportSaveToDevice } = await import('./savePlatform')
+    const { useUiStore } = await import('@/stores/ui')
+    const result = await exportSaveToDevice()
+
+    expect(result, '失败原因仍要返回,设置页据此不记「上次导出」').toBe('存储权限被拒绝,无法导出存档')
+    expect(mocks.writeFile, '权限被拒时不该继续尝试写 Documents').not.toHaveBeenCalled()
+    expect(useUiStore().toasts, '玩家点了导出后必须看到为什么没成').toContainEqual(
+      expect.objectContaining({ text: '存储权限被拒绝,无法导出存档', kind: 'warn' })
+    )
   })
 })
