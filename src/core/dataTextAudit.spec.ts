@@ -233,16 +233,21 @@ describe('文案数值对账 · 视图不手抄数字', () => {
     expect(host, '圆点不得另起一套可交判据').not.toMatch(/bounty\.orders\.some\(/)
   })
 
-  it('坊市的墙钟倒计时不随引擎暂停冻结', () => {
+  it('墙钟域的倒计时不随引擎暂停冻结', () => {
     const sell = src('../components/market/MarketSellSection.vue')
     const rows = src('../composables/useBountyRows.ts')
+    const home = src('../views/HomeView.vue')
     for (const [name, text] of [
       ['售出段', sell],
-      ['悬赏订单投影', rows]
+      ['悬赏订单投影', rows],
+      ['主页日课倒计时', home]
     ] as const) {
       expect(text, `${name}应读墙钟读数`).toContain('useWallNow()')
       expect(text, `${name}不得走暂停冻结的游戏时钟`).not.toMatch(/useNow\(|useGameClock\(/)
     }
+    expect(home, '日课倒计时要以墙钟读数驱动本地午夜计算').toContain(
+      'formatCountdown(secsUntilNextMidnight(now.value))'
+    )
   })
 
   it('可冻结倒计时读游戏时钟,不读真实墙钟', () => {

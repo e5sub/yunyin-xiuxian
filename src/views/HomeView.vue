@@ -212,7 +212,7 @@
   import { homeStatusText } from '@/ui/homeStatus'
   import { rewardPreview } from '@/core/progress'
   import { mainQuestNav, dailyTaskNav } from '@/ui/questNav'
-  import { useNow } from '@/composables/useNow'
+  import { useWallNow } from '@/composables/useWallClock'
   import { secsUntilNextMidnight } from '@/utils/time'
   import { formatCountdown } from '@/utils/format'
   import { weatherEffectText } from '@/ui/weatherText'
@@ -294,6 +294,7 @@
   )
 
   /** 距午夜更替的活倒计时 —— 日课「未成即作罢」还剩几时,同屏数得出来 */
-  const now = useNow()
+  // 日课按本地日历午夜更替,属于墙钟域;暂停确认窗时也必须照常走向真实更替时刻。
+  const now = useWallNow()
   const tilRollover = computed(() => formatCountdown(secsUntilNextMidnight(now.value)))
 </script>
