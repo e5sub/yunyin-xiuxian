@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 310,
+  "round": 311,
   "created_at": "2026-09-09T11:22:32+00:00",
-  "updated_at": "2026-10-21T18:30:52+00:00",
+  "updated_at": "2026-10-21T18:54:26+00:00",
   "nodes": {
     "ISS-001": {
       "id": "ISS-001",
@@ -22162,6 +22162,181 @@
       "source": "a51fb31; bun run test:report 3326/0; bun run build; ui-smoke 17 pages",
       "description": "多层 Esc、不可关顶层与单监听用例通过；全量测试、构建与 UI 冒烟通过。",
       "confidence": 1.0
+    },
+    "ISS-972": {
+      "id": "ISS-972",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-10-21T18:46:16+00:00",
+      "updated_at": "2026-10-21T18:54:26+00:00",
+      "touched_round": 311,
+      "title": "原生存档导出权限被拒时静默",
+      "description": "Capacitor 原生分支在 publicStorage=denied 时直接返回失败文案,未调用 toast;设置页只在成功时记账,也不展示返回值,玩家点击导出后看不到任何回执。",
+      "severity": 0.55,
+      "confidence": 0.98,
+      "effort": 1,
+      "category": "correctness"
+    },
+    "TASK-415": {
+      "id": "TASK-415",
+      "type": "task",
+      "status": "abandoned",
+      "version": 2,
+      "created_at": "2026-10-21T18:46:27+00:00",
+      "updated_at": "2026-10-21T18:46:48+00:00",
+      "touched_round": 311,
+      "title": "[废弃] 地界卡复聚倒计时改读墙钟(并发登记冲突)",
+      "description": "RegionCard 的复聚剩余与已守时长改用 useWallNow;保留每秒只刷新局部 computed 的性能约束,并更新源码判据。",
+      "category": "correctness",
+      "severity": 0.45,
+      "confidence": 0.96,
+      "effort": 1.2
+    },
+    "TASK-416": {
+      "id": "TASK-416",
+      "type": "task",
+      "status": "resolved",
+      "version": 4,
+      "created_at": "2026-10-21T18:46:44+00:00",
+      "updated_at": "2026-10-21T18:54:26+00:00",
+      "touched_round": 311,
+      "title": "原生导出拒绝权限时给明确回执",
+      "description": "requestPermissions 返回 denied 时先 toast 警告再返回失败原因,并补原生分支行为测试。",
+      "category": "correctness",
+      "severity": 0.55,
+      "confidence": 0.98,
+      "effort": 1.2
+    },
+    "ISS-973": {
+      "id": "ISS-973",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-10-21T18:46:51+00:00",
+      "updated_at": "2026-10-21T18:54:26+00:00",
+      "touched_round": 311,
+      "title": "主页日课倒计时读游戏钟,跨午夜与暂停语义错位",
+      "description": "HomeView 用 useNow 驱动 secsUntilNextMidnight;日课按本地日历午夜更替,而 useNow 在确认窗暂停时冻结,暂停跨过午夜后倒计时与真实更替时刻不一致。",
+      "severity": 0.5,
+      "confidence": 0.98,
+      "effort": 1,
+      "category": "correctness"
+    },
+    "TASK-417": {
+      "id": "TASK-417",
+      "type": "task",
+      "status": "resolved",
+      "version": 4,
+      "created_at": "2026-10-21T18:46:54+00:00",
+      "updated_at": "2026-10-21T18:54:26+00:00",
+      "touched_round": 311,
+      "title": "主页日课倒计时改读墙钟",
+      "description": "HomeView 改用 useWallNow 驱动距本地午夜倒计时,并加源码判据禁止退回暂停冻结的游戏时钟。",
+      "category": "correctness",
+      "severity": 0.5,
+      "confidence": 0.98,
+      "effort": 1.1
+    },
+    "ISS-974": {
+      "id": "ISS-974",
+      "type": "issue",
+      "status": "abandoned",
+      "version": 4,
+      "created_at": "2026-10-21T18:46:58+00:00",
+      "updated_at": "2026-10-21T18:48:34+00:00",
+      "touched_round": 311,
+      "title": "[已证伪] 镇压复聚锚点与结算时钟分家",
+      "description": "再次核对:暂停恢复时 suppressedSince 顺延暂停时长,settle 的 Date.now 与顺延后的锚点仍保持同一段有效守时;useNow 在暂停中冻结也与恢复后的锚点一致,不构成缺陷。",
+      "severity": 0.45,
+      "confidence": 0.96,
+      "effort": 1,
+      "category": "correctness"
+    },
+    "TASK-418": {
+      "id": "TASK-418",
+      "type": "task",
+      "status": "abandoned",
+      "version": 4,
+      "created_at": "2026-10-21T18:47:01+00:00",
+      "updated_at": "2026-10-21T18:48:11+00:00",
+      "touched_round": 311,
+      "title": "[撤回] 地界卡复聚倒计时改读墙钟",
+      "description": "撤回:player.shiftTimedState 在暂停恢复时顺延 suppressedSince 与 lastUpdateAt,useNow 与镇压结算同域;改墙钟会让暂停期间继续走、恢复后倒跳。",
+      "category": "correctness",
+      "severity": 0.45,
+      "confidence": 0.96,
+      "effort": 1.2
+    },
+    "COMP-041": {
+      "id": "COMP-041",
+      "type": "component",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-21T18:47:05+00:00",
+      "updated_at": "2026-10-21T18:47:05+00:00",
+      "touched_round": 311,
+      "title": "原生存档导出",
+      "summary": "savePlatform 按平台分叉导出:Capacitor 原生写 Documents,Web 下载并以剪贴板兜底。"
+    },
+    "COMP-042": {
+      "id": "COMP-042",
+      "type": "component",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-21T18:47:08+00:00",
+      "updated_at": "2026-10-21T18:47:08+00:00",
+      "touched_round": 311,
+      "title": "主页日课与天时",
+      "summary": "HomeView 首页展示今日天时、修行志与距本地午夜更替倒计时。"
+    },
+    "COMP-043": {
+      "id": "COMP-043",
+      "type": "component",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-21T18:47:11+00:00",
+      "updated_at": "2026-10-21T18:47:11+00:00",
+      "touched_round": 311,
+      "title": "地界卡",
+      "summary": "RegionCard 展示地界准入、镇压进度、生态标签、复聚倒计时与已守时长。"
+    },
+    "CHG-519": {
+      "id": "CHG-519",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-21T18:54:10+00:00",
+      "updated_at": "2026-10-21T18:54:10+00:00",
+      "touched_round": 311,
+      "title": "原生导出权限被拒给明确回执",
+      "description": "savePlatform 在 publicStorage=denied 时 toast 警告后返回失败原因;原生分支行为测试覆盖不写盘与回执。",
+      "commit": "9aaa399"
+    },
+    "CHG-520": {
+      "id": "CHG-520",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-21T18:54:13+00:00",
+      "updated_at": "2026-10-21T18:54:13+00:00",
+      "touched_round": 311,
+      "title": "主页日课倒计时改读墙钟",
+      "description": "HomeView 的距本地午夜倒计时改用 useWallNow;墙钟域源码判据纳入主页。",
+      "commit": "14ce534"
+    },
+    "EV-973": {
+      "id": "EV-973",
+      "type": "evidence",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-21T18:54:17+00:00",
+      "updated_at": "2026-10-21T18:54:17+00:00",
+      "touched_round": 311,
+      "title": "311 轮两项修复全量门禁通过",
+      "source": "9aaa399,14ce534; bun run check; bun run test:report 3327/0; bun run build; ui-smoke 17 pages",
+      "description": "原生权限拒绝回执与主页墙钟倒计时均有故障注入红绿证据;类型检查、lint、文档检查、全量测试、构建与移动端 UI 冒烟通过。",
+      "confidence": 1.0
     }
   },
   "edges": [
@@ -32797,6 +32972,72 @@
       "to": "ISS-971",
       "type": "resolves",
       "created_at": "2026-10-21T18:30:48+00:00"
+    },
+    {
+      "from": "TASK-416",
+      "to": "ISS-972",
+      "type": "addresses",
+      "created_at": "2026-10-21T18:47:15+00:00"
+    },
+    {
+      "from": "ISS-972",
+      "to": "COMP-041",
+      "type": "located_in",
+      "created_at": "2026-10-21T18:47:15+00:00"
+    },
+    {
+      "from": "TASK-417",
+      "to": "ISS-973",
+      "type": "addresses",
+      "created_at": "2026-10-21T18:47:15+00:00"
+    },
+    {
+      "from": "ISS-973",
+      "to": "COMP-042",
+      "type": "located_in",
+      "created_at": "2026-10-21T18:47:15+00:00"
+    },
+    {
+      "from": "TASK-418",
+      "to": "ISS-974",
+      "type": "addresses",
+      "created_at": "2026-10-21T18:47:15+00:00"
+    },
+    {
+      "from": "ISS-974",
+      "to": "COMP-043",
+      "type": "located_in",
+      "created_at": "2026-10-21T18:47:15+00:00"
+    },
+    {
+      "from": "TASK-415",
+      "to": "ISS-974",
+      "type": "addresses",
+      "created_at": "2026-10-21T18:47:23+00:00"
+    },
+    {
+      "from": "CHG-519",
+      "to": "TASK-416",
+      "type": "implements",
+      "created_at": "2026-10-21T18:54:21+00:00"
+    },
+    {
+      "from": "CHG-519",
+      "to": "ISS-972",
+      "type": "resolves",
+      "created_at": "2026-10-21T18:54:21+00:00"
+    },
+    {
+      "from": "CHG-520",
+      "to": "TASK-417",
+      "type": "implements",
+      "created_at": "2026-10-21T18:54:21+00:00"
+    },
+    {
+      "from": "CHG-520",
+      "to": "ISS-973",
+      "type": "resolves",
+      "created_at": "2026-10-21T18:54:21+00:00"
     }
   ]
 }
