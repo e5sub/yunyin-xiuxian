@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 311,
+  "round": 312,
   "created_at": "2026-09-09T11:22:32+00:00",
-  "updated_at": "2026-10-21T18:54:26+00:00",
+  "updated_at": "2026-10-21T19:20:52+00:00",
   "nodes": {
     "ISS-001": {
       "id": "ISS-001",
@@ -22337,6 +22337,118 @@
       "source": "9aaa399,14ce534; bun run check; bun run test:report 3327/0; bun run build; ui-smoke 17 pages",
       "description": "原生权限拒绝回执与主页墙钟倒计时均有故障注入红绿证据;类型检查、lint、文档检查、全量测试、构建与移动端 UI 冒烟通过。",
       "confidence": 1.0
+    },
+    "ISS-975": {
+      "id": "ISS-975",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-10-21T19:07:19+00:00",
+      "updated_at": "2026-10-21T19:20:35+00:00",
+      "touched_round": 312,
+      "title": "今日天道题面驻足跨午夜不刷新",
+      "description": "试炼册的 daily computed 调 todayChallenge()，而 todayChallenge 内部读 Date.now/本地日，没有响应式依赖；天界页驻足跨过本地午夜后卡片仍是昨日题面，应战动作却现取今日题，界面与动作打架。",
+      "category": "correctness",
+      "severity": 0.55,
+      "confidence": 0.98,
+      "effort": 1.2
+    },
+    "TASK-419": {
+      "id": "TASK-419",
+      "type": "task",
+      "status": "resolved",
+      "version": 4,
+      "created_at": "2026-10-21T19:07:23+00:00",
+      "updated_at": "2026-10-21T19:20:45+00:00",
+      "touched_round": 312,
+      "title": "今日天道题面随本地日刷新",
+      "description": "试炼册按墙钟日号驱动 todayChallenge，只在本地日号变化时重算；补跨午夜行为测试与源码守卫。",
+      "category": "correctness",
+      "severity": 0.55,
+      "confidence": 0.98,
+      "effort": 1.2
+    },
+    "TASK-420": {
+      "id": "TASK-420",
+      "type": "task",
+      "status": "resolved",
+      "version": 5,
+      "created_at": "2026-10-21T19:07:27+00:00",
+      "updated_at": "2026-10-21T19:20:49+00:00",
+      "touched_round": 312,
+      "title": "今日天道跨日响应式回归用例",
+      "description": "补跨日响应式回归用例，并登记 test-report。",
+      "category": "test-quality",
+      "severity": 0.45,
+      "confidence": 0.95,
+      "effort": 1.1
+    },
+    "ISS-976": {
+      "id": "ISS-976",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-10-21T19:18:17+00:00",
+      "updated_at": "2026-10-21T19:20:42+00:00",
+      "touched_round": 312,
+      "title": "战斗回放派生回调离页后仍会执行",
+      "description": "CombatPanel 回放里的浮字 setTimeout 与滚动/震颤 requestAnimationFrame 未登记,换场或离页后仍可能回调并写已销毁组件的响应式状态。",
+      "category": "stability",
+      "severity": 0.42,
+      "confidence": 0.98,
+      "effort": 1.1
+    },
+    "TASK-421": {
+      "id": "TASK-421",
+      "type": "task",
+      "status": "resolved",
+      "version": 4,
+      "created_at": "2026-10-21T19:18:21+00:00",
+      "updated_at": "2026-10-21T19:20:52+00:00",
+      "touched_round": 312,
+      "title": "战斗回放派生的计时与逐帧任务随离页撤销",
+      "description": "把浮字计时与滚动/震颤帧登记为可撤销集合,stopPlayback 整批清理;补源码守卫并做故障注入。",
+      "category": "stability",
+      "severity": 0.42,
+      "confidence": 0.98,
+      "effort": 1.1
+    },
+    "CHG-521": {
+      "id": "CHG-521",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-21T19:19:59+00:00",
+      "updated_at": "2026-10-21T19:19:59+00:00",
+      "touched_round": 312,
+      "title": "今日天道跨午夜刷新",
+      "description": "TrialPanel 以墙钟日号驱动今日天道题面,并抽出纯函数 localDayNum;行为测试与源码守卫均通过故障注入。",
+      "commit": "64de37e"
+    },
+    "CHG-522": {
+      "id": "CHG-522",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-21T19:20:03+00:00",
+      "updated_at": "2026-10-21T19:20:03+00:00",
+      "touched_round": 312,
+      "title": "战斗回放生命周期撤销",
+      "description": "CombatPanel 的浮字计时与逐帧任务登记为可撤销集合,换场与卸载时整批清理;源码守卫通过故障注入。",
+      "commit": "55a4941"
+    },
+    "EV-974": {
+      "id": "EV-974",
+      "type": "evidence",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-21T19:20:07+00:00",
+      "updated_at": "2026-10-21T19:20:07+00:00",
+      "touched_round": 312,
+      "title": "312 轮门禁与故障注入证据",
+      "source": "64de37e,55a4941; bun run check; bun run test:report 3330/0; bun run build; 故障注入 uiLayering/dataTextAudit 均红",
+      "description": "两处修复分别通过定向用例与源码守卫;全量类型、lint、文档检查、3329→3330 用例与生产构建通过。",
+      "confidence": 1.0
     }
   },
   "edges": [
@@ -33038,6 +33150,60 @@
       "to": "ISS-973",
       "type": "resolves",
       "created_at": "2026-10-21T18:54:21+00:00"
+    },
+    {
+      "from": "TASK-419",
+      "to": "ISS-975",
+      "type": "addresses",
+      "created_at": "2026-10-21T19:07:34+00:00"
+    },
+    {
+      "from": "TASK-420",
+      "to": "ISS-975",
+      "type": "addresses",
+      "created_at": "2026-10-21T19:07:34+00:00"
+    },
+    {
+      "from": "TASK-420",
+      "to": "TASK-419",
+      "type": "depends_on",
+      "created_at": "2026-10-21T19:07:34+00:00"
+    },
+    {
+      "from": "TASK-421",
+      "to": "ISS-976",
+      "type": "addresses",
+      "created_at": "2026-10-21T19:18:29+00:00"
+    },
+    {
+      "from": "CHG-521",
+      "to": "TASK-419",
+      "type": "implements",
+      "created_at": "2026-10-21T19:20:11+00:00"
+    },
+    {
+      "from": "CHG-521",
+      "to": "TASK-420",
+      "type": "implements",
+      "created_at": "2026-10-21T19:20:14+00:00"
+    },
+    {
+      "from": "CHG-521",
+      "to": "ISS-975",
+      "type": "resolves",
+      "created_at": "2026-10-21T19:20:18+00:00"
+    },
+    {
+      "from": "CHG-522",
+      "to": "TASK-421",
+      "type": "implements",
+      "created_at": "2026-10-21T19:20:21+00:00"
+    },
+    {
+      "from": "CHG-522",
+      "to": "ISS-976",
+      "type": "resolves",
+      "created_at": "2026-10-21T19:20:24+00:00"
     }
   ]
 }
