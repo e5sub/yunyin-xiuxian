@@ -39,6 +39,7 @@
   import { subscribeSaveWriteFailure } from '@/utils/storage'
   import { engine } from '@/core/engine'
   import { applyTheme, initTheme } from '@/core/theme'
+  import { resetModalStack } from '@/composables/useModalStack'
   import { configureAudio, playSfx, stopBgm, unlockAudio } from '@/core/audio'
   import TopStatusBar from '@/components/common/TopStatusBar.vue'
   import BottomNavigation from '@/components/common/BottomNavigation.vue'
@@ -127,6 +128,7 @@
     unsubscribeTheme()
     unsubscribeSaveFailure()
     engine.stop()
+    resetModalStack()
     stopBgm()
     window.removeEventListener('pointerdown', onPointerDown)
   })

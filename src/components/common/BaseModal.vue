@@ -61,6 +61,7 @@
 <script setup lang="ts">
   import { nextTick, onUnmounted, ref, watch } from 'vue'
   import GameIcon from './GameIcon.vue'
+  import { pushModal, removeModal, useModalEntry } from '@/composables/useModalStack'
 
   const props = withDefaults(
     defineProps<{
@@ -192,27 +193,17 @@
   }
   defineExpose({ scrollToTop })
 
-  // ---- Esc 关闭:只让最上面一层可关弹窗响应 ----
+  // ---- Esc 关闭:只让全站栈顶那层响应 ----
   // 多弹窗叠放(详情盖列表)时按一次 Esc 只能退最上层,不能逐层全退;
-  // 不可关的顶层(离线卷轴/转世确认 `closable=false`)挡在最上时,Esc 不越层去关底下的
-  type ModalEntry = { closable: boolean; close: () => void }
-  const activeModals: ModalEntry[] = []
-  function onWindowKey(e: KeyboardEvent): void {
-    if (e.key !== 'Escape') return
-    const top = activeModals[activeModals.length - 1]
-    if (top?.closable) {
-      e.preventDefault()
-      top.close()
-    }
-  }
-  if (typeof window !== 'undefined') window.addEventListener('keydown', onWindowKey)
-
-  const entry: ModalEntry = { closable: props.closable, close: () => emit('close') }
+  // 不可关的顶层(离线卷轴/转世确认 `closable=false`)挡在最上时,Esc 不越层去关底下的。
+  // 栈本身必须是模块级单栈:每个 BaseModal 各持一份数组时,每扇窗都以为自己才是栈底。
+  const entry = { closable: props.closable, close: () => emit('close') }
+  useModalEntry(entry)
   watch(
     () => props.open,
     open => {
       if (open) {
-        activeModals.push(entry)
+        pushModal(entry)
         // 记住是谁打开的,关闭后把焦点还回去(键盘用户不会"掉到页面顶端")
         lastFocused = document.activeElement as HTMLElement | null
         void nextTick(() => {
@@ -220,8 +211,7 @@
           watchEdges()
         })
       } else {
-        const i = activeModals.indexOf(entry)
-        if (i >= 0) activeModals.splice(i, 1)
+        removeModal(entry)
         unwatchEdges()
         const back = lastFocused
         lastFocused = null
@@ -239,10 +229,7 @@
     }
   )
   onUnmounted(() => {
-    const i = activeModals.indexOf(entry)
-    if (i >= 0) activeModals.splice(i, 1)
+    removeModal(entry)
     unwatchEdges()
-    // 与 setup 处的注册同引用配对,卸载即移除,避免每个弹窗实例向 window 永久泄漏键盘监听
-    if (typeof window !== 'undefined') window.removeEventListener('keydown', onWindowKey)
   })
 </script>

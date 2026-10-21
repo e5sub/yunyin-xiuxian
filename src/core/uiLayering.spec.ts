@@ -215,6 +215,17 @@ describe('界面分层 · 浮层只有一个出处', () => {
     expect(src, '余波不许在组件里另算').not.toContain('shouldTriggerAftermath')
     expect(src, '叙事不许在组件里另算').not.toContain('aftermathText')
   })
+
+  it('Esc 层级收在全站单栈 —— 每个弹窗各持一份会把两层一起关掉', () => {
+    const f = FILES.find(x => x.path === BASE_MODAL)
+    expect(f, 'BaseModal 不见了').toBeDefined()
+    const src = f!.src
+    expect(src, 'Esc 栈要交给模块级 useModalStack').toContain("from '@/composables/useModalStack'")
+    expect(src, '打开时压入全站栈').toContain('pushModal(entry)')
+    expect(src, '关闭时摘除').toContain('removeModal(entry)')
+    expect(src, '组件作用域不得再持有一份 activeModals').not.toContain('const activeModals')
+    expect(src, '不得每实例各挂一份 window keydown').not.toContain("window.addEventListener('keydown', onWindowKey)")
+  })
 })
 
 /**
