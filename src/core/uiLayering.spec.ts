@@ -226,6 +226,22 @@ describe('界面分层 · 浮层只有一个出处', () => {
     expect(src, '组件作用域不得再持有一份 activeModals').not.toContain('const activeModals')
     expect(src, '不得每实例各挂一份 window keydown').not.toContain("window.addEventListener('keydown', onWindowKey)")
   })
+
+  it('战斗回放派生的计时与逐帧任务随离页撤销 —— 不向已销毁组件回写', () => {
+    const f = FILES.find(x => x.path === 'components/adventure/CombatPanel.vue')
+    expect(f, 'CombatPanel 不见了').toBeDefined()
+    const src = f!.src
+    expect(src, '浮字计时与逐帧任务要收进可撤销集合').toContain('pendingTimers')
+    expect(src, '逐帧任务要收进可撤销集合').toContain('pendingFrames')
+    expect(src, '收表时撤销浮字计时').toContain('clearTimeout(timer)')
+    expect(src, '收表时撤销逐帧任务').toContain('cancelAnimationFrame(frame)')
+    expect(src, '浮字回调要经登记出口').toContain('scheduleFloatRemoval(id)')
+    expect(src, '滚动与震颤要经登记出口').toContain('nextFrame(() => {')
+    expect(src, '回放回调里不许裸起 setTimeout').not.toMatch(/playTimer = gameClock\([\s\S]*?\n\s*setTimeout\(/)
+    expect(src, '回放回调里不许裸起 requestAnimationFrame').not.toMatch(
+      /playTimer = gameClock\([\s\S]*?\n\s*requestAnimationFrame\(/
+    )
+  })
 })
 
 /**

@@ -217,6 +217,9 @@
 
   /** 回放的收表函数(gameClock 收口:暂停冻结) */
   let playTimer: (() => void) | undefined
+  /** 回放派生的浮字计时与逐帧任务:离页或换场时一并撤销,不许回写已销毁组件 */
+  const pendingTimers = new Set<ReturnType<typeof setTimeout>>()
+  const pendingFrames = new Set<number>()
   let floatSeq = 1
 
   const session = computed(() => adventure.session)
@@ -321,6 +324,28 @@
   function stopPlayback(): void {
     playTimer?.()
     playTimer = undefined
+    for (const timer of pendingTimers) clearTimeout(timer)
+    for (const frame of pendingFrames) cancelAnimationFrame(frame)
+    pendingTimers.clear()
+    pendingFrames.clear()
+  }
+
+  /** 浮字到时自己收;回调离页后由 stopPlayback 撤掉 */
+  function scheduleFloatRemoval(id: number): void {
+    const timer = setTimeout(() => {
+      pendingTimers.delete(timer)
+      floats.value = floats.value.filter(f => f.id !== id)
+    }, 900)
+    pendingTimers.add(timer)
+  }
+
+  /** 逐帧任务统一登记,卸载/换场时整批撤销 */
+  function nextFrame(task: () => void): void {
+    const frame = requestAnimationFrame(() => {
+      pendingFrames.delete(frame)
+      task()
+    })
+    pendingFrames.add(frame)
   }
 
   function playBattle(instant = false): void {
@@ -361,12 +386,10 @@
           ...floats.value.slice(-5),
           { id, text: `-${entry.dmg}`, side: entry.side === 'p' ? 'e' : 'p', crit: entry.t === 'crit' }
         ]
-        setTimeout(() => {
-          floats.value = floats.value.filter(f => f.id !== id)
-        }, 900)
+        scheduleFloatRemoval(id)
         triggerShake(entry.side === 'p' ? 'e' : 'p', entry.t === 'crit')
       }
-      requestAnimationFrame(() => {
+      nextFrame(() => {
         logBox.value?.scrollTo({ top: logBox.value.scrollHeight })
       })
       idx += 1
@@ -376,7 +399,7 @@
   /** 受击方短促震颤(暴击更重);先清类、下一帧再挂,保证连击时动画也能重放 */
   function triggerShake(side: 'p' | 'e', hard: boolean): void {
     shakeCls.value = { ...shakeCls.value, [side]: '' }
-    requestAnimationFrame(() => {
+    nextFrame(() => {
       shakeCls.value = { ...shakeCls.value, [side]: hard ? 'hit-shake-hard' : 'hit-shake' }
     })
   }
