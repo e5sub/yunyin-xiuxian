@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { computed, ref } from 'vue'
 import { todayChallenge, todayNumber } from './dailyChallenge'
-import { todayLocalNum } from '@/utils/time'
+import { localDayNum, todayLocalNum } from '@/utils/time'
 
 /**
  * 今日天道(Phase 27)—— 确定性守卫。
@@ -63,6 +64,26 @@ describe('今日天道 · 确定性(刷新不换题)', () => {
     vi.setSystemTime(1_760_000_000_000)
     const local = todayLocalNum()
     expect(todayNumber()).toBe(local)
+  })
+
+  it('驻足跨午夜:墙钟日号变化才切题,同日内秒针跳动不重算', () => {
+    const beforeMidnight = new Date(2026, 9, 5, 23, 59, 59).getTime()
+    const afterMidnight = new Date(2026, 9, 6, 0, 0, 1).getTime()
+    const wallNow = ref(beforeMidnight)
+    const wallDay = computed(() => localDayNum(wallNow.value))
+    const daily = computed(() => todayChallenge(wallDay.value))
+
+    const yesterday = daily.value
+    expect(yesterday?.day).toBe(localDayNum(beforeMidnight))
+
+    // 同一本地日内只推进秒针:日号没变,daily 仍是同一个缓存值
+    wallNow.value = beforeMidnight + 500
+    expect(daily.value).toBe(yesterday)
+
+    // 跨过本地午夜:日号一变,题面与 day 一起切到今天
+    wallNow.value = afterMidnight
+    expect(daily.value).not.toBe(yesterday)
+    expect(daily.value?.day).toBe(localDayNum(afterMidnight))
   })
 })
 

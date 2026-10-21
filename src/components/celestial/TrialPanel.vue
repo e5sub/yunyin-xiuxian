@@ -196,6 +196,8 @@
   import { PACTS, pactDef } from '@/data/pacts'
   import { MUTATORS, mutatorDef } from '@/data/mutators'
   import { todayChallenge, undertakeDaily } from '@/core/dailyChallenge'
+  import { useWallNow } from '@/composables/useWallClock'
+  import { localDayNum } from '@/utils/time'
   import {
     challengeMutation,
     MUTATION_BASE_REWARD,
@@ -232,7 +234,11 @@
   const run = computed(() => endgame.worldRun)
 
   // ---- 今日天道 ----
-  const daily = computed(() => (endgame.daoPath ? todayChallenge() : null))
+  // 题面要随本地午夜更替:useWallNow 只每秒推进读数,日号 computed 只在
+  // 真正跨日时变化,daily 才重跑天道裁判 —— 同日内不会每秒重算整座模拟。
+  const wallNow = useWallNow()
+  const wallDay = computed(() => localDayNum(wallNow.value))
+  const daily = computed(() => (endgame.daoPath ? todayChallenge(wallDay.value) : null))
   const dailyWorld = computed(() => (daily.value ? celestialWorldDefLocal(daily.value.draft.worldId) : null))
   const dailyMutators = computed(() =>
     daily.value ? daily.value.draft.mutatorIds.map(id => mutatorDef(id)).filter(m => m !== undefined) : []

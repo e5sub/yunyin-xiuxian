@@ -250,6 +250,16 @@ describe('文案数值对账 · 视图不手抄数字', () => {
     )
   })
 
+  it('今日天道题面随墙钟日号刷新,不许停在跨午夜的旧题上', () => {
+    const trial = src('../components/celestial/TrialPanel.vue')
+    expect(trial, '试炼册要读墙钟日号').toContain('useWallNow()')
+    expect(trial, '日号要从墙钟读数派生').toContain('localDayNum(wallNow.value)')
+    expect(trial, '天道裁判要接收响应式日号').toContain('todayChallenge(wallDay.value)')
+    expect(trial, '不许退回无参 todayChallenge(),否则跨午夜不会重算').not.toMatch(
+      /const daily = computed\(\(\) => \(endgame\.daoPath \? todayChallenge\(\) : null\)\)/
+    )
+  })
+
   it('可冻结倒计时读游戏时钟,不读真实墙钟', () => {
     const now = src('../composables/useNow.ts')
     expect(now, 'useNow 要与到期结算同一把尺').toContain('gameNow()')

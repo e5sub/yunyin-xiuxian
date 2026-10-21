@@ -28,9 +28,12 @@ export function todayNumber(): number {
   return todayLocalNum()
 }
 
-/** 生成今日天道:日期种子确定性;裁判不受(无解/虚设)则顺延候选 */
-export function todayChallenge(): DailyChallenge | null {
-  const day = todayNumber()
+/**
+ * 生成指定本地日的天道:日期种子确定性;裁判不受(无解/虚设)则顺延候选。
+ *
+ * `day` 可注入,供界面用响应式墙钟日号驱动题面:不传时才读当下本地日。
+ */
+export function todayChallenge(day = todayNumber()): DailyChallenge | null {
   for (let t = 0; t < 16; t += 1) {
     const rng = new RandomService(mulberry32(day * 131 + t * 977))
     const world = CELESTIAL_WORLDS[rng.int(0, CELESTIAL_WORLDS.length - 1)]!

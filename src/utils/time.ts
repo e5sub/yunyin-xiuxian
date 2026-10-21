@@ -10,6 +10,12 @@ export function todayStr(): string {
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
 }
 
+/** 时间戳 → 本地日整数(YYYYMMDD);纯函数,便于跨午夜读数不碰墙钟 */
+export function localDayNum(at: number): number {
+  const d = new Date(at)
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()
+}
+
 /**
  * 本地日整数(YYYYMMDD),用于「每日一次」类闸门。
  *
@@ -17,8 +23,7 @@ export function todayStr(): string {
  * 而不是 UTC 日(UTC+8 玩家在本地 16:00 就被翻到"明天",同一本地日能白嫖两次巡游)。
  */
 export function todayLocalNum(): number {
-  const d = new Date()
-  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()
+  return localDayNum(Date.now())
 }
 
 /** 时间戳 → 可读「M月D日」 */
