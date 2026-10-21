@@ -1,8 +1,8 @@
 {
   "ril_version": 1,
-  "round": 309,
+  "round": 310,
   "created_at": "2026-09-09T11:22:32+00:00",
-  "updated_at": "2026-10-21T18:17:14+00:00",
+  "updated_at": "2026-10-21T18:30:52+00:00",
   "nodes": {
     "ISS-001": {
       "id": "ISS-001",
@@ -3289,7 +3289,7 @@
       "version": 1,
       "created_at": "2026-09-11T17:02:06+00:00",
       "updated_at": "2026-09-11T17:02:06+00:00",
-      "touched_round": 309,
+      "touched_round": 310,
       "summary": "远征(expedition.ts):道途规则 × 天道契约 × 天道变数 × 三重择路 × 奇门择门 → 入界/三层/界主,预估与实战共用 expeditionRules"
     },
     "DEC-024": {
@@ -22106,6 +22106,62 @@
       "source": "3a15f96; bun run test:report 3321/0; bun run build; ui-smoke 17 pages",
       "description": "新增快照行为与源码判据；全量测试、构建、UI 冒烟通过。",
       "confidence": 1.0
+    },
+    "ISS-971": {
+      "id": "ISS-971",
+      "type": "issue",
+      "status": "resolved",
+      "version": 2,
+      "created_at": "2026-10-21T18:24:11+00:00",
+      "updated_at": "2026-10-21T18:30:52+00:00",
+      "touched_round": 310,
+      "title": "多层弹窗一次 Esc 全关",
+      "description": "BaseModal 的 activeModals 写在每个实例的 script setup 里，两层同时打开时各自挂 keydown，一次 Esc 会依次关闭两层；closable=false 的顶层也挡不住底层。",
+      "severity": 0.55,
+      "confidence": 0.98,
+      "effort": 1.3,
+      "category": "correctness"
+    },
+    "TASK-414": {
+      "id": "TASK-414",
+      "type": "task",
+      "status": "resolved",
+      "version": 4,
+      "created_at": "2026-10-21T18:24:14+00:00",
+      "updated_at": "2026-10-21T18:30:52+00:00",
+      "touched_round": 310,
+      "title": "Esc 层级收成全站单栈",
+      "description": "把弹窗栈与 keydown 注册移到 composables/useModalStack 模块级，BaseModal 只负责压栈/摘栈；补多层、不可关顶层与单监听测试。",
+      "severity": 0.55,
+      "confidence": 0.98,
+      "effort": 1.4,
+      "category": "correctness",
+      "priority_score": 4.2
+    },
+    "CHG-518": {
+      "id": "CHG-518",
+      "type": "change",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-21T18:30:42+00:00",
+      "updated_at": "2026-10-21T18:30:42+00:00",
+      "touched_round": 310,
+      "title": "弹窗 Esc 收成模块级单栈",
+      "description": "BaseModal 不再各持 activeModals；useModalStack 维护模块级栈与唯一 keydown，只让栈顶响应 Esc。",
+      "commit": "a51fb31"
+    },
+    "EV-972": {
+      "id": "EV-972",
+      "type": "evidence",
+      "status": "active",
+      "version": 1,
+      "created_at": "2026-10-21T18:30:45+00:00",
+      "updated_at": "2026-10-21T18:30:45+00:00",
+      "touched_round": 310,
+      "title": "弹窗单栈全量门禁通过",
+      "source": "a51fb31; bun run test:report 3326/0; bun run build; ui-smoke 17 pages",
+      "description": "多层 Esc、不可关顶层与单监听用例通过；全量测试、构建与 UI 冒烟通过。",
+      "confidence": 1.0
     }
   },
   "edges": [
@@ -32717,6 +32773,30 @@
       "to": "ISS-970",
       "type": "resolves",
       "created_at": "2026-10-21T18:17:09+00:00"
+    },
+    {
+      "from": "TASK-414",
+      "to": "ISS-971",
+      "type": "addresses",
+      "created_at": "2026-10-21T18:24:17+00:00"
+    },
+    {
+      "from": "ISS-971",
+      "to": "COMP-014",
+      "type": "located_in",
+      "created_at": "2026-10-21T18:24:17+00:00"
+    },
+    {
+      "from": "CHG-518",
+      "to": "TASK-414",
+      "type": "implements",
+      "created_at": "2026-10-21T18:30:48+00:00"
+    },
+    {
+      "from": "CHG-518",
+      "to": "ISS-971",
+      "type": "resolves",
+      "created_at": "2026-10-21T18:30:48+00:00"
     }
   ]
 }
