@@ -35,6 +35,7 @@ import { PALACES, STARS } from './ziwei'
 import { GATES } from './qimen'
 import { MANSIONS, IMAGES } from './xiangxiu'
 import { TRIGRAMS, HEXAGRAMS, CHANGING_TIERS } from './yijing'
+import { cnNumber } from '@/utils/format'
 
 export interface ProgressionAxis {
   id: string
@@ -189,6 +190,13 @@ export const SORCERY_LAYERS: SorceryLayer[] = [
   }
 ]
 
-/** 术数四门的分工一句话(展示层用,避免把四层说成一锅加成) */
-export const SORCERY_SUMMARY =
-  '天时管全境之气,星象管一方界域,问卦管自己一时的机,命格定一世之格,择门定一趟的打法 —— 五层各占一层,互不顶替。'
+/**
+ * 术数四门的分工一句话(展示层用,避免把四层说成一锅加成)。
+ *
+ * 个数从 `SORCERY_LAYERS` 现算:从前这句写死「五层」,而表里只有四层
+ * (问卦/命格/值日/择门)—— 多出来的那一层「天时」是天气(`core/weather`),
+ * 它并入 `finalStats.mods`,不走术数这一套「各占一层、互不顶替」的时机分层,
+ * 摆在这里只会让玩家以为还有第五种要操心的节奏。说明页上数字与表对不上,
+ * 而没有任何东西会因此报错。
+ */
+export const SORCERY_SUMMARY = `问卦管自己一时的机,命格定一世之格,值日管一方界域,择门定一趟的打法 —— ${cnNumber(SORCERY_LAYERS.length)}层各占一层,互不顶替。`

@@ -5,6 +5,7 @@
  * 而是拿公式真算一遍比值,再与文档字段对照 —— 改常数忘了改文案,这里立刻红。
  */
 import { describe, expect, it } from 'vitest'
+import { cnNumber } from '@/utils/format'
 import {
   COST_CURVES,
   LIFESPAN_CURVES,
@@ -148,9 +149,28 @@ describe('数值体系说明 · 术数四门不撒谎', () => {
     expect(men.note).toContain('道源')
   })
 
-  it('总纲把五层各占一层说清楚(不是一锅加成)', () => {
-    for (const word of ['天时', '星象', '问卦', '命格', '择门']) {
-      expect(SORCERY_SUMMARY, `总纲漏了${word}`).toContain(word)
+  /**
+   * 总纲把每一层各占一层说清楚(不是一锅加成),且**层数与表对得上**。
+   *
+   * 从前这条判据照着那句写死的文案断言 `['天时','星象','问卦','命格','择门']`
+   * 五个词都在 —— 而表里只有四层。多出来的「天时」是天气(`core/weather`),
+   * 它并入 `finalStats.mods`,根本不走术数这套「各占一层、互不顶替」的时机分层。
+   * 判据与文案一起说过谎:玩家在说明页上看到第五种要操心的节奏,而它不存在。
+   *
+   * 现在判据改问本体:**总纲点到的每一层,都必须是表里真有的那一层**,
+   * 且层数从 `SORCERY_LAYERS` 现算。加一层、减一层,两边一起动。
+   *
+   * 故障注入:把 SORCERY_SUMMARY 改回写死「五层」→ 本条红。
+   */
+  it('总纲点到的每一层都是表里真有的,且层数与表长一致', () => {
+    // 每层名字的后半截(问卦 / 命格 / 值日 / 择门)都该被总纲点到
+    for (const l of SORCERY_LAYERS) {
+      const key = l.name.split(' · ')[1]!
+      expect(SORCERY_SUMMARY, `总纲漏了${key}这一层`).toContain(key)
     }
+    // 层数现算,不写死
+    expect(SORCERY_SUMMARY).toContain(`${cnNumber(SORCERY_LAYERS.length)}层各占一层`)
+    // 天气不在这套分层里:它并入 finalStats.mods,不是第五种时机
+    expect(SORCERY_SUMMARY, '天时(天气)不属术数分层,摆进来就是第五种假节奏').not.toContain('天时')
   })
 })
