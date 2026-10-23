@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+- 修复:**祭炼代价与连炼计划按有限整数起重数** —— `artifactUpCostAt(def, NaN)` 返回 `wudao: NaN`、`stone: 0e0`,`artifactBatchPlan` 的 `levels` 于是也是 NaN:界面画出「第 NaN 重」,而 `upgradeArtifact` 每重扣的正是这个 NaN 悟道点,一颗不花、重数一路涨到满重;小数起手则 `levels` 带小数(连炼行写「第 2.7 重」)。`inventory.sanitize` 会夹 `level`,但内存直塞与 `$patch` 之后立刻渲染不走那条路,而面板每次渲染都调 `artifactBatchPlan`。现 `artifactUpCostAt` 与 `artifactBatchPlan` 各自把起手重数收成 `Number.isFinite ? max(0, floor) : 0`;实测 NaN / -5 / 2.7 / 0 / 8 / 9 / 20 七种起手全部给出有限整数重数。
+- 测试:**「尚余 4 小时」不再是毫秒赛跑** —— 16h 档配 8h 洞府那条判据两次独立取 `Date.now()`(算 `started` 一次、`settleOffline` 一次),中间只要过了 1 毫秒,14400s 就减成 14399.999s,`formatDuration` 一 `Math.floor` 变「3小时59分」,断言写着 4 小时 —— 只在两次取时钟落在同一毫秒时才绿,整套测试慢下来就红。现三处判据统一冻结时钟。
+
 - 修复:**换法宝的提示不再念刚戴上来的那一件** —— `ArtifactPanel.toggleArtifact` 先调 `inventory.toggleArtifact`(改写 `equippedArtifacts`),再回 `artifactRows` 里取这一行的 `evicts` —— 而 `evicts` 是从现列表现算的。实测一位之下换件:按钮写着「替下玄天镜」,而真正让位的墨玉葫芦只字未提,玩家照 toast 去行囊核对永远对不上账。现让位名单在动手之前取,并补两条判据(store 层证明事前/事后取值指向不同件、源码层把「取名单在换件之前」钉成顺序)。
 - 修复:**装备图鉴不再拿「神品以上」这种不存在的成色吊玩家** —— 神品是全表最高那一档,它上面什么也没有;而 24 阶起的模板只要还没见过神品,「用过了」那条提示就照着模板句式念「以上」。实测 81 件(24~32 阶的全部装备)都落在这里,玩家照这句话去刷,刷的是一个不存在的成色。现顶格那一档改说「见一件神品(此物随阶可见的最高成色)」,话落在那一档上;没到顶的档位照旧说「以上」。
 

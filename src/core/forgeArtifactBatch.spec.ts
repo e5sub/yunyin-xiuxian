@@ -65,6 +65,32 @@ describe('祭炼连升 · 批量账', () => {
     expect(useResourcesStore().spiritStone).toEqual(beforeStone)
   })
 
+  /**
+   * 起手那一重也得按有限整数收一道。
+   *
+   * `levels` 是 `lv - owned.level` 减出来的:owned.level 是 NaN 时它也是 NaN
+   * (界面画出「第 NaN 重」,而 upgradeArtifact 每重都在扣 0 悟道点 —— 一颗悟道点
+   * 不花,重数一路涨到顶);是小数时它带小数(连炼行写「第 2.7 重」)。
+   * sanitize 会夹,但内存直塞与 $patch 后立刻渲染不走那条路。
+   *
+   * 故障注入:把 artifactBatchPlan 的 `from` 改回直接用 owned.level,本条必红。
+   */
+  it('起手重数不是有限整数时,计划仍给得出一个数的重数', () => {
+    rich()
+    for (const bad of [Number.NaN, -5, 2.7]) {
+      seat(bad)
+      const plan = artifactBatchPlan(DEF_ID)
+      expect(Number.isFinite(plan.levels), `起手 ${bad} 时 levels 不是有限数:${plan.levels}`).toBe(true)
+      expect(Number.isInteger(plan.levels), `起手 ${bad} 时 levels 不是整数:${plan.levels}`).toBe(true)
+      expect(plan.levels, `起手 ${bad} 时重数越界`).toBeGreaterThanOrEqual(0)
+      expect(plan.levels).toBeLessThanOrEqual(ARTIFACT_MAX_LEVEL)
+      // 负起手与 NaN 一律按 0 起重算;小数向下取整
+      const expectFrom = Number.isFinite(bad) ? Math.max(0, Math.floor(bad)) : 0
+      expect(plan.levels).toBe(ARTIFACT_MAX_LEVEL - expectFrom)
+      expect(plan.wudao).toBe(sumUpTo(expectFrom, plan.levels).wudao)
+    }
+  })
+
   it('从非零重起算:中途起炼,计划只覆盖剩下那几重', () => {
     seat(3)
     rich()

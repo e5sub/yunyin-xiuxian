@@ -254,12 +254,22 @@ export function decomposeByRanks(ranks: readonly number[]): number {
   return got.count
 }
 
-/** 某法定某一重数的单次炼化代价(纯函数,不含上限;level ≥ 满重才算不出 → null) */
+/**
+ * 某法定某一重数的单次炼化代价(纯函数,不含上限;level ≥ 满重才算不出 → null)。
+ *
+ * `level` 也按有限数收一道:它是从存档里的 `owned.level` 一路传下来的,而
+ * `inventory.sanitize` 虽然会把它夹回 [0, 满重],这条路上还有**没经过 sanitize** 的
+ * 读法(内存直塞、`$patch` 之后立刻渲染)。实测直塞 `level: NaN` 时
+ * `artifactUpCostAt` 给出 `wudao: NaN`、`stone: 0e0`,于是 `artifactBatchPlan` 的
+ * `levels` 也是 NaN、`lv + 1` 永远追不上满重,连炼那一行画出「第 NaN 重」,
+ * 而 `upgradeArtifact` 每重都在扣 0 悟道点 —— 一颗悟道点不花,重数一路涨到顶。
+ */
 export function artifactUpCostAt(def: ArtifactDef, level: number): { wudao: number; stone: GNum } | null {
-  if (level >= ARTIFACT_MAX_LEVEL) return null
+  const lv = Number.isFinite(level) ? Math.max(0, Math.floor(level)) : 0
+  if (lv >= ARTIFACT_MAX_LEVEL) return null
   return {
-    wudao: Math.ceil(ARTIFACT_UP_WUDAO_BASE * Math.pow(1.6, level) * (1 + qualityDef(def.quality).rank * 0.3)),
-    stone: stoneByTier(def.fromTier, ARTIFACT_UP_STONE_TIER * (1 + level))
+    wudao: Math.ceil(ARTIFACT_UP_WUDAO_BASE * Math.pow(1.6, lv) * (1 + qualityDef(def.quality).rank * 0.3)),
+    stone: stoneByTier(def.fromTier, ARTIFACT_UP_STONE_TIER * (1 + lv))
   }
 }
 
@@ -350,8 +360,12 @@ export function artifactBatchPlan(defId: string): ArtifactBatchPlan {
   const owned = inventory.artifacts.find(a => a.defId === defId)
   const def = artifactDef(defId)
   if (!owned || !def) return { levels: 0, wudao: 0, stone: gnZero(), atCap: false }
-  if (owned.level >= ARTIFACT_MAX_LEVEL) return { levels: 0, wudao: 0, stone: gnZero(), atCap: true }
-  let lv = owned.level
+  // 起手这一重也按有限整数收一道:`levels` 是 `lv - owned.level` 减出来的,
+  // owned.level 是 NaN 时它也是 NaN(界面画出「第 NaN 重」),是小数时它带小数
+  // (连炼行写「第 2.7 重」)。sanitize 会夹,但内存直塞与 $patch 后立刻渲染不走那条路。
+  const from = Number.isFinite(owned.level) ? Math.max(0, Math.floor(owned.level)) : 0
+  if (from >= ARTIFACT_MAX_LEVEL) return { levels: 0, wudao: 0, stone: gnZero(), atCap: true }
+  let lv = from
   let wudao = 0
   let stone = gnZero()
   // 循环上界已小于满重,artifactUpCostAt 必非 null —— 只需要判余额
@@ -362,7 +376,7 @@ export function artifactBatchPlan(defId: string): ArtifactBatchPlan {
     stone = add(stone, c.stone)
     lv += 1
   }
-  return { levels: lv - owned.level, wudao, stone, atCap: lv >= ARTIFACT_MAX_LEVEL }
+  return { levels: lv - from, wudao, stone, atCap: lv >= ARTIFACT_MAX_LEVEL }
 }
 
 /**
