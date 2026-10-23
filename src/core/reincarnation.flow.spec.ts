@@ -2,7 +2,7 @@
  * 转世交割端到端契约(confirmReincarnation),对应 ReincarnationDialog「此生交割」与 DEC-003:
  * 留下「我是谁」,放下「我拥有多少」,转世重掷道号。
  */
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
@@ -17,6 +17,8 @@ import { useLoreStore } from '@/stores/lore'
 import { useQuestsStore } from '@/stores/quests'
 import { STARTER_APPRENTICE } from '@/data/apprentices'
 import { prepareReincarnation, confirmReincarnation } from '@/core/reincarnation'
+import * as reincarnationService from '@/core/reincarnation'
+import { rng } from '@/utils/random'
 import { signLifeTrial, lifeTrialRules } from '@/core/lifeTrialService'
 import { gn, toNum } from '@/utils/gnum'
 
@@ -84,6 +86,73 @@ describe('转世交割 · confirmReincarnation', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     seedLife()
+  })
+
+  afterEach(() => vi.restoreAllMocks())
+
+  it('准备来世灵根不提前落账,确认后得到的就是预览那副牌', () => {
+    const player = usePlayerStore()
+    const before = JSON.stringify(player.$state)
+    const loreBefore = JSON.stringify(useLoreStore().$state)
+    const view = prepareReincarnation()
+    expect(JSON.stringify(player.$state)).toBe(before)
+    expect(JSON.stringify(useLoreStore().$state)).toBe(loreBefore)
+    expect(view.nextLinggen?.roots.length).toBeGreaterThan(0)
+    expect(view.nextLinggen?.growthMult).toBeGreaterThan(0)
+
+    confirmReincarnation(null)
+    expect(player.linggen).toEqual(view.nextLinggen)
+  })
+
+  it('连续重刷五十次只换灵根,不重抽天赋或重复发奖,确认采用最后一副牌', () => {
+    const player = usePlayerStore()
+    prepareReincarnation()
+    const ui = useUiStore()
+    const before = JSON.stringify(player.$state)
+    const { nextLinggen: initial, ...review } = ui.reincarnation!
+    expect(initial.roots.length).toBeGreaterThan(0)
+    for (let i = 0; i < 50; i += 1) {
+      const previous = ui.reincarnation!.nextLinggen
+      reincarnationService.rerollReincarnationLinggen()
+      expect(ui.reincarnation!.nextLinggen).not.toBe(previous)
+      const { nextLinggen: profile, ...after } = ui.reincarnation!
+      expect(profile.roots.length).toBeGreaterThan(0)
+      expect(after).toEqual(review)
+      expect(JSON.stringify(player.$state)).toBe(before)
+    }
+    const selected = ui.reincarnation!.nextLinggen
+    confirmReincarnation(ui.reincarnation!.talentChoices[0] ?? null)
+    expect(player.linggen).toEqual(selected)
+    expect(player.reincarnation.count).toBe(1)
+    expect(player.reincarnation.daoFruit).toBe(100 + review.daoFruitGained)
+  })
+
+  it.each([0, 9])('境界 %i 的灵根草稿计入本次宿慧与新认知,资质保底与旧结算一致', major => {
+    const player = usePlayerStore()
+    player.major = major
+    player.reincarnation.insight = 590
+    useLoreStore().materialLore = {}
+    vi.spyOn(rng, 'chance').mockReturnValue(false)
+    vi.spyOn(rng, 'int').mockImplementation(min => min)
+    prepareReincarnation()
+    const selected = useUiStore().reincarnation!.nextLinggen
+    expect(selected).toBeDefined()
+    vi.restoreAllMocks()
+    confirmReincarnation(null)
+    // 590 + 本世所得 + 新认得的灵材每味 3 宿慧,次数保底仍按转世前的 0+1 计。
+    const gained = player.reincarnation.lives[0]!.insight
+    const insight = 590 + gained + Object.values(useLoreStore().materialLore).filter(v => v >= 1).length * 3
+    const aptitude = Math.min(100, 40 + Math.max(5, Math.floor(insight / 12)))
+    expect(player.linggen!.roots.every(root => root.aptitude === aptitude)).toBe(true)
+    expect(player.linggen).toEqual(selected)
+  })
+
+  it('没有转生窗口时重刷为空操作', () => {
+    const player = usePlayerStore()
+    const before = JSON.stringify(player.$state)
+    expect(() => reincarnationService.rerollReincarnationLinggen()).not.toThrow()
+    expect(JSON.stringify(player.$state)).toBe(before)
+    expect(useUiStore().reincarnation).toBeNull()
   })
 
   it('放下「我拥有多少」:境界/资源/装备/法宝/丹药/灵兽/洞府/灵脉/区域全部归零', () => {

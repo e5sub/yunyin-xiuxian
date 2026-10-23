@@ -94,11 +94,19 @@ export function currentStage(): SamsaraStageDef {
   return stageAt(totalInsight())
 }
 
-/** 转世后的灵根资质地板:「转世次数 × 5」与宿慧折算取较大者 */
-export function aptitudeFloorNow(): number {
+/**
+ * 转世后的灵根资质地板:「转世次数 × 5」与宿慧折算取较大者。
+ * 预览转世时传结算后的宿慧与认得灵材数,只计补齐认知的增量,不落账。
+ */
+export function aptitudeFloorNow(insight = totalInsight(), knownMaterials?: number): number {
   const player = usePlayerStore()
+  if (knownMaterials !== undefined) {
+    const lore = useLoreStore()
+    const knownBefore = MATERIALS.filter(m => lore.loreOf(m.id) >= 1).length
+    insight += (knownMaterials - knownBefore) * INSIGHT_PER_MATERIAL
+  }
   const byCount = REINCARNATE_APTITUDE_FLOOR * (player.reincarnation.count + 1)
-  const byInsight = Math.floor(totalInsight() / INSIGHT_PER_APTITUDE)
+  const byInsight = Math.floor(insight / INSIGHT_PER_APTITUDE)
   return Math.max(byCount, byInsight)
 }
 

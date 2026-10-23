@@ -89,12 +89,20 @@ export function prepareReincarnation(): ReincarnationView {
   const stageAfter = stageAt(insightAfter)
   const next = nextStageAfter(insightAfter)
 
+  // 与确认时同口径:计入本次宿慧、新铸传承与补齐认知,不写存档
+  const forged = lifeForge(player.major)
+  const heritageAfter = forged ? [...player.reincarnation.heritage, forged.id] : player.reincarnation.heritage
+  const knownMaterials = carryLorePreview(stageAfter, carriesAllLore(heritageAfter))
+  const linggenAptitudeFloor = aptitudeFloorNow(insightAfter, knownMaterials)
+
   // 走到底过的题不再重复出现
   const done = new Set(player.reincarnation.lives.filter(l => l.themeResult === 'done').map(l => l.themeId))
   const pool = offerThemes(stageAfter, arr => rng.pick(arr))
   const fresh = pool.filter(x => !done.has(x.id))
 
   const view: ReincarnationView = {
+    nextLinggen: rollLinggen(rng, linggenAptitudeFloor),
+    linggenAptitudeFloor,
     daoFruitGained: daoFruitGain(player.major, player.sub),
     talentChoices: choices,
     extraTalents: extras,
@@ -106,12 +114,19 @@ export function prepareReincarnation(): ReincarnationView {
     stageDesc: stageAfter.desc,
     stageAdvanced: stageAfter.index > stageBefore.index,
     toNextStage: next ? next.insight - insightAfter : null,
-    knownMaterials: carryLorePreview(stageAfter, carriesAllLore(player.reincarnation.heritage)),
+    knownMaterials,
     themeChoices: (fresh.length > 0 ? fresh : pool).map(x => x.id),
     themeFree: stageAfter.themeFreeChoice
   }
   useUiStore().reincarnation = view
   return view
+}
+
+/** 与首次建角一样不限次改命,不重抽天赋、不提前发放转生所得。 */
+export function rerollReincarnationLinggen(): void {
+  const view = useUiStore().reincarnation
+  if (!view) return
+  view.nextLinggen = rollLinggen(rng, view.linggenAptitudeFloor)
 }
 
 /**
@@ -218,7 +233,7 @@ export function confirmReincarnation(chosenTalentId: string | null, chosenThemeI
   const recognized = carryLore(stage, carriesAllLore(heritages))
   // 须在 rebirth() 之前记下:它会把镇压权益散去
   const releasedSuppressed = player.suppressedRegions.length
-  player.rebirth(rollLinggen(rng, aptitudeFloorNow()))
+  player.rebirth(view.nextLinggen)
   if (releasedSuppressed > 0) {
     ui.toast(`${releasedSuppressed} 处镇压已解除`, 'info')
   }
