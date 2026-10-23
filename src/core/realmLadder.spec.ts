@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { realmLadderPoints, realmLadderWorlds } from './realmLadder'
 import { REALMS, WORLDS } from '@/data/realms'
 
@@ -40,6 +42,23 @@ describe('仙路旅途 · 21 境刻度', () => {
     const pts = realmLadderPoints(0)
     const starts = pts.filter(p => p.worldStart).map(p => p.index)
     expect(starts).toEqual([0, 9, 14, 18])
+  })
+
+  /**
+   * 无障碍标签里的境数要从刻度的**真实长度**来,不许写死「21」。
+   *
+   * 读屏用户听到的境数与实际格子数必须是同一个数:刻度本身读 `REALMS`
+   * (`realmLadderPoints` 逐境映射),加一境、减一境它自己会长会缩,
+   * 而标签里那个数字从前停在原处。看得见的人永远不会发现这件事。
+   *
+   * 故障注入:把 RealmLadder.vue 的 aria-label 改回写死「仙路 21 境」→ 本条红。
+   */
+  it('无障碍标签里的境数与刻度同长', () => {
+    const vue = readFileSync(resolve(__dirname, '../components/cultivation/RealmLadder.vue'), 'utf8')
+    expect(vue, '境数要从 points 现算,不写死').toMatch(/aria-label="`仙路 \$\{cnNumber\(realmsCount\)\} 境`"/)
+    expect(vue, 'realmsCount 要读 points 的长度').toContain('const realmsCount = computed(() => points.value.length)')
+    // 模板里不许再出现写死的「21 境」
+    expect(vue, '又把境数写死进了标签').not.toMatch(/仙路\s*21\s*境/)
   })
 })
 

@@ -1,7 +1,7 @@
 <template>
   <div>
-    <!-- 21 境刻度:每格均布,界首处立一道界门,四界一眼可分 -->
-    <div class="flex items-center" role="list" aria-label="仙路 21 境">
+    <!-- 境数刻度:每格均布,界首处立一道界门,各界一眼可分(个数从 REALMS 现算) -->
+    <div class="flex items-center" role="list" :aria-label="`仙路 ${cnNumber(realmsCount)} 境`">
       <template v-for="(p, i) in points" :key="p.index">
         <span v-if="p.worldStart && i > 0" class="mx-0.5 h-3 w-px shrink-0 bg-ink/20" aria-hidden="true" />
         <span class="flex min-w-0 flex-1 justify-center">
@@ -38,6 +38,7 @@
 <script setup lang="ts">
   import { computed } from 'vue'
   import { realmLadderPoints, realmLadderWorlds } from '@/core/realmLadder'
+  import { cnNumber } from '@/utils/format'
 
   const props = defineProps<{
     /** 当前境界索引(major) */
@@ -46,6 +47,15 @@
 
   const points = computed(() => realmLadderPoints(props.major))
   const worlds = computed(() => realmLadderWorlds())
+
+  /**
+   * 境数 —— 从境界表现算,不在标签里写死「21」。
+   *
+   * 无障碍标签是给读屏软件念的,而它从前与刻度本身脱钩:加一境、减一境,
+   * 刻度自己会长会缩(`realmLadderPoints` 读 `REALMS`),标签里那个数字却停在原处 ——
+   * 读屏用户听到的境数与实际格子数对不上,而看得见的人永远不会发现。
+   */
+  const realmsCount = computed(() => points.value.length)
 </script>
 
 <style scoped>
