@@ -367,6 +367,10 @@ export const ARTIFACT_STAGE_MAX = 3
  * 回补零重就吃满十成(基线 0.6 × 神品 3.08),而主体伤害零重还在 8.01、远没到顶,
  * 于是「被动与神通各强八分」照念不误 —— 玩家按它去炼,炼到九重回补仍是 100%
  * (实测 0/3/9 重三个等级全是 100%),白花的悟道点一分也没买到那句话承诺的东西。
+ *
+ * 同一条谎话在**深度 2**那一行还有一份:「炼到九重,才算把它用透」对零重就封顶的
+ * 那几件同样是假话 —— 神魔镜炼到九重,神通与炼第一重时逐字相同,「用透」的是被动,
+ * 不是这一句让人以为的那件法宝的全部。故那一行也按件给话。
  */
 function artifactHints(def: ArtifactDef): readonly string[] {
   const gain0 = artifactNextLevelGain(def, 0)
@@ -380,7 +384,9 @@ function artifactHints(def: ArtifactDef): readonly string[] {
     cappedAtZero
       ? `录在册上了,还没拿它炼过一重 —— 此宝神通零重已至上限,祭炼只涨被动(每重 ${formatPercent(ARTIFACT_LEVEL_BONUS)})。`
       : `录在册上了,还没拿它炼过一重 —— 祭炼过后,被动与神通各强 ${formatPercent(ARTIFACT_LEVEL_BONUS)}。`,
-    `炼过几重了 —— 炼到${cnNumber(ARTIFACT_MAX_LEVEL)}重,才算把它用透。`,
+    cappedAtZero
+      ? `炼过几重了 —— 此宝神通零重已至上限,往后每一重只买被动(每重 ${formatPercent(ARTIFACT_LEVEL_BONUS)})。`
+      : `炼过几重了 —— 炼到${cnNumber(ARTIFACT_MAX_LEVEL)}重,才算把它用透。`,
     ''
   ]
 }
