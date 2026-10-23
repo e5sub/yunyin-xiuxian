@@ -29,6 +29,9 @@ import { useUiStore } from '@/stores/ui'
 import { usePill, usePillBatch } from './pillService'
 import type { BuffInstance } from '@/types'
 import { SHICHEN_SEC } from '@/data/timeUnits'
+import { BUFFS } from '@/data/buffs'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { gameNow, setEnginePaused } from './enginePause'
 
 /** 丹药能给的增益 id(防空转:内容表被挪走、buffId 全丢,判据就变成空跑) */
@@ -330,5 +333,27 @@ describe('服丹与界面读同一把游戏时钟', () => {
     expect(buff.endsAt, '暂停中写出的到期时刻越过了上限').toBeLessThanOrEqual(frozen + capMs)
     expect(buff.added).toBeLessThanOrEqual(capMs)
     expect(def.durationSec).toBeGreaterThan(0)
+  })
+  /**
+   * 丹药增益的「至多」要在详情里念出来,且只对丹药 buff 出现。
+   *
+   * 贴着上限连服时,每一颗实际只延续几十秒 —— 玩家看到的是「药吃了,
+   * 时间几乎没动」。不说清楚,下一个结论就是「这游戏坏了」,而不是「已至上限」。
+   * 而非丹药来源(事件祝福/闭关/重伤)没有这条顶,给它们也印一行
+   * 「至多四个时辰」就是假话,故那一行必须 `v-if="capText"`(判 `buffCapSec` 有无)。
+   *
+   * 故障注入:把那一行改成无条件渲染 → 本条红(闭关/重伤会多出一行假话)。
+   */
+  it('丹药详情把「至多四个时辰」念出来,非丹药来源不念', () => {
+    const dlg = readFileSync(resolve(__dirname, '../components/cultivation/BuffDialog.vue'), 'utf8')
+    expect(dlg, '至多那一行要读 buffCapSec').toContain('buffCapSec')
+    expect(dlg, '非丹药来源没有这条顶,那一行不许无条件渲染').toContain('v-if="capText"')
+    // 上限秒数从单源函数来,不在界面里再写一个 28800
+    expect(dlg, '界面自己写死了上限秒数').not.toMatch(/28\s*800/)
+    // 阳性对照:真有丹药 buff 在,否则这条在空集上假绿
+    const consumable = BUFFS.filter(b => buffCapSec(b.id) !== undefined)
+    expect(consumable.length, '一味受上限管的丹药增益都没有 —— 这条钉不住什么').toBeGreaterThan(0)
+    // 阴性对照:真有不受上限管的状态在(闭关/重伤/事件祝福),那条 v-if 才有意义
+    expect(BUFFS.length - consumable.length, '所有增益都受上限管,v-if 就失去意义').toBeGreaterThan(0)
   })
 })

@@ -39,6 +39,16 @@
         <!-- formatDuration 收秒;totalMs 是毫秒,转一下 -->
         <span class="tabular text-ink-faint">{{ formatDuration(totalMs / 1000) }}</span>
       </p>
+      <!--
+        丹药类增益还有一条**绝对天花板**:四个时辰,再吃也只延续到顶。
+        不写出来,玩家贴着上限连服时看到的每一颗都只加几十秒 ——
+        下一个结论就是「这游戏坏了」而不是「已至上限」。非丹药来源
+        (事件祝福/闭关/重伤)没有这条顶,故这一行只对丹药 buff 出现。
+      -->
+      <p v-if="capText" class="mt-1 flex justify-between text-[13px]">
+        <span class="text-ink-soft">至多</span>
+        <span class="tabular" :class="atCap ? 'text-gold-ink' : 'text-ink-faint'">{{ capText }}</span>
+      </p>
       <ProgressBar class="mt-2" :value="remainRatio" :color="isInjury ? 'var(--color-cinnabar)' : 'var(--color-jade)'" :height="6" />
     </template>
   </BaseModal>
@@ -51,11 +61,13 @@
   import { useNow } from '@/composables/useNow'
   import { buffDef } from '@/data/buffs'
   import { STAT_NAMES, statValueText } from '@/data/statNames'
+  import { classicalDuration } from '@/data/timeUnits'
   import { formatCountdown, formatDuration } from '@/utils/format'
   import type { AnyStatKey } from '@/types'
   import BaseModal from '@/components/common/BaseModal.vue'
   import ProgressBar from '@/components/common/ProgressBar.vue'
   import GameIcon from '@/components/common/GameIcon.vue'
+  import { buffCapSec } from '@/core/buffCap'
 
   const ui = useUiStore()
   const cultivation = useCultivationStore()
@@ -92,6 +104,21 @@
     const dur = def.value?.durationSec ?? 0
     if (dur <= 0) return 0
     return (inst.value?.added ?? dur * 1000)
+  })
+
+  /**
+   * 丹药增益的绝对天花板 —— 四个时辰(buffCapSec);非丹药来源没有这条顶。
+   *
+   * 「至多」这一行只对丹药 buff 出现:闭关/重伤/事件祝福不受上限管,
+   * 给它们也印一个「至多四个时辰」就是一句假话。
+   */
+  const capSec = computed(() => (def.value ? buffCapSec(def.value.id) : undefined))
+  // classicalDuration 已自带「四个时辰(8小时)」这种古今对照,不再拼一遍
+  const capText = computed(() => (capSec.value === undefined ? '' : classicalDuration(capSec.value)))
+  /** 是否已贴顶(容差 0.5 秒:剩余时间以毫秒在走,差半秒不算到顶) */
+  const atCap = computed(() => {
+    if (capSec.value === undefined) return false
+    return remainSec.value >= capSec.value - 0.5
   })
 
   /** 已叠份数(向上取整防 1.06 份这种只差几秒的误判;老档无 added → 恒 1) */
