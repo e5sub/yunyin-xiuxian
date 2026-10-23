@@ -127,6 +127,29 @@ describe('转世交割 · confirmReincarnation', () => {
     expect(player.reincarnation.daoFruit).toBe(100 + review.daoFruitGained)
   })
 
+  it('受控掷点产生完整的新灵根,连续抽中相同结果也有效', () => {
+    prepareReincarnation()
+    const view = useUiStore().reincarnation!
+    view.nextLinggen = { roots: [{ element: 'wood', aptitude: 60 }], gradeName: '异灵根', growthMult: 1.6 }
+    view.linggenAptitudeFloor = 5
+    // 只控制随机输入,仍走真实生成器:混沌资质先掷 85,随后两次都掷 100。
+    vi.spyOn(rng, 'chance').mockReturnValue(true)
+    vi.spyOn(rng, 'int').mockReturnValueOnce(85).mockReturnValue(100)
+
+    reincarnationService.rerollReincarnationLinggen()
+    expect(view.nextLinggen).toEqual({
+      roots: [{ element: 'chaos', aptitude: 90 }],
+      gradeName: '混沌灵根',
+      growthMult: 3.6
+    })
+
+    const capped = { roots: [{ element: 'chaos', aptitude: 100 }], gradeName: '混沌灵根', growthMult: 4 }
+    reincarnationService.rerollReincarnationLinggen()
+    expect(view.nextLinggen).toEqual(capped)
+    reincarnationService.rerollReincarnationLinggen()
+    expect(view.nextLinggen).toEqual(capped)
+  })
+
   it.each([0, 9])('境界 %i 的灵根草稿计入本次宿慧与新认知,资质保底与旧结算一致', major => {
     const player = usePlayerStore()
     player.major = major
