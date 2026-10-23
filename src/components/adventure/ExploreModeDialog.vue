@@ -27,7 +27,7 @@
       </p>
     </div>
     <!--
-      灵兽之性折进了下面三档的「遇险 ×N / 行程」里,却不说是它干的 ——
+      灵兽之性折进了下面每档的「遇险 ×N / 行程」里,却不说是它干的 ——
       换伙伴的决定点在这里,把它的跟脚照实摊开(departButtonText 同表)
     -->
     <p v-if="petTripLine" class="mb-2 text-[10px] leading-relaxed text-violet-ink tabular">{{ petTripLine }}</p>
@@ -36,6 +36,14 @@
     </p>
     <p class="text-[12px] text-ink-faint">此行欲作何打算?</p>
     <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">行程论这一程走多久;「历练遇敌」只令同程妖踪更密,不能缩地成寸。</p>
+    <!--
+      {{ cnNumber(modeCount) }} 档行程,最凶那一档比最稳那一档凶 {{ modeDangerSpan }} 倍 ——
+      两个数都从 EXPLORE_MODES 现算。从前这句话写死「三档里敌人差了 2.1 倍」:
+      档位扩到六档、最凶抬到 3.9 之后它留在原处没动,玩家读到的是上一个版本的世界。
+    -->
+    <p class="mt-0.5 text-[10px] text-ink-faint tabular">
+      {{ cnNumber(modeCount) }}档行程 · 最凶较最稳凶 {{ modeDangerSpan }} 倍
+    </p>
     <div class="mt-3 space-y-2">
       <button
         v-for="modeId in exploreModeIds"
@@ -48,8 +56,10 @@
           <span class="ml-2 text-[11px]" :class="risky(modeId) ? 'text-cinnabar' : 'text-ink-faint'">{{ exploreModeRiskLabel(modeId) }}</span>
         </span>
         <!--
-          收益一直是亮着的,危险却是暗的:三档里敌人差了 2.1 倍,玩家却只看得到钱。
-          两个数并排摆出来,「要不要涉险」才是个可算的账。
+          收益一直是亮着的,危险却是暗的:最凶那一档比最稳那一档凶 {{ modeDangerSpan }} 倍,
+          玩家却只看得到钱。两个数并排摆出来,「要不要涉险」才是个可算的账。
+          (档位数与跨度都从 EXPLORE_MODES 现算 —— 这句话从前写死「三档里敌人差了 2.1 倍」,
+          档位扩到六档、最凶抬到 3.9 之后它留在原处没动,读到的就是上一个版本的世界)
         -->
         <span class="text-right text-[11px] text-ink-faint tabular">
           {{ departText(modeId) }}
@@ -88,7 +98,7 @@
   import { petDef } from '@/data/pets'
   import { personalityEffects } from '@/core/petPersonality'
   import { departButtonText, exploreModeIds, exploreModeRiskLabel, petTraitTripLine } from '@/ui/adventureText'
-  import { formatDuration, formatGN } from '@/utils/format'
+  import { cnNumber, formatDuration, formatGN } from '@/utils/format'
   import BaseModal from '@/components/common/BaseModal.vue'
 
   const props = defineProps<{ region: RegionDef | null }>()
@@ -111,6 +121,23 @@
     const def = EXPLORE_MODES[mode]
     return def.dangerMult > def.rewardMult * RISKY_DANGER_MARGIN
   }
+
+  /**
+   * 全部档位的凶险跨度 —— 「最凶那档比最稳那档凶几倍」。
+   *
+   * 从前这句话写死在注释里(「三档里敌人差了 2.1 倍」):档位从四档扩到六档、
+   * 最凶一档的凶险从 2.1 抬到 3.9 之后,那句话留在原处没动 —— 玩家读到的
+   * 是上一个版本的世界。数字从 `EXPLORE_MODES` 现算,加档即跟着改。
+   */
+  const modeCount = computed(() => exploreModeIds.length)
+
+  const modeDangerSpan = computed(() => {
+    if (modeCount.value < 2) return 1
+    const dangers = exploreModeIds.map(id => EXPLORE_MODES[id].dangerMult)
+    const span = Math.max(...dangers) / Math.min(...dangers)
+    return Math.round(span * 10) / 10
+  })
+
 
   /**
    * 这一程若中途关掉游戏,离线只结到洞府上限 —— 超出的部分是白挂的。

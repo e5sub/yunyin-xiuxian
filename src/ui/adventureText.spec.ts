@@ -167,6 +167,32 @@ describe('行程档位清单 · 表是唯一事实源', () => {
    *
    * 故障注入:把 offline.ts 里那两处改回内联算式 → 本条红。
    */
+  /**
+   * 弹窗里那句「敌人差了几倍」要从档位表现算,不许手打。
+   *
+   * 档位从四档扩到六档、最凶一档的凶险从 2.1 抬到 3.9 之后,注释里
+   * 「三档里敌人差了 2.1 倍」留在原处没动 —— 玩家在决策点上读到的是
+   * 上一个版本的世界,而没有任何东西会因此报错。
+   *
+   * 故障注入:把 modeDangerSpan 改回写死 2.1、或把 modeCount 改成写死 3 → 本条红。
+   */
+  it('档位数与凶险跨度都从 EXPLORE_MODES 现算,不留上一版的话', () => {
+    const dialog = readFileSync(new URL('../components/adventure/ExploreModeDialog.vue', import.meta.url), 'utf8')
+    expect(dialog, '档位数要现算').toContain('const modeCount = computed(() => exploreModeIds.length)')
+    expect(dialog, '凶险跨度要现算').toContain('const modeDangerSpan = computed(() => {')
+    expect(dialog, '跨度要从 EXPLORE_MODES 的 dangerMult 现算').toMatch(/EXPLORE_MODES\[id\]\.dangerMult/)
+    // 只查**模板**,且先把注释括掉:注释里留着旧数字当反例是好事(它解释这条判据为什么在),
+    // 但「玩家真能看到的那一行」里不许再有手打的档位数或倍数
+    const raw = dialog.slice(0, dialog.indexOf('<script setup'))
+    const tpl = raw.replace(/<!--[\s\S]*?-->/g, '')
+    expect(tpl, '又把档位数手打进了文案').not.toMatch(/[二两三四五六七八九十]档里敌人差/)
+    expect(tpl, '又把凶险跨度手打进了文案').not.toMatch(/敌人差了\s*[0-9.]+\s*倍/)
+    // 渲染那一行本身也要真的插值:改成「六档行程 · 最凶较最稳凶 3.9 倍」这种手打文案,
+    // 上面两条一条都不响(字面形状没变),故这里直接钉插值
+    expect(tpl, '档位数那一段要插值,不许手打').toContain('{{ cnNumber(modeCount) }}')
+    expect(tpl, '跨度那一段要插值,不许手打').toContain('{{ modeDangerSpan }}')
+  })
+
   it('离线遭遇数与恢复后首战也读 exploreBattleGapSec,不再内联间隔公式', () => {
     const offline = readFileSync(new URL('../core/offline.ts', import.meta.url), 'utf8')
     expect(offline, '离线要读同一份遇敌间隔').toContain('exploreBattleGapSec')
