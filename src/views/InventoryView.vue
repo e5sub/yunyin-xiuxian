@@ -5,9 +5,13 @@
 
     <!-- 装备:部位槽,点击唤起部位列表 -->
     <template v-if="tab === 'equip'">
-      <!-- 装备共鸣:机制是活的,玩家却看不见 —— 同组两件即共鸣,（2/2）亮起 -->
+      <!--
+        装备共鸣:机制是活的,玩家却看不见 —— 凑齐该套所要件数即共鸣,（N/所需）亮起。
+        件数不写死「两件」:饰品三件套(妖庭共鸣)要的是三件,写死两件的那行
+        对它就是一句假话。
+      -->
       <div v-if="setRows.length" class="card-ink mt-3 px-4 py-2.5">
-        <p class="text-[10px] text-ink-faint">装备共鸣(同组两件即共鸣,机制不叠数值)</p>
+        <p class="text-[10px] text-ink-faint">装备共鸣(凑齐该套所要件数即共鸣,机制不叠数值)</p>
         <p v-for="s in setRows" :key="s.def.id" class="mt-1 flex items-center gap-2 text-[11px]">
           <span class="font-kai shrink-0" :class="s.active ? 'text-jade' : 'text-ink-soft'">{{ s.def.name }}</span>
           <span class="tabular shrink-0" :class="s.active ? 'text-jade' : 'text-ink-faint'">{{ s.count }}/{{ s.def.required }}</span>

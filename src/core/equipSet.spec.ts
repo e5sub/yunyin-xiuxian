@@ -82,4 +82,25 @@ describe('装备共鸣(equipSet)', () => {
       expect(n, `${def.name} 只有 ${n} 件,达不到触发所需的 ${def.required} 件`).toBeGreaterThanOrEqual(def.required)
     }
   })
+  /**
+   * 共鸣段的小标题不许把件数写死成「两件」。
+   *
+   * `SET_DEFS` 里 `required` 有 2 也有 3(饰品三件套「妖庭共鸣」要三件),
+   * 而界面那行从前写着「同组两件即共鸣」—— 对它是句假话:玩家数到 2/3
+   * 亮不起来,照标题去理解会以为 bug。逐行显示的 `{{ s.count }}/{{ s.def.required }}`
+   * 是对的,错的只是这一行总述。
+   *
+   * 故障注入:把小标题改回「同组两件即共鸣」→ 本条红。
+   */
+  it('共鸣段小标题不写死件数(有三件套在)', () => {
+    // 阳性对照:所有共鸣要的件数不止一种,否则「不许写死两件」这句在空集上假绿
+    const ids = [...new Set(EQUIPMENT_TEMPLATES.map(t => t.set).filter((x): x is string => !!x))]
+    const requireds = ids.map(id => equipSetDef(id)!.required)
+    expect(requireds.length, '共鸣定义不该是空的').toBeGreaterThan(1)
+    expect(new Set(requireds).size, '所有共鸣要的件数都是一种,这条就钉不住什么').toBeGreaterThan(1)
+    expect(Math.max(...requireds), '要有三件套在,这条才有意义').toBeGreaterThan(2)
+    const view = readFileSync(resolve(__dirname, '../views/InventoryView.vue'), 'utf8')
+    expect(view, '小标题又把件数写死了').not.toContain('同组两件即共鸣')
+    expect(view, '小标题要说「该套所要件数」').toContain('凑齐该套所要件数即共鸣')
+  })
 })
