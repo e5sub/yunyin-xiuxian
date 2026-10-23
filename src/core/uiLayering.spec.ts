@@ -322,6 +322,56 @@ describe('界面分层 · 块级空态只有一个出处', () => {
  *
  * 故障注入:删掉 ArtifactPanel 的 `import GameIcon` → 本条红并点名 GameIcon。
  */
+/**
+ * 法宝换件的提示名单,必须在动手之前取。
+ *
+ * 病灶:`ArtifactPanel.toggleArtifact` 先去调 `inventory.toggleArtifact`(它会改写
+ * `equippedArtifacts`),再回 `artifactRows.value` 里找这一行的 `evicts` —— 而 `evicts`
+ * 是从 `equippedArtifacts` 现算的。于是 toast 念的是**刚戴上来的那一件**的名字:
+ * 实测 1 位之下换件,按钮写着「替下玄天镜」,真正让位的墨玉葫芦只字未提。
+ * 玩家照 toast 去行囊核对,永远对不上账。
+ *
+ * 判据只读 `toggleArtifact` 那一个函数体(从它的签名到右花括号),在里面比两处的
+ * 先后。整文件 `indexOf` 会先在 `artifactRows` computed 里撞见同一个调用 —— 那一处
+ * 本来就在函数之前,判据于是恒真、永不红,等于没写。
+ *
+ * 故障注入:把 ArtifactPanel 那两行的先后调换,本条必红。
+ */
+describe('界面分层 · 换件提示的让位名单取在动手之前', () => {
+  const PANEL = resolve(SRC, 'components/inventory/ArtifactPanel.vue')
+
+  it('toggleArtifact 函数体里,取名单写在换件之前', () => {
+    const src = readFileSync(PANEL, 'utf8')
+    const start = src.indexOf('function toggleArtifact(defId: string): void {')
+    expect(start, 'ArtifactPanel 里找不到 toggleArtifact —— 判据失效了').toBeGreaterThan(-1)
+    // 函数体:从签名后第一个 '{' 起,按花括号配平找到收尾那一个
+    const open = src.indexOf('{', start)
+    let depth = 0
+    let end = -1
+    for (let i = open; i < src.length; i += 1) {
+      if (src[i] === '{') depth += 1
+      else if (src[i] === '}') {
+        depth -= 1
+        if (depth === 0) {
+          end = i
+          break
+        }
+      }
+    }
+    const body = src.slice(open, end)
+    expect(body.length, '没圈出 toggleArtifact 的函数体').toBeGreaterThan(20)
+
+    const evictAt = body.indexOf('artifactEvictedBy(inventory.equippedArtifacts')
+    const toggleAt = body.indexOf('inventory.toggleArtifact(defId')
+    expect(evictAt, 'toggleArtifact 里没有取让位名单 —— toast 只能念空名单').toBeGreaterThan(-1)
+    expect(toggleAt, 'toggleArtifact 里没有真的换件').toBeGreaterThan(-1)
+    expect(
+      evictAt,
+      '让位名单取在了换件之后 —— toast 会念刚戴上来的那一件,而不是真正让位的那一件'
+    ).toBeLessThan(toggleAt)
+  })
+})
+
 describe('界面分层 · 模板用到的组件必须在本文件里有来路', () => {
   /**
    * 框架自带 / 全局注册的组件:它们本来就不需要 local import。

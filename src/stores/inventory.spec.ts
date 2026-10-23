@@ -345,6 +345,43 @@ describe('法宝公共写入边界 · 目录、拥有、满重与祭炼槽', () 
   })
 
   /**
+   * 让位名单必须在**动手之前**取,不然后取到的是新佩上来的那一件。
+   *
+   * `artifactEvictedBy` 吃的是 `equippedArtifacts` 现列表,而 toggle 一按下去
+   * 这个列表就被改写了。事后再算一遍,读到的是「刚戴上来的这一件,按新列表会让
+   * 谁让位」—— 实测 1 位之下换件:事前取是 `['墨玉葫芦']`(真正让位的那件),
+   * 事后取是 `['玄天镜']`(刚戴上来的那件)。toast 于是念着新法宝的名字,
+   * 玩家照它去行囊核对,永远对不上账。
+   *
+   * 这条把「取名单 → 换件」的顺序钉成判据:两次取值必须不同,且事前那一次
+   * 才等于真正被替下的那些。
+   *
+   * 故障注入:把 ArtifactPanel.toggleArtifact 里的 `artifactEvictedBy(...)` 调用
+   * 挪到 `inventory.toggleArtifact(...)` 之后,本条必红。
+   */
+  it('让位名单取早了才作数:换件之后同一份判据会改指刚戴上来的那一件', () => {
+    const inv = useInventoryStore()
+    inv.$patch({
+      artifacts: [
+        { defId: 'af_muyu', level: 0 },
+        { defId: 'af_lihuo', level: 0 },
+        { defId: 'af_xuantian', level: 0 }
+      ],
+      equippedArtifacts: ['af_muyu']
+    })
+    const pre = artifactEvictedBy(inv.equippedArtifacts, 1)
+    expect(pre, '一位之下带着墨玉葫芦,按玄天镜该让它让位').toEqual(['af_muyu'])
+
+    expect(inv.toggleArtifact('af_xuantian', 1)).toBe('replaced')
+
+    const post = artifactEvictedBy(inv.equippedArtifacts, 1)
+    expect(post, '换完之后列表只剩新件,再算就改指它自己了').toEqual(['af_xuantian'])
+    expect(post, '事后取的名单指的不是真正让位的那一件').not.toEqual(pre)
+    // 真正被替下的那一件,与事前取到的那一份一致
+    expect(inv.equippedArtifacts).not.toContain('af_muyu')
+  })
+
+  /**
    * 超编的祭炼位列表不许把第三件的被动一起算进属性。
    *
    * 槽位上限从前有四道裁剪(读档 sanitize / toggleArtifact 替换 / applyLoadout

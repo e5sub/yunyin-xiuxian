@@ -361,9 +361,20 @@ export const ARTIFACT_STAGE_MAX = 3
  * 神鞭(破甲)、无相念珠(净念)、神魔镜(回补)、以及全部护盾法宝,祭炼只涨被动。
  * 故按件给话:`artifactNextLevelGain` 说神通已至上限时,提示改成「只涨被动」;
  * 重数上限也从 ARTIFACT_MAX_LEVEL 现算,不再把「九」写死在句子里。
+ *
+ * 封顶判据要看的是**会不会长大**,不是 `capped` 这一个布尔 —— 且要同时看两个数:
+ * 神通主体(`active.amount`)与吸命的回补(`heal`)。只看主体的那条漏了神魔镜:它的
+ * 回补零重就吃满十成(基线 0.6 × 神品 3.08),而主体伤害零重还在 8.01、远没到顶,
+ * 于是「被动与神通各强八分」照念不误 —— 玩家按它去炼,炼到九重回补仍是 100%
+ * (实测 0/3/9 重三个等级全是 100%),白花的悟道点一分也没买到那句话承诺的东西。
  */
 function artifactHints(def: ArtifactDef): readonly string[] {
-  const cappedAtZero = artifactNextLevelGain(def, 0)?.active?.capped === true
+  const gain0 = artifactNextLevelGain(def, 0)
+  // 零重与一重给出同一个数 = 祭炼买不到任何东西
+  // (stun 那几件的 active 是 null —— 它没有数值,本就不该被这句承诺)
+  const frozen = (x: { from: number; to: number } | null | undefined): boolean =>
+    !!x && Math.abs(x.to - x.from) < 1e-9
+  const cappedAtZero = frozen(gain0?.active) || frozen(gain0?.heal)
   return [
     '尚未见过此宝 —— 高阶地界才出得上品。',
     cappedAtZero

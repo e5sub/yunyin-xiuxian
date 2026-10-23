@@ -206,12 +206,23 @@ const artifactRows = computed(() =>
 )
 
 function toggleArtifact(defId: string): void {
+  /**
+   * 让位名单必须在**动手之前**取。
+   *
+   * `artifactRows` 里的 `evicts` 是从 `inventory.equippedArtifacts` 现算的,而
+   * toggle 一按下去这个列表就被改写了 —— 事后再去 `artifactRows.value` 里找这一行,
+   * 读到的是「新佩上来的这一件,按当前列表会让谁让位」,于是 toast 念的是**刚戴上**
+   * 的那一件的名字(实测 1 位之下换件:「替下玄天镜」,而真正让位的墨玉葫芦只字未提)。
+   * 玩家照 toast 去行囊核对,永远对不上账。
+   */
+  const evicted = artifactEvictedBy(inventory.equippedArtifacts, artifactSlots.value).map(
+    id => artifactDef(id)?.name ?? id
+  )
   const result = inventory.toggleArtifact(defId, artifactSlots.value)
-  // 让位的哪几件照实全念出来:按钮上点名了哪些,归来卸下的就得是哪些
-  // (列表本来就超编时让位的不止一件,只报一件就对不上账。见 artifactEvictedBy)
   if (result === 'replaced') {
-    const row = artifactRows.value.find(r => r.def.id === defId)
-    ui.toast(artifactSlotReplacedToast(row?.evicts ?? []), 'info')
+    // 让位的哪几件照实全念出来:按钮上点名了哪些,归来卸下的就得是哪些
+    // (列表本来就超编时让位的不止一件,只报一件就对不上账。见 artifactEvictedBy)
+    ui.toast(artifactSlotReplacedToast(evicted), 'info')
   }
 }
 

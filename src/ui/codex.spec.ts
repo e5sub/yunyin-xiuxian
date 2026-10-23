@@ -40,7 +40,8 @@ import {
   ARTIFACT_MAX_LEVEL,
   ARTIFACTS,
   artifactDef,
-  artifactQualityMult
+  artifactQualityMult,
+  artifactValue
 } from '@/data/artifacts'
 import { EQUIPMENT_TEMPLATES, equipmentTemplate } from '@/data/equipment'
 import { PILLS } from '@/data/pills'
@@ -257,6 +258,26 @@ describe('图鉴 · 用具三类的收录深度', () => {
 
     const normal = describeArtifact(artifactDef('af_xuanxu')!, 0, true) // 吸命的伤害侧还能涨
     expect(normal.hint, '还能涨的那件照旧说清被动与神通都涨').toContain('神通各强')
+  })
+
+  /**
+   * 封顶判据漏看吸命的回补那一侧 —— 神魔镜(神品)的回补基线 0.6 乘上 3.08 的品阶
+   * 倍率,零重就吃满十成;而它的主体伤害零重才 8.01,离任何顶都远。
+   * 只看主体的判据于是判它「还能涨」,那句「被动与神通各强八分」照念不误 ——
+   * 实测炼到九重,回补仍是 100%(0/3/9 三个等级逐字相同),白花的悟道点一分也没
+   * 买到那句话承诺的东西。
+   *
+   * 故障注入:把 `cappedAtZero` 改回只看 `active.capped`,本条必红。
+   */
+  it('封顶判据也看吸命的回补:神魔镜的回补零重就到顶,不许承诺它也会涨', () => {
+    const mirror = describeArtifact(artifactDef('af_shenmojing')!, 0, true)
+    expect(mirror.hint, '神魔镜的回补零重即十成,不该承诺「神通各强」').not.toContain('神通各强')
+    expect(mirror.hint).toContain('只涨被动')
+
+    // 阳性对照:回补还没到顶的那一件(玄虚拂尘零重 86.9%)照旧承诺都涨
+    const fuchen = describeArtifact(artifactDef('af_xuanxu')!, 0, true)
+    expect(fuchen.hint).toContain('神通各强')
+    expect(artifactValue(artifactDef('af_xuanxu')!, 0).active.heal).toBeLessThan(1)
   })
 
   it('提示语里的重数上限从 ARTIFACT_MAX_LEVEL 现算,不是写死的「九」', () => {
