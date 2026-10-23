@@ -4,7 +4,7 @@
 
 ## [Unreleased]
 
-- 调整:**出行弹窗把「六档行程 · 最凶较最稳凶 3.9 倍」念出来了,且这两个数现算** —— 档位从四档扩到六档、最凶一档的凶险从 2.1 抬到 3.9 之后,注释里「三档里敌人差了 2.1 倍」与「折进了下面三档」都留在原处没动:玩家在**决策点**上读到的是上一个版本的世界,而这两个数从来没有出现在他眼前(注释不渲染)。现弹窗多念一行「N档行程 · 最凶较最稳凶 X 倍」,N 取 `exploreModeIds.length`、X 取 `EXPLORE_MODES` 全部 `dangerMult` 的最大最小之比 —— 加一档这句话自己跟上。
+- 调整:**出行弹窗把「六档行程 · 最凶较最稳凶 3.9 倍」念出来了,且这两个数现算** —— 档位从四档扩到六档、最凶一档的凶险从 2.1 抬到 3.9 之后,注释里「三档里敌人差了 2.1 倍」与「折进了下面三档」都留在原处没动:玩家在**决策点**上读到的是上一个版本的世界,而这两个数从来没有出现在他眼前(注释不渲染)。现弹窗多念一行「N档行程 · 最凶较最稳凶 X 倍」,由 `ui/adventureText` 的 `exploreModeSummaryLine()` 现算 —— N 取档位表长、X 取全部 `dangerMult` 的最大最小之比,加一档这句话自己跟上。
 
 - 修复:**祭炼代价与连炼计划按有限整数起重数** —— `artifactUpCostAt(def, NaN)` 返回 `wudao: NaN`、`stone: 0e0`,`artifactBatchPlan` 的 `levels` 于是也是 NaN:界面画出「第 NaN 重」,而 `upgradeArtifact` 每重扣的正是这个 NaN 悟道点,一颗不花、重数一路涨到满重;小数起手则 `levels` 带小数(连炼行写「第 2.7 重」)。`inventory.sanitize` 会夹 `level`,但内存直塞与 `$patch` 之后立刻渲染不走那条路,而面板每次渲染都调 `artifactBatchPlan`。现 `artifactUpCostAt` 与 `artifactBatchPlan` 各自把起手重数收成 `Number.isFinite ? max(0, floor) : 0`;实测 NaN / -5 / 2.7 / 0 / 8 / 9 / 20 七种起手全部给出有限整数重数。
 - 测试:**「尚余 4 小时」不再是毫秒赛跑** —— 16h 档配 8h 洞府那条判据两次独立取 `Date.now()`(算 `started` 一次、`settleOffline` 一次),中间只要过了 1 毫秒,14400s 就减成 14399.999s,`formatDuration` 一 `Math.floor` 变「3小时59分」,断言写着 4 小时 —— 只在两次取时钟落在同一毫秒时才绿,整套测试慢下来就红。现三处判据统一冻结时钟。

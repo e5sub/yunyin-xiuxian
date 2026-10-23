@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { EXPLORE_BATTLE_INTERVAL, EXPLORE_MODES } from '@/data/constants'
+import { cnNumber } from '@/utils/format'
 import { PETS } from '@/data/pets'
 import { exploreBattleGapSec, exploreDurationSec, exploreRewardMult } from '@/core/exploration'
 import { personalityEffects } from '@/core/petPersonality'
@@ -8,6 +9,7 @@ import {
   departButtonText,
   exploreModeIds,
   exploreModeRiskLabel,
+  exploreModeSummaryLine,
   petTraitTripLine,
   sessionRecordText
 } from './adventureText'
@@ -168,29 +170,58 @@ describe('行程档位清单 · 表是唯一事实源', () => {
    * 故障注入:把 offline.ts 里那两处改回内联算式 → 本条红。
    */
   /**
-   * 弹窗里那句「敌人差了几倍」要从档位表现算,不许手打。
+   * 弹窗那句「N档行程 · 最凶较最稳凶 X 倍」要**真的算对**,不是只插了值。
    *
-   * 档位从四档扩到六档、最凶一档的凶险从 2.1 抬到 3.9 之后,注释里
-   * 「三档里敌人差了 2.1 倍」留在原处没动 —— 玩家在决策点上读到的是
-   * 上一个版本的世界,而没有任何东西会因此报错。
+   * 源码文本断言只能证明「这一行插了值」,证不了插进去的是对的数:
+   * 把 computed 改成 `return 2.1`、字面量原样留着,文本断言照样绿。故这里直接
+   * 调 `exploreModeSummaryLine()` 对数,并拿 `EXPLORE_MODES` 现算期望值。
    *
-   * 故障注入:把 modeDangerSpan 改回写死 2.1、或把 modeCount 改成写死 3 → 本条红。
+   * 档位从四档扩到六档、最凶一档的凶险从 2.1 抬到 3.9 之后,这句话从前写在
+   * HTML 注释里(「三档里敌人差了 2.1 倍」)—— 注释不渲染,玩家从来没看见过它,
+   * 更没人会因为数字过时而报错。
+   *
+   * 故障注入:把 exploreModeSummaryLine 的 span 改回写死 2.1 → 本条红。
    */
-  it('档位数与凶险跨度都从 EXPLORE_MODES 现算,不留上一版的话', () => {
+  it('那一行总账真的按 EXPLORE_MODES 现算,不是只插了值', () => {
+    const dangers = exploreModeIds.map(id => EXPLORE_MODES[id].dangerMult)
+    const expectSpan = Math.round((Math.max(...dangers) / Math.min(...dangers)) * 10) / 10
+    expect(exploreModeSummaryLine()).toBe(`${cnNumber(exploreModeIds.length)}档行程 · 最凶较最稳凶 ${expectSpan} 倍`)
+  })
+
+  /**
+   * 档位数不是写死的 —— 这条防「N」被手打成某个数。
+   *
+   * 做法:把档位表临时加一档,那一行必须跟着变。直接改 `EXPLORE_MODES` 不可行
+   * (它是 `as const` 字面表),故这里断言「行里的档位数恰等于表长」——
+   * 写死任何一个数,表一长就对不上。
+   */
+  it('行里的档位数恰等于表长,不是写死的', () => {
+    const line = exploreModeSummaryLine()
+    expect(line).toContain(`${cnNumber(exploreModeIds.length)}档行程`)
+    // 逐个排除:行里念的档位数只可能是当前表长那一个
+    for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      if (n === exploreModeIds.length) continue
+      expect(line, `档位数被写死成 ${n} 了`).not.toContain(`${cnNumber(n)}档行程`)
+    }
+  })
+
+  /**
+   * 渲染的那一行要真的调单源函数,不能自己拼。
+   *
+   * Sourcery 指出:只查整份模板里有没有插值记号,那么把这一行改成手打文案、
+   * 而记号仍留在模板别处,断言照样绿。故这里直接圈出那一行来查。
+   */
+  it('那一行渲染的是单源函数,不是自己拼的文案', () => {
     const dialog = readFileSync(new URL('../components/adventure/ExploreModeDialog.vue', import.meta.url), 'utf8')
-    expect(dialog, '档位数要现算').toContain('const modeCount = computed(() => exploreModeIds.length)')
-    expect(dialog, '凶险跨度要现算').toContain('const modeDangerSpan = computed(() => {')
-    expect(dialog, '跨度要从 EXPLORE_MODES 的 dangerMult 现算').toMatch(/EXPLORE_MODES\[id\]\.dangerMult/)
-    // 只查**模板**,且先把注释括掉:注释里留着旧数字当反例是好事(它解释这条判据为什么在),
-    // 但「玩家真能看到的那一行」里不许再有手打的档位数或倍数
-    const raw = dialog.slice(0, dialog.indexOf('<script setup'))
-    const tpl = raw.replace(/<!--[\s\S]*?-->/g, '')
-    expect(tpl, '又把档位数手打进了文案').not.toMatch(/[二两三四五六七八九十]档里敌人差/)
-    expect(tpl, '又把凶险跨度手打进了文案').not.toMatch(/敌人差了\s*[0-9.]+\s*倍/)
-    // 渲染那一行本身也要真的插值:改成「六档行程 · 最凶较最稳凶 3.9 倍」这种手打文案,
-    // 上面两条一条都不响(字面形状没变),故这里直接钉插值
-    expect(tpl, '档位数那一段要插值,不许手打').toContain('{{ cnNumber(modeCount) }}')
-    expect(tpl, '跨度那一段要插值,不许手打').toContain('{{ modeDangerSpan }}')
+    const tpl = dialog.slice(0, dialog.indexOf('<script setup'))
+    // 圈出渲染那一行:它上面就是解释这件事的注释块
+    const row = tpl.split('\n').find(l => l.includes('modeSummary'))
+    expect(row, '渲染那一行找不到 modeSummary —— 被改回手打文案了?').toBeTruthy()
+    expect(row, '那一行必须直接渲染 modeSummary,自己再拼一段就又是第二份真相源').toBe('      {{ modeSummary }}')
+    // 注释里留着旧数字当反例是好事,但模板正文里不许再出现手打的档位数或倍数
+    const body = tpl.replace(/<!--[\s\S]*?-->/g, '')
+    expect(body, '又把档位数手打进了文案').not.toMatch(/[二两三四五六七八九十]档里敌人差/)
+    expect(body, '又把凶险跨度手打进了文案').not.toMatch(/敌人差了\s*[0-9.]+\s*倍/)
   })
 
   it('离线遭遇数与恢复后首战也读 exploreBattleGapSec,不再内联间隔公式', () => {

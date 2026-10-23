@@ -37,12 +37,12 @@
     <p class="text-[12px] text-ink-faint">此行欲作何打算?</p>
     <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">行程论这一程走多久;「历练遇敌」只令同程妖踪更密,不能缩地成寸。</p>
     <!--
-      {{ cnNumber(modeCount) }} 档行程,最凶那一档比最稳那一档凶 {{ modeDangerSpan }} 倍 ——
-      两个数都从 EXPLORE_MODES 现算。从前这句话写死「三档里敌人差了 2.1 倍」:
-      档位扩到六档、最凶抬到 3.9 之后它留在原处没动,玩家读到的是上一个版本的世界。
+      「N档行程 · 最凶较最稳凶 X 倍」:两个数都从 EXPLORE_MODES 现算。
+      从前这句话写死「三档里敌人差了 2.1 倍」,档位扩到六档、最凶抬到 3.9 之后
+      它留在原处没动 —— 而注释不渲染,玩家读到的是上一个版本的世界。
     -->
     <p class="mt-0.5 text-[10px] text-ink-faint tabular">
-      {{ cnNumber(modeCount) }}档行程 · 最凶较最稳凶 {{ modeDangerSpan }} 倍
+      {{ modeSummary }}
     </p>
     <div class="mt-3 space-y-2">
       <button
@@ -97,8 +97,8 @@
   import { detectionAdaptation, recommendForRegion, regionEcology, starsText } from '@/core/buildAdvisor'
   import { petDef } from '@/data/pets'
   import { personalityEffects } from '@/core/petPersonality'
-  import { departButtonText, exploreModeIds, exploreModeRiskLabel, petTraitTripLine } from '@/ui/adventureText'
-  import { cnNumber, formatDuration, formatGN } from '@/utils/format'
+  import { departButtonText, exploreModeIds, exploreModeRiskLabel, exploreModeSummaryLine, petTraitTripLine } from '@/ui/adventureText'
+  import { formatDuration, formatGN } from '@/utils/format'
   import BaseModal from '@/components/common/BaseModal.vue'
 
   const props = defineProps<{ region: RegionDef | null }>()
@@ -123,20 +123,13 @@
   }
 
   /**
-   * 全部档位的凶险跨度 —— 「最凶那档比最稳那档凶几倍」。
+   * 「N档行程 · 最凶较最稳凶 X 倍」—— 数字在 ui/adventureText 里现算。
    *
-   * 从前这句话写死在注释里(「三档里敌人差了 2.1 倍」):档位从四档扩到六档、
-   * 最凶一档的凶险从 2.1 抬到 3.9 之后,那句话留在原处没动 —— 玩家读到的
-   * 是上一个版本的世界。数字从 `EXPLORE_MODES` 现算,加档即跟着改。
+   * 从前这两个数写在 HTML 注释里(「三档里敌人差了 2.1 倍」),档位从四档扩到
+   * 六档、最凶一档从 2.1 抬到 3.9 之后它留在原处没动,而注释不渲染 ——
+   * 玩家读到的永远是上一个版本的世界,且没有任何东西会因此报错。
    */
-  const modeCount = computed(() => exploreModeIds.length)
-
-  const modeDangerSpan = computed(() => {
-    if (modeCount.value < 2) return 1
-    const dangers = exploreModeIds.map(id => EXPLORE_MODES[id].dangerMult)
-    const span = Math.max(...dangers) / Math.min(...dangers)
-    return Math.round(span * 10) / 10
-  })
+  const modeSummary = exploreModeSummaryLine()
 
 
   /**

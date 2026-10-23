@@ -2,7 +2,7 @@
  * 出发按钮上的账 —— 数字由 exploration 现算,这里只排成一行。
  * 行程、遇险、收益、遇敌间隔必须是结算即将用的那几个数。
  */
-import { formatDuration } from '@/utils/format'
+import { cnNumber, formatDuration } from '@/utils/format'
 import { EXPLORE_MODES } from '@/data/constants'
 import type { ExploreMode } from '@/types'
 import type { PetPersonalityEffects } from '@/core/petPersonality'
@@ -66,6 +66,24 @@ export function petTraitTripLine(petName: string, effects: PetPersonalityEffects
   if (effects.dropLuck !== 0) parts.push(`掉宝${effects.dropLuck > 0 ? '更佳' : '稍逊'}`)
   if (effects.lossReduction > 0) parts.push('败北偶有护持')
   return parts.length > 0 ? `${petName}之性:${parts.join(' · ')}` : ''
+}
+
+/**
+ * 行程档位的一行总账 —— 「N档行程 · 最凶较最稳凶 X 倍」。
+ *
+ * 两个数都从 `EXPLORE_MODES` 现算,加一档这句话自己跟上。
+ * 从前这句话写在出行弹窗的 HTML 注释里(「三档里敌人差了 2.1 倍」):
+ * 档位从四档扩到六档、最凶一档的凶险从 2.1 抬到 3.9 之后,它留在原处没动 ——
+ * 而注释不渲染,玩家从来没看见过它,更没人会因为数字过时而报错。
+ *
+ * 抽成纯函数是为了让它**可被测**:源码文本断言只能证明「这一行插了值」,
+ * 证不了插进去的是对的数(把 computed 改成返回 2.1、字面量原样留着,文本断言照样绿)。
+ */
+export function exploreModeSummaryLine(): string {
+  const ids = exploreModeIds
+  const dangers = ids.map(id => EXPLORE_MODES[id].dangerMult)
+  const span = Math.round((Math.max(...dangers) / Math.min(...dangers)) * 10) / 10
+  return `${cnNumber(ids.length)}档行程 · 最凶较最稳凶 ${span} 倍`
 }
 
 /**
