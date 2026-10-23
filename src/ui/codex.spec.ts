@@ -45,7 +45,7 @@ import {
 } from '@/data/artifacts'
 import { EQUIPMENT_TEMPLATES, equipmentTemplate } from '@/data/equipment'
 import { PILLS } from '@/data/pills'
-import { qualityDef } from '@/data/qualities'
+import { QUALITIES, qualityDef } from '@/data/qualities'
 import type { QualityId } from '@/types'
 import { cnNumber, formatPercent } from '@/utils/format'
 
@@ -224,6 +224,32 @@ describe('图鉴 · 用具三类的收录深度', () => {
     const high = equipmentTemplate('w_xingyun')!
     const highHint = describeEquipment(high, { q: qualityDef('fine').rank, t: 17, u: 1 }, true).hint
     expect(highHint, '够得着天品的模板仍指引天品').toContain('天品')
+  })
+
+  /**
+   * 上限就是全表最高那一档时,「见一件神品以上的成色」是一句空话。
+   *
+   * 神品(divine, rank 8)是全表顶,它上面什么也没有。而 24 阶起的模板(fromTier ≤ 24
+   * 即含神品)只要还没见过神品,提示就照着模板句式念「以上」—— 实测 81 件(24~32 阶
+   * 的全部装备)都落在这里:玩家照这句话去刷,刷的是一个不存在的成色。
+   *
+   * 故障注入:把 equipStage2Hint 的顶格分支删掉,本条必红。
+   */
+  it('顶格模板的提示不拿「神品以上」这种不存在的成色吊玩家', () => {
+    const topRank = Math.max(...QUALITIES.map(q => q.rank))
+    const ceiling = qualityDef('divine')
+    expect(ceiling.rank, '神品应是全表最高那一档').toBe(topRank)
+
+    const top = EQUIPMENT_TEMPLATES.filter(t => t.tier >= ceiling.fromTier)
+    expect(top.length, '24 阶以上应有装备模板').toBeGreaterThan(0)
+    const said = top
+      .map(t => describeEquipment(t, { q: 0, t: t.tier, u: 1 }, true).hint)
+      .filter(h => h.includes('以上'))
+    expect(said, `这些模板的提示在指一个不存在的成色:${[...new Set(said)].slice(0, 3).join(' / ')}`).toEqual([])
+
+    // 阳性对照:没到顶的那一档照旧说「以上」(星云长兵 17 阶的上限是天品,不是神品)
+    const mid = equipmentTemplate('w_xingyun')!
+    expect(describeEquipment(mid, { q: 0, t: 17, u: 1 }, true).hint).toContain('天品以上')
   })
 
   it('法宝:祭炼重数决定深度,到九重封顶;功用行给的是本人那一份', () => {

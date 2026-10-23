@@ -291,11 +291,19 @@ function maxReachableRankAtTier(tier: number): number {
   return best
 }
 
-/** 「用过了」的下一步提示:按该阶真实上限说人话,不吊一件到不了的天品 */
+/**
+ * 「用过了」的下一步提示:按该阶真实上限说人话,不吊一件到不了的天品。
+ *
+ * 上限就是**全表最高那一档**时(24 阶起的神品件,实测 81 件),「见一件神品**以上**
+ * 的成色」是一句空话 —— 神品已是全表顶,它上面什么也没有。玩家照这句话去刷,
+ * 刷的是一个不存在的成色。故顶格那一档改说「再往上就是它自己」,把话落在那一档上。
+ */
 function equipStage2Hint(tier: number, seenQ: number): string {
   const ceilingRank = maxReachableRankAtTier(tier)
   const ceiling = qualityOfRank(ceilingRank).name
   if (seenQ >= ceilingRank) return `用过了 —— 已到过此物随阶可见的最好成色:${ceiling}。`
+  const topRank = Math.max(...QUALITIES.map(q => q.rank))
+  if (ceilingRank >= topRank) return `用过了 —— 再往上看运气:见一件${ceiling}(此物随阶可见的最高成色)。`
   return `用过了 —— 再往上看运气:见一件${ceiling}以上的成色。`
 }
 
