@@ -4,7 +4,7 @@
       <div
         v-if="props.open"
         class="fixed inset-0 flex items-center justify-center bg-ink/45 backdrop-blur-[2px] px-5"
-        :class="props.topmost ? 'z-70' : props.top ? 'z-60' : 'z-50'"
+        :style="{ zIndex }"
         @click.self="onBackdrop"
       >
         <div
@@ -31,13 +31,18 @@
             </button>
           </header>
           <!--
-            正文的滚动容器。手机上滚动条不显形,内容被弹窗边缘齐刷刷切断时,
-            玩家看不出还能往下滚(议题 #21:丹方列表底部只露出下一张卡片的一条圆角)。
-            故上下各一道渐隐:那一头还有内容才出现,只画不占位、不吃点击。
-            正文盒保留 relative:插槽里绝对定位的东西仍以它为基准、随内容一起滚。
+            正文滚动容器:手机滚动条不显形,上下各一道渐隐,那一头还有内容才出现,不占位、不吃点击(议题 #21)。
+            正文盒须保留 relative:插槽里绝对定位的东西以它为基准、随内容一起滚。
           -->
           <div class="relative z-10 flex min-h-0 grow flex-col">
-            <div ref="bodyRef" data-modal-body class="relative min-h-0 grow overflow-y-auto px-5 py-3" @scroll.passive="queueEdges">
+            <!-- 可滚时进 Tab 序:焦点在面板上时方向键滚不动它(它不是面板的祖先) -->
+            <div
+              ref="bodyRef"
+              data-modal-body
+              class="relative min-h-0 grow overflow-y-auto px-5 py-3"
+              :tabindex="scrollable ? 0 : undefined"
+              @scroll.passive="queueEdges"
+            >
               <div ref="contentRef">
                 <slot />
               </div>
@@ -55,9 +60,21 @@
 </template>
 
 <script setup lang="ts">
-  import { nextTick, onUnmounted, ref, watch } from 'vue'
+  import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
   import GameIcon from './GameIcon.vue'
-  import { pushModal, removeModal, useModalEntry } from '@/composables/useModalStack'
+  import {
+    focusablesIn,
+    handOffReturnFocus,
+    isTopModal,
+    openerFor,
+    pushModal,
+    releaseReturnFocus,
+    removeModal,
+    restoreFocus,
+    stackedZ,
+    useModalEntry,
+    type ModalStackEntry
+  } from '@/composables/useModalStack'
 
   const props = withDefaults(
     defineProps<{
@@ -77,23 +94,8 @@
 
   const emit = defineEmits<{ close: [] }>()
 
-  /**
-   * 焦点管理 —— 弹窗打开时,键盘焦点必须跟着进去,且不许跑出去。
-   *
-   * 此前弹窗只管 Esc:打开后焦点仍留在背后的按钮上,按 Tab 会一路跑到页面与底部导航
-   * (实测连按六次,六次全在弹窗外),读屏用户甚至不知道有个弹窗开了。故:
-   *   · 打开时记住是谁打开的,把焦点移进面板(role=dialog + aria-modal);
-   *   · Tab/Shift+Tab 在面板内循环,首尾相接;
-   *   · 关闭后把焦点还给打开它的那个元素。
-   */
+  /** 焦点管理:打开时焦点移进面板,Tab/Shift+Tab 在面板内首尾循环,关闭后还给打开它的元素 */
   const panelRef = ref<HTMLElement | null>(null)
-  let lastFocused: HTMLElement | null = null
-
-  function focusablesIn(root: HTMLElement): HTMLElement[] {
-    return [...root.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(
-      el => !el.hasAttribute('disabled') && el.offsetParent !== null
-    )
-  }
 
   function onPanelKeydown(e: KeyboardEvent): void {
     if (e.key !== 'Tab') return
@@ -131,6 +133,7 @@
   const contentRef = ref<HTMLElement | null>(null)
   const edgeTop = ref(false)
   const edgeBottom = ref(false)
+  const scrollable = ref(false)
   /** 子像素滚动与页面缩放会让「已到底」差零点几像素 */
   const EDGE_SLACK_PX = 2
   let edgeFrame = 0
@@ -141,9 +144,10 @@
     if (!el) return
     edgeTop.value = el.scrollTop > EDGE_SLACK_PX
     edgeBottom.value = el.scrollHeight - el.clientHeight - el.scrollTop > EDGE_SLACK_PX
+    scrollable.value = el.scrollHeight - el.clientHeight > EDGE_SLACK_PX
   }
 
-  /** 一帧最多量一次:滚动与尺寸回调都可能一帧来好几次 */
+  /** 一帧最多量一次 */
   function queueEdges(): void {
     if (edgeFrame) return
     edgeFrame = requestAnimationFrame(() => {
@@ -168,46 +172,80 @@
     edgeFrame = 0
     edgeTop.value = false
     edgeBottom.value = false
+    scrollable.value = false
   }
 
-  /**
-   * 正文回到顶上。同一扇弹窗里整块换内容时用(装备详情与词条转移互切、换看另一件):
-   * 滚动盒不重挂,不复位的话新内容会沿用上一屏的滚动位置,开头几行直接在视口外。
-   */
+  /** 正文滚回顶部:同一弹窗整块换内容时用(滚动盒不重挂,不复位会沿用上一屏位置) */
   function scrollToTop(): void {
     if (bodyRef.value) bodyRef.value.scrollTop = 0
   }
-  defineExpose({ scrollToTop })
+  defineExpose({ scrollToTop, raise })
 
   // ---- Esc 关闭:只让全站栈顶那层响应 ----
-  // 多弹窗叠放(详情盖列表)时按一次 Esc 只能退最上层,不能逐层全退;
-  // 不可关的顶层(离线卷轴/转世确认 `closable=false`)挡在最上时,Esc 不越层去关底下的。
-  // 栈本身必须是模块级单栈:每个 BaseModal 各持一份数组时,每扇窗都以为自己才是栈底。
-  const entry = { closable: props.closable, close: () => emit('close') }
+  // 不可关的顶层(`closable=false`)挡在最上时,Esc 不越层去关底下的。
+  // 栈须是模块级单栈:各实例各持一份时,每扇窗都以为自己是栈底。
+  // 还焦点目标挂在栈条目上:叠回最上时要改指别层记的目标
+  const entry: ModalStackEntry = {
+    closable: props.closable,
+    close: () => emit('close'),
+    focus: () => panelRef.value?.focus(),
+    panel: () => panelRef.value
+  }
   useModalEntry(entry)
+
+  // ---- 叠放:跟栈走,看得见的顶层就是 Esc 关的那层 ----
+  /** 档位底线:普通 50 / top 60 / topmost 70 */
+  const floorZ = computed(() => (props.topmost ? 70 : props.top ? 60 : 50))
+  const liveZ = computed(() => stackedZ(entry))
+  /** 淡出期间停在原位,不跌到别的窗下面 */
+  const leavingZ = ref<number | null>(null)
+  const zIndex = computed(() => liveZ.value ?? leavingZ.value ?? floorZ.value)
+
   watch(
     () => props.open,
     open => {
       if (open) {
+        leavingZ.value = null
+        entry.floor = floorZ.value
         pushModal(entry)
-        // 记住是谁打开的,关闭后把焦点还回去(键盘用户不会"掉到页面顶端")
-        lastFocused = document.activeElement as HTMLElement | null
+        // 焦点还停在同一拍刚关的窗里时,记那扇窗的打开者
+        entry.returnFocus = openerFor(document.activeElement)
         void nextTick(() => {
           panelRef.value?.focus()
           watchEdges()
         })
       } else {
+        leavingZ.value = liveZ.value
         removeModal(entry)
         unwatchEdges()
-        const back = lastFocused
-        lastFocused = null
+        const back = entry.returnFocus ?? null
+        const panel = panelRef.value
+        entry.returnFocus = null
+        // 别层记在本面板里的还焦点目标改指本层打开者:面板淡出后它们随之卸载
+        if (panel && back) releaseReturnFocus(panel, back)
         void nextTick(() => {
-          if (back && back.isConnected) back.focus()
+          // 先判 back:SSR 渲染初始关闭的弹窗也走这里,没有 document
+          if (!back) return
+          restoreFocus(panel, back, document.activeElement, document.body)
         })
       }
     },
     { immediate: true }
   )
+
+  /** 叠回最上层:开着时被别的窗里的操作换了内容(如离线卷轴里点开装备),不在下面悄悄换 */
+  function raise(): void {
+    if (!props.open || isTopModal(entry)) return
+    const active = document.activeElement as HTMLElement | null
+    const panel = panelRef.value
+    if (panel && active && !panel.contains(active)) {
+      handOffReturnFocus(panel, entry.returnFocus ?? null)
+      entry.returnFocus = active
+    }
+    pushModal(entry)
+    void nextTick(() => panelRef.value?.focus())
+  }
+
   watch(
     () => props.closable,
     c => {

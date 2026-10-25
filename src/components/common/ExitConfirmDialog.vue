@@ -1,13 +1,13 @@
 <template>
-  <BaseModal :open="open" title="暂别修行" @close="dismiss">
+  <BaseModal :open="open" title="退出游戏" @close="dismiss">
     <p class="text-[13px] leading-relaxed text-ink-soft">
-      <template v-if="game.started">此去进度自会封存,离开的这段时日照旧在长,归来时一并结算。</template>
-      <template v-else>此刻退出,尚无修行痕迹留下。</template>
+      <template v-if="game.started">进度已保存 · 离线收益照常</template>
+      <template v-else>暂无存档</template>
     </p>
     <template #footer>
       <div class="flex gap-2">
-        <button class="btn-ghost flex-1" @click="dismiss">再留片刻</button>
-        <button class="btn-seal flex-1" @click="confirm">暂且别过</button>
+        <button class="btn-ghost flex-1" @click="dismiss">再想想</button>
+        <button class="btn-seal flex-1" @click="confirm">退出</button>
       </div>
     </template>
   </BaseModal>
@@ -20,6 +20,7 @@
   import { Capacitor, type PluginListenerHandle } from '@capacitor/core'
   import { App as CapacitorApp } from '@capacitor/app'
   import { useGameStore } from '@/stores/game'
+  import { handleEscape } from '@/composables/useModalStack'
   import BaseModal from './BaseModal.vue'
 
   const open = ref(false)
@@ -37,17 +38,13 @@
   }
 
   /**
-   * 一旦注册了 backButton 监听,Capacitor 便把返回键整个交出来。
-   * 无监听时它只做一件事(AppPlugin.java:49):有历史就 webView.goBack(),没有就什么也不做——
-   * 也就是说不接管的话,按返回压根退不出游戏,只会在标签页历史里一路倒着走到卡住。
+   * 注册 backButton 监听后返回键整个交给这里;无监听时 Capacitor 只在有历史时
+   * webView.goBack()(AppPlugin.java:49),退不出游戏。
    */
   function onBackButton(): void {
-    // 确认框自己先吃一次返回:否则弹窗开着再按,只会原地打转
-    if (open.value) {
-      open.value = false
-      return
-    }
-    // 不在根页就先退回根页。各页本是并列的标签页,逐条回溯历史得按上七八次才退得出去
+    // 与 Esc 同一规则:先关栈顶弹窗(含本确认框),栈顶不可关时不动
+    if (handleEscape()) return
+    // 不在根页先回根页:各页是并列标签页,不逐条回溯历史
     if (route.name !== rootName()) {
       void router.push({ name: rootName() })
       return

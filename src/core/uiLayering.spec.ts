@@ -205,6 +205,14 @@ describe('界面分层 · 浮层只有一个出处', () => {
     expect(src, '不得每实例各挂一份 window keydown').not.toContain("window.addEventListener('keydown', onWindowKey)")
   })
 
+  it('弹窗叠放跟 Esc 栈走 —— 按挂载先后叠,后弹出的际遇、顿悟会被页内弹窗盖住', () => {
+    const f = FILES.find(x => x.path === BASE_MODAL)
+    expect(f, 'BaseModal 不见了').toBeDefined()
+    const src = f!.src
+    expect(src, '叠放次序取自全站栈').toContain('stackedZ(entry)')
+    expect(src, '不许按档位写死 z 类').not.toMatch(/'z-(50|60|70)'/)
+  })
+
   it('战斗回放派生的计时与逐帧任务随离页撤销 —— 不向已销毁组件回写', () => {
     const f = FILES.find(x => x.path === 'components/adventure/CombatPanel.vue')
     expect(f, 'CombatPanel 不见了').toBeDefined()
