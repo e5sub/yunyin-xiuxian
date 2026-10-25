@@ -17,12 +17,9 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Android 存档导出桥:交给系统保存面板选位置,再用 ContentResolver 写入。
- *
- * 不走公共 Documents:Android 10 的 legacy storage、Android 11+ 的分区存储
- * 都会让直接写公共目录不可靠;SAF 由用户显式授权目标文件,无需存储权限。
- * 只有真的写完才 resolve(saved=true),取消则 resolve(saved=false),让
- * 网页侧能准确决定是否记「上次导出」。
+ * Android 存档导出桥:系统保存面板(SAF)选位置,ContentResolver 写入,无需存储权限。
+ * 不走公共 Documents:Android 10 的 legacy storage、11+ 的分区存储下直写公共目录不可靠。
+ * 写完才 resolve(saved=true),取消 resolve(saved=false):网页侧据此决定是否记「上次导出」。
  */
 @CapacitorPlugin(name = "SaveTransfer")
 public class SaveTransferPlugin extends Plugin {
@@ -38,8 +35,7 @@ public class SaveTransferPlugin extends Plugin {
 
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
-        // 存档是加密文本,不是标准 JSON;octet-stream 让文件管理器按普通文件保存,
-        // 同时保留 EXTRA_TITLE 里的 .save 扩展名。
+        // 存档是加密文本,不是 JSON;octet-stream 按普通文件保存,保留 EXTRA_TITLE 里的 .save 扩展名
         intent.setType("application/octet-stream");
         intent.putExtra(Intent.EXTRA_TITLE, fileName);
         startActivityForResult(call, intent, "onSaveResult");
@@ -61,8 +57,7 @@ public class SaveTransferPlugin extends Plugin {
             return;
         }
 
-        // ActivityResult 回调在主线程;存档可能很大,SAF 写入不能在主线程阻塞。
-        // Capacitor 的 taskHandler 是插件专用后台线程,结果再投回主线程交给 WebView。
+        // 回调在主线程,大存档写入不能阻塞它:交给插件专用后台线程(taskHandler),结果再投回主线程
         execute(() -> writeSave(call, uri, text));
     }
 

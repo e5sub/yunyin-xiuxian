@@ -38,7 +38,6 @@ describe('构筑快照(保存/一键切换)', () => {
     expect(loadout).not.toBeNull()
     expect(loadout!.equipment.weapon).toBe(weaponUid)
 
-    // 打乱现状
     inventory.unequip('weapon')
     cultivation.subGongfa = []
     inventory.equippedArtifacts = []
@@ -55,14 +54,12 @@ describe('构筑快照(保存/一键切换)', () => {
     const loadout = captureLoadout('空槽')!
     expect(loadout.equipment.head, '捕获时 head 空着 → 快照不记该位').toBeUndefined()
 
-    // 之后往 head 穿了件东西
     const rng = new RandomService(mulberry32(11))
     const helm = generateEquipment(3, rng, { slot: 'head' })
     inventory.addEquipment(helm)
     inventory.equip(helm.uid, 'head')
     expect(inventory.equipped.head).toBe(helm.uid)
 
-    // 一键切换:head 存时是空的,如今应卸掉 —— 否则会还原成 A(存)+B(现)的杂交构筑
     applyLoadout(loadout.id)
     expect(inventory.equipped.head, '空槽位应还原为空').toBeUndefined()
     expect(inventory.equipped.weapon, '存着的 weapon 应穿回').toBe(weaponUid)
@@ -73,11 +70,9 @@ describe('构筑快照(保存/一键切换)', () => {
     const ui = useUiStore()
     const { weaponUid } = seed()
     const loadout = captureLoadout('残卷')!
-    // 装备被分解
     inventory.removeEquipment(weaponUid)
     expect(applyLoadout(loadout.id)).toBe(true)
     expect(inventory.equipped.weapon).toBeUndefined()
-    // 阙的不止一个数:「兵刃」这类缺位要带名 —— 玩家得知道下一步补什么
     const last = ui.toasts[ui.toasts.length - 1]!.text
     expect(last).toContain(EQUIP_SLOT_NAMES.weapon)
   })
@@ -86,7 +81,6 @@ describe('构筑快照(保存/一键切换)', () => {
     const inventory = useInventoryStore()
     seed()
     const loadout = captureLoadout('验位')!
-    // 伪造:把 weapon 槽指向一件衣袍
     const rng = new RandomService(mulberry32(9))
     const body = generateEquipment(3, rng, { slot: 'body' })
     inventory.addEquipment(body)
@@ -104,7 +98,6 @@ describe('构筑快照(保存/一键切换)', () => {
     const cultivation = useCultivationStore()
     seed()
     const loadout = captureLoadout('错门类')!
-    // 坏快照:主修位指向辅修,辅修席同时含主修与自身
     loadout.mainGongfa = 's_tuna'
     loadout.subGongfa = ['m_taixuan', 's_tuna']
     applyLoadout(loadout.id)
@@ -128,7 +121,6 @@ describe('构筑快照(保存/一键切换)', () => {
     const ui = useUiStore()
     const lo = captureLoadout('背水一号')!
     const weaponUid = lo.equipment.weapon
-    // 全空白 → 回落「无名构筑」
     expect(renameLoadout(lo.id, '   ')).toBe(true)
     expect(loadouts.list.find(l => l.id === lo.id)!.name).toBe('无名构筑')
     // 改名成功时的 toast:说的是改名,不是保存进包(此前复用了「已存入行囊」,报了假动作);
@@ -143,7 +135,6 @@ describe('构筑快照(保存/一键切换)', () => {
     const renamed = loadouts.list.find(l => l.id === lo.id)!
     expect(renamed.equipment.weapon).toBe(weaponUid)
     expect(renamed.mainGongfa).toBe('m_taixuan')
-    // 不存在的 id 静默失败,什么都不动
     expect(renameLoadout('nope', '新名')).toBe(false)
     expect(loadouts.list.length).toBe(1)
   })
@@ -164,7 +155,6 @@ describe('构筑快照(保存/一键切换)', () => {
     loadout.subGongfa = ['s_tuna', 's_lianti']
     applyLoadout(loadout.id)
 
-    // 槽位只有 1,第二件装不上
     expect(cultivation.subGongfa).toEqual(['s_tuna'])
     const last = ui.toasts[ui.toasts.length - 1]!.text
     expect(last, '被砍的那件要带名').toContain('百炼锻体术')
@@ -175,7 +165,7 @@ describe('构筑快照(保存/一键切换)', () => {
     const inventory = useInventoryStore()
     const ui = useUiStore()
     seed()
-    // 收藏两件法宝,而炼气期只有 1 个法宝位
+    // 炼气期只有 1 个法宝位
     inventory.addArtifact('af_lihuo')
     inventory.addArtifact('af_muyu')
     const loadout = captureLoadout('双法宝')!

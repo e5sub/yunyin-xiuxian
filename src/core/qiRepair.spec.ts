@@ -1,10 +1,4 @@
-/**
- * 以灵气疗伤(修复)—— 灵气积余的用途
- *
- * 积余若只进不出,灵气就成了账面数字。这条守住两件事:
- *   1. 修复代价随灵气容量(即境界)增长 —— 上界的"修复"是指数级开销
- *   2. 修复真的扣灵气、真的清负面,且负伤才可修、付不起不生效
- */
+/** 以灵气疗伤(修复):灵气积余的用途 */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { usePlayerStore } from '@/stores/player'
@@ -28,7 +22,7 @@ describe('灵气疗伤(修复)', () => {
     const low = qiRepairCost()
     player.major = 12
     const high = qiRepairCost()
-    expect(high).toBeGreaterThan(low * 10) // 指数容量下的修复确实是指数级开销
+    expect(high).toBeGreaterThan(low * 10)
   })
 
   it('负伤时以灵气疗伤:扣灵气、清负面', () => {

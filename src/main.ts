@@ -22,17 +22,11 @@ pinia.use(piniaPluginPersistedstate)
 app.use(pinia)
 app.use(router)
 
-/**
- * 异常留档 —— 诊断本身不许再抛,故整段包在 try 里。
- *
- * 从前这里只打一行 console.error 再 toast「出现异常,已记录」:手机上根本没有控制台,
- * 那句「已记录」是空话,玩家报问题时我们手上什么都没有。
- */
 function noteError(info: string, err: unknown): void {
   try {
     useDiagStore().record({ info, message: summarizeError(err), route: location.hash })
   } catch {
-    /* 连留档都失败时不许再抛:诊断不能变成第二个故障源 */
+    /* 留档自身不许再抛 */
   }
 }
 
@@ -46,14 +40,12 @@ app.config.errorHandler = (err, _instance, info) => {
   }
 }
 
-// 未处理的 Promise 拒绝从前完全静默:连 toast 都没有,玩家只会觉得「点了没反应」
 window.addEventListener('unhandledrejection', event => {
   console.error('[未处理的 Promise]', event.reason)
   noteError('unhandledrejection', event.reason)
 })
 
-// 首次渲染前逐仓自愈:把 hydrate 进来的 malformed 字段(bad 档/导入档的 NaN/负值)当场修平,
-// 免得在线会话甚至第一帧就带坏值(engine.start 在 onMounted 也调一遍,这里更早一步、幂等同源)
+// 须在首次渲染前逐仓自愈 hydrate 进来的坏值;幂等,engine.start 在 onMounted 再调一遍
 sanitizeAllStores()
 
 app.mount('#app')
@@ -75,12 +67,11 @@ if (import.meta.env.PROD && !isLocalShell && 'serviceWorker' in navigator) {
     navigator.serviceWorker
       .register(`${import.meta.env.BASE_URL}sw.js`)
       .then(reg => {
-        // 有新版本就绪时亮横幅;「重新加载」动作注册进 ui store,更新提示那枚关闭按钮在此续命
         const handle = useServiceWorkerUpdate(reg, () => useUiStore().requestPwaUpdate())
         useUiStore().setPwaApplyReload(() => handle.reload())
       })
       .catch(() => {
-        /* 注册失败不打扰玩家:功能可降级,见 public/sw.js 注释 */
+        /* 注册失败静默:可降级,见 public/sw.js */
       })
   })
 }

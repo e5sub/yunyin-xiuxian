@@ -1,6 +1,3 @@
-/**
- * Phase 31.0 S4:灵兽性格 —— 行为倾向而非纯数值
- */
 import { describe, it, expect } from 'vitest'
 import { personalityEffects, personalityDesc, PERSONALITY_NAMES } from './petPersonality'
 import { PETS, petDef } from '@/data/pets'

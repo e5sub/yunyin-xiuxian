@@ -1,24 +1,11 @@
 /**
- * 器魂 —— 凡器在天界留下的第二重形意
- *
- * 凡人的法器到了天界,锋芒会被天道磨去几分,但**不是抹平**:它记得这件法器是什么路数
- * (锋、盾、棘、连、泽、背),凝出来的那缕形意是一层**叠加**在天界战力之上的东西
- * (见 stores/player.celestialStats)。
- *
- * 于是天界这一侧的分工是:
- *   · **装备照常作数** —— 基础攻防血到哪儿都是最核心的属性;
- *   · **器魂叠加** —— 以凡器入炉,形销而意存,多一条路数;
- *   · **堆叠的代价在敌人一侧** —— 构筑越厚,守关者的道之理解越深(加厚 + 增伤减伤);
- *     境界未及本界锚点者,另有境界压制(见 core/gauntlet.celestialJudgement)。
- *
- * 器魂由凡器凝炼而来(销毁装备),分六类六阶:
- *   类型 —— 由该装备的主导词条判定,对应六大流派
- *   品阶 —— 由该装备品质决定,决定器魂词条的强度
- * 装配槽位有限(SOUL_SLOTS),必须取舍——这正是「选方向」的地方。
+ * 器魂 —— 销毁凡器凝炼,叠加在天界战力之上(见 stores/player.celestialStats);装备照常作数。
+ * 六类(按装备主导词条判定,对应六大流派)× 六阶(按装备品质,决定器魂词条强度)。
+ * 堆叠的代价在敌人一侧;境界未及本界锚点者另有境界压制(见 core/gauntlet.celestialJudgement)。
  */
 import type { AnyStatKey, StatMods } from '@/types'
 
-/** 器魂可装配槽位:少于流派数,逼出取舍 */
+/** 器魂可装配槽位:须少于流派数 */
 export const SOUL_SLOTS = 3
 
 export type SoulTypeId = 'beishui' | 'gangdun' | 'fanzhen' | 'lianji' | 'muze' | 'fengmang'
@@ -29,10 +16,7 @@ export interface SoulTypeDef {
   /** 印章单字(与 BUILD_STYLES 同源) */
   seal: string
   desc: string
-  /**
-   * 该类器魂在一阶时提供的词条。
-   * 数值刻意小于同名装备词条:器魂是形意残存,不是原样搬运
-   */
+  /** 一阶时提供的词条;数值须小于同名装备词条 */
   mods: StatMods
   /** 判定用主导词条:装备在这些键上的合计值决定它凝出哪一类器魂 */
   judgeKeys: AnyStatKey[]
@@ -95,12 +79,7 @@ export function soulTypeDef(id: SoulTypeId): SoulTypeDef | undefined {
   return BY_ID.get(id)
 }
 
-/**
- * 器魂品阶(六阶)。装备品质 rank 0~8 映射到此:
- * 凡/良→一阶,精→二阶,灵→三阶,玄→四阶,地→五阶,天/仙/神→六阶。
- * 高阶更强,但阶差刻意压得比装备品质差距小得多——
- * 天界比的是路数,品阶只是让好装备仍然值得刷
- */
+/** 器魂品阶(六阶);阶差须远小于装备品质差距 */
 export interface SoulGradeDef {
   rank: number
   name: string
@@ -138,7 +117,6 @@ export interface SoulInstance {
   fromName: string
 }
 
-/** 器魂实际提供的词条 = 类型基础 × 品阶倍率 */
 export function soulMods(soul: SoulInstance): StatMods {
   const def = soulTypeDef(soul.type)
   if (!def) return {}

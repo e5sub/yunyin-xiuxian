@@ -1,14 +1,9 @@
-/**
- * 词条按品质分组的边界
- * 自动重铸候选要从一张平铺网格变成四档品质分组 —— 分组逻辑单独测:
- * 传世/珍稀/稀有/常见(稀有度序由 AFFIX_RARITY_RANK 定,不硬编码),
- * 空组不占位、组内保序、全体不漏不重。
- */
+/** 词条按品质分组:序由 AFFIX_RARITY_RANK 定(不硬编码),空组不占位、组内保序、全体不漏不重 */
 import { describe, expect, it } from 'vitest'
 import type { AffixDef, AffixRarity } from '@/types'
 import { AFFIXES, affixesByRarity } from './affixes'
 
-/** 词条夹具:只关心 rarity 与 id,其余字段按类型最小补齐 */
+/** 词条夹具:只关心 rarity 与 id */
 function mk(id: string, rarity: AffixRarity): AffixDef {
   return {
     id,
@@ -62,7 +57,7 @@ describe('饰品专属战斗词缀(B-1)', () => {
     for (const a of J_COMBAT) {
       expect(a.id, 'J 专属战斗词缀应限定 J 槽').not.toBeUndefined()
       expect(a.slots, `${a.id} 的槽位不是 J 三件`).toEqual(['necklace', 'ring', 'talisman'])
-      // 用的是既有战斗键(闪避/吸血),不是新增键 —— dataIntegrity 不许无源键
+      // 只用既有战斗键:dataIntegrity 不许无源键
       expect(['dodgeRate', 'lifesteal']).toContain(a.key)
     }
   })

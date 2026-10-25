@@ -1,5 +1,4 @@
 <template>
-  <!-- 修士实验室:反事实换装推演(真仙可用) -->
   <template v-if="canWhatIf">
     <div class="ink-divider my-3" />
     <button v-if="!whatIf" class="btn-ghost w-full !py-2 !text-[12px]" @click="runWhatIf">
@@ -41,11 +40,8 @@
   import { whatIfEquip, type WhatIfReport } from '@/core/lab'
 
   /**
-   * 天机推演面板 —— 自 EquipmentDetailDialog 迁入。
-   *
-   * 推演的账全在 core/lab(whatIfEquip),面板只持一份报表状态;
-   * 「换一件就清空上一份推演」的 watch 随块搬入,不再由宿主代管。
-   * 未装备判定与宿主同一判据(inventory.equipped[slot] === uid),不另立一套。
+   * 推演的账全在 core/lab,面板只持报表状态,换件即清空。
+   * 未装备判定须与宿主同一判据(inventory.equipped[slot] === uid)。
    */
   const ui = useUiStore()
   const inventory = useInventoryStore()

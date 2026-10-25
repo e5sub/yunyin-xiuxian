@@ -11,15 +11,8 @@ import {
 } from './audio'
 
 /**
- * 音频引擎(Phase 25)—— 纯单机 Tone.js 引擎。
- *
- * 兜底逻辑是「测试环境(无 AudioContext)天然免疫」:Tone.js 按需加载(值是 type-only
- * import + 运行时动态 import),没有音频上下文的进程里,所有公开入口都必须是无害
- * no-op。这里把这条契约钉死:任何一个新分支丢掉了 `!T / !unlocked / !sfxOn` 的守卫、
- * 直接去碰 `T.` 或采样器,就会在测试环境里当场抛错 → 红。
- *
- * 另把 configureAudio 的防脏音量夹逼钉住:设置页之外,坏设置的音量若不是 0..1,
- * 在这里被夹回合法区间(否则总线挂一个爆炸值,首声即刺耳)。
+ * 契约:无 AudioContext 时所有公开入口都是无害 no-op;新分支丢掉 `!T / !unlocked / !sfxOn` 守卫、
+ * 直接去碰 `T.` 或采样器,就会在测试环境里当场抛错 → 红。configureAudio 把音量夹回 0..1。
  */
 describe('音频引擎 · 无音频环境下免疫(no-op 不抛错)', () => {
   const ALL_SFX: SfxName[] = ['click', 'success', 'warn', 'info', 'rare', 'win', 'lose', 'breakthrough', 'fail']
@@ -41,9 +34,7 @@ describe('音频引擎 · 无音频环境下免疫(no-op 不抛错)', () => {
   })
 
   it('configureAudio 容得下畸形音量(负值/超限/NaN):不抛错(夹逼在 [0,1] 是设里层防线)', () => {
-    // prefs 是模块私域,测试里无法直接读夹逼后的值;但「畸形输入不炸」这条必须守住:
-    // 若 configureAudio 把脏音量直接喂给 applyPrefs(真实环境下是 bus.gain.rampTo),
-    // 首个爆值就会刺耳甚至抛错。容错在此钉死。
+    // prefs 是模块私域,读不到夹逼后的值;只钉「畸形输入不炸」
     const cases: AudioPrefs[] = [
       { musicOn: true, sfxOn: true, musicVol: 99, sfxVol: -3 },
       { musicOn: true, sfxOn: true, musicVol: NaN, sfxVol: 2 },
@@ -54,13 +45,8 @@ describe('音频引擎 · 无音频环境下免疫(no-op 不抛错)', () => {
 })
 
 /**
- * 音频接线生命周期 —— 初始化异步完成、页面已切后台、宿主已卸载这三种时机
- * 都发生在 Tone 加载之后。旧实现把可见性监听写成匿名函数,App 卸载也只 stopBgm,
- * 于是监听永远留在 document 上,加载期间切后台还会在后台起乐。
- *
- * 这里用最小 Tone 桩把 init 完整跑一遍:采样器/总线都是 no-op,只观察
- * Transport.start 与 pause 的调用时机。故障注入:删掉 startBgm 的 hidden 守卫,
- * 或把命名监听改回匿名并去掉 disposeAudio 的 removeEventListener,对应用例转红。
+ * 最小 Tone 桩把 init 完整跑一遍,只观察 Transport.start 与 pause 的调用时机。
+ * 故障注入:删掉 startBgm 的 hidden 守卫,或把命名监听改回匿名并去掉 disposeAudio 的 removeEventListener,对应用例转红。
  */
 describe('音频引擎 · 可见性与销毁', () => {
   type Listener = () => void

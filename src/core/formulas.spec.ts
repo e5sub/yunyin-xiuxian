@@ -23,7 +23,6 @@ describe('GameFormula 成长曲线', () => {
     const got = toNum(powerScore(a, d, h))
     const want = 10 * POWER_WEIGHTS.attack + 20 * POWER_WEIGHTS.defense + 100 * POWER_WEIGHTS.hp
     expect(got).toBeCloseTo(want, 6)
-    // 人物页那句释义必须真的来自同一份权重
     expect(powerExplainText()).toBe(`攻×${POWER_WEIGHTS.attack} + 防×${POWER_WEIGHTS.defense} + 血×${POWER_WEIGHTS.hp}`)
   })
   it('战力构成行与 powerScore 同一批数相加:逐行权重折算,合计即总战力', () => {
@@ -38,13 +37,11 @@ describe('GameFormula 成长曲线', () => {
       cultSpeedFactor: 1
     }
     const rows = powerBreakdownRows(s)
-    // 三行齐全,名字与权重对得上
     expect(rows.map(r => [r.name, r.weight])).toEqual([
       ['攻击', POWER_WEIGHTS.attack],
       ['防御', POWER_WEIGHTS.defense],
       ['气血', POWER_WEIGHTS.hp]
     ])
-    // 每行折算 = 原始属性 × 权重,三项相加 = powerScore
     const sum = toNum(add(add(rows[0]!.value, rows[1]!.value), rows[2]!.value))
     expect(toNum(rows[0]!.value)).toBeCloseTo(10 * POWER_WEIGHTS.attack, 6)
     expect(sum).toBeCloseTo(toNum(s.power), 6)

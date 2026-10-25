@@ -1,13 +1,6 @@
 /**
- * 炼器的矿石认知与锻造技艺(玩家反馈:「识材部分矿物无法达到通晓」
- * 「大量强化装备或重铸却看不见熟练度提升」)。
- *
- * 根因:通晓(第 3 层)只由 noteMaterialUsed 可达,而它此前只在炼丹路径被调;
- * 炼器(强化/重铸)从不登记 —— 矿石永远卡在 2 层,锻造技艺也原地踏步。
- * 修法:noteSmithingUsed —— 每次炼器算「上手过」一味与装备层级相称的矿石,
- * 判据与丹药同源;并按次给 smithing 技艺经验。这里钉死:
- * 1) 炼器之后锻造技艺确实在涨(看得见的熟练度);
- * 2) 层 2 的矿石经炼器能爬到通晓(层 3)。
+ * 炼器的矿石认知与锻造技艺:通晓(第 3 层)只由 noteMaterialUsed 可达。
+ * 炼器经 noteSmithingUsed 每次算「上手过」一味与装备层级相称的矿石(判据与丹药同源),并按次给 smithing 技艺经验。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -60,7 +53,7 @@ describe('炼器 · 矿石认知与锻造技艺', () => {
 
   it('不达通晓判据(层不足/运气差)就不强推 —— 但技艺仍涨', () => {
     const lore = useLoreStore()
-    lore.advanceLore('mat_jingtie', 1) // 只在层 1:还谈不上"通用"
+    lore.advanceLore('mat_jingtie', 1) // 只在层 1
     masteryHit.value = false
     const before = lore.skillLevel('smithing')
     noteSmithingUsed(3, true)

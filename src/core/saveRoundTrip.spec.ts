@@ -1,23 +1,10 @@
 /* eslint-disable no-console -- 往返报告是给人看的 */
 /**
- * 存档往返 —— 导出再导入,必须一模一样
- *
- * 玩家换设备、清浏览器数据之前,靠的就是「导出存档 / 导入存档」这条路。
- * 而它此前没有任何端到端验证:各分片各写各的 sanitize,没人核对过
- * **导出 → 清档 → 导入**之后还剩什么。
- *
- * 这里守两件事:
- *
- *   一 分片清单不能是手写清单。PERSISTED_STORES 决定导出/导入/清档的范围,
- *      而它是一张人手维护的数组 —— 新加一个持久化 store 却忘了登记,后果是
- *      「导出悄悄少一块进度、清档清不干净」,没有任何提示。故这里从**源码倒推**:
- *      凡 store 源码里调了 persistConfig('x') 的,就必须在清单里;反之亦然。
- *
- *   二 往返一致:真数据 → 导出 → 清档(确认真清干净)→ 导入 → 每个分片
- *      逐字节对得上,且重建 store 之后关键状态仍在。
- *
- * 故障注入:把 PERSISTED_STORES 里任一项删掉(清单那条红),或让 applyImportPayload
- * 跳过一个分片(往返那条红)。
+ * 存档往返:导出 → 清档 → 导入。
+ *   一 PERSISTED_STORES 决定导出/导入/清档范围,须与 store 源码里的 persistConfig('x') 双向一致
+ *      (漏登记:导出少一块、清档不净,且无提示)
+ *   二 往返一致:每个分片对得上,重建 store 后关键状态仍在
+ * 故障注入:删掉 PERSISTED_STORES 任一项(清单那条红),或让 applyImportPayload 跳过一个分片(往返那条红)。
  */
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -52,7 +39,7 @@ import type { EnemyDef } from '@/types'
 
 const STORES_DIR = resolve(__dirname, '../stores')
 
-/** store 源码里真正调用了 persistConfig 的那些 id —— 清单的真来源 */
+/** store 源码里调了 persistConfig 的 id;清单的真来源 */
 function persistedIdsFromSource(): string[] {
   const ids = new Set<string>()
   for (const file of readdirSync(STORES_DIR)) {
@@ -63,7 +50,6 @@ function persistedIdsFromSource(): string[] {
   return [...ids].sort()
 }
 
-/** 一份能进存档的内存 localStorage */
 function installStorage(): Map<string, string> {
   const disk = new Map<string, string>()
   vi.stubGlobal('localStorage', {
@@ -77,11 +63,11 @@ function installStorage(): Map<string, string> {
   return disk
 }
 
-/** 真 pinia + 真持久化插件:让 store 与存档之间那条路完整跑起来 */
+/** 真 pinia + 真持久化插件 */
 function bootStores(): void {
   const pinia = createPinia()
   pinia.use(piniaPluginPersistedstate)
-  // pinia 得先装进一个 app,插件才会从「待安装」队列真正生效
+  // pinia 须先装进 app,插件才从待安装队列生效
   createApp({ render: () => null }).use(pinia)
   setActivePinia(pinia)
 }
@@ -110,13 +96,7 @@ describe('存档往返 · 分片清单从源码倒推', () => {
   })
 
   /**
-   * 分片显示名(STORE_NAMES)也是清单的一部分,同样不许手工同步漏项。
-   *
-   * 损坏提示走 `STORE_NAMES[id] ?? id`:某一片没有中文名时,界面就把
-   * 原始分片键(pacing / diag 这种)直接甩给玩家。storage.ts 的注释写着
-   * 「清单改了这个也得跟着改」,但此前没有任何断言守住这件事 ——
-   * 新增一个持久化分片、忘了加名字,不会有任何提示,直到真出了坏档才发现。
-   *
+   * STORE_NAMES 须与 PERSISTED_STORES 同步:损坏提示走 `STORE_NAMES[id] ?? id`,缺名即把原始分片键给玩家。
    * 故障注入:从 STORE_NAMES 删掉任一键 → 第一条红;加一个清单外的键 → 第二条红。
    */
   it('每个持久化分片都有中文显示名,清单外不得有多余名字', () => {
@@ -138,7 +118,6 @@ describe('存档往返 · 导出再导入一模一样', () => {
   })
 
   it('导出 → 清档 → 导入:每个分片都回来,关键状态还在', async () => {
-    // 攒一份「看得出内容」的存档:境界/道果/背包/图鉴/功法
     const player = usePlayerStore()
     const inventory = useInventoryStore()
     const lore = useLoreStore()
@@ -146,7 +125,7 @@ describe('存档往返 · 导出再导入一模一样', () => {
     const resources = useResourcesStore()
     const settings = useSettingsStore()
     const game = useGameStore()
-    // 真存档必带 game 分片(建号那刻起);导入校验也要求 player/game 俱在
+    // 导入校验要求 player/game 俱在
     game.markStarted()
     player.major = 7
     player.reincarnation.daoFruit = 9
@@ -155,7 +134,7 @@ describe('存档往返 · 导出再导入一模一样', () => {
     cultivation.learn('m_taixuan')
     resources.addSmall('herb', 42)
     settings.sfxOn = !settings.sfxOn
-    // 持久化插件的订阅走 Vue 调度器(微任务),得等一拍才落进待写队列
+    // 持久化订阅走 Vue 调度器(微任务),须等一拍才进待写队列
     await nextTick()
     flushSaveWrites()
 
@@ -175,16 +154,13 @@ describe('存档往返 · 导出再导入一模一样', () => {
     const err = importSaveText(text)
     expect(err, `导入失败:${err}`).toBeNull()
 
-    // 逐片对账:导入写进去的,就是导出时拿出来的那一份
     for (const id of exportedIds) {
       const raw = localStorage.getItem(storageKey(id))
       expect(raw, `导入后 ${id} 分片不见了`).not.toBeNull()
       expect(raw!, `${id} 分片内容与导出的不一致`).not.toContain('云隐')
       const stored = JSON.parse(readSaveText(raw!)) as Record<string, unknown>
       if (id === 'game') {
-        // 唯一刻意例外:导入把 lastActiveAt 重戳为「现在」(save.ts migrate),
-        // 免得快照里的旧时间戳把「导入旧备份」误算成「缺勤数月」——时钟
-        // 字段以外,其余键仍须与导出逐一对账
+        // 唯一例外:导入把 lastActiveAt 重戳为现在(save.ts migrate),免得旧备份被算成缺勤数月
         const expGame = payload.data.game as Record<string, unknown>
         expect(stored.lastActiveAt, '导入后游戏时钟应为现在附近').toBeGreaterThan(Date.now() - 60_000)
         for (const k of Object.keys(stored)) {
@@ -199,7 +175,7 @@ describe('存档往返 · 导出再导入一模一样', () => {
       }
     }
 
-    // 再开一次游戏(新 pinia + 插件从存档水合):玩家的东西得还在
+    // 新 pinia 从存档水合
     bootStores()
     const player2 = usePlayerStore()
     const inventory2 = useInventoryStore()
@@ -212,15 +188,8 @@ describe('存档往返 · 导出再导入一模一样', () => {
     expect(Object.keys(cultivation2.learned), '导入后功法没回来').toContain('m_taixuan')
   })
 
-  /**
-   * 战报里那些「读数」也要活着回来。
-   *
-   * 战后分析读的是 lastBattle.result 上的遥测、先手判定与敌人加成来源 ——
-   * 它们若在往返里掉了一栏,玩家下次打开只会看到分析面板空了一角,
-   * 而且悄无声息:字段丢了并不报错,只是解释不见了。
-   */
+  /** 战后分析读 lastBattle.result 的遥测、先手判定与敌人加成来源;往返丢字段不报错 */
   it('战报读数原样回来(遥测 / 先手 / 敌之加成 / 拾获)', async () => {
-    // 导入的门槛是「player 与 game 俱在」(建号那刻起就该有),先备齐
     const player = usePlayerStore()
     useGameStore().markStarted()
     player.major = 3
@@ -278,7 +247,6 @@ describe('存档往返 · 导出再导入一模一样', () => {
     expect(back!.result.foeOrigin, '敌之加成没了,归因又断了').toBeDefined()
     expect(back!.result.foeOrigin!.ratio, '加成倍率在往返里被改动').toBeCloseTo(foe.origin!.ratio, 9)
     expect(back!.loot).toEqual(['灵石 ×12'])
-    // 判据落在玩家真正读的那一屏:导入之后,分析面板仍拿得出结论
     const analysis = analyzeBattle(back!.result, null)
     expect(analysis, '导入后分析面板说不出话了').not.toBeNull()
     expect(analysis!.dataRows.length).toBeGreaterThan(5)
@@ -313,13 +281,12 @@ describe('存档往返 · 导出再导入一模一样', () => {
     expect(info!.exportedAt, '应如实报导出时间').toBeGreaterThan(0)
     expect(info!.realmLabel).not.toBe('')
 
-    // tooNew:版本比当前大,确认前就该被标出来
     const tooNew = inspectImportText(
       `{"game":"yunyin-xiuxian","version":${SAVE_VERSION + 1},"exportedAt":1,"data":{"player":{"name":"未来客","major":1},"game":{}}}`
     )
     expect(tooNew?.tooNew, '更高版本应在确认前标出').toBe(true)
 
-    // 无名/缺字段时仍能读出结构,而不是抛错
+    // 无名/缺字段时不抛错
     expect(
       inspectImportText(`{"game":"yunyin-xiuxian","version":1,"exportedAt":2,"data":{"player":{},"game":{}}}`)?.name
     ).toBe('无名散修')

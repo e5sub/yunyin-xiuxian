@@ -79,7 +79,7 @@ export const MAIN_QUESTS: QuestDef[] = [
   },
   { id: 'q_huashen', name: '问鼎化神', desc: '突破至化神境', cond: { type: 'realm', major: 4 }, reward: { stoneTier: 300, wudao: 80 } },
 
-  // ---- 人间界后期:主线一路铺到飞升 ----
+  // ---- 人间界后期 ----
   {
     id: 'q_boss20',
     name: '踏平妖庭',

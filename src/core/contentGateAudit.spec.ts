@@ -1,17 +1,5 @@
 /* eslint-disable no-console */
-/**
- * 内容可达性审计
- *
- * 深修补偿审计证明:可折算的第二回报走不通(A 案造新膨胀、B 案需 168 倍补偿)。
- * 于是深修回报的成立条件只剩一条——**金丹路线拿不到,或拿不到同等的**。
- *
- * 本套用例逐类核实门槛真伪,防止把「看着像深修专属、实际金丹刷得到」的东西
- * 包装成深修回报——那只是换一种方式制造假选择。
- *
- * 关键前提:认知层(丹方掌握度、材料药性、器纹、敌手路数)与成就图鉴
- * **完全跨世保留**。所以境界门槛是**一次性**的:跨过一次就永久记在账上,
- * 此后无限轮回都还在。
- */
+/** 内容可达性审计:逐类核实门槛真伪,金丹刷得到的不算深修回报 */
 import { describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { CONTENT_GATES, disqualified, qualifiedRewards, reachabilityTable } from './contentGateAudit'
@@ -44,7 +32,7 @@ describe('内容可达性 · 门槛全貌', () => {
 
   it('门槛分三种性质,不可混为一谈', () => {
     const kinds = new Set(CONTENT_GATES.map(g => g.kind))
-    // 获得门槛(拿不到)、触发门槛(事件不出现)、无门槛——本项目暂无「使用门槛」
+    // 本项目暂无「使用门槛」
     expect(kinds.has('acquire')).toBe(true)
     expect(kinds.has('trigger')).toBe(true)
     expect(kinds.has('none')).toBe(true)
@@ -58,18 +46,18 @@ describe('内容可达性 · 被证伪的候选', () => {
     expect(pet.kind).toBe('trigger')
     expect(pet.reachableByGoldRebirth).toBe(false)
     expect(pet.qualifies).toBe(true)
-    expect(row.goldShare!).toBeLessThan(1) // 神兽不在金丹可达范围内
+    expect(row.goldShare!).toBeLessThan(1)
     console.log(`\n灵兽:${pet.evidence}`)
   })
 
   it('灵兽:泛型事件池只发入门圣兽;仙品/神品神兽仅由仙界及以上(≥9)的指名事件发放', () => {
-    // 泛型事件(ev_wounded_beast / ft_beast_pledge 共用 genericPetPool)不含任何仙品/神品神兽
+    // ev_wounded_beast / ft_beast_pledge 共用 genericPetPool
     const entry = genericPetPool(new Set())
     for (const p of entry) {
       expect(qualityDef(p.quality).rank, `${p.id} 不得进泛型池`).toBeLessThan(IMMORTAL_RANK)
     }
     const entryIds = new Set(entry.map(p => p.id))
-    // 汇总所有「指名 id」的发兽效果:petId -> 各事件的 minRealm
+    // petId -> 各指名事件的 minRealm
     const grantedAt: Record<string, number[]> = {}
     for (const e of EVENTS) {
       for (const c of e.choices) {
@@ -82,7 +70,6 @@ describe('内容可达性 · 被证伪的候选', () => {
         }
       }
     }
-    // 每一只 仙品/神品 神兽:①不进泛型池 ②都有指名事件 ③全部事件在仙界及以上(无绕过路径)
     for (const p of PETS) {
       if (qualityDef(p.quality).rank < IMMORTAL_RANK) continue
       expect(entryIds.has(p.id), `${p.id} 神兽不得经泛型池获得`).toBe(false)
@@ -92,8 +79,7 @@ describe('内容可达性 · 被证伪的候选', () => {
   })
 
   it('灵兽:真实解析泛型灵兽事件,实际发放的每一只都在入门档(无神兽漏网)', () => {
-    // 直接触发 genericPetPool 只能证明「池子没神兽」;这里从事件结算入口走一遍,
-    // 证明 eventEngine 的泛型分支用的就是那个池 —— 改回 PETS.filter 才会放过神兽。
+    // 走事件结算入口,钉住 eventEngine 泛型分支用的就是 genericPetPool(改回 PETS.filter 会放过神兽)
     setActivePinia(createPinia())
     const player = usePlayerStore()
     player.initCharacter('事件', { roots: [] } as never)
@@ -107,8 +93,7 @@ describe('内容可达性 · 被证伪的候选', () => {
       weight: 1,
       choices: [{ label: '收留', outcomes: [{ weight: 1, text: '得一灵兽', effects: [{ type: 'pet' }] }] }]
     }
-    // 刷很多次:若泛型池混入神兽,收集序列里几乎必然冒出仙/神品,本断言即红。
-    // 正确实现下,池子只有入门 8 只,刷到耗尽也只是这 8 只。
+    // 泛型池混入神兽时,刷 150 次几乎必然冒出仙/神品
     for (let i = 0; i < 150; i += 1) resolveEventChoice(def, 0, 3)
     expect(quests.collections.pet.length, '泛型灵兽事件应能发到入门圣兽').toBeGreaterThan(0)
     for (const id of quests.collections.pet) {
@@ -129,7 +114,6 @@ describe('内容可达性 · 被证伪的候选', () => {
     const ev = CONTENT_GATES.find(g => g.id === 'event')!
     const row = reachabilityTable().find(r => r.gate.id === 'event')!
     expect(ev.qualifies).toBe(false)
-    // 金丹可触发绝大多数事件;仙界及以上新增的奇遇带 minRealm,但仍不足以支撑一条路线
     expect(row.goldShare!).toBeGreaterThan(0.8)
     console.log(`\n事件:金丹可触发 ${(row.goldShare! * 100).toFixed(0)}%,有 ${row.deepOnly} 个需要深修`)
   })
@@ -137,7 +121,7 @@ describe('内容可达性 · 被证伪的候选', () => {
   it('这三项若包装成深修回报,只是换一种方式制造假选择', () => {
     const bad = disqualified().map(g => g.name)
     expect(bad).toContain('师承')
-    // 灵兽曾与师承并列;扩界后神兽成为神界专属,已从「被证伪」转入「有资格」一列
+    // 神兽是神界专属,灵兽已归入「有资格」一列
     expect(bad).not.toContain('灵兽')
     console.log(`\n被证伪:${bad.join('、')}——它们都在金丹的可达范围内`)
   })
@@ -156,7 +140,6 @@ describe('内容可达性 · 有资格的候选', () => {
     expect(g.bypass).toContain('预支')
     const row = reachabilityTable().find(r => r.gate.id === 'gongfa')!
     console.log(`\n功法:金丹(含预支)可学 ${(row.goldShare! * 100).toFixed(0)}%,深修专属 ${row.deepOnly} 门`)
-    // 仍有深修专属,但要记住这条绕过路径
     expect(row.deepOnly).toBeGreaterThan(0)
   })
 
@@ -185,18 +168,12 @@ describe('内容可达性 · 结论', () => {
   })
 
   it('门槛是一次性的:认知跨世保留,跨过一次就永久在账上', () => {
-    // 这是最要紧的一条约束。confirmReincarnation 不清 lore/quests,
-    // 所以「深修一次拿到丹方」之后,玩家可以回到金丹无限轮回而不失去它。
-    // 换言之深修回报天然是**一次性投资**,不是持续的停世理由——
-    // 若要让深修反复值得,回报必须可重复获取或逐世累加
+    // confirmReincarnation 不清 lore/quests:深修回报是一次性投资,不是持续的停世理由
     const oneTime = qualifiedRewards().filter(g => g.id === 'recipe' || g.id === 'gongfa')
     expect(oneTime.length).toBe(2)
   })
 
   it('警告:四类合格回报里有三类集中在同一条轴上', () => {
-    // 丹方、功法、区域认知本质都是「知识」,天界道痕是「终局资格」。
-    // 若把深修价值全押在知识上,各境界之间仍缺乏方向差异——
-    // 玩家还是会算出一个固定停世点,只是从金丹挪到了「知识吃满的那一境」
     const knowledge = qualifiedRewards().filter(g => ['recipe', 'gongfa', 'region'].includes(g.id))
     expect(knowledge).toHaveLength(3)
     console.log(

@@ -1,16 +1,7 @@
 /**
- * 度劫机关(gauntlet.ts)—— runGauntlet 原始波次环单测。
- *
- * runGauntlet 此前只在远征/试炼/相元挑战里被**间接**覆盖(integration 断言
- * cleared→fightsWon===fights),波次环本身(全胜即清/中途败停当层/零波)从未作为
- * 被测单元直接验证过。这里的核心契约:
- *   cleared ⇔ 全部波次都打赢(fightsWon === foes.length);
- *   中途某场败 → 立即停:cleared=false、fightsWon=已胜场数、rows 含败的那场;
- *   零波 → cleared=true、fightsWon=0。
- *
- * 确定性:runGauntlet 把 rng 作为**形参**(非全局),这里喂固定种子的 RandomService,
- * 战报完全确定;用「满维碾压 vs 纸糊」的极大幅差(1e9 vs 100)让任何随机骰都改变不了
- * 胜负。snap 需带 skills([])才走通 resolveCombat。
+ * 度劫机关(gauntlet.ts)· runGauntlet 波次环单测
+ * rng 为形参,喂固定种子;1e9 vs 100 的幅差让随机骰改变不了胜负。
+ * snap 须带 skills([])才走通 resolveCombat。
  */
 import { describe, expect, it } from 'vitest'
 import { RandomService, mulberry32 } from '@/utils/random'
@@ -20,10 +11,10 @@ import type { CombatantSnap } from '@/types'
 
 const rng = new RandomService(mulberry32(999))
 
-/** 满维碾压玩家:攻/防/血爆表,一击一个、谁也别想打死它 */
+/** 满维碾压玩家 */
 const GOD: CombatantSnap = { name: 'god', icon: 'p', isPlayer: true, attack: gn(1e9), defense: gn(1e9), maxHp: gn(1e9), speed: 1, mods: {}, skills: [] }
 
-/** 纸糊玩家:一下都吃不起 */
+/** 纸糊玩家 */
 const WEAK: CombatantSnap = { name: 'weak', icon: 'p', isPlayer: true, attack: gn(100), defense: gn(1), maxHp: gn(100), speed: 1, mods: {}, skills: [] }
 
 function foe(name: string, atk: number, hp: number): CombatantSnap {
@@ -36,7 +27,6 @@ describe('度劫机关 · 波次环(runGauntlet)', () => {
     expect(r.cleared).toBe(true)
     expect(r.fightsWon).toBe(3)
     expect(r.rows).toHaveLength(3)
-    // 每场 rows 都胜,战报行数与胜场数一致
     expect(r.rows.map(x => x.win)).toEqual([true, true, true])
     expect(r.rows.map(x => x.foeName)).toEqual(['a', 'b', 'c'])
     expect(r.totalRounds).toBeGreaterThanOrEqual(3)
@@ -68,13 +58,13 @@ describe('度劫机关 · 波次环(runGauntlet)', () => {
   })
 
   it('违契终止:该场明明胜了,fightsWon 要计入这一胜,跟 rows 的 win=true 一致', () => {
-    // 独立种子,不依赖其它用例消费 stream;玩家每场都赢但胜后血量 < 80% 契线 → 违契停
+    // 独立种子,不依赖其它用例消费 stream;胜后血量 < 80% 契线即违契停
     const rrng = new RandomService(mulberry32(7))
     const p: CombatantSnap = { name: 'p', icon: 'p', isPlayer: true, attack: gn(200), defense: gn(1), maxHp: gn(500), speed: 1, mods: {}, skills: [] }
     const r = runGauntlet(p, [foe('a', 300, 200)], undefined, 0, rrng, { minHpAfterFight: 0.8 })
     expect(r.cleared).toBe(false)
     expect(r.pactBroken).toBe(true)
-    expect(r.rows[0]!.win).toBe(true) // 这一行是「赢」
-    expect(r.fightsWon).toBe(1) // 胜场数必须承认这一胜,否则展示会报「止步/败」与赢行矛盾
+    expect(r.rows[0]!.win).toBe(true)
+    expect(r.fightsWon).toBe(1) // 不计入则展示报「止步/败」,与赢行矛盾
   })
 })

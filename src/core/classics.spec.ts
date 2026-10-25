@@ -1,10 +1,4 @@
-/**
- * 典籍志审计 —— 境界名的「来路」必须真的能在典籍表里查到
- *
- * 界域志把每一条来路摊开给玩家看,于是多了一条必须守住的线:
- * **境界 lore 里引到书名号《》的原典,典籍表里就得真有这一部,且它确实关联该境。**
- * 否则界域志就成了"看着很讲究、其实对不上"的装饰。
- */
+/** 典籍志审计:境界 lore 里引到书名号《》的原典,典籍表里须真有这一部,且关联该境 */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -15,7 +9,7 @@ import { REALMS } from '@/data/realms'
 
 const norm = (s: string): string => s.replace(/\s+/g, '')
 
-/** 境界的出处类别 → 典籍的学派(两套命名,避免直接字符串比对导致误判) */
+/** 境界出处类别 → 典籍学派(两套命名,不直接字符串比对) */
 const BASIS_SCHOOL: Record<string, string> = {
   内丹: '丹道',
   佛道: '佛道',
@@ -69,7 +63,7 @@ describe('典籍志 · 与境界 lore 双向对得上', () => {
     for (const c of CLASSICS) {
       for (const rid of c.realms) {
         const realm = REALMS.find(r => r.id === rid)!
-        // 或直接引了书名,或至少属于该典籍对应的来路(网文一脉不引书名)
+        // 网文一脉不引书名
         const cites = norm(realm.lore).includes(norm(c.title))
         const sameSchool = c.school === '网文' || BASIS_SCHOOL[realm.basis] === c.school
         expect(cites || sameSchool, `《${c.title}》关联了 ${realm.name},但两者既不同源也无引用`).toBe(true)
@@ -86,8 +80,7 @@ describe('典籍志 · 与境界 lore 双向对得上', () => {
 
 describe('典籍志 · 未实装门类如实标注', () => {
   it('待续清单非空,且每条都注明未实装', () => {
-    // 清单会随实装变短,四门全接上后**空着才是对的** —— 故不设下限,
-    // 只要求"还剩什么,就如实标什么";留空的栏目不许写空话凑数
+    // 不设下限:四门全接上后空着才对
     for (const p of PLANNED_SCHOOLS) {
       expect(p.name).toBeTruthy()
       expect(p.note, `${p.name} 未注明状态`).toContain('未实装')
@@ -109,7 +102,7 @@ describe('典籍志 · 未实装门类如实标注', () => {
       .replace(/<!--[\s\S]*?-->/g, '')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/.*$/gm, '')
-    // 只认"用过"的形态(调用/列表渲染),不认 import 那一行 —— 否则注释与导入都能冒充接线
+    // 只认用过的形态(调用/列表渲染),注释与 import 不算接线
     for (const token of ['in TRIGRAMS', 'in HEXAGRAMS', 'askDivination(', 'DIVINATION_COST']) {
       expect(src, `界域志没有接上 ${token}`).toContain(token)
     }
@@ -122,7 +115,6 @@ describe('界域志 · 分册', () => {
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/.*$/gm, '')
 
-  /** 分册表里声明的每一册 */
   const tabIds = [...src.matchAll(/id: '(realm|classics|yi|ziwei|xiang|qimen|todo)'/g)].map(m => m[1]!)
 
   it('六册俱全(界域/典籍/周易/紫微/星象/奇门)', () => {

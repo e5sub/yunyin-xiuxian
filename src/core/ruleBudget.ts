@@ -1,8 +1,4 @@
-/**
- * 规则预算(Phase 25)—— 设计侧的复杂度会计,不是玩家资源
- * 每类机制有隐性权重;单件内容塞入过多高权重机制即超预算,
- * 程序化生成与人工新增都受同一套账本约束
- */
+/** 规则预算:设计侧的复杂度会计,不是玩家资源;程序化生成与人工新增同一套账 */
 import type { AnyStatKey, CombatRules, StatMods } from '@/types'
 import { DIMINISH_KEYS } from '@/data/constants'
 
@@ -69,7 +65,7 @@ export function budgetOfRules(rules: CombatRules | undefined): number {
   return Math.round(sum * 10) / 10
 }
 
-/** 单件内容预算上限(功法满配 / 法宝被动 / 天赋;现存最高 2.8,留 1.8 倍设计空间) */
+/** 单件内容预算上限(功法满配 / 法宝被动 / 天赋;现存最高 2.8) */
 export const ITEM_BUDGET_CAP = 5
 /** 单个世界规则预算上限(手工与程序化同账) */
 export const WORLD_BUDGET_CAP = 14

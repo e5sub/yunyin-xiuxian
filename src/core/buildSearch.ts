@@ -1,8 +1,4 @@
-/**
- * 随机构筑搜索(Phase 19)
- * 在可达词条空间内随机生成大量构筑批量对战:
- * ① 寻找人类没想到的 Emergent Build ② 万金油/陷阱构筑检测 ③ 战力-胜率相关性
- */
+/** 随机构筑搜索:在可达词条空间内随机生成构筑批量对战,查 Emergent Build、万金油/陷阱构筑与战力-胜率相关性 */
 import type { CombatantSnap, StatMods, AnyStatKey } from '@/types'
 import { gn, toNum } from '@/utils/gnum'
 import { mulberry32, RandomService } from '@/utils/random'
@@ -53,10 +49,10 @@ export function randomBuild(rng: RandomService, idx: number): RandomBuild {
   const pool = [...KEY_RANGES]
   for (let i = 0; i < keyCount && pool.length > 0; i += 1) {
     const [key, max] = pool.splice(rng.int(0, pool.length - 1), 1)[0]!
-    // 中期成型档:词条取上限的 30%~80%(极限毕业档另行统计,见 spec 输出)
+    // 中期成型档
     mods[key] = Math.round(rng.float(0.3, 0.8) * max * 100) / 100
   }
-  // 属性预算守恒:三维只能偏科,不能同时拉满(对应真实装备槽位约束)
+  // 属性预算守恒:三维只能偏科,不能同时拉满
   let sa = rng.float(0.7, 1.45)
   let sd = rng.float(0.7, 1.45)
   let sh = rng.float(0.7, 1.45)
@@ -91,7 +87,7 @@ export interface SearchResult {
   build: RandomBuild
   cells: number[]
   avg: number
-  /** 万金油:≥70% 场景胜率 ≥98% */
+  /** 万金油:WALL_IDS 四墙中 ≥3 面 ≥95%,且首领 ≥90% */
   universal: boolean
   /** 陷阱:所有场景胜率 <30% */
   trap: boolean
@@ -131,7 +127,7 @@ interface ScoredBuild {
   trap: boolean
 }
 
-/** 单套构筑的评分:对每类原型打 fightsPerArch 场,算平均与万金油/陷阱判定 */
+/** 单套构筑评分:每类原型打 fightsPerArch 场 */
 function scoreOne(build: RandomBuild, rng: RandomService, fightsPerArch: number): ScoredBuild {
   const cells: number[] = []
   for (const arch of ENEMY_ARCHETYPES) {
@@ -142,7 +138,6 @@ function scoreOne(build: RandomBuild, rng: RandomService, fightsPerArch: number)
     cells.push(wins / fightsPerArch)
   }
   const avg = cells.reduce((s, x) => s + x, 0) / cells.length
-  // 万金油判定:连「高压墙」都通吃 —— WALL_IDS 四墙中 ≥3 面 ≥95%,且首领 ≥90%
   const wallIdx = ENEMY_ARCHETYPES.map((a, i) => (WALL_IDS.includes(a.id) ? i : -1)).filter(i => i >= 0)
   const bossIdx = ENEMY_ARCHETYPES.findIndex(a => a.id === 'boss')
   const wallsBroken = wallIdx.filter(i => cells[i]! >= 0.95).length
@@ -151,7 +146,7 @@ function scoreOne(build: RandomBuild, rng: RandomService, fightsPerArch: number)
   return { build, cells, avg, universal, trap }
 }
 
-/** 汇总:排序 + 打标签(万金油/陷阱) + 战力-胜率相关 —— 同步异步共用同一汇总 */
+/** 汇总:排序、打标签、战力-胜率相关;同步异步共用 */
 function assembleResults(scored: ScoredBuild[]): SearchReport {
   const results: SearchResult[] = scored.map(it => ({
     build: it.build,
@@ -186,23 +181,15 @@ export interface SearchBuildsAsyncOptions {
   n?: number
   fightsPerArch?: number
   seed?: number
-  /** 每攒这么多套让出一次事件循环 —— 大批检索不冻结主线程 */
+  /** 每评这么多套让出一次事件循环 */
   yieldEvery?: number
   /** 进度回调:(已完成, 总数) */
   onProgress?: (done: number, total: number) => void
-  /**
-   * 协作取消:每评完一套就查一次,命中即收手并返回 null。
-   *
-   * 让出事件循环只保证主线程能响应,不会自己停下长任务 —— 组件卸载后若仍跑满
-   * 六百套,重进流派页再检索就会与旧任务叠加,手机后台继续空烧。
-   */
+  /** 协作取消:每评完一套查一次,命中即返回 null(让出事件循环不会自己停下长任务) */
   shouldStop?: () => boolean
 }
 
-/**
- * 分块异步版。与 searchBuilds 共享 scoreOne/assembleResults 同一内核,
- * 同参(同 n/场次/种子)结果逐位一致;差别只在让出事件循环与报进度。
- */
+/** 分块异步版:与 searchBuilds 同一内核,同参(同 n/场次/种子)结果逐位一致 */
 export async function searchBuildsAsync(opts: SearchBuildsAsyncOptions = {}): Promise<SearchReport | null> {
   const n = opts.n ?? 1000
   const fightsPerArch = opts.fightsPerArch ?? 20
@@ -213,7 +200,7 @@ export async function searchBuildsAsync(opts: SearchBuildsAsyncOptions = {}): Pr
   for (let i = 0; i < n; i += 1) {
     if (opts.shouldStop?.()) return null
     scored.push(scoreOne(randomBuild(rng, i), rng, fightsPerArch))
-    // 以「已评分套数」为节拍:凑满一批就报(套数即读数,不差一);末批留给收尾
+    // 按已评分套数报进度(套数即读数,不差一);末批留给收尾
     if (scored.length % yieldEvery === 0 && i < n - 1) {
       opts.onProgress?.(scored.length, n)
       await new Promise(res => setTimeout(res, 0))

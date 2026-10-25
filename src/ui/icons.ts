@@ -1,4 +1,4 @@
-/** 图标注册表 —— 数据层用字符串键引用,统一在此映射 */
+/** 图标注册表:数据层用字符串键引用 */
 import type { Component } from 'vue'
 import {
   Amphora,

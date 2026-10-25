@@ -1,19 +1,9 @@
 /* eslint-disable no-console -- 三档的稀度对账表是给人看的 */
 /**
- * 历练三档触发(际遇 / 机缘 / 奇缘)审计
- *
- * 守四件事:
- *   ① 每一件能弹窗的事都归得进某一档,且三档互斥(不许有第四档,也不许漏)
- *   ② **模型 = 引擎**:公告给玩家的「约每 N 程一次」与引擎真掷出来的一致
- *   ③ 档位越罕见等得越久(rarity 序不许与概率序打架)
- *   ④ 界面读的是同一份口径 —— 不许在弹窗里另抄一张档位表
- *
- * ② 是这本文件里最要紧的一条,也是它存在的理由:第一版把三档当成「出事」池里的
- * 互斥抽取(三档之和 0.211 > 出事本身的 0.16,数学上就不成立),而引擎其实是
- * 先掷奇缘闸门(0.3,且必须真有该走的下一程)、再掷机缘(0.02)、余下才是际遇 ——
- * 于是界面公告的「际遇约每 6 程」真值是 6.4~9.1 程、「机缘约每 313 程」真值是 319~446 程,
- * 而且三个数**永远不可能同时成立**(它们描述的是不同的缘分状态)。
- * 快照式断言抓不到这种错,只有拿真引擎跑一遍才抓得到。
+ * 历练三档触发(际遇 / 机缘 / 奇缘)审计:
+ * ① 每件能弹窗的事归且只归一档 ② 模型 = 引擎(公告的「约每 N 程」与真掷一致)
+ * ③ 越罕见等得越久 ④ 界面读同一份口径
+ * 引擎掷序:先奇缘闸门(须有该走的下一程)、再机缘、余下才是际遇。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -70,7 +60,6 @@ describe('三档触发 · 概率模型', () => {
     )
     expect(open.jingyu).toBeGreaterThan(open.qiyuan)
     expect(open.qiyuan).toBeGreaterThan(open.jiyuan)
-    // 机缘是「千载难逢」:每程 1% 不到 —— 两种状态都要成立
     expect(open.jiyuan).toBeLessThan(0.01)
     expect(closed.jiyuan).toBeLessThan(0.01)
   })
@@ -96,21 +85,13 @@ describe('三档触发 · 概率模型', () => {
     expect(tierOddsText('jiyuan', false)).not.toBe(tierOddsText('jiyuan', true))
   })
 
-  /**
-   * 模型 = 引擎。`pickEventFor` 回答的是「出事之后是哪一档」,故拿真引擎
-   * (固定种子)各跑两万次,把三档占比与 `tierChances` 归一化后的占比逐档比:
-   * 引擎换了掷法、或模型少算一道闸门(奇缘那 0.3 会吃掉机缘与际遇的概率),立刻红。
-   */
+  /** pickEventFor 只答「出事之后是哪一档」:固定种子各跑两万次,占比与 tierChances 归一化后逐档比 */
   it('模型 = 引擎(蒙特卡洛):两万次真实抽取,三档占比逐档对得上', () => {
     const region = regionDef('qingyun')!
     const run = (stagePending: boolean): { counts: Record<EventTier, number>; total: number } => {
       setActivePinia(createPinia())
       const player = usePlayerStore()
-      /**
-       * 演出两种缘分状态。注意 pendingChainStages 扫的是**所有**链 ——
-       * 只把第一条走完,别的链仍会把奇缘那扇门开着(第一版这条判据就是这么翻车的:
-       * 「缘未起」那一栏实测奇缘 29.8%,而模型说 0)。
-       */
+      // pendingChainStages 扫所有链:须先把全部链走完,再按需重开第一条
       for (const chain of CHAINS) player.setEventChain(chain.id, chain.stages.length)
       if (stagePending) player.setEventChain(CHAINS[0]!.id, 0)
       const rand = new RandomService(mulberry32(0xc0ffee))
@@ -165,7 +146,6 @@ describe('三档触发 · 接线', () => {
     expect(dialog, '事件属于哪一档必须取自 eventTierOf').toContain('eventTierOf(')
     expect(dialog, '概率文案必须取自 tierOddsText').toContain('tierOddsText(')
     expect(dialog, '概率要按"此刻有没有缘在续"算').toContain('chainPending')
-    // 从前三档共用「际遇」一个标题 —— 这条红线防它回来
     expect(dialog, '弹窗标题又被写死成「际遇」了').not.toMatch(/:title="result \? '际遇'/)
   })
 
@@ -174,17 +154,11 @@ describe('三档触发 · 接线', () => {
     expect(view, '该把三档摆在出发之前').toContain('EVENT_TIERS')
     expect(view, '档位胶囊的文字该取自同一份概率口径').toContain('tierOddsText(')
     expect(view, '稀度要按当前缘分状态算').toContain('pendingChainStages(')
-    /**
-     * 档数也是数据,不是修辞:从前这里与出行弹窗各写一句「途中三档」,而档位名
-     * 也一个个点名叫齐。加一档 EVENT_TIERS 时,两处文案都不报错,玩家看到的
-     * 却仍是「三档」—— 与「六档行程」那次同一类病。
-     *
-     * 故障注入:把 `EVENT_TIERS.length` 改回字面量 3 → 本条红。
-     */
+    // 故障注入:把 EVENT_TIERS.length 改成字面量 3,本用例红
     expect(view, '档数应由 EVENT_TIERS 现算').toContain('途中{{ cnNumber(EVENT_TIERS.length) }}档')
     expect(view, '不许再把档数写死成三档').not.toContain('途中三档')
 
-    // 注释里留着「从前写死三档」的历史说明,判据只看真正渲染的正文
+    // 剥掉注释,判据只看渲染正文
     const dialog = src('../components/adventure/ExploreModeDialog.vue')
       .replace(/<!--[\s\S]*?-->/g, '')
       .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -205,7 +179,7 @@ describe('三档触发 · 接线', () => {
 
 describe('际遇概览(anyChance 入参 = 引擎真掷同一条乘链)', () => {
   it('抬高基础(星象/福缘/区域事件 eventMult)按同倍率放大各档,「约每 N 程」随之减少', () => {
-    // 有缘在续(stagePending=true)时奇缘档也非零,三档断言都真穷尽(不会拿 0×2==0 唬人)
+    // stagePending=true 时奇缘档非零,三档断言才不空转
     const base = tierChances(true)
     const x2 = EXPLORE_EVENT_CHANCE * 2
     const boosted = tierChances(true, x2)
@@ -213,10 +187,10 @@ describe('际遇概览(anyChance 入参 = 引擎真掷同一条乘链)', () => {
     expect(boosted.jiyuan).toBeCloseTo(base.jiyuan * 2, 9)
     expect(boosted.jingyu).toBeCloseTo(base.jingyu * 2, 9)
     expect(tierEncountersPerTrigger('qiyuan', true, x2)).toBeLessThan(tierEncountersPerTrigger('qiyuan', true))
-    // 文案层也吃 anyChance:基础×2 后「约每 N」的 N 必须变小(否则 tierOddsText 弃用入参也测不出)
+    // 文案层也须吃 anyChance
     expect(tierEncountersPerTrigger('jingyu', true, x2)).toBeLessThan(tierEncountersPerTrigger('jingyu', true))
     expect(tierOddsText('jingyu', true, x2)).not.toBe(tierOddsText('jingyu', true))
-    // 缺省 = 裸基础,不破坏既有契约
+    // 缺省 = 裸基础
     expect(tierChances(true)).toEqual(base)
   })
 })

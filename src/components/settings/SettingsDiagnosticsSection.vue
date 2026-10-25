@@ -27,10 +27,9 @@
   const ui = useUiStore()
   const diag = useDiagStore()
 
-  /** 最近一条异常(诊断块里只展示这一条,其余随复制/导出带走) */
+  /** 只展示最近一条,其余随复制/导出带走 */
   const latestError = computed(() => diag.errors[diag.errors.length - 1] ?? null)
 
-  /** 复制用的全文:一条一行,带时间与路由,便于直接贴进聊天窗 */
   const diagText = computed(() =>
     diag.errors
       .map(e => `${formatClock(e.at)} · ${e.info || '异常'} · ${e.message}${e.count > 1 ? ` ×${e.count}` : ''}${e.route ? ` @${e.route}` : ''}`)

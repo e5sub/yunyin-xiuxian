@@ -1,20 +1,7 @@
 /**
- * 轮回 ROI 审计
- *
- * 前一轮审计问错了问题。真实存档证明耗时模型高估两个数量级(见 saveCalibration),
- * 于是「道果永久收益该怎么递减」这个题面本身就站不住。
- *
- * 真正要回答的是:**为什么高频轮回是显性最优解。**
- *
- * 本模块只做一件事:比较「继续本世深修」与「立刻轮回重刷」的道果效率。
- * 结论若是后者长期占优,那玩家刷轮回就不是习惯问题,是系统结构逼出来的。
- *
- * 口径:耗时用本模块的 fullHoursToReach,已计入修速倍率(功法/装备/建筑/灵根/道果)、
- * 突破失败重试与灵气等待。绝对值仍不可信(见 saveCalibration),
- * 但全部读数都是**同一把尺子下的比值**,偏差在相除时抵消,故可用。
- *
- * 补齐突破与灵气后结论未变:最优点仍是金丹,效率跌幅由 466 倍变 339 倍——
- * 这两项都随境界递增,分子分母同向放大,压不动阶数差。
+ * 轮回 ROI 审计:比较「继续本世深修」与「立刻轮回重刷」的道果效率。
+ * 耗时用 fullHoursToReach(含修速倍率、突破失败重试与灵气等待);
+ * 绝对值不可信(见 saveCalibration),只用同一把尺子下的比值。
  */
 import { MANUAL_REBIRTH_MIN_MAJOR } from './reincarnation'
 import { baseCultPerSec, baseQiRegen, breakthroughBaseRate, daoFruitGain, expRequirement, qiCap } from './formulas'
@@ -24,16 +11,8 @@ import { toNum } from '@/utils/gnum'
 import { REBIRTH_REFERENCE_MAJOR } from '@/data/realms'
 
 /**
- * 修满一个大境界的完整耗时(秒)。
- *
- * progressionSim.hoursToReach 只算「修为累积」,漏了三项都随境界递增的成本:
- *   1. 突破失败重试——成功率从金丹 81% 降到真仙 72%,失败还要重攒 18% 修为
- *   2. 灵气等待——每次突破耗上限的 40%,攒够的时间从 1.3 分钟涨到 3.5 分钟
- *   3. 历练时间——战斗是修为的主要来源之一,但要占用时长(本函数暂未计入,
- *      因真实存档显示它与修炼并行,不是纯串行成本)
- *
- * 补齐前两项后,深修的时间成本比旧口径更高——这只会让「浅修快轮回」
- * 的优势更明显,不会翻转结论
+ * 修满一个大境界的完整耗时(秒):修为累积 + 突破失败重试 + 灵气等待。
+ * 历练时间未计入(真实存档显示它与修炼并行,不是纯串行成本)。
  */
 export function fullSecondsForMajor(major: number, daoFruit = 0, a: SimAssumptions = DEFAULT_ASSUMPTIONS): number {
   const mult = estimateCultMult(major, daoFruit, a)
@@ -99,12 +78,7 @@ export interface MarginalRow {
   vsOptimal: number
 }
 
-/**
- * 边际账:站在某境界,再往上修一境值不值。
- *
- * 参照物是「立刻轮回、重刷一轮最优转世点」——玩家的真实备选方案就是它,
- * 而不是「什么都不做」
- */
+/** 边际账:再往上修一境值不值;参照物是「立刻轮回、重刷一轮最优转世点」 */
 export function marginalTable(): MarginalRow[] {
   const opt = optimalRebirthPoint()
   const out: MarginalRow[] = []
@@ -118,11 +92,8 @@ export function marginalTable(): MarginalRow[] {
 }
 
 /**
- * 结构成因:两条曲线的增长阶数不同。
- *
- * 道果 = Σ(i+1)×DAO_FRUIT_PER_MAJOR,对境界是**二次**增长
- * 耗时按 EXP_MAJOR_GROWTH/CULT_MAJOR_SPEED_GROWTH 约 3.3 倍/境界,是**指数**增长
- * 分子二次、分母指数,效率必然单调崩塌——这不是参数没调好,是阶数不匹配
+ * 结构成因:道果 = Σ(i+1)×DAO_FRUIT_PER_MAJOR,对境界二次增长;
+ * 耗时按 EXP_MAJOR_GROWTH/CULT_MAJOR_SPEED_GROWTH 指数增长。
  */
 export interface GrowthOrders {
   /** 金丹→真仙的道果倍数 */

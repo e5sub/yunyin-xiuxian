@@ -1,13 +1,7 @@
 /**
- * 存档文件读取 —— 取消后不再回调。
- *
- * FileReader 的 load 是异步的。玩家选完文件立刻离开设置页/欢迎页时,
- * 旧实现仍会在回调里 engine.pause() 并写已销毁组件的 ref;若读取路径
- * 失败再 resume 不到,游戏就会永久停在暂停态。这里用一个可手动结束的
- * 最小 FileReader 桩,验证 abort 之后两条回调都不再执行。
- *
- * 故障注入:把 abort 改回只调用 reader.abort() 而不置 settled,
- * 「abort 后仍回调」这条会红。
+ * 存档文件读取:abort 后 load / error 回调都不再执行。
+ * 迟到回调会 engine.pause() 并写已销毁组件的 ref,resume 不到则游戏永久暂停。
+ * 故障注入:把 abort 改回只调 reader.abort() 而不置 settled,「卸载时 abort」用例红。
  */
 import { describe, expect, it } from 'vitest'
 import { readSaveFile } from './saveFileRead'

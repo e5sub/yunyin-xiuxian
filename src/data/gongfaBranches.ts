@@ -1,34 +1,15 @@
 /**
- * 功法悟道分支(Phase 31.0 A3 立架 · Phase 32.4 补全全书)
- *
- * 功法满级(learned[id] >= maxLevel)后可择一条悟道方向,
- * 改变该功法从满级起的成长方向(追加 perLevelMods 风格词条)。
- * 同一功法因此出现多个版本 —— 与"无职业 + 混合 Build"契合。
- * 分支一经选择不可更改(转世保留)。
- *
- * ## 分支给多少:锚在装备词条池上,不凭空定价
- *
- * data/affixes.ts 里每个词条都有一档最低值(如 attackPct 最低档 2%),把它记作一个
- * 「词条单位」。一条分支的份量 = 各词条值 ÷ 各自单位,再相加。按此口径本表的档位:
- *
+ * 功法悟道分支:功法满级(learned[id] >= maxLevel)后择一条,从满级起追加词条;一经选择不可更改(转世保留)。
+ * 份量 = 各词条值 ÷ 该词条在 data/affixes.ts 的最低档(「词条单位」),再相加。本表档位:
  *   凡品 3.5 · 良品 4~5 · 精品 5~6 · 灵品 7~7.5 · 玄品 7.5~9 · 天品 11~12 · 仙品 14
- *
- * 同品质下辅修略低于主修;秘术满级只需 3 层,故与同品质主修持平而不超。
- * 两条硬约束由 gongfaBranch.spec.ts 守着:
- *   1. 分支给的任何词条值,不得超过同名词条在装备上能出的最大值 —— 悟道是一条路,不是一件神装。
- *   2. 同一功法各分支份量相当 —— 「择一」得是真选择,不能有一条明显是陷阱。
- *
- * ## 分支写什么:长在功法自己的性子上
- *
- * 每条分支都从该功法的立意与既有词条里长出来 —— 敛息诀避的是气机,所以它的悟道通向
- * 御劫与气运;向死而生诀本就吃残血,所以它一条走绝境爆发、一条走绝境续命。
- * 分支不是发词条的由头,而是把这部功法本来就在说的话说到底。
+ * 同品质下辅修略低于主修;秘术满级只需 3 层,与同品质主修持平而不超。
+ * gongfaBranch.spec.ts 钉两条:分支词条值不超过同名词条在装备上能出的最大值;同一功法各分支份量相当。
+ * 分支从该功法的立意与既有词条里长出来。
  */
 import type { StatMods } from '@/types'
 import { gongfaDef, gongfaMaxLevel } from './gongfa'
 
 export interface GongfaBranchDef {
-  /** 所属功法 */
   gongfaId: string
   id: string
   name: string
@@ -262,7 +243,7 @@ export const GONGFA_BRANCHES: GongfaBranchDef[] = [
   b('x_daoyin', 'b_daoyin_ming', '明道', '道音入耳,修行不辍', { cultivationSpeed: 0.3, qiRegen: 0.28, breakthroughRate: 0.06 }),
   b('x_daoyin', 'b_daoyin_wu', '悟道', '闻音悟道,一日千里', { cultivationSpeed: 0.28, expGain: 0.28, luck: 0.12 }),
 
-  // ---- 渡劫:九霄渡劫经(人间界末,补该境空白) ----
+  // ---- 渡劫:九霄渡劫经(人间界末) ----
   b('m_dujie', 'b_dujie_lei', '雷罚', '雷气入杀,劫雷加身', { attackPct: 0.2, damageBonus: 0.05 }),
   b('m_dujie', 'b_dujie_cui', '淬体', '以雷淬骨,劫火不伤', { maxHpPct: 0.2, damageReduction: 0.1 }),
 
@@ -278,10 +259,8 @@ export const GONGFA_BRANCHES: GongfaBranchDef[] = [
   b('s_shenjiang', 'b_shenjiang_fa', '天罚', '受符行刑,攻势更烈', { attackPct: 0.3, critRate: 0.08, damageBonus: 0.15 }),
   b('s_shenjiang', 'b_shenjiang_zhen', '军律', '结阵自守,受击愈稳', { defensePct: 0.3, damageReduction: 0.15, maxHpPct: 0.3 }),
 
-  // ======== 第二轮扩功法(ISS-198):人间界后段 + 仙界/神界/混沌海逐境补足 ========
-  // 门槛规则与上一批一致:每条分支的份量以装备词条最低档为单位折算,
-  // 同品质档位不低于此前的均值(判据见 gongfaBranch.spec「份量随品质递增」),
-  // 同一部功法的两条路份量相当(比值 ≤2)。
+  // ======== 人间界后段 + 仙界/神界/混沌海逐境(ISS-198) ========
+  // 同品质档位不低于前批均值(gongfaBranch.spec「份量随品质递增」);同一部功法的两条路份量比值 ≤2
 
   // ---- 炼虚:太虚炼神篇 ----
   b('m_taixu', 'b_taixu_lian', '炼神', '炼神不辍,气机自循', { cultivationSpeed: 0.12, qiRegen: 0.12, defensePct: 0.06 }),
@@ -352,11 +331,8 @@ export function branchesFor(gongfaId: string): GongfaBranchDef[] {
 }
 
 /**
- * 该功法此刻是否真能悟道。
- *
- * 满级只是前提,还须确有歧路可择 —— 判据集中在此,界面提示与实际可选项不会分叉。
- * 全书功法现已尽数写有分支,但这道判断仍不能省:日后若新增一部尚未配分支的功法,
- * 它就该老老实实显示「圆满」,而不是挂出一个点开即空的「待悟道」。
+ * 该功法此刻是否真能悟道:满级且确有分支可择。界面提示与实际可选项同读此判据;
+ * 未配分支的功法须显示「圆满」,不挂「待悟道」。
  */
 export function canEnlighten(gongfaId: string, level: number): boolean {
   const def = gongfaDef(gongfaId)

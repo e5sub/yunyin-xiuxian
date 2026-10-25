@@ -63,17 +63,17 @@
   const report = ref<SearchReport | null>(null)
   const error = ref('')
 
-  // 检索是长任务,中途离开(组件卸载)就停下:不再改已销毁组件的响应式状态,也免得空烧 CPU
+  // 卸载即停:不再写已销毁组件的状态
   let isUnmounted = false
   onUnmounted(() => {
     isUnmounted = true
   })
 
-  /** 一次「实验室」:固定种子 → 全服同一份大势,不随刷新变;分块让位,主线程不冻结 */
+  /** 固定种子 → 全服同一份大势,不随刷新变;分块让位,主线程不冻结 */
   async function run(): Promise<void> {
     if (running.value) return
     running.value = true
-    // 重检索开跑先把旧报告清掉:带病的结果宁可不要,也不该冒充这次检索的结论
+    // 先清旧报告:失败时旧结果不得冒充本次结论
     error.value = ''
     report.value = null
     progress.value = 0
@@ -84,7 +84,7 @@
         fightsPerArch: 16,
         seed: 20261004,
         yieldEvery: 24,
-        // 只挡回写不够:长任务本身也要收到离页信号,否则仍会跑满全部模拟
+        // 只挡回写不够,离页须中止模拟本身
         shouldStop: () => isUnmounted,
         onProgress: (d, t) => {
           if (isUnmounted) return
@@ -92,7 +92,7 @@
           total.value = t
         }
       })
-      // null = 本轮已在离页时取消;没有报告可写,也不把 canceled 冒充成「检索夭折」
+      // null = 离页取消,不算检索失败
       if (isUnmounted || result === null) return
       report.value = result
     } catch {
@@ -103,7 +103,7 @@
     }
   }
 
-  /** 万金油按平均胜率取前二、点出名来;都是杂学配比就直说,不编名目 */
+  /** 万金油按平均胜率取前二;无名目报「杂学」 */
   const topUniversalNames = computed(() => {
     const tops = (report.value?.universals ?? [])
       .slice(0, 2)

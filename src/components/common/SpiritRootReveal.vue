@@ -6,15 +6,12 @@
         <div class="root-bg-orb root-bg-1" />
         <div class="root-bg-orb root-bg-2" />
 
-        <!-- 上升粒子(灵根探查的气息) -->
         <div v-if="animating" class="root-particles">
           <div v-for="i in 20" :key="i" class="root-particle" />
         </div>
 
-        <!-- 检测中心:三层反向旋转光环 + 核心 -->
         <div class="root-orb" :class="{ animating: animating }">
           <div class="root-core">
-            <!-- 轮换期间显灵根名,定格后显真实灵根 -->
             <span class="root-name" :style="{ color: currentColor }">{{ currentName }}</span>
           </div>
           <div class="root-ring ring-r1" />
@@ -22,14 +19,12 @@
           <div class="root-ring ring-r3" />
         </div>
 
-        <!-- 检测文字 -->
         <div v-if="animating" class="root-text">
           <p class="root-title">正在测定灵根……</p>
           <p class="root-temp" :style="{ color: currentColor }">{{ currentName }}</p>
         </div>
 
-        <!-- 无障碍播报:只播最终定格的真实灵根,不随闪现帧逐条报。
-             放到单独 aria-live 区而非闪名字的可见 span 上,避免读屏被轮换帧刷屏 -->
+        <!-- 读屏只播定格结果:单独 aria-live 区,不挂在轮换的可见 span 上 -->
         <span class="sr-only" role="status" aria-live="polite">{{ announcedName }}</span>
       </div>
     </Transition>
@@ -45,24 +40,21 @@
 
   const visible = ref(false)
   const animating = ref(false)
-  /** 无障碍播报文本:只在定格时填入真实灵根,读屏据此播报最终结果 */
+  /** 读屏播报文本:定格时才填入 */
   const announcedName = ref('')
 
-  /**
-   * 是否应跳过闪现动画:设置里开了「减少动效」或系统偏好 prefers-reduced-motion。
-   * 二者任一命中即跳过 2.2s 轮换,直接定格真实灵根。
-   */
+  /** 设置「减少动效」或系统 prefers-reduced-motion 任一命中即跳过 2.2s 轮换 */
   function reducedMotionActive(): boolean {
     if (settings.reduceMotion) return true
     return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true
   }
 
-  /** 定格收尾:停掉轮换 → 显示真实灵根 → 约定时间后淡出并回调 onDone(只回调一次) */
+  /** 定格收尾:停轮换 → 显示真实灵根 → 淡出后回调 onDone(只回调一次) */
   function settle(onDone?: () => void): void {
     stopCycle?.()
     stopCycle = null
     animating.value = false
-    // 先让 live 区挂载/保持空内容,下一帧再填结果,确保 change 事件触发播报
+    // live 区先保持空内容,下一帧再填,确保触发播报
     void nextTick(() => {
       announcedName.value = realName
     })
@@ -73,10 +65,7 @@
     stopTimers = () => clearTimeout(leave)
   }
 
-  /**
-   * 灵根品阶全集(与 linggenGen.ts 的 gradeName 取值一致):
-   * 轮换期间从所有品阶随机闪现,结束时定格真实灵根
-   */
+  /** 灵根品阶全集,须与 linggenGen.ts 的 gradeName 取值一致 */
   const GRADES: { name: string; color: string }[] = [
     { name: '杂灵根', color: '#857f70' },
     { name: '伪灵根', color: '#857f70' },
@@ -88,44 +77,39 @@
     { name: '混沌灵根', color: 'var(--color-cinnabar)' }
   ]
 
-  /** 当前轮换位置(轮换中随机,结束时定格为真实灵根;必须用 ref 才能触发 computed 重算) */
+  /** 当前轮换位置;须用 ref 才能触发 computed 重算 */
   const cycleIdx = ref(0)
-  /** 轮换表的收表函数(gameClock 收口:暂停冻结) */
+  /** 轮换的收表函数 */
   let stopCycle: (() => void) | null = null
   let stopTimers: (() => void) | null = null
-  /** 卸载后不再回填定时器,也不再回调 onDone(防路由切换后仍被 2200ms 定时器推回首页) */
+  /** 卸载后不再回填、不回调 onDone:防切路由后被 2200ms 定时器推回首页 */
   let unmounted = false
 
   const currentName = computed(() => (animating.value ? (GRADES[cycleIdx.value]?.name ?? '?') : realName))
   const currentColor = computed(() => (animating.value ? (GRADES[cycleIdx.value]?.color ?? '#c9a959') : realColor))
 
-  /** 真实灵根(结束时定格显示) */
+  /** 真实灵根 */
   let realName = '?'
   let realColor = '#c9a959'
 
-  /** 展示灵根鉴定动画:随机闪现所有灵根品阶,结束时定格真实 gradeName */
+  /** 灵根鉴定动画:随机闪现各品阶后定格 gradeName */
   function show(gradeName: string, onDone?: () => void): void {
-    if (unmounted) return // 卸载后不再起新一轮动画
+    if (unmounted) return
     realName = gradeName
-    // 灵根品阶越高颜色越亮(从 GRADES 里找真实灵根对应的颜色)
     realColor = GRADES.find(g => g.name === gradeName)?.color ?? '#c9a959'
     visible.value = true
 
-    // 减少动效(设置/系统偏好任一命中):跳过 2.2s 轮换,直接定格真实灵根,
-    // 仅保留淡出离场步进,onDone 依旧只回调一次
     if (reducedMotionActive()) {
       settle(onDone)
       return
     }
 
     animating.value = true
-    // 随机闪现所有灵根品阶(100ms 一次,约 20 次后显出真容)
-    // 建号流程里的演出:心跳停着时轮换也跟着停(与 useNow / 事件轮询同一出处)
+    // 走 gameClock:心跳停着时轮换同停(与 useNow / 事件轮询同一出处)
     stopCycle = gameClock(() => {
       cycleIdx.value = Math.floor(Math.random() * GRADES.length)
     }, 100)
     const doneTimeout = setTimeout(() => {
-      // 定格:显示真实灵根,并播报结果
       settle(onDone)
     }, 2200)
     stopTimers = () => {
@@ -192,7 +176,7 @@
     }
   }
 
-  /* 上升粒子(灵根探查气息,自底部缓缓升腾) */
+  /* 上升粒子 */
   .root-particles {
     position: absolute;
     inset: 0;
@@ -210,7 +194,7 @@
     animation: root-particle-rise 2s ease-out infinite;
   }
 
-  /* 20 颗粒子:均匀散布 + 相位错开(用 nth-child 定位,同源文件) */
+  /* 20 颗粒子:均匀散布 + 相位错开 */
   .root-particle:nth-child(1) {
     left: 10%;
     animation-delay: 0s;
@@ -404,10 +388,7 @@
     transition: color 0.1s;
   }
 
-  /* 过渡
-     遮罩层只淡入,绝不加 transform:它是 position:fixed + inset:0 的全屏底板,
-     一旦 scale 就会先缩成视口的一小块、四周露出底下的页面,再撑满——
-     看起来是「黑底放大」而不是「直接显示」。缩放挪到内部的检测光球上 */
+  /* 过渡:遮罩层只淡入,不加 transform(全屏底板一缩放就露出底下页面);缩放放在检测光球上 */
   .reveal-enter-active {
     animation: reveal-in 0.4s ease-out;
   }

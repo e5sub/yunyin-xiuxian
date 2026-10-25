@@ -1,9 +1,4 @@
-/**
- * 战力算式与构成行 —— 只给界面用,故留在 ui 层。
- *
- * 权重取自 `core/formulas` 的 POWER_WEIGHTS(与 powerScore 同一份),
- * 名字取自 `data/statNames` —— 两处都不在这里抄第二份。
- */
+/** 战力算式与构成行。权重同源:core/formulas 的 POWER_WEIGHTS(与 powerScore 同一份) */
 import type { FinalStats, GNum } from '@/types'
 import { POWER_WEIGHTS } from '@/core/formulas'
 import { mulN } from '@/utils/gnum'
@@ -14,7 +9,7 @@ export function powerExplainText(): string {
   return `攻×${w.attack} + 防×${w.defense} + 血×${w.hp}`
 }
 
-/** 战力构成行:攻/防/血各带权重与折算值 —— 逐行相加即总战力 */
+/** 战力构成行:攻/防/血各带权重与折算值,逐行相加即总战力 */
 export function powerBreakdownRows(
   s: FinalStats
 ): { name: string; raw: GNum; weight: number; value: GNum }[] {

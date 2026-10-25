@@ -1,6 +1,4 @@
-/**
- * 统一随机服务 —— 支持注入种子,保证概率逻辑可测试
- */
+/** 统一随机服务;可注入种子,供概率逻辑测试 */
 
 export type RandFn = () => number
 
@@ -17,7 +15,7 @@ export function mulberry32(seed: number): RandFn {
 }
 
 export class RandomService {
-  /** 显式声明 + 构造体内赋值:参数属性(`constructor(private rand)`)不是可擦除语法,过不了 erasableSyntaxOnly */
+  /** 不用参数属性(`constructor(private rand)`):非可擦除语法,过不了 erasableSyntaxOnly */
   private readonly rand: RandFn
 
   constructor(rand: RandFn = Math.random) {

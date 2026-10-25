@@ -1,25 +1,13 @@
 /**
- * 明文存档不许被误当密文
- *
- * 游戏明确宣称「导入时兼容旧版明文 JSON」。而 readSaveText = decryptSave(raw) ?? raw,
- * 其中 decryptSave 直接把任何字符串当密文丢给 CryptoJS —— 而 CryptoJS 的 Base64
- * 解析会**跳过非法字符**,于是明文 JSON 也可能解出一段非空乱码(不抛、sigBytes 也不为 0),
- * 结果 readSaveText 返回乱码、JSON.parse 失败,导入报「文件内容无法解析」。
- *
- * 实测 500 条明文里约 3 条中招(≈0.6%),与内容有关、与环境无关 ——
- * 这正是那种「偶尔有人报、谁也复现不了」的缺陷。故这里钉死:
- *
- *   一 一批明文(时间戳逐条变化)全都不许被改动 —— 中招的那几条就在其中;
- *   二 一条具体样本也不许被「解」出东西(说明它根本没走解密);
- *   三 真密文仍解得开(修的是误判,不是把解密关掉)。
- *
- * 故障注入:去掉 decryptSave 开头的密文头检查,第一条立刻红(实测 2000 条里 11 条中招)。
+ * 明文存档不许被误当密文(导入兼容旧版明文 JSON)。
+ * CryptoJS 的 Base64 解析跳过非法字符,明文 JSON 约 0.6% 会解出非空乱码。
+ * 故障注入:去掉 decryptSave 开头的密文头检查,第一条用例红(2000 条里 11 条中招)。
  */
 import { describe, expect, it } from 'vitest'
 import { decryptSave, encryptSave, readSaveText } from './crypto'
 import { SAVE_SERIALIZER } from './storage'
 
-/** 2026-01-01 起的毫秒基准 —— 每条样本都长这样,只有时间戳不同 */
+/** 毫秒基准:2026-01-01;样本只有时间戳不同 */
 const BASE_AT = 1767225600000
 
 function plainEnvelope(exportedAt: number): string {
@@ -33,7 +21,7 @@ function plainEnvelope(exportedAt: number): string {
 
 describe('明文存档 · 不许被误当密文', () => {
   it('一批明文(时间戳逐条变化)全部原样读回', () => {
-    // 中招率实测约 0.4%(500 条里 2 条),2000 条足以稳定暴露
+    // 2000 条足以稳定暴露
     const bad: string[] = []
     for (let i = 0; i < 2000; i++) {
       const text = plainEnvelope(BASE_AT + i)
@@ -56,14 +44,7 @@ describe('明文存档 · 不许被误当密文', () => {
     expect(readSaveText(cipher)).toBe(plain)
   })
 
-  /**
-   * 上面两条测的是 readSaveText;这条测**真正被调用的那一段**。
-   *
-   * 全量并行跑测试时偶发一红的那例(ISS-049)报在 savePersistence「读己所写」:
-   * 那条用例把还没落盘的**明文**交给 SAVE_SERIALIZER.deserialize ——
-   * 也就是 readSaveText 外面还包了一层 JSON.parse。修复只钉在 readSaveText 上,
-   * 若哪天有人在序列化器里另写一套解码(绕过 readSaveText),旧病会直接复发。
-   */
+  /** 测 store 真正调用的 SAVE_SERIALIZER.deserialize(ISS-049);序列化器另写解码、绕过 readSaveText 会复发 */
   it('存档序列化器读明文也不许翻车(真正被 store 调用的那一段)', () => {
     const data = { game: { started: true }, player: { exp: 42 } }
     expect(SAVE_SERIALIZER.deserialize(plainEnvelope(BASE_AT))).toMatchObject({ version: 2 })

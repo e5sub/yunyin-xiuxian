@@ -11,8 +11,7 @@
             <p class="flex items-baseline gap-2">
               <span class="font-kai text-[16px] tracking-widest text-ink">{{ build.displayName }}</span>
               <span class="text-[11px] text-cinnabar">{{ build.stageName }}</span>
-              <!-- 契合向下取整:字样必须与「成形 ≥60% / 大成 ≥90%」的档位同口径 ——
-                   四舍五入会让 59.6% 印成「60%」却还是雏形,头一行就自相矛盾 -->
+              <!-- 契合向下取整,与「成形 ≥60% / 大成 ≥90%」档位同口径(四舍五入会把 59.6% 的雏形印成「60%」) -->
               <span class="ml-auto tabular text-[12px] text-ink-soft">契合 {{ Math.floor(build.affinity * 100) }}%</span>
             </p>
             <div class="track-ink mt-1.5 h-1.25 w-full">
@@ -94,13 +93,8 @@
           </p>
           <p class="mt-0.5 text-[10px] text-cinnabar">代价:{{ comboInfo.art.costText }}</p>
         </div>
-        <!-- 构筑韧性:主派被封后还剩什么 -->
         <div v-if="resilience" class="mt-2.5 rounded-md bg-ink/4 px-3 py-2">
-          <!--
-            标签与取值各成一格并允许换行:窄屏上「构筑韧性(主派核心封印之下)」会把
-            右边那串胜率挤成两行(「胜率 100% →」/「100%」)。副题拆成独立一格,
-            换行时整串胜率一起落到下一行(nowrap 保证它自己不裂)。
-          -->
+          <!-- 标签与取值各成一格并允许换行:窄屏上整串胜率一起落到下一行,nowrap 保证它自己不裂 -->
           <p class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11px]">
             <span class="font-kai whitespace-nowrap text-ink-soft">构筑韧性</span>
             <span class="text-[10px] text-ink-faint">(主派核心封印之下)</span>
@@ -163,12 +157,9 @@
             {{ lo.seal }}
           </span>
           <span class="min-w-0 grow truncate font-kai text-[12px] text-ink">{{ lo.name }}</span>
-          <!-- 换装与删除确认态同卡:!py-1 盒高仅 27px(config 充其量 1px 差,但判据 <28 即红),
-               且卡片只在「有构筑」时才出现 —— 页面层巡页夹具没铺 loadouts 永远量不到它(HYP-056 边界)。
-               !py-2 抬到 35px,与旁边确认态按钮同高,视觉一排齐整 -->
+          <!-- !py-2:触面须 ≥28px(!py-1 仅 27px),与确认态按钮同高;卡片只在有构筑时出现,巡页夹具量不到(HYP-056) -->
           <button class="btn-ghost !px-2.5 !py-2 !text-[11px]" @click="applyLoadout(lo.id)">换装</button>
           <button class="btn-ghost !px-2 !py-2 !text-[11px] !text-ink-faint" @click="openRename(lo)">改名</button>
-          <!-- 删除二步确认:一套构筑是心血,误触垃圾桶不该直接没 -->
           <template v-if="confirmDelete !== lo.id">
             <button
               class="-m-1.5 flex min-h-[28px] min-w-[28px] items-center justify-center p-1.5 text-ink-faint active:text-cinnabar"
@@ -179,8 +170,7 @@
             </button>
           </template>
           <template v-else>
-            <!-- 确认态是同一条行内替换:纯 10px 文字盒高仅 15px 拇指点不中(layout-check 页面层量不到这段「打开才存在」的控件),
-                 与删除钮同法 —— 负外边距配正内边距把触面抬到 28px+,视觉占位不变 -->
+            <!-- 负外边距配正内边距把触面抬到 28px+,视觉占位不变(layout-check 量不到这段打开才存在的控件) -->
             <button class="btn-seal -my-4 !px-2 !py-2.5 !text-[10px]" @click="doDeleteLoadout(lo.id)">确认删除</button>
             <button class="-my-4 py-2.5 text-[10px] text-ink-faint active:text-ink" @click="confirmDelete = null">再想想</button>
           </template>
@@ -228,7 +218,6 @@
       </div>
     </template>
 
-    <!-- 流派实验室:随机构筑检索,读世界大势 -->
     <BuildLabPanel />
 
     <!-- 保存 / 改名构筑:同一弹窗两种身位,存的那套功/宝/装原样不动 -->
@@ -274,10 +263,10 @@
   const loadouts = useLoadoutsStore()
 
   const build = computed(() => detectBuild(player.finalStats.mods))
-  /** 五维评级:进攻/生存/身法/恢复/机制 —— 让玩家读懂构筑形状而非只盯战力总数 */
+  /** 五维评级:进攻/生存/身法/恢复/机制 */
   const powerRating = computed(() => ratePower(player.finalStats))
 
-  /** 点开哪一维看它的来路 —— 与人物页属性明细同一条规矩:明细之和 = 那一维的得分 */
+  /** 点开的那一维;明细之和 = 那一维的得分(与人物页属性明细同一条规矩) */
   const dimKey = ref<PowerDimKey | null>(null)
   function toggleDim(key: PowerDimKey): void {
     dimKey.value = dimKey.value === key ? null : key
@@ -289,7 +278,7 @@
       .filter((row): row is { key: typeof row.key; label: string; caveat: string } => Boolean(row.caveat))
   )
 
-  /** 主副体系凑对时展示组合技(未达门槛也展示,作为构筑目标) */
+  /** 主副体系凑对时展示组合技,未达门槛也展示 */
   const comboInfo = computed(() => {
     const b = build.value
     if (!b?.secondary) return null
@@ -298,14 +287,14 @@
     return { art, active: b.secondary.affinity >= COMBO_SECONDARY_MIN }
   })
 
-  /** 构筑韧性:主派封印后的战力保持(按 RESILIENCE_SAMPLE_RUNS 场等比敌采样,见 core/resilience) */
+  /** 构筑韧性:主派封印后的战力保持(RESILIENCE_SAMPLE_RUNS 场等比敌采样,见 core/resilience) */
   const resilience = computed(() => (build.value ? measureResilience(buildPlayerSnap()) : null))
 
-  /** 本世对局:拿当前构筑快照逐类对打(与构筑韧性同一条现算路径),短板一眼可见 */
+  /** 本世对局:当前构筑快照逐类对打,与构筑韧性同一条现算路径 */
   const matchupRows = computed(() => (build.value ? playerMatchups(buildPlayerSnap(), MATCHUP_SAMPLE_RUNS) : null))
-  /** 短板在前:胜率由低到高,先看见最吃亏的一面 */
+  /** 短板在前 */
   const matchupSorted = computed(() => [...(matchupRows.value ?? [])].sort((a, b) => a.winRate - b.winRate))
-  /** 三档色:≥70% 稳(青) / ≥45% 胶着(褐) / 其余吃亏(朱) —— 沿用战斗面板的胜率给色 */
+  /** 胜率三档色,沿用战斗面板的给色 */
   function winBarCls(rate: number): string {
     return rate >= 0.7 ? 'bg-jade' : rate >= 0.45 ? 'bg-amber-ink' : 'bg-cinnabar'
   }
@@ -313,7 +302,6 @@
     return rate >= 0.7 ? 'text-jade' : rate >= 0.45 ? 'text-amber-ink' : 'text-cinnabar'
   }
 
-  // ---- 双构筑对照 ----
   const endgame = useEndgameStore()
   /**
    * 对照选中态按道痕这一条本身记,不按落痕时刻记。
@@ -347,7 +335,6 @@
     saveOpen.value = true
   }
 
-  /** 行内「改名」:同一弹窗换成改名身位,名字预填当前的 */
   const renameId = ref<string | null>(null)
   function openRename(lo: Loadout): void {
     renameId.value = lo.id
@@ -362,7 +349,6 @@
     }
   }
 
-  /** 弹窗落定:存 / 改两分支,再由关闭统一复位改名身位 */
   function onSaveSubmit(): void {
     if (renameId.value) confirmRename()
     else if (captureLoadout(saveName.value)) saveOpen.value = false

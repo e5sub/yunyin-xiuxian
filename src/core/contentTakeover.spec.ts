@@ -1,22 +1,8 @@
 /* eslint-disable no-console */
 /**
- * 本世内容接管审计
- *
- * `MortalPlace.enemies / boss / eventTags` 此前是「已生成但不产生游戏效果」
- * 的悬空数据 —— 战斗仍走 REGIONS[fromId]。本轮把三处消费点
- * (在线战斗、在线事件、离线战斗)接到节点上。
- *
- * 核心约束:**REGIONS 降为静态素材库,不是第二个事实来源。**
- *
- * 四条硬验收:
- *   1 同 fromId、不同 world seed → 允许产生不同 enemy/boss/event
- *   2 同一节点重复读取 → 必须稳定,不因随机再次漂移
- *   3 非本世路线节点 → 不得越权从 REGIONS 取战斗内容
- *   4 老存档无 mortalWorld → 继续走旧 REGIONS 兼容路径
- *
- * 最要紧的一条:**不能只测「字段被读取了」,要测行为真的变了。**
- * 故末尾用故障注入 —— 把某节点的 enemies 换成显著不同的集合,
- * 若实际取到的仍是 REGIONS 的敌群,测试必须变红。
+ * 本世内容接管审计:在线战斗、在线事件、离线战斗读节点上的 `MortalPlace.enemies / boss / eventTags`;
+ * REGIONS 只是静态素材库,不是第二个事实来源。
+ * 故障注入:把节点 enemies 换成显著不同的集合,取到的仍是 REGIONS 敌群则本用例红。
  */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -40,7 +26,6 @@ function sharedPlace(a: ReturnType<typeof generateMortalWorld>, b: ReturnType<ty
 describe('内容接管 · 一:同一地界在不同世界里内容不同', () => {
   it('逐世对照同一处地界', () => {
     const adventure = useAdventureStore()
-    // 扫种子直到找到一处在两世里内容确实不同的地界
     let found: { id: string; a: ReturnType<typeof placeContent>; b: ReturnType<typeof placeContent> } | null = null
     for (let seed = 1; seed < 300 && !found; seed += 1) {
       const wa = generateMortalWorld(seed * 7919)
@@ -77,7 +62,6 @@ describe('内容接管 · 一:同一地界在不同世界里内容不同', () =>
     }
     const rate = differs / total
     console.log(`\n${total} 个节点里 ${differs} 个的内容与 REGIONS 静态定义不同(${(rate * 100).toFixed(0)}%)`)
-    // 若接管失败,这个比例会是 0
     expect(rate).toBeGreaterThan(0.5)
   })
 })
@@ -114,7 +98,7 @@ describe('内容接管 · 三:路线之外不得越权取内容', () => {
     adventure.setMortalWorld(w)
     const offRoute = REGIONS.find(r => !w.chain.some(p => p.fromId === r.id))!
     const c = placeContent(offRoute.id)
-    // fromLegacy 标出它不是本世内容 —— 调用方据此可拒绝
+    // fromLegacy 标记非本世内容
     expect(c.fromLegacy).toBe(true)
     const inRoute = placeContent(w.chain[0]!.fromId)
     expect(inRoute.fromLegacy).toBe(false)
@@ -156,7 +140,6 @@ describe('内容接管 · 故障注入:行为必须真的变了', () => {
     const id = w.chain[0]!.fromId
     const original = REGIONS.find(r => r.id === id)!
 
-    // 注入一个显著不同的敌群
     const injected = ['e_INJECTED_A', 'e_INJECTED_B']
     const tampered = {
       ...w,
@@ -165,7 +148,6 @@ describe('内容接管 · 故障注入:行为必须真的变了', () => {
     adventure.setMortalWorld(tampered)
     const c = placeContent(id)
 
-    // 若消费点仍读 REGIONS,这两条会失败
     expect(c.enemies.join()).toBe(injected.join())
     expect(c.boss).toBe('e_INJECTED_BOSS')
     expect(c.enemies.join()).not.toBe(original.enemies.join())
@@ -193,16 +175,13 @@ describe('内容接管 · 故障注入:行为必须真的变了', () => {
   })
 
   it('端到端:实际跑一次历练,遭遇的敌人必须来自节点', () => {
-    // 前面几条测的是 placeContent 自己。这一条真的跑 startExploration
-    // + tickExploration,从战报里读实际遭遇的敌人 id ——
-    // 若 runBattle 仍读 region.enemies,这里会立刻变红
+    // 真跑 startExploration + tickExploration,从战报读实际遭遇的敌人 id;runBattle 仍读 region.enemies 则变红
     const adventure = useAdventureStore()
     const player = usePlayerStore()
     player.linggen = { roots: [{ element: 'fire', aptitude: 80 }], gradeName: '单灵根', growthMult: 1.6 }
 
     const w = generateMortalWorld(20260904)
-    // 用一头真实存在、但与该地界原敌群无关的妖物填满整条路线。
-    // 必须是真 id —— enemyDef 查不到时 runBattle 会直接 return,战斗根本不发生
+    // 须是真 id:enemyDef 查不到时 runBattle 直接 return,战斗不发生
     const marker = REGIONS.flatMap(r => r.enemies).find(e => !REGIONS.find(x => x.id === w.chain[0]!.fromId)!.enemies.includes(e))!
     adventure.setMortalWorld({ ...w, chain: w.chain.map(p => ({ ...p, enemies: [marker] })) })
 
@@ -211,8 +190,7 @@ describe('内容接管 · 故障注入:行为必须真的变了', () => {
     expect(original.enemies).not.toContain(marker)
 
     expect(startExploration(first.fromId, 'normal')).toBe(true)
-    // 推进到出现第一场战斗 —— 单次 tick 可能落在事件分支上,
-    // 故循环推进并在每步清掉待处理事件
+    // 单次 tick 可能落在事件分支上:循环推进,每步清掉待处理事件
     for (let i = 0; i < 40 && !adventure.lastBattle; i += 1) {
       const s = adventure.session
       if (!s) break
@@ -231,8 +209,7 @@ describe('内容接管 · 故障注入:行为必须真的变了', () => {
   })
 
   it('这组注入用例是接管是否真实生效的唯一保证', () => {
-    // 若将来有人把消费点改回 region.enemies,上面两条会立刻变红。
-    // 只断言「字段存在」或「函数被调用」都挡不住这种回退
+    // 只断言「字段存在」或「函数被调用」挡不住消费点改回 region.enemies
     const adventure = useAdventureStore()
     const w = generateMortalWorld(777)
     adventure.setMortalWorld({ ...w, chain: w.chain.map(p => ({ ...p, enemies: ['e_ONLY_NODE'] })) })

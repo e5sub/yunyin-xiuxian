@@ -1,15 +1,6 @@
 /**
- * 词条转移面板的进度(议题 #22)—— 选到哪一步、主按钮上写什么、确认何时作废
- *
- * 判据与价签都在 core/affixTransfer(那边有自己的用例);这里只管流程:
- *   一 主按钮上的字依次是「未选词条 → 未选目标 → 可转」,缺料时写缺哪样;源件转空写「暂无词条」;
- *   二 默认落位:目标未满 → 新增;目标有更低的同一条 → 覆盖它;目标已满且有多条可顶 → 不替玩家选;
- *      再点一下已选的词条或目标不算改选,不把手选的落位改回默认;
- *   三 二步确认:按下第一步后改了任何一项(封存、位置、目标),确认自动作废;
- *      进确认态 400ms 内的「确认转移」不作数(两颗按钮在同一位置,连点两下不该跳过确认);
- *   四 「同时封存」默认勾着,但这一落位封不了时照样能转(界面说行,服务就得做成);
- *   五 做成之后留在面板里,目标保持选中、词条与位置清空;换了源件,进度全部作废。
- * 故障注入:preselect 恒返回 undefined → 第二条红;confirm 把 seal 改传 state.sealWanted → 第四条红。
+ * 词条转移面板流程(议题 #22)。判据与价签归 core/affixTransfer 的用例。
+ * 故障注入:preselect 恒返回 undefined → 「默认落位」用例红;confirm 把 seal 改传 state.sealWanted → 「同时封存」用例红。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, ref } from 'vue'
@@ -34,7 +25,7 @@ const FULL: [string, number][] = [
   ['dmg1', 0.5]
 ]
 
-/** 按下「转 移」,等过连点闸,再按「确认转移」 */
+/** 等过连点闸再确认 */
 function armAndConfirm(flow: ReturnType<typeof useAffixTransfer>): boolean {
   flow.arm()
   vi.advanceTimersByTime(400)
@@ -51,7 +42,7 @@ describe('词条转移面板 · 流程', () => {
       mk('open', [['hp1', 0.5]]),
       mk('full', FULL),
       mk('low', [['atk3', 0.2], ['hp1', 0.5]]),
-      // 两条封一条:顶替未封那条后仍是两条一封,封不了
+      // 两条封一条:顶替未封那条后仍两条一封,封不了
       mk('capped', [['def1', 0.5], ['hp1', 0.5]], 'heaven', { sealedAffixIds: ['def1'] }),
       // 零条件:新增后只有一条,可封上限为 0
       mk('bare', [])
@@ -98,7 +89,6 @@ describe('词条转移面板 · 流程', () => {
     expect(flow.replaceId).toBe('hp1')
     flow.pickAffix('atk3')
     expect(flow.replaceId).toBe('hp1')
-    // 切换封存也不丢已选位置
     flow.toggleSeal()
     expect(flow.replaceId).toBe('hp1')
   })
@@ -120,7 +110,7 @@ describe('词条转移面板 · 流程', () => {
     expect(flow.armed).toBe(true)
     flow.pickTarget('open')
     expect(flow.armed, '目标改了').toBe(false)
-    // 没按第一步,直接确认不算数
+    // 没按第一步,确认不算数
     vi.advanceTimersByTime(400)
     expect(flow.confirm()).toBe(false)
   })
@@ -135,7 +125,7 @@ describe('词条转移面板 · 流程', () => {
     expect(useInventoryStore().findItem('src')!.affixes).toHaveLength(2)
     vi.advanceTimersByTime(300)
     expect(flow.confirm()).toBe(true)
-    // 取消之后紧接着那一下(落在「返回」上)由页脚按 settling 挡掉
+    // 取消后紧接着那一下(落在「返回」上)由页脚按 settling 挡掉
     flow.pickAffix('def3')
     flow.arm()
     vi.advanceTimersByTime(400)
@@ -158,7 +148,7 @@ describe('词条转移面板 · 流程', () => {
 
   it('「同时封存」默认勾着,但这一落位封不了时照样能转,目标封存不变', () => {
     const inventory = useInventoryStore()
-    // 封满件:顶替未封那条
+    // 封满件
     const a = useAffixTransfer('src')
     a.pickAffix('atk3')
     a.pickTarget('capped')
@@ -168,7 +158,7 @@ describe('词条转移面板 · 流程', () => {
     expect(a.blockLabel).toBeNull()
     expect(armAndConfirm(a)).toBe(true)
     expect(inventory.findItem('capped')!.sealedAffixIds).toEqual(['def1'])
-    // 零条件:新增后只有一条,可封上限为 0
+    // 零条件
     const b = useAffixTransfer('src')
     b.pickAffix('def3')
     b.pickTarget('bare')

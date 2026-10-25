@@ -25,7 +25,6 @@
     <!-- 售出:寄卖计时与逐品定价随 MarketSellSection 本体 -->
     <MarketSellSection v-else-if="tab === 'sell'" />
 
-    <!-- 悬赏板:换单倒计时、贡器清单与展开态随 BountyBoardSection 本体 -->
     <BountyBoardSection v-else />
   </div>
 </template>
@@ -78,13 +77,12 @@
     market.sync(Date.now())
     bounty.sync(Date.now())
     reapConsign()
-    // 「去坊市续草」深链只负责把签切到「购」;高亮与滚动随 MarketShelfSection 本体
+    // 「去坊市续草」深链只切签;高亮与滚动随 MarketShelfSection
     if (route.query.focus === 'herb') tab.value = 'buy'
     timer = setInterval(() => {
       now.value = Date.now()
       reapConsign()
       bounty.sync(now.value)
-      // 跨过货架刷新窗口的当口重上一架货(离线归来同理,这一拍立刻换新)
       if (marketRemainingSec(market.stockedAt, now.value) <= 0) market.sync(now.value)
     }, 1000)
   })

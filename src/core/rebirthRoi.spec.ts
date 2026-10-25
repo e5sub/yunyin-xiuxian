@@ -1,17 +1,7 @@
 /* eslint-disable no-console */
 /**
- * 轮回 ROI 审计
- *
- * 玩家反馈「轮回次数太多没意义」,真实存档显示 22.7 小时刷了 18 世。
- * 前一轮把题目问成了「道果永久收益该怎么递减」,那是错的——
- * 该问的是:**为什么高频轮回是显性最优解。**
- *
- * 本套用例的结论:这不是玩家习惯,是系统结构逼出来的。
- * 道果对境界二次增长、耗时对境界指数增长,分子二次分母指数,
- * 效率必然单调崩塌,浅修快轮回在数学上就是最优。
- *
- * 口径:绝对小时数不可信(见 saveCalibration),但本模块全部读数
- * 都是同一把尺子下的比值,偏差相除时抵消。
+ * 轮回 ROI 审计:道果对境界二次增长、耗时指数增长,浅修快轮回是数值最优。
+ * 绝对小时数不可信(见 saveCalibration),读数均为同一把尺子下的比值。
  */
 import { describe, expect, it } from 'vitest'
 import { MANUAL_REBIRTH_MIN_MAJOR } from './reincarnation'
@@ -48,7 +38,6 @@ describe('轮回 ROI · 各转世点的道果效率', () => {
     const best = optimalRebirthPoint()
     expect(best.major).toBe(MANUAL_REBIRTH_MIN_MAJOR)
     const worst = rebirthPoints()[rebirthPoints().length - 1]!
-    // 金丹转世的道果效率是真仙转世的数百倍
     expect(best.efficiency / worst.efficiency).toBeGreaterThan(100)
     console.log(
       `\n最优:${NAMES[best.major]}(效率 ${best.efficiency.toFixed(2)}),` +
@@ -97,16 +86,13 @@ describe('轮回 ROI · 结构成因', () => {
       `\n金丹→真仙:道果 ×${g.fruitSpan.toFixed(1)},耗时 ×${g.hoursSpan.toFixed(0)}` +
         ` → 效率跌 ${g.efficiencyDrop.toFixed(0)} 倍`
     )
-    // 道果按 Σ(i+1) 只涨几倍,耗时按 ~3.3^n 涨几千倍
     expect(g.fruitSpan).toBeLessThan(15)
     expect(g.hoursSpan).toBeGreaterThan(1000)
-    // 这不是参数没调好,是分子二次分母指数的阶数问题
     expect(g.efficiencyDrop).toBeGreaterThan(100)
   })
 
   it('两位真实玩家的落点都在效率曲线的高位段', () => {
     // 小黄鸭 27.2 枚/世(约元婴)、白望舒 87.0 枚/世(约合体)
-    // 前者效率 48%、后者 4%——快档玩家确实站在更优的位置
     const rows = rebirthPoints()
     const best = optimalRebirthPoint()
     const yuanying = rows.find(r => r.major === 3)!
@@ -120,7 +106,6 @@ describe('轮回 ROI · 结构成因', () => {
   })
 
   it('结论:高频轮回不是玩法偏好,是唯一的数值最优解', () => {
-    // 若深修在任何一段有正的比较优势,玩家就有理由慢玩;实测没有
     const anyWorthDeepening = marginalTable().some(r => r.vsOptimal >= 1)
     expect(anyWorthDeepening).toBe(false)
   })
@@ -128,9 +113,7 @@ describe('轮回 ROI · 结构成因', () => {
 
 describe('轮回 ROI · 口径完整性', () => {
   it('耗时已计入突破失败重试与灵气等待,不只是修为累积', () => {
-    // 质疑:「修满耗时没算修炼速度、灵气恢复、突破成功率」
-    // 修速倍率 progressionSim 本就有(功法/装备/建筑/灵根/道果);
-    // 突破与灵气是本模块补的,fullSecondsForMajor 比纯修为口径更慢
+    // 修速倍率 progressionSim 已含;突破与灵气由 fullSecondsForMajor 补
     for (const m of [2, 5, 9]) {
       const full = fullSecondsForMajor(m)
       const bare = (() => {
@@ -145,20 +128,10 @@ describe('轮回 ROI · 口径完整性', () => {
   })
 
   it('补齐漏项后结论不翻转:最优点仍是金丹', () => {
-    // 三项漏掉的成本都随境界递增,分子分母同向放大,压不动阶数差
     expect(optimalRebirthPoint().major).toBe(MANUAL_REBIRTH_MIN_MAJOR)
     const g = growthOrders()
-    /**
-     * 跌幅由旧口径 466 倍变为 339 倍(Phase 32 的口径补齐),Phase 39 又回到 537 倍。
-     *
-     * 为什么回涨:这一版把人间每大境界的净耗时从 ×3.46 抬到 ×3.65
-     * (需求 18 → 19 且基础修速 1.6 → 1.3),深修耗时这条分母陡了一档,
-     * 而道果分子仍只按 Σ(i+1) 二次增长 —— 阶数没变,剖面自然更深。
-     *
-     * 这不是把上一条结论推翻:高频轮回仍是最优(optimalRebirthPoint 仍是金丹)。
-     * 它记的是**这一版让「深修的路」相对更贵了**,若要动,该动的是道果曲线
-     * (DAO_FRUIT_PER_MAJOR / 软上限),不是把修为需求改回去 —— 后者是玩家明确要的。
-     */
+    // 实测跌幅 537 倍(人间每大境界净耗时 ×3.65)
+    // 若要动,改道果曲线(DAO_FRUIT_PER_MAJOR / 软上限),修为需求不动(玩家明确要的)
     expect(g.efficiencyDrop).toBeGreaterThan(100)
     expect(g.efficiencyDrop).toBeLessThan(600)
   })

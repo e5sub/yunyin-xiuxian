@@ -1,45 +1,14 @@
 /**
- * 丹药价值模型(Phase 32.6)—— 把全部丹药放进同一张表
+ * 丹药价值模型:全部丹药折成同一口径比较。不改数值;校准落在 data/pills.ts,定价法则由 pillValue.spec.ts 守。
  *
- * ## 这个文件回答的那个问题
+ * 药力(gainSec)= 等效挂机秒数。随境界:expSecs 恒定(封顶一层);expFixed 每大境界 ÷5.2;
+ * qiPct 近乎恒定;lifespanYears 绝对值恒定、相对寿限急剧贬值;wudao 恒定(功法升级开销指数增长)。
+ * 一层耗时 = 25 × 3.4615^m × 1.2453^s 秒。
  *
- * 玩家看见「灵乳回满灵气」时的抱怨不是"这个数太大",而是"凭什么"。
- * 凭什么一味白捡的丹,比一炉四十味灵草炼出来的还管用?这问题问的是**价值预算**:
- * 每一味丹凭它的规格、成本、门槛、稀有度,该值多少。
+ * 代价:掉落品按稀有度(期望多少场遭遇见一枚),可炼品按灵草、灵石、炸炉赔料;两线跨线只比药力绝对值。
  *
- * 本文件不改任何数值,只提供把它们摆到一起比较的口径。校准结果落在 data/pills.ts,
- * 定价法则由 pillValue.spec.ts 守住。
- *
- * ## 折算口径:一切归于「等效挂机秒数」
- *
- * 药力(gainSec)问的是"这一枚替我省下多少挂机时间"。五条计价轴的换算各不相同,
- * 而这正是价值预算失控的根源 —— 它们随境界的走势完全不同:
- *
- * | 轴            | 换算                          | 随境界 |
- * |---------------|-------------------------------|--------|
- * | expSecs       | 直接就是秒数(封顶一层)         | **绝对恒定** |
- * | expFixed      | 点数 ÷ 修炼速度               | 每大境界 ÷5.2,指数贬值 |
- * | qiPct         | pct × 灵气上限 ÷ 灵气回速     | 近乎恒定 |
- * | lifespanYears | 年数 × 3600(每现实小时老一岁) | 绝对值恒定,相对寿限急剧贬值 |
- * | wudao         | 点数 ÷ 藏经阁产出             | 恒定(但功法升级开销指数增长) |
- *
- * 一层耗时 = expReq(m,s) / cultPerSec(m,s) = 25 × 3.4615^m × 1.2453^s 秒。
- * 校验:炼气五层约 75 秒,金丹五层约 900 秒,真仙五层约 87 天 —— 与终局节奏吻合。
- *
- * ## 两条线各算各的账
- *
- * **掉落品是白捡的**,它的"代价"不是时间(你打怪本来就要打),而是**稀有度**:
- * 期望多少场遭遇才见一枚。**可炼品的代价才是真代价**:灵草、灵石、炸炉赔的料。
- * 所以两条线不共用性价比公式,跨线只比**药力绝对值** —— 这也正是玩家真正在比的东西。
- *
- * ## 已知的局限(读表时须知)
- *
- * 1. **跨族不可比**。寿元丹动辄折算出十万秒,修为丹只有几百秒,因为寿元的产出速率
- *    (1 年/小时)与修炼速率不在一个量纲上。只在族内横向比较才有意义。
- * 2. **寿元被高估**。境界寿限从 150 涨到 9999 万,同样的「延寿百载」在化神期近乎无感,
- *    本模型按绝对秒数计,读表时须自行折价。
- * 3. **一场战斗折 12 秒是低估**。战斗本身产出修为、灵石、材料,把整场时间记到丹药头上
- *    会**高估**取得代价。这是保守方向:若在此口径下某味丹仍显得过强,结论只会更硬。
+ * 局限:跨族不可比(量纲不同),只在族内比;寿元按绝对秒数计,被高估;
+ * 一场战斗折 12 秒未扣战斗自身产出,高估取得代价(保守方向)。
  */
 import type { PillDef } from '@/types'
 import { PILLS, pillQualityName, pillRank } from '@/data/pills'
@@ -60,33 +29,25 @@ import { salvageRatio } from './pillService'
 
 // ============ 审计基准 ============
 
-/**
- * 折算取值的小层。取第五层(共十层)的中位处 —— 取第一层会把一整个大境界的
- * 起步阶段当成代表,取第九层则偏向临界突破,五层是这个大境界的常态。
- */
+/** 折算取值的小层:第五层(共十层),代表大境界常态 */
 export const AUDIT_SUB = 5
 
 /**
- * 基准手艺:熟练度 60(「娴熟」)、丹方烂熟、方中灵材全通晓。
- *
- * 不取满值 —— 熟练度双曲饱和,永远够不到 100,拿理论极限当基准会让所有丹的
- * 取得代价被系统性低估。60 对应约 900 点累积经验,是一个认真炼过几十炉的人。
+ * 基准手艺:熟练度 60(「娴熟」,约 900 点累积经验)、丹方烂熟、方中灵材全通晓。
+ * 不取满值:熟练度双曲饱和够不到 100,取极限会系统性低估取得代价。
  */
 export const AUDIT_SKILL = 60
 const AUDIT_MASTERY = 1
 const AUDIT_MATERIAL_LORE = 1
 
-/** 一场战斗的期望灵草产出(见 core/loot.ts:afterWin —— 五成概率掉 1~3 株) */
+/** 一场战斗的期望灵草产出(同源 core/loot.ts afterWin:五成概率掉 1~3 株) */
 const HERB_PER_BATTLE = 0.5 * 2
 /** 一场战斗的期望灵石产出系数(rng.float(0.8,1.2) 的均值为 1.0) */
 export const STONE_AMT_PER_BATTLE = 10
 
 /**
  * 掉落品的药力上限:同族同规格可炼品的六成。
- *
- * 这个比例不是拍脑袋定的,是从游戏自己的数据里读出来的 —— 寿元线上,
- * 凤髓膏(玄品掉落)100 载对千年延寿丹(玄品可炼)200 载,蟠桃(地品掉落)500 载
- * 对万寿金丹(地品可炼)1000 载,两处都恰好是五成。红线放到六成留出余量。
+ * 取自寿元线(凤髓膏对千年延寿丹、蟠桃对万寿金丹均为五成),红线放到六成留余量。
  */
 export const DROP_CRAFT_RATIO = 0.6
 
@@ -99,11 +60,8 @@ export type PillFamily = 'exp' | 'qi' | 'lifespan' | 'wudao' | 'tempo' | 'state'
 export type PillLine = 'craft' | 'drop'
 
 /**
- * 状态类丹药里唯一能折成时间的那一份:修炼速度。
- *
- * expGain(战斗所得修为)与 explorationSpeed(历练遇敌)不并入 —— 它们提升的是
- * 另外两条产出渠道,与挂机秒数不同量纲。把三者相加会让「同程遇敌 +30%」看起来
- * 等于「修炼提速 30%」,那是假的可比性。
+ * 状态类丹药里唯一折成时间的一份:修炼速度。
+ * expGain、explorationSpeed 是另两条产出渠道,与挂机秒数不同量纲,不并入。
  */
 function tempoRateOf(def: PillDef): number {
   if (def.kind !== 'buff' || !def.buffId) return 0
@@ -127,29 +85,20 @@ export function pillLine(def: PillDef): PillLine {
 
 // ============ 药力折算 ============
 
-/** 在某境界修满一小层所需的时间(秒)—— 一切折算的标尺 */
+/** 某境界修满一小层的秒数,一切折算的标尺 */
 export function layerSeconds(major: number): number {
   const m = Math.max(0, major)
   return toNum(expRequirement(m, AUDIT_SUB)) / baseCultPerSec(m, AUDIT_SUB)
 }
 
-/**
- * 一枚丹的药力,折成等效挂机秒数,**在指定境界取值**。
- *
- * 必须指定境界:同一枚聚气丹在炼气期抵半层修为,在化神期连一次呼吸都不到。
- * 跨丹比较时务必统一境界,否则比的是境界差,不是丹药差。
- */
+/** 一枚丹在指定境界的药力(等效挂机秒)。跨丹比较须统一境界。 */
 export function pillGainSecAt(def: PillDef, major: number): number {
   const m = Math.max(0, major)
   const i = def.instant
   if (def.kind === 'instant' && i) {
-    /**
-     * 修为丹的药力**直接就是等效秒数**(Phase 39 起)—— 这正是这一版要的性质:
-     * 药力不再乘上"当前一层的耗时",于是它在任何境界都是同一个数。
-     * 唯一的上限是「不满一层」(INSTANT_EXP_LAYER_CAP),故低境界要 fold 一刀。
-     */
+    // expSecs 即等效秒数,与境界无关;上限「不满一层」(INSTANT_EXP_LAYER_CAP)只在低境界起作用
     if (i.expSecs) return Math.min(i.expSecs, layerSeconds(m) * INSTANT_EXP_LAYER_CAP)
-    // gainExp 封顶于「不满一层」(INSTANT_EXP_LAYER_CAP),固定点数给不满一层
+    // 固定点数同封顶「不满一层」
     if (i.expFixed) return Math.min(i.expFixed, toNum(expRequirement(m, AUDIT_SUB)) * INSTANT_EXP_LAYER_CAP) / baseCultPerSec(m, AUDIT_SUB)
     if (i.qiPct) return (i.qiPct * qiCap(m, AUDIT_SUB)) / baseQiRegen(m)
     if (i.lifespanYears) return (i.lifespanYears * 3600) / AGE_YEARS_PER_HOUR
@@ -160,7 +109,7 @@ export function pillGainSecAt(def: PillDef, major: number): number {
   return 0
 }
 
-/** 在自身准入境界处的药力 —— 这味丹刚进入玩家视野时值多少 */
+/** 自身准入境界处的药力 */
 export function pillGainSec(def: PillDef): number {
   return pillGainSecAt(def, def.minRealm)
 }
@@ -182,14 +131,12 @@ export function auditYield(def: PillDef): number {
 }
 
 /**
- * 炼成一枚的期望代价,折成战斗场次。
- *
- * 含三笔:灵草、灵石、以及炸炉赔进去的料。失手时灵石全损、灵草按技艺保下一部分
- * (见 pillService.salvageRatio),所以期望开炉次数越多,灵草与灵石的账越不对称。
+ * 炼成一枚的期望代价,折成战斗场次:灵草、灵石、炸炉赔料。
+ * 失手灵石全损,灵草按 pillService.salvageRatio 保下一部分。
  */
 export function craftBattlesOf(def: PillDef): number {
   if (!def.recipe) return 0
-  // 层级只有一个事实源:区域表(与 pillService.pillCraftCost 同一处口径)
+  // 层级单一事实源:区域表(与 pillService.pillCraftCost 同口径)
   const tier = maxTierForMajor(def.minRealm)
   const stoneCost = toNum(stoneByTier(tier, def.recipe.stoneBase / 10))
   const stonePerBattle = toNum(stoneByTier(tier, STONE_AMT_PER_BATTLE))
@@ -203,7 +150,7 @@ export function craftBattlesOf(def: PillDef): number {
 
 // ============ 取得代价:掉落品 ============
 
-/** 掉落权重 —— 与 core/loot.ts 的 randomDropPill 同一口径:品质越高越罕见 */
+/** 掉落权重,须与 core/loot.ts 的 randomDropPill 同口径 */
 export function dropWeightOf(def: PillDef): number {
   return 100 / (1 + pillRank(def) * 2)
 }
@@ -221,7 +168,7 @@ export function dropShareAt(def: PillDef, major: number): number {
   return total > 0 ? dropWeightOf(def) / total : 0
 }
 
-/** 期望多少场遭遇才见一枚 —— 掉落品的"代价"是稀有度,不是时间 */
+/** 期望多少场遭遇才见一枚 */
 export function dropBattlesOf(def: PillDef): number {
   const share = dropShareAt(def, def.minRealm)
   return share > 0 ? 1 / (PILL_DROP_CHANCE * share) : Infinity
@@ -231,10 +178,7 @@ export function dropBattlesOf(def: PillDef): number {
 
 /**
  * 一味掉落品的可炼对照:同族、规格不低于它、且品质最接近的那一味。
- *
- * 只取"规格不低于它"的 —— 拿玄品掉落丹去比良品可炼丹,比出来的是品质差不是定价差。
- * 若该族可炼线的最高品质都够不到它,返回 null:这不是数值异常,是内容缺口
- * (该族顶端尚无可炼品),须另行补内容而非砍数值。
+ * 该族可炼线够不到它时返回 null:内容缺口,不是数值异常。
  */
 export function craftPeerOf(def: PillDef): PillDef | null {
   const fam = pillFamily(def)

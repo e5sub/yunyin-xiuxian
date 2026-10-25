@@ -1,22 +1,6 @@
 /**
- * 标签页图标判据
- *
- * favicon 是**每次冷启动都要走一遍网络**的那一枚,而它的调用方只有一处:
- * 浏览器标签页 —— 16px,高分屏 32px。桌面快捷方式的 48px 是最后一档。
- * 再往上是安装图标的事,归 manifest 的 `icons` 管(192 / 512 / maskable),两条线。
- *
- * 这条边界原先没守住:`public/favicon.ico` 里塞的是**单条 256×256 的 PNG**,
- * 130 KB。256 那张从来没被画出来过 —— 它既不在标签页的取用范围内,
- * 也不在安装图标的清单里,纯粹是「图标包里放了一张原图」。
- *
- * 判据盯五件事:
- *   一 尺寸集合:只许 16/32/48。多出来的条目不是"更周全",是白搭的字节。
- *   二 体积预算:超了就说明有人又把大图塞回来了。
- *   三 目录自洽:每条声明的字节数与偏移都落在文件里(手工改 .ico 最容易坏在这)。
- *   四 引用不悬空:index.html 与 manifest 点名的图标都真的存在 ——
- *      改文件名而忘了改引用,浏览器只会在控制台留一行 404,界面看不出问题。
- *   五 与母图同源:那枚画与 `images/brand/favicon-source-128.png` 是同一张。
- *      这一条要真解像素来核 —— 只核生成器读哪个文件挡不住「产物没重跑」。
+ * 标签页图标判据。favicon 只供标签页(16px,高分屏 32px)与桌面快捷方式(48px);
+ * 安装图标归 manifest 的 `icons`(192 / 512 / maskable),两条线。
  */
 import { describe, expect, it } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
@@ -30,9 +14,8 @@ const MANIFEST = JSON.parse(readFileSync(resolve(ROOT, 'public/manifest.webmanif
   icons: { src: string }[]
 }
 
-/** 只许这几档 —— 标签页要的那两三档 */
 const ALLOWED = new Set([16, 32, 48])
-/** 预算:当前实测约 10.5 KB(写实插画的 PNG 压不了多少),留一倍余量 */
+/** 实测约 10.5 KB,留一倍余量 */
 const BUDGET = 24 * 1024
 
 interface Entry {
@@ -46,7 +29,7 @@ function entries(): Entry[] {
   const out: Entry[] = []
   for (let i = 0; i < count; i += 1) {
     const at = 6 + i * 16
-    // 宽高各占 1 字节,0 代表 256 —— 正是这条格式约定让人误以为"该放 256"
+    // 宽高各占 1 字节,0 代表 256
     out.push({
       size: ICO.readUInt8(at) || 256,
       bytes: ICO.readUInt32LE(at + 8),
@@ -65,17 +48,7 @@ function pngOf(size: number): Buffer {
 
 type Rgb = readonly [number, number, number]
 
-/**
- * 最小 PNG 解码 —— 只认本项目自己产出的那一类:8 位、RGB 或 RGBA、非隔行。
- *
- * 为什么要真解码:这一节要回答的是「**checked-in 的那枚 .ico 与母图是不是
- * 同一张画**」。只核生成器读哪个文件是不够的 —— 脚本改了、产物没重跑,
- * 或者有人手工塞了一张回去,文件还在、指向也对,断言照样绿。
- * 只有把像素摊开量一遍,这句话才是真的。
- *
- * 不解码器全:调色板、16 位、隔行一概抛错 —— 真出现了说明产出流程变了,
- * 判据应当当场喊住,而不是给一个"大概对"的数。
- */
+/** 最小 PNG 解码,只认 8 位、RGB 或 RGBA、非隔行 */
 function decodePng(buf: Buffer): { w: number; h: number; rgba: Uint8Array } {
   let pos = 8
   let w = 0
@@ -143,7 +116,7 @@ function decodePng(buf: Buffer): { w: number; h: number; rgba: Uint8Array } {
   return { w, h, rgba: out }
 }
 
-/** 不透明像素的平均色 —— 缩放不改变平均色,故两枚同源的图标在这一项上必然接近 */
+/** 不透明像素的平均色;缩放不改变平均色 */
 function meanColor(img: { w: number; h: number; rgba: Uint8Array }): Rgb {
   let r = 0
   let g = 0
@@ -160,7 +133,6 @@ function meanColor(img: { w: number; h: number; rgba: Uint8Array }): Rgb {
   return [Math.round(r / n), Math.round(g / n), Math.round(b / n)]
 }
 
-/** 两个主色在**最不相符的那个通道**上差多少 */
 function channelGap(a: Rgb, b: Rgb): number {
   return Math.max(...[0, 1, 2].map(i => Math.abs(a[i]! - b[i]!)))
 }
@@ -181,20 +153,20 @@ describe('favicon · 只装标签页用得着的几档', () => {
   })
 
   it('体积在预算里', () => {
-    // 130 KB 的那一版就是从这里漏过去的:没有预算,谁也说不清多少算大
     expect(ICO.length, `favicon.ico 已经 ${ICO.length} B`).toBeLessThanOrEqual(BUDGET)
   })
 
   it('每条的字节区间都落在文件里', () => {
     for (const e of entries()) {
       expect(e.offset + e.bytes, `${e.size}px 那条越界了`).toBeLessThanOrEqual(ICO.length)
-      // PNG 签名:生成器统一走 PNG 条目,不写老式 BMP + AND 掩码
+      // PNG 签名:生成器统一走 PNG 条目,不写 BMP + AND 掩码
       expect(ICO.subarray(e.offset, e.offset + 8).toString('hex')).toBe('89504e470d0a1a0a')
     }
   })
 })
 
 describe('favicon · 引用不悬空', () => {
+  // 改文件名而忘了改引用,浏览器只在控制台留一行 404,界面看不出
   it('index.html 点的图标都在', () => {
     const refs = [...INDEX_HTML.matchAll(/<link[^>]+rel="(?:icon|apple-touch-icon)"[^>]*>/g)].map(
       m => /href="\.\/([^"]+)"/.exec(m[0])?.[1] ?? ''
@@ -210,7 +182,6 @@ describe('favicon · 引用不悬空', () => {
     for (const icon of MANIFEST.icons) {
       const path = resolve(ROOT, 'public', icon.src.replace('./', ''))
       expect(existsSync(path), `manifest 点的 ${icon.src} 不存在`).toBe(true)
-      // 安装图标是另一条线:最小边至少 192,别拿标签页那张小图顶替
       const png = readFileSync(path)
       expect(png.subarray(1, 4).toString(), `${icon.src} 不是 PNG`).toBe('PNG')
       const side = Math.min(png.readUInt32BE(16), png.readUInt32BE(20))
@@ -224,8 +195,7 @@ describe('favicon · 与母图是同一张画', () => {
   const favicon32 = decodePng(pngOf(32))
 
   it('32px 的主色与 images/brand 母图一致(每通道差 ≤6)', () => {
-    // 只核「生成器读哪个文件」挡不住「脚本改了产物没重跑」,也挡不住手工塞回旧图。
-    // 缩图不改变平均色,同源的图标在这一项上必然几乎相等。
+    // 只核生成器读哪个文件,挡不住产物没重跑或手工塞回旧图
     expect(channelGap(meanColor(favicon32), meanColor(master))).toBeLessThanOrEqual(6)
   })
 

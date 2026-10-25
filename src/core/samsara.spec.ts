@@ -1,12 +1,8 @@
 /**
- * Phase 32.5:轮回从「次数」改成「历史」
- *
- * 这一组测试盯的不是某个函数的返回值,而是这套设计的三条命脉:
- *
- * 1. **宿慧确实由所知长出来** —— 折算口径不含任何可挂机自增的项。
- * 2. **命题都是做得到的** —— 判据的目标值必须落在游戏内容的实际上限之内,
- *    否则玩家会立下一条永远走不完的题。
- * 3. **认知层确实在藏东西** —— 未交手就不该看见它的招式与残血变阵。
+ * 轮回三条不变式:
+ * 1. 宿慧只由所知折算,不含可挂机自增的项;
+ * 2. 命题判据目标落在游戏内容的实际上限之内;
+ * 3. 未交手看不见敌人招式与残血变阵。
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -79,7 +75,7 @@ describe('宿慧折算(loreInsight)', () => {
     const huge = Object.fromEntries(SKILL_IDS.map(id => [id, 1e9]))
     const got = loreInsight({ ...emptySnap(), skillExp: huge })
     expect(got).toBe(Math.floor((SKILL_IDS.length * skillLevelFromExp(1e9)) / INSIGHT_SKILL_DIV))
-    // 每项熟练度趋近 100 却永远够不着,所以这一路的折算也够不到理论顶
+    // 每项熟练度趋近 100 却够不着
     expect(got).toBeLessThan((SKILL_IDS.length * 100) / INSIGHT_SKILL_DIV)
   })
 
@@ -116,11 +112,7 @@ describe('轮回阶段(SAMSARA_STAGES)', () => {
     expect(top.knownMaterialRank).toBeGreaterThanOrEqual(maxRank)
   })
 
-  /**
-   * 这是本 Phase 最要紧的一条平衡门:把认知全刷满(现量)也够不到顶阶,
-   * 顶阶必须靠一世一世的阅历攒。否则「百世老修」会在第二世就被速通掉,
-   * 而它描述的分明是"带着百世记忆重新投胎的存在"。
-   */
+  /** 平衡门:认知全刷满(现量)也够不到顶阶,顶阶须靠历世阅历攒 */
   it('单靠一世刷满全部认知,够得到第三阶但够不到顶阶', () => {
     const maxLore =
       MATERIALS.length * (INSIGHT_PER_MATERIAL + INSIGHT_PER_MATERIAL_MASTERED) +
@@ -131,10 +123,7 @@ describe('轮回阶段(SAMSARA_STAGES)', () => {
     expect(maxLore).toBeLessThan(SAMSARA_STAGES[SAMSARA_STAGES.length - 1]!.insight)
   })
 
-  /**
-   * 旧存档折算是一道两难:折低了老玩家凭空掉档,折高了等于替他们补上从未走过的路。
-   * 现取值偏向下限 —— 转世一次仍是初入轮回(不白送),转世十次才落到「熟知凡间」。
-   */
+  /** 旧存档折算取值偏向下限 */
   it('旧存档折算:一世不白送,十世落到「熟知凡间」', () => {
     expect(stageAt(legacyInsightOf(1)).index).toBe(0)
     expect(stageAt(legacyInsightOf(10)).index).toBeGreaterThanOrEqual(1)
@@ -162,7 +151,6 @@ describe('这一世的命题(LIFE_THEMES)', () => {
     }
   })
 
-  /** 立下一条永远走不完的题,比不给题更伤 —— 逐条核对判据目标落在内容上限内 */
   it('每一条判据的目标都落在游戏内容的实际上限之内', () => {
     const check = (m: LifeThemeMetric, t: LifeThemeDef): void => {
       switch (m.kind) {
@@ -178,7 +166,7 @@ describe('这一世的命题(LIFE_THEMES)', () => {
           break
         case 'skill':
           expect(SKILL_IDS, `${t.id} 技艺 id 不存在`).toContain(m.id)
-          // 熟练度双曲饱和于 100,取满不可能,留出余量
+          // 熟练度双曲饱和于 100,取不满
           expect(m.level, `${t.id} 熟练度目标不可达`).toBeLessThan(100)
           break
         case 'enemyLore':
@@ -262,7 +250,7 @@ describe('命题的取用与判定', () => {
     for (const m of MATERIALS) lore.advanceLore(m.id, 1)
     beginLife('lt_zhushu')
     const prog = vowProgress()
-    // 灵材那一条已满,丹方那一条为 0 —— 进度须报丹方
+    // 灵材已满、丹方为 0:进度报丹方
     expect(prog?.cur).toBe(0)
     expect(prog?.need).toBe(12)
     expect(prog?.done).toBe(false)
@@ -298,7 +286,6 @@ describe('轮回带走的那一份', () => {
     const n = carryLore(top)
     expect(lore.loreOf(first.id)).toBe(LORE_MAX)
     expect(n).toBe(MATERIALS.length - 1)
-    // 再补一次不该重复计数
     expect(carryLore(top)).toBe(0)
   })
 
@@ -307,10 +294,10 @@ describe('轮回带走的那一份', () => {
     expect(useLoreStore().knownMaterialCount).toBe(0)
   })
 
-  /** legacyInsightOf 与 player.sanitize 各算各的,口径一旦分叉,老存档的显示与实际就对不上 */
+  /** legacyInsightOf 与 player.sanitize 各算一份,口径须一致 */
   it('旧存档迁移补齐的宿慧,与折算口径一致', () => {
     const player = usePlayerStore()
-    // 模拟 Phase 32.5 之前的存档:reincarnation 只有 count / daoFruit / talents 三项
+    // 旧存档:reincarnation 只有 count / daoFruit / talents 三项
     const old: Record<string, unknown> = { count: 7, daoFruit: 3, talents: ['t_tiansheng'] }
     player.reincarnation = old as typeof player.reincarnation
     player.sanitize()
@@ -318,7 +305,7 @@ describe('轮回带走的那一份', () => {
     expect(player.reincarnation.lives).toEqual([])
     expect(player.reincarnation.vow).toBeNull()
     expect(player.reincarnation.talents).toEqual(['t_tiansheng'])
-    // 再清洗一次不该把已有宿慧重算回折算值
+    // 再清洗一次不重算宿慧
     player.addInsight(50)
     player.sanitize()
     expect(player.reincarnation.insight).toBe(legacyInsightOf(7) + 50)
@@ -358,7 +345,7 @@ describe('敌人认知的逐层揭示(describeEnemy)', () => {
     const v = describeEnemy(boss, ENEMY_LORE_MAX)
     expect(v.phases.length).toBe(boss.phases?.length ?? 0)
     expect(v.archetype).not.toBeNull()
-    // 机制家族名与印同时揭示(取自 bossArchetypes 的唯一一张家族表)
+    // 机制家族名与印同时揭示,取自 bossArchetypes 唯一家族表
     expect(v.archetypeLabel, '洞悉首领却给不出机制家族名').toContain('型 ·')
   })
 
@@ -386,27 +373,26 @@ describe('敌人认知的逐层揭示(describeEnemy)', () => {
   })
 
   it('距下一层的实账与 noteEnemy 同一张门槛表(首领倍算、败计三也在账内)', () => {
-    // 普通敌:0 层已攒 0 记,眼熟要 1 记;眼熟后距知其路数(5 记)还差 4 记
+    // 普通敌:眼熟 1 记,知其路数 5 记
     expect(enemyLoreProgress(0, 0, false, 0)).toMatchObject({ seen: 0, need: 1, remain: 1, nextName: '眼熟' })
     expect(enemyLoreProgress(1, 1, false, 1)).toMatchObject({ need: 5, remain: 4, nextName: '知其路数' })
     expect(enemyLoreProgress(2, 9, false, 2)).toMatchObject({ need: 14, remain: 5, nextName: '洞悉' })
-    // 首领门槛加倍:洞悉前一层需 14×2 = 28 记,并带着「倍算」的凭据
+    // 首领门槛加倍:14×2 = 28 记
     expect(enemyLoreProgress(2, 27, true, 2)).toMatchObject({ need: 28, remain: 1, isBoss: true })
     expect(enemyLoreProgress(2, 28, true, 2)).toMatchObject({ remain: 0, isBoss: true })
     expect(enemyLoreProgress(2, 3, false, 2)).toMatchObject({ need: 14, isBoss: false })
-    // 已洞悉 / 越界都没有"再攒"可说
     expect(enemyLoreProgress(ENEMY_LORE_MAX, 999, false, ENEMY_LORE_MAX)).toBeNull()
     expect(enemyLoreProgress(-1, 0, false, -1)).toBeNull()
-    // 和后端判据同界:达到 need 即应升层 —— 界面报 0,noteEnemy 恰在此刻推进
+    // 与 noteEnemy 同界:达到 need 即升层
     expect(ENEMY_LORE_THRESHOLDS[3]).toBe(14)
   })
 
   it('宿慧照见下的实账:遥遥指向真正没见过的层,不朝已摊开的层喊话', () => {
-    // 眼熟(1)被照见抬到知其路数(2),真正没见的是洞悉 —— 报「洞悉」,不是空对「知其路数」喊话
+    // 眼熟(1)被照见抬到知其路数(2):报「洞悉」
     expect(enemyLoreProgress(1, 1, false, 2)).toMatchObject({ nextName: '洞悉' })
-    // 已被照见推到洞悉(满层):本相已摊开,再无新层可窥 —— nextName 空,只剩「更深知路数」
+    // 照见推到洞悉(满层):nextName 空,只报计数
     expect(enemyLoreProgress(2, 1, false, 3)).toMatchObject({ nextName: '' })
-    // 未识照见不动:从未交手就是从未交手
+    // 未识照见不动
     expect(enemyLoreProgress(0, 0, false, 0)).toMatchObject({ nextName: '眼熟' })
   })
 })

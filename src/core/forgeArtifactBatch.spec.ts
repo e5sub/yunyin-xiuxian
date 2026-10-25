@@ -1,9 +1,4 @@
-/**
- * 祭炼连升 · 批量账
- * artifactBatchPlan 只算不动手(重数受满重与余额共同约束),
- * upgradeArtifactBatch 按计划一次炼到位,扣费/等级与计划一致;
- * 炼不动(0 重计划)时绝不扣一分。
- */
+/** 祭炼连升 · 批量账:计划只算不扣;连炼扣费/等级与计划一致;0 重计划不扣 */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { GNum } from '@/types'
@@ -14,7 +9,7 @@ import { add, gn, sub } from '@/utils/gnum'
 import { ARTIFACT_MAX_LEVEL, artifactDef } from '@/data/artifacts'
 import { artifactBatchPlan, artifactShortfall, artifactUpCostAt, upgradeArtifact, upgradeArtifactBatch } from './forge'
 
-/** 夹具一律凡品 af_muyu(fromTier 1)→ 悟道公式里品阶系数恒 ×1 */
+/** 夹具:凡品 af_muyu(fromTier 1),悟道公式品阶系数恒 ×1 */
 const DEF_ID = 'af_muyu'
 const WUDAO_BUDGET = 1_000_000_000
 const STONE_BUDGET = () => gn(1e30)
@@ -29,10 +24,7 @@ function rich(): void {
   r.spiritStone = STONE_BUDGET()
 }
 
-/**
- * 第 lv 重的单次代价 —— 直接吃 forge.artifactUpCostAt,不抄一遍公式:
- * 成本式要是重排了,这里与批量账共用同一处,不会各写各的悄悄漂开。
- */
+/** 第 lv 重的单次代价;直接用 forge.artifactUpCostAt,不另抄公式 */
 function costOf(lv: number): { wudao: number; stone: GNum } {
   return artifactUpCostAt(artifactDef(DEF_ID)!, lv)!
 }
@@ -65,16 +57,7 @@ describe('祭炼连升 · 批量账', () => {
     expect(useResourcesStore().spiritStone).toEqual(beforeStone)
   })
 
-  /**
-   * 起手那一重也得按有限整数收一道。
-   *
-   * `levels` 是 `lv - owned.level` 减出来的:owned.level 是 NaN 时它也是 NaN
-   * (界面画出「第 NaN 重」,而 upgradeArtifact 每重都在扣 0 悟道点 —— 一颗悟道点
-   * 不花,重数一路涨到顶);是小数时它带小数(连炼行写「第 2.7 重」)。
-   * sanitize 会夹,但内存直塞与 $patch 后立刻渲染不走那条路。
-   *
-   * 故障注入:把 artifactBatchPlan 的 `from` 改回直接用 owned.level,本条必红。
-   */
+  /** 故障注入:把 artifactBatchPlan 的 from 改成直接用 owned.level,本条红 */
   it('起手重数不是有限整数时,计划仍给得出一个数的重数', () => {
     rich()
     for (const bad of [Number.NaN, -5, 2.7]) {
@@ -84,7 +67,6 @@ describe('祭炼连升 · 批量账', () => {
       expect(Number.isInteger(plan.levels), `起手 ${bad} 时 levels 不是整数:${plan.levels}`).toBe(true)
       expect(plan.levels, `起手 ${bad} 时重数越界`).toBeGreaterThanOrEqual(0)
       expect(plan.levels).toBeLessThanOrEqual(ARTIFACT_MAX_LEVEL)
-      // 负起手与 NaN 一律按 0 起重算;小数向下取整
       const expectFrom = Number.isFinite(bad) ? Math.max(0, Math.floor(bad)) : 0
       expect(plan.levels).toBe(ARTIFACT_MAX_LEVEL - expectFrom)
       expect(plan.wudao).toBe(sumUpTo(expectFrom, plan.levels).wudao)
@@ -151,10 +133,7 @@ describe('祭炼连升 · 批量账', () => {
     expect(useResourcesStore().spiritStone).toEqual(STONE_BUDGET())
   })
 
-  /**
-   * 缺哪一样就报哪一样:悟道点靠藏经阁/顿悟,灵石靠历练/悬赏。
-   * 故障注入:把 upgradeArtifact 的缺料检查改回一句「或」→ 本条红。
-   */
+  /** 故障注入:把 upgradeArtifact 的缺料检查改成一句「或」,本条红 */
   it('缺料判据分得清悟道点与灵石,并算出各自缺口', () => {
     seat(0)
     const cost = costOf(0)

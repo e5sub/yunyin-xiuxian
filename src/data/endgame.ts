@@ -1,7 +1,7 @@
 /** 真仙终局数据 —— 道途 / 特殊规则世界 / 天道试炼 / 天道熔炉 */
 import type { CelestialWorldDef, DaoPathDef, TrialDef, WorldFoeShape, WorldRouteNode } from '@/types'
 
-// ============ 道途:此道在世,一切战斗皆循此规则 ============
+// ============ 道途(规则作用于一切战斗) ============
 
 export const DAO_PATHS: DaoPathDef[] = [
   {
@@ -74,7 +74,6 @@ function shape(
   return { name, icon, atkR, defR, hpR, speed, skills, mods }
 }
 
-/** 路线节点构造 */
 function node(
   id: string,
   name: string,
@@ -409,7 +408,7 @@ export function celestialWorldDef(id: string): CelestialWorldDef | undefined {
   return CELESTIAL_WORLDS.find(w => w.id === id)
 }
 
-// ============ 天道试炼(极限 Build 挑战) ============
+// ============ 天道试炼 ============
 
 export const TRIALS: TrialDef[] = [
   {
@@ -466,7 +465,7 @@ export const TRIAL_FOES: WorldFoeShape[] = [
   shape('心魔化身', 'ghost', 0.54, 0.42, 0.85, 1.2, [{ name: '心魔噬道', mult: 1.6, rate: 0.35, effect: 'drain' }])
 ]
 
-/** 天道变数敌池:四天机制敌混编,防单一流派对中庸敌通吃 */
+/** 天道变数敌池:四天机制敌混编,防单一流派通吃 */
 export const MUTATION_FOES: WorldFoeShape[] = [
   CELESTIAL_WORLDS[0]!.foes[0]!,
   CELESTIAL_WORLDS[1]!.foes[0]!,
@@ -492,35 +491,25 @@ export const FURNACE_RATES: FurnaceRate[] = [
   { resource: 'dust', name: '器灵尘', per: 80 }
 ]
 
-/** 灵石献祭:每份消耗按玩家层级折算的灵石数量(在服务层用 stoneByTier 计算) */
+/** 灵石献祭每份消耗(服务层按玩家层级用 stoneByTier 折算) */
 export const FURNACE_STONE_TIER_AMOUNT = 300
 export const FURNACE_STONE_DAO_SOURCE = 5
 
 /**
- * 道源凝道果:数值成长唯一出口,受道果软上限约束。
- *
- * 凝一枚道果的**时长**由 economySim 的 daoCostHours 守:它 = DAO_SOURCE_PER_FRUIT ÷
- * 熔炉每小时道源潜力,且必须在整条界外长尾上**不随层级漂移**(ISS-214 红线)。
- * 从 100 抬到 200,即把「凝一枚道果」的典型时长从 ~1h 拉到 ~2~3h(实测 daoCostHours
- * 全境 ~1.8~3.4h,中心 ~2.5h) —— 道果更稀缺、终局节奏更慢、每一枚更重
- * (design: 道果价恒定、熔炉平算,品位价值走灵石)。
+ * 凝一枚道果所需道源(数值成长唯一出口,受道果软上限约束)。道果价恒定、熔炉平算,品位价值走灵石。
+ * economySim 的 daoCostHours = 本值 ÷ 熔炉每小时道源潜力,须在整条界外长尾上不随层级漂移(ISS-214 红线);实测 ~1.8~3.4h。
  */
 export const DAO_SOURCE_PER_FRUIT = 200
 
 /**
- * 熔炉可熔灵草的**最低品阶**。
- *
- * 道源是**仙**才开始有的货币:凡/灵品草(人间界)只有坊市→灵石一条出路,永不入炉;
- * 仙/神/道品草(天/神/混沌海)才进天道熔炉。esourceOverCredit 修:
- * 熔炉 herb 按「≥此品的总和」计、也按这些品实际扣料,凡/灵品不入账。
+ * 熔炉可熔灵草的最低品阶:凡/灵品草只走坊市换灵石,永不入炉。
+ * 熔炉 herb 按「≥此品的总和」计,也按这些品实际扣料。
  */
 export const FURNACE_HERB_MIN_GRADE = 3
 
 /**
- * 远征行程:0 ~ ROUTE_LAYERS-1 为「重」层择路,ROUTE_LAYERS 为界主层。
- *
- * 层号就是规则本身(择路函数只认 0..2、界主判定认 3),故把它抽成常数:
- * 界面上的「三重」、行程点列、以及越界守卫都读同一份,改行程不必四处找数字。
+ * 远征行程:0 ~ ROUTE_LAYERS-1 为「重」层择路,ROUTE_LAYERS 为界主层(择路函数只认 0..2、界主判定认 3)。
+ * 界面「三重」、行程点列、越界守卫同读此常数。
  */
 export const EXPEDITION_ROUTE_LAYERS = 3
 export const EXPEDITION_GUARDIAN_LAYER = EXPEDITION_ROUTE_LAYERS

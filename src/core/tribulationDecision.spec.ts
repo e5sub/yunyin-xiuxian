@@ -1,8 +1,8 @@
 /**
- * Phase 32.0:天劫决策重构
- * ① 天劫类型化(境界×天时派生,确定性)
- * ② 准备度多维(护持/恢复/抗性/爆发)——不再单看成功率词条
- * ③ 风险识别 + 决策档 + 建议(信息给足,决定留给玩家)
+ * 天劫决策
+ * ① 劫型由境界×天时派生,确定性
+ * ② 准备度四维:护持/恢复/抗性/爆发
+ * ③ 风险识别 + 决策档,决定留给玩家
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -51,7 +51,7 @@ describe('① 劫型派生', () => {
   })
 
   it('不同天时 → 大概率不同劫型(联动天气)', () => {
-    // 天时由游戏日决定;比较两个相距远的日子的劫型
+    // 天时由游戏日决定
     const game = useGameStore()
     const seen = new Set<string>()
     for (let d = 1; d <= 20; d++) {
@@ -88,10 +88,9 @@ describe('② 准备度多维 + ③ 风险/决策', () => {
   it('逆流劫:治疗被压缩 → sustain 得分下降', () => {
     const mods: StatMods = { regenPerRound: 0.05 }
     const normal = buildTribulationPlan(1, mods)
-    // 强制 counterflow 对比:roll 出来不一定逆流,直接测 def 数值
+    // roll 不一定出逆流,直接测 def 数值
     const cf = TRIBULATIONS.find(t => t.id === 'counterflow')!
     expect(cf.healMult).toBeLessThan(1)
-    // 决策信息:正常计划至少可能包含"恢复"风险或准备维度
     expect(normal.prep.sustain).toBeGreaterThanOrEqual(0)
   })
 
@@ -101,10 +100,9 @@ describe('② 准备度多维 + ③ 风险/决策', () => {
   })
 
   it('期望率不是单一数字依赖:同词条在不同劫型下结论不同', () => {
-    // 用不同劫型(through roll)对比——精神内核:五维而非单点
     const mods: StatMods = { shieldOnStart: 0.35, regenPerRound: 0.03, tribulationResist: 0.2 }
     const plan = buildTribulationPlan(1, mods)
-    // 结论因劫型派生而变化(至少产出完整信息结构)
+    // 至少产出完整信息结构
     expect(plan).toMatchObject({
       kind: expect.any(String),
       verdict: expect.any(String),
@@ -115,13 +113,7 @@ describe('② 准备度多维 + ③ 风险/决策', () => {
   })
 })
 
-/**
- * 三维折算:血厚防高允许硬抗,但两条都封顶。
- *
- * 从前天劫完全不吃攻/防/血,玩家拿着上千万气血站在劫前却半点用没有 —— 不合理。
- * 现在按「本境裸修为」折算:防御 → 抗性、气血 → 开劫水位,各有上限。
- * 这几条守的正是"能硬抗"与"三维不是通行证"之间的那条线。
- */
+/** 三维折算:超出本境裸修为的防御 → 抗性、气血 → 开劫水位,各自封顶 */
 describe('⑥ 三维折算(防御→抗性 / 气血→开劫水位)', () => {
   const MAJOR = 4
   const SUB = 8
@@ -134,15 +126,15 @@ describe('⑥ 三维折算(防御→抗性 / 气血→开劫水位)', () => {
   })
 
   it('坏档三维 Infinity/境界爆表时整块作废,不再靠封顶兜底(见 utils/gnum toNum)', () => {
-    // toNum 在 e>308 返回 Infinity:防御/气血被写爆时按 0 折算,而不是经 Math.min(CAP,…) 折成满抗
+    // toNum 在 e>308 返回 Infinity:按 0 折算,不经 Math.min(CAP,…) 折成满抗
     expect(statGuardOf({ defense: Infinity, maxHp: Infinity, major: MAJOR, sub: SUB })).toEqual({ resist: 0, guard: 0 })
-    // 境界大到 realmScale 翻出可表示范围一并作废
+    // 境界大到 realmScale 溢出也作废
     expect(statGuardOf({ defense: bareDef, maxHp: bareHp, major: 1e9, sub: 0 })).toEqual({ resist: 0, guard: 0 })
   })
 
   it('超出部分按倍数线性折算,并各自封顶', () => {
     const six = statGuardOf({ defense: bareDef * 6, maxHp: bareHp * 6, major: MAJOR, sub: SUB })
-    // (6-1)×4% = 20%,抗性那条上限 18% —— 到顶了(Phase 39 由 5%/30% 收窄)
+    // (6-1)×4% = 20%,抗性封顶 18%
     expect(six.resist).toBeCloseTo(0.18, 6)
     expect(six.guard).toBeCloseTo(0.2, 6)
     const whale = statGuardOf({ defense: bareDef * 500, maxHp: bareHp * 500, major: MAJOR, sub: SUB })
@@ -161,7 +153,6 @@ describe('⑥ 三维折算(防御→抗性 / 气血→开劫水位)', () => {
 
   it('三维封顶也过不了大劫:硬抗是兜底,不是通行证', () => {
     const whale = statGuardOf({ defense: bareDef * 500, maxHp: bareHp * 500, major: MAJOR, sub: SUB })
-    // 化神大关:一条词条都不带、只靠封顶的三维——仍不可渡
     for (const t of TRIBULATIONS) {
       const plan = buildTribulationPlan(MAJOR, {}, t.id, undefined, 1, whale)
       expect(plan.verdict, `${t.name}劫:光靠三维就过了,折算上限该收`).not.toBe('easy')
@@ -169,10 +160,7 @@ describe('⑥ 三维折算(防御→抗性 / 气血→开劫水位)', () => {
   })
 })
 
-/**
- * 波形读数:同一行公式里有两个自变量 —— 第几道(逐道加重)与境界(道数与起点)。
- * 界面按它摊开,故这几条守着"摊出来的话与结算做的事"一致。
- */
+/** 波形读数:自变量为第几道(逐道加重)与境界(道数与起点);界面展示须与结算一致 */
 describe('⑦ 波形读数(道数 × 逐道加重)', () => {
   it('均匀劫:同一次渡劫里最后一道最重,合计约为单波的数倍', () => {
     const span = tribulationWaveSpan(tribulationDef('thunder'), 5)
@@ -216,14 +204,8 @@ describe('⑦ 波形读数(道数 × 逐道加重)', () => {
 })
 
 /**
- * 预览与实结的「同乘界」数值断言。
- *
- * 结算 runTribulation(breakthrough.ts)的唯一随机项是 waveDamage×rng.float(0.85,1.15),
- * 决策档/期望值用 traceTribulation(无浮动,同一份净口径 waveDamage)—— 数学主干一致、
- * ±15% 是唯一差额,这一直是注释承诺,没有数值断言。这里把承诺钉成测试:
- *  - traceTribulation 确定性(同输入必同结果);
- *  - waveDamage 净口径:减伤 30% → 伤害 ×0.7(决策档/结算都不许忽略减伤);
- *  - ±15% 带两端真的可达(不是写着好看的)。
+ * 预览与实结同乘界:结算 runTribulation(breakthrough.ts)唯一随机项是 waveDamage×rng.float(0.85,1.15);
+ * 决策档/期望值用 traceTribulation(无浮动,同一份净口径 waveDamage)。
  */
 describe('④ 预览与实结同乘界', () => {
   it('traceTribulation(期望值推演)确定性:同输入必同结果', () => {
@@ -236,7 +218,7 @@ describe('④ 预览与实结同乘界', () => {
 
   it('waveDamage 是净口径:减伤 30% → 伤害恰为 ×0.7(决策档/结算都不许忽略减伤)', () => {
     const def = tribulationDef('thunder')!
-    // 无裂魂修正、气血够(≥0.3 不触发濒危减伤)、NO_RELIEF 不折减伤为抗性 → 比值纯 (1-减伤)
+    // 无裂魂修正、气血 ≥0.3 不触发濒危减伤、NO_RELIEF 不折减伤为抗性 → 比值纯 (1-减伤)
     const bare = waveDamage(def, {}, 1, 1, 0.9, NO_RELIEF, 1, NO_STAT_GUARD)
     const reduced = waveDamage(def, { damageReduction: 0.3 }, 1, 1, 0.9, NO_RELIEF, 1, NO_STAT_GUARD)
     expect(reduced).toBeCloseTo(bare * 0.7, 6)
@@ -253,7 +235,7 @@ describe('④ 预览与实结同乘界', () => {
       min = Math.min(min, v)
       max = Math.max(max, v)
     }
-    // 下端与上端都真实触得到(±15% 不是纸上范围;若有人把带收窄,这里先红)
+    // 两端可达;带收窄则红
     expect(min).toBeLessThan(0.87)
     expect(max).toBeGreaterThan(1.13)
   })
@@ -261,9 +243,8 @@ describe('④ 预览与实结同乘界', () => {
 
 describe('渡劫四维星 · 与结算同源(结算吃了它,星级就必须看得见它)', () => {
   it('归属公报:雷鸣不虚注减伤→抗性 —— 抗性星与其它劫同档(无灵根亲和不自动折算)', () => {
-    // 旧实现 resistScore 把 thunder 特判加 0.5,抗性星比普通劫凭空高一档,而结算 currentTribResist
-    // 从不兑现这笔 —— 雷鸣玩家看到虚高的抗性星却扛不住。故障注入:在 resistScore 里给 thunder
-    // 加回折减率,这里 thunder ≠ ironbody 立刻红。
+    // 结算 currentTribResist 不给 thunder 特判,resistScore 也不得特判。
+    // 故障注入:在 resistScore 里给 thunder 加回折减率,thunder ≠ ironbody,本条红。
     const mods = { tribulationResist: 0, damageReduction: 0.5 } as StatMods
     const thunder = buildTribulationPlan(1, mods, 'thunder', NO_RELIEF, 1, NO_STAT_GUARD).prep.resist
     const iron = buildTribulationPlan(1, mods, 'ironbody', NO_RELIEF, 1, NO_STAT_GUARD).prep.resist
@@ -271,7 +252,7 @@ describe('渡劫四维星 · 与结算同源(结算吃了它,星级就必须看�
   })
 
   it('护持星把三维血量折算算进去(与抗性含 stat.resist 对称):血厚者护持档不偏低', () => {
-    // guardScore=0(无护盾词条)+ stat.guard 0.2 越过 0.08 门槛进一档;旧实现漏 stat.guard → 此档为 0
+    // guardScore=0(无护盾词条)+ stat.guard 0.2 越过 0.08 门槛进一档
     const guarded = buildTribulationPlan(1, {}, 'thunder', NO_RELIEF, 1, { resist: 0, guard: 0.2 } as { resist: number; guard: number }).prep.guard
     const plain = buildTribulationPlan(1, {}, 'thunder', NO_RELIEF, 1, NO_STAT_GUARD).prep.guard
     expect(guarded, '血厚者的护持星应含三维血量的折算,不偏低').toBeGreaterThan(plain)
@@ -281,12 +262,12 @@ describe('渡劫四维星 · 与结算同源(结算吃了它,星级就必须看�
 describe('裂魂爆发星(连灵根/凶兆加持)', () => {
   it('展示星 == 结算吃的 effectiveBurstTier:有攻势被提升一档,推不动零', () => {
     const fire = { ...NO_RELIEF, burstTierBonus: 1 }
-    // 有攻势但不到顶:burstScore = 0.2 → 基档 1;fire +1 → 档 2(未封顶,catch 得到的差值)
+    // burstScore = 0.2 → 基档 1;fire +1 → 档 2(未封顶)
     const boostable: StatMods = { critRate: 0.2 }
     const plan = buildTribulationPlan(1, boostable, 'soulrend', fire)
     expect(plan.prep.burst, '展示星必须与结算同档(结算吃 effectiveBurstTier)').toBe(effectiveBurstTier(boostable, fire))
     expect(plan.prep.burst, '火灵根把已有攻势再推一档,不再停在 raw 档').toBeGreaterThan(effectiveBurstTier(boostable, NO_RELIEF))
-    // 无攻势者拿到加持推不动零(不白送裂魂减免)
+    // 无攻势:加持推不动零
     const bare = buildTribulationPlan(1, {}, 'soulrend', fire)
     expect(bare.prep.burst).toBe(0)
   })
@@ -294,8 +275,7 @@ describe('裂魂爆发星(连灵根/凶兆加持)', () => {
 
 describe('濒危减伤/低血阈值 · 单一事实源(结算与台账不许各写一遍)', () => {
   it('封顶取自 TRIB_REDUCTION_CAP:tribLowHpReduction 与 waveDamage 吃同一个数', () => {
-    // 故障注入:把 waveDamage 里的 lowHpRed 换回写死 0.6,或把 helper 的封顶改成别的值,
-    // 下面「恰为 ×(1-封顶)」立刻红。
+    // 故障注入:把 waveDamage 的 lowHpRed 写死 0.6,或改 helper 的封顶,本条红。
     const capped = { lowHpReduction: 5 } as StatMods
     expect(tribLowHpReduction(capped)).toBe(TRIB_REDUCTION_CAP)
     const def = tribulationDef('thunder')!
@@ -305,8 +285,7 @@ describe('濒危减伤/低血阈值 · 单一事实源(结算与台账不许各�
   })
 
   it('低血判定线是 LOW_HP_THRESHOLD,不是裸字面量', () => {
-    // 阈值恰好落在 LOW_HP_THRESHOLD 上:低于它削一波,不低于它不削 ——
-    // 若源码把这条线写回裸 0.3,常量一改(界面词条按 LOW_HP_THRESHOLD 格式化)就分叉
+    // 低于 LOW_HP_THRESHOLD 才触发;界面词条也按它格式化,源码不得写裸 0.3
     const def = tribulationDef('thunder')!
     const mods = { lowHpReduction: 0.4 } as StatMods
     const justAt = waveDamage(def, mods, 1, 1, LOW_HP_THRESHOLD, NO_RELIEF, 1, NO_STAT_GUARD)
@@ -323,16 +302,13 @@ describe('濒危减伤/低血阈值 · 单一事实源(结算与台账不许各�
     )
     expect(core, '低血判定线须引 LOW_HP_THRESHOLD,不得写死 hpLeft < 0.3').not.toContain('hpLeft < 0.3')
     expect(core).toContain('LOW_HP_THRESHOLD')
-    // 劫势台账拆出后判据随本体走(composables/useTribulation.ts)
+    // 劫势台账在 composables/useTribulation.ts
     const view = readFileSync(resolve(__dirname, '../composables/useTribulation.ts'), 'utf8')
     expect(view, '台账不得再抄一遍 0.6 封顶').not.toContain("Math.min(0.6, modOf(mods, 'lowHpReduction'))")
     expect(view, '台账须调结算同源的 tribLowHpReduction').toContain('tribLowHpReduction(mods)')
   })
 
-  /**
-   * 摘要卡与详情面板只许共用一本账:两处各算一遍,迟早出现「卡上写有护持、
-   * 点开又说没有」。故障注入:把详情面板改成自己调 currentTribulationPlan → 红。
-   */
+  /** 故障注入:把详情面板改成自己调 currentTribulationPlan,本条红 */
   it('劫势摘要卡与详情同读 useTribulation,不各算一份', () => {
     for (const rel of ['../components/cultivation/TribulationCard.vue', '../components/cultivation/TribulationDetail.vue']) {
       const src = readFileSync(resolve(__dirname, rel), 'utf8')

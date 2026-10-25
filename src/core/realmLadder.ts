@@ -1,13 +1,4 @@
-/**
- * 仙路旅途 —— 把「境界表 + 所在界」翻译成一条 21 境的横向刻度
- *
- * 修炼页只显示当前一境,玩家看不到自己从凡到仙走到哪了、前面还有几境。
- * 这条刻度是**纵向全景**:21 个境点一路排开,已至的点了墨、眼下这境脉动、
- * 未至的虚待;界首处立界门,四界的名字标在各自那一段的下方。
- *
- * 纯函数只做一件事:按当前境判出每境的三态与界首标记 —— UI 拿它渲染,
- * 判定不散落在视图里,里程碑(0/9/14/18 四界首)也好被测试钉住。
- */
+/** 仙路旅途:按当前境判出 21 境刻度每境的三态与界首标记(纯函数;四界首 0/9/14/18 由测试钉住) */
 import { REALMS, WORLDS, isWorldEntry, MAX_MAJOR } from '@/data/realms'
 
 export type RealmLadderState = 'done' | 'now' | 'future'
@@ -16,7 +7,7 @@ export interface RealmLadderPoint {
   /** 境界索引(major),0~20 */
   index: number
   name: string
-  /** 是否界首(人间/仙界/神界/混沌海的第一境)—— 界门上该立的一档 */
+  /** 是否界首(人间/仙界/神界/混沌海的第一境) */
   worldStart: boolean
   state: RealmLadderState
 }
@@ -26,16 +17,11 @@ export interface RealmLadderWorld {
   name: string
   start: number
   end: number
-  /** 本段在整条刻度上的中心位置(0~100%,UI 把界名钉在那里)。
-      四界段长不一,均布(justify-between)会把仙界/神界标签偏向段首 ——
-      界名是段的名,应当落在自己那一段的中央 */
+  /** 本段在整条刻度上的中心位置(0~100%,界名钉在此);四界段长不一,不用均布(justify-between) */
   centerPct: number
 }
 
-/**
- * 21 境刻度 —— 三态口径与 realmDef 一致:越界修正后再判,绝不让越界值
- * 把「已至」成片点亮或把「现在」推到刻度之外。
- */
+/** 21 境刻度;越界 major 先修正(与 realmDef 同口径)再判三态 */
 export function realmLadderPoints(major: number): RealmLadderPoint[] {
   const m = Math.max(0, Math.min(MAX_MAJOR, major))
   return REALMS.map((r, i) => ({
@@ -46,9 +32,7 @@ export function realmLadderPoints(major: number): RealmLadderPoint[] {
   }))
 }
 
-/** 四界段位 —— 界名、首尾索引从 data 直接继承,UI 不另抄第二份。
-    段心的算式:段中点那把「第几格」折算成刻度百分比 ——
-    段 [a,b] 的中点格是 (a+b)/2,格心在 +0.5,故 ((a+b)/2+0.5)/21×100 */
+/** 四界段位:界名、首尾索引取自 data;段心 = ((a+b)/2+0.5)/21×100(格心在 +0.5) */
 export function realmLadderWorlds(): RealmLadderWorld[] {
   return WORLDS.map(w => ({
     id: w.id,

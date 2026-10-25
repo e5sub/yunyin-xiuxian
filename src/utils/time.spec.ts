@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { secsUntilNextMidnight } from './time'
 
-/**
- * 日课更替时刻 —— 距下一个本地午夜的秒数,修行志「距更替」读它。
- * 纯函数(输入时间戳),与 todayStr 同一本地日口径,测试不碰墙钟。
- */
+/** 日课重置时刻:修行志「距重置」读它 */
 describe('secsUntilNextMidnight 距本地午夜更替', () => {
   const at = (y: number, m: number, d: number, h: number, min: number) => new Date(y, m, d, h, min, 0, 0).getTime()
 

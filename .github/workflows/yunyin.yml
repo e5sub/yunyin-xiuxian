@@ -15,11 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      # 镜像名跟随仓库,不写死。此前写死成 yunyin-xiuxian:仓库改名或换 owner 后
-      # (yunyin-xiuxian → xian),这一步仍拿新仓库的 GITHUB_TOKEN 去写旧仓库名下
-      # 的软件包,ghcr 回 permission_denied: write_package —— 前面全绿,卡在最后
-      # 一推。GHCR 路径是 ghcr.io/<owner>/<repo>,Docker Hub 用仓库短名。
-      # (ghcr 只收小写路径;本仓库 owner/name 都是小写,换名时留意别带大写。)
+      # 镜像名跟随仓库,不写死:仓库改名后写死的包名会让 ghcr 回 permission_denied: write_package
+      # GHCR 路径是 ghcr.io/<owner>/<repo>,只收小写;Docker Hub 用仓库短名
       GHCR_IMAGE: ghcr.io/${{ github.repository }}
       IMAGE_NAME: ${{ github.event.repository.name }}
     steps:
@@ -64,7 +61,6 @@ jobs:
             echo "构建失败：dist/index.html 不存在"
             exit 1
           fi
-          # 实质校验:挂载点与入口脚本就位,才算一份能跑的产物(旧的 mtime 判据在 CI 永不命中,已删)
           grep -q 'id="app"' dist/index.html || { echo "构建失败：index.html 缺少 #app 挂载点"; exit 1; }
           grep -q 'src=.*main' dist/index.html || grep -q 'assets/' dist/index.html || { echo "构建失败：index.html 未引用入口脚本"; exit 1; }
 
@@ -93,7 +89,6 @@ jobs:
       - name: 设置 Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      # 登录 GHCR（始终执行）
       - name: 登录 GitHub Container Registry
         uses: docker/login-action@v4
         with:
@@ -101,7 +96,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 登录 Docker Hub（仅在配置了用户名时执行）
       - name: 登录 Docker Hub
         if: env.DOCKERHUB_USERNAME != ''
         uses: docker/login-action@v4

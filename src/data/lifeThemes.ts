@@ -1,22 +1,7 @@
 /**
- * 这一世的命题(Phase 32.5)—— 让第 N 世不是第 1 世的复播
- *
- * 每次转世择一条命题。命题不是 buff,是一句自己对自己立下的话:
- * 这一世我要做什么。它给的也不是属性,而是宿慧与一条随神魂不灭的所得。
- *
- * ## 三件事凑成一条命题
- *
- * - **立题**(vow):这一世打算做什么,一句话说清。
- * - **禁忌**(taboo):有些题得守规矩。犯了即破题 —— 不扣任何东西,只是这一世
- *   的话没说到底。放置游戏里点错一次就废掉一周目是不能接受的,所以破题
- *   永远只是"落空",不是"惩罚"。
- * - **判据**(metric):达成与否由代码算得出来,不靠自觉。全部以「本世」计,
- *   跨世累计的计数器在开世时取快照,判定时取差值(见 core/samsaraService.ts)。
- *
- * ## 命题按阶开放
- *
- * 初入轮回的人不会想着"建立完整的炼丹知识体系"——他连药材都叫不出名字。
- * minStage 保证命题的分量与玩家此刻的处境相称。
+ * 一世命题:每次转世择一条;不给属性,达成得宿慧与一条随神魂不灭的所得。
+ * 犯禁忌即破题:只落空,不扣任何东西。
+ * 判据以「本世」计:跨世累计的计数器开世取快照、判定取差值(见 core/samsaraService.ts)。
  */
 import type { SkillId } from './crafting'
 
@@ -28,13 +13,13 @@ export const TABOO_NAMES: Record<LifeTaboo, string> = {
   artifact: '祭用法宝'
 }
 
-/** 达成判据 —— 每一种都要能从存档里算出来 */
+/** 达成判据:每一种都须能从存档算出 */
 export type LifeThemeMetric =
   /** 本世境界达到某大境界 */
   | { kind: 'realm'; major: number }
   /** 本世某计数器增量达标 */
   | { kind: 'counter'; key: import('@/types').CounterKey; n: number }
-  /** 认得(层 ≥ stage)的灵材数达标 —— 认知跨世不灭,故此项按总量计 */
+  /** 认得(层 ≥ stage)的灵材数达标;认知跨世不灭,按总量计 */
   | { kind: 'materialLore'; stage: number; n: number }
   /** 通晓的丹方数达标 */
   | { kind: 'recipeMastered'; n: number }
@@ -46,7 +31,7 @@ export type LifeThemeMetric =
   | { kind: 'branch'; n: number }
   /** 本世雪耻的宿敌数达标 */
   | { kind: 'avenge'; n: number }
-  /** 数条判据须尽数达成 —— 进度取各条中最落后的一条 */
+  /** 数条判据须尽数达成;进度取最落后的一条 */
   | { kind: 'all'; of: LifeThemeMetric[] }
 
 export interface LifeThemeDef {
@@ -82,7 +67,7 @@ function t(
 }
 
 export const LIFE_THEMES: LifeThemeDef[] = [
-  // ---- 初入轮回也接得住的题:先把一条路走到看得见的地方 ----
+  // ---- 初入轮回 ----
   t(
     'lt_jindan',
     '结丹',
@@ -147,7 +132,7 @@ export const LIFE_THEMES: LifeThemeDef[] = [
     '你对火候的手感成了本能,换了炉、换了焰,也压得住。'
   ),
 
-  // ---- 熟知修仙界:开始和世界较劲 ----
+  // ---- 熟知修仙界 ----
   t(
     'lt_xuechi',
     '雪耻',
@@ -190,7 +175,7 @@ export const LIFE_THEMES: LifeThemeDef[] = [
     'artifact'
   ),
 
-  // ---- 熟知天界:开始验证道路本身 ----
+  // ---- 熟知天界 ----
   t(
     'lt_zedao',
     '证道',

@@ -1,10 +1,4 @@
-/**
- * 所知状态(Phase 32.3)—— 认知与技艺
- *
- * 这个 store 存的不是"解锁了什么",而是"懂到什么程度"。
- * 认知度与熟练度都是连续值,直接参与生产结算(见 core/craftability.ts),
- * 而不是先攒够再一次性放开某个开关。
- */
+/** 所知状态 —— 认知与技艺。认知度/熟练度为连续值,参与生产结算(见 core/craftability.ts) */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { LORE_MAX, materialDef } from '@/data/materials'
@@ -17,7 +11,7 @@ import { QUALITIES } from '@/data/qualities'
 /** 敌人认知层上限:0 未识 / 1 眼熟 / 2 知路数 / 3 洞悉 */
 export const ENEMY_LORE_MAX = 3
 
-/** 品质阶上限:从数据派生的真实最大值(别写死 8,哪天加了高阶会自动跟上) */
+// 从数据派生,勿写死
 const MAX_QUALITY_RANK = Math.max(...QUALITIES.map(q => q.rank))
 
 export const ENEMY_LORE_STAGE_NAMES = ['未识', '眼熟', '知其路数', '洞悉'] as const
@@ -31,21 +25,15 @@ export const useLoreStore = defineStore(
   () => {
     /** 灵材认知层 0~3 */
     const materialLore = ref<Record<string, number>>({})
-    /** 灵材照面次数 —— 认知推进的底料,见得多才可能认出来 */
+    /** 灵材照面次数 —— 认知推进的底料 */
     const materialSeen = ref<Record<string, number>>({})
     /** 丹方掌握度 0~1 */
     const recipeLore = ref<Record<string, number>>({})
-    /**
-     * 图纸掌握度 0~1 —— 炼器道的预留字段,眼下尚无内容也无获取路径。
-     *
-     * 别照着丹方的样子给它加消费点:一旦有代码开始读 blueprintMastery,
-     * 而 studyBlueprint 仍无调用点,就又是一条"看得见拿不到"的死内容。
-     * contentReachabilityAudit.spec.ts 钉着这一条,两头要接一起接。
-     */
+    /** 图纸掌握度 0~1 —— 炼器道预留字段,尚无获取路径;读 blueprintMastery 须与 studyBlueprint 调用点一起接(contentReachabilityAudit.spec.ts 钉着) */
     const blueprintLore = ref<Record<string, number>>({})
     /** 技艺累积经验 */
     const skillExp = ref<Record<SkillId, number>>(emptySkillExp())
-    /** 敌人认知层 0~3(Phase 32.5)—— 交过手才谈得上认识 */
+    /** 敌人认知层 0~3 */
     const enemyLore = ref<Record<string, number>>({})
     /** 与某敌交手的次数 */
     const enemySeen = ref<Record<string, number>>({})
@@ -53,13 +41,7 @@ export const useLoreStore = defineStore(
     const studyFrac = ref(0)
     /** 入门丹方是否已播种(旧存档首次进入本体系时补发,幂等) */
     const seeded = ref(false)
-    /**
-     * 装备见闻:模板 id → 生平见过的最好一件(最高品质 rank 与最高层级)。
-     *
-     * 图鉴此前只有「收没收录」两态,而装备的深度本来就存在别处 —— 只是没人记。
-     * 记的是**见过的最好一件**,不是当前行囊:化尘了、分解了、被挤掉了,
-     * 见过就是见过(与灵材的「照面次数」同一性质,故也放在这个 store 里)。
-     */
+    /** 装备见闻:模板 id → 见过的最高品质 rank 与最高层级;化尘/分解/挤掉不清除 */
     const equipLore = ref<Record<string, { q: number; t: number; u: number }>>({})
 
     /** 已辨识(认知层 ≥1)的灵材数 */
@@ -77,17 +59,12 @@ export const useLoreStore = defineStore(
       return materialLore.value[id] ?? 0
     }
 
-    /** 该模板见过的最高成色(没见过返回 undefined);u = 是否亲手用过(强化或装备过) */
+    /** 该模板见过的最高成色;u = 是否亲手用过(强化或装备过) */
     function equipSeen(id: string): { q: number; t: number; u: number } | undefined {
       return equipLore.value[id]
     }
 
-    /**
-     * 记下「亲手用过这一件」——强化过或装备过都算。
-     *
-     * 与「见过什么成色」分开记:成色靠运气(要撞上天品),而用不用它由玩家自己决定。
-     * 图鉴的收录深度因此多了一档**可推进**的台阶(见 ui/codex 的装备梯子)。
-     */
+    /** 记下「亲手用过」:强化或装备过都算 */
     function noteEquipUsed(templateId: string): void {
       const cur = equipLore.value[templateId]
       if (cur?.u) return
@@ -97,12 +74,7 @@ export const useLoreStore = defineStore(
       }
     }
 
-    /**
-     * 记下一件装备的成色:品质取其高,层级取其高,各记各的。
-     *
-     * 不分先后地一起比(「这一件整体更好」)是没有定义的 —— 15 阶天品与 20 阶良品
-     * 谁更「好」要看用途。故两个维度各自刷新,谁也不冒充谁。
-     */
+    /** 记下一件装备的成色:品质、层级各取其高,各自刷新 */
     function noteEquipSeen(templateId: string, qualityRank: number, tier: number): void {
       const cur = equipLore.value[templateId]
       const q = Math.max(0, Math.min(MAX_QUALITY_RANK, Math.floor(qualityRank || 0)))
@@ -192,12 +164,7 @@ export const useLoreStore = defineStore(
 
     /** 存档修复:补齐新增技艺键、夹紧越界值 */
     function sanitize(): void {
-      /**
-       * 先补形再夹值:存档可能缺栏(旧版本)或被写坏。
-       * 此前只有 enemyLore/enemySeen 用了 `?? {}`,其余几张表直接进 Object.entries ——
-       * 一旦缺栏就是 "Cannot convert undefined or null to object",读档即白屏。
-       * (见 storeResilience.spec:逐个字段灌 undefined 的坏档韧性红线)
-       */
+      // 先补形再夹值:缺栏直接进 Object.entries,读档即白屏(storeResilience.spec 钉着)
       if (!skillExp.value || typeof skillExp.value !== 'object') skillExp.value = emptySkillExp()
       if (!materialLore.value || typeof materialLore.value !== 'object') materialLore.value = {}
       if (!materialSeen.value || typeof materialSeen.value !== 'object') materialSeen.value = {}
@@ -209,14 +176,7 @@ export const useLoreStore = defineStore(
         fixedExp[id] = Number.isFinite(v) ? Math.max(0, v as number) : 0
       }
       skillExp.value = fixedExp as Record<SkillId, number>
-      /**
-       * 按 id 认对象:认不出的条目一律清掉。
-       *
-       * 这四张表不是"有多少条就懂多少"的账本 —— 图鉴的「已识 N 味」与宿慧折算都按
-       * `Object.values` 数条目,坏档里塞几个野 id 就能凭空多出几味药、几张方、几种敌,
-       * 甚至提前拿到宿慧。写入侧已各自校验(encounterMaterial/noteEnemy/研读只喂真 id),
-       * 读档侧若只夹数值,这些幽灵条目就会一直留在存档里继续计数。
-       */
+      // 按 id 认对象,认不出的清掉:图鉴「已识 N 味」与宿慧折算按 Object.values 数条目
       const clampMap = (
         src: Record<string, number>,
         lo: number,
@@ -231,20 +191,19 @@ export const useLoreStore = defineStore(
         return out
       }
       materialLore.value = clampMap(materialLore.value, 0, LORE_MAX, id => !!materialDef(id))
-      // 照面次数只做「这一味见过几回」的底料,不参与任何计数/展示;即便 id 认不出
-      // 也无处冒充,故只夹值不认 id —— 旧档改名或版本回退时,这点进度不该被抹掉。
+      // 照面次数不参与计数/展示,只夹值不认 id:旧档改名或版本回退时不抹掉进度
       materialSeen.value = clampMap(materialSeen.value, 0, Number.MAX_SAFE_INTEGER)
       recipeLore.value = clampMap(recipeLore.value, 0, 1, id => !!pillDef(id)?.recipe)
       blueprintLore.value = clampMap(blueprintLore.value, 0, 1)
-      // 旧存档没有这两张表,?? {} 保证补齐而非留 undefined
+      // 旧存档没有这两张表
       enemyLore.value = clampMap(enemyLore.value ?? {}, 0, ENEMY_LORE_MAX, id => !!enemyDef(id))
       enemySeen.value = clampMap(enemySeen.value ?? {}, 0, Number.MAX_SAFE_INTEGER)
-      // 装备见闻:每个条目是 { q, t } 两个数,形状烂掉就整条丢掉
+      // 装备见闻:形状烂掉就整条丢掉
       const seenFixed: Record<string, { q: number; t: number; u: number }> = {}
       for (const [id, v] of Object.entries(equipLore.value ?? {})) {
         const q = (v as { q?: unknown })?.q
         const t = (v as { t?: unknown })?.t
-        // 只认真正的数字:Number(null) 是 0、"9" 会悄悄转成 9 —— 那会让坏条目冒充「见过一件凡品·0 阶」
+        // 只认真正的数字:Number(null) 是 0、"9" 会转成 9,坏条目会冒充「见过一件凡品·0 阶」
         if (typeof q !== 'number' || typeof t !== 'number' || !Number.isFinite(q) || !Number.isFinite(t)) continue
         const u = (v as { u?: unknown })?.u
         seenFixed[id] = {

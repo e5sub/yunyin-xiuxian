@@ -1,30 +1,16 @@
-/**
- * Boss 机制家族 —— Phase 30.7
- *
- * 8 种机制家族,每个 Boss 具有明确战斗身份:
- * 玩家看到名字时,想的不是"多少战力",而是"它考我什么"。
- *
- * 配置原则:
- * - 主机制:决定 Boss 的核心行为(攻击模式/词条/技能)
- * - 副机制:可选的补充行为(增强难度但不改变核心)
- * - 数值人格:攻防血倍率的差异化设计,不再全部"高攻高血"
- */
+/** Boss 机制家族(8 种) */
 
 import type { BossArchetype, BossPhase, EnemySkill, StatMods } from '@/types'
 
-/** Boss 机制家族定义 */
 export interface ArchetypeDef {
   id: BossArchetype
   name: string
   seal: string
   desc: string
-  /** 家族特性词条(模组,影响战斗行为) */
   coreMods: StatMods
-  /** 家族特性技能 */
   coreSkills: EnemySkill[]
-  /** 阶段配置(80%/50%/20% 触发) */
   phases: BossPhase[]
-  /** 数值人格:攻/防/血倍率倾向(相对标准 Boss) */
+  /** 攻/防/血倍率,相对标准 Boss */
   statPersonality: { atkMult: number; defMult: number; hpMult: number }
 }
 

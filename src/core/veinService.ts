@@ -1,8 +1,4 @@
-/**
- * 灵脉服务 —— Phase 30.3
- * 投点规则:总容量 100;主脉独占 70;副脉各 ≤30。
- * 主脉可迁移(付费换向),已投点数不回收——方向选择有代价但不锁死。
- */
+/** 灵脉服务:总容量 100,主脉 ≤70,副脉各 ≤30;主脉可付费迁移,已投点数不回收 */
 import type { GNum } from '@/types'
 import type { VeinId } from '@/data/veins'
 import { veinDef } from '@/data/veins'
@@ -33,8 +29,7 @@ export function veinsUnlocked(): boolean {
 /** 某条脉当前可投上限 */
 export function veinCap(id: VeinId): number {
   const dongfu = useDongfuStore()
-  // 未定主脉时每条都可能是首投之脉 → 都按主脉档 70,与连投计划(effectiveCap)同一口径;
-  // 否则卡片上显示「0/30」、批量却标「连投至第 70 点」,同一张卡两个数
+  // 未定主脉时按主脉档,须与 veinInvestPlan 的 effectiveCap 同口径
   return dongfu.veinMain === null || dongfu.veinMain === id ? VEIN_MAIN_CAPACITY : VEIN_SIDE_CAP
 }
 
@@ -43,35 +38,25 @@ export function veinPointCost(): GNum {
   return stoneByTier(playerTier(), VEIN_POINT_STONE)
 }
 
-/** 主脉迁移费 */
 export function veinSwitchCost(): GNum {
   return stoneByTier(playerTier(), VEIN_POINT_STONE * 20)
 }
 
-/**
- * 改立主脉还差多少灵石:付得起为 0。
- * 入口、确认钮与服务拒因同读这一处,余额不足时不再只写笼统「未足」。
- */
+/** 改立主脉还差多少灵石(付得起为 0);入口、确认钮与服务拒因同读此处 */
 export function veinSwitchShortfall(): GNum {
   const cost = veinSwitchCost()
   const resources = useResourcesStore()
   return resources.hasStone(cost) ? gnZero() : subClamp(cost, resources.spiritStone)
 }
 
-/**
- * 单点投脉还差多少灵石:付得起为 0。
- * 单点、连投与服务拒因同读这一处,余额不足时不再只写笼统「未足」。
- */
+/** 单点投脉还差多少灵石(付得起为 0);单点、连投与服务拒因同读此处 */
 export function veinPointShortfall(): GNum {
   const cost = veinPointCost()
   const resources = useResourcesStore()
   return resources.hasStone(cost) ? gnZero() : subClamp(cost, resources.spiritStone)
 }
 
-/**
- * 向某条脉投一点。
- * 未定主脉时,首次投点的脉自动成为主脉。
- */
+/** 向某条脉投一点;未定主脉时首投之脉成为主脉 */
 export function investVein(id: VeinId): boolean {
   const dongfu = useDongfuStore()
   const resources = useResourcesStore()
@@ -92,8 +77,7 @@ export function investVein(id: VeinId): boolean {
     ui.toast(veinShortToast(formatGN(veinPointShortfall())), 'warn')
     return false
   }
-  // 只有这次真投下去,才立为首投之脉(此前在守卫之前就把主脉定死,
-  // 没灵石/已满的被拒绝点击也把主脉占掉,其余三条「首投成主」就此堵死)
+  // 立主须在全部守卫之后:被拒的点击不得占主脉
   if (dongfu.veinMain === null) dongfu.setVeinMain(id)
   resources.spendStone(cost)
   dongfu.addVeinPoint(id, 1)
@@ -109,11 +93,7 @@ export interface VeinInvestPlan {
   blocked: 'peak' | 'full' | 'short' | null
 }
 
-/**
- * 连投计划:只算不动手。单点成本恒定(veinPointCost 不随点数涨),总价 = 点数 × 单价;
- * 上限取「该脉余量」与「总容量余量」较小者,再被灵石余额封顶。
- * 未定主脉时首投即成主脉 —— 计划按主脉档算余量,免得一口气把第一条投进 30 点就不肯多要。
- */
+/** 连投计划,只算不动手;单点成本不随点数涨,总价 = 点数 × 单价;未定主脉按主脉档算余量 */
 export function veinInvestPlan(veinId: VeinId): VeinInvestPlan {
   const dongfu = useDongfuStore()
   const resources = useResourcesStore()
@@ -126,17 +106,15 @@ export function veinInvestPlan(veinId: VeinId): VeinInvestPlan {
   const maxByCap = Math.min(effectiveCap - current, VEIN_TOTAL_CAPACITY - dongfu.veinTotal)
   if (maxByCap <= 0) return zero('peak')
   const byStone = Math.floor(ratio(resources.spiritStone, veinPointCost()))
-  // ratio 在 veinPointCost 为 0/NaN 时回 Infinity/NaN —— 显式收束:灵石不构成限制时,点数由
-  // 容量维度(maxByCap)唯一决定,绝不把 Infinity 写进 plan。
+  // 单价为 0/NaN 时 ratio 回 Infinity/NaN:按 maxByCap 取,不让 Infinity 进 plan
   const points = Math.min(maxByCap, Number.isFinite(byStone) ? byStone : maxByCap)
   if (points <= 0) return zero('short')
   return { points, stone: mulN(veinPointCost(), points), blocked: null }
 }
 
 /**
- * 连投:按计划一口气把这条脉注到「还能注的地方」(该脉上限 / 总容量 / 灵石三者的最短)。
- * 计划与执行同一时刻、无 await,故直接按总账一笔扣、一笔加 —— 逐点累加会有 GNum
- * 浮点尾差,账目与预览对不齐;总账则与界面上报的数分毫不差。返回实际投的点数;0 = 一注未成。
+ * 连投:按 veinInvestPlan 总账一笔扣、一笔加,计划与执行间无 await;逐点累加有 GNum 尾差,与预览对不齐。
+ * 返回实际投的点数,0 = 一注未成。
  */
 export function investVeinBatch(veinId: VeinId): number {
   const dongfu = useDongfuStore()
@@ -150,7 +128,7 @@ export function investVeinBatch(veinId: VeinId): number {
     playSfx('warn')
     return 0
   }
-  // 首投仍未定主:与单点同规矩,这一笔注定这条当主脉
+  // 未定主脉时与单点同规则立主
   if (dongfu.veinMain === null) dongfu.setVeinMain(veinId)
   resources.spendStone(plan.stone)
   dongfu.addVeinPoint(veinId, plan.points)

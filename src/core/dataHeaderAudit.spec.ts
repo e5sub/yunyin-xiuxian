@@ -1,13 +1,4 @@
-/**
- * 数据表头计数审计
- *
- * 各 data/*.ts 的头注释常写着「N 条 / N 件 / N 个」,给读代码的人一个规模印象。
- * 但内容一加,这些数字就悄悄过期 —— 刚清过的就有词条 118→110、法宝 20→26、
- * 装备 50→77、天赋 30→33。这类"看着像事实的注释"比没有注释更坏。
- *
- * 这里不重抄一张表,而是**读源码文本、取头注释里声明的数字,再与真实数组长度比对**:
- * 谁改了内容忘了改注释,这里立刻红。
- */
+/** 数据表头计数审计:data/*.ts 头注释声明的规模数字须等于真实数组长度 */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -43,7 +34,7 @@ import { PETS } from '@/data/pets'
 
 const SOURCES = import.meta.glob('../data/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 
-/** 文件名(相对 data/)→ 该文件导出的数组,及其头注释里声明的规模 */
+/** 文件名(相对 data/)→ 该文件导出数组的真实长度 */
 const TABLES: { file: string; label: string; length: number }[] = [
   { file: 'affixes.ts', label: '词条', length: AFFIXES.length },
   { file: 'artifacts.ts', label: '法宝', length: ARTIFACTS.length },
@@ -76,16 +67,7 @@ describe('数据表头计数 · 与真实数组长度一致', () => {
   })
 })
 
-/**
- * README 里的数量也得跟着表走。
- *
- * 数据文件的头注有上一条守着,README 没有 —— 于是它一路飘:功法早已 63 部 141 条分支,
- * 它还写着「46 部 / 107 条」;装备涨到 288 件,它还是「77 模板」;区域的尽头早不是
- * 九幽魔渊(那只是 16 阶),它仍写着「自青云山麓至九幽魔渊」。
- *
- * 判据不从 README 出发,而是**从表数出数、再要求 README 里那句话长得一样** ——
- * 内容一涨,这句话就对不上,这里先红。散文里的措辞可以改,数字不能自作主张。
- */
+/** README 数量对账:从表数出数,要求 README 里那句话长得一样;散文措辞可改,数字不可 */
 describe('README · 数字与表一致', () => {
   const readme = readFileSync(resolve(__dirname, '../../README.md'), 'utf8')
 

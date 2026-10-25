@@ -1,25 +1,10 @@
 /**
- * 死导出审计 —— 「导出」也是一种承诺
+ * 死导出审计:每个顶层导出除声明处外,src 里还须有别人用;要么接上,要么删掉。
+ * 确有理由先留的登记在 ALLOWLIST,写明原因和去处;一旦有人接上即变红,提醒销账。
  *
- * 一个顶层导出活着的判据只有一条:**除声明处之外,src 里还有别人用**。
- * 没有别人的导出,读者会以为它被接上了,于是:
+ * 故障注入:把 ALLOWLIST 里任一项接上(或删掉某个真导出的来源),或往 src 里加一个没人用的 `export const x = 1`,本用例红。
  *
- *   - isSoftCapped 写了半年没人调,软阈值就成了"面板暗改";
- *   - RULESET_CHANGELOG 写好了没人读,玩家问不到"天道变了什么";
- *   - 早先的 CHAIN_EVENT_IDS 列着五个连锁事件的 id,而那五个事件根本不存在
- *     (现已实装为 data/chains.ts,旧的死导出随之删除)。
- *
- * 这三条都是本轮清扫出来的真事,共同点不是"代码写得差",而是
- * **没有任何机制阻止死导出继续躺在那里**。故本文件把这件事变成红线:
- *
- *   每个顶层导出,要么有人接,要么删掉;确有理由先留的,登记在 ALLOWLIST
- *   里写明原因和去处 —— 名单不常驻,一旦有人接上,这里立刻变红提醒销账。
- *
- * 故障注入:任意把 ALLOWLIST 里的一项接上(或删掉某个真导出的来源)都会变红;
- * 往 src 里加一个没人用的 `export const x = 1` 也会变红。
- *
- * 判据用 TypeScript 语法树,不是正则 —— 注释与字符串里的名字不算使用,
- * `obj.foo` 的属性名 / 接口字段名也不算,免得"提过一嘴"冒充"接线"。
+ * 判据用 TypeScript 语法树:注释与字符串里的名字、`obj.foo` 的属性名、接口字段名都不算使用。
  */
 import { describe, expect, it } from 'vitest'
 import ts from 'typescript'
@@ -28,27 +13,14 @@ import { join, relative, resolve } from 'node:path'
 
 const SRC = resolve(__dirname, '..')
 
-/**
- * 有理由先留、暂不接线的导出。
- *
- * 每一项都必须写清「为什么留」和「什么时候销账」,
- * 写不出这两句的,就是一具应该删掉的尸体。
- */
+/** 暂不接线的导出;每一项须写清为什么留、什么时候销账 */
 const ALLOWLIST: Record<string, string> = {
-  // 已被别的审计钉住的两端
   studyBlueprint: '炼器图纸骨架:contentReachabilityAudit 已钉"读与给必须一起接",此处不重复扣押'
 }
 
 /**
- * 审计/分析模块 —— 它们的导出本就不是给游戏运行时用的,而是给用例读的
- * (模拟、曲线、回归基线、审计表)。这些模块整份豁免"spec-only"红线。
- *
- * 为什么不用自动判据:试过两次都不干净 ——
- *   ① "有导出被运行时用过" ⇒ 审计模块常有一两个导出被界面借用,误报上百;
- *   ② "从 main 沿 import 传递可达" ⇒ 只要审计模块里有一个导出进了界面
- *      (如 samsaraAudit.heritageGroups 被轮回弹窗用),它 import 的整棵分析树
- *      都成了"运行时",照样误报。
- * 于是改为**具名清单**:新增分析模块时在此登记,一眼可审。
+ * 审计/分析模块:导出给用例读,整份豁免 spec-only 红线。新增分析模块须在此登记。
+ * 不自动识别:审计模块常有导出被界面借用,「有导出被运行时用过」「从 main 沿 import 传递可达」两种判据都会误报。
  */
 const AUDIT_MODULES = new Set([
   'core/buildSearch.ts',
@@ -78,10 +50,7 @@ const AUDIT_MODULES = new Set([
   'core/trialMotivation.ts'
 ])
 
-/**
- * 全扫描统一用正斜杠路径(Win 上 join 产出 `\`,会打不中机制表里的正斜杠键)。
- * 文件系统操作仍用各自平台的 join,只有进比较的字符串归一。
- */
+/** 进比较的路径统一成正斜杠(Win 上 join 产出 `\`,打不中正斜杠键);文件系统操作仍用平台 join */
 const posix = (p: string): string => p.replace(/\\/g, '/')
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -93,7 +62,7 @@ function walk(dir: string, out: string[] = []): string[] {
   return out
 }
 
-/** .vue 只取 <script> 块;返回可解析的源码 */
+/** .vue 只取 <script> 块 */
 function scriptOf(path: string): string {
   const text = readFileSync(path, 'utf8')
   if (!path.endsWith('.vue')) return text
@@ -104,14 +73,10 @@ function hasExportModifier(node: ts.Node): boolean {
   return ts.canHaveModifiers(node) && !!ts.getModifiers(node)?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)
 }
 
-/** 属性名/字段名/枚举成员不是"使用":`obj.foo`、`{ foo: 1 }`、`interface { foo: T }` 都不算 */
+/** 属性名/字段名/枚举成员不算使用 */
 function isNonUseIdentifier(node: ts.Identifier, parent: ts.Node): boolean {
   return (
-    /**
-     * 光 import 不算接线:真正的接线是有人调用它(未使用的 import 由 eslint 兜)。
-     * 例外:别名导入 `import { recordWin as recordStreakWin }` —— 左边的原名是真被引用了,
-     * 右边只是本地别名,所以 `propertyName` 那一侧要算使用(本轮就漏判了连胜的记录点)。
-     */
+    // import 不算使用(未用的 import 由 eslint 兜);别名导入 `a as b` 的原名一侧(propertyName)算使用
     (ts.isImportSpecifier(parent) && parent.propertyName !== node) ||
     ts.isImportClause(parent) ||
     ts.isExportSpecifier(parent) ||
@@ -135,7 +100,7 @@ function scanExports(): { dead: DeadExport[]; specOnly: DeadExport[]; scanned: n
   const files = walk(SRC)
   const declarations = new Map<string, number>()
   const declFile = new Map<string, string>()
-  /** 导出名 → 声明所在的绝对路径(判定"运行时模块"用) */
+  /** 导出名 → 声明处绝对路径(判定运行时模块用) */
   const declPath = new Map<string, string>()
   const uses = new Map<string, number>()
   const specUses = new Map<string, number>()
@@ -165,16 +130,10 @@ function scanExports(): { dead: DeadExport[]; specOnly: DeadExport[]; scanned: n
       ts.forEachChild(node, visit)
     }
     visit(sf)
-    /**
-     * .vue 的模板也要算:template 里的 {{ formatDate(...) }} 是真实使用,
-     * 只解析 <script> 会把它们误判成"没人用"(本轮把 import 排除出"使用"后就暴露了这一点)。
-     */
+    // .vue 模板里的表达式也算使用
     if (file.endsWith('.vue')) {
       const template = readFileSync(file, 'utf8').replace(/<script[^>]*>[\s\S]*?<\/script>/g, '')
-      /**
-       * 只数**表达式里**的词 —— 整篇扫词会把 HTML 标签名当成标识符
-       * (`<div>` 会让 gnum.div 看起来"有人在用",本轮就撞上了这一下)。
-       */
+      // 只数表达式里的词:整篇扫会把标签名当标识符(`<div>` 会让 gnum.div 看似有人用)
       const exprs: string[] = []
       for (const m of template.matchAll(/\{\{([\s\S]*?)\}\}/g)) exprs.push(m[1]!)
       for (const m of template.matchAll(/(?::|@|v-)[\w.-]*="([^"]*)"/g)) exprs.push(m[1]!)
@@ -200,19 +159,14 @@ function scanExports(): { dead: DeadExport[]; specOnly: DeadExport[]; scanned: n
   const dead: DeadExport[] = []
   const specOnly: DeadExport[] = []
   /**
-   * 哪些模块是"运行时模块":从入口(main.ts)出发、沿 import 传递可达的那些。
-   *
-   * 两条走过的弯路:
-   *   ① 用"某个导出被运行时用过"当判据 —— 审计模块常有一两个导出被界面借用,其余全是 spec-only,误报上百;
-   *   ② 用"被非 spec 文件 import 过" —— `samsaraAudit` 这类只被 spec 引的模块会把它 import 的
-   *      `progressionSim` 也带成"运行时",仍是误报。
-   * 传递可达才算数:只从 spec 能被够到的模块,整份都是审计工具,不进这条红线。
+   * 运行时模块 = 从入口 main.ts 沿 import 传递可达的模块;只从 spec 够得到的整份视为审计工具。
+   * 「导出被运行时用过」「被非 spec 文件 import 过」两种判据都会误报。
    */
   function resolveImport(from: string, spec: string): string | null {
     const base = spec.startsWith('@/')
       ? join(SRC, spec.slice(2))
       : spec.startsWith('.')
-        // Win 路径是 `\`,`lastIndexOf('/')` 恒为 -1 会把目录切成坏路径 —— 两种分隔符都找
+        // Win 路径是 `\`:两种分隔符都找
         ? join(from.slice(0, Math.max(from.lastIndexOf('/'), from.lastIndexOf('\\'))), spec)
         : null
     if (!base) return null
@@ -249,7 +203,7 @@ function scanExports(): { dead: DeadExport[]; specOnly: DeadExport[]; scanned: n
       dead.push({ name, file })
       continue
     }
-    // 只在 spec 里被用到(除声明外运行时零引用):若这个模块本身是运行时模块,就是"骨架信号"
+    // 运行时模块里除声明外只被 spec 用到:骨架信号
     const specOnlyCount = specUses.get(name) ?? 0
     const runtimeUses = total - specOnlyCount
     const declRel = declFile.get(name) ?? ''
@@ -288,14 +242,7 @@ describe('死导出审计', () => {
     expect(stale, '这些名字已经有人接了(或已删除):请从 ALLOWLIST 里删掉,名单不是博物馆').toEqual([])
   })
 
-  /**
-   * 「骨架空转」的判据:运行时模块里,只被 spec 用到的导出 = 声明在前、实现没跟。
-   * 这一条要是早点有,短期秘境的骨架(createSecretRealm 只有 spec 在用)就不会躺四十轮,
-   * 机缘弹窗、灵兽性格、装备共鸣那几处"活得却看不见"也会当场现形。
-   *
-   * 例外必须写明理由 —— 注意这些是**运行时模块**里的例外,纯审计模块不进这张表:
-   * 一个模块若从没被运行时引用过,它整份都是审计工具,自然全是 spec-only。
-   */
+  /** 骨架空转豁免:运行时模块里只被 spec 用到的导出,每项须写明理由;纯审计模块不进此表 */
   const SPEC_ONLY_ALLOWLIST: Record<string, string> = {
     weatherDef: '查表原语:运行时用 todayWeather() 直接取对象,按 id 查表服务于数据自检与联动审计',
     reliefKinds: '审计汇总:把灵根的劫型解法通道列出来,供渡劫审计与灵根角色审计读',

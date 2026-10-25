@@ -1,18 +1,9 @@
 /**
- * 天劫决策服务(Phase 32.0,32.1 口径统一)
+ * 天劫决策服务:劫型派生、准备度(护持/恢复/抗性/爆发)、风险识别、决策档(只给档位,不给指令)。
+ * 词条只作单维解法,不直接堆成功率。
  *
- * 从"堆成功率"变为"降低风险结构":
- *   - 劫型派生(境界 + 今日天时,确定性)
- *   - 准备度多维评估(首轮护持 / 恢复 / 抗性 / 爆发)
- *   - 风险识别(这套构筑面对此劫的短板)
- *   - 决策建议(给出信息,不给指令;保留"冲不冲")
- *
- * 词条→降级为工具(单一维度解法),不直接单点堆成功率。
- *
- * 口径纪律(32.1):本文件的度量函数是天劫数学的唯一来源。
- * UI 预览(buildTribulationPlan)与实际结算(breakthrough.runTribulation)
- * 必须调用同一批函数——凡是 UI 里算进星级的词条,结算里必须同样吃到,
- * 反之亦然。任何"前端显示一套、结算另一套"都属于欺骗玩家。
+ * 本文件的度量函数是天劫数学的唯一来源:UI 预览(buildTribulationPlan)与结算
+ * (breakthrough.runTribulation)须调同一批函数;UI 算进星级的词条,结算须同样吃到,反之亦然。
  */
 import type { StatMods } from '@/types'
 import { modOf } from './statsCalc'
@@ -42,7 +33,6 @@ import { usePlayerStore } from '@/stores/player'
 export interface TribulationPlan {
   kind: TribulationKind
   def: TribulationDef
-  /** 劫名 + 一句话 */
   title: string
   desc: string
   /** 期望渡过率(0.25~0.95);仅作决策档输入,不对外显示为概率 */
@@ -80,12 +70,9 @@ export function rollTribulation(targetMajor: number): TribulationKind {
   return TRIBULATIONS[idx]!.id
 }
 
-// ---------- 共享度量(UI 与结算的唯一口径) ----------
+// ---------- 共享度量 ----------
 
-/**
- * 三维折算的结果:防御折出的抗性、气血折出的开劫水位。
- * 两者都是**加法项**,且各自有绝对上限(见 data/constants 的那段注释)。
- */
+/** 三维折算:防御折出抗性、气血折出开劫水位;均为加法项,上限见 data/constants */
 export interface TribStatGuard {
   resist: number
   guard: number
@@ -94,22 +81,17 @@ export interface TribStatGuard {
 export const NO_STAT_GUARD: TribStatGuard = { resist: 0, guard: 0 }
 
 /**
- * 把三维折成天劫认的两样 —— 血厚防高允许硬抗一部分。
- *
- * 尺子是「本境裸修为」:realmScale × COMBAT_*_BASE,与 statsCalc 的
- * baseCombatStats 同源,所以"超出多少倍"这句话在任何境界都成立、且不会随
- * 曲线调整悄悄变形。裸修为及以下拿不到折算,超出部分按常数线性折算后封顶。
+ * 三维折成天劫抗性与开劫水位。
+ * 尺子是本境裸修为 realmScale × COMBAT_*_BASE(与 statsCalc.baseCombatStats 同源);
+ * 裸修为及以下不折算,超出部分线性折算后封顶。
  */
 export function statGuardOf(raw: { defense: number; maxHp: number; major: number; sub: number }): TribStatGuard {
-  // toNum 在 e>308 返回 Infinity(见 utils/gnum)。坏档把境界/三维写爆时,别让 Infinity
-  // 流进 surplus 靠下面的 Math.min(CAP, …) 兜底 —— 显式排掉,返回一块干净的全零折算。
+  // toNum 在 e>308 返回 Infinity(坏档):显式返回全零,不靠 Math.min(CAP, …) 兜底
   const scale = toNum(realmScale(raw.major, raw.sub))
   if (!Number.isFinite(scale)) return NO_STAT_GUARD
   const bareDef = scale * COMBAT_DEF_BASE
   const bareHp = scale * COMBAT_HP_BASE
-  // 规整到 9 位:除法会留下 1e-17 这样的尾巴,裸修为该是干净的 0,不是"白送一点点"。
-  // 比值远离 1 时(大幅超界)没有小数残留可规整,直接算 —— .toFixed(9) 只在比值接近 1 时
-  // 才有意义,对 1e300 这样的巨值会造出几 KB 的字符串,毫无必要。
+  // 比值在 (1,2) 时规整到 9 位,消除除法尾差(裸修为须得 0);大比值不走 toFixed(1e300 会造出几 KB 字符串)
   const surplus = (value: number, bare: number): number => {
     if (!Number.isFinite(value) || !(bare > 0)) return 0
     const ratio = value / bare
@@ -124,23 +106,14 @@ export function statGuardOf(raw: { defense: number; maxHp: number; major: number
   }
 }
 
-/**
- * 界膜那一劫认不认血肉(= 三维折算的折扣)。
- *
- * 界内各关 1(照常折算);界末那一关取 TRIB_WORLD_STEP_STAT_FOLD
- * (0 = 不认,见 constants 那段注释里的理由)。判据只在**目标境界**上成立 ——
- * 目标是不是某个界域的第一境,决定了这一步是不是"破壁而出"。
- */
+/** 三维折算折扣:界内为 1;目标境界是界域第一境时取 TRIB_WORLD_STEP_STAT_FOLD(0 = 不认) */
 export function statFoldAt(targetMajor: number): number {
   return isWorldEntry(targetMajor) ? TRIB_WORLD_STEP_STAT_FOLD : 1
 }
 
 /**
- * 当前玩家的三维折算 —— 预览(currentTribulationPlan)与结算(runTribulation)共用这一个入口。
- *
- * 折叠在这里做,而不是在 waveDamage / trace 里各做一次:这是**读数的唯一入口**,
- * 界面摊开的「防御折算 X% · 气血折算 Y%」与实际结算吃到的就是同一个数。
- * 若在结算侧另折一次而界面上照旧显示原值,玩家会看到"护持明明写着 35%,却像没有"。
+ * 当前玩家的三维折算(已乘折扣);预览(currentTribulationPlan)与结算(runTribulation)共用此入口。
+ * 折扣只在此处乘,waveDamage / trace 不另乘,界面读数即结算所用。
  */
 export function currentStatGuard(): TribStatGuard {
   const player = usePlayerStore()
@@ -155,12 +128,11 @@ export function currentStatGuard(): TribStatGuard {
   return { resist: raw.resist * fold, guard: raw.guard * fold }
 }
 
-/** 天劫总波次 */
 export function tribulationWaves(targetMajor: number): number {
   return TRIBULATION_BASE_WAVES + Math.min(targetMajor, TRIBULATION_DIFFICULTY_CAP_MAJOR)
 }
 
-/** 准备度分档阈值:四维共用一张表,改这里 UI 与结算同时跟进 */
+/** 准备度分档阈值(UI 与结算共用) */
 export const PREP_THRESHOLDS = {
   guard: [0.08, 0.25, 0.4],
   sustain: [0.02, 0.04, 0.07],
@@ -179,13 +151,7 @@ export function prepTier(dim: PrepDimension, value: number): number {
   return 0
 }
 
-/**
- * 裂魂"爆发削劫"的减免表,下标即 prep.burst 星级。
- *
- * 用星级而非独立阈值查表,是为了让 UI 显示的那颗星就是结算读的那个数——
- * 一旦两边各用一条线(例如 UI 0.35 / 结算 0.40),中间就会出现
- * "看起来够、算起来不够"的欺骗区间。
- */
+/** 裂魂爆发削劫减免表,下标即 prep.burst 星级;结算按星级查表,不另设阈值 */
 export const SOULREND_BURST_RELIEF = [0, 0.08, 0.18, 0.3] as const
 
 /** 爆发度量(prep.burst 与结算共用) */
@@ -193,55 +159,40 @@ export function burstScore(mods: StatMods): number {
   return modOf(mods, 'critRate') + modOf(mods, 'damageBonus') * 0.5
 }
 
-/**
- * 劫型折扣的回拉:向常态(1)靠拢多少。
- *
- * 只回拉"折扣"(base<1),不放大"加成"(base>1)——
- * 灵根解开的是这道劫特意关掉的那扇门,不是普涨。
- */
+/** 劫型折扣向 1 回拉;只回拉折扣(base<1),不放大加成(base>1) */
 function easeDiscount(base: number, restore: number): number {
   return Math.max(base, base + (1 - base) * Math.min(1, Math.max(0, restore)))
 }
 
-/**
- * 裂魂劫的有效爆发档。
- *
- * 灵根只能把"已经有的攻势"再推一档,推不动零:
- * 无爆发词条者拿不到任何减免。这条是放大你的选择,不是白送减伤。
- */
+/** 裂魂劫的有效爆发档:基础档为 0 时灵根不加档 */
 export function effectiveBurstTier(mods: StatMods, relief: TribulationRelief = NO_RELIEF): number {
   const base = prepTier('burst', burstScore(mods))
   if (base <= 0) return 0
   return Math.min(3, base + relief.burstTierBonus)
 }
 
-/** 每波恢复量(prep.sustain 与结算共用;吸血按三成折算为持续恢复) */
+/** 每波恢复量(prep.sustain 与结算共用) */
 export function sustainScore(mods: StatMods, def: TribulationDef, relief: TribulationRelief = NO_RELIEF): number {
   return (modOf(mods, 'regenPerRound') + modOf(mods, 'lifesteal') * 0.3) * easeDiscount(def.healMult, relief.healRestore)
 }
 
-/** 起始护持水位(1 = 满血;护盾按劫型倍率折算) */
+/** 起始护持水位(1 = 满血) */
 export function guardScore(mods: StatMods, def: TribulationDef, relief: TribulationRelief = NO_RELIEF): number {
   return modOf(mods, 'shieldOnStart') * easeDiscount(def.shieldMult, relief.shieldRestore)
 }
 
-/** 天劫抗性度量(减伤按同源灵根的亲和折一部分为抗性)。
- * 与结算 currentTribResist 同一口径:雷鸣并非「抗性/减伤」劫(其特点是雷光破盾+疗伤可撑),
- * 也不再「虚注五成」把减伤算进抗性星 —— 结算从不兑现的那部分,星级不配看得见。 */
+/** 天劫抗性度量(与结算 currentTribResist 同口径;减伤只按灵根亲和折入) */
 export function resistScore(mods: StatMods, relief: TribulationRelief = NO_RELIEF): number {
   return modOf(mods, 'tribulationResist') + modOf(mods, 'damageReduction') * relief.reductionToResist
 }
 
 /**
  * 劫型波形:第 wave 波相对基础伤害的倍率(含 dmgMult)。
- *
- * 灵根的"卸力"不做减伤——削掉的起手伤害要平摊回后续波次,总量守恒。
- * 它改变的是"这道劫要求你怎么活下来":
- * 从"首轮必须扛住爆发"变为"可以靠续航磨过去"。
+ * 灵根卸力不减总伤:削掉的起手伤害平摊回后续波次,总量守恒。
  */
 export function waveMultiplier(def: TribulationDef, wave: number, waves: number, relief: TribulationRelief = NO_RELIEF): number {
   if (def.waveShape !== 'frontLoaded') return def.dmgMult
-  // 重压:起手两击雷霆万钧,其后转缓——总量相近,但把压力全压在开局
+  // 重压:前两波加重、其后转缓,总量相近
   const FRONT = 2
   const cut = (1.7 - 1.0) * Math.min(1, Math.max(0, relief.frontLoadEase))
   if (wave <= FRONT) return def.dmgMult * (1.7 - cut)
@@ -249,15 +200,7 @@ export function waveMultiplier(def: TribulationDef, wave: number, waves: number,
   return def.dmgMult * (0.8 + spread)
 }
 
-/**
- * 某一劫的波形读数(供 UI 摊开)——天威本身,不含任何免疫/减伤/护持/恢复。
- *
- * 两个自变量都在同一行公式里:
- *   单波 = 0.15 + 0.02×境界 + 0.03×第几道   ← 逐道加重
- *   波次 = 3 + 境界                          ← 境界越深道数越多
- * 所以"同一次渡劫越靠后越重"与"不同境界的劫不一样重"都是这条公式的直接后果,
- * 不是错觉。摊出来玩家才知道该把护持留到哪一段、恢复要撑多少道。
- */
+/** 某一劫的波形读数(供 UI 摊开):天威本身,不含免疫/减伤/护持/恢复 */
 export function tribulationWaveSpan(
   def: TribulationDef,
   targetMajor: number,
@@ -271,8 +214,7 @@ export function tribulationWaveSpan(
   let total = 0
   let heaviestWave = 1
   for (let w = 1; w <= waves; w += 1) {
-    // weatherMult: same factor as waveDamage / runTribulation. The cultivation
-    // page used to print a clear-day span while the verdict already used today.
+    // weatherMult 与 waveDamage / runTribulation 同一乘数
     const v = tribulationWaveDamage(targetMajor, w, 0) * waveMultiplier(def, w, waves) * weatherMult
     if (w === 1) first = v
     if (w === waves) last = v
@@ -286,22 +228,17 @@ export function tribulationWaveSpan(
   return { waves, first, last, min, max, total, heaviestWave }
 }
 
-/** 天劫减伤(0.6 上限)—— 结算与 UI 台账共用的唯一口径,防跨层漂移 */
+/** 天劫减伤(结算与 UI 台账共用) */
 export function tribReduction(mods: StatMods): number {
   return Math.min(TRIB_REDUCTION_CAP, modOf(mods, 'damageReduction'))
 }
 
-/**
- * 濒危减伤(背水/涅槃词条)的**唯一口径** —— 封顶与结算、UI 台账共用一处。
- *
- * 从前这个 `Math.min(0.6, …)` 在 waveDamage 与 CultivationView 的渡劫台账里各写一遍:
- * 封顶值一改,结算与台账就分叉,而玩家正是拿台账上那个数决定"这一劫扛不扛得住"。
- */
+/** 濒危减伤(背水/涅槃词条),结算与 UI 台账共用;封顶不得在调用侧另写 */
 export function tribLowHpReduction(mods: StatMods): number {
   return Math.min(TRIB_REDUCTION_CAP, modOf(mods, 'lowHpReduction'))
 }
 
-/** 折算后天劫抗性(0.8 上限):减伤按灵根亲和折一部分为抗性,与词条抗性同项同上限 */
+/** 折算后天劫抗性:减伤按灵根亲和折入,与词条抗性同项同上限 */
 export function currentTribResist(
   mods: StatMods,
   relief: TribulationRelief = NO_RELIEF,
@@ -322,17 +259,13 @@ export function waveDamage(
   stat: TribStatGuard = NO_STAT_GUARD
 ): number {
   const reduction = tribReduction(mods)
-  // 厚土分担天罚:减伤按灵根亲和折算一部分为天劫抗性(无减伤者折算为零)
-  // 三维折算(防御→抗性)与词条抗性同处一项、同受 0.8 上限:血厚防高者由此硬抗一部分
   const resist = currentTribResist(mods, relief, stat)
   const lowHpRed = tribLowHpReduction(mods)
   const waves = tribulationWaves(targetMajor)
   let dmg = tribulationWaveDamage(targetMajor, wave, resist) * (1 - reduction) * waveMultiplier(def, wave, waves, relief)
-  // 裂魂:攻势足者可硬生生削去几分劫威(减免按 prep.burst 星级查表,UI 星级即结算输入)
   if (def.id === 'soulrend') dmg *= 1 - SOULREND_BURST_RELIEF[effectiveBurstTier(mods, relief)]!
-  // 濒危减伤(背水路数)在气血垂危时同样护持渡劫
   if (hpLeft < LOW_HP_THRESHOLD) dmg *= 1 - lowHpRed
-  // 天时(雷鸣日渡劫更难,tribulationMult>1):预览与结算共用同一乘数,审计基线不传则默认 1
+  // 天时乘数:预览与结算共用;审计基线不传,默认 1
   dmg *= weatherMult
   return dmg
 }
@@ -341,16 +274,13 @@ export interface TribulationTrace {
   survived: boolean
   /** 终局水位(存活为正,失败为负) */
   hpLeft: number
-  /** 全程最低水位——险过与稳过的分界,决策档以此为准 */
+  /** 全程最低水位(决策档以此为准) */
   minHp: number
   /** 阵亡波次(存活为 0) */
   fellAt: number
 }
 
-/**
- * 期望值推演(无随机浮动)。
- * 结算 runTribulation 在此之上叠加 ±15% 波动,数学主干完全一致。
- */
+/** 期望值推演(无随机浮动);结算 runTribulation 在此之上叠加 ±15% 波动 */
 export function traceTribulation(
   def: TribulationDef,
   mods: StatMods,
@@ -361,7 +291,6 @@ export function traceTribulation(
 ): TribulationTrace {
   const waves = tribulationWaves(targetMajor)
   const regen = sustainScore(mods, def, relief)
-  // 开劫水位 = 满血 + 护持词条(受劫型 shieldMult 修正)+ 气血折算(三维那一半)
   let hpLeft = 1 + guardScore(mods, def, relief) + stat.guard
   let minHp = hpLeft
   for (let w = 1; w <= waves; w += 1) {
@@ -373,14 +302,8 @@ export function traceTribulation(
 }
 
 /**
- * 坠劫者的决策档输入。
- *
- * 关键:必须以"撑到第几道雷"为主、"最后差多少"为辅。
- * 若只看终局跌破深度,会得出荒谬结论——补强之后多扛了一波,
- * 而那一波伤害更重、跌得更深,评分反而下降(星级越高越"差")。
- * 撑得更久永远是更好的结果,这条单调性由 tribulationSpace.spec.ts 把守。
- *
- * 值域恒 < 0.45,即坠劫必为 danger 档:死就是死,差多远由风险行说明。
+ * 坠劫者的决策档输入:以撑到第几道为主、跌破深度为辅(只看深度会让多扛一波反而降分)。
+ * 撑得越久分越高,spec 钉:tribulationSpace.spec.ts。值域恒 < 0.45,坠劫必为 danger 档。
  */
 function failedRate(trace: TribulationTrace, waves: number): number {
   const progress = trace.fellAt / (waves + 1)
@@ -388,11 +311,7 @@ function failedRate(trace: TribulationTrace, waves: number): number {
   return Math.min(0.44, Math.max(0.25, 0.2 + progress * 0.18 + shortfall * 0.05))
 }
 
-/**
- * 生成突破前的渡劫计划(信息层,不替玩家决定)
- * kind 可注入(测试/固定劫型);默认按境界×天时派生
- * relief 为灵根解法通道;缺省即"无灵根之利"的基线
- */
+/** 突破前的渡劫计划;kind 缺省按境界×天时派生,relief 缺省为无灵根基线 */
 export function buildTribulationPlan(
   targetMajor: number,
   mods: StatMods,
@@ -404,22 +323,15 @@ export function buildTribulationPlan(
   const kind = kindIn ?? rollTribulation(targetMajor)
   const def = tribulationDef(kind)
 
-  // 四维准备度(词条 → 维度;均为"这道劫下如何"的解读)
+  // 星级须含结算吃到的全部项:护持含 stat.guard、抗性含 stat.resist、爆发用 effectiveBurstTier
   const prep = {
-    // 护持这一维把三维血量折算算进去 —— 结算吃了它(1 + guardScore + stat.guard),
-    // 星级就必须看得见它,与抗性含 stat.resist 对称
     guard: prepTier('guard', guardScore(mods, def, relief) + stat.guard),
     sustain: prepTier('sustain', sustainScore(mods, def, relief)),
-    // 抗性这一维要把三维折算算进去 —— 结算吃了它,星级就必须看得见它
     resist: prepTier('resist', resistScore(mods, relief) + stat.resist),
-    // 爆发这一维要连灵根/凶兆的加持算进去 —— 结算吃的是 effectiveBurstTier(mods, relief)
-    // (base tier + relief.burstTierBonus 封顶 3),星级就得看得见他,否则火/光灵根该 +1 时
-    // 星级仍停在 raw、riskLines 还能对整个「攻势不足」误诊(见 SOULREND_BURST_RELIEF 下标注释)
     burst: effectiveBurstTier(mods, relief)
   }
 
-  // 决策档以"全程最低水位"为准:险过与稳过必须分得开,
-  // 否则所有幸存者都挤在同一档,玩家只能靠堆满四维来跨线。
+  // 决策档以全程最低水位为准,险过与稳过须分档
   const trace = traceTribulation(def, mods, targetMajor, relief, weatherMult, stat)
   const expectedRate = trace.survived
     ? Math.min(0.95, 0.55 + Math.min(1, trace.minHp / 0.45) * 0.4)
@@ -486,20 +398,13 @@ function riskLines(
   return risks.slice(0, 3)
 }
 
-/**
- * 当前玩家灵根在此劫型下解开的通道。
- *
- * 预览(currentTribulationPlan)与结算(breakthrough.runTribulation)
- * 都必须经这一个入口取 relief——否则又会出现"看的一套、算的一套"。
- */
+/** 当前玩家灵根在此劫型下解开的通道;预览与结算(breakthrough.runTribulation)须经此入口取 relief */
 export function currentTribulationRelief(kind: TribulationKind): TribulationRelief {
   const player = usePlayerStore()
   return tribulationRelief(rootElements(player.linggen?.roots), kind)
 }
 
-/** 供 UI:当前玩家(含天时、灵根)的渡劫计划
- * 渡劫难度随天时(雷鸣日+8%):预览乘入 todayWeather().tribulationMult,
- * 与结算 runTribulation 同源(见 breakthrough.ts),预览与实算不可能分叉 */
+/** 供 UI:当前玩家(含天时、灵根)的渡劫计划;天时乘数与结算 runTribulation 同源 */
 export function currentTribulationPlan(): TribulationPlan {
   const player = usePlayerStore()
   const nextMajor = player.isMajorStep ? player.major + 1 : player.major

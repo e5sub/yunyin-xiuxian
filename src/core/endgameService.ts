@@ -1,6 +1,4 @@
-/**
- * 终局服务 —— 道途 / 天道熔炉 / 特殊世界远征 / 天道试炼 / 道痕
- */
+/** 终局服务:道途 / 天道熔炉 / 特殊世界远征 / 天道试炼 / 道痕 */
 import type { ArtifactDef, CombatantSnap, CombatRules, DaoMark, DaoPathId } from '@/types'
 import { mulberry32, RandomService } from '@/utils/random'
 import { formatGN } from '@/utils/format'
@@ -35,13 +33,7 @@ import { useUiStore } from '@/stores/ui'
 import { daoSourceShortfall } from './daoSource'
 import { endgameBusy } from './endgameActivity'
 
-/**
- * 真仙(仙界门槛)方可踏足天界。
- *
- * 旧设计里「满级 = 真仙 = 天界」,故门槛写作 major >= MAX_MAJOR;
- * 扩界后真仙之上还有玄仙至混沌道祖,若仍借 MAX_MAJOR,终局会随加境漂移。
- * 现改锚到具名的飞升门槛 WORLD_BREAK_MAJOR(真仙),语义与手感都不变。
- */
+/** 真仙(WORLD_BREAK_MAJOR)方可踏足天界;借 MAX_MAJOR 会让终局随加境漂移 */
 export function endgameUnlocked(): boolean {
   return usePlayerStore().major >= WORLD_BREAK_MAJOR
 }
@@ -81,9 +73,7 @@ export function furnaceConvert(rate: FurnaceRate): number {
   const resources = useResourcesStore()
   const endgame = useEndgameStore()
   const ui = useUiStore()
-  // 灵草按「仙品+(≥3)」计(道源是仙才有的货币,凡/灵品只走坊市);
-  // 其余材料是单标量,直接读。从前 herb 读 resources.herb(五品总和)却只扣当前品,
-  // 当前品为 0、总和很大时会白拿道源不扣料(over-credit)。
+  // 灵草只计仙品+(≥3),凡/灵品只走坊市;读 resources.herb(五品总和)而只扣当前品会白拿道源
   const have = rate.resource === 'herb' ? resources.herbMeltable : resources[rate.resource]
   const daoSource = Math.floor(have / rate.per)
   if (daoSource <= 0) {
@@ -101,15 +91,7 @@ export function furnaceConvert(rate: FurnaceRate): number {
   return daoSource
 }
 
-/**
- * 灵石熔铸价 —— 按**玩家当前层级**折算,不是冻结在真仙那一层。
- *
- * 灵石收入随区域层级按 1.9^层级 涨(与强化、重铸、建筑同一条经济),
- * 而熔铸价从前写死 `stoneByTier(20, …)`:到混沌海(层级 32),一战的灵石
- * 就能换出一枚以上道果 —— 道果价相对收入塌了 1.9^12 ≈ 293 倍(ISS-214)。
- * 价随层级走之后,「熔一枚道源要多少灵石」相对玩家的收入恒定,
- * 道果在整条界外长尾上是同一个价。口径与强化/重铸一致:花的是**你这一层**的钱。
- */
+/** 灵石熔铸价:按玩家当前层级折算,与强化/重铸同口径(灵石收入按 1.9^层级 涨);写死层级会使道果价相对收入塌掉(ISS-214) */
 export function furnaceStoneCost(): ReturnType<typeof stoneByTier> {
   const player = usePlayerStore()
   return stoneByTier(maxTierForMajor(player.major), FURNACE_STONE_TIER_AMOUNT)
@@ -177,7 +159,7 @@ function recordMarkInternal(
   const mark: DaoMark = {
     life: player.reincarnation.count + 1,
     daoPathId: endgame.daoPath,
-    // 记下当年的大境界:忆战据此还原当年的境界压制(低境打高锚点时那笔补正)
+    // 忆战据此还原当年的境界压制
     major: player.major,
     targetId,
     targetName,
@@ -234,14 +216,7 @@ export function snapFromReplay(name: string, r: NonNullable<DaoMark['replay']>):
   }
 }
 
-/**
- * 押道源的战斗(忆战/重写/试炼)的种子 —— 按「打的是哪一场」定死。
- *
- * 这些战斗卖的是「重打同一场」:注释里写着「同界同契同变数」,共享 rng 下
- * 全局随机流被任何别的动作推进,同一场连打两次战报都不一样,承诺落空。
- * 种子只从目标 id 与世号派生 —— 同一场永远同一串数,可复现;远征(探索)
- * 仍走共享 rng,那边「每次都不同」才是对的。
- */
+/** 忆战/重写/试炼的种子:只从目标 id 与世号派生,同一场可复现;远征仍走共享 rng */
 function seedOf(targetId: string, life: number): number {
   let h = 0x5eed
   for (let i = 0; i < targetId.length; i += 1) {
@@ -250,8 +225,7 @@ function seedOf(targetId: string, life: number): number {
   return (h ^ Math.imul(life + 1, 0x9e3779b1)) >>> 0
 }
 
-/** 道痕的环境规则(道途按当年 + 目标规则 + 变数 + 契约):忆战与重写共用 */
-/** 道痕当年的规则(道途 + 界/试炼 + 变数 + 契约 + 所择之门)—— 忆战/重写按此重打 */
+/** 道痕当年的规则(道途 + 界/试炼 + 变数 + 契约 + 所择之门):忆战/重写共用 */
 export function markRules(
   mark: DaoMark,
   world?: ReturnType<typeof celestialWorldDef>,
@@ -277,7 +251,7 @@ function markTarget(mark: DaoMark): { world?: ReturnType<typeof celestialWorldDe
   return { world, trial }
 }
 
-/** 忆战:以道痕中冻结的当世构筑,重打当年的界或试炼(无奖励,不再留痕) */
+/** 忆战:以道痕冻结的构筑重打当年的界或试炼;无奖励,不留痕 */
 export function replayMark(mark: DaoMark): ExpeditionResult | null {
   const ui = useUiStore()
   if (!mark.replay) {
@@ -297,8 +271,7 @@ export function replayMark(mark: DaoMark): ExpeditionResult | null {
   const r = mark.replay
   const snap = snapFromReplay('当年的你', r)
   const stats = { attack: r.attack, defense: r.defense, maxHp: r.maxHp }
-  // 词条对称按当年的构筑深度,与三维同口径——忆战要还原的是当年那一局。
-  // 境界也按当年的大境界走(低境打高锚点时那笔补正要还在),旧档无 major 回退 MAX。
+  // 词条对称与境界都按当年;旧档无 major 回退 MAX
   const judgement = celestialJudgement(snap.mods, mark.major ?? MAX_MAJOR, (world ?? trial)!.anchorTier)
   const foes = []
   if (world) {
@@ -327,10 +300,7 @@ export function replayMark(mark: DaoMark): ExpeditionResult | null {
 
 export const REWRITE_ENTRY_COST = 10
 
-/**
- * 重写此痕(Phase 28):以今日之你,重打当年之战(同界同契同变数)。
- * 快过旧痕即【胜于旧我】——无道源之赏,赏的是历史本身
- */
+/** 重写此痕:以今日之你重打当年之战(同界同契同变数);快过旧痕即【胜于旧我】,无道源之赏 */
 export function rewriteMark(mark: DaoMark): ExpeditionResult | null {
   const endgame = useEndgameStore()
   const ui = useUiStore()
@@ -353,8 +323,7 @@ export function rewriteMark(mark: DaoMark): ExpeditionResult | null {
   const player = usePlayerStore()
   const stats = player.celestialStats
   const ref = { attack: stats.attack, defense: stats.defense, maxHp: stats.maxHp }
-  // 世界与试炼都能重写(同界同契,下方 if (world) 分支):此前的 `if (!trial) return null`
-  // 在扣费之后拦死世界道痕,使世界分支永远不可达 —— 却照样烧掉 10 道源。修掉这条错位残守。
+  // 世界与试炼都能重写;扣费之后再拦会照样烧掉 10 道源
   const judgement = celestialJudgement(stats.mods, player.major, (world ?? trial)!.anchorTier)
   const foes = []
   if (world) {
@@ -365,10 +334,9 @@ export function rewriteMark(mark: DaoMark): ExpeditionResult | null {
       foes.push(worldFoeSnap(TRIAL_FOES[i % TRIAL_FOES.length]!, ref, Math.pow(trial.escalation, i), judgement))
   }
   const target = (world ?? trial)!
-  // 环境按当年(道途取今世——重写是今日之你应当年之局)
+  // 环境按当年,道途取今世
   const rules = mergeRules(currentDaoRules(), markRules({ ...mark, daoPathId: null }, world, trial))
   const perWin = endgame.daoPath === 'sword' ? SWORD_PER_WIN : endgame.daoPath === 'slaughter' ? SLAUGHTER_PER_WIN : undefined
-  // 重写与忆战同一个「同变数」承诺(同界同契同变数),同一个种子
   const markRng = new RandomService(mulberry32(seedOf(mark.targetId, mark.life)))
   const report = runGauntlet(buildPlayerSnap(true), foes, rules, 'healBetweenPct' in target ? target.healBetweenPct : 0.5, markRng, {
     perWinPlayerMods: perWin
@@ -426,7 +394,6 @@ export function challengeTrial(trialId: string): ExpeditionResult | null {
   }
   const rules = mergeRules(currentDaoRules(), trial.rules)
   const perWin = endgame.daoPath === 'sword' ? SWORD_PER_WIN : endgame.daoPath === 'slaughter' ? SLAUGHTER_PER_WIN : undefined
-  // 试炼同样押道源入场:清败可复现,种子按试炼 id 定死
   const trialRng = new RandomService(mulberry32(seedOf(trial.id, 0)))
   const report = runGauntlet(buildPlayerSnap(true), foes, rules, trial.healBetweenPct, trialRng, { perWinPlayerMods: perWin })
 

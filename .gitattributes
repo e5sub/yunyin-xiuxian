@@ -1,9 +1,7 @@
-# 统一 LF 行尾 —— 源码审计(achievementHint 等)用 `\n\n`/正斜杠作边界,
-# Windows 上 git 默认 checkout 转 CRLF、路径用 `\`,会把审计打红;
-# `eol=lf` 让所有 checkout 都拿 LF,含 `.gitattributes` 的工程都应如此。
+# 统一 LF:源码审计(achievementHint 等)以 `\n\n` 作边界,Windows 默认 checkout 转 CRLF 会把审计打红
 * text=auto eol=lf
 
-# 二进制资产显式声明,以免 text 探测误判
+# 显式声明二进制,以免 text 探测误判
 *.png binary
 *.ico binary
 *.mp3 binary

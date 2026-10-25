@@ -1,34 +1,13 @@
 /**
- * 轮回继承审计
+ * 轮回继承审计:只做度量,不改数值。
  *
- * 起因是玩家反馈「轮回次数太多没有意义」。诊断指向一件事:
- * 轮回若不制造代价,就退化成「存档继承后重新跑一遍」的 New Game+。
+ * 判据:保留「我是谁」(遗产:记忆 / 精神 / 灵魂),重置「我现在拥有多少」(状态:皮囊 / 外物)。
+ * 最小完备:凡有跨世去留的功能都须在此登记一行(见 samsaraAudit.spec 的「继承清单最小完备」)。
+ * 关键读数是追平时间:第 N 世重修回上一世终点要花多久。
  *
- * 本模块只做度量,不改任何数值——先把「玩家轮回一次后到底还需要重新经历多少」
- * 量化出来,再谈砍什么。
- *
- * 核心原则(拿来当判据用):**保留「我是谁」,重置「我现在拥有多少」。**
- *   遗产(应继承)= 记忆 / 精神 / 灵魂:认知与丹方、履历与成就、道果与天赋与宿慧、
- *     称号(荣誉)、师承(道统)、道源与道痕、世界记忆(镇压资格/宿敌/机缘选择)
- *   状态(应重建)= 皮囊 / 外物:境界与修为、灵石与灵材、装备与法宝、丹药、
- *     灵兽、洞府建筑、灵脉投资、区域进度、本世之界、进行中的秘境/事件、连胜
- *
- * 本清单要求**最小完备**:凡有跨世去留的功能都必须在此登记一行(见 samsaraAudit.spec
- * 的「覆盖度」一条),既不留半截状态,也不漏掉一个子系统。
- *
- * 关键读数不是「出生战力继承了多少」——境界从真仙掉回炼气,出生战力必然极低。
- * 真正决定轮回有无意义的是 **追平时间**:第 N 世重修回上一世终点要花多久。
- * 若第 10 世只需第 1 世的零头,那这一世就没有「重新经历」可言。
- *
- * ⚠ 口径警告(saveCalibration 用真实存档验出):
- * 本模块的 hoursToPeakAt 建立在 progressionSim 之上,而后者**高估约 100~400 倍**——
- * 它算的是「纯修为累积需要多少秒」,真实玩家的修为绝大部分来自战斗、事件、
- * 丹药与离线收益。且它假设「每世都修满真仙」,而实测玩家在元婴到合体之间就转世。
- *
- * 因此:**比值可用,绝对值不可用**。
- *   可信:第 N 世 ÷ 第 1 世、兑现度、边际收益——偏差是同一系数,做除法时约掉
- *   作废:任何「第 N 世需要 X 小时」的读数
- * 引用本模块出绝对时长的结论前,先看 saveCalibration.spec.ts
+ * 口径(saveCalibration 用真实存档验出):hoursToPeakAt 建立在 progressionSim 之上,后者高估约 100~400 倍,
+ * 且假设每世都修满真仙。比值可用(第 N 世 ÷ 第 1 世、兑现度、边际收益),绝对时长不可用;
+ * 引用绝对时长前先看 saveCalibration.spec.ts。
  */
 import { DAO_FRUIT_COMBAT_BONUS, TALENT_DRAW_DIV } from '@/data/constants'
 import { TALENTS } from '@/data/talents'
@@ -51,14 +30,11 @@ export interface HeritageRow {
   kind: 'legacy' | 'state'
   /** 对战力的直接贡献:none / low / mid / high */
   power: 'none' | 'low' | 'mid' | 'high'
-  /** 是否压缩下一世的成长空间——这一列才是要盯的 */
+  /** 是否压缩下一世的成长空间 */
   compressesGrowth: boolean
 }
 
-/**
- * 当前实际的继承清单。
- * 逐条对照 confirmReincarnation 核实,不采信设计文档或记忆
- */
+/** 继承清单:逐条对照 confirmReincarnation 核实 */
 export const HERITAGE: HeritageRow[] = [
   {
     id: 'realm',
@@ -251,7 +227,6 @@ export const HERITAGE: HeritageRow[] = [
     power: 'none',
     compressesGrowth: false
   },
-  // ---- 补全:此前未被清单收录、却同样有跨世去留的功能 ----
   {
     id: 'secretRealm',
     name: '短期秘境',
@@ -324,7 +299,6 @@ export const HERITAGE: HeritageRow[] = [
     power: 'high',
     compressesGrowth: false
   },
-  // ---- 补全(Phase 34.8):本轮新加的三处状态与一处身份,此前清单里没有 ----
   {
     id: 'divination',
     name: '问卦所得之卦',
@@ -421,7 +395,7 @@ export const HERITAGE: HeritageRow[] = [
 
 export interface HeritageGroup {
   mode: HeritageMode
-  /** 界面用语:这一组是「带走」还是「放下」 */
+  /** 界面用语:保留 / 部分保留 / 归零 */
   title: string
   rows: HeritageRow[]
 }
@@ -451,7 +425,7 @@ export function daoFruitAfterLives(lives: number): number {
   return Math.max(0, lives) * FRUIT_PER_LIFE
 }
 
-/** 走完 n 世后持有的天赋数(每世 1 + major/DIV,封顶于天赋总数) */
+/** 走完 n 世后持有的天赋数(封顶于天赋总数) */
 export function talentsAfterLives(lives: number): number {
   const perLife = 1 + Math.floor(REBIRTH_REFERENCE_MAJOR / TALENT_DRAW_DIV)
   return Math.min(TALENTS.length, Math.max(0, lives) * perLife)
@@ -486,7 +460,7 @@ export function permanentPowerMultAt(lives: number): number {
   return 1 + fruit + talentPowerBonusAt(lives)
 }
 
-// ---------------- 追平时间:轮回是否还有「重新经历」 ----------------
+// ---------------- 追平时间 ----------------
 
 export interface PaceRow {
   /** 第几世(1 = 第一世) */
@@ -501,18 +475,12 @@ export interface PaceRow {
   permanentMult: number
 }
 
-/**
- * 第 n 世的修行假设:灵根取典型值,天赋按已积累量折算。
- * 灵脉不再计入 —— 地脉是外物,每世从零重投(见 HERITAGE 的 veins 一行)。
- */
+/** 第 n 世的修行假设:灵根取典型值,天赋按已积累量折算;灵脉不计入(每世从零重投,见 HERITAGE 的 veins 一行) */
 function assumptionsAt(lives: number): SimAssumptions {
   return { linggenMult: 1.6, talentCultBonus: talentCultBonusAt(lives - 1) }
 }
 
-/**
- * 第 n 世从炼气修到真仙所需小时。
- * 道果与天赋都按「上一世结束时」的存量计——这一世出生就带着它们
- */
+/** 第 n 世从炼气修到真仙所需小时;道果与天赋按上一世结束时的存量计 */
 export function hoursToPeakAt(lives: number): number {
   return hoursToReach(REBIRTH_REFERENCE_MAJOR, daoFruitAfterLives(lives - 1), assumptionsAt(lives))
 }
@@ -541,7 +509,7 @@ export interface HeritageSummary {
   resetCount: number
   /** 压缩下一世成长空间的条目 */
   compressing: HeritageRow[]
-  /** 属于「状态」却被完整继承的——违反「重置我拥有多少」原则 */
+  /** 属于「状态」却被完整继承的 */
   stateButFull: HeritageRow[]
 }
 

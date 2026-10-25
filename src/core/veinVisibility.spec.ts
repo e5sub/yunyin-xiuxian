@@ -1,21 +1,7 @@
-/* eslint-disable no-console -- 灵脉可见性契约,需要打印通道归属 */
+/* eslint-disable no-console -- 打印通道归属 */
 /**
- * 灵脉可见性契约
- *
- * 玩家反馈:「不知道寒冥灵脉的作用,当前加成里也没有寒冥灵脉的加成」。
- *
- * 查下来效果本身是真的 —— gongfaService 确实在扣悟道点。
- * 假的是**展示**:寒冥灵脉的 perPoint 是空对象,它的效果走
- * dongfu.insightDiscount 这条专用通道,而卡片的「当前加成」只读 veinMods。
- * 于是这条脉投到满级,界面上依然一个字都不出现。
- *
- * 这类缺陷的共性是:**加成有两条通道,展示只接了一条**。
- * 所以本文件钉的不是「insightDiscount 要显示出来」这个具体形态,
- * 而是不变量:
- *
- *   每条灵脉都必须有可观测通道,且展示层必须覆盖全部通道。
- *
- * 将来若新增第五条脉、或把某条脉挪去别的通道,这里会先红。
+ * 灵脉可见性契约:每条灵脉都有可观测通道,且展示层覆盖全部通道。
+ * 寒冥灵脉 perPoint 为空,效果走 dongfu.insightDiscount 专用通道,不进 veinMods。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -24,20 +10,17 @@ import { resolve } from 'node:path'
 import { INSIGHT_DISCOUNT_PER_POINT, VEINS, type VeinDef, type VeinId } from '@/data/veins'
 import { useDongfuStore } from '@/stores/dongfu'
 
-/**
- * 不走 StatMods、另有专用通道的灵脉。
- * 键是脉 id,值是该通道在 store 上的 getter 名 —— 展示层必须逐个接上
- */
+/** 不走 StatMods 的灵脉:脉 id → 专用通道在 store 上的 getter 名;展示层须逐个接上 */
 const DEDICATED_CHANNELS: Readonly<Record<string, string>> = {
   insight: 'insightDiscount'
 }
 
-/** 一条脉是否有任何可观测通道(判据本体,便于故障注入) */
+/** 一条脉是否有可观测通道(判据本体,故障注入用) */
 function hasObservableChannel(def: VeinDef, channels: Readonly<Record<string, string>>): boolean {
   return Object.keys(def.perPoint).length > 0 || def.id in channels
 }
 
-/** 去掉注释,免得注释里提一嘴就算「接上了」 */
+/** 去掉注释:注释里提及不算接上 */
 function stripComments(src: string): string {
   return src
     .replace(/<!--[\s\S]*?-->/g, '')
@@ -48,7 +31,7 @@ function stripComments(src: string): string {
 const CARD_SRC = stripComments(
   readFileSync(resolve(__dirname, '../components/dongfu/VeinInvestCard.vue'), 'utf8')
 )
-/** 效果行唯一出口:perPoint 与专用通道都在 veinEffectText 里并入(见下) */
+/** 效果行唯一出口:perPoint 与专用通道都在 veinEffectText 里并入 */
 const VEIN_TEXT_SRC = stripComments(
   readFileSync(resolve(__dirname, '../ui/veinText.ts'), 'utf8')
 )
@@ -64,7 +47,6 @@ describe('灵脉可见性 · 通道归属', () => {
   })
 
   it('故障注入:抽掉专用通道声明后,寒冥灵脉立刻判为不可观测', () => {
-    // 若不做这一步,上一条断言可能只是「恰好都为真」而非在起作用
     const insight = VEINS.find(v => v.id === 'insight')!
     expect(Object.keys(insight.perPoint).length).toBe(0)
     expect(hasObservableChannel(insight, {})).toBe(false)
@@ -83,7 +65,6 @@ describe('灵脉可见性 · 通道本身是活的', () => {
 
     dongfu.veinPoints.insight = 30
     expect(dongfu.insightDiscount).toBeCloseTo(30 * INSIGHT_DISCOUNT_PER_POINT, 10)
-    // 这正是问题的根源:它确实没有、也不该出现在 veinMods 里
     expect(Object.keys(dongfu.veinMods)).toHaveLength(0)
     console.log(`\n悟道脉 30 点 → insightDiscount ${(dongfu.insightDiscount * 100).toFixed(1)}%,veinMods 仍为空`)
   })
@@ -97,19 +78,14 @@ describe('灵脉可见性 · 通道本身是活的', () => {
 
 describe('灵脉可见性 · 展示层覆盖全部通道', () => {
   it('列账覆盖全部通道:遍历全部灵脉,效果行走 veinEffectText(专用通道并入其中)', () => {
-    // 卡片以 v-for 遍历 VEINS 渲染列账 —— 新增一脉自动进展示,不存在「投了点不显示」的脉
     expect(CARD_SRC, '列账必须遍历全部灵脉').toMatch(/v-for="v in VEINS"/)
     expect(CARD_SRC, '效果行没有走 veinEffectText').toContain('veinEffectText(')
-    // 效果行走唯一出口 veinEffectText,perPoint 与专用通道(参悟省耗)都在它内部并入
     expect(VEIN_TEXT_SRC, 'veinEffectText 没有并入专用通道').toContain('INSIGHT_EFFECT_NAME')
-    // 措辞同源:与词条 caveat 同一套 statNames
     expect(VEIN_TEXT_SRC, '效果行措辞没有与词条 caveat 同源').toContain('modsText(')
     console.log('\n列账遍历全部灵脉,效果行原产于 veinEffectText(参悟省耗并入),措辞与 caveat 同源')
   })
 
   it('每条脉的作用说明必须渲染出来,不能只显示名字和价格', () => {
-    // 玩家反馈的另一半:「不知道寒冥灵脉的作用」。
-    // veins.ts 里 desc 与 effectText 都写好了,但此前只有审计测试在读,页面从未渲染
     expect(CARD_SRC, '卡片没有渲染灵脉的 desc').toMatch(/\.desc/)
     expect(CARD_SRC, '卡片没有渲染灵脉效果行').toContain('veinEffectText(')
     expect(CARD_SRC, '零点时也要能看见每点加成,不能等投了才说').toContain('每点')

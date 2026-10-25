@@ -1,10 +1,4 @@
-/**
- * appVersion 工具 —— 版本比较器与版本号来源的确定性测试。
- *
- * 判据:比较器必须稳定、无依赖、可单测;APP_VERSION 必须与 package.json 同源,
- * 否则「发布说明第一条的版本 == package.json 版本」那条判据(见 releaseNotes.spec)
- * 会替我们撒谎。
- */
+/** 版本比较器;APP_VERSION 须与 package.json 同源(见 releaseNotes.spec) */
 import { describe, expect, it } from 'vitest'
 import { APP_VERSION, compareVersions } from './appVersion'
 import pkg from '../../package.json'
@@ -39,7 +33,7 @@ describe('compareVersions · 三段式版本比较', () => {
   it('非数字段按 0 处理,不抛错', () => {
     expect(compareVersions('1.37.beta', '1.37.0')).toBe(0)
     expect(compareVersions('1.37.next', '1.37.0')).toBe(0)
-    // 全非数字 → 全 0,取相等(保守,不让含脏数据的分支炸掉)
+    // 全非数字 → 全 0,取相等
     expect(compareVersions('x.y.z', 'a.b.c')).toBe(0)
   })
 

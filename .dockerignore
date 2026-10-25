@@ -1,53 +1,41 @@
-# 依赖
 node_modules
 npm-debug.log
 package-lock.json
 
-# 构建产物
 dist-ssr
 *.local
 
-# 环境文件
 .env
 .env.local
 .env.*.local
 
-# 编辑器
 .vscode
 .idea
 *.swp
 *.swo
 *~
 
-# 测试
 coverage
 .nyc_output
 
-# Git
 .git
 .gitignore
 
-# CI
 .github
 .gitlab-ci.yml
 
-# Docker
 Dockerfile
 .dockerignore
 docker-compose.yml
 
-# 日志
 logs
 *.log
 
-# 系统文件
 .DS_Store
 Thumbs.db
 
-# 临时文件
 *.tmp
 *.temp
 
-# 文档
 README.md
 docs/

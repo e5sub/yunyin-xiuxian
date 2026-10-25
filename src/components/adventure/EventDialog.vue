@@ -1,17 +1,9 @@
 <template>
-  <!--
-    标题带档位:从前三档(际遇/机缘/奇缘)共用「际遇」一个名,玩家撞上千分之几的机缘
-    与撞上一件小事,看到的字一模一样 —— 稀有度白设了。档名一律取自 core/eventTier。
-  -->
-  <!-- 标题始终是这件事自己的名字(结算后 pendingEventId 已清,故沿用上一次记下的那个) -->
+  <!-- 档名一律取自 core/eventTier;标题取事件自身名,结算后 pendingEventId 已清,沿用上次记下的 -->
   <BaseModal :open="open" :closable="false" :title="def?.title ?? lastTitle">
     <!-- 抉择阶段 -->
     <template v-if="!result && def">
-      <!--
-        档位横幅:名字 + 这一档是什么 + 多久能撞上一次。
-        数字不是手写的 —— tierOddsText 按引擎的闸门顺序(先奇缘、再机缘、余下际遇)
-        与 data/constants 的三个概率算出来,并把「此刻有没有缘在续」算进去。
-      -->
+      <!-- 档位横幅:名字 + 多久撞上一次;频率由 tierOddsText 按引擎闸门顺序与 data/constants 的概率现算 -->
       <div class="mb-2.5 rounded-md border-l-2 bg-ink/4 px-2.5 py-1.5" :style="{ borderColor: tierDef.color }">
         <p class="flex items-center gap-2">
           <span class="chip-ink text-[10px]" :style="{ color: tierDef.color }">{{ tierDef.name }}</span>
@@ -23,7 +15,7 @@
       <p v-if="narrative.echo" class="mb-2 rounded-md border border-azure/30 bg-azure/5 px-3 py-2 text-[12px] leading-relaxed text-azure">
         {{ narrative.echo.line }}
       </p>
-      <!-- 世界记忆:余波文本(曾经完成过的事件,再次遭遇时概率出现) -->
+      <!-- 余波文本:完成过的事件再遇时概率出现 -->
       <p v-else-if="narrative.aftermath" class="mb-2 border-l-2 border-gold-ink/60 pl-2 text-[11px] text-gold-ink">
         {{ narrative.aftermath }}
       </p>
@@ -77,23 +69,13 @@
   const adventure = useAdventureStore()
 
   const result = ref<EventResolution | null>(null)
-  /**
-   * 本次事件的叙事快照 —— 事件 id 一变就重掷一次,之后重渲染只读它。
-   *
-   * 从前回声用组件级 `echoRolled` 锁死:组件全局常驻,第一件事之后再也不掷,
-   * 后来的机缘永远没有回声;余波则在 computed 里读随机数,父级每次重渲染都可能
-   * 让同一扇窗换一句。两处同根 —— 叙事掷骰没有归属到「这一件事」。
-   */
+  /** 本次事件的叙事快照:事件 id 一变就重掷一次,重渲染只读它;不许组件级锁死,也不许在 computed 里掷 */
   const narrative = ref<EventNarrative>({ eventId: '', echo: null, aftermath: null })
 
   const def = computed(() => (adventure.pendingEventId ? eventDef(adventure.pendingEventId) : undefined))
-  /**
-   * 这一档是谁 —— 档位只在「事件已经定了」时才成立:
-   * 结算阶段 pendingEventId 已被清掉(Tick 里 setPendingEvent(null)),
-   * 故结果阶段沿用上一次算出的档位,不让横幅在结算的一瞬间闪成「际遇」。
-   */
+  /** 当前档位;结算时 pendingEventId 已清(Tick 里 setPendingEvent(null)),沿用上次算出的,免得横幅闪成「际遇」 */
   const tierId = ref<EventTier>('jingyu')
-  /** 结算阶段事件定义已查不到(pendingEventId 被清),故把它的名字一并记下 */
+  /** 结算时事件定义已查不到,名字一并记下 */
   const lastTitle = ref('际遇')
   watch(
     () => adventure.pendingEventId,
@@ -108,9 +90,9 @@
     },
     { immediate: true }
   )
-  /** 档位定义(名字/颜色/一句话)与概率文案 */
+  /** 档位定义(名字/颜色)与概率文案 */
   const tierDef = computed(() => eventTierDef(tierId.value))
-  // 约每 N 程一次 与引擎真掷同一条乘法链(含星象/福缘/区域事件 eventMult),不许裸用基础值
+  // 「约每 N 程一次」须与引擎真掷同一条乘法链(星象/福缘/区域事件 eventMult),不用裸基础值
   const tierOdds = computed(() =>
     tierOddsText(
       tierId.value,
@@ -118,7 +100,7 @@
       exploreEventChance(adventure.currentRegion?.id ?? '', usePlayerStore().finalStats.mods)
     )
   )
-  /** 有没有缘在续 —— 奇缘与机缘的实际概率都受它影响(见 core/eventTier.tierChances) */
+  /** 有无缘在续:奇缘与机缘的实际概率都受它影响(见 core/eventTier.tierChances) */
   const chainPending = computed(() => pendingChainStages(usePlayerStore().major).length > 0)
   const tier = computed(() => adventure.currentRegion?.tier ?? 1)
   const open = computed(() => def.value !== undefined || result.value !== null)

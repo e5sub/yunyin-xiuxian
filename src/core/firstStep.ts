@@ -1,22 +1,15 @@
 /**
- * 第一步 —— 新手第一天「现在该点哪里」
- *
- * 首页上「修行目标 / 主线 / 每日」三块并列,各说各的,而它们指向的动作
- * 分住在修炼 / 历练两个页签里 —— 玩家得自己把「深入青霞山」翻译成
- * 「点底栏第三个」。新手第一天缺的不是更多信息,是一个明确的起点。
- *
- * 三条纪律(与 goal.ts 同源):
- *   一 **只在开局这一段出现**:历练过一次、或第一条主线达成之后就不再露面。
- *   二 **不引入新状态**:给不给这张卡完全由已有存档推出来(计数 / 修为 / 境界),
- *      没有「已看过」这种落盘字段 —— 换设备、清缓存都不会让它重新唠叨一遍。
- *   三 **给方向,不替玩家做决定**:卡上写清为什么,点不点由玩家。
+ * 第一步:新手开局的起点。约束(与 goal.ts 同源):
+ *   一 只在开局出现:历练过一次或第一条主线达成后收卡;
+ *   二 不引入新状态:由已有存档推出(计数 / 修为 / 境界),无「已看过」落盘字段;
+ *   三 首页「第一步」格只写入口。
  */
 import { usePlayerStore } from '@/stores/player'
 import { useQuestsStore } from '@/stores/quests'
 import { isRetreating } from './earlyGameService'
 
 export interface FirstStep {
-  /** 去哪儿(路由) */
+  /** 路由 */
   to: string
   /** 按钮文字 */
   label: string
@@ -34,15 +27,11 @@ export function currentFirstStep(): FirstStep | null {
   const quests = useQuestsStore()
 
   if (player.dead) return null
-  // 出师三条件任一成立即收卡:主线走过第一条 / 自己历练过 / 已突破到筑基以上
-  // (最后一条是给老档兜底 —— 没有计数与主线下标的老存档不该再被当成新玩家)
+  // 出师即收卡;「筑基以上」一条为老档兜底(老存档无计数与主线下标)
   if (quests.mainIdx > BEGINNER_MAIN_IDX) return null
   if (quests.counter('explores') > 0) return null
   if (player.major > 0) return null
-  /**
-   * 闭关中不指路去历练:那条路会被当场拦下(`startRetreat` 与历练互斥),
-   * 指过去等于让玩家白点一次 —— 而这正是这张卡要消除的那类摩擦。
-   */
+  // 闭关与历练互斥(startRetreat),闭关中不指路
   if (isRetreating()) return null
 
   /**

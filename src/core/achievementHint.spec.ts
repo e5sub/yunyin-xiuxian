@@ -1,15 +1,6 @@
 /**
- * 成就方向 · 每个「???」都得有地方可去
- *
- * 未达成的成就在界面上不现名目(成时自现),但**方向**得给:「方向:历练际遇」
- * 让玩家知道哪儿跟他有关。方向由条件推出,故这里守三件事:
- *
- *   一 每条成就都定得出方向(不许出现 undefined / 空话);
- *   二 计数器联合类型里的每一个键,方向表里都有 —— 从 types/index.ts 扫出来核,
- *      而不是重抄一份(CounterKey 是手写联合,重抄等于养第二份清单);
- *   三 反向也不许多:方向表里不许有已经消失的计数器(死条目)。
- *
- * 故障注入:删掉方向表里的任一条(如 events),或往 CounterKey 里加一个新键,本文件立刻红。
+ * 成就方向:未达成成就不现名目,但须给方向;方向由条件推出,CounterKey 与方向表双向对齐。
+ * 故障注入:删掉方向表里任一条(如 events),或往 CounterKey 加一个新键,本文件红。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -18,9 +9,8 @@ import { ACHIEVEMENTS } from '@/data/achievements'
 import { COUNTER_DIRECTIONS, achievementDirection, COUNTER_GROUPS, ACHIEVEMENT_GROUP_LABEL, achievementGroup } from '@/ui/achievementHint'
 
 /**
- * 从类型声明里扫出 CounterKey 的联合成员 —— 手写联合,故只能扫源码。
- * 结束点取后一个类型声明(同 vocabularyCoverage 的 unionMembers),不能用空行切块:
- * Windows 上 CRLF 行尾下没有 `\n\n`,切块会滑到文件尾把无关字面量扫进来。
+ * 从 types/index.ts 源码扫出 CounterKey 联合成员(手写联合,不重抄)。
+ * 结束点取后一个类型声明(同 vocabularyCoverage 的 unionMembers),不用空行切块:CRLF 行尾下没有 `\n\n`,会滑到文件尾。
  */
 function counterKeysFromTypes(): string[] {
   const src = readFileSync(resolve(__dirname, '../types/index.ts'), 'utf8')

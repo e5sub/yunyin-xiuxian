@@ -1,33 +1,15 @@
-/* eslint-disable no-console -- 自检脚本的产出就是给人看的报告 */
+/* eslint-disable no-console -- 自检报告 */
 /**
- * 运行时回归门 —— 每个游戏视图上采几秒帧间隔,量 jank 有没有回来。
+ * 运行时回归门:每个视图采几秒 rAF 帧间隔,量 jank。冷启动归 first-paint。
  *
- * 与 first-paint(冷启动:字节 / FCP / 字体)互补:那条管「第一屏多快」,
- * 这条管「玩起来卡不卡」—— 放置游戏的心跳每秒改一堆响应式状态,视图若
- * 在数据增长或内容变多时开始整块重渲染,帧间隔会拉长。这是此前唯一没有门
- * 的性能维度。
- *
- * 用法(需已 bun run build，playwright chromium 已装):
- *   bun scripts/perf-profile.mjs               # 全视图,默认新档
+ * 用法(需已 bun run build,playwright chromium 已装):
+ *   bun scripts/perf-profile.mjs               # 全视图
  *   bun scripts/perf-profile.mjs --seconds 4   # 每视图采 4 秒(默认 3)
  *   bun scripts/perf-profile.mjs --view home   # 只量一个视图
- *   bun scripts/perf-profile.mjs --no-gate     # 只报数字,不判红(人工排查用)
+ *   bun scripts/perf-profile.mjs --no-gate     # 只报数字,不判红
  *
- * 量法讲究
- * --------
- * · 复用 390×844 移动视口,默认新档(首启自动建号;本仓暂无造后期档的存档夹具,
- *   故测的是各视图默认渲染 + 引擎心跳 —— 仍是有效的回归基线,能拦「某视图开始
- *   每心跳整块重渲染」这类卡顿;要量「几百件装备列表」那种内容密度,jank 得先补
- *   一份像 reference 仓 saveFixture 那样的后期存档夹具,再回来加 --late);
- * · 每视图独立 context、独立存档,路由直接写进载入 URL(哈希路由);
- * · 在页内跑一段 rAF 采样,量「相邻两帧的间隔」:>50ms 的那一拍就是卡顿
- *   (浏览器一个任务 >50ms 即 Long Task)。headless 无 vsync 会以 ~60fps 节流,
- *   与真机同口径,足够当回归判据。
- *
- * 判据(见 BUDGET):单视图不得有长帧(>50ms)超过上限、最差帧不超过上限、
- * 不得崩溃、不得有未处理的页面异常、视图必须真的渲染出内容(不然门是空的)。
- * CI 机器比本机核多但单核弱,故上限按「本机读数留出数倍余量」定 —— 红的是
- * 「成倍长回去」那类回归,不是机器抖动。
+ * · 每视图独立 context、独立存档,路由写进载入 URL(哈希路由);
+ * · 相邻两帧间隔 >50ms 计长帧(Long Task 口径);headless 无 vsync,按 ~60fps 节流。
  */
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
@@ -57,16 +39,15 @@ const only = vi >= 0 ? args[vi + 1] : undefined;
 const gate = !args.includes("--no-gate");
 
 /**
- * 判据上限。定法:先量出真实读数,再按「无头浏览器机型/负载差异留出数倍余量」
- * 定上限 —— 拦的是「成倍长回去」,不是机器抖动。改过会显著影响渲染量的代码后,
- * 这两个数要跟着重校(连同 README 的「性能自检」一节)。
+ * 判据上限:本机读数留数倍余量(机型/负载差异),只拦成倍回退。
+ * 显著改动渲染量后须重校,并同步 README「性能自检」一节。
  */
 const BUDGET = {
-  /** 单视图最差帧间隔上限:ms —— 无头 ~60fps 基准是 ~16-17ms,留到 5 倍 */
+  /** 单视图最差帧间隔上限,单位 ms;无头基准 ~16-17ms,留到 5 倍 */
   maxFrameMs: Number(process.env.PERF_MAX_FRAME_MS ?? 100),
   /** 单视图 >50ms 长帧数量上限 */
   longFramesMax: Number(process.env.PERF_LONG_FRAMES ?? 2),
-  /** 单视图必须渲染出的 DOM 节点下限 —— 防空转:量到的是空白/被重定向的页,那条预算永远绿 */
+  /** 单视图 DOM 节点下限:防量到空白/被重定向的页而空转 */
   minNodes: Number(process.env.PERF_MIN_NODES ?? 20),
 };
 
@@ -88,7 +69,7 @@ function startServer() {
   });
 }
 
-/** 游戏各视图(欢迎 / 建号页需要无档,默认档下会被路由重定向,故不列入) */
+/** 欢迎页与建号页有档即被路由重定向,不列入 */
 const VIEWS = [
   { route: "/", name: "home" },
   { route: "/cultivation", name: "cultivation" },
@@ -107,8 +88,7 @@ const VIEWS = [
   { route: "/celestial", name: "celestial" },
 ];
 
-/** 页内采样器:记录相邻帧间隔,`__perfStop()` 时汇总。IIFE 用 void 包裹,
- *  让 `evaluate(SAMPLER)` 立即返回(不被未 resolve 的 Promise 卡住)。 */
+/** 页内 rAF 采样器,`__perfStop()` 汇总;IIFE 套 void,`evaluate(SAMPLER)` 才不等未 resolve 的 Promise */
 const SAMPLER = `
   void (() => {
     let resolveFn;
@@ -155,8 +135,7 @@ for (const view of VIEWS) {
   let record = null;
   try {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
-    // 注入后期档(神人境 + 成套装备,见 scripts/lib/saveFixture.mjs)—— 档是每个视图
-    // 独立一份,视图才真正渲染出终局内容;没有它会落到欢迎页,门就量空了。
+    // 每视图注入一份后期档;缺档会落到欢迎页,门量空
     await seedSave(context, lateSlices());
     const page = await context.newPage();
     const errors = [];

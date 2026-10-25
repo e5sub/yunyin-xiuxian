@@ -1,13 +1,10 @@
 <template>
-  <!-- Phase 32.0 劫势详情(决意前评估:风险维度 + 建议,信息给足,决定留给玩家) -->
   <div v-if="tribPlan" class="mt-2 rounded-md border border-violet-ink/25 bg-violet-ink/5 px-3 py-2">
-    <!-- 总评:劫名一眼可读,形态(逐道加重/起手最重)挪到行尾 —— 不再以十行小字开场 -->
     <div class="flex items-baseline gap-2">
       <p class="grow text-[12px] font-kai leading-snug text-violet-ink">{{ tribPlan.desc }}</p>
       <span class="shrink-0 text-[10px] text-ink-faint">{{ tribPlan.def.waveShape === 'frontLoaded' ? '起手两道最重' : '逐道加重' }}</span>
     </div>
 
-    <!-- 准备四维:一行四格星级槽,缺口一眼可见(0 星置灰,不熟也不糊弄) -->
     <div class="mt-2 grid grid-cols-4 gap-1.5">
       <div v-for="(name, key) in PREP_NAMES" :key="key" class="rounded bg-paper-deep/60 px-0.5 py-1 text-center">
         <p class="text-[9px] text-ink-faint">{{ name }}</p>
@@ -16,7 +13,6 @@
     </div>
 
     <div class="ink-divider my-2" />
-    <!-- 此劫账单:四项百分比指标两两并排,别有十逗号长句了 -->
     <div class="grid grid-cols-2 gap-x-3 gap-y-1.5">
       <p class="flex flex-col gap-0.5 text-[10px] tabular">
         <span class="text-ink-faint">天劫抗性</span>
@@ -68,7 +64,6 @@
   </div>
   <p class="mt-1 flex items-center gap-1.5 text-[11px] text-ink-faint tabular">
     耗灵气 {{ formatNum(qiCost) }}
-    <!-- 大关/大槛落在小印章上,与全页「静/备/主/秘」一套印章语言呼应,不再是一行朱砂裸字 -->
     <span v-if="needTribulation" class="rounded bg-violet-ink/10 px-1.5 py-0.5 text-[10px] leading-none text-violet-ink">
       大关 · 渡劫
     </span>
@@ -80,12 +75,7 @@
   import { formatNum, formatPercent } from '@/utils/format'
   import { useTribulation } from '@/composables/useTribulation'
 
-  /**
-   * 劫势详情 —— 自 CultivationView 迁入。
-   *
-   * 与摘要卡同读 useTribulation:两处若各算一遍,迟早出现「卡上写着有护持、
-   * 点开又说没有」。界面只负责摊开,数全来自 core/tribulationDecision。
-   */
+  /** 与摘要卡同读 useTribulation,不各算一份;数全来自 core/tribulationDecision */
   const props = defineProps<{ needTribulation: boolean; qiCost: number }>()
   const { tribPlan, tribLedger, worldStep, tribWeatherLine, tribWave, reliefRoots } = useTribulation(() => props.needTribulation)
 

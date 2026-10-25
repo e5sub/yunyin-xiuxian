@@ -1,11 +1,6 @@
 /**
- * 用具文案 —— 装备 / 法宝 / 功法 / 丹药 / 灵兽
- *
- * 这五样东西此前都只印一句风味,不回答「它给我什么」:图鉴点开不知要不要留,
- * 背包里的丹看不出服下去会怎样,灵兽的「贪宝」究竟多少则连数量级都没有。
- * 故这里守两件事:
- *   一 每一类都真写得出功用行,且数值来自表里(不另抄一份);
- *   二 需要等级的(法宝祭炼)按传进来的那一份给,不给 0 级那一句。
+ * 用具文案(装备 / 法宝 / 功法 / 丹药 / 灵兽):每一类都写得出功用行,数值来自表里(不另抄一份);
+ * 需要等级的(法宝祭炼)按传进来的那一份给。
  */
 import { describe, expect, it } from 'vitest'
 import { ARTIFACTS, artifactActiveText, artifactDef } from '@/data/artifacts'
@@ -153,7 +148,6 @@ describe('用具 · 灵兽', () => {
   })
 
   it('零值不列:中性项不占字数', () => {
-    // 慢稳的掉落气运是 0,那一项就不该出现在它的性子里
     const steady = PETS.find(p => p.personality === 'steady')!
     expect(personalityEffects(steady.id).dropLuck).toBe(0)
     expect(petTraitText(steady)).not.toContain('掉落气运')

@@ -1,9 +1,7 @@
 <template>
   <div class="stagger-in px-4 pb-6 pt-4">
-    <!-- 页签 -->
     <InkTabs v-model="tab" :tabs="tabs" />
 
-    <!-- 装备:部位槽,点击唤起部位列表 -->
     <template v-if="tab === 'equip'">
       <!--
         装备共鸣:机制是活的,玩家却看不见 —— 凑齐该套所要件数即共鸣,（N/所需）亮起。
@@ -101,7 +99,6 @@
 
     <!-- 丹药 -->
     <template v-else-if="tab === 'pill'">
-      <!-- 开炉炼丹:入口置顶,点开弹窗 -->
       <button
         class="card-ink mt-3 flex w-full items-center justify-between gap-3 px-4 py-3 text-left active:scale-98"
         @click="craftOpen = true"
@@ -116,7 +113,6 @@
         <span class="shrink-0 text-[12px] text-ink-faint">›</span>
       </button>
 
-      <!-- 丹匣:格子只给图标与名号,详情看弹窗 -->
       <div v-if="pillRows.length" class="mt-3 grid grid-cols-4 gap-1.5">
         <button
           v-for="row in pillRows"
@@ -165,12 +161,10 @@
       </div>
     </template>
 
-    <!-- 法宝(面板本体在 components/inventory/ArtifactPanel.vue) -->
     <template v-else>
       <ArtifactPanel />
     </template>
 
-    <!-- 丹药详情 -->
     <BaseModal :open="currentPill !== null" :title="currentPill?.def?.name ?? ''" @close="pillDetail = null">
       <template v-if="currentPill?.def">
         <div class="flex items-center gap-3">
@@ -188,15 +182,10 @@
           </div>
         </div>
         <p class="mt-3 text-[12px] leading-relaxed text-ink-soft">{{ currentPill.def.desc }}</p>
-        <!-- 效果与来路:丹药卡片此前只有风味与数量,服下去会怎样一个字都没说 -->
         <p class="mt-2 whitespace-pre-line text-[12px] leading-relaxed text-azure">{{ pillFuncText(currentPill.def) }}</p>
         <p v-if="pillMasteryText(currentPill.def.id)" class="mt-1 text-[11px] text-ink-faint">
           {{ pillMasteryText(currentPill.def.id) }}
         </p>
-        <!--
-          服前把顶满/将顶摊明(与 usePill 的 buffOverflowOf 同一判据、同一把游戏时钟):
-          顶满再服 = 白费,贴着上限只续到顶 —— 决策就地可见,不等服后 toast。
-        -->
         <p
           v-if="currentPillHint"
           class="mt-1 text-[11px]"
@@ -207,11 +196,6 @@
       </template>
       <template #footer>
         <div class="grid grid-cols-2 gap-2">
-          <!--
-            药力顶满时再服会真·白吃一枚(usePill 照扣库存,只把「白费」放进服后 toast)。
-            与修行快捷卡对同一个 buffOverflowOf 判据相反:那里顶满置灰,这里此前仍可点。
-            不可行就置灰,拦因已由 currentPillHint 就地摊开。
-          -->
           <button
             class="btn-seal"
             :disabled="currentPillOverflow === 'full'"
@@ -219,9 +203,7 @@
           >
             服 用
           </button>
-          <!-- 批量吃丹:存量够几枚就连服几枚。文案把「×5」改成真数 —— 只剩 2 枚还挂着 ×5,
-               结算却吃到没有就停,界面说的与做的对不上;只够 1 枚时连服没有意义,直接不摆。
-               增益丹每次只服 1 枚(药力顶格,多服白费),不摆「连服」免得点了没反应 -->
+          <!-- 增益丹每次只服 1 枚(药力顶格),不摆连服 -->
           <button
             v-if="(currentPill?.count ?? 0) >= 2 && currentPill?.def?.kind !== 'buff'"
             class="btn-ghost"
@@ -233,7 +215,6 @@
       </template>
     </BaseModal>
 
-    <!-- 材料详情 -->
     <BaseModal :open="currentMaterial !== null" :title="currentMaterial?.name ?? ''" @close="materialDetail = null">
       <template v-if="currentMaterial">
         <div class="flex items-center gap-3">
@@ -300,20 +281,19 @@
 
   const inventory = useInventoryStore()
   const resources = useResourcesStore()
-  // 开炉弹窗(BrewingDialog)与入口卡同读一份丹方账,避免两处各算一遍
+  // 与开炉弹窗(BrewingDialog)同读一份丹方账
   const { herbGrade, recipes } = useBrewing()
   const ui = useUiStore()
   const settings = useSettingsStore()
   const lore = useLoreStore()
   const cultivation = useCultivationStore()
-  // 丹药详情里的「顶满」判据跟暂停结算同一把游戏时钟:确认窗开着时药效冻住,
-  // 恢复时引擎又顺延 endsAt;若读墙钟,按钮会先亮回来、恢复后再次变灰。
+  // 「顶满」判据读游戏时钟(暂停时药效冻住、恢复时顺延 endsAt),不读墙钟
   const now = useNow()
 
   type Tab = 'equip' | 'pill' | 'material' | 'artifact'
   const tab = ref<Tab>('equip')
 
-  // 修行志的「去办」会用 ?tab=pill 这类深链进来;只在合法签里挑,乱掷的忽略
+  // 深链 ?tab=pill(修行志「去办」);非法签忽略
   const route = useRoute()
   const TAB_IDS: Tab[] = ['equip', 'pill', 'material', 'artifact']
   const deepTab = route.query.tab as Tab | undefined
@@ -326,18 +306,16 @@
     { id: 'artifact', label: '法宝' }
   ]
 
-  // ---- 装备:部位槽 + 部位候选列表 ----
   const SLOTS = EQUIP_SLOTS
   const pickerSlot = ref<EquipSlot | null>(null)
 
-  /** 装备共鸣:已装备件里的同组计数(未满也列出来,让玩家知道差几件) */
+  /** 装备共鸣:已装备件的同组计数,未满也列 */
   const setRows = computed(() => {
     const counts = setCounts(inventory.equippedItems)
     return [...counts.entries()]
       .map(([id, count]) => {
         const def = equipSetDef(id)
         if (!def) return null
-        // 干跑:这套现在会换几件(与穿齐同一份取舍),按钮先报数
         return { def, count, active: count >= def.required, preview: equipSetPreview(id) }
       })
       .filter((row): row is { def: EquipSetDef; count: number; active: boolean; preview: number } => row !== null)
@@ -353,7 +331,7 @@
     SLOTS.map(slot => {
       const uid = inventory.equipped[slot]
       const item = uid ? inventory.findItem(uid) : undefined
-      // 「行囊里还有更强的」—— 与一键换装同一把 bestEquipFor,槽卡不该比它看得少
+      // 与一键换装同一把 bestEquipFor
       const best = bestEquipFor(slot)
       return {
         slot,
@@ -366,7 +344,6 @@
     })
   )
 
-  /** 全部藏品(含佩戴中),佩戴中的置顶,其余按品质/层级降序 */
   const allItems = computed(() =>
     inventory.items
       .map(item => ({ item, equipped: inventory.equippedUids.has(item.uid) }))
@@ -388,11 +365,11 @@
       .sort((a, b) => pillRank(b.def!) - pillRank(a.def!))
   )
 
-  // 闲置在「装备」页时,有一味现在能开炉就该在「丹药」签上亮圆点(与结算同源,不必进页)
+  // 丹药签圆点:有一味能开炉(与结算同源)
   const tabs = computed<readonly { id: Tab; label: string; dot?: boolean }[]>(() =>
     TABS.map(t => (t.id === 'pill' ? { ...t, dot: recipes.value.some(r => r.plan.rounds > 0) } : t))
   )
-  /** 逐品灵草存量(仅列持有>0,大数走 formatNum) —— 总量展示的真相在细节里,不在一个总和 */
+  /** 逐品灵草存量,不报总和 */
   const herbStash = computed(() => herbStashText(g => resources.herbOf(g), formatNum))
 
   /** 材料行:灵草的量是「当前品」的可炼数,`full` 留给详情弹窗逐品陈列(其它料本就单标量) */
@@ -404,7 +381,7 @@
     { icon: 'book', name: '悟道点', desc: '功法进修与法宝炼化所需', value: resources.wudao, full: String(resources.wudao) }
   ])
 
-  /** 材料格子:含灵石一并展示,数量走 formatNum 免得格子被长数字撑破 */
+  /** 含灵石;数量走 formatNum,免得长数字撑破格子 */
   const materialGrid = computed(() => [
     ...materialRows.value.map(m => ({
       key: m.name,
@@ -433,9 +410,8 @@
   const currentPill = computed(() => (pillDetail.value ? (pillRows.value.find(r => r.def?.id === pillDetail.value) ?? null) : null))
 
   /**
-   * 增益丹服前判定(与 usePill 同口径 buffOverflowOf):
-   * full = 顶满再服即白费,partial = 贴着上限只续到顶。
-   * 「服 用」在 full 态一并置灰;拦因由 currentPillHint 就地摊开。
+   * 增益丹服前判定,与 usePill 同口径 buffOverflowOf:full = 顶满再服白费(usePill 照扣库存),partial = 只续到顶。
+   * full 态「服 用」置灰,拦因见 currentPillHint。
    */
   const currentPillOverflow = computed<BuffOverflow | null>(() => {
     const def = currentPill.value?.def
@@ -454,7 +430,6 @@
   const decomposeOpen = ref(false)
   const smartOpen = ref(false)
 
-  /** 服用后若已吃完最后一枚,顺手关掉详情——否则弹窗会停在一个不存在的丹药上 */
   function onUsePill(): void {
     const id = pillDetail.value
     if (!id) return
@@ -462,7 +437,6 @@
     if (!pillRows.value.some(r => r.def?.id === id)) pillDetail.value = null
   }
 
-  /** 批量服丹(连服 ×5):存量够几枚连吃几枚,吃完顺手关详情 */
   function onUsePillBatch(): void {
     const id = pillDetail.value
     if (!id) return

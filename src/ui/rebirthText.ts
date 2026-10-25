@@ -10,11 +10,7 @@ function row(id: string) {
   return HERITAGE.find(r => r.id === id)
 }
 
-/**
- * One sentence shown on the manual-rebirth button.
- * Gongfa memory stays and levels return to 1 (one full book at the top insight stage).
- * Artifacts are external goods and are wiped.
- */
+/** 兵解按钮上方的一行去留标签(以 · 分隔);兵解门槛只写在按钮置灰文案上 */
 export function rebirthDecisionHint(): string {
   const keep = [row('daoFruit'), row('talents')].filter(r => r?.mode === 'full').map(r => r!.name)
   const artifacts = row('artifacts')

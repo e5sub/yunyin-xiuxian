@@ -47,7 +47,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
 })
 
-/** 备好一个够格又有钱的玩家 */
+/** 够格且有钱的玩家 */
 function ready(major = 3): void {
   usePlayerStore().major = major
   useResourcesStore().addStone(gn(1_000_000_000))
@@ -120,13 +120,11 @@ describe('秘境 · 进得去', () => {
   it('秘境与历练互斥:历练途中不许入秘境,秘境之中不许开历练', () => {
     ready(3)
     const adventure = useAdventureStore()
-    // 先证明清场状态能正常开场(别让当年 qingyun 解锁链失败混进断言)
+    // 先证清场状态能开场,排除 qingyun 解锁链失败的干扰
     expect(startExploration('qingyun', 'normal')).toBe(true)
     adventure.setSession(null)
-    // 在秘境中 → 开历练被拒(新守卫生效)
     expect(enterSecretRealm('sr_kurong').ok).toBe(true)
     expect(startExploration('qingyun', 'normal'), '在秘境内不许再开历练').toBe(false)
-    // 历练途中 → 入秘境被拒(新守卫生效)
     adventure.setSession(null)
     abandonRealm()
     expect(startExploration('qingyun', 'normal')).toBe(true)
@@ -152,12 +150,7 @@ describe('秘境 · 进得去', () => {
     expect(useUiStore().toasts.at(-1)?.text).toContain('远征在途')
   })
 
-  /**
-   * 核心与界面必须是**同一句话**:此前 enterSecretRealm 手抄了两支拒因
-   * (「须先结束远征方能入秘境」「先了结这一程,再入秘境」),而秘境卡按钮读的是
-   * endgameBusy 的 reason —— 同一件事两句话,改一处必漏一处。
-   * 故障注入:把 busy.reason 换回手抄字面量 → 本条红。
-   */
+  /** 故障注入:把 busy.reason 换回手抄字面量 → 本条红。 */
   it('秘境入口拒因取自 endgameBusy 本体,核心与界面说同一句话', () => {
     ready(3)
     const endgame = useEndgameStore()
@@ -198,7 +191,7 @@ describe('秘境 · 规则是真的', () => {
   })
 
   it('本境规则与随机规则都并进战斗(逐条隔离验证,不吃随机掷的运气)', () => {
-    // 用固定状态逐条验:随机规则是掷出来的,拿真实一跳去断言会时红时绿
+    // 固定状态逐条验;用真实掷骰会时红时绿
     const base = {
       realmId: 'sr_kurong',
       enteredAt: 0,
@@ -212,11 +205,9 @@ describe('秘境 · 规则是真的', () => {
     }
     // 枯荣古境自带:治疗 ×2
     expect(secretFightRules(base).healMult).toBe(2)
-    // 随机规则并入:回合上限
     expect(secretFightRules({ ...base, rules: ['回合上限 20'] }).maxRounds).toBe(20)
-    // 两条规则叠乘(合并是乘区,不是覆盖):×2 与「治疗减半」相遇即回落到 ×1
+    // 规则合并是乘区不是覆盖:×2 遇「治疗减半」回落到 ×1
     expect(secretFightRules({ ...base, rules: ['治疗减半'] }).healMult).toBe(1)
-    // 层数递进:第三层比第一层更凶
     const l1 = secretFightRules(base, 1)
     const l3 = secretFightRules(base, SECRET_LAYERS)
     expect(l3.enemyAtkMult!).toBeGreaterThan(l1.enemyAtkMult!)
@@ -267,11 +258,6 @@ describe('秘境 · 推得动、出得来', () => {
     expect(SECRET_MAX_LOSSES).toBe(2)
   })
 
-  /**
-   * 逐出那一句曾经手写「连败两场」——门槛挪到数据里以后,文案仍留在 core 里。
-   * 现在那句从 SECRET_MAX_LOSSES 现算,并且卡片在**开打前**就把败场摆出来:
-   * 「再输一场就出局」是玩家决定要不要硬闯的唯一依据,却是原界面唯一看不见的数。
-   */
   it('被逐出那句从 SECRET_MAX_LOSSES 现算,不再手写「两场」', () => {
     const src = readFileSync(resolve(__dirname, 'secretRealm.ts'), 'utf8')
     expect(src).toContain('cnNumber(SECRET_MAX_LOSSES)')
@@ -285,7 +271,6 @@ describe('秘境 · 推得动、出得来', () => {
     )
     expect(card).toContain('state.losses')
     expect(card).toContain('SECRET_MAX_LOSSES')
-    // 手写「再败 2 场」这类字面量正是改门槛时最容易漏的那处
     expect(card).not.toMatch(/再败\s*[0-9]+\s*场/)
   })
 
@@ -298,7 +283,7 @@ describe('秘境 · 推得动、出得来', () => {
 
   it('坏档修形:层数/气血/规则越界都夹回来,认不得的秘境直接作废', () => {
     const player = usePlayerStore()
-    // 层数 99(否则一路「通关」)、气血 5(战斗开局算成 NaN)、规则里混进不存在的一条
+    // 层数 99 会一路「通关」;气血 5 让开局算成 NaN
     player.setSecretRealm({
       realmId: 'sr_kurong',
       enteredAt: -1,
@@ -321,14 +306,13 @@ describe('秘境 · 推得动、出得来', () => {
     expect(fixed.finished).toBe(false)
     expect(fixed.enteredAt).toBeGreaterThanOrEqual(0)
 
-    // 认不得的秘境 id → 直接作废,免得留一份永远结算不完的状态
+    // 认不得的秘境 id 作废,免得状态永远结算不完
     player.setSecretRealm({ ...fixed, realmId: 'sr_nope' } as never)
     player.sanitize()
     expect(currentRealm()).toBeNull()
   })
 
   it('秘境有非 spec 的入口 —— 骨架之所以叫骨架,就是因为没人接它', () => {
-    // 这条正是本轮之前缺的那一环:core 里一切齐备,却没有一处 UI 调它
     const files = [resolve(__dirname, '../components/adventure/SecretRealmCard.vue'), resolve(__dirname, '../views/AdventureView.vue')]
     const corpus = files
       .map(f => readFileSync(f, 'utf8'))
@@ -339,16 +323,12 @@ describe('秘境 · 推得动、出得来', () => {
     expect(corpus).toContain('enterSecretRealm(')
     expect(corpus).toContain('fightSecretLayer(')
     expect(corpus).toContain('abandonRealm(')
-    // 战报级别跟胜负走:胜 = 得了战利(success),败 = 气血折损(warn);
-    // 两级同写 info 时配色与提示音分不开这一局是赢是输
+    // 战报级别跟胜负走:胜 success,败 warn;同写 info 则配色与提示音分不出胜负
     expect(corpus, '秘境战报的胜级须是 success').toContain("r.win ? 'success' : 'warn'")
   })
 
   /**
-   * 两张卡(历练页凡境册 / 试炼域天界册)共用同一份「在境中」状态,
-   * 而 `currentRealm()` 是全局单份、不分册 —— 不筛就会串门:身在凡境时
-   * 天界卡的册头写着「天界秘境」,内容却是凡境那一局。
-   *
+   * 两张卡(历练页凡境册 / 试炼域天界册)共用全局单份、不分册的 `currentRealm()`,不筛就会串门。
    * 故障注入:把 state 改回 `computed(() => currentRealm())` → 本条红。
    */
   it('秘境卡的「在境中」只认本册,身在另一册时就地说明', () => {
@@ -372,7 +352,6 @@ describe('秘境 · 两阶(凡境灵石 / 天界道源)', () => {
     player.major = 9
     expect(realmUnlock('celestial')).toBe(true)
     expect(availableRealms('celestial').length).toBeGreaterThanOrEqual(2)
-    // 两册互不串门
     expect(availableRealms('mortal').every(r => r.gate === 'mortal')).toBe(true)
     expect(availableRealms('celestial').every(r => r.gate === 'celestial')).toBe(true)
   })
@@ -444,11 +423,7 @@ describe('秘境 · 两阶(凡境灵石 / 天界道源)', () => {
 })
 
 describe('秘境 · 敌人按玩家缩放(与远征/试炼同法)', () => {
-  /**
-   * 副本敌若按层级绝对值生成,一个刚飞升、尚未换装的真仙会撞上 tier 21 的绝对数值 ——
-   * 付了道源,两场被逐出。故这里钉「玩家相对」口径:敌我力量比值由敌人自身倍率决定,
-   * 不随境界陡增(同一名裸装玩家,真仙与神人两处秘境应当同量级)。
-   */
+  /** 「玩家相对」口径:同一裸装玩家,真仙与神人两处秘境的敌我比值同量级 */
   const state = { realmId: 'sr_xingchen', enteredAt: 0, layer: 1, wins: 0, losses: 0, spoils: [], rules: [], carriedHpPct: 1, finished: false }
 
   it('敌我比值由敌人倍率决定,不随境界陡增', () => {
@@ -466,8 +441,7 @@ describe('秘境 · 敌人按玩家缩放(与远征/试炼同法)', () => {
   })
 
   it('敌人倍率有上界:裸装玩家吃力是设计,但不该出现「绝对数值墙」', () => {
-    // 裸装(无装备无功法)去打秘境本就该吃亏;这里钉的是"吃亏有上限":
-    // 敌人攻击不超过玩家的 5 倍,且结算文案始终有效 —— 而不是按层级绝对值碾压。
+    // 裸装吃亏是设计;钉上限:敌攻不超过玩家 5 倍,结算文案有效
     const player = usePlayerStore()
     for (const major of [3, 9, 14, 20]) {
       player.major = major
@@ -501,14 +475,12 @@ describe('秘境 · 战利倍率算得出对', () => {
     expect(toNum(l3.stone)).toBeGreaterThan(toNum(l1.stone))
     expect(l1.material).toBe(3)
     expect(l3.material).toBe(5)
-    // 材料与倍率无关:同一层数下换倍率,材料数不变
     expect(secretLayerReward(10, 2, 9).material).toBe(secretLayerReward(10, 2, 0.1).material)
   })
 
   it('层级单调:同层同倍率下,高一层的战利必然更厚', () => {
-    // 注意这里不写「高一层的第一层 > 低一层的第三层」——那是我一开始想当然的判据,
-    // 实测 11 层×1.2 倍(1.59万)< 10 层×1.5 倍第 3 层(1.74万)。
-    // 深层的厚赏压过上一层的薄层是**设计允许**的(奖励深度),故只钉单调性。
+    // 只钉单调性,不钉「高一层的第一层 > 低一层的第三层」:
+    // 实测 11 层×1.2 倍(1.59万)< 10 层×1.5 倍第 3 层(1.74万),深层厚赏压过是设计允许
     for (let tier = 3; tier < 30; tier += 1) {
       expect(toNum(secretLayerReward(tier + 1, 2, 1.2).stone)).toBeGreaterThan(toNum(secretLayerReward(tier, 2, 1.2).stone))
     }

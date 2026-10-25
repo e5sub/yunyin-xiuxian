@@ -1,8 +1,6 @@
 /**
- * Build 决策层(Phase 17)
- * 区域生态与敌人特性由正式敌人数据自动推导;
- * 流派×特性克制权重取自 buildSim 已验证的矩阵结论。
- * 原则:告诉玩家「为什么」,不替玩家做决定;战力仅作综合参考。
+ * Build 决策层:区域生态与敌人特性由正式敌人数据推导;流派×特性克制权重取自 buildSim 矩阵结论。
+ * 只给评级与理由,不替玩家做决定。
  */
 import type { EnemyDef, RegionDef } from '@/types'
 import { enemyDef } from '@/data/enemies'
@@ -136,7 +134,7 @@ export interface StyleRecommendation {
   adaptation: Adaptation
 }
 
-/** 面向某区域的全流派推荐(降序;只给评级与理由,不替玩家做决定) */
+/** 面向某区域的全流派推荐,按星级降序 */
 export function recommendForRegion(region: RegionDef): StyleRecommendation[] {
   const eco = regionEcology(region)
   return BUILD_STYLES.map(style => ({ style, adaptation: styleAdaptation(style.id, eco) })).sort(

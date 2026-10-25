@@ -1,12 +1,9 @@
 <template>
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
-    <!-- 页签 -->
     <InkTabs v-model="tab" :tabs="TABS" />
 
-    <!-- 成就 -->
     <template v-if="tab === 'achievement'">
       <SectionTitle title="成就" :hint="`${quests.achieved.length}/${ACHIEVEMENTS.length}`" />
-      <!-- 整体走多远了:数字要读,条是扫一眼(与全库 ProgressBar 同一把尺) -->
       <ProgressBar
         class="mt-2"
         :value="ACHIEVEMENTS.length > 0 ? quests.achieved.length / ACHIEVEMENTS.length : 0"
@@ -18,7 +15,7 @@
             {{ grp.label }}
             <span class="ml-1 tabular">{{ grp.done }}/{{ grp.items.length }}</span>
           </p>
-          <!-- 组内细条:比页级条细一档,层级靠粗细分开,不与总进度争眼 -->
+          <!-- 组内细条比页级条细一档 -->
           <ProgressBar class="pb-1.5" :value="grp.items.length > 0 ? grp.done / grp.items.length : 0" :height="2" />
           <div class="divide-y divide-ink/6">
             <div v-for="row in grp.items" :key="row.id" class="flex items-center gap-3 py-2.5">
@@ -50,7 +47,6 @@
     <template v-else-if="tab === 'collection'">
       <section v-for="cat in collectionCats" :key="cat.key">
         <SectionTitle :title="cat.name" :hint="cat.hint" />
-        <!-- 未收录的条目只是一片「???」—— 得告诉玩家去哪儿找,否则这一册只能干瞪眼 -->
         <p class="mt-1 text-[10px] text-ink-faint">{{ cat.source }}</p>
         <div class="card-ink mt-2 flex flex-wrap gap-1.5 px-3.5 py-3">
           <template v-for="entry in cat.entries" :key="entry.id">
@@ -64,11 +60,7 @@
               {{ entry.name }}
               <span v-if="entry.badge" class="text-[9px] opacity-70">{{ entry.badge }}</span>
             </button>
-            <!--
-              未收录的条目降噪:已收是彩签,未收若也用同样粗的实线边框「???」,
-              收藏一多就成了整片灰点、压过真内容。改用更细的虚线框 + 更小的
-              圆点占位,一眼分清「已收的」与「还没的」,又不至于喧宾夺主。
-            -->
+            <!-- 未收录降噪:更细的虚线框,不与已收的彩签同粗 -->
             <span
               v-else
               class="inline-flex items-center rounded-full border border-dashed border-ink/15 px-2 py-0.5 text-[10px] leading-snug text-ink-faint"
@@ -149,13 +141,7 @@
     { id: 'collection', label: '收藏' }
   ]
 
-  /**
-   * 成就一律先以「???」示人,达成之后才现名目。
-   *
-   * 既然未达成的全都遮住,原先的 hidden 标记(未达成时整行不列出)就没了着落 ——
-   * 它与寻常未达成者长得一模一样,却害得计数的分母对不上列出的行数。
-   * 故此处不再筛除,位子一个不少(计数一律读 ACHIEVEMENTS.length,不手工写死)。
-   */
+  /** 成就未达成一律显示「???」;不筛除任何条目,计数读 ACHIEVEMENTS.length */
   const achievementRows = computed(() =>
     ACHIEVEMENTS.map(a => {
       const done = quests.hasAchieved(a.id)
@@ -174,33 +160,30 @@
           a.cond.type === 'counter'
             ? { current: Math.min(quests.counter(a.cond.key), a.cond.value), target: a.cond.value }
             : null,
-        // 未达成不报赏,免得把称号提前说破;已达成的数额与 grantReward 同一套折算
+        // 未达成不报赏(免得说破称号);数额与 grantReward 同一套折算
         reward: done && a.reward ? rewardPreview(a.reward) : ''
       }
     }).sort((a, b) => {
       if (a.done !== b.done) return Number(b.done) - Number(a.done)
-      // 未达成段内:计数类按离阈值最近优先(「下一步就能成的那条」浮到未达成区头部);非计数沉底保持原序
+      // 未达成段内:计数类按离阈值最近优先,非计数沉底保持原序
       const pa = a.progress ? a.progress.current / a.progress.target : -1
       const pb = b.progress ? b.progress.current / b.progress.target : -1
       return pb - pa
     })
   )
 
-  /** 按主题归段:62 条平铺难回看,分成几段各带小标题;段内保留 achievementRows 的顺序 */
+  /** 按主题归段,段内保留 achievementRows 的顺序 */
   const achievementGroups = computed(() =>
     ACHIEVEMENT_GROUP_ORDER.map(g => ({
       key: g,
       label: ACHIEVEMENT_GROUP_LABEL[g],
       items: achievementRows.value.filter(r => r.group === g),
-      /** 该方向已达成数:组头数字与细条读同一份,不另算一套 */
+      /** 该方向已达成数:组头数字与细条读同一份 */
       done: achievementRows.value.filter(r => r.group === g && r.done).length
     })).filter(grp => grp.items.length > 0)
   )
 
-  /**
-   * 原有七类只有"收没收录"两态,在此补齐 CodexEntry 的深度字段:
-   * stage 1 即已收录,不设更深的层。深浅之别是灵材谱与悟道录才有的事。
-   */
+  /** 两态图鉴(收没收录):补齐 CodexEntry 的深度字段,stage 1 即已收录 */
   function makeCat(
     key: CollectionCategory,
     name: string,
@@ -208,9 +191,7 @@
     defs: { id: string; name: string; desc?: string; meta?: string; color?: string }[]
   ): CodexCat {
     const owned = new Set(ownedIds)
-    // 标题计数要与彩签一致:ownedIds 可能含重复/已被移出图鉴的旧 id,
-    // 照 `ownedIds.length` 会多报 —— 数「实际落进 defs 的那几枚」才和渲染对得上
-    // (与角色页「图鉴 N/M」同一口径,见 ui/codex.codexOwnedCount)
+    // 只数实际落进 defs 的(ownedIds 可能含重复/旧 id);与角色页「图鉴 N/M」同一口径,见 ui/codex.codexOwnedCount
     const ownedCount = codexOwnedCount(ownedIds, defs)
     const entries: CodexEntry[] = defs
       .map(d => ({
@@ -229,17 +210,11 @@
     return { key, name, hint: `${ownedCount}/${defs.length}`, source: CODEX_SOURCES[key], entries }
   }
 
-  /**
-   * 九类图鉴的排布。
-   *
-   * 悟道录紧随功法阁、灵材谱紧随丹方录 —— 各自与所属的那条线挨在一处,
-   * 翻到功法就看得见它的岔路,翻到丹药就看得见炼它的料。
-   */
+  /** 图鉴排布:悟道录紧随功法阁、灵材谱紧随丹方录 */
   const collectionCats = computed<CodexCat[]>(() => {
     const c = quests.collections
     return [
-      // 装备/法宝/丹药三类走带深浅的派生视图(见 ui/codex:收录深度一节),
-      // 其余四类仍是「收没收录」两态,故共用 makeCat
+      // 装备/法宝/丹药走带深浅的派生视图(见 ui/codex:收录深度一节)
       equipCodex(),
       makeCat(
         'gongfa',
@@ -274,8 +249,7 @@
         'event',
         '见闻志',
         c.event,
-        // 奇缘的阶段事件与普通际遇同表,但在见闻志里得各归各的名 ——
-        // 一律写成「历练际遇」,玩家会以为那条缘也能在随便哪个地界撞见
+        // 奇缘的阶段事件与普通际遇同表,见闻志里须各归各的名
         EVENTS.map(e => ({
           id: e.id,
           name: e.title,
@@ -298,9 +272,7 @@
     ]
   })
 
-  // ---- 详情弹窗 ----
-  // 脚注各类口径不同(旧七类记收录时日、灵材记照面回数、悟道记所属功法),
-  // 故由条目自带 foot,此处不再拼装
+  // 脚注各类口径不同,由条目自带 foot
   const detail = ref<{ catName: string; entry: CodexEntry } | null>(null)
 
   function openDetail(cat: CodexCat, entry: CodexEntry): void {

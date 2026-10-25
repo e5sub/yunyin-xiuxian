@@ -1,6 +1,4 @@
-/**
- * 坊市悬赏板 store —— 交货四路与坏档韧性
- */
+/** 坊市悬赏板 store —— 交货四路与坏档韧性 */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { BountySlot } from '@/data/bounty'
@@ -31,14 +29,14 @@ describe('坊市悬赏板 · 交货', () => {
     const b = useBountyStore()
     const res = useResourcesStore()
     seedSlots([mat('herb')])
-    usePlayerStore().major = 10 // 非零境:若 claim 忽略大境界、恒按 0 定价,此断言即红
+    usePlayerStore().major = 10 // 非零境:claim 若恒按 0 定价,此断言红
     res.herbByGrade[1] = 10 // 不足 30
     res.spiritStone = { m: 0, e: 0 }
     expect(b.claim(0)).toBe('insufficient')
     expect(res.herb).toBe(10)
     expect(b.orders[0]!.claimed).toBe(false)
 
-    // 凡品+道品都够:自低品起挑(保高阶给方子),价按凡品算
+    // 凡品 + 道品都够:自低品起挑,按凡品计价
     res.$patch({ herbByGrade: { 1: 30, 2: 0, 3: 0, 4: 0, 5: 5 } })
     expect(b.claim(0)).toBe('ok')
     expect(res.herb).toBe(5)
@@ -126,11 +124,6 @@ describe('坊市悬赏板 · 交货', () => {
     expect(b.bountyAt).toBe(0)
   })
 
-  /**
-   * 交货按 idx 认单:两张单同号时 `claim(idx)` 只命中先出现的那张,后一张
-   * 永远交不了(点了没反应)。订单赏格都写在单子上(不按 idx 再生),故理顺号
-   * 比丢单更合适 —— 但必须**每张单都还能交**。
-   */
   it('sanitize:重复单号重排成唯一号,两张单都交得了', () => {
     const b = useBountyStore()
     const res = useResourcesStore()
@@ -139,7 +132,7 @@ describe('坊市悬赏板 · 交货', () => {
         { kind: 'herb', kindId: 'herb', idx: 0, target: 1, tier: 0, reward: { m: 5, e: 0 }, extra: 0, claimed: false },
         { kind: 'herb', kindId: 'herb', idx: 0, target: 1, tier: 0, reward: { m: 6, e: 0 }, extra: 0, claimed: false }
       ] as unknown as never,
-      // 别让 sync 换掉这版单(测的是修形后的交货,不是刷新)
+      // 不让 sync 换版
       bountyAt: FAR
     })
     b.sanitize()
@@ -150,7 +143,6 @@ describe('坊市悬赏板 · 交货', () => {
     const afterFirst = toNum(res.spiritStone)
     expect(b.claim(1), '第二张单也该交得了').toBe('ok')
     expect(b.orders.every(o => o.claimed)).toBe(true)
-    // 第二张单的赏格必须还是它自己的 6,不是第一张的 5 —— 只断言两个 ok 会放过「赏格被改」
     const secondReward = toNum(res.spiritStone) - afterFirst
     expect(secondReward, '第二张单该按自己的赏格(herbBountyReward)入账').toBeCloseTo(
       toNum(herbBountyReward(1, usePlayerStore().major, 1)),
@@ -159,10 +151,6 @@ describe('坊市悬赏板 · 交货', () => {
     expect(b.orders[1]!.reward, '修形不许改单子上的赏格').toEqual({ m: 6, e: 0 })
   })
 
-  /**
-   * 募丹单靠 kindId 认货:野丹 id 既画不出名字、也永远凑不齐 —— 它只会
-   * 挂满整个窗口反复报「存货不足」。整版重挂才是玩家能走的下一步。
-   */
   it('sanitize:认不出的募丹单整版重挂,不吃掉货架上的好单', () => {
     const b = useBountyStore()
     b.$patch({
@@ -197,10 +185,6 @@ describe('坊市悬赏板 · 交货', () => {
     expect(b.bountyAt, '好单不该被重挂').toBe(FAR)
   })
 
-  /**
-   * 募矿/募丹的 reward 是单子上钉死的实价;坏档把它归零后仍能交货,等于白交一批货。
-   * 募草/贡器的 reward 本就是占位零,不能按同一条判据误杀。
-   */
   it('sanitize:募矿/募丹零赏格视为坏单整版重挂,占位零赏的募草/贡器保留', () => {
     const b = useBountyStore()
     b.$patch({
@@ -250,16 +234,11 @@ describe('坊市悬赏板 · 交货', () => {
     expect(b.orders[2]!.tier).toBe(MAX_EQUIP_TIER)
   })
 
-  /**
-   * 点下去的那一瞬正好跨过换版窗口:屏幕上是旧单,而 `sync` 会整版换新。
-   * 若照旧按 idx 交货,扣的是玩家的货、成交的是**他没看过的新单**(新单收的货与
-   * 赏格都可能不同)。宁可不成,让玩家按新单再点。
-   */
   it('跨过换版窗口时按下交货:不成交,也不扣货', () => {
     const b = useBountyStore()
     const res = useResourcesStore()
     seedSlots([mat('herb')])
-    // 上货时刻推到窗口之外(屏幕上画的还是这版旧单)
+    // 上货时刻移出窗口,屏幕上仍是旧单
     b.bountyAt = 0
     res.herbByGrade[1] = 30
     res.spiritStone = { m: 0, e: 0 }
@@ -291,12 +270,12 @@ describe('坊市悬赏板 · 募草工价上货时刻冻结', () => {
     const b = useBountyStore()
     const res = useResourcesStore()
     seedSlots([mat('herb')])
-    // 版在 major 5 生成(工价冻结于此),玩家此刻已到 major 10
+    // 版在 major 5 生成,玩家已到 10
     b.bountyMajor = 5
     usePlayerStore().major = 10
     res.$patch({ herbByGrade: { 1: 30, 2: 0, 3: 0, 4: 0, 5: 0 }, spiritStone: { m: 0, e: 0 } })
     expect(b.claim(0)).toBe('ok')
-    // 价按生成的 major 5 折算,不是当前 10 —— 若有人把它改回 live major,此断言即红
+    // 按生成时的 major 5 折算;改用当前 major 则此断言红
     expect(toNum(res.spiritStone)).toBe(toNum(herbBountyReward(1, 5, 30)))
   })
 })

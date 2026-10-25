@@ -1,10 +1,4 @@
-/**
- * 高界战斗/掉落冒烟(扩界)
- *
- * 新界 24 处地界此前只有数据层审计(敌人被引用、区域可达),**从未真的跑过一次**
- * 战斗与掉落。数据写错(阈值越界、数值 NaN、掉落池空)在数据审计里看不出来,
- * 一跑就现形。这里对每个新界域各取一处高层地界,真跑敌人快照与掉落结算。
- */
+/** 高界战斗/掉落冒烟:新界域各取高层地界真跑敌人快照与掉落结算,抓数据审计看不出的阈值越界、NaN、掉落池空 */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { makeEnemySnap } from './combat'
@@ -65,11 +59,7 @@ describe('高界冒烟 · 敌人快照与掉落结算', () => {
   })
 })
 
-/**
- * 后期还有两条只在百万级数值下才暴露的产线:镇压产出与天界秘境。
- * 它们的共同风险是「数值大到一个程度后出现 NaN / 负值 / 空掉落池」——
- * 数据审计看不出来,只有真跑。
- */
+/** 镇压产出与天界秘境:百万级数值下才暴露 NaN / 负值 / 空掉落池 */
 describe('高界冒烟 · 镇压产出与天界秘境', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -78,7 +68,7 @@ describe('高界冒烟 · 镇压产出与天界秘境', () => {
   it('镇压神界/混沌海的地界:产出有限、非负、材料名目有效', () => {
     const player = usePlayerStore()
     const resources = useResourcesStore()
-    // 一处神界 + 一处混沌海,各守 6 小时(避开 72h 复苏判定)
+    // 神界、混沌海各一处,守 6 小时(避开 72h 复苏判定)
     const ids = ['shenjihuang', 'hongmengbenyuan']
     for (const id of ids) {
       player.suppressRegion(id)
@@ -121,7 +111,7 @@ describe('高界冒烟 · 镇压产出与天界秘境', () => {
       for (const line of r.lines) expect(line).not.toContain('NaN')
     }
     expect(Number.isFinite(toNum(resources.spiritStone))).toBe(true)
-    // 打到底(通关或被逐出)一定发生过结算;若通关则灵石必增
+    // 打到底(通关或被逐出)必发生过结算
     expect(guard).toBeGreaterThan(0)
     expect(toNum(resources.spiritStone)).toBeGreaterThanOrEqual(stoneBefore)
   })

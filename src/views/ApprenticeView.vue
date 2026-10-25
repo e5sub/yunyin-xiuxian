@@ -18,7 +18,6 @@
       </div>
     </div>
 
-    <!-- 道童列表 -->
     <section>
       <SectionTitle title="座下道童" :hint="`${appr.apprentices.length}/${slots}`" />
       <div class="mt-1 flex items-center justify-between gap-2 px-1">
@@ -29,7 +28,6 @@
       </div>
       <div class="mt-2 space-y-2">
         <div v-for="a in apprenticesList" :key="a.uid" class="card-ink p-3">
-          <!-- 顶部:名号 / 境界层 / 状态 -->
           <div class="flex items-center gap-2">
             <span class="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-jade/15 font-kai text-[15px] text-jade">
               {{ a.def.name[0] }}
@@ -44,7 +42,6 @@
             </div>
           </div>
 
-          <!-- 状态行:忙 / 闲 -->
           <div v-if="a.busy" class="mt-2 flex items-center justify-between rounded bg-ink/4 px-2.5 py-2">
             <span class="flex items-center gap-1.5 text-[12px] text-ink-soft">
               <GameIcon :name="a.taskIcon" :size="14" />{{ a.taskName }}
@@ -63,11 +60,7 @@
             </button>
             <span v-if="!a.busy" class="text-[10px] text-ink-faint"> · {{ a.talentNote }}</span>
           </div>
-          <!--
-            派活说明点按直出:此前只挂在 :title 上,手机没有 hover —— 那是谁也看不见的死提示。
-            说明放在按钮行下方整行,不挤按钮;同一枚按钮第一下展开、再点才真派出(与适配理由、
-            天赋芯片同一族「点一下展开一行」),顺手给「锁走道童 30~90 分钟」这个半承诺加一道闸。
-          -->
+          <!-- 派活说明点按展开,不挂 :title(手机没有 hover);同一枚按钮第一下展开、再点才派出 -->
           <p
             v-if="!a.busy && tappedTask && tappedTask.uid === a.uid"
             class="mt-1 text-[10px] leading-relaxed text-ink-faint"
@@ -191,12 +184,11 @@
     else ui.toast('门中已满', 'info')
   }
 
-  /** 收割所有已完工道童;回来的就报一声带回什么 */
+  /** 收割所有已完工道童并报带回什么 */
   function reap(): void {
     const reaped = appr.collectFinished(now.value, player.major)
     if (reaped.length === 0) return
-    // ui.toast 会按「同文 + 同级」去重刷新同一条:两名道童带回一模一样的「悟道×2」时,
-    // 逐条 toast 会被第二条顶掉 —— 明明回了两位却只报一位。批量就合成一条汇总
+    // 合成一条汇总:ui.toast 按「同文 + 同级」去重,逐条报会漏报
     ui.toast(apprenticeReturnText(reaped, player.major), 'success')
   }
 

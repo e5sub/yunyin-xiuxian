@@ -1,11 +1,11 @@
 <template>
   <BaseModal ref="modalRef" :open="inst !== undefined" :title="template?.name ?? ''" top @close="close">
-    <!-- 词条转移(议题 #22):同一扇弹窗内切换正文与页脚,不再叠一层 -->
+    <!-- 词条转移在同一弹窗内切换正文与页脚,不另叠一层 -->
     <AffixTransferPanel v-if="transferOpen && inst" :flow="transfer" @view="viewTarget" />
     <div v-else-if="inst && template && resolved">
       <div class="flex items-center gap-2">
         <QualityTag :quality="inst.quality" />
-        <!-- 界域 + 阶位:同一句「23 阶」在人间界与仙界完全不是一回事,故写清是哪一界 -->
+        <!-- 阶位须带界域:同一阶在人间界与仙界不是一回事 -->
         <span class="text-[11px] text-ink-faint">
           {{ EQUIP_SLOT_NAMES[template.slot] }} · {{ worldNameOfTier(inst.tier) }} · {{ inst.tier }} 阶
         </span>
@@ -19,7 +19,6 @@
         </button>
       </div>
       <p class="mt-2 text-[12px] leading-relaxed text-ink-faint">{{ template.desc }}</p>
-      <!-- 装备标记子面板:草稿随当前件走(EquipNotePanel) -->
       <EquipNotePanel />
       <!--
         共鸣是机制而非数值,但装备卡片此前一个字都不提:玩家在「要不要换掉这件」时,
@@ -103,7 +102,6 @@
             </span>
             <span class="ml-auto min-w-0 text-right text-[11px] leading-snug text-ink-soft">
               {{ line.before }}<span class="tabular font-medium text-ink">{{ line.value }}</span>{{ line.after }}
-              <!-- 浮动:这条掷到了它自己的几成 —— 封存/重铸的数,藏起来就是瞎赌 -->
               <span class="text-[9px] text-ink-faint" :title="affixRollHint">{{ affixRollText(line.roll) }}</span>
             </span>
             <EquipSealPanel :affix-id="line.id" :name="line.name" />
@@ -150,7 +148,6 @@
     <template #footer>
       <AffixTransferFooter v-if="transferOpen && inst" :flow="transfer" @back="transferOpen = false" />
       <div v-else class="flex flex-col gap-2">
-        <!-- 重铸与封存的价签与二步确认随 EquipReforgeFooter 走;自动重铸开关仍在此处,展开面板在正文 -->
         <EquipReforgeFooter
           :auto-open="autoOpen"
           :can-transfer-out="canTransferOut"
@@ -166,7 +163,7 @@
             :title="upShort === 'stone' ? `灵石尚差 ${formatGN(upGap?.stone ?? { m: 0, e: 0 })}` : upShort === 'dust' ? `器灵尘尚差 ${upGap?.dust ?? 0}` : undefined"
             @click="doUpgrade"
           >{{ upShort === 'stone' ? `强 化(石差${formatGN(upGap?.stone ?? { m: 0, e: 0 })})` : upShort === 'dust' ? `强 化(尘差${upGap?.dust ?? 0})` : '强 化' }}</button>
-          <!-- 分解二步确认:一件淬养过的装备(强化/封存/重铸)误触垃圾桶不该直接没 -->
+          <!-- 分解须二步确认,防误触 -->
           <template v-if="decomposeArm !== inst?.uid">
             <button
               class="btn-ghost"
@@ -226,7 +223,7 @@
   const ui = useUiStore()
   const inventory = useInventoryStore()
   const player = usePlayerStore()
-  // 自动重铸整本账收在 useAutoReforge;页脚只留「开/收」这一个开关
+  // 自动重铸整本账在 useAutoReforge,页脚只留开关
   const reforgeFlow = useAutoReforge()
   const { closeAuto } = reforgeFlow
   const autoOpen = ref(false)
@@ -245,13 +242,9 @@
   const upCost = computed(() => (inst.value ? equipUpgradeCost(inst.value.uid) : null))
   const upShort = computed(() => (upCost.value ? upgradeShort(upCost.value) : null))
   const upGap = computed(() => (upCost.value ? upgradeShortfall(upCost.value) : null))
-  /** 分解返还:底材 + 强化投入的八成(练过的件拆了不至于血本无归,先把账摆出来) */
   const salvage = computed(() => (inst.value ? salvageOf(inst.value) : null))
 
-  /**
-   * 这件装备所属的共鸣与其当前件数(只数已佩戴的 —— 共鸣看的是挂载,不是行囊)。
-   * 未佩戴时也照实显示「1/2」,让玩家在按下装备之前就看得见差几件。
-   */
+  /** 共鸣件数只数已佩戴的(看挂载,不看行囊) */
   const setInfo = computed(() => {
     const setId = template.value?.set
     if (!setId) return null
@@ -275,13 +268,12 @@
     transferOpen.value = true
   }
 
-  /** 转移面板里点「前往」:退出转移,详情切到那一件 */
   function viewTarget(uid: string): void {
     transferOpen.value = false
     ui.equipDetailUid = uid
   }
 
-  // 换了一件(或关掉)就从头来:转移模式、自动重铸的勾选、分解与连升的二步确认都不该串到下一件上
+  // 换件(或关闭)即复位:转移模式、自动重铸勾选、二步确认不得串到下一件
   watch(
     () => inst.value?.uid,
     () => {
@@ -291,9 +283,8 @@
     }
   )
 
-  // 详情与转移互切、换看另一件:正文整块换了,滚动盒却没重挂 —— 回到顶上,免得开头几行在视口外。
-  // 用「多源数组」而不是「返回新数组的 getter」:后者在重铸(只换词条、uid 不变)时也会因
-  // 数组引用变化重放回调,把玩家原本停在词条一览的位置顶回顶部 —— 重铸不该动上下位置。
+  // 详情/转移互切或换件时滚动盒不重挂,须回顶。
+  // 须用多源数组,不用返回新数组的 getter:后者在重铸(uid 不变)时也会重放,把滚动位置顶回顶部
   const modalRef = ref<InstanceType<typeof BaseModal> | null>(null)
   watch(
     [() => transferOpen.value, () => inst.value?.uid],
@@ -326,7 +317,6 @@
   const flatRows = computed(() => {
     const r = resolved.value
     if (!r) return []
-    // 与当前佩戴同部位件对比(自身已佩则不对比)
     const cur = compareTarget.value
     const curFlats = cur ? resolveEquipStats(cur.item).flats : null
     const rows: { label: string; value: string; diff: string; up: boolean }[] = []
@@ -347,7 +337,7 @@
     return rows
   })
 
-  /** 对比对象:同部位当前佩戴件 */
+  /** 对比对象:同部位当前佩戴件(自身已佩则无) */
   const compareTarget = computed(() => {
     if (!inst.value || !template.value || isEquipped.value) return null
     const curUid = inventory.equipped[template.value.slot]
@@ -357,10 +347,7 @@
     return { item, name: equipmentTemplate(item.templateId)?.name ?? '当前佩戴' }
   })
 
-  /**
-   * 战斗价值对比 —— 与「一键换装」同一把尺(equippablePower):
-   * 基础平铺 + 词条战力,「按真实战力挑」说的就是它。是取舍值,不是面板战力。
-   */
+  /** 战斗价值对比:与「一键换装」同一把尺(equippablePower:基础平铺 + 词条战力);是取舍值,不是面板战力 */
   const powerCompare = computed(() => {
     const cur = compareTarget.value
     if (!cur || !inst.value) return null

@@ -1,8 +1,6 @@
 /**
- * 收徒状态 —— 已收弟子与他们的游历任务(持久化,须带 sanitize;见 storeResilience.spec)
- *
- * 任务按墙钟走(不存跑腿时钟,完工只看 finishAt 是否已过),离线归来、或打开界面
- * 一拍 collectFinished 即收割。产出由 apprenticeService 纯算,这里只管入账。
+ * 收徒状态 —— 弟子与游历任务(持久化,须带 sanitize;见 storeResilience.spec)
+ * 任务按墙钟:完工只看 finishAt 是否已过。产出由 apprenticeService 纯算,这里只入账。
  */
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
@@ -53,7 +51,7 @@ function clampBond(v: unknown): number {
   return Math.max(0, n)
 }
 
-/** 跨世之缘只对「真传(最高羁绊位阶)」开放,封顶到其阈值不越界 */
+/** 跨世之缘上限 = 真传(最高羁绊位阶)阈值 */
 const REBIRTH_KARMA_CAP = BOND_TITLES[BOND_TITLES.length - 1]!.min
 
 function clampKarma(v: unknown): number {
@@ -61,23 +59,22 @@ function clampKarma(v: unknown): number {
   return Math.min(REBIRTH_KARMA_CAP, Math.max(0, n))
 }
 
-/** 公共入口的境界入参:夹到真实大境界,坏数按凡境,不让槽位/报价/寻宝池漂移 */
+/** 公共入口的境界入参:夹到真实大境界,坏数按凡境 */
 function clampMajor(v: unknown): number {
   const n = Math.floor(Number(v))
   if (!Number.isFinite(n)) return 0
   return Math.min(MAX_MAJOR, Math.max(0, n))
 }
 
-/** 公共入口的墙钟:只认有限非负数(毫秒时间戳);坏数直接拒绝写任务/入账 */
+/** 公共入口的墙钟(毫秒时间戳):只认有限非负数 */
 function validNow(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0
 }
 
-/** 把一趟产出入账到资源/背包;采药品阶按「结算同一趟的 major」定,不另读 player(一处函数不再两把尺) */
+/** 一趟产出入账;采药品阶按传入的 major 定,不另读 player */
 function applySpoils(spoils: TaskSpoils, major: number): void {
   const resources = useResourcesStore()
   const inventory = useInventoryStore()
-  // 采药按当前大境界的品阶显式入账(五品分账;与五品经济同口径)
   if (spoils.herb) resources.addHerb(herbGradeOfMajor(major), spoils.herb)
   if (spoils.ore) resources.addSmall('ore', spoils.ore)
   if (spoils.dust) resources.addSmall('dust', spoils.dust)
@@ -90,7 +87,7 @@ export const useApprenticeStore = defineStore(
   'apprentice',
   () => {
     const apprentices = ref<OwnedApprentice[]>([])
-    /** 跨世之缘:真传道童转世后凝成的一丝缘(一次性,新世 starter 携带后清零) */
+    /** 跨世之缘:真传道童转世后凝成,新世 starter 携带后清零 */
     const rebirthKarma = ref(0)
 
     /** 存档修复:弟子逐位修形,坏位整位丢弃;任务形状不对就当作闲置 */
@@ -103,11 +100,7 @@ export const useApprenticeStore = defineStore(
         const archId = raw.archId
         if (typeof archId !== 'string' || !apprenticeDef(archId)) continue
         let uid = 'uid' in raw && typeof raw.uid === 'string' && raw.uid ? raw.uid : nextUid()
-        /**
-         * uid 是派活/收割时「认人」的唯一凭据(find(uid)):坏档里两位同号,
-         * 第二位在册却永远派不动,还白占一个槽。弟子是不同的人,不能像坏货格那样丢弃 ——
-         * 重排一个新号,两人各自可派、各自收割。
-         */
+        // uid 须唯一(派活 / 收割按 uid 认人);重号的弟子重排新号,不丢弃
         while (seenUid.has(uid)) uid = nextUid()
         seenUid.add(uid)
         const level = clampLevel('level' in raw ? raw.level : 1)
@@ -118,7 +111,7 @@ export const useApprenticeStore = defineStore(
           if (isSpec(t.spec) && Number.isFinite(t.startAt) && Number.isFinite(t.finishAt)) {
             const startAt = Math.max(0, Math.floor(t.startAt as number))
             const finishAt = Math.max(0, Math.floor(t.finishAt as number))
-            // 完工不得早于开工 —— 坏档若 finishAt<startAt 会「开局即白嫖一趟产出」,视作坏任务置闲
+            // finishAt < startAt 会开局即收割一趟,视作坏任务置闲
             if (finishAt >= startAt) task = { spec: t.spec, startAt, finishAt }
           }
         }
@@ -127,8 +120,7 @@ export const useApprenticeStore = defineStore(
       apprentices.value = clean
     }
 
-    /** 无弟子则白送一名入门弟子(让这功能一开局就看得见摸得着),仅此一次。
-     *  若上一世凝有跨世之缘(真传),starter 带着这份传承羁绊入场,随后清零(一次性携带,不每世重演) */
+    /** 无弟子时送一名入门弟子,携带跨世之缘后清零 */
     function sync(): void {
       if (apprentices.value.length === 0) {
         apprentices.value = [{ uid: nextUid(), archId: STARTER_APPRENTICE, level: 1, bond: rebirthKarma.value, task: null }]
@@ -136,7 +128,7 @@ export const useApprenticeStore = defineStore(
       }
     }
 
-    /** 收割所有已完工的弟子,return 尾账供界面报「弟子归来,带回…」 */
+    /** 收割已完工弟子,返回尾账供界面播报 */
     function collectFinished(now: number, major: number): TaskSpoils[] {
       if (!validNow(now)) return []
       const reaped: TaskSpoils[] = []
@@ -153,7 +145,7 @@ export const useApprenticeStore = defineStore(
       return reaped
     }
 
-    /** 派一名闲置弟子去跑一趟;忙着的、找不到的都派不动 */
+    /** 派一名闲置弟子跑一趟 */
     function dispatch(uid: string, spec: ApprenticeSpec, now: number): boolean {
       if (!isSpec(spec) || !validNow(now)) return false
       const appr = apprentices.value.find(x => x.uid === uid)
@@ -175,7 +167,7 @@ export const useApprenticeStore = defineStore(
       return 'ok'
     }
 
-    /** 一键「各尽其长」:把每名闲置道童派到当前最缺的门;忙的不动;返回实际派了几个 */
+    /** 一键「各尽其长」:闲置道童派往当前最缺的门;返回派出人数 */
     function dispatchAll(now: number): number {
       if (!validNow(now)) return 0
       const idle = apprentices.value
@@ -200,9 +192,7 @@ export const useApprenticeStore = defineStore(
       return targets.length
     }
 
-    /** 转世清零:道童是今生观中家业,随皮囊散去;新世由 sync() 补送 starter。
-     *  只取最高那名的羁绊,且仅「真传(满位阶)」凝成跨世之缘(封顶到真传位阶不越界);
-     *  道童本体不复活,只落 rebirthKarma 这一丝「老仆相寻」的缘。 */
+    /** 转世清零,新世由 sync() 补送 starter;最高羁绊达真传者凝成跨世之缘(封顶真传阈值) */
     function resetForRebirth(): void {
       let max = 0
       for (const appr of apprentices.value) max = Math.max(max, appr.bond)

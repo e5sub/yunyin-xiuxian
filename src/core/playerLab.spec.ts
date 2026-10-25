@@ -1,7 +1,4 @@
-/**
- * 修士实验室裁判(Phase 26)
- * 核心红线:玩家定规则,天道定赏格——更容易的配置绝不能拿更高奖励
- */
+/** 修士实验室裁判。红线:更容易的配置不得拿更高赏格。 */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { CELESTIAL_WORLDS } from '@/data/endgame'
@@ -26,11 +23,11 @@ describe('挑战书定价防作弊', () => {
       expect(easy!.reward).toBeGreaterThanOrEqual(30)
       expect(easy!.reward).toBeLessThanOrEqual(90)
     }
-    // 苛刻局若成立,定价必须 ≥ 宽松局(定价只看实测难度,叠恶性规则不可能更便宜)
+    // 定价只看实测难度:叠恶性规则不可能更便宜
     if (easy!.ok && hard!.ok) {
       expect(hard!.reward, '苛刻配置赏格反而更低——定价函数被绕过').toBeGreaterThanOrEqual(easy!.reward)
     }
-    // 苛刻局也可能被判「近乎无解」拒收——那同样是防线在工作
+    // 苛刻局可能被判「近乎无解」拒收
     if (!hard!.ok) {
       expect(hard!.reason).toBeDefined()
     }
@@ -57,11 +54,10 @@ describe('智能收纳判定', () => {
     const settings = useSettingsStore()
     settings.smartKeep = { enabled: true, minQuality: 3, keepMinTier: 0, keepCoreAffix: true, keepComboPiece: true, keepPerfectRolls: true, keepSetPiece: true }
     const rng = new RandomService(mulberry32(7))
-    // 生成高低品质各一件(minQualityRank 控制下限)
     const high = generateEquipment(10, rng, { luck: 0, minQualityRank: 5 })
     const low = generateEquipment(1, rng, { luck: 0, minQualityRank: 0 })
     expect(keepVerdict(high).keep).toBe(true)
-    // 新档玩家无流派:低品质件按「唯品质论」处理(可能因品质随机 ≥3 而保留,故仅验证判定可执行且给出理由)
+    // 低品质件可能因品质随机 ≥3 而保留,只验判定可执行且给出理由
     const v = keepVerdict(low)
     expect(typeof v.keep).toBe('boolean')
     expect(v.reason.length).toBeGreaterThan(0)

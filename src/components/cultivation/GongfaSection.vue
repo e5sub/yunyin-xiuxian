@@ -1,9 +1,7 @@
 <template>
-  <!-- 功法 -->
   <section>
-    <!-- 玩家反馈:看功法列表时只报残页,悟道点要开弹窗才看得见 —— 这里一并报 -->
     <SectionTitle title="功法" :hint="`残页 ${resources.page} · 悟道点 ${formatGN(resources.wudao)}`" />
-    <!-- 悟道兑换(Phase C-1):后期灵石过剩时,限量换悟道点再投进修/炼化 -->
+    <!-- 悟道兑换:后期限量灵石换悟道点 -->
     <div
       v-if="player.major >= WUDAO_EXCHANGE_MIN_MAJOR"
       class="mb-2 flex items-center justify-between gap-3 rounded border border-gold-ink/30 bg-gold-ink/5 px-3 py-2"
@@ -35,7 +33,6 @@
         <span class="min-w-0 grow">
           <span class="flex items-center gap-1.5">
             <span class="min-w-0 truncate font-kai text-[14px] text-ink">{{ mainDef.name }}</span>
-            <!-- 已择分支在卡面就报出来:否则玩家要开详情才知道这一门走的是哪条道 -->
             <span
               v-if="branchName(mainDef.id)"
               class="min-w-0 shrink truncate rounded bg-gold-ink/10 px-1.5 py-0.5 text-[10px] text-gold-ink"
@@ -48,7 +45,6 @@
             >
               待悟道
             </span>
-            <!-- 「攒够了」的信号提到卡面:否则玩家得逐部点开详情,才知道升得动哪一部 -->
             <span v-if="mainCanUpgrade" class="shrink-0 rounded bg-jade/10 px-1.5 py-0.5 text-[10px] text-jade">可升层</span>
           </span>
           <span class="block text-[11px] text-ink-faint">
@@ -58,10 +54,7 @@
         <GameIcon name="flame" :size="15" class="text-cinnabar" />
       </button>
 
-      <!--
-        门类分段切换:主修/辅修/秘术 三选一,只渲染选中门类 ——
-        辅修一按即见,不再埋在长笺里;选中门类单类展示、栏头不再粘顶互相叠压。
-      -->
+      <!-- 门类分段切换:主修/辅修/秘术三选一,只渲染选中门类 -->
       <div
         class="card-ink flex flex-wrap gap-1 p-1"
         role="tablist"
@@ -80,7 +73,6 @@
           :class="gongfaCat === g.type ? gongfaCatActive(g.type) : 'text-ink-faint active:text-ink-soft'"
           @click="gongfaCat = g.type"
         >
-          <!-- 门类小印章:与列表行同一块语言,激活时压成纸上字,暗色下仍可辨 -->
           <span
             class="grid h-5 w-5 place-items-center rounded font-kai text-[11px]"
             :class="gongfaCat === g.type ? 'bg-paper/15 text-paper' : gongfaCatSeal(g.type)"
@@ -112,15 +104,12 @@
           class="flex w-full items-center gap-2.5 px-2.5 py-2 text-left active:bg-ink/4"
           @click="ui.gongfaDetailId = def.id"
         >
-          <!-- 门类印章:与主修卡「主」字同一块语言,辅/秘一眼可辨 -->
           <span
             class="grid h-8 w-8 shrink-0 place-items-center rounded-md font-kai text-[13px]"
             :class="gongfaCatSeal(def.type)"
           >{{ sealOf(def.type) }}</span>
-          <!-- 品质染名的功法名 -->
           <span class="min-w-0 grow truncate font-kai text-[13px]" :style="{ color: qualityDef(def.quality).color }">{{ def.name }}</span>
           <span class="shrink-0 text-[10px] text-ink-faint">{{ cultivation.learned[def.id] }} 层</span>
-          <!-- Phase 31 A3:已选分支显示道名;确有歧路可择时才招手,否则只报「圆满」 -->
           <span v-if="branchName(def.id)" class="max-w-24 shrink-0 truncate rounded bg-gold-ink/10 px-1.5 py-0.5 text-[10px] text-gold-ink">
             {{ branchName(def.id) }}
           </span>
@@ -173,13 +162,7 @@
   import SectionTitle from '@/components/common/SectionTitle.vue'
   import GameIcon from '@/components/common/GameIcon.vue'
 
-  /**
-   * 功法区 —— 自 CultivationView 迁入。
-   *
-   * 悟道兑换、主修卡、门类切换、已习列表与参悟按钮同属一域,且共用同一份
-   * 门类投影(gongfaCategories)与同一池条件(comprehendGongfa)。拆出后
-   * 宿主不再替它持有分类、参悟余量与可升层判据。
-   */
+  /** 功法区:各块共用同一份门类投影(gongfaCategories)与同一池条件(comprehendGongfa) */
   const player = usePlayerStore()
   const resources = useResourcesStore()
   const dongfu = useDongfuStore()
@@ -197,7 +180,7 @@
     return type === 'secret' ? '秘' : type === 'main' ? '主' : '辅'
   }
 
-  /** 已习得功法按门类(主/辅/秘)分组、栏内已装配的置顶再按品质降序 —— 恒出三门供切换,选中门类单类展示 */
+  /** 已习得功法按门类(主/辅/秘)分组,恒出三门;栏内已装配置顶,再按品质降序 */
   const gongfaCategories = computed(() =>
     GONGFA_CAT_ORDER.map(type => ({
       type,
@@ -213,7 +196,6 @@
     }))
   )
 
-  /** 门类切换(主修/辅修/秘术):只展示选中门类,不再三栏粘顶叠压 */
   const gongfaCat = ref<GongfaType>('main')
   const activeGongfaItems = computed(
     () => gongfaCategories.value.find(g => g.type === gongfaCat.value)?.items ?? []
@@ -229,7 +211,7 @@
         : 'bg-jade/15 text-jade'
   }
 
-  /** 激活态的整块配色:沿用该门类的印章色填充,让选中门类与周围彩色印章同一套语言 */
+  /** 激活态配色:沿用该门类印章色 */
   function gongfaCatActive(type: GongfaType): string {
     return type === 'secret'
       ? 'bg-violet-ink text-paper'
@@ -260,12 +242,8 @@
   const mainDef = computed(() => (cultivation.mainGongfa ? gongfaDef(cultivation.mainGongfa) : undefined))
 
   /**
-   * 主修能不能立升一层 —— 把「现在就能变强」的信号提到列表层。
-   *
-   * 升层是主动消费(悟道点 + 残页),没有层内进度可画;从前玩家攒够了也看不出
-   * 哪部功法升得动,要一部部点开详情才知道。成本走 `gongfaUpgradeCost` 同源
-   * (含寒冥灵脉折扣),判据与 `upgradeGongfa` 的扣费前检查同一句,不另立口径。
-   * 只做主修:书目行每行都亮会太密,完整成本账仍在详情层。
+   * 主修能否立升一层(只做主修)。成本走 `gongfaUpgradeCost`(含寒冥灵脉折扣),
+   * 判据与 `upgradeGongfa` 的扣费前检查同一句。
    */
   const mainCanUpgrade = computed(() => {
     const def = mainDef.value
@@ -275,28 +253,26 @@
     return resources.hasSmall('wudao', cost.wudao) && resources.hasSmall('page', cost.page)
   })
 
-  /** 参悟池里还剩几部 —— 与 comprehendGongfa 的池条件同源(minRealm ≤ 当前 + 1 且未习得) */
+  /** 参悟池余量,与 comprehendGongfa 的池条件同源(minRealm ≤ 当前 + 1 且未习得) */
   const comprehendLeft = computed(
     () => GONGFA.filter(g => g.minRealm <= player.major + 1 && !cultivation.learned[g.id]).length
   )
 
-  /** 选中门类池里还剩几部 —— 同一池条件,只多按门类过滤 */
+  /** 选中门类的参悟池余量:同一池条件,多按门类过滤 */
   const poolLeft = computed(
     () => GONGFA.filter(g => g.type === gongfaCat.value && g.minRealm <= player.major + 1 && !cultivation.learned[g.id]).length
   )
 
-  /** 参悟还差几页残页 —— 与 comprehendGongfa 的消耗同源,付不起就置灰并写差 */
+  /** 参悟还差几页残页,与 comprehendGongfa 的消耗同源 */
   const pageShort = computed(() => Math.max(0, COMPREHEND_PAGE_COST - resources.page))
 
-  /** 池里还有货且残页够 —— 才能点参悟 */
   const canComprehend = computed(() => comprehendLeft.value > 0 && pageShort.value === 0)
 
   function equipStateOf(id: string): string {
     if (cultivation.mainGongfa === id) return '主修'
     const idx = cultivation.subGongfa.indexOf(id)
     if (idx === -1) return ''
-    // 超出洞府辅修槽位预算的伴生功法:词条已不生效(cultivation.gongfaMods 只 slice 到预算),
-    // 别还标成 辅修/秘术 让玩家以为它在加 —— 藏书楼缩水/转世后槽位变少就会走到这
+    // 藏经阁缩水/转世后槽位变少时,超出辅修槽位预算的词条不生效(cultivation.gongfaMods 只 slice 到预算),不标辅修/秘术
     if (idx >= dongfu.subGongfaSlots) return '超席'
     return gongfaDef(id)?.type === 'secret' ? '秘术' : '辅修'
   }
@@ -306,18 +282,17 @@
     return (cultivation.learned[id] ?? 0) >= gongfaMaxLevel(gongfaDef(id))
   }
 
-  /** 是否真能悟道(判据取自 gongfaBranches,界面提示与实际可选项同源) */
+  /** 能否悟道:判据取自 gongfaBranches */
   function canEnlighten(id: string): boolean {
     return canEnlightenGongfa(id, cultivation.learned[id] ?? 0)
   }
 
-  /** 已择分支的道名;未择、或旧存档留着一个已下线的分支 id,都算没有 */
+  /** 已择分支的道名;未择、或旧档里已下线的分支 id,都算没有 */
   function branchName(id: string): string | undefined {
     const branchId = cultivation.gongfaBranch[id]
     return branchId ? gongfaBranchDef(branchId)?.name : undefined
   }
 
-  /** 悟道兑换(Phase C-1):后期限量灵石→悟道点 */
   function doExchange(): void {
     const ok = player.exchangeStoneForWudao()
     ui.toast(

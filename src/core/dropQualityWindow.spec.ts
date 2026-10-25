@@ -1,16 +1,8 @@
 /**
- * 掉落的品质口径 —— 普通掉落吃品质窗口,只有剧情例外不吃
- *
+ * 掉落的品质口径:普通掉落吃品质窗口,只有剧情例外不吃。
  * GenOptions.minQualityRank 只要给了(哪怕是 0)就算「显式下限」,品质窗口整个失效。
- * 在线普通战曾传 `minQualityRank: isBoss ? 1 : 0`,镇压产出传 `minQualityRank: 0`:
- * 两条在线路径都绕过了窗口,而离线历练与平衡审计都吃窗口 —— 在线比审计口径
- * 多掉一截低阶高品(在线 / 离线不同源)。
- *
- * 这里不数源码字面量,直接截下这几条路径交给生成器的参数:
- *   一 在线普通战、镇压产出:不带品质下限;
- *   二 首领:带下限 1(剧情例外,照旧不吃窗口);
- *   三 窗口本身是活的:同一层级,带不带下限,窗口外品质的权重差出数量级。
- * 故障注入:loot.ts 普通战改回传 `minQualityRank: 0` → 第一条红。
+ * 在线普通战、镇压产出须与离线历练、平衡审计同吃窗口。
+ * 故障注入:把 loot.ts 普通战改成传 `minQualityRank: 0`,第一条用例红。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'

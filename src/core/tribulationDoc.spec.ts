@@ -1,16 +1,9 @@
 /**
- * 记录与数值一致(Phase 39 设计记录)
- *
- * docs/superpowers/specs 里那一份记录写下了这一版的全部落点与两段界膜谶。
- * 文案最容易与代码脱节:回头把常数一改,记录就变成一份"曾经如此"的谎话,
- * 而没有任何地方会报错 —— 这类漂移在这个仓库里被反复踩过(见 singleSourceAudit)。
- *
- * 故这里把记录**当数据来读**:
- *   · 落点表逐行按常数拼出来比对(改了数没改记录就红);
- *   · 里程碑那一列按模拟器现算(曲线的读数不许手写);
- *   · 两段谶按原句比对(半删或改写都会红)。
- *
- * 「改动前」那一列不参与比对:它是当时的读数,冻结存档,本就不该随代码变化。
+ * Phase 39 设计记录(docs/superpowers/specs)与数值一致:
+ *   · 落点表逐行按常数拼出比对(改数不改记录即红);
+ *   · 里程碑列按模拟器现算,不手写;
+ *   · 两段界膜谶按原句比对(半删或改写即红)。
+ * 「改动前」列是冻结读数,不参与比对。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -36,7 +29,7 @@ import { hoursToReach } from './progressionSim'
 const DOC = resolve(__dirname, '../../docs/superpowers/specs/2026-09-17-boundary-walls-phase39-design.md')
 const doc = readFileSync(DOC, 'utf8')
 
-/** 与记录同一套写法:一小时以内写分、两日以内写时、其上写天 */
+/** 与记录同一套写法 */
 const fmt = (h: number): string =>
   h < 1 ? `${(h * 60).toFixed(1)} 分` : h < 48 ? `${h.toFixed(1)} 时` : `${(h / 24).toFixed(1)} 天`
 

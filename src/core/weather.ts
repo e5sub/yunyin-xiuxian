@@ -1,21 +1,8 @@
 /**
- * 天时(Phase 31.0 A1)—— 游戏内每日环境
- *
- * 世界每天有一个轻微变化,影响环境而非玩家硬任务。
- * 具体加减只写在各条 WeatherDef.mods / tribulationMult 里;
- * 界面用 ui/weatherText 现算,不要在这里再抄一份百分比。
- * 人间五日的实际含义(与数据表一致,不是属系专精):
- *   灵雨:灵气恢复、修炼速度
- *   赤阳:攻击、伤害增幅(不是火属)
- *   月蚀:气运、装备掉落率(不是幽冥 / 夜行事件,也不抬灵石草矿)
- *   雷鸣:攻击、御劫为负、渡劫难度升高(不是雷属)
- *   清和:无损益
- *
- * 飞升之后天象随界域而变(见 WORLD_WEATHERS):仙界·仙雨/紫气/仙劫日,
- * 神界·神辉/法则潮/神威日,混沌海·混沌潮/本源涌动/道音。
- *
- * 关键:确定性(每游戏日固定,刷新不换),与"今日天道"同模式,
- * 由游戏总秒数派生,无现实时间依赖。
+ * 天时:游戏内每日环境。
+ * 加减只写在各条 WeatherDef.mods / tribulationMult,界面用 ui/weatherText 现算,此处不抄百分比。
+ * 人间五日不是属系专精:赤阳非火属,雷鸣非雷属,月蚀非幽冥 / 夜行事件、不抬灵石草矿。
+ * 确定性:由游戏总秒数派生,同一游戏日不换,无现实时间依赖。
  */
 import { useGameStore } from '@/stores/game'
 import { usePlayerStore } from '@/stores/player'
@@ -92,17 +79,7 @@ export const WEATHERS: WeatherDef[] = [
   }
 ]
 
-/**
- * 界域专属天象。
- *
- * 人间界的五日天时是"看天吃饭"的俗世气象;飞升之后天象随界域而变——
- * 仙界是仙灵之气与仙劫,神界是神辉与法则潮,混沌海是本源涌动。
- * 它们不是新玩法,只是把每个界域写成能看见、也能吃到的东西,
- * 让 12 个新境界不至于同质成同一片天。
- *
- * 与人间界同构:纯确定性(游戏日 + 界域派生)、只并入 mods 的临时加成,
- * 不新开资源、不新开货币。
- */
+/** 界域专属天象(仙界及以上);与人间同构:确定性派生,只并入 mods 的临时加成,不新开资源或货币 */
 export const WORLD_WEATHERS: Record<Exclude<WorldId, 'mortal'>, WeatherDef[]> = {
   immortal: [
     {
@@ -181,10 +158,7 @@ export function weatherDef(id: WeatherId): WeatherDef | undefined {
   return BY_ID.get(id)
 }
 
-/**
- * 当天天时(确定性:游戏日 + 界域 → 种子 → 天时,同一天内不换)。
- * 人间界沿用五日天时;仙界及以上取该界域的专属天象池。
- */
+/** 当天天时(游戏日 + 界域派生,同日不换);人间取五日天时,仙界及以上取本界天象池 */
 export function todayWeather(): WeatherDef {
   const game = useGameStore()
   const world = worldOf(usePlayerStore().major)

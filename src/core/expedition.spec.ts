@@ -1,13 +1,9 @@
 /* eslint-disable no-console -- 梯子表是给人看的 */
 /**
- * 远征 · 端到端(终局的核心功能,此前只有零散判据碰过它)
- *
- * 这里走**真实路径**:花钱 → 开一趟 → 择路 → 打界主 → 结算,中间不绕开 store。
- * 盯三件事:
- *   一 **账目**:出发扣的道源,正是这一界写着的入界价;
- *   二 **梯子**:四重天界按锚点层级排成阶梯 —— 该境界的人打得动,
- *      差一大截的人打不动,高一境的人压着打(实测过锚点标定,见 celestialCaliber.spec);
- *   三 **判定看得见**:道之理解与境界压制的文案,战前预估与战报读同一份。
+ * 远征 · 端到端:扣费 → 启程 → 择路 → 界主 → 结算,走真实路径,不绕开 store。
+ *   账目:出发扣的道源 = 该界入界价
+ *   梯子:四重天界按锚点层级成阶梯(锚点标定见 celestialCaliber.spec)
+ *   判定:道之理解与境界压制文案,战前预估与战报同源
  */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -24,7 +20,7 @@ import { gn } from '@/utils/gnum'
 import type { EquipSlot, EquipmentInstance } from '@/types'
 
 const SLOTS: EquipSlot[] = ['weapon', 'head', 'body', 'wrist', 'belt', 'boots', 'necklace', 'ring', 'talisman']
-/** 人间界顶配那一身(飞升时能带走的最好家当) */
+/** 人间界顶配一身 */
 const MORTAL_TOP = ['w_jiujie', 'h_zichen', 'b_taiqing', 'wr_jieyun', 'bl_yunlei', 'bo_lingxu', 'n_jiuzhuan', 'r_ziyuan', 'tl_yulei']
 /** 混沌海那一身 */
 const CHAOS_TOP = ['w_benyuan', 'h_benyuan', 'b_benyuanshen', 'wr_benyuan', 'bl_benyuan', 'bo_benyuan', 'n_hongmengzhu', 'r_daozu', 'tl_daozuzhuan']
@@ -91,7 +87,7 @@ describe('远征 · 梯子(锚点定标:该境界的人才打得动)', () => {
     setActivePinia(createPinia())
     seated(major, tpls, quality, tier)
     const f = forecastExpedition(worldId, null)!
-    // 星级是分档的,直接换算回可比较的量:★ 越多越有把握
+    // ★ 数作可比较的量
     return f.stars.split('').filter(c => c === '★').length
   }
 
@@ -110,11 +106,7 @@ describe('远征 · 梯子(锚点定标:该境界的人才打得动)', () => {
   })
 
   it('同一境界下,装备越好越有把握(基础三维作数)', () => {
-    /**
-     * 选一对**没有两端饱和**的:真仙打赤炎天(锚在玄仙,本就是压着打),
-     * 裸装够呛、披挂能打。若拿道祖打无相天来比,两边都是五星(顶格),
-     * 这条判据就量不出东西了 —— 不是属性不作数,是刻度用完了。
-     */
+    // 须选两端都不饱和的一对:道祖打无相天两边都是五星顶格,量不出差别
     const bare = rate(9, [], 'heaven', 20, 'chiyan')
     const geared = rate(9, MORTAL_TOP, 'heaven', 20, 'chiyan')
     console.log(`真仙打赤炎天:裸装 ${'★'.repeat(bare) || '无'} → 一身人间界顶配 ${'★'.repeat(geared)}`)
@@ -131,7 +123,7 @@ describe('远征 · 判定看得见', () => {
     expect(f.judgementLines, '预估里没有判定文案').toEqual(
       celestialJudgementLines(player.celestialStats.mods, player.major, chiyan.anchorTier)
     )
-    // 真仙去打锚在高一境的界,该有境界压制那一句
+    // 真仙打锚在高一境的界,应有境界压制
     expect(f.judgementLines.join('\n'), '低于锚点境界却没提境界压制').toContain('境界压制')
   })
 
@@ -145,7 +137,7 @@ describe('远征 · 判定看得见', () => {
   it('打完一趟,战报带上这一界的判定', () => {
     seated(9, MORTAL_TOP, 'heaven', 20)
     const chiyan = world('chiyan')
-    // 一路打到终局:入界 → 三层 → 界主(中途败了也算终局)
+    // 打到终局(中途败也算)
     let outcome = startWorldExpedition(chiyan.id, null)
     let guard = 0
     while (outcome && outcome.type === 'advance' && guard < 12) {
@@ -165,7 +157,7 @@ describe('远征 · 判定看得见', () => {
 
 describe('远征 · 败战即结(不留残局续打)', () => {
   it('裸装真仙入赤炎天:扣了入界价、首战败 → type=lost、worldRun 清空', () => {
-    // 无装 = 空属性战力,赤炎天首战(界内敌人)必败——确定性败战
+    // 裸装首战必败(确定性)
     seated(9, [], 'heaven', 20)
     const eg = useEndgameStore()
     const chiyan = world('chiyan')
@@ -174,7 +166,7 @@ describe('远征 · 败战即结(不留残局续打)', () => {
     expect(outcome).not.toBeNull()
     expect(before - eg.daoSource, '确已入界定战(非开船前被拒)').toBe(chiyan.entryCost)
     expect(outcome!.type).toBe('lost')
-    // settle 会把 worldRun 清空:败战即结束本趟,不留下可免费续打的残局
+    // settle 清空 worldRun:不留可免费续打的残局
     expect(eg.worldRun).toBeNull()
   })
 
@@ -226,14 +218,11 @@ describe('远征预估对阵与实打同源(入界 + 每层节点 + 界主,共 5
     for (const w of CELESTIAL_WORLDS) {
       const foes = expeditionFoeShapes(w)
       expect(foes.length, `${w.id} 应恰为 1+${EXPEDITION_ROUTE_LAYERS}+1 战`).toBe(1 + EXPEDITION_ROUTE_LAYERS + 1)
-      // 首战是入界之敌 world.foes[0],不是循环取模堆进来的泛形
       expect(foes[0], `${w.id} 首战应为入界之敌`).toBe(w.foes[0])
-      // 中段各战取每层择路第 0 个选择的真实敌方形状
       for (let layer = 0; layer < EXPEDITION_ROUTE_LAYERS; layer += 1) {
         const routeFoe = w.routes[layer]?.[0]?.foe
         if (routeFoe) expect(foes[1 + layer], `${w.id} 第 ${layer + 2} 战应为真实节点敌`).toBe(routeFoe)
       }
-      // 末战是界主
       expect(foes[foes.length - 1], `${w.id} 末战应为界主`).toBe(w.guardian)
     }
   })

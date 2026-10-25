@@ -1,14 +1,6 @@
 /**
- * 来源到底有没有接上 —— 每个系统都必须真能动到玩家的数
- *
- * 「装备属性没生效」这类事故的共同形状是:数据写了、界面也显示,但**没有一条路
- * 把它送进玩家的数**。它骗得过类型检查(键是对的),也骗得过逐函数的单元测试
- * (每个函数各自都对)—— 只有从「装上 / 学会 / 服下 / 升一级」一路走到「面板变了」
- * 才现形。故这里逐个来源走**真实通路**,判据只有一条:**动没动到数**。
- *
- * 覆盖:装备(平铺/词条/固有/强化/卸下可逆)、法宝(被动/祭炼/收回)、
- * 功法(主修/辅修/升级/悟道分支)、丹药(即时四项/增益状态)、灵兽、称号、天赋、
- * 洞府建筑、灵脉、以及天界一侧的器魂换装。
+ * 来源到底有没有接上:逐个来源走真实通路(装上 / 学会 / 服下 / 升一级 → 面板变了),判据:动没动到玩家的数。
+ * 没接上的来源骗得过类型检查与逐函数的单元测试。
  */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -47,7 +39,7 @@ function item(partial: Partial<EquipmentInstance> & { uid: string; templateId: s
   return { quality: 'heaven', tier: 10, level: 0, affixes: [], ...partial }
 }
 
-/** 某味丹药的 id(按族里最基础那一味找,免得写死一个将来会改的 id) */
+/** 某味丹药的 id(按族找,不写死 id) */
 function pillWith(pred: (p: (typeof PILLS)[number]) => boolean): string {
   const def = PILLS.find(pred)
   expect(def, '丹药表里找不到这一族的丹 —— 判据失去对象').toBeDefined()
@@ -136,10 +128,7 @@ describe('功法 → 面板', () => {
     const atMax = { ...player.finalStats.mods }
     const branch = branchesFor(def.id).find(b => Object.keys(b.mods).length > 0)!
     expect(cul.chooseBranch(def.id, branch.id), '择道失败').toBe(true)
-    /**
-     * 判据按**分支自己的词条**走:那份数据写了什么,面板就该多什么。
-     * (写死某个键会误判 —— b_taixuan_sha「杀伐」给的是攻击,不是修炼速度。)
-     */
+    /** 按分支自己的词条判;写死键会误判(b_taixuan_sha 给的是攻击,不是修炼速度) */
     for (const [key, value] of Object.entries(branch.mods)) {
       const k = key as keyof typeof player.finalStats.mods
       expect(modOf(player.finalStats.mods, k as never), `${branch.name} 的 ${key} 没并进面板`).toBeCloseTo(
@@ -167,7 +156,6 @@ describe('丹药 → 资源与状态', () => {
     const player = freshCharacter()
     const res = useResourcesStore()
     const inv = useInventoryStore()
-    // 从表里找:固定修为、按上限回灵气、延寿、给悟道点各一味(不写死 id)
     const expPill = pillWith(p => (p.instant?.expFixed ?? 0) > 0 && p.minRealm <= player.major)
     const qiPill = pillWith(p => (p.instant?.qiPct ?? 0) > 0 && p.minRealm <= player.major)
     const lifePill = pillWith(p => (p.instant?.lifespanYears ?? 0) > 0 && p.minRealm <= player.major)
@@ -203,7 +191,6 @@ describe('丹药 → 资源与状态', () => {
     expect(modOf(player.finalStats.mods, 'attackPct'), '增益丹上身了却没进面板').toBeGreaterThanOrEqual(
       before + (buff.mods.attackPct ?? 0) - 1e-9
     )
-    // 过期:把时间推过有效期末尾,状态该自己退掉
     const later = Date.now() + buff.durationSec * 1000 + 1000
     cul.pruneBuffs(later)
     expect(modOf(player.finalStats.mods, 'attackPct'), '状态过期后还在加').toBeCloseTo(before, 6)
@@ -243,7 +230,7 @@ describe('灵兽 / 称号 / 天赋 / 洞府建筑 / 灵脉 → 面板', () => {
   it('洞府建筑:升级即进面板', () => {
     const player = freshCharacter()
     const before = modOf(player.finalStats.mods, 'qiRegen')
-    useDongfuStore().setLevel('array', 5) // 聚灵阵:灵气恢复 +10%/级
+    useDongfuStore().setLevel('array', 5) // 聚灵阵:灵气恢复
     expect(modOf(player.finalStats.mods, 'qiRegen'), '建筑等级没进面板').toBeGreaterThan(before)
   })
 
@@ -259,13 +246,12 @@ describe('灵兽 / 称号 / 天赋 / 洞府建筑 / 灵脉 → 面板', () => {
   })
 
   /**
-   * 环境三源(天时 / 命格 / 在身之卦)与道果 —— 它们都该走 finalStats.mods 那条路
-   * (见 player.ts 上方的注释:并进去即全链路生效)。天时与命格由日期/灵根确定性推出,
-   * 控制不了也不必控制:判据是**面板里那一路的来源明细,恰好等于那一路算出来的东西**。
+   * 环境三源(天时 / 命格 / 在身之卦)与道果须走 finalStats.mods(见 player.ts)。
+   * 天时、命格由日期/灵根确定性推出;判据:面板那一路的来源明细 = 那一路算出来的 mods。
    */
   it('天时:面板天时那一路 = 今日天时的 mods,且名号带着气象(接线,不靠运气)', () => {
     const player = freshCharacter()
-    // 名号是「天时·仙雨」这类 —— 停了渠道上,得让玩家看得见是天上哪片云,故按前缀找
+    // 名号是「天时·仙雨」这类,按前缀找
     const row = player.finalStats.breakdown.find(r => r.name.startsWith('天时·'))
     expect(row, '面板里没有天时这一路').toBeDefined()
     expect(row!.mods).toEqual(todayWeather().mods)
@@ -288,9 +274,7 @@ describe('灵兽 / 称号 / 天赋 / 洞府建筑 / 灵脉 → 面板', () => {
     expect(out.ok, out.reason ?? '问卦被拒').toBe(true)
     const row = player.finalStats.breakdown.find(r => r.name === '在身之卦')
     expect(row, '面板里没有「在身之卦」这一路').toBeDefined()
-    // 接线判据:面板那一路 = 这一卦算出来的 mods
     expect(row!.mods).toEqual(readingMods(out.reading!))
-    // 过期:把这一卦的有效期挪到过去,那一份就该退掉
     player.setDivination({ ...player.divination!, castAt: Date.now() - 120_000, expiresAt: Date.now() - 1000 })
     const after = player.finalStats.breakdown.find(r => r.name === '在身之卦')
     expect(after?.mods ?? {}, '过期的卦还挂在面板上').toEqual({})
@@ -313,12 +297,7 @@ describe('灵兽 / 称号 / 天赋 / 洞府建筑 / 灵脉 → 面板', () => {
   })
 })
 
-/**
- * 天界这一侧的契约(口径换过一次,现在是):
- *   ①**基础三维作数** —— 换上一件更好的装备,天界三维跟着变高;
- *   ②**器魂是叠加层** —— 凡器照常在,器魂再叠上去;
- *   ③敌人不跟着玩家涨(那一半在 celestialCaliber.spec 里盯着)。
- */
+/** 天界契约另一半(敌人不跟着玩家涨)在 celestialCaliber.spec */
 describe('天界 → 基础三维作数', () => {
   beforeEach(() => setActivePinia(createPinia()))
 

@@ -1,6 +1,4 @@
-/**
- * 炼器服务 —— 强化 / 分解 / 法宝升阶
- */
+/** 炼器服务:强化 / 分解 / 法宝升阶 */
 import type { ArtifactDef, EquipmentInstance, GNum } from '@/types'
 import { qualityDef } from '@/data/qualities'
 import { equipmentTemplate } from '@/data/equipment'
@@ -48,7 +46,7 @@ export function equipUpgradeCost(uid: string): { dust: number; stone: GNum } | n
   return upgradeCost(inst.level, inst.tier, q.rank, modOf(player.finalStats.mods, 'forgeDiscount'))
 }
 
-/** 这次强化缺哪一样(付得起时为 null)—— 提示据此只说缺的那一样,与结算同一处判定 */
+/** 这次强化缺哪一样,付得起为 null;提示与结算共用 */
 export function upgradeShort(cost: { dust: number; stone: GNum }): 'stone' | 'dust' | null {
   const resources = useResourcesStore()
   if (!resources.hasSmall('dust', cost.dust)) return 'dust'
@@ -56,7 +54,7 @@ export function upgradeShort(cost: { dust: number; stone: GNum }): 'stone' | 'du
   return null
 }
 
-/** 强化这一级两样各差多少 —— 界面价签、置灰与提示共用这一份 */
+/** 强化这一级两样各差多少;界面价签、置灰与提示共用 */
 export function upgradeShortfall(cost: { dust: number; stone: GNum }): { dust: number; stone: GNum } {
   const resources = useResourcesStore()
   return {
@@ -89,7 +87,7 @@ export function upgradeEquipment(uid: string, opts: { quiet?: boolean } = {}): b
   }
   resources.spendSmall('dust', cost.dust)
   resources.spendStone(cost.stone)
-  // 记账:这件装备花掉的强化成本(分解时按八成返还)——折扣是当时的,只有账本记得住
+  // 记账实付强化成本(折扣按当时),分解返还按此账
   const invested = inst.invested ?? { dust: 0, stone: gnZero() }
   inventory.replaceItem({
     ...inst,
@@ -98,9 +96,9 @@ export function upgradeEquipment(uid: string, opts: { quiet?: boolean } = {}): b
   })
   track('upgrades')
   const t = equipmentTemplate(inst.templateId)
-  // 强化过也算「亲手用过」——图鉴那一档由玩家自己推进,不看运气
+  // 强化也算图鉴「亲手用过」
   useLoreStore().noteEquipUsed(inst.templateId)
-  // 强化即炼器:上头的一味矿材作「上手过」(矿石进通晓/锻造技艺的唯一活水)
+  // 矿材记「上手过」;矿石进通晓/锻造技艺的唯一来源
   noteSmithingUsed(inst.tier, true)
   if (!opts.quiet) {
     playSfx('success')
@@ -110,20 +108,17 @@ export function upgradeEquipment(uid: string, opts: { quiet?: boolean } = {}): b
 }
 
 export interface UpgradeBatchPlan {
-  /** 从当前级起能连升的级数(上限与余额的共同约束) */
+  /** 能连升的级数(受上限与余额约束) */
   levels: number
-  /** 连升总花费的器灵尘 */
+  /** 总耗器灵尘 */
   dust: number
-  /** 连升总花费的灵石 */
+  /** 总耗灵石 */
   stone: GNum
-  /** 是否因已至强化上限而停(而非钱不够) */
+  /** 因到上限而停(非缺料) */
   atCap: boolean
 }
 
-/**
- * 强化连升计划:只算不动手。逐级累加 upgradeCost,到上限或余额缺口为止;
- * 界面预览与批量执行共用这一份,所见即所得。折扣随当时玩家面板走。
- */
+/** 强化连升计划(只算不扣):逐级累加到上限或余额不足;界面预览与批量执行共用 */
 export function upgradeBatchPlan(uid: string): UpgradeBatchPlan {
   const inventory = useInventoryStore()
   const resources = useResourcesStore()
@@ -148,17 +143,14 @@ export function upgradeBatchPlan(uid: string): UpgradeBatchPlan {
 }
 
 /**
- * 强化连升:按计划一次升到位 —— 逐级走 upgradeEquipment 的 quiet 版,
- * 每一级各自的记账/图鉴/炼器投入都照常,仅合为一次提示。
- * 返回实际升的级数;0 = 未升(已到顶或钱不够,toast 会说明)。
+ * 强化连升:逐级走 upgradeEquipment quiet 版(记账/图鉴/炼器照常),只报一次提示。
+ * 返回实际升的级数;0 = 未升。
  */
 export function upgradeEquipmentBatch(uid: string): number {
   const plan = upgradeBatchPlan(uid)
   if (plan.levels === 0) {
     playSfx('warn')
-    // 到顶与缺料是两件事;缺料时还要分清缺尘(去分解)还是缺石(去历练)。
-    // 计划里的 dust/stone 是「已够的那几级」的累计,连一级都不够时它们是 0 ——
-    // 故缺料判定必须看下一级的真实报价,不能拿计划金额充数。
+    // 缺料判定看下一级报价:连一级都不够时计划金额为 0
     const next = equipUpgradeCost(uid)
     const short = next ? upgradeShort(next) : null
     const gap = next ? upgradeShortfall(next) : { dust: 0, stone: gnZero() }
@@ -204,15 +196,12 @@ export interface DecomposeBatch {
   stone: GNum
 }
 
-/** 批量分解的账目文案:批量路径只有这一处措辞,免得各写各的 */
+/** 批量分解账目文案;批量路径唯一措辞 */
 export function batchYieldText(b: DecomposeBatch): string {
   return salvageYieldText(b.dust, isZero(b.stone) ? undefined : formatGN(b.stone))
 }
 
-/**
- * 批量分解:逐件结算、**不逐件弹提示** —— 提示窗只留最近 5 条,
- * 逐件弹会把「一共拆了多少、拿回多少」的总账顶掉。调用方自己按总量报一次。
- */
+/** 批量分解:逐件结算不弹提示(提示窗只留 5 条,会顶掉总账);调用方按总量报一次 */
 export function decomposeBatch(items: readonly EquipmentInstance[]): DecomposeBatch {
   const total: DecomposeBatch = { count: 0, dust: 0, stone: gnZero() }
   for (const it of items) {
@@ -225,13 +214,13 @@ export function decomposeBatch(items: readonly EquipmentInstance[]): DecomposeBa
   return total
 }
 
-/** 行囊中勾选品质的未锁定装备(预告与下手用同一套筛选,所见即所得) */
+/** 行囊中勾选品质的未锁定装备;预告与下手共用 */
 function decomposeTargets(ranks: readonly number[]): EquipmentInstance[] {
   const wanted = new Set(ranks)
   return useInventoryStore().bagItems.filter(it => !it.locked && wanted.has(qualityDef(it.quality).rank))
 }
 
-/** 分解预告:会拆几件、拿回什么 —— 弹窗上写的数就是真下手的数 */
+/** 分解预告:会拆几件、拿回什么 */
 export function decomposePreview(ranks: readonly number[]): DecomposeBatch {
   const total: DecomposeBatch = { count: 0, dust: 0, stone: gnZero() }
   for (const it of decomposeTargets(ranks)) {
@@ -243,7 +232,7 @@ export function decomposePreview(ranks: readonly number[]): DecomposeBatch {
   return total
 }
 
-/** 一键分解:行囊中勾选品质 rank 的未锁定装备,按一次总账报出来,返回分解件数 */
+/** 一键分解:按一次总账报出,返回件数 */
 export function decomposeByRanks(ranks: readonly number[]): number {
   const ui = useUiStore()
   const got = decomposeBatch(decomposeTargets(ranks))
@@ -255,14 +244,9 @@ export function decomposeByRanks(ranks: readonly number[]): number {
 }
 
 /**
- * 某法定某一重数的单次炼化代价(纯函数,不含上限;level ≥ 满重才算不出 → null)。
- *
- * `level` 也按有限数收一道:它是从存档里的 `owned.level` 一路传下来的,而
- * `inventory.sanitize` 虽然会把它夹回 [0, 满重],这条路上还有**没经过 sanitize** 的
- * 读法(内存直塞、`$patch` 之后立刻渲染)。实测直塞 `level: NaN` 时
- * `artifactUpCostAt` 给出 `wudao: NaN`、`stone: 0e0`,于是 `artifactBatchPlan` 的
- * `levels` 也是 NaN、`lv + 1` 永远追不上满重,连炼那一行画出「第 NaN 重」,
- * 而 `upgradeArtifact` 每重都在扣 0 悟道点 —— 一颗悟道点不花,重数一路涨到顶。
+ * 法宝某一重的单次炼化代价;level ≥ 满重 → null。
+ * level 须收成有限整数:内存直塞、$patch 后立刻渲染不经 inventory.sanitize,
+ * NaN 会让炼化不扣悟道点、重数涨到顶。
  */
 export function artifactUpCostAt(def: ArtifactDef, level: number): { wudao: number; stone: GNum } | null {
   const lv = Number.isFinite(level) ? Math.max(0, Math.floor(level)) : 0
@@ -282,15 +266,15 @@ export function artifactUpCost(defId: string): { wudao: number; stone: GNum } | 
 }
 
 export interface ArtifactShortfall {
-  /** 服务提示优先报的那一样;两样都缺时先报悟道点 */
+  /** 提示报的那一样;都缺时报悟道点 */
   short: 'wudao' | 'stone' | null
-  /** 悟道点还差多少(够则为 0) */
+  /** 悟道点缺口,够则 0 */
   wudao: number
-  /** 灵石还差多少(够则为 0) */
+  /** 灵石缺口,够则 0 */
   stone: GNum
 }
 
-/** 这一重两样各差多少 —— 界面置灰、价签与提示共用这一处判定 */
+/** 这一重两样各差多少;界面置灰、价签与提示共用 */
 export function artifactShortfall(cost: { wudao: number; stone: GNum }): ArtifactShortfall {
   const resources = useResourcesStore()
   const wudao = resources.hasSmall('wudao', cost.wudao) ? 0 : Math.max(0, cost.wudao - resources.wudao)
@@ -302,7 +286,7 @@ export function artifactShortfall(cost: { wudao: number; stone: GNum }): Artifac
   }
 }
 
-/** 这一重缺哪一样(付得起时为 null)—— 服务与界面共用同一处判定 */
+/** 这一重缺哪一样,付得起为 null;服务与界面共用 */
 export function artifactShort(cost: { wudao: number; stone: GNum }): 'wudao' | 'stone' | null {
   return artifactShortfall(cost).short
 }
@@ -340,35 +324,30 @@ export function upgradeArtifact(defId: string, opts: { quiet?: boolean } = {}): 
 }
 
 export interface ArtifactBatchPlan {
-  /** 从当前重数起能连炼的重数(满重与余额的共同约束) */
+  /** 能连炼的重数(受满重与余额约束) */
   levels: number
-  /** 连炼总耗的悟道 */
+  /** 总耗悟道 */
   wudao: number
-  /** 连炼总耗的灵石 */
+  /** 总耗灵石 */
   stone: GNum
-  /** 是否因已至满重而停(而非悟道/灵石不够) */
+  /** 因满重而停(非缺料) */
   atCap: boolean
 }
 
-/**
- * 祭炼连升计划:只算不动手。逐重累加 artifactUpCostAt,到满重或余额缺口为止;
- * 界面预览与批量执行共用这一份,所见即所得。
- */
+/** 祭炼连升计划(只算不扣):逐重累加到满重或余额不足;界面预览与批量执行共用 */
 export function artifactBatchPlan(defId: string): ArtifactBatchPlan {
   const inventory = useInventoryStore()
   const resources = useResourcesStore()
   const owned = inventory.artifacts.find(a => a.defId === defId)
   const def = artifactDef(defId)
   if (!owned || !def) return { levels: 0, wudao: 0, stone: gnZero(), atCap: false }
-  // 起手这一重也按有限整数收一道:`levels` 是 `lv - owned.level` 减出来的,
-  // owned.level 是 NaN 时它也是 NaN(界面画出「第 NaN 重」),是小数时它带小数
-  // (连炼行写「第 2.7 重」)。sanitize 会夹,但内存直塞与 $patch 后立刻渲染不走那条路。
+  // 起手重数收成有限整数:NaN/小数会画出「第 NaN 重」「第 2.7 重」(直塞与 $patch 不经 sanitize)
   const from = Number.isFinite(owned.level) ? Math.max(0, Math.floor(owned.level)) : 0
   if (from >= ARTIFACT_MAX_LEVEL) return { levels: 0, wudao: 0, stone: gnZero(), atCap: true }
   let lv = from
   let wudao = 0
   let stone = gnZero()
-  // 循环上界已小于满重,artifactUpCostAt 必非 null —— 只需要判余额
+  // lv < 满重,artifactUpCostAt 必非 null
   while (lv < ARTIFACT_MAX_LEVEL) {
     const c = artifactUpCostAt(def, lv)!
     if (!resources.hasSmall('wudao', wudao + c.wudao) || !resources.hasStone(add(stone, c.stone))) break
@@ -380,9 +359,8 @@ export function artifactBatchPlan(defId: string): ArtifactBatchPlan {
 }
 
 /**
- * 祭炼连升:按计划一次炼到位 —— 逐重走 upgradeArtifact 的 quiet 版,
- * 每重各自的扣费/等级照常,仅合为一次提示与一声响。返回实际炼的重数;
- * 0 = 未炼(已至满重或余额不够,toast 会说明)。
+ * 祭炼连升:逐重走 upgradeArtifact quiet 版,只报一次提示与一声响。
+ * 返回实际炼的重数;0 = 未炼。
  */
 export function upgradeArtifactBatch(defId: string): number {
   const plan = artifactBatchPlan(defId)
@@ -390,8 +368,7 @@ export function upgradeArtifactBatch(defId: string): number {
     playSfx('warn')
     const next = artifactUpCost(defId)
     const short = next ? artifactShort(next) : null
-    // 计划 0 而仍有下一重,说明卡在余额;此时 short 必非 null。
-    // 防御性兜底报「悟道点」会指错去路,故宁可退回通用句。
+    // 计划 0 而仍有下一重即卡在余额,short 必非 null;兜底退回通用句,报「悟道点」会指错
     const gap = next ? artifactShortfall(next) : null
     const text = plan.atCap
       ? artifactCapToast()
@@ -401,7 +378,7 @@ export function upgradeArtifactBatch(defId: string): number {
     useUiStore().toast(text, 'warn')
     return 0
   }
-  // 当前流程里回合内不可能失败(计划刚验过账、同步无 await);防御性的断了就往回退一重照实报
+  // 同步执行且刚验过账,不应中断;中断则照实报
   let done = 0
   let spentWudao = 0
   let spentStone = gnZero()

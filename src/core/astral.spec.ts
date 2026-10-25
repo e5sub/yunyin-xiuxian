@@ -1,15 +1,5 @@
 /* eslint-disable no-console */
-/**
- * Phase 31.0 S5:astral 共鸣(星斗/仙甲/混沌)进战斗 —— 开战时护盾 +5%
- *
- * 铁壁共鸣(ironwall)有接线与测试,astral 却只停留在「声明」:
- *   - equipSet.ts 定义了三套 astral(星斗/仙甲/混沌),UI 显示「共鸣」;
- *   - 但 playerSnap 只把 ironwall 物化成 ironwallBrace,combat 开战护盾只读
- *     mods.shieldOnStart(由词条/功法提供)——astral 套装凑齐两件,战斗毫无变化。
- *
- * 这里钉住承诺:两件星斗套 → buildPlayerSnap 的 mods 带上 shieldOnStart +5%,
- * 真打一场,开局「灵光护体」应声而起(护盾吸收掉首击的绝大部分)。
- */
+/** astral 共鸣(星斗/仙甲/混沌)两件 → buildPlayerSnap 的 mods.shieldOnStart +5%(combat 开战护盾只读它) */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { EquipmentInstance, QualityId } from '@/types'
@@ -25,7 +15,7 @@ function inst(uid: string, templateId: string): EquipmentInstance {
   return { uid, templateId, quality: 'fine' as QualityId, tier: 14, level: 0, affixes: [] }
 }
 
-/** 两件星斗套(星辰冠 + 星罗法衣)入背包并佩戴 */
+/** 两件星斗套:星辰冠 + 星罗法衣 */
 function wearStarDou(): void {
   const inv = useInventoryStore()
   inv.items = [inst('hat-xingchen', 'h_xingchen'), inst('body-xingluo', 'b_xingluo')]
@@ -40,7 +30,6 @@ describe('astral 共鸣进战斗(开战护盾+5%)', () => {
   it('两件星斗套 → buildPlayerSnap 的 mods 带上 shieldOnStart +5%', () => {
     wearStarDou()
     const snap = buildPlayerSnap()
-    // 星斗套两件在身:开战护盾 = astral 的 5%(基础 0)
     expect(snap.mods.shieldOnStart ?? 0).toBeGreaterThanOrEqual(0.05)
   })
 
@@ -56,7 +45,6 @@ describe('astral 共鸣进战斗(开战护盾+5%)', () => {
   it('真打一场:开战即见「灵光护体」,护盾吸收首击大部分', () => {
     wearStarDou()
     const snap = buildPlayerSnap()
-    // 敌人用最低档狼,攻击拉到一时满血,让护盾能挡住第一击
     const enemy = makeEnemySnap(enemyDef('e_wolf')!, 1, 1)
     enemy.attack = snap.maxHp
     const res = resolveCombat(snap, enemy, new RandomService(mulberry32(9)))
@@ -67,10 +55,7 @@ describe('astral 共鸣进战斗(开战护盾+5%)', () => {
   })
 })
 
-/**
- * Phase B-2a:饰品三件套共鸣(妖庭 trio)—— 与星斗/仙甲同一套 machinery,但钩子是新的:
- * 项链+戒指+灵符各一件凑齐 → 吸血被动(造成伤害的 8% 转化为生命),真打一场在战斗里回血。
- */
+/** 妖庭三件套:项链+戒指+灵符各一件 → 吸血被动(造成伤害的 8% 转化为生命) */
 describe('饰品三件套共鸣进战斗(妖庭 trio → 吸血)', () => {
   function wearYaoTing(): void {
     const inv = useInventoryStore()
@@ -93,12 +78,12 @@ describe('饰品三件套共鸣进战斗(妖庭 trio → 吸血)', () => {
   })
 
   it('吸血来源只可能是套装:无套装的普通三 J 饰物 lifesteal 为 0(隔离对照)', () => {
-    // 妖庭(13)之外,普通 tier-12 三 J 饰物(冰髓坠/寒魄戒/寒光符)不在任何套里,穿上后 lifesteal 应为 0
+    // 对照:普通 tier-12 饰物(冰髓坠/寒魄戒/寒光符)不在任何套里
     const inv = useInventoryStore()
     inv.items = [inst('n-plain', 'n_longhun'), inst('r-plain', 'r_liuli'), inst('tl-plain', 'tl_jinguang')]
     inv.equipped = { necklace: 'n-plain', ring: 'r-plain', talisman: 'tl-plain' } as never
     const snap = buildPlayerSnap()
-    // 角色自带没有吸血来源(默认无功法/无吸血器魂),这 0 说明吸血全来自套装
+    // 默认无功法、无吸血器魂
     expect(snap.mods.lifesteal ?? 0).toBe(0)
   })
 
@@ -106,7 +91,6 @@ describe('饰品三件套共鸣进战斗(妖庭 trio → 吸血)', () => {
     wearYaoTing()
     const snap = buildPlayerSnap()
     const enemy = makeEnemySnap(enemyDef('e_wolf')!, 1, 1)
-    // 敌人每次打掉四成血:玩家受创 → 下次出招吸血拉回,不离场堪比回血挂
     enemy.attack = mulN(snap.maxHp, 0.4)
     enemy.speed = 10
     const res = resolveCombat(snap, enemy, new RandomService(mulberry32(7)))

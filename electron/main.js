@@ -3,31 +3,25 @@ import path from 'node:path'
 import fs from 'node:fs'
 import pkg from '../package.json'
 
-// 窗口标题与托盘提示（package.json 没有 title 字段，取 electron-builder 的 productName）
+// package.json 没有 title 字段,取 electron-builder 的 productName
 const APP_TITLE = pkg.build.productName
 
-// 应用根目录（开发时是项目根目录，打包后是 app.asar）
+// 开发时是项目根目录,打包后是 app.asar
 const appRoot = app.getAppPath()
 
-// preload 路径
 const preloadPath = path.join(appRoot, 'dist-electron', 'preload.js')
 
-// 构建产物路径（Vite 输出到 dist/）
 const distPath = path.join(appRoot, 'dist')
 
-// 静态资源路径
 const publicPath = path.join(appRoot, 'public')
 
-// 设置文件路径
 const settingsPath = path.join(app.getPath('userData'), 'settings.json')
 
-// 默认设置
 const defaultSettings = {
-  closeToTray: false, // 关闭窗口时隐藏到托盘
-  autoLaunch: false // 开机自启动
+  closeToTray: false,
+  autoLaunch: false
 }
 
-// 读取设置
 const loadSettings = () => {
   try {
     if (fs.existsSync(settingsPath)) {
@@ -39,7 +33,6 @@ const loadSettings = () => {
   return { ...defaultSettings }
 }
 
-// 保存设置
 const saveSettings = s => {
   try {
     fs.writeFileSync(settingsPath, JSON.stringify(s, null, 2))
@@ -53,7 +46,6 @@ let win = null
 let tray = null
 let isQuitting = false
 
-// 销毁托盘
 const destroyTray = () => {
   if (tray) {
     tray.destroy()
@@ -61,7 +53,6 @@ const destroyTray = () => {
   }
 }
 
-// 设置开机自启动
 const setAutoLaunch = enable => {
   app.setLoginItemSettings({
     openAtLogin: enable,
@@ -69,7 +60,6 @@ const setAutoLaunch = enable => {
   })
 }
 
-// 创建托盘
 const createTray = () => {
   if (tray) return
 
@@ -95,7 +85,6 @@ const createTray = () => {
   tray.on('double-click', () => win?.show())
 }
 
-// 创建应用菜单
 const createAppMenu = () => {
   const template = [
     {
@@ -156,7 +145,6 @@ const createAppMenu = () => {
   Menu.setApplicationMenu(menu)
 }
 
-// 创建窗口
 const createWindow = () => {
   win = new BrowserWindow({
     title: APP_TITLE,
@@ -173,19 +161,18 @@ const createWindow = () => {
   createAppMenu()
   win.loadFile(path.join(distPath, 'index.html'))
 
-  // WebDAV CORS 绕过：对所有非同源请求注入 CORS 响应头
+  // WebDAV CORS 绕过:注入 CORS 响应头
   win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
     const headers = { ...details.responseHeaders }
     headers['access-control-allow-origin'] = ['*']
     headers['access-control-allow-methods'] = ['GET, PUT, DELETE, PROPFIND, HEAD, OPTIONS']
     headers['access-control-allow-headers'] = ['Authorization, Content-Type, Depth']
-    // 剥离 WWW-Authenticate 防止浏览器弹出原生认证对话框（由应用自行处理认证错误）
+    // 剥离 WWW-Authenticate,防止弹出原生认证对话框(认证错误由应用处理)
     delete headers['www-authenticate']
     delete headers['WWW-Authenticate']
     callback({ responseHeaders: headers })
   })
 
-  // 窗口关闭事件
   win.on('close', e => {
     if (settings.closeToTray && !isQuitting) {
       e.preventDefault()
@@ -195,17 +182,14 @@ const createWindow = () => {
   })
 }
 
-// IPC 处理
 ipcMain.handle('get-settings', () => settings)
 
 ipcMain.handle('set-settings', (_, newSettings) => {
   settings = { ...settings, ...newSettings }
   saveSettings(settings)
 
-  // 处理开机自启动
   setAutoLaunch(settings.autoLaunch)
 
-  // 处理托盘
   if (settings.closeToTray) {
     createTray()
   } else {
@@ -230,13 +214,8 @@ ipcMain.handle('quit-app', () => {
 })
 
 app.whenReady().then(async () => {
-  // 先清掉 Service Worker 与其缓存,再开窗。
-  //
-  // 页面跑在 file:// 上,而 Electron(与 Chrome 不同)允许 file:// 注册 SW。1.34.0 的网页
-  // 侧曾无条件注册离线缓存 SW:第一次启动正常(那次 SW 还没接管),第二次起 SW 接管导航、
-  // fetch() file:// 失败、缓存又无副本,整页只剩「离线且无缓存副本」—— 玩家反馈的白屏。
-  // 网页侧已不再在 file:// 上注册,但已中招的玩家那份 SW 会先于新页面执行,新代码根本
-  // 跑不到,只能由外壳在这里替他们拆掉。只动这两类存储,localStorage(存档)不碰。
+  // 开窗前清掉 Service Worker 与其缓存:Electron 允许 file:// 注册 SW,1.34.0 注册的 SW 接管导航后
+  // fetch() file:// 失败致白屏,且先于新页面执行,只能由外壳拆。只动这两类存储,localStorage(存档)不碰
   try {
     await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] })
   } catch {
@@ -244,12 +223,10 @@ app.whenReady().then(async () => {
   }
   createWindow()
 
-  // 如果启用了托盘功能，创建托盘
   if (settings.closeToTray) {
     createTray()
   }
 
-  // 应用开机自启动设置
   setAutoLaunch(settings.autoLaunch)
 })
 

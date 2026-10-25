@@ -1,8 +1,5 @@
 /* eslint-disable no-console */
-/**
- * Phase 31.2:修行身份 — 历史行为的归纳,非职业标签
- * 审计:无数值加成/无新资源/描述随历史变化
- */
+/** 修行身份:历史行为的归纳,非职业标签。审计:无数值加成 / 无新资源 / 描述随历史变化 */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { buildIdentity } from './identityService'
@@ -51,7 +48,6 @@ describe('修行身份(identityService)', () => {
 
   it('身份是描述,不含任何数值加成字段', () => {
     const id = buildIdentity()
-    // 无 mods / 无 buffs / 无战力字段
     expect('mods' in id).toBe(false)
     expect('bonus' in id).toBe(false)
     expect('power' in id).toBe(false)
@@ -67,18 +63,12 @@ describe('修行身份(identityService)', () => {
   })
 })
 
-/**
- * 玩家看到的每个字都必须是文案,不能漏出内部 id
- *
- * 修复的 bug:buildIdentity 把 endgame.daoPath 的原始 id 传给了 buildNarrative,
- * 于是画像里写着「行slaughter」。中文名的转换只发生在返回的 roots 里,晚了一步。
- * 这一类 bug 的共性是「同一份数据,一处转了一处没转」,所以下面同时钉住两处口径。
- */
+/** 画像文案不得漏出内部 id(「行slaughter」回归);叙事与 roots 两处口径同时钉住 */
 describe('修行画像文案', () => {
   it('叙事里出现的是道途中文名,绝不漏出内部 id(「行slaughter」回归)', () => {
     const lines: string[] = []
     for (const def of DAO_PATHS) {
-      // 道途一旦立下便不可改,四条道途各起一世
+      // 道途立下不可改,四条道途各起一世
       setActivePinia(createPinia())
       useEndgameStore().chooseDao(def.id)
       const id = buildIdentity()
@@ -86,7 +76,6 @@ describe('修行画像文案', () => {
 
       expect(id.narrative, `${def.name}:叙事里漏出了内部 id`).not.toContain(def.id)
       expect(id.narrative, `${def.name}:叙事里没提到道途`).toContain(`行${def.name}`)
-      // 画像面板与叙事必须同源,否则又会一处转了一处没转
       expect(id.roots.daoPath, `${def.name}:面板道途与叙事不同源`).toBe(def.name)
     }
     console.log(`\n  四条道途的画像:\n${lines.join('\n')}`)

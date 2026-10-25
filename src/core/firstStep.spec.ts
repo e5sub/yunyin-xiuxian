@@ -1,7 +1,4 @@
-/**
- * 第一步(新手引导的起点)判据 —— 它是一张「说错就会把人带偏」的卡,
- * 故逐条钉死:什么时候给、给到哪儿、什么时候必须闭嘴。
- */
+/** 第一步(新手起点)判据:何时给、指向哪、何时收 */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { currentFirstStep } from './firstStep'

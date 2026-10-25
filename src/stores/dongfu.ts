@@ -19,14 +19,9 @@ import { herbGradeOfMajor, fieldGradeCap, type HerbGrade } from '@/data/herbGrad
 import { useResourcesStore } from './resources'
 
 /**
- * 灵田产草品阶 = 当前境界品与「可种最高品」的合取,前赡一只且保下限:
- *   preview = min(当前品+1, 田内可种上限)   —— 前瞻最多高当前一档(囤下一境草)
- *   result  = min(5, max(当前品, preview))  —— 永不低过当前品(守住当前品水龙头),永不越道品
- * 两式叠加:低境拉满也最多高当前一档(不跳过当前品来源、不越道品);高境低田仍给当前品(不砸下限)。
- *
- * 注意:灵田升级不被境界门控(only 灵石/玄铁成本),低境刷资源也能拉满 ——
- * 因此(a) 限超前 +1 兜住低境一步到道品; (b) 「可种最高品」等级表 fieldGradeCap
- * 是唯一事实源,住在 data/herbGrades,灵田卡面 effectText 与这里共用同一张表。
+ * 灵田产草品阶:不低于当前境界品,最多高一档且不超田内可种上限,不越道品。
+ * 超前限 +1:灵田升级不受境界门控,低境也能拉满。
+ * 可种上限唯一事实源:data/herbGrades 的 fieldGradeCap,灵田卡面 effectText 共用。
  */
 export function fieldHerbGrade(major: number, fieldLv: number): HerbGrade {
   const current = herbGradeOfMajor(major)
@@ -48,7 +43,7 @@ export const useDongfuStore = defineStore(
     })
     /** 产出小数累积器 */
     const frac = ref({ herb: 0, ore: 0, wudao: 0 })
-    /** Phase 30.3 灵脉:主脉方向 + 各脉已投点数 */
+    /** 灵脉:主脉方向 + 各脉已投点数 */
     const veinMain = ref<VeinId | null>(null)
     const veinPoints = ref<Record<VeinId, number>>({ gather: 0, craft: 0, alchemy: 0, insight: 0 })
 
@@ -78,13 +73,12 @@ export const useDongfuStore = defineStore(
     /** 悟道脉参悟折扣(0~) */
     const insightDiscount = computed(() => (veinPoints.value.insight ?? 0) * INSIGHT_DISCOUNT_PER_POINT)
 
-    /** 灵脉已投总点数 */
     const veinTotal = computed(() => Object.values(veinPoints.value).reduce((a, b) => a + b, 0))
 
     const offlineCapHours = computed(() => OFFLINE_CAP_HOURS[Math.min(levels.value.mansion, OFFLINE_CAP_HOURS.length - 1)]!)
     /** 洞府等级限制其余建筑上限 */
     const buildingLevelCap = computed(() => (levels.value.mansion + 1) * 5)
-    /** 建筑实际可达上限:洞府全局闸门与自身品类上限取小(洞府自身不受自己闸门所限) */
+    /** 建筑实际可达上限(洞府自身不受闸门限) */
     function buildingCap(id: BuildingId): number {
       const def = buildingDef(id)
       if (id === 'mansion' || !def) return def?.maxLevel ?? 0
@@ -92,7 +86,7 @@ export const useDongfuStore = defineStore(
     }
     const subGongfaSlots = computed(() => 1 + Math.floor(levels.value.library / 3))
     const alchemyLevel = computed(() => levels.value.alchemy)
-    // 炼器台每 FORGE_LEVEL_PER_CAP 级提高强化上限 1(此前把 2 写死在业务代码里)
+    // 炼器台每 FORGE_LEVEL_PER_CAP 级强化上限 +1
     const forgeCapBonus = computed(() => Math.floor(levels.value.forge / FORGE_LEVEL_PER_CAP))
     const qiCapMult = computed(() => 1 + levels.value.array * ARRAY_QI_CAP_PER_LEVEL)
     const beastMult = computed(() => 1 + levels.value.beast * BEAST_EFFECT_PER_LEVEL)
@@ -105,9 +99,8 @@ export const useDongfuStore = defineStore(
     }
 
     /**
-     * 存档修复:等级/产出小数/灵脉点数全部收敛为合法值。
-     * 损坏的 levels.mansion 会让 offlineCapHours 变 NaN,离线收益全线 NaN,
-     * 这是持久化收益来源里唯一没做 sanitize 的一处
+     * 存档修复:等级/产出小数/灵脉点数收敛为合法值。
+     * 坏 levels.mansion 会让 offlineCapHours 与离线收益全线 NaN。
      */
     function sanitize(): void {
       const nextLevels = { ...levels.value }
@@ -123,10 +116,8 @@ export const useDongfuStore = defineStore(
       }
       frac.value = nextFrac
       /**
-       * 灵脉点数按**认得的那几条脉**重建:坏档塞进来的多余键会一并算进 veinTotal
-       * (界面「已投 N/100」虚高),却没有任何一张卡能显示或迁出它。
-       * 单条上限取主脉容量 —— 迁移主脉后旧主脉的点数原样保留(可以超过副脉 30),
-       * 但它从投资入口就再也堆不到 70 以上,故超出即是坏档/改档。
+       * 灵脉点数只按认得的脉重建:多余键会算进 veinTotal,却无卡可显示或迁出。
+       * 单条上限取主脉容量:迁主脉后旧主脉点数保留(可超副脉 30),但堆不到 70 以上。
        */
       const nextVein = {} as Record<VeinId, number>
       const rawVein = typeof veinPoints.value === 'object' && veinPoints.value !== null ? veinPoints.value : ({} as Record<VeinId, number>)
@@ -136,10 +127,7 @@ export const useDongfuStore = defineStore(
           typeof cur === 'number' && Number.isFinite(cur) && cur > 0 ? Math.min(Math.floor(cur), VEIN_MAIN_CAPACITY) : 0
       }
       veinPoints.value = nextVein
-      /**
-       * 主脉认不出时按「未定主脉」处理:否则 `veinCap` 会把四条脉全判成副脉(各 30),
-       * 卡面却仍标着一条不存在的主脉,玩家既投不满也迁不走 —— 灵脉永久卡死在 30 点档。
-       */
+      // 认不出的主脉回落未定:否则 `veinCap` 四脉全判副脉,灵脉卡死在 30 点档
       if (veinMain.value !== null && !VEINS.some(v => v.id === veinMain.value)) veinMain.value = null
     }
 
@@ -156,10 +144,7 @@ export const useDongfuStore = defineStore(
       if (VEINS.some(v => v.id === id)) veinMain.value = id
     }
 
-    /**
-     * 转世:洞府与地脉都是「外物」,随皮囊一同散去 —— 建筑归零、灵脉清零。
-     * 留下的只有认知与宿慧(见 core/reincarnation 的继承清单)。
-     */
+    /** 转世:建筑与灵脉清零。继承清单见 core/reincarnation。 */
     function resetForRebirth(): void {
       const nextLevels = { ...levels.value }
       for (const def of BUILDINGS) nextLevels[def.id] = 0
@@ -187,12 +172,6 @@ export const useDongfuStore = defineStore(
         const whole = Math.floor(frac.value[key])
         if (whole >= 1) {
           frac.value[key] -= whole
-          /**
-           * 灵田 = 当前品阶的稳定水龙头,兼前瞻一寸:fieldHerbGrade 保证产出
-           * ≥ 当前境界品(区域采集按「地界」给品、回头刷低境只给低品,唯独灵田
-           * 永不砸下限),且灵田等级越高可高当前一档(为下一境囤草),但一律
-           * ≤ 当前+1、≤ 道品 —— 低境拉满田也跳不过当前品来源。ore/wudao 两行不涉品阶。
-           */
           if (key === 'herb') resources.addHerb(fieldHerbGrade(player.major, fieldLv), whole)
           else resources.addSmall(key, whole)
         }

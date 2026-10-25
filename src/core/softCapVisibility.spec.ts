@@ -1,18 +1,4 @@
-/**
- * 软上限的可见性契约(Phase 30.4 的收尾)
- *
- * 软阈值本身是真的:`mergeMods` 会在合计越过 cap 后把超出部分按 diminish 折算。
- * 但玩家看不到 —— `isSoftCapped` 从写下那天起就没有任何展示层调用,
- * 于是"我堆到 90% 暴击为什么没有 90% 效果"只能靠自己猜。
- *
- * 本文件钉两类不变量:
- *
- *   ① 凡是被软阈值削的属性,人物页必须能显示,且必须标出来;
- *   ② 标记必须与机制同真同假 —— 面板说"软",就是真在被折算。
- *
- * 折扣率一律从 SOFT_CAPS 读,视图里手抄一个"折半"就会红:
- * 各键的 diminish 并不相同(0.5 / 0.4),抄一个数就是撒谎。
- */
+/** 折扣率一律从 SOFT_CAPS 读,视图里手抄一个「折半」就会红:各键 diminish 不同(0.5 / 0.4) */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -21,7 +7,7 @@ import { isSoftCapped, mergeMods } from '@/core/statsCalc'
 import { STAT_KEYS } from '@/data/statNames'
 import type { AnyStatKey } from '@/types'
 
-/** 去掉注释与模板注释,免得注释里提一嘴就算「接上了」 */
+/** 去掉注释:注释里的提及不算接上 */
 function stripComments(src: string): string {
   return src
     .replace(/<!--[\s\S]*?-->/g, '')

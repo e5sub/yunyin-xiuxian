@@ -1,11 +1,7 @@
 /**
- * 转世「新的一世」—— 本世进程清零、跨世记忆保留(ISS-015 / TASK-009)
- *
- * 边界(与 DEC-003 对齐):
- *   - 必清:连胜/当日巡游/进行中的秘境/进行中的区域事件/镇压收益 —— 它们属「这一世」的当下
- *     (镇压收益逐 tick 派发灵石/装备,旧世远境跨世即数值爆炸,转世妖气复聚)
- *   - 保留:区域兴衰战绩与宿敌(「成长改变世界」的世界记忆,不含镇压权益)、
- *     机缘选择记忆(fortuneChoices,「世界记得你的选择」)、奇遇连锁(eventChains)
+ * 转世「新的一世」:本世进程清零、跨世记忆保留(ISS-015 / TASK-009;边界与 DEC-003 对齐)
+ *   - 必清:连胜/当日巡游/进行中的秘境/进行中的区域事件/镇压收益
+ *   - 保留:区域兴衰战绩与宿敌(不含镇压权益)、机缘选择记忆(fortuneChoices)、奇遇连锁(eventChains)
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -29,7 +25,6 @@ function seedPlayer(p: ReturnType<typeof usePlayerStore>): void {
     finished: false
   } as SecretRealmState
   p.regionEvent = { regionId: 'qingyun', eventId: 'ev_raiders', endsAt: 9e15 } as never
-  // 镇压收益是本世进程,转世即散(妖气复聚);机缘/连锁是跨世记忆,全保留
   p.suppressedRegions = ['qingyun']
   p.suppressedSince = { qingyun: 12345 }
   p.fortuneChoices = { ft_sword_remnant: 'take' }
@@ -52,12 +47,10 @@ describe('player.rebirth 转世状态重置', () => {
     expect(p.lastCaveEventDay).toBe(0)
     expect(p.secretRealm).toBeNull()
     expect(p.regionEvent).toBeNull()
-    // 镇压收益是本世产出(逐 tick 派发灵石/装备),转世即妖气复聚 ——
-    // 旧世压下的远境若跨世,新世按旧阶位派发高阶装备,数值爆炸
+    // 镇压收益逐 tick 派发灵石/装备:旧世远境跨世,新世会按旧阶位派发高阶装备
     expect(p.suppressedRegions).toHaveLength(0)
     expect(Object.keys(p.suppressedSince)).toHaveLength(0)
-    // 资格(「镇压过就不必再打满」那枚令)也是经济权柄:新世一键切回高阶收益
-    // 会把爆炸换个入口带回来,故一并随世散去
+    // 镇压资格同样随世散去:否则新世可一键切回高阶收益
     expect(p.suppressQualified).toHaveLength(0)
   })
 
@@ -88,7 +81,6 @@ describe('player.rebirth 转世状态重置', () => {
 
     p.rebirth({ roots: [] } as never)
 
-    // 「世界记得你的选择」:机缘取/弃记忆不随转世清空
     expect(p.fortuneChoices).toEqual({ ft_sword_remnant: 'take' })
     expect(p.eventChains).toEqual({ old_man_stone: 2 })
   })
@@ -96,18 +88,13 @@ describe('player.rebirth 转世状态重置', () => {
   it('师承跨世保留:转世丢了外物,却带走这师门(对照灵兽归零·不可复改)', () => {
     const p = usePlayerStore()
     p.initCharacter('测试道友', { roots: [] } as never)
-    // 师承 = 跨世保留的成长思想(DEC-003),与灵兽/洞府这些「外物」相反
     p.adoptMentor('swordsman')
-    // 对照组:灵兽作外物,转世必清
     p.setPet('pet_yueying')
 
     p.rebirth({ roots: [] } as never)
 
-    // 师承跨世保留:转世后在
     expect(p.mentor, '师承是「我是谁」的思想,不该随皮囊散去').toBe('swordsman')
-    // 外物对照:灵兽随皮囊归零
     expect(p.petId, '灵兽应随皮囊散去').toBeNull()
-    // 一经确立不可更改,转世亦然:另投他门被拒
     p.adoptMentor('alchemist')
     expect(p.mentor, '转世后也不得另投师门').toBe('swordsman')
   })
@@ -124,10 +111,6 @@ describe('player.rebirth 转世状态重置', () => {
     expect(p.name.length, '新道号不应为空').toBeGreaterThan(0)
   })
 
-  /**
-   * 「灵魂/记忆留下,外物归零」:灵兽、洞府建筑、灵脉投资都是外物,
-   * 不得随转世带走 —— 否则每一世都从半成品起步,「重新经历」名存实亡。
-   */
   it('外物归零:灵兽/洞府建筑/灵脉投资', () => {
     const p = usePlayerStore()
     const dongfu = useDongfuStore()
@@ -151,7 +134,7 @@ describe('player.rebirth 转世状态重置', () => {
   it('转世不清当日账(wudaoExchange / mansionRedirect)—— 否则同游戏日转世重开兑换/改向配额', () => {
     const p = usePlayerStore()
     p.initCharacter('测试道友', { roots: [] } as never)
-    // 当日账:gameDay 相合才计入当日、次日由闸逻辑自动重置 —— 转世不掺和
+    // 当日账按 gameDay 自动重置,转世不清
     p.wudaoExchange = { gameDay: 7, count: 3 }
     p.mansionRedirect = { gameDay: 7, worldId: 'chiyan', count: 1 } as never
 
@@ -161,10 +144,7 @@ describe('player.rebirth 转世状态重置', () => {
     expect(p.mansionRedirect, '值日定向当日账应随神魂带走(否则同日转世重开改向配额)').not.toBeNull()
   })
 
-  /**
-   * 宿敌按 enemyId 认人(recordLoss/markAvenged/ghostOf 都只 find 第一条):
-   * 坏档里同一位写两条,第二条永远「尚为宿敌」,征战录还会画出两行同 key。
-   */
+  /** 宿敌按 enemyId 认人(recordLoss/markAvenged/ghostOf 只 find 第一条) */
   it('sanitize:宿敌同一位写两条合并成一条,败绩取较大、雪耻取较早', () => {
     const p = usePlayerStore()
     p.$patch({
@@ -183,13 +163,10 @@ describe('player.rebirth 转世状态重置', () => {
     expect(e1.avengedAt, '首次雪耻取较早那次').toBe(800)
   })
 
-  /**
-   * 镇压结算逐条遍历 suppressedRegions:同一位写两遍会让同一片地界
-   * 每拍产出两份灵石(离线一并放大)。资格表重复则让「是否已取得」判重。
-   */
+  /** 镇压结算逐条遍历 suppressedRegions,重复会让同一地界每拍产出两份 */
   it('sanitize:镇压表/资格表按地界去重(不重复结算收益)', () => {
     const p = usePlayerStore()
-    p.major = 20 // 让所有地界都「在境界之内」,专测去重而非可达性过滤
+    p.major = 20 // 地界全在境界之内,只测去重
     p.$patch({
       suppressedRegions: ['qingyun', 'qingyun'],
       suppressQualified: ['qingyun', 'qingyun', 'luoxia', 'luoxia']
@@ -199,10 +176,7 @@ describe('player.rebirth 转世状态重置', () => {
     expect(p.suppressQualified, '资格表同一位只留一份').toEqual(['qingyun', 'luoxia'])
   })
 
-  /**
-   * 天赋是「有或没有」:同一条写两遍时 talentMods 会把同一份词条算两次,
-   * 相当于白送一份属性;传承清单也会重复列出同一件。
-   */
+  /** 天赋重复会让 talentMods 把同一份词条算两次 */
   it('sanitize:天赋/传承同一条写两遍只留一份,不白送属性', () => {
     const p = usePlayerStore()
     const talent = 't_jianxin'
@@ -217,15 +191,12 @@ describe('player.rebirth 转世状态重置', () => {
     expect(p.reincarnation.talents, '同一条天赋只留一份(认不出的旧 id 保留,不产生词条)').toEqual([talent, 't_not_real'])
     expect(p.reincarnation.heritage, '同一条传承只留一份,认不出的清掉').toEqual(['danxin'])
 
-    // 词条只算一次:再加一条同 id 也不该翻倍
+    // 再加同 id 也不重复
     p.addTalent(talent)
     expect(p.reincarnation.talents).toEqual([talent, 't_not_real'])
   })
 
-  /**
-   * 祭炼位是境界闸:低境界只有 1 个槽(元婴起 2 个)。坏档/降境界的旧档写满 4 件,
-   * 每一件的被动都会生效 —— 与 toggleArtifact / applyLoadout 的裁剪口径分叉。
-   */
+  /** 祭炼位是境界闸(低境界 1 槽,元婴起 2 槽),与 toggleArtifact / applyLoadout 同口径裁剪 */
   it('sanitize:祭炼位按当前境界裁到槽位上限', () => {
     const p = usePlayerStore()
     const inv = useInventoryStore()
@@ -236,10 +207,7 @@ describe('player.rebirth 转世状态重置', () => {
   })
 })
 
-/**
- * 佩戴物与师承都按 id 认对象:认不出的 id 此前会在读档后继续占位 ——
- * 灵兽占位会让角色页 `petDef(...)!` 抛错白屏,师承占位会把拜师入口永久堵死。
- */
+/** 认不出的师承会永久堵死拜师入口 */
 describe('读写档:认不出的称号/灵兽/师承回落空', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
@@ -268,7 +236,7 @@ describe('读写档:认不出的称号/灵兽/师承回落空', () => {
 
   it('区域事件认不出的 eventId 整块清掉,真事件原样保留', () => {
     const p = usePlayerStore()
-    // 野事件 id 不产生任何倍率,却会一直占住「本轮已有事件」这个槽
+    // 野事件 id 无倍率,却占住「本轮已有事件」槽
     p.$patch({ regionEvent: { regionId: 'qingyun', eventId: 'ghost', endsAt: Date.now() + 60_000 } } as never)
     p.sanitize()
     expect(p.regionEvent).toBeNull()
@@ -278,10 +246,7 @@ describe('读写档:认不出的称号/灵兽/师承回落空', () => {
     expect(p.regionEvent?.eventId).toBe('yaochao')
   })
 
-  /**
-   * 待决的道侣事件认不出时,弹窗永远打不开;而 offerBondEvent 看到非空
-   * pendingEventId 就不再出新事件 —— 整条线被一个野 id 永久堵死。
-   */
+  /** 野 pendingEventId:弹窗打不开,offerBondEvent 又因其非空不再出新事件 */
   it('道侣待决事件认不出的 id 清回 null,真事件原样保留', () => {
     const p = usePlayerStore()
     p.$patch({
@@ -300,7 +265,7 @@ describe('读写档:认不出的称号/灵兽/师承回落空', () => {
         nextEventAt: 6
       }
     } as never)
-    // 先确认这个 daoLu id 是真的,免得用例因认不出道侣整块作废而「假通过」
+    // 先确认道侣本体认得,免得整块作废而假通过
     p.sanitize()
     expect(p.bond, '道侣本体应认得').not.toBeNull()
     expect(p.bond?.pendingEventId, '野事件 id 不再堵住下一次机会').toBeNull()

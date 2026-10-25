@@ -24,7 +24,7 @@
     <ReincarnationDialog />
     <EquipmentDetailDialog />
     <ExitConfirmDialog />
-    <!-- 修炼中偶发事件浮层(引擎触发、组件轮询展示;挂在全局才不会漏掉窗口期) -->
+    <!-- 修炼中偶发事件浮层:须挂全局,否则漏掉窗口期 -->
     <EnlightenmentModal v-if="game.started" />
     <CaveEventModal v-if="game.started" />
   </div>
@@ -59,16 +59,12 @@
   const settings = useSettingsStore()
   const route = useRoute()
 
-  /** 内容区滚动宿主(滚动条挂在这个常驻的 main 上,不是 window) */
+  /** 内容区滚动宿主:滚动条在常驻的 main 上,不在 window */
   const scrollHost = ref<HTMLElement | null>(null)
 
   /**
-   * 切页时把内容区滚动位置归零。
-   * main 是常驻元素,路由切换只替换它的子组件,它自身从不重建,scrollTop 会被
-   * 下一个页面原样继承。router 的 scrollBehavior 在这里不顶用——那个 API 操作
-   * 的是 window,而外层 .app-shell + overflow-hidden 让 window 根本不产生滚动。
-   * 挂在 before-enter 而非 watch(route):out-in 模式下这一刻旧页面已完全离场,
-   * 归零不会让正在播离场动画的旧页面突然跳回顶部。
+   * 切页归零滚动:main 常驻,scrollTop 会被下一页继承;router 的 scrollBehavior 只管 window,不顶用。
+   * 挂 before-enter 而非 watch(route):out-in 下此刻旧页已离场,不会跳回顶部。
    */
   function resetScroll(): void {
     if (scrollHost.value) scrollHost.value.scrollTop = 0
@@ -77,13 +73,13 @@
   let unsubscribeTheme: () => void = () => undefined
   let unsubscribeSaveFailure: () => void = () => undefined
 
-  /** 浏览器要求首次交互后才可出声;顺带给所有按钮一个轻点击音 */
+  /** 首次交互后才能出声(浏览器策略);按钮附带点击音 */
   function onPointerDown(e: PointerEvent): void {
     unlockAudio()
     if ((e.target as HTMLElement | null)?.closest('button')) playSfx('click')
   }
 
-  // 音频偏好实时同步(音量 0~100 → 0~1)
+  // 音量 0~100 → 0~1
   watch(
     () => [settings.musicOn, settings.sfxOn, settings.musicVol, settings.sfxVol] as const,
     ([musicOn, sfxOn, musicVol, sfxVol]) => {
@@ -92,17 +88,14 @@
     { immediate: true }
   )
 
-  // 主题:立即应用一次,此后跟随设置变化(auto 时系统切换也会实时跟随)
+  // 主题;auto 时随系统切换
   watch(
     () => settings.theme,
     t => applyTheme(t),
     { immediate: true }
   )
 
-  // 减少动效:原类名绑在 .app-shell 上,Teleport 到 body 的弹层(弹窗 / 传送门 / 突破炸屏)
-  // 全都在 .app-shell 之外,逃过 `.reduce-motion` 的后代选择器 —— 开了开关弹层照旧全幅动。
-  // (SpiritRootReveal 就为这吃过亏,只得自己写 JS 兜底。)改挂到 body,让包括 Teleport
-  // 在内的所有内容都吃到这条,与系统 prefers-reduced-motion 的全局覆盖对齐。
+  // 减少动效类挂 body 而非 .app-shell:Teleport 到 body 的弹层在 .app-shell 之外,吃不到后代选择器
   watch(
     () => settings.reduceMotion,
     v => document.body.classList.toggle('reduce-motion', v),

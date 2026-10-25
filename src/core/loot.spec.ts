@@ -1,9 +1,4 @@
-/**
- * 自动回收 —— 装备入包前的第一道闸(Phase 26.2)
- * 应有之物(O):无论在线(战斗掉落/事件/镇压)还是离线(挂机结算),
- * 一切装备在进入行囊前都要先过一遍回收裁决;
- * 命中回收规则(分解勾选档 / 智能收纳判无缘)的,不入包、直接化尘。
- */
+// 在线/离线的装备入包前都先过回收裁决,命中回收规则即化尘。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { rng } from '@/utils/random'
@@ -41,9 +36,7 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
     setActivePinia(createPinia())
   })
 
-  // 一件好判的凡俗道袍:不带套、无词条 —— 判定只看品质。
-  // (此前用 generateEquipment 随手生成的件:模板可能成套、词条可能条条近满,
-  //  于是「这件算不算垃圾」被随机模板搅浑,判据不再只测它想测的那条规则。)
+  // 不带套、无词条,判定只看品质;generateEquipment 的随机模板会搅浑判据。
   let seq = 0
   function mk(quality: QualityId): EquipmentInstance {
     seq += 1
@@ -54,8 +47,7 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
     return useInventoryStore().items.map(it => it.uid)
   }
 
-  // ISS-030:rng.chance 不钳制(rand()<p),法宝 ×6×luck / doubleDropRate 等倍率堆叠
-  // 一旦把 p 堆出 (0,1) 就会变成"必然掉落"或"永不掉落"。此不变量兜住任何未来平衡数据。
+  // ISS-030:rng.chance 不钳制,倍率堆叠出界即"必然掉落"或"永不掉落"。
   it('ISS-030:afterWin 里每个概率输入都钳在 [0,1] 内', () => {
     const player = usePlayerStore()
     player.initCharacter('概率钳制', { roots: [] } as never)
@@ -97,7 +89,7 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
     player.initCharacter('预览', { roots: [] } as never)
     const region = regionDef('qingyun')!
     const rewardMult = 1.4
-    // 均值:灵石 float(0.8,1.2)→1.0;不翻倍、无掉落。预览与实发应算出同一笔期望
+    // 均值:灵石 float(0.8,1.2)→1.0;不翻倍、无掉落
     const spyF = vi.spyOn(rng, 'float').mockReturnValue(1)
     const spyC = vi.spyOn(rng, 'chance').mockReturnValue(false)
     try {
@@ -179,7 +171,6 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
   it('行囊满时,保留下来的新件仍按老规矩腾退包内无缘旧件', () => {
     useSettingsStore().smartKeep.enabled = true
     const inventory = useInventoryStore()
-    // 塞满 120 件凡品(老规矩积压的垃圾)
     for (let i = 0; i < 120; i += 1) inventory.addEquipment(mk('mortal'))
     expect(inventory.bagFull).toBe(true)
     const keep = mk('spirit')
@@ -197,15 +188,7 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
   })
 })
 
-/**
- * 法宝掉落的取样口径 —— 「高界该掉高界的东西」不能只写在注释里。
- *
- * 池子本身一直是「fromTier ≤ 当前层级」(旧法宝仍可能掉,图鉴要补齐),
- * 但权重从前只按品质折算:凡品 40 对神品 7.7,于是到了混沌海,
- * 掉出来的多半还是人间界的墨玉葫芦 —— 本界域的法宝反而撞不见。
- * 现加一层就近加成(见 loot.artifactDropWeight),此处钉住它的三条承诺:
- * 同品质下近者更重、旧物不被关掉、高层级时高界之物占多数。
- */
+/** 钉 loot.artifactDropWeight 就近加成三条:同品质下近者更重、旧物不被关掉、高层级时高界之物占多数。 */
 describe('法宝掉落 · 高界的池子该像高界', () => {
   it('池子不关门:凡层级可及的法宝,权重都大于零', () => {
     for (const tier of [1, 10, 20, 26, 32]) {
@@ -218,10 +201,7 @@ describe('法宝掉落 · 高界的池子该像高界', () => {
   })
 
   it('同品质下,同层级的那件明显更重(约二十一倍)', () => {
-    /**
-     * 从表里找一对「同一档品阶、一件刚好在本阶、另一件已出就近窗口」的真实法宝,
-     * 而不是写死两个 id —— 品阶重排之后,这一对会自己换人,判据仍旧成立。
-     */
+    // 从表里取一对同品质、相隔 ≥ 就近窗口的真实法宝,不写死 id:品阶重排后判据仍成立
     const pair = ARTIFACTS.map(near => ({
       near,
       old: ARTIFACTS.find(b => b.quality === near.quality && near.fromTier - b.fromTier >= ARTIFACT_NEAR_WINDOW)
@@ -230,7 +210,7 @@ describe('法宝掉落 · 高界的池子该像高界', () => {
     const { near, old } = pair!
     const tier = near.fromTier
     const ratio = artifactDropWeight(near, tier) / artifactDropWeight(old, tier)
-    // 同阶 ×(1 + 幅度 × 窗口),出了窗口只剩它自己 —— 比例就是窗口那一条的幅度
+    // 同阶 ×(1 + 幅度 × 窗口),出了窗口 ×1
     const expected = 1 + ARTIFACT_NEAR_BONUS * ARTIFACT_NEAR_WINDOW
     expect(ratio, `同品质的「${near.name}」只比 ${ARTIFACT_NEAR_WINDOW} 阶前的「${old.name}」重 ${ratio.toFixed(2)} 倍`).toBeCloseTo(expected, 6)
   })
@@ -243,32 +223,19 @@ describe('法宝掉落 · 高界的池子该像高界', () => {
       expect(id, '32 阶抽不出任何法宝').toBeTruthy()
       if (artifactDef(id!)!.fromTier >= 21) high += 1
     }
-    // 实测约 0.61(品阶重排前后都是这个量级;没有就近加成时约 0.40)——
-    // 阈值留足余量,免得这条统计判据自己变得时红时绿
+    // 实测约 0.61(无就近加成约 0.40),阈值留足余量
     expect(high / n, `${n} 次里只有 ${high} 次抽到仙界以上的法宝`).toBeGreaterThan(0.55)
   })
 })
 
 /**
- * 品阶阶梯 —— 神品要稀缺,而池子仍要以近阶之物为主。
- *
- * 品阶不是装饰标签:它同时定掉落权重(artifactDropWeight)与数值倍率
- * (data/artifacts.artifactQualityMult)。若 45 件里有一小半都挂着神品,
- * 「神品」二字就不携带任何信息,挂在它上面的倍率也就跟着失去意义。
- *
- * 于是标签按 (fromTier 升,同阶内预算升) 排成一条不降的阶梯,并钉住两条:
- *   一 不许倒挂 —— 深地界出的那件,品阶不低于浅地界出的;
- *   二 每个界域的池子里,神品的权重占比都是个位数百分比 —— 按件数算也一样。
- *
- * 故障注入:把这 45 件的品阶退回重排之前那一版(18 件神品),第二条立刻变红。
+ * 品阶同时定掉落权重(artifactDropWeight)与数值倍率(data/artifacts.artifactQualityMult)。
+ * 钉两条:按 (fromTier 升,同阶内预算升) 品阶不倒挂;每个界域池中神品占比(按权重与按件数)都是个位数百分比。
+ * 故障注入:把 45 件的品阶退回重排之前那一版(18 件神品),第二条红。
  */
 describe('法宝品阶 · 稀缺标签', () => {
   it('标签跟着 fromTier 走:深地界出的那件,品阶不低于浅地界出的', () => {
-    /**
-     * 排序键是**玩家看到的**被动预算(artifactValue 之后的),不是数据里的基线 ——
-     * 品阶倍率是玩家看得见的那一层,承诺"标签=强度阶梯"就该用那一层的数去对。
-     * 同预算时按品阶排,避免"数组书写顺序"这种与玩家无关的东西决定成败。
-     */
+    // 排序键是 artifactValue 之后的被动预算,不是数据里的基线;同预算按品阶排,不让数组书写顺序决定成败
     const ranked = [...ARTIFACTS].sort(
       (a, b) =>
         a.fromTier - b.fromTier ||
@@ -302,19 +269,12 @@ describe('法宝品阶 · 稀缺标签', () => {
         maxTier = tier
       }
     }
-    // 神品不能稀到不存在:最深的那一阶得至少有一件,否则这条阶梯的上端是空的
     expect(ARTIFACTS.filter(a => a.quality === 'divine').length, '一件神品都没有 —— 阶梯缺了顶端').toBeGreaterThan(0)
     expect(maxShare, `神品在 ${maxTier} 阶占比最高,为 ${(maxShare * 100).toFixed(1)}%`).toBeLessThan(0.1)
   })
 })
 
-/**
- * 装备见闻 —— 图鉴的收录深度就靠这一笔。
- *
- * 装备图鉴此前只有「见没见过」两态;深度取自 lore.equipLore,而写它的地方
- * 只有一处:acquireEquipment(装备入账的唯一漏斗)。这里守三件事:
- * 拾得即记、只记更好的一件、以及**被化尘的那件也算见过**(图鉴记的是见闻,不是家当)。
- */
+/** lore.equipLore 唯一写入点是 acquireEquipment。守三条:拾得即记、只记更好的一件、被化尘的那件也算见过。 */
 describe('装备见闻 · 入账那一刻就记下成色', () => {
   function mkItem(uid: string, quality: QualityId, tier: number, templateId = 'w_xuantie'): EquipmentInstance {
     return { uid, templateId, quality, tier, level: 0, affixes: [] }
@@ -340,7 +300,7 @@ describe('装备见闻 · 入账那一刻就记下成色', () => {
 
   it('被自动回收(化尘)的那件也算见过 —— 图鉴记的是见闻,不是家当', () => {
     useSettingsStore().smartKeep.enabled = true
-    // 换个模板:lore 分片在测试之间会随 localStorage 留着,别让前两条的账串味
+    // 换模板:lore 分片在用例之间随 localStorage 残留
     const res = acquireEquipment(mkItem('a', 'mortal', 7, 'w_qingshuang'), { quiet: true })
     expect(res.bagged, '这一件本该被回收').toBe(false)
     expect(useLoreStore().equipSeen('w_qingshuang'), '化成尘的那件也该记在见闻里').toEqual({
@@ -350,22 +310,18 @@ describe('装备见闻 · 入账那一刻就记下成色', () => {
     })
   })
 
-  /**
-   * 「亲手用过」与「见过什么成色」分开记:成色靠运气(要撞上天品),
-   * 而用不用它由玩家自己决定 —— 图鉴第二档因此是可推进的(见 ui/codex 的装备梯子)。
-   */
+  /** 「亲手用过」(u)与「见过什么成色」分开记,供图鉴第二档(见 ui/codex 的装备梯子) */
   it('装备上身即算上手;强化也算;两者都写进见闻的 u', () => {
     const lore = useLoreStore()
     const inv = useInventoryStore()
     const res = useResourcesStore()
-    // 直接摆一件进包:这条判据测的是「上手」怎么记,不想被自动回收与满包规则搅进来
+    // 直接摆一件进包,绕开自动回收与满包规则
     const item: EquipmentInstance = { uid: 'used-1', templateId: 'w_hanfeng', quality: 'fine', tier: 3, level: 0, affixes: [] }
     inv.items = [...inv.items, item]
     expect(lore.equipSeen('w_hanfeng')?.u ?? 0, '还没上身,不算用过').toBe(0)
     inv.equip('used-1', 'weapon')
     expect(lore.equipSeen('w_hanfeng')?.u, '装备上身即上手').toBe(1)
 
-    // 强化也记:这是另一条能推进图鉴那一档的路
     res.addSmall('dust', 10_000)
     res.addStone(gn(1e12))
     const before = lore.equipSeen('w_qingshuang')?.u ?? 0
@@ -376,15 +332,7 @@ describe('装备见闻 · 入账那一刻就记下成色', () => {
   })
 })
 
-/**
- * 逆旅「独行」· 到手法宝默认祭上的问题(玩家反馈,两条):
- * 「PC网页版转世立契,一世不用法器,但是解锁法器的时候系统会默认装备,契约直接失效了」
- * 「轮回时选择'整世不祭炼一件法宝'契约,下一世得到第一个法宝会默认装备,
- *   就算没有手动祭炼也会打破契约」
- *
- * 立下 artifact 禁忌之题时,系统不该替他「祭出」第一个法宝 ——
- * 破题必须是玩家自己的选择,不能是默认装备替他说了算。
- */
+/** 立下 artifact 禁忌之题时,系统不替玩家祭出第一个法宝;破题须是玩家自己的选择。 */
 describe('逆旅「独行」· 到手法宝不默认祭上', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -434,8 +382,7 @@ describe('出行预览 · 福缘翻倍均值', () => {
     const p = modOf(mods, 'doubleDropRate')
     expect(p, '探宝应注入双倍福缘').toBeGreaterThan(0)
     const r = expectedWinReward(region, rewardMult)
-    // 预览 = 同一均值公式 × (1+capChance(p)) —— 与 afterWin 的 doubled / 离线 doubleMult 同源;
-    // 若漏掉这一乘(color 的「一胜约」低 ~5%),此断言即红
+    // 与 afterWin 的 doubled / 离线 doubleMult 同源;漏乘 (1+capChance(p)) 即红
     expect(toNum(r.stone)).toBeCloseTo(
       toNum(stoneByTier(region.tier, 10 * rewardMult * (1 + modOf(mods, 'spiritStoneGain')) * (1 + capChance(p)))),
       6
@@ -451,7 +398,7 @@ describe('矿石掉落战报', () => {
   it('矿石掉落要报进「本战拾获」(与灵草同规:给即报品,不能凭空到账)', () => {
     const resources = useResourcesStore()
     const before = resources.ore
-    // 只放行矿石这一支(rng.chance 判 ORE_DROP_CHANCE=0.35),rng.int 固定给 1
+    // 只放行矿石(rng.chance 判 ORE_DROP_CHANCE=0.35)
     const spyC = vi.spyOn(rng, 'chance').mockImplementation(p => p === 0.35)
     const spyI = vi.spyOn(rng, 'int').mockReturnValue(1)
     let lines: string[] = []

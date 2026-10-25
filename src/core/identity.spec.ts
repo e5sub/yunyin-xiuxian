@@ -1,7 +1,4 @@
-/**
- * 玩家身份裁判(Phase 28)
- * 画像只来自真实道痕;节点只记首次;纪录方向正确;叙事不给赏罚
- */
+/** 玩家身份裁判:画像只来自真实道痕;节点只记首次;纪录方向正确;叙事不给赏罚 */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { DaoMark } from '@/types'
@@ -51,7 +48,7 @@ describe('修行画像', () => {
     expect(p.riskText).toBe('高')
     expect(p.favoriteBuild).toBe('背水·反震')
     expect(p.verdict.length).toBeGreaterThan(0)
-    // 万刃 3 胜 0 负 → 最擅长
+    // 万刃 3 胜 0 负
     expect(p.bestWorld).toBe('万刃天')
   })
 })

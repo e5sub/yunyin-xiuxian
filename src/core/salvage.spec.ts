@@ -1,8 +1,6 @@
 /**
- * 分解返还 —— 练过的件拆了,强化投入按八成退回来
- * 应有之物(O):分解/回收一件装备,除了底材那份器灵尘,还要把强化花掉的那笔
- * 尘与灵石退回八成;账以实例上记的投入为准,老档按标价补算。
- * 不该有的(X):返还超过实际投入 —— 那会变成「强化再拆」的套利。
+ * 分解返还:底材器灵尘 + 强化投入(尘与灵石)的八成;账以实例上记的投入为准,老档按标价补算。
+ * 返还不得超过实际投入(「强化再拆」套利)。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -64,10 +62,8 @@ describe('分解返还 · 强化投入的八成随件退回', () => {
           const spent = enhanceInvested(item)
           const got = salvageOf(item)
           const base = DECOMPOSE_DUST[qualityDef(quality).rank] ?? 0
-          // 底材之外退回来的那份,必须小于投入本身(八成)
           expect(got.dust - base).toBeLessThanOrEqual(spent.dust)
           expect(cmp(got.stone, spent.stone)).toBeLessThan(1)
-          // 反方向也要管:练过就该退回来,不能一分不退
           if (spent.dust > 0) {
             expect(got.dust - base).toBeGreaterThan(0)
             expect(toNum(got.stone)).toBeGreaterThan(0)
@@ -99,14 +95,14 @@ describe('分解返还 · 强化投入的八成随件退回', () => {
     const ui = useUiStore()
     inventory.addEquipment(mk('g', 'earth', 0, 8))
 
-    // 只缺尘:该去分解闲置装备,不该被指去历练
+    // 只缺尘
     resources.addStone(gn(1e30))
     resources.addSmall('dust', 0)
     expect(upgradeEquipment('g')).toBe(false)
     expect(ui.toasts.at(-1)?.text).toContain('器灵尘')
     expect(ui.toasts.at(-1)?.text).not.toContain('灵石')
 
-    // 只缺石:该去历练/悬赏
+    // 只缺石
     resources.spendStone(gn(1e30))
     resources.addSmall('dust', 100_000)
     expect(upgradeEquipment('g')).toBe(false)
@@ -128,7 +124,7 @@ describe('分解返还 · 强化投入的八成随件退回', () => {
   it('分解一件练过的件:到账的就是预告那份(尘 + 灵石)', () => {
     const inventory = useInventoryStore()
     const resources = useResourcesStore()
-    // 先烧掉一次性成就奖励(「初窥仙途」那类会往灵石里加一笔),免得混进这笔账
+    // 先烧掉一次性成就奖励(「初窥仙途」会往灵石里加一笔)
     inventory.addEquipment(mk('warmup', 'profound', 5, 9))
     decomposeEquipment('warmup')
     const item = { ...mk('f', 'profound', 5, 9), invested: { dust: 300, stone: { m: 2, e: 5 } } }
@@ -153,7 +149,7 @@ describe('分解返还 · 强化投入的八成随件退回', () => {
     const inventory = useInventoryStore()
     const resources = useResourcesStore()
     const ui = useUiStore()
-    // 同上:一次性成就奖励先烧掉
+    // 一次性成就奖励先烧掉
     inventory.addEquipment(mk('warmup', 'fine', 0, 6))
     decomposeEquipment('warmup')
     for (const t of [...ui.toasts]) ui.dismissToast(t.id)

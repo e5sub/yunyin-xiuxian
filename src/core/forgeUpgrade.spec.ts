@@ -1,9 +1,4 @@
-/**
- * 强化连升 · 批量账
- * upgradeBatchPlan 只算不动手(级数受强化上限与余额共同约束),
- * upgradeEquipmentBatch 按计划一次升到位,扣款/记账与计划一致;
- * 升不动(0 级计划)时绝不扣一分。
- */
+/** 强化连升 · 批量账:计划只算不扣;连升扣款/记账与计划一致;0 级计划不扣 */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { EquipmentInstance, GNum } from '@/types'
@@ -17,7 +12,7 @@ import { add, gn, sub, toNum } from '@/utils/gnum'
 import { upgradeCost } from './formulas'
 import { equipLevelCap, equipUpgradeCost, upgradeBatchPlan, upgradeEquipment, upgradeEquipmentBatch, upgradeShortfall } from './forge'
 
-/** 夹具一律凡品 rank 0 → upgradeCost 只吃 level/tier,折扣恒 0 */
+/** 夹具:凡品 rank 0,upgradeCost 只吃 level/tier,折扣恒 0 */
 function mk(uid: string, level: number): EquipmentInstance {
   return { uid, templateId: 'b_qingyun', quality: 'mortal', tier: 3, level, affixes: [] }
 }
@@ -36,7 +31,7 @@ function costOf(lv: number): { dust: number; stone: GNum } {
   return upgradeCost(lv, 3, 0, 0)
 }
 
-/** 0..n-1 级每一级成本的累计 */
+/** 0..n-1 级成本累计 */
 function sumUpTo(n: number): { dust: number; stone: GNum } {
   let dust = 0
   let stone = gn(0)
@@ -145,15 +140,15 @@ describe('炼器 · 单步强化(upgradeEquipment)边界', () => {
 
   it('成功:升一级、精确扣 dust+stone、invested 累计(分解八成返还的账本)', () => {
     seat(mk('a', 0))
-    // 结算成就/主线一次性赏钱:首次强化成就会给 24 石,混进差额就分不清强化扣了多少
+    // 预先结清成就/主线:首次强化成就赏 24 石会混进差额
     useQuestsStore().$patch({ achieved: ACHIEVEMENTS.map(a => a.id), mainIdx: MAIN_QUESTS.length - 1 })
-    // 用可表示的灵石量级(1e6):rich() 的 1e30 下 65 石成本会被浮点精度吞掉,量不出差
+    // 灵石用 1e6:1e30 下 65 石成本被浮点精度吞掉
     const r = useResourcesStore()
     r.dust = 1_000_000
     r.spiritStone = gn(1_000_000)
     const d0 = r.dust
     const s0 = { ...r.spiritStone }
-    // 预期扣账取自真实的 equipUpgradeCost(含 forgeDiscount 当前面板),不是手写 discount=0
+    // 预期取 equipUpgradeCost(含当前 forgeDiscount),不手写 discount=0
     const cost = equipUpgradeCost('a')!
     expect(upgradeEquipment('a')).toBe(true)
     const item = useInventoryStore().findItem('a')!

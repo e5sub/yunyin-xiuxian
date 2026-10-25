@@ -1,7 +1,4 @@
-/**
- * 今日天道(Phase 27)—— 程序生成的每日挑战
- * 按日期种子确定性生成(刷新不换题),复用挑战书的验证与定价管线,零人工维护
- */
+/** 今日天道:按日期种子确定性生成的每日挑战(刷新不换题),复用挑战书的验证与定价管线 */
 import { mulberry32, RandomService } from '@/utils/random'
 import { todayLocalNum } from '@/utils/time'
 import { CELESTIAL_WORLDS } from '@/data/endgame'
@@ -20,9 +17,8 @@ export interface DailyChallenge {
 }
 
 /**
- * 今日的日号。与洞府巡游/日课同一面「本地日历」(见 utils/time 注):
- * 若按 UTC 日计,UTC+8 玩家在本地 08:00 就会被翻到「明天」,同一本地日能白嫖两份
- * 今日天道赏,也跟「日落而息 / 明日再会」的文案相悖。故用本地日,跨本地午夜才换号。
+ * 今日的日号:本地日历,与洞府巡游/日课同口径(见 utils/time 注),跨本地午夜才换号。
+ * 按 UTC 日计时,UTC+8 玩家本地 08:00 就翻到「明天」,同一本地日能领两份赏。
  */
 export function todayNumber(): number {
   return todayLocalNum()

@@ -1,15 +1,4 @@
-/**
- * 器魂服务 —— 装配与凝炼的编排
- *
- * 编排层几乎不自己算数,测的是「哪条路走哪句提示、代价有没有守恒」:
- *   · 凝炼把「销毁原器 + 耗道源」两重代价都落实了;
- *   · 关键陷阱是**退款分支**——spendDaoSource 成功后 refineSoul 万一返回 null,
- *     已扣的道源必须原样奉还,绝不能既扣了源又没凝出魂。
- *
- * 存的是真实 Pinia store(setActivePinia + createPinia,与 loadoutService.spec 同款),
- * 唯一桩掉的是 ./soulForge 的 canRefine/refineSoul 与 ./progress.track
- * (与 affixTransferEconomy.spec 桩 track 同款),让每条分支与故障注入都可控。
- */
+/** 关键分支:spendDaoSource 成功后 refineSoul 返回 null,已扣道源须原样退回 */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { EquipmentInstance } from '@/types'
@@ -36,7 +25,7 @@ vi.mock('./soulForge', () => soulForge)
 const progress = vi.hoisted(() => ({ track: vi.fn() }))
 vi.mock('./progress', () => progress)
 
-/** 一枚可凝的凡器(w_xuantie = 玄铁重剑) */
+/** 可凝的凡器(w_xuantie = 玄铁重剑) */
 function makeInst(uid: string): EquipmentInstance {
   return { uid, templateId: 'w_xuantie', quality: 'mortal', tier: 2, level: 0, affixes: [] }
 }
@@ -107,7 +96,6 @@ describe('凝炼装备(refineEquipment)', () => {
     const inventory = useInventoryStore()
     const endgame = useEndgameStore()
     endgame.daoSource = 100
-    // 让判定/扣费都通过,唯独凝炼本身失手 → 已扣成本必须奉还
     soulForge.state.canRefine = true
     soulForge.state.refineResult = null
     const addSpy = vi.spyOn(endgame, 'addDaoSource')
@@ -192,10 +180,8 @@ describe('装配器魂(wearSoul)', () => {
       { uid: 's2', type: 'beishui', grade: 1, fromName: 'x' },
       { uid: 's3', type: 'gangdun', grade: 1, fromName: 'x' }
     ]
-    // 装配表 3 条,其中 'ghost' 已不存在于 souls —— activeSouls 只算 2 条
     endgame.equippedSouls = ['s1', 's2', 'ghost']
     expect(endgame.activeSouls).toHaveLength(2)
-    // 旧逻辑:equipSoul 看原始长度 3=满 → 静默返 false,栏里明明有位置却装不上
     expect(wearSoul('s3')).toBe(true)
     expect(useUiStore().toasts).toHaveLength(0)
     expect(endgame.activeSouls.map(s => s.uid)).toContain('s3')

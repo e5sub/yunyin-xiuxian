@@ -1,23 +1,9 @@
-/* eslint-disable no-console -- 逐境内容矩阵是给人看的报告 */
+/* eslint-disable no-console -- 打印逐境内容矩阵 */
 /**
- * 内容密度审计 —— 「每个境界都得有新东西可学、可去、可打」
- *
- * 由扩界引出的问题(ISS-038):21 个境界里有 12 个是新加的,内容若只补到"结构齐备"
- * (每境有地界与敌人),后段仍会退化成纯数值台阶 —— 玩家在同一个境界里除了数字
- * 变大,没有新东西可选。
- *
- * 这条判据很朴素:**每个境界至少有一条门槛恰好落在该境的功法**。
- * 功法是这套游戏里最直接的"打法新增",参悟池又按 minRealm ≤ 当前+1 过滤,
- * 故只要表里有,玩家在那个境界就一定撞得见;表里没有,那个境界就只剩数字。
- *
- * 现状(加内容前的实测):渡劫(8)、太乙(12)、大罗(13)、神将(15)四境一条都没有。
- * 故障注入配方:把任一条功法的 minRealm 挪走(例如 m_daluo 13 → 12),
- * 对应境界立刻变红;把地界全挪到别的境界,「地界」那条变红。
- *
- * 本表也如实打印各界域的内容条数 —— 其中神界/混沌海的秘境为 0 **是设计**:
- * (至此「每界域/每境都得有点什么」已铺到七类:功法、丹方、称号按**每境**,
- * 奇缘、法宝、天时、灵兽按**每界域**;长尾境界的空白从此藏不住。)
- * 秘境明确只做凡境(元婴·灵石)与天界(真仙·道源)两阶,不是漏做。
+ * 内容密度审计:每个境界都得有新东西可学、可去、可打。
+ * 判据:每境至少一条门槛恰好落在该境的功法(参悟池按 minRealm ≤ 当前+1 过滤,表里有即撞得见)。
+ * 故障注入:把任一条功法的 minRealm 挪走(如 m_daluo 13 → 12),对应境界红;把地界全挪到别的境界,「地界」那条红。
+ * 神界/混沌海的秘境为 0 是设计:秘境只做凡境(元婴·灵石)与天界(真仙·道源)两阶。
  */
 import { describe, expect, it } from 'vitest'
 import { MAX_MAJOR, REALMS, WORLDS, WORLD_BREAK_MAJOR, worldOf } from '@/data/realms'
@@ -67,8 +53,6 @@ describe('内容密度 · 每一境都得有新东西', () => {
   })
 
   it('每一境也都有自己的丹 —— 与「每境都有新功法」同一条理由', () => {
-    // 丹药是消费侧的新鲜感:到了这一境,炉子里/掉落里该有一样是这一境才有的。
-    // 此前神王(16)、混沌神魔(19)、混沌道祖(20)三境一味本境丹都没有。
     const empty: string[] = []
     for (let m = 0; m <= MAX_MAJOR; m++) {
       if (!PILLS.some(p => p.minRealm === m)) empty.push(`${m} ${REALMS[m]!.name}`)
@@ -76,13 +60,7 @@ describe('内容密度 · 每一境都得有新东西', () => {
     expect(empty, `这些境界没有任何本境丹药:${empty.join('、')}`).toEqual([])
   })
 
-  /**
-   * 扩界的账要一次结清:新境界**每一境**的内容条数,不得低于人间界最薄的那一境。
-   *
-   * 人间界前段本来就厚(炼气 22 条:2 区域 + 6 敌人 + 7 功法 + 7 丹方),拿中位数去要求
-   * 新界不合理 —— 它的尾巴(大乘/渡劫)也是 10 条。所以底线取**人间界最小值**:
-   * 要守的是「扩界别留下比旧界最薄的境界还薄的境界」,而不是让后段长得和前段一样厚。
-   */
+  /** 底线取人间界最小值而非中位数:人间界前段偏厚(炼气 22 条),尾巴(大乘/渡劫)也是 10 条 */
   it('新界每一境都不薄于人间界最薄的一境(逐境条数有底线)', () => {
     const totalOf = (m: number): number => {
       const regions = REGIONS.filter(r => r.minRealm === m)
@@ -107,8 +85,7 @@ describe('内容密度 · 每一境都得有新东西', () => {
   })
 
   it('丹方越晚越强:同族同线里,门槛更高的那一味药力不更低', () => {
-    // 法则 B 只比品质高低;同品质的几味之间若后面的反而更弱,玩家会看到
-    // 「我到了更高境界,拿到的丹还不如从前」——故这里再按门槛比一遍。
+    // 法则 B 只比品质高低,再按门槛比一遍
     const TIMED = ['exp', 'qi', 'lifespan', 'wudao', 'tempo'] as const
     for (const fam of TIMED) {
       for (const line of ['craft', 'drop'] as const) {
@@ -118,7 +95,7 @@ describe('内容密度 · 每一境都得有新东西', () => {
         for (let i = 1; i < group.length; i++) {
           const prev = group[i - 1]!
           const cur = group[i]!
-          // 统一到两者的较高门槛折算,免得比出的是境界差
+          // 统一到两者的较高门槛折算,排除境界差
           const at = Math.max(prev.minRealm, cur.minRealm)
           expect(
             pillGainSecAt(cur, at),
@@ -154,14 +131,13 @@ describe('内容密度 · 每一境都得有新东西', () => {
         world: w.name,
         装备模板: inWorld(EQUIPMENT_TEMPLATES, t => t.tier),
         法宝: inWorld(ARTIFACTS, a => a.fromTier),
-        // 奇缘按**起点**所属界域记:高界有没有自己的缘,看这一列
        秘境: SECRET_REALMS.filter(s => (s.gate === 'celestial' ? 'immortal' : 'mortal') === w.id).length
       }
     })
+    // 奇缘按起点所属界域记
     const chainStarts = WORLDS.map(w => CHAINS.filter(c => worldOf(eventDef(c.stages[0]!)?.minRealm ?? 0).id === w.id).length)
     console.log('界域\t装备模板\t法宝\t秘境(仅两阶)\t奇缘起点')
     rows.forEach((r, i) => console.log(`${r.world}\t${r.装备模板}\t${r.法宝}\t${r.秘境}\t${chainStarts[i]}`))
-    // 每个界域都该有该界的装备与法宝(秘境是明确的两阶内容,不在此列)
     for (const r of rows) {
       expect(r.装备模板, `${r.world} 没有专属装备模板`).toBeGreaterThan(0)
       expect(r.法宝, `${r.world} 没有专属法宝`).toBeGreaterThan(0)
@@ -169,8 +145,6 @@ describe('内容密度 · 每一境都得有新东西', () => {
   })
 
   it('高界的法宝也成取舍:一个界域的法宝件数要多于可装备的槽位数', () => {
-    // 法宝位只有 ARTIFACT_MAX_SLOTS 个;若一个界域正好只给这么多件,
-    // 玩家就把它们全带上,「选哪件」这个问题根本不会出现 —— 内容量够,选择才存在。
     const tierWorld = new Map<number, string>()
     for (const r of REGIONS) tierWorld.set(r.tier, worldOf(r.minRealm).id)
     for (const w of WORLDS) {
@@ -182,19 +156,13 @@ describe('内容密度 · 每一境都得有新东西', () => {
   })
 
   /**
-   * 灵兽也按界域数一遍:灵兽没有 minRealm 字段,它的门槛写在**发放事件**里
-   * (事件的 minRealm,或它带的界域标签)。故这里从事件反推「哪一界域能拿到灵兽」,
-   * 而不是给灵兽表补一个没人读的字段 —— 有门槛的地方才是真相。
-   *
-   * 现状:人间界靠不定名的随机池(妖兽认主/幼兽),仙界应龙与青鸾、神界麒麟与白泽、
-   * 混沌海鲲鹏与饕餮。故障注入:把某一界的灵兽奖励改成别的奖励,对应界域立刻红。
-   *
-   * 数的是**种数**而不是事件条数:不定名的发放(妖兽认主)抽的是「所有还没结缘的灵兽」,
-   * 它一只就能覆盖人间界那一池子;而高界的灵兽是各界的名目,必须点名给出。
+   * 灵兽没有 minRealm 字段,门槛写在发放事件里(事件的 minRealm 或界域标签),故从事件反推界域,不给灵兽表补字段。
+   * 数种数不数事件条数:不定名发放(妖兽认主)抽「仙品以下还没结缘的灵兽」,一只就覆盖人间界那一池子;高界灵兽须点名给出。
+   * 故障注入:把某一界的灵兽奖励改成别的奖励,对应界域红。
    */
   it('每个界域都结得到灵兽,且不止一只 —— 门槛写在发放事件里', () => {
     const WORLD_TAGS: Record<string, string> = { immortal: 'immortal', sky: 'immortal', god: 'god', chaos: 'chaos' }
-    /** 界域 → 该界**点名**发放的灵兽 id */
+    /** 界域 → 该界点名发放的灵兽 id */
     const namedByWorld = new Map<string, Set<string>>(WORLDS.map(w => [w.id, new Set<string>()]))
     const poolWorlds = new Set<string>()
     for (const ev of EVENTS) {
@@ -221,11 +189,6 @@ describe('内容密度 · 每一境都得有新东西', () => {
         WORLDS.map(w => `${w.name}\t${namedByWorld.get(w.id)!.size}\t${poolWorlds.has(w.id) ? poolSize : 0}`).join('\n')
     )
     for (const w of WORLDS) {
-      /**
-       * 底线是**两只**:灵兽位只有一个,一个界域只给一只,「带哪只」这个选择就不存在。
-       * 法宝那一头早有同样的判据(件数要多于槽位数);灵兽原先是「≥1 条发放路径」,
-       * 于是仙界只有应龙、神界只有麒麟,那两界的灵兽栏是「唯一解」而不是选择。
-       */
       const available = namedByWorld.get(w.id)!.size + (poolWorlds.has(w.id) ? poolSize : 0)
       expect(available, `${w.name} 只有 ${available} 只灵兽可结缘 —— 灵兽位只有一个,一只就是唯一解`).toBeGreaterThan(1)
     }

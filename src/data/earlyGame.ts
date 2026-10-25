@@ -1,11 +1,8 @@
-/**
- * Phase 28 前期玩法数据 —— 悟道顿悟/突破准备/历练路线/洞府巡游
- */
+/** 前期玩法数据:悟道顿悟 / 突破准备 / 洞府巡游 */
 import type { EnlightenmentOption, BreakthroughPrepOption } from '@/types'
 
 /** 悟道顿悟选项池(修炼时随机触发,三选一) */
 export const ENLIGHTENMENT_OPTIONS: EnlightenmentOption[] = [
-  // 修炼加速
   {
     type: 'cultivation',
     label: '静心凝神',
@@ -20,7 +17,6 @@ export const ENLIGHTENMENT_OPTIONS: EnlightenmentOption[] = [
     buffId: 'enlighten_cult_strong',
     duration: 300
   },
-  // 战斗增强
   {
     type: 'combat',
     label: '锤炼筋骨',
@@ -35,7 +31,6 @@ export const ENLIGHTENMENT_OPTIONS: EnlightenmentOption[] = [
     buffId: 'enlighten_def',
     duration: 600
   },
-  // 突破相关
   {
     type: 'breakthrough',
     label: '悟透瓶颈',
@@ -43,7 +38,6 @@ export const ENLIGHTENMENT_OPTIONS: EnlightenmentOption[] = [
     buffId: 'enlighten_bt',
     duration: 1800
   },
-  // 灵气相关
   {
     type: 'qi',
     label: '吐纳有序',
@@ -51,7 +45,7 @@ export const ENLIGHTENMENT_OPTIONS: EnlightenmentOption[] = [
     buffId: 'enlighten_qi',
     duration: 600
   },
-  // 悟道点 —— 悟道产出没有速率词条可挂,走即时奖励(文案与实发一致)
+  // 悟道产出无速率词条,走即时奖励;文案须与实发一致
   {
     type: 'insight',
     label: '灵机一动',
@@ -61,7 +55,6 @@ export const ENLIGHTENMENT_OPTIONS: EnlightenmentOption[] = [
   }
 ]
 
-/** 突破准备选项 */
 export const BREAKTHROUGH_PREP_OPTIONS: BreakthroughPrepOption[] = [
   {
     id: 'direct',
@@ -151,26 +144,14 @@ export const CAVE_EVENT_POOL = {
   ]
 }
 
-/** 连胜奖励阈值与奖励 */
 export const WIN_STREAK_REWARDS = [
   { streak: 3, stone: 20, wudao: 1 },
   { streak: 5, stone: 40, wudao: 2 },
   { streak: 10, stone: 100, wudao: 5 }
 ]
 
-/**
- * Phase 29 前期机制生命周期衰减
- *
- * 不是"全体降频",而是按事件的打断价值分级:
- * - 顿悟:高价值、高打断 → 保留弹窗,但后期降低频率
- * - 闭关:高价值、低打断 → 保留,后期仍可自由选择
- * - 巡游:低价值、高打断 → 后期降为通知,不再弹窗
- * - 连胜:低价值、高频   → 只在关键节点弹
- *
- * 数值表示"该机制在不同阶段的主动存在感"(0 = 完全退出,1 = 全频)
- */
+/** 前期机制按境界段的衰减系数(0 = 完全退出,1 = 全频) */
 export const EARLY_EVENT_DECAY = {
-  /** 修炼顿悟:前期高,金丹后大幅降低,真仙后退出 */
   enlightenment: {
     lianqi: 1.0,
     zhuji: 0.7,
@@ -178,7 +159,6 @@ export const EARLY_EVENT_DECAY = {
     yuanying: 0.1,
     later: 0
   },
-  /** 短时闭关:到中期仍是自由选择,不做强制衰减 */
   shortRetreat: {
     lianqi: 1.0,
     zhuji: 0.9,
@@ -186,7 +166,6 @@ export const EARLY_EVENT_DECAY = {
     yuanying: 0.7,
     later: 0.6
   },
-  /** 洞府巡游:前期提活跃,后期让位给更重要的系统 */
   cavePatrol: {
     lianqi: 1.0,
     zhuji: 0.6,
@@ -194,7 +173,6 @@ export const EARLY_EVENT_DECAY = {
     yuanying: 0,
     later: 0
   },
-  /** 连胜奖励:保留至元婴,但奖励渐弱 */
   streakBonus: {
     lianqi: 1.0,
     zhuji: 0.85,
@@ -204,10 +182,7 @@ export const EARLY_EVENT_DECAY = {
   }
 } as const
 
-/**
- * 根据境界获取某机制的衰减系数
- * 境界 0=炼气, 1=筑基, 2=金丹, 3=元婴, 4=化神, 5+=后期
- */
+/** 按大境界取某机制衰减系数(0 炼气 · 1 筑基 · 2 金丹 · 3 元婴 · 其上后期) */
 export function earlyEventDecay(mechanism: keyof typeof EARLY_EVENT_DECAY, major: number): number {
   const stage = EARLY_EVENT_DECAY[mechanism]
   if (major <= 0) return stage.lianqi

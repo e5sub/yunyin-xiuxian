@@ -1,6 +1,5 @@
 <template>
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
-    <!-- 卷首扉页:修仙录不是清单,是「这一部只写你自己」的一册 —— 开卷先落一枚「我」印 -->
     <div class="card-ink paper-grain relative overflow-hidden px-4 pb-4 pt-5 text-center">
       <span class="seal-solid" aria-hidden="true">我</span>
       <h1 class="mt-2.5 font-kai text-[20px] tracking-[0.3em] text-ink">修 仙 录</h1>
@@ -67,7 +66,6 @@
       </p>
       <p class="mt-1 text-[11px] leading-relaxed text-ink-faint">{{ stage.desc }}</p>
 
-      <!-- 随神魂不灭的那一份 -->
       <div class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 border-t border-ink/10 pt-2 text-[11px]">
         <p class="flex justify-between">
           <span class="text-ink-faint">认得灵材</span>
@@ -87,7 +85,6 @@
         </p>
       </div>
 
-      <!-- 这一世的命题 -->
       <div v-if="vowTheme" class="mt-2 rounded-lg border border-ink/15 px-3 py-2">
         <p class="flex items-center justify-between">
           <span class="font-kai text-[13px] text-ink">「{{ vowTheme.vow }}」</span>
@@ -122,7 +119,6 @@
       </p>
     </div>
 
-    <!-- 修行节点 -->
     <SectionTitle title="修行节点" :hint="`${endgame.milestones.length}/${MILESTONE_DEFS.length}`" />
     <div class="card-ink px-4 py-2">
       <div v-if="milestoneRows.length" class="relative ml-2 border-l border-ink/15 pl-4">
@@ -139,7 +135,6 @@
       </p>
     </div>
 
-    <!-- 征战录(Phase 30.9 S2):宿敌与雪耻 -->
     <SectionTitle title="征战录" :hint="`宿敌 ${nemesisRows.length} 位`" />
     <div class="card-ink divide-y divide-ink/6 px-4">
       <template v-if="nemesisRows.length">
@@ -158,8 +153,6 @@
       </p>
     </div>
 
-    <!-- 行迹录(Phase 30.9 S3):事件余波 -->
-    <!-- 奇缘录(Phase 34.2):未了之缘,一世一世接下去 -->
     <SectionTitle title="奇缘录" :hint="`未了之缘 ${unfinishedChains} 条`" />
     <div class="card-ink divide-y divide-ink/6 px-4">
       <template v-if="chainRows.length">
@@ -237,7 +230,6 @@
   const adventure = useAdventureStore()
   const lore = useLoreStore()
 
-  // ---- 轮回录 ----
   const insight = computed(() => totalInsight())
   const stage = computed(() => currentStage())
   const toNextStage = computed(() => {
@@ -263,7 +255,6 @@
     broken: 'text-amber-ink'
   }
 
-  /** 历世履历:最近的一世排在最前 */
   const lifeRows = computed(() =>
     [...player.reincarnation.lives]
       .sort((a, b) => b.index - a.index)
@@ -274,13 +265,12 @@
           themeName: l.themeId ? (lifeThemeDef(l.themeId)?.name ?? null) : null,
           resultText: RESULT_TEXTS[result],
           resultColor: RESULT_COLORS[result],
-          // 逆旅契是这一世唯一的回报 —— 让「记在履历上」真的能被看见
+          // 逆旅契是这一世唯一的回报:记在履历上
           trialName: l.trialId ? (lifeTrialDef(l.trialId)?.name ?? null) : null
         }
       })
   )
 
-  /** 征战录:当前未雪耻/已雪耻的宿敌 */
   const nemesisRows = computed(() =>
     player.nemeses
       .filter(n => n.lossCount >= 3)
@@ -293,7 +283,6 @@
       .sort((a, b) => (a.avengedAt ?? 0) - (b.avengedAt ?? 0))
   )
 
-  /** 征战录:事件余波(世界记忆的最近完成) */
   const lossRows = computed(() =>
     Object.values(adventure.eventMemories)
       .filter(m => m.times >= 2)
@@ -309,7 +298,6 @@
 
   const profile = computed(() => cultivatorProfile(endgame.marks))
 
-  /** 奇缘录:只有起了头的缘才露面(往后的路不说破) */
   const chainRows = computed(() => chainProgressRows())
   const unfinishedChains = computed(() => chainRows.value.filter(c => !c.finished).length)
 

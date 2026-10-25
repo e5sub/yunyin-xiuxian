@@ -1,10 +1,4 @@
-/**
- * 装备标记(玩家反馈:「同名装备想按不同流派区分」)。
- *
- * EquipmentInstance 新增可选 note(≤4 字):详情弹窗可改,格卡/部位行带出。
- * 这里钉住一件事 —— 它得**熬得过读档清洗**(inventory.sanitize):
- * 老档/未标记件的 note 是 undefined,不该被清洗误填或去掉。
- */
+/** 装备标记 note(可选,≤4 字)须熬过 inventory.sanitize;未标记件的 note 保持 undefined。 */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useInventoryStore } from '@/stores/inventory'

@@ -1,18 +1,5 @@
-/* eslint-disable no-console -- 奇缘推进是过程性验收,打印推进轨迹 */
-/**
- * 奇遇连锁验收(Phase 34.2)
- *
- * 这五条缘在本轮之前是**宣而不实**的:earlyGame.ts 里列着五个 id、
- * player.eventChains 只写不读、转世还把它当"世界记得你的选择"继承下来 ——
- * 而 events 数据里根本没有这五个事件,玩家一次也遇不到。
- *
- * 本轮把它做实,故这里钉三件事:
- *
- *   一 数据的自洽:每一程都真实存在,链条只此一份口径(chainOfEvent);
- *   二 契约的边界:奇缘**不属于任何地界** —— 不得带区域引用的标签,
- *      也不得从区域随机池里漏出来;
- *   三 推进的因果:结一程才轮到下一程,断了缘就没有后文。
- */
+/* eslint-disable no-console -- 打印推进轨迹 */
+/** 奇遇连锁验收:数据自洽 / 奇缘不属于任何地界 / 结一程才轮到下一程 */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -89,8 +76,7 @@ describe('奇缘 · 数据自洽', () => {
 
 describe('奇缘 · 结一程才轮到下一程', () => {
   it('未起之缘都在第一程上等着 —— 门槛已到的那些', () => {
-    // 奇缘不再全起于人间:云海故碑第一程在真仙。故这里按「门槛是否已到」筛,
-    // 而不是一律等于链数 —— 判据仍是「未起的缘停在第一程」,不是「全部同时可选」。
+    // 云海故碑第一程在真仙:按门槛是否已到筛,不一律等于链数
     for (const major of [0, 9, 12, 15]) {
       const pending = pendingChainStages(major)
       const ready = CHAINS.filter(c => {
@@ -116,9 +102,7 @@ describe('奇缘 · 结一程才轮到下一程', () => {
   })
 
   it('四个界域各有其缘 —— 高界不该只能走凡间的旧账', () => {
-    // 最初五条缘的起点全在人间:真仙之上能走的只有凡间的旧账。此后陆续补了
-    // 仙界(云海故碑)/神界(代天一行)/混沌海(本源一滴)。这条按界域核,
-    // 而不是只看「最大值够高」—— 只补一条仙界缘也会满足后者。
+    // 按界域核,不只看「最大值够高」:只补一条仙界缘也会满足后者
     const worldsWithStart = new Set(CHAINS.map(c => worldOf(eventDef(c.stages[0]!)!.minRealm ?? 0).id))
     for (const w of WORLDS) {
       expect(worldsWithStart.has(w.id), `${w.name} 没有一条属于自己的缘`).toBe(true)
@@ -134,7 +118,6 @@ describe('奇缘 · 结一程才轮到下一程', () => {
     const mine = pending.find(p => p.chainId === 'old_man_stone')!
     expect(mine.stage).toBe(1)
     expect(mine.event.id).toBe('old_man_stone_2')
-    // 别的缘不受影响,仍在第一程
     expect(pending.filter(p => p.chainId !== 'old_man_stone').every(p => p.stage === 0)).toBe(true)
   })
 
@@ -159,8 +142,7 @@ describe('奇缘 · 结一程才轮到下一程', () => {
 
 describe('奇缘 · 不进区域随机池,但真的会出现', () => {
   it('见闻志里奇缘与际遇各归各的名(阶段事件与普通事件同表)', () => {
-    // 事件同表是引擎的需要;展示层若一律写「历练际遇」,玩家会以为那条缘
-    // 也能在随便哪个地界撞见 —— 与「奇缘不属于任何地界」这条契约正好相反。
+    // 展示层一律写「历练际遇」会违背「奇缘不属于任何地界」
     const view = readFileSync(resolve(__dirname, '../views/CollectionView.vue'), 'utf8')
     expect(view, '见闻志应按 chainOfEvent 分出奇缘').toContain("chainOfEvent(e.id) ? '奇缘' : '历练际遇'")
   })
@@ -185,7 +167,7 @@ describe('奇缘 · 不进区域随机池,但真的会出现', () => {
       }
       expect(poolIds.has(ev.id), `${ev.id} 既不在区域池,也不是奇缘 —— 它是从哪冒出来的?`).toBe(true)
     }
-    // 接线证明:奇缘阶段确实会被掷出来(拔掉 pickChainStageEvent 的调用这里会归零)
+    // 接线证明:拔掉 pickChainStageEvent 的调用这里会归零
     expect(chainHits, '200 次判定里一次奇缘都没出现,说明奇缘没接上').toBeGreaterThan(0)
     console.log(`\n200 次事件判定:奇缘阶段 ${chainHits} 次`)
   })
@@ -223,10 +205,9 @@ describe('奇缘连锁 · 读档修形(越界夹回/残链清掉)', () => {
   it('越界 stage 的链在 pending 里被视为已了(不崩、不悬),修形后夹回链长', () => {
     const player = usePlayerStore()
     player.major = 1
-    // 无劫时 old_man_stone(3 程)确实待走 —— 证明下案非空转
+    // 无劫时 old_man_stone(3 程)待走,证明下案非空转
     player.eventChains = {}
     expect(pendingChainStages(1).some(p => p.chainId === 'old_man_stone')).toBe(true)
-    // 劫成 99:未修形前该缘被当「已了」不再待走;修形后夹回链长(3),仍是已了
     player.eventChains = { old_man_stone: 99 }
     expect(pendingChainStages(1).some(p => p.chainId === 'old_man_stone')).toBe(false)
     player.sanitize()

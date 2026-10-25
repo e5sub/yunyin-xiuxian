@@ -1,14 +1,5 @@
 /* eslint-disable no-console */
-/**
- * 深修补偿审计(A/B 两案)
- *
- * 轮回 ROI 审计已定性:阶数不匹配锁死了「浅修最优」,调参数改不了排序。
- * 本套用例验算两条结构性出路的代价,只出数据不改代码。
- *
- * 设计立场(写进判据):**允许金丹成为最快的道果农场,本身不是问题。**
- * 问题是除了收割道果,系统没有任何理由让玩家把这一世继续活下去。
- * 所以要找的不是「把效率抹平」,而是「让深修成为另一种目标下的最优解」。
- */
+/** 深修补偿审计(A/B 两案):只出数据不改代码 */
 import { describe, expect, it } from 'vitest'
 import { MANUAL_REBIRTH_MIN_MAJOR } from './reincarnation'
 import { compensationTable, distinctRouteCount, exponentialFruitTable, requiredFruitGrowth } from './deepCultivationRoi'
@@ -32,7 +23,7 @@ describe('深修补偿 · A 案:道果阶数追平耗时', () => {
 
   it('追平需要接近耗时增长率的指数——道果必须从二次改成指数', () => {
     const k = requiredFruitGrowth(0.5)
-    // 耗时约 3.3 倍/境界,道果要追到 2.8 倍才够
+    // 耗时约 3.3 倍/境界,道果要追到约 3.0 倍才够
     expect(k).toBeGreaterThan(2.5)
     expect(k).toBeLessThan(3.5)
   })
@@ -41,9 +32,8 @@ describe('深修补偿 · A 案:道果阶数追平耗时', () => {
     const rows = exponentialFruitTable(requiredFruitGrowth(0.5))
     const zhenxian = rows[rows.length - 1]!
     expect(zhenxian.major).toBe(REBIRTH_REFERENCE_MAJOR)
-    // 现行 168 枚 → A 案约 2.85 万枚
+    // 现行 168 枚 → A 案约 4.5 万枚
     expect(zhenxian.inflation).toBeGreaterThan(100)
-    // 单**一世**就给出天文级战力加成
     expect(zhenxian.combatBonus).toBeGreaterThan(50)
     console.log(
       `\nA 案真仙:道果 ${zhenxian.current} → ${zhenxian.proposed.toExponential(2)}(×${zhenxian.inflation.toFixed(0)}),` +
@@ -53,12 +43,12 @@ describe('深修补偿 · A 案:道果阶数追平耗时', () => {
 
   it('A 案自相矛盾:治膨胀的手段本身制造更大的膨胀', () => {
     const rows = exponentialFruitTable(requiredFruitGrowth(0.5))
-    // 金丹是基准点道果不变,其上逐境放大——放大倍数本身必须单调递增
+    // 金丹为基准点(道果不变),其上放大倍数单调递增
     for (let i = 1; i < rows.length; i += 1) {
       expect(rows[i]!.inflation).toBeGreaterThan(rows[i - 1]!.inflation)
     }
     expect(rows[0]!.inflation).toBeCloseTo(1, 6)
-    // 而深世的单世战力加成会冲到几十上百倍(现行真仙仅 +2.5% 量级)
+    // 深世单世战力加成冲到几十上百倍(现行真仙约 +151%)
     const worst = rows[rows.length - 1]!
     expect(worst.combatBonus).toBeGreaterThan(50)
   })
@@ -80,7 +70,7 @@ describe('深修补偿 · B 案:纯效率补偿的深坑', () => {
     const rows = compensationTable(0.5)
     const zhenxian = rows[rows.length - 1]!
     expect(zhenxian.timesFruit).toBeGreaterThan(100)
-    // 且是指数发散,不是线性
+    // 指数发散,非线性
     const heti = rows.find(r => r.major === 6)!
     expect(zhenxian.timesFruit / heti.timesFruit).toBeGreaterThan(10)
     console.log(
@@ -117,9 +107,7 @@ describe('深修补偿 · 结论:补偿路线走不通,出路在不可替代性'
   })
 
   it('真正的出路:深修给的必须是金丹拿不到的东西', () => {
-    // 只要第二回报与道果可折算,就仍然落在效率比较里,补偿量必然指数发散。
-    // 唯一跳出比较的方式是让它不可替代——那时问题从「多少倍」
-    // 变成「玩家此刻要的是哪一种东西」
+    // 第二回报只要可与道果折算,补偿量必然指数发散
     const routes = distinctRouteCount()
     expect(routes).toBe(REBIRTH_REFERENCE_MAJOR - MANUAL_REBIRTH_MIN_MAJOR + 1)
     console.log(
@@ -130,15 +118,11 @@ describe('深修补偿 · 结论:补偿路线走不通,出路在不可替代性'
   })
 
   it('警告:深修回报不可做成必须逐级拿齐的线性任务', () => {
-    // 若元婴给A、化神给B、炼虚给C 且都必须收集,玩家仍会算出唯一最优停世点,
-    // 只是把「金丹最优」换成了「某个固定境界最优」。
-    // 判据:可作停世点的境界数须大于 1,且各自回报应服务于不同目标
+    // 回报若须逐级收齐,玩家仍会算出唯一最优停世点;判据:可作停世点的境界数须大于 1,各自回报服务于不同目标
     expect(distinctRouteCount()).toBeGreaterThan(1)
   })
 
   it('金丹作为最快道果农场可以保留——它只该是某一种资源的最优解', () => {
-    // MANUAL_REBIRTH_MIN_MAJOR 本就公开宣告「此处可安全收割」,
-    // 不必消灭它;要消灭的是「它同时也是整个游戏的最优解」这件事
     expect(optimalRebirthPoint().major).toBe(MANUAL_REBIRTH_MIN_MAJOR)
   })
 })

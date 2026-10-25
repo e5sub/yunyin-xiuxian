@@ -10,7 +10,10 @@ import { isHerbGrade } from '@/data/herbGrades'
 export const SAVE_PREFIX = 'yunyin.'
 export const SAVE_VERSION = 2
 
-/** 参与持久化的 store id 列表(导出/导入/重置的键清单) */
+/**
+ * 参与持久化的分片清单:导出/导入/清档/损坏扫描的唯一范围,漏一项即存档少一块且无提示。
+ * spec 钉:saveRoundTrip(从源码倒推)。
+ */
 export const PERSISTED_STORES = [
   'game',
   'player',
@@ -27,29 +30,13 @@ export const PERSISTED_STORES = [
   'market',
   'apprentice',
   'bounty',
-  /**
-   * 节奏遥测(store id 是 pacingTelemetry,分片键取 'pacing')。
-   *
-   * 此前它不在清单里 —— 于是玩家点「清空存档」之后,这片遥测仍留在本机;
-   * 导出也不含它。清单是导出/导入/清档/损坏扫描的唯一范围,漏一个就等于
-   * 存档少一块(且没有任何提示)。审计 saveRoundTrip 现在从源码倒推这份清单。
-   */
+  /** 节奏遥测:store id 是 pacingTelemetry,分片键取 'pacing' */
   'pacing',
-  /**
-   * 异常留档(store id 是 diag)。
-   *
-   * 单独一片的理由与 pacing 相同:它不是游戏进度,却必须随「导出存档」一起走 ——
-   * 玩家报问题时,那份导出文件是他唯一会交出来的东西。
-   */
+  /** 异常留档(store id 是 diag):不是游戏进度,但须随「导出存档」一起走(玩家报问题只交导出文件) */
   'diag'
 ] as const
 
-/**
- * 分片的中文名 —— 只在说人话的地方用(如「哪一片坏了」)。
- *
- * 与 PERSISTED_STORES 放在一起:清单改了这个也得跟着改,
- * 否则界面上会出现一个叫「resources」的东西。
- */
+/** 分片中文名(界面提示用,如「哪一片坏了」);须与 PERSISTED_STORES 同步 */
 export const STORE_NAMES: Record<string, string> = {
   game: '开局',
   player: '角色',
@@ -75,41 +62,27 @@ export function storageKey(storeId: string): string {
 }
 
 /**
- * 刷盘间隔 —— 存档写入从「每次变更」改为「定期批量」。
- *
- * 起因是玩家反馈手机越玩越烫。实测引擎跑起来后仅 game/player/resources
- * 三片就是**每秒 3 次** localStorage 写入(真实游玩加上 adventure、dongfu、
- * quests 会到 4~6 次),每次都要 JSON 序列化 + 全片 AES 加密 + 主线程同步
- * 磁盘写。挂机一天约 26 万次 —— crypto-js 是纯 JS 实现,localStorage.setItem
- * 在 Android WebView 上又是同步落盘,两者叠加就是持续发热。
- *
- * 丢数据的风险很低且能自愈:引擎是时间戳驱动的,少写几秒只意味着
- * lastActiveAt 稍旧,下次进游戏由离线结算把这段时间补回来
+ * 刷盘间隔:定期批量写,不按每次变更写。
+ * 每次变更都写即每秒 3~6 次 AES(crypto-js 纯 JS)+ Android WebView 同步落盘,手机持续发热。
+ * 少写几秒只让 lastActiveAt 稍旧,由离线结算补回。
  */
 export const SAVE_FLUSH_MS = 5000
 
-/** 待落盘的分片(明文 JSON;加密推迟到 flush,避免每次变更都跑一遍 AES) */
+/** 待落盘的分片(明文 JSON;加密推迟到 flush) */
 const pending = new Map<string, string>()
 let flushTimer: ReturnType<typeof setTimeout> | undefined
 
-/**
- * 写盘失败的状态。
- *
- * 此前失败是**静默**的:catch 里什么也不做,随后 pending.clear() 把这一批丢掉 ——
- * 玩家可能玩了几小时、存了好几个 store,一次容量不足就把这段时间全抹了,
- * 而界面上没有任何迹象(设置页仍显示「存档版本 v2」)。写不进去是要紧事:
- * 它意味着从现在到修好为止的所有进度都不会进档,玩家至少该有机会先导出备份。
- */
+/** 写盘失败状态:失败期间的进度都不进档,不可静默(玩家须有机会先导出备份) */
 let writeFailure: { at: number; keys: string[] } | null = null
 type WriteFailureHandler = (failure: { at: number; keys: string[] } | null) => void
-/** 可以有多个订阅方(App 弹提示、设置页显示状态)—— 故用集合而非单个回调 */
+/** 多个订阅方:App 弹提示、设置页显示状态 */
 const writeFailureHandlers = new Set<WriteFailureHandler>()
 
 function emitWriteFailure(failure: { at: number; keys: string[] } | null): void {
   for (const handler of writeFailureHandlers) handler(failure)
 }
 
-/** 订阅写盘失败/恢复(注册方负责提示玩家);解构处返回退订函数 */
+/** 订阅写盘失败/恢复(注册方负责提示玩家);返回退订函数 */
 export function subscribeSaveWriteFailure(handler: WriteFailureHandler): () => void {
   writeFailureHandlers.add(handler)
   return () => {
@@ -117,7 +90,7 @@ export function subscribeSaveWriteFailure(handler: WriteFailureHandler): () => v
   }
 }
 
-/** 此刻的写盘失败状态(界面读它显示警告);从未失败过则为 null */
+/** 此刻的写盘失败状态(界面读它显示警告);未失败为 null */
 export function saveWriteFailure(): { at: number; keys: string[] } | null {
   return writeFailure
 }
@@ -132,10 +105,9 @@ export function flushSaveWrites(): void {
   const failed: string[] = []
   for (const [key, plain] of pending) {
     try {
-      // 加密只在这里做一次,而不是每次 store 变更都做
       localStorage.setItem(key, encryptSave(plain))
     } catch {
-      // 单键失败不阻断其余键;失败的那一片留在队列里,下次再写
+      // 单键失败不阻断其余键
       failed.push(key)
     }
   }
@@ -146,7 +118,7 @@ export function flushSaveWrites(): void {
     const first = writeFailure === null
     writeFailure = { at: Date.now(), keys: failed }
     if (first) emitWriteFailure(writeFailure)
-    // 自动重试:玩家清一点空间、或系统短暂拒绝之后,不用等下一次变更才有机会落盘
+    // 自动重试,不等下一次变更
     if (flushTimer === undefined) flushTimer = setTimeout(flushSaveWrites, SAVE_FLUSH_MS)
     return
   }
@@ -156,7 +128,7 @@ export function flushSaveWrites(): void {
   }
 }
 
-/** 丢弃待落盘内容 —— 清档/导入前必须调用,否则排队的旧数据会把新状态覆盖回去 */
+/** 丢弃待落盘内容;清档/导入前必须调用,否则排队的旧数据会把新状态覆盖回去 */
 export function dropPendingWrites(): void {
   if (flushTimer !== undefined) {
     clearTimeout(flushTimer)
@@ -165,11 +137,7 @@ export function dropPendingWrites(): void {
   pending.clear()
 }
 
-/**
- * 节流存储层:变更先入队,到点批量加密落盘。
- *
- * getItem 必须优先读队列,否则「刚写又读」会拿到磁盘上的旧值
- */
+/** 节流存储层:变更先入队,到点批量加密落盘;getItem 须先读队列,否则刚写又读拿到磁盘旧值 */
 const THROTTLED_STORAGE = {
   getItem: (key: string): string | null => {
     const queued = pending.get(key)
@@ -194,8 +162,8 @@ const THROTTLED_STORAGE = {
   }
 }
 
-// 页面离开/切后台时立刻落盘 —— 手机上 beforeunload 常不触发,pagehide 才可靠。
-// 注册在模块内,不依赖引擎是否启动;测试环境无 DOM,故两者都要判
+// 离开/切后台时立刻落盘:手机上 beforeunload 常不触发,pagehide 才可靠。
+// 注册在模块内,不依赖引擎是否启动;测试环境无 DOM
 if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', flushSaveWrites)
   window.addEventListener('beforeunload', flushSaveWrites)
@@ -207,11 +175,8 @@ if (typeof document !== 'undefined') {
 }
 
 /**
- * pinia-plugin-persistedstate 序列化器。
- *
- * serialize 只做 JSON,**不加密** —— 加密推迟到 flushSaveWrites。
- * deserialize 端无需区分:readSaveText 是 `decryptSave(raw) ?? raw`,
- * 明文(来自待刷队列)与密文(来自磁盘)都能解析
+ * pinia-plugin-persistedstate 序列化器。serialize 只做 JSON,不加密(加密在 flushSaveWrites);
+ * deserialize 经 readSaveText,明文(待刷队列)与密文(磁盘)都能解析
  */
 export const SAVE_SERIALIZER = {
   serialize: (data: StateTree): string => JSON.stringify(data),
@@ -227,10 +192,7 @@ export function persistConfig(storeId: string): {
   return { key: storageKey(storeId), serializer: SAVE_SERIALIZER, storage: THROTTLED_STORAGE }
 }
 
-/**
- * 启动前扫描:发现损坏的存档直接移到备份键,避免白屏
- * @returns 被隔离的 store id 列表
- */
+/** 启动前扫描:损坏的存档移到备份键,避免白屏;返回被隔离的 store id 列表 */
 export function preflightScan(): string[] {
   const corrupted: string[] = []
   for (const id of PERSISTED_STORES) {
@@ -255,12 +217,7 @@ export function preflightScan(): string[] {
 
 /**
  * 灵草五品迁移:旧档单标量 `herb` → 一律落凡品(品 1)分账(不丢草,幂等)。
- *
- * 旧档未分化的 `herb: N` 是粗胚级的存量,本就谈不上品阶 —— 按「低阶草炼不了
- * 高阶丹」的统一口径,它就地沉淀为最粗的凡品(品 1),**不再按当前境界折算**。
- * 凡品永远有出口:喂凡品方子(准入境界 0-4),或坊市按品即时出售,不会成死货。
- *
- * @param resources 资源分片
+ * 不按当前境界折算;凡品有出口(凡品方子、坊市按品出售),不会成死货。
  */
 export function migrateHerbSlice(resources: Record<string, unknown>): Record<string, unknown> {
   const hasMap = 'herbByGrade' in resources
@@ -301,12 +258,8 @@ export function migrateInventorySlice(data: Record<string, unknown>): Record<str
   return next
 }
 
-/**
- * 本地存档结构升级(在 Pinia 水合之前执行);顺带把旧明文档一次性转为密文
- */
+/** 本地存档结构升级(在 Pinia 水合之前执行);只有真发生了迁移才回写 */
 export function migrateLocalSchema(): void {
-  // 迁移是幂等 no-op 时不再回写:重加密 + 重写分片每次都白付一次 AES/parse,
-  // 与文件上部「避免无谓 AES/parse」的批处理口径一致 —— 只有真发生了迁移才落盘
   try {
     const invKey = storageKey('inventory')
     const invRaw = localStorage.getItem(invKey)
@@ -315,8 +268,6 @@ export function migrateLocalSchema(): void {
       const migrated = migrateInventorySlice(inv)
       if (migrated !== inv) localStorage.setItem(invKey, encryptSave(JSON.stringify(migrated)))
     }
-    // 灵草五品:旧档单标量 herb → 一律落凡品(品 1)分账(不丢草;不再按境界折算,
-    // 也不再为此读玩家分片 —— 那个折算基准早已弃用)
     const resKey = storageKey('resources')
     const resRaw = localStorage.getItem(resKey)
     if (resRaw !== null) {
@@ -337,7 +288,7 @@ export interface ExportPayload {
 }
 
 export function buildExportPayload(): ExportPayload {
-  // 导出直接读 localStorage,故必须先把待落盘内容写出去,否则导出的是旧档
+  // 导出直接读 localStorage,须先落盘,否则导出的是旧档
   flushSaveWrites()
   const data: Record<string, unknown> = {}
   for (const id of PERSISTED_STORES) {
@@ -370,24 +321,19 @@ export function validateImportPayload(obj: unknown): string | null {
 
 /**
  * 将导入数据加密写入 localStorage(调用方负责随后 reload)。
- *
- * 原子性:先清空现有存档、再逐片写入,确保完全覆盖;但写入中途失败
- * (配额不足是移动端的家常便饭)时,**回滚到旧档**而不是留下半清的存档 ——
- * 「game 分片还在、player 分片没了」的主页空角色正是这半清状态造出来的。
+ * 先清空再逐片写入;中途失败(如配额不足)回滚到旧档,不留半清的存档(会造出主页空角色)。
  */
 export function applyImportPayload(payload: ExportPayload): void {
-  // 一 先把现有各片读进内存作快照(原样密文,回滚时按原样写回)
+  // 快照现有各片(原样密文,回滚时原样写回)
   const backup = new Map<string, string | null>()
   try {
     for (const id of PERSISTED_STORES) {
       backup.set(id, localStorage.getItem(storageKey(id)))
     }
   } catch {
-    // 快照读不出时不阻塞:回滚能力降级,但不清成半档的那层仍适合尽力而为
+    // 快照读不出时不阻塞,回滚能力降级
   }
-  // 二 清空现有存档
   clearAllSave()
-  // 三 逐片写入导入数据
   const failed: string[] = []
   for (const id of PERSISTED_STORES) {
     const slice = payload.data[id]
@@ -398,7 +344,7 @@ export function applyImportPayload(payload: ExportPayload): void {
       failed.push(id)
     }
   }
-  // 四 任一失败:把快照里的旧档救回来,再向上抛,让调用方说「原档还在」
+  // 任一失败:救回旧档再抛错,调用方据此说「原档已保留」
   if (failed.length > 0) {
     for (const [id, raw] of backup) {
       try {
@@ -413,9 +359,9 @@ export function applyImportPayload(payload: ExportPayload): void {
 }
 
 export function clearAllSave(): void {
-  // 先丢弃待落盘队列 —— 否则清完档之后那次 flush 会把旧数据原样写回来
+  // 先丢弃待落盘队列,否则清完档之后那次 flush 会把旧数据写回来
   dropPendingWrites()
-  // 清档后没有待写内容,旧的「写盘失败」警告已无意义(下次真写不进去会重新浮出来)
+  // 清档后没有待写内容,旧的「写盘失败」警告作废
   if (writeFailure !== null) {
     writeFailure = null
     emitWriteFailure(null)
@@ -424,12 +370,11 @@ export function clearAllSave(): void {
     try {
       localStorage.removeItem(storageKey(id))
     } catch {
-      // 单键失败不阻断其余键,残留交由下面的兜底处理
+      // 残留交由下面的兜底处理
     }
   }
-  // 校验删除结果:removeItem 在个别 WebView 实现上会静默失效,
-  // 只要还剩任何一片就整体清空——半清的存档比清干净更糟,
-  // 会出现「game 分片还在、player 分片没了」这种卡在主页的空角色
+  // removeItem 在个别 WebView 实现上会静默失效:还剩任何一片就整体清空,
+  // 半清的存档会卡出主页空角色
   const leftover = PERSISTED_STORES.some(id => {
     try {
       return localStorage.getItem(storageKey(id)) !== null

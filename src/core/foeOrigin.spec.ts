@@ -1,15 +1,9 @@
 /**
- * 敌人加成归因 —— 「它凭什么这么难」必须有账可查
- *
- * 系统背景:敌人的三维里从来不只是「它自己」。凡界有层级补偿(按这一层的装备水平补齐)
- * 与危地(出行方式 × 地界凶险 × 灵兽之性 × 区域事件);天界有道之理解(按你的构筑厚度加厚)
- * 与境界压制。这些乘区从前只落在数值里 —— 玩家遇到「怎么忽然变强了」只能猜,
- * 既不知道该削哪一项,也不知道该往哪一境走。
- *
- * 本文件钉的是三件事:
- *   ① 生成方(凡界 makeEnemySnap / 天界 worldFoeSnap)**必须写明**来源,且账目与实数相符;
- *   ② 战报把来源带走(resolveCombat → CombatResult.foeOrigin);
- *   ③ 战后分析照着讲 —— 有加成必报,中性判定不占字数。
+ * 敌人加成归因
+ * 乘区:凡界 层级补偿 × 危地(出行方式 × 地界凶险 × 灵兽之性 × 区域事件);天界 道之理解、境界压制。
+ *   ① 生成方(凡界 makeEnemySnap / 天界 worldFoeSnap)写明来源,账目与实数相符;
+ *   ② 战报带走来源(resolveCombat → CombatResult.foeOrigin);
+ *   ③ 战后分析有加成必报,中性判定不占字数。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -122,7 +116,7 @@ describe('凡界:敌人的加成来源必修写明', () => {
         const modeMult = EXPLORE_MODES[mode].dangerMult
         const petMult = c.petId ? personalityEffects(c.petId).dangerMult : 1
         const expected = dangerFactorFor(modeMult, c.regionDanger, petMult, c.eventId ? 1.15 : 1)
-        // 总数只此一份口径(在线/离线同一实现);摊开只是为了看得懂,不许摊出另一个数
+        // 唯一口径(在线/离线同一实现),摊开后总数须与之相等
         expect(total).toBeCloseTo(expected, 9)
         expect(origin.ratio).toBeCloseTo(enemyGearFactor(8) * expected, 9)
         expect(origin.parts[0]!.label, '层级补偿永远排在第一项').toBe('层级补偿')
@@ -144,8 +138,7 @@ describe('凡界:敌人的加成来源必修写明', () => {
   })
 
   it('反向的账也要照实说:一阶敌人比这条线薄,就不许写成「加成」', () => {
-    // 一阶敌人的层级补偿是 ×0.90(敌人略低于「玩家总穿本阶装备」这条线)——
-    // 若把「不到 1」当成没发生,玩家就白白丢了一条信息
+    // 一阶层级补偿 ×0.90,低于 1 也要报
     const under = mortalFoeOrigin(1, 1)
     expect(under.ratio).toBeCloseTo(enemyGearFactor(1), 9)
     expect(under.ratio).toBeLessThan(1)
@@ -153,7 +146,7 @@ describe('凡界:敌人的加成来源必修写明', () => {
   })
 })
 
-/** 真·中性(ratio===1):敌人身上没有额外加成 —— 天界「无判定」就是这一档 */
+/** 中性(ratio===1):无额外加成,即天界「无判定」 */
 const NEUTRAL: FoeOrigin = {
   label: '无判定',
   ratio: 1,
@@ -287,22 +280,15 @@ describe('战报把来源带走,分析照着讲', () => {
   })
 })
 
-/**
- * 接线红线:来源算出来了、也带进战报了,还得**真的有人读**。
- *
- * 这些判据读源码,不跑界面 —— 界面改了名、换了读法就会红,
- * 而「数据在,屏幕上看不见」正是这一轮要消灭的毛病。
- */
+/** 接线:读源码判定界面读了来源;界面改名、换读法会红 */
 describe('来源到屏幕的接线', () => {
   const src = (p: string): string => readFileSync(resolve(__dirname, p), 'utf8')
 
   it('历练战报读同一份归因(逐项摊开的那一份)', () => {
-    // 战斗情报四块随本体迁入 BattleIntelPanel:判据跟着走
     const intel = src('../components/adventure/BattleIntelPanel.vue')
     expect(intel, '战斗分析面板该照 analyzeBattle 讲').toContain('analyzeBattle(')
     const panel = src('../components/adventure/CombatPanel.vue')
     expect(panel, '宿主只挂载情报面板,不许再自己算分析').not.toContain('analyzeBattle(')
-    // 地界卡与出行弹窗各成一域:判据随本体走
     const card = src('../components/adventure/RegionCard.vue')
     expect(card, '卡片该摊开已算好的来源').toContain('foeOrigin')
     expect(card, '卡片与战报共用同一个格式化').toContain('foeOriginPartsText(')

@@ -1,11 +1,6 @@
 import type { Ref } from 'vue'
 
-/**
- * 稀有提示的全屏金光计时器。
- *
- * 它写的是 ToastHost 组件私有的 flashId,所以生命周期必须归宿主:
- * 卸载后回调不再有意义,新提示到来时也要先撤掉上一枚计时器。
- */
+/** 稀有提示的全屏金光计时器;写 ToastHost 私有的 flashId,生命周期归宿主 */
 export function createToastFlashTimer(flashId: Ref<number | null>, delayMs = 1200): {
   flash(id: number): void
   dispose(): void
@@ -32,11 +27,8 @@ export function createToastFlashTimer(flashId: Ref<number | null>, delayMs = 120
 }
 
 /**
- * ToastHost 的同帧多条新提示。
- *
- * 转世落地会在同一帧连续 push rare/rare/info。若只盯最后一条,Vue 批处理后
- * 只有末条 info 发声,稀有的金光与音效被吃掉。id 单调递增,凡是超过已播最大
- * id 的新条都各自播一声;稀有级逐条点亮金光。
+ * ToastHost 的同帧多条新提示。同帧可能连续 push(如转世落地 rare/rare/info),只盯末条会吞掉稀有的金光与音效。
+ * id 单调递增:超过已播最大 id 的各播一声,稀有级逐条点亮金光。
  */
 export interface ToastAnnouncer {
   announce(toasts: readonly { id: number; kind: string }[]): void

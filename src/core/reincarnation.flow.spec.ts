@@ -1,15 +1,6 @@
 /**
- * 转世交割的端到端契约(confirmReincarnation)
- *
- * prepare/confirm 是转世的唯一入口,却一直没有一张直接钉住交割结果的测试网:
- * 此前的覆盖散在 game.spec(草稿作废)与 player.rebirth.spec(rebirth 单点)里,
- * 没人验证「点下踏入轮回之后,玩家拿走的和放下的各是什么」—— 这正是 ReincarnationDialog
- * 「此生交割」那一格玩家的全部预期。
- *
- * 这里按 DEC-003 的字面契约逐条钉住:
- *   - 留下的是「我是谁」:道果/先天之姿/宿慧/称号/认知/道源道痕/世界记忆(机缘/连锁)都要在;
- *   - 放下的是「我拥有多少」:境界/灵石与材料/装备/法宝/丹药/灵兽/洞府/灵脉/区域进度全部归零;
- *   - 新的皮囊换新的道号(转世重掷姓名,不沿用旧名)。
+ * 转世交割端到端契约(confirmReincarnation),对应 ReincarnationDialog「此生交割」与 DEC-003:
+ * 留下「我是谁」,放下「我拥有多少」,转世重掷道号。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -29,7 +20,7 @@ import { prepareReincarnation, confirmReincarnation } from '@/core/reincarnation
 import { signLifeTrial, lifeTrialRules } from '@/core/lifeTrialService'
 import { gn, toNum } from '@/utils/gnum'
 
-/** 摆好一个「有存量的人生」:某种境界、带资源装备、带跨世资产、有记忆,再转世 */
+/** 摆好一个有存量的人生:境界、资源装备、跨世资产、记忆 */
 function seedLife(): void {
   const player = usePlayerStore()
   const res = useResourcesStore()
@@ -69,7 +60,6 @@ function seedLife(): void {
   adv.cleared = ['qingyun']
   dongfu.setLevel('field', 8)
   player.setPet('pet_yueying')
-  // 道童:今生观中家业(带羁绊),应与洞府/灵兽同随转世散去
   useApprenticeStore().$patch({
     apprentices: [{ uid: 'apt1', archId: STARTER_APPRENTICE, level: 3, bond: 20, task: null }] as never
   })
@@ -111,10 +101,8 @@ describe('转世交割 · confirmReincarnation', () => {
     expect(player.major).toBe(0)
     expect(player.sub).toBe(0)
     expect(toNum(player.exp)).toBe(0)
-    // 灵石特判:清零后,「完成第一次转世」的成就(a_re1)会给新世补发一小笔悟道与灵石,
-    // 故不代表 0 —— 但带进的存量(99999)必须消失,所剩只是新世的开局馈赠
+    // a_re1(完成第一次转世)会给新世补发灵石与悟道:灵石只断言存量消失,悟道不断言
     expect(toNum(res.spiritStone)).toBeLessThan(1000)
-    // 悟道同理:存量清零,新世开局可能拿 a_re1 的悟道,故不精确断言
     expect(res.herb).toBe(0)
     expect(res.ore).toBe(0)
     expect(res.page).toBe(0)
@@ -135,7 +123,6 @@ describe('转世交割 · confirmReincarnation', () => {
   })
 
   it('真传道童转世:道童本体散去,但一丝缘(rebirthKarma)随世带走', () => {
-    // 与上一条「列表清空」共存:道童本体仍是今生家业随皮囊散,唯真传之缘在 rebirthKarma 里带过世
     const appr = useApprenticeStore()
     useApprenticeStore().$patch({
       apprentices: [{ uid: 'apt2', archId: STARTER_APPRENTICE, level: 9, bond: 150, task: null }] as never
@@ -156,22 +143,17 @@ describe('转世交割 · confirmReincarnation', () => {
     prepareReincarnation()
     confirmReincarnation(null)
 
-    // 道果 +本世凝得;天赋在;宿慧上涨;称号在
     expect(player.reincarnation.daoFruit).toBeGreaterThan(fruitBefore)
     expect(player.reincarnation.talents).toContain('t_xian')
     expect(player.reincarnation.insight).toBeGreaterThan(40)
     expect(player.titleId).toBe('ti_lianxu')
-    // 认知跨世保留(丹方/药性/器纹在 lore)
     expect(lore.materialLore.m_lingzhi).toBe(2)
-    // 道源与道痕随神魂不灭;魂灵亦然
     expect(endgame.daoSource).toBe(5)
     expect(endgame.souls).toHaveLength(1)
-    // 「世界记得你的选择」:机缘/连锁/宿敌/区域战绩都在
     expect(player.fortuneChoices).toEqual({ ft_sword_remnant: 'take' })
     expect(player.eventChains).toEqual({ old_man_stone: 2 })
     expect(player.nemeses).toHaveLength(1)
     expect(player.regionStats.qingyun!.totalFights).toBe(30)
-    // 成就计数也随神魂不灭
     expect(quests.counters.kills).toBe(99)
   })
 
@@ -192,7 +174,6 @@ describe('转世交割 · confirmReincarnation', () => {
     prepareReincarnation()
     confirmReincarnation(null)
 
-    // 习过的功法门类仍在(记忆),但层数随皮囊归到一层起手
     expect(cult.learned.m_taixuan).toBeGreaterThanOrEqual(1)
     expect(cult.learned.m_jinlian).toBeGreaterThanOrEqual(1)
     expect(Math.max(cult.learned.m_taixuan!, cult.learned.m_jinlian!)).toBeLessThan(5)
@@ -205,7 +186,7 @@ describe('转世交割 · confirmReincarnation', () => {
     const lives = player.reincarnation.lives.length
     const fruit = player.reincarnation.daoFruit
 
-    // 界面已关(view 置 null),再点一次踏步轮回须被守卫挡下,不二次发放
+    // 界面已关(view 置 null),守卫挡下
     confirmReincarnation(null)
     expect(player.reincarnation.lives).toHaveLength(lives)
     expect(player.reincarnation.daoFruit).toBe(fruit)
@@ -214,18 +195,17 @@ describe('转世交割 · confirmReincarnation', () => {
 
   it('逆旅契随世交割:归档进履历、本世契清空、下世不再受契约束', () => {
     const player = usePlayerStore()
-    // seedLife 给 daoFruit=100,tr_gu 需 24 —— 签得动
+    // seedLife 给 daoFruit=100,tr_gu 需 24
     expect(signLifeTrial('tr_gu')).toBe(true)
     expect(lifeTrialRules()).toBeDefined()
 
     prepareReincarnation()
     confirmReincarnation(null)
 
-    // 唯一回报落进履历尾部(归档),本世契随皮囊散去(清空) —— 顺序错了会丢奖励或跨世泄漏
+    // 先归档、后清空 —— 顺序错了会丢奖励或跨世泄漏
     const last = player.reincarnation.lives[player.reincarnation.lives.length - 1]
     expect(last?.trialId, '履历应记为这世所立之契').toBe('tr_gu')
     expect(player.reincarnation.trial, '本世契应随转世清空,不泄漏进下一世').toBeNull()
-    // 下一世无契规则注入
     expect(lifeTrialRules()).toBeUndefined()
   })
 })

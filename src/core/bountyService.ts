@@ -1,9 +1,6 @@
 /**
- * 坊市悬赏板 —— 订单生成 / 定价 / 贡器现算。
- *
- * 与坊市同纪律:全走 stoneByTier 与炼制石耗,不另立经济口径。募材价高于摆摊售出、
- * 低于坊市购入(无「买→交」套利);募丹高于售出、低于购入;贡器价随所交之品的品质,
- * 但始终低于坊市购入同品质(交一柄换不回买一柄的本钱)。
+ * 坊市悬赏板:订单生成 / 定价 / 贡器现算。全走 stoneByTier 与炼制石耗,不另立经济口径。
+ * 募材、募丹价介于摆摊售出与坊市购入之间(无「买→交」套利);贡器价随所交之品的品质,恒低于坊市购入同品质。
  */
 import type { GNum } from '@/types'
 import { gn, gnZero, mulN } from '@/utils/gnum'
@@ -28,10 +25,8 @@ import {
   type BountySlot
 } from '@/data/bounty'
 
-/** 每轮刷新取一味当前境界可达的可炼丹,按刷新周期取模,让每次换一招、同周期内稳定 */
+/** 每轮取一味当前境界可达的可炼丹(与坊市货架同口径 salePills),按刷新周期取模,同周期内稳定 */
 function pickPill(major: number, now: number): string {
-  // 与坊市货架同口径(salePills):只从「现境界拿得到、且能炼丹方」里取 ——
-  // 悬赏不会挂出低境界玩家炼不了也未必有的高境丹药(那张单会整轮成为死位)。
   const pool = salePills(major).map(p => p.id)
   const idx = Math.floor(now / (BOUNTY_REFRESH_SECONDS * 1000)) % Math.max(1, pool.length)
   return pool[idx] ?? ''
@@ -45,9 +40,9 @@ export function equipBountyReward(tier: number, qualityRank: number): { stone: G
   }
 }
 
-/** 募草交货可得:按**所交的品阶**计价、按**当前境界层级**折算,每株 = 购价 ×(悬赏档 4.5 / 购入档 6),恒在摆摊与购入之间 */
+/** 募草交货可得:按所交品阶计价、按当前境界层级折算;每株 = 购价 ×(悬赏档 4.5 / 购入档 6) */
 export function herbBountyReward(grade: HerbGrade, major: number, target: number): GNum {
-  // 购价是 4 的倍数 → 每株悬赏 = 购价 ×3/4 恒为整数;round 抹掉二进制小数的±尾差(真值恒整数)
+  // 购价是 4 的倍数,×3/4 恒为整数;round 只抹浮点尾差
   const unit = Math.round(herbBuyPrice(grade, major) * (BOUNTY_MAT_UNIT_AMOUNT / MARKET_MAT_STONE_UNITS))
   return mulN(gn(unit), target)
 }
@@ -58,10 +53,7 @@ export function generateBounty(major: number, now: number): BountySlot[] {
   const pd = pillDef(pillId)
   const matTarget = BOUNTY_MAT_TARGET
   const oreReward = stoneByTier(marketTier(major), matTarget * BOUNTY_MAT_UNIT_AMOUNT)
-  /**
-   * 这一境若一味可炼丹都挑不出来,募丹位就落回募草:
-   * 空 kindId 的丹单既没有货名、也交不掉,还会按 0 赏格挂满一窗。
-   */
+  /** 挑不出可炼丹时募丹位落回募草:空 kindId 的丹单交不掉 */
   const pillSlot: BountySlot = pd
     ? {
         idx: 2,

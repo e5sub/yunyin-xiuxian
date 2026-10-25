@@ -1,6 +1,4 @@
-/**
- * Phase 31.0 A2:区域动态事件 —— 临时异象,自动过期
- */
+/** 区域动态事件:临时异象,自动过期 */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { REGION_EVENTS, regionEventDef, currentRegionEvent } from './regionEvent'
@@ -24,7 +22,6 @@ describe('区域动态事件(regionEvent)', () => {
     player.setRegionEvent({ regionId: 'qingyun', eventId: 'yaochao', endsAt: Date.now() + 60_000 })
     expect(currentRegionEvent('qingyun')?.eventId).toBe('yaochao')
     expect(currentRegionEvent('luoxia')).toBeNull()
-    // 过期
     player.setRegionEvent({ regionId: 'qingyun', eventId: 'gumu', endsAt: Date.now() - 1000 })
     expect(currentRegionEvent('qingyun')).toBeNull()
     expect(player.regionEvent).toBeNull()

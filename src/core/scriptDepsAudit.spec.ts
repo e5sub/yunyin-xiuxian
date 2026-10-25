@@ -1,18 +1,7 @@
 /**
- * 脚本依赖审计 —— scripts/ 里的第三方 import 必须在 package.json 里声明
- *
- * 由来:`scripts/gen-pwa-icons.mjs` 一直 `import sharp from 'sharp'`,而 sharp
- * **从来没进过 package.json / bun.lock**。在本机它跑得通(残留的全局安装),
- * 干净 clone 上则直接 `Cannot find package 'sharp'` —— 而 README 与
- * README.Docker.md 都把这个命令写成「改图标就这么做」。
- *
- * 这类缺陷没有任何运行期信号:CI 从不跑这些脚本,文档自检只核「命令存在」,
- * 不核「命令跑得起来」。所以判据放在这里,读源码文本 + package.json 对账。
- *
+ * 脚本依赖审计:scripts/ 下的第三方裸模块 import 须在 package.json 声明(相对路径、node: 内置模块不算)。
+ * CI 不跑这些脚本,文档自检只核命令存在;本机残留的全局安装会掩盖漏声明,干净 clone 上 Cannot find package。
  * 故障注入:在 scripts/ 里新建一个 `import sharp from 'sharp'` 的空脚本 → 第二条红。
- *
- * 只审 scripts/ 下的第三方裸模块名(相对路径、node: 内置模块、仓内文件自不算),
- * 因为那是「换了台机器就装不上」的唯一来源。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -28,7 +17,6 @@ const DECLARED = new Set([
   ...Object.keys(PKG.devDependencies ?? {})
 ])
 
-/** 递归收集 scripts/ 下的 .mjs / .ts(跳过 node_modules) */
 function scriptFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name)
@@ -42,11 +30,11 @@ function scriptFiles(dir: string, out: string[] = []): string[] {
   return out
 }
 
-/** node 内置模块(裸名写法,如 fs / path / url) */
+/** node 内置模块的裸名写法 */
 const BUILTINS =
   /^(?:assert|buffer|child_process|cluster|crypto|dgram|dns|events|fs|http|https|module|net|os|path|perf_hooks|process|querystring|readline|stream|string_decoder|timers|tls|tty|url|util|v8|vm|worker_threads|zlib)(?:\/|$)/
 
-/** 取一份脚本里所有第三方裸模块名(去掉子路径:`playwright/test` → `playwright`) */
+/** 脚本里的第三方裸模块名,去子路径(`playwright/test` → `playwright`) */
 function bareImports(src: string): string[] {
   const out: string[] = []
   const patterns = [

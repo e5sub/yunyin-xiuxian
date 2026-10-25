@@ -38,12 +38,7 @@ function releaseListenerIfIdle(): void {
   listening = false
 }
 
-/**
- * 处理一次 Esc。只有栈顶那层会被关闭;栈顶不可关时吞掉这次 Esc,
- * 不越层去关下面的窗。
- *
- * 返回 true 表示这次按键已被弹窗消费。
- */
+/** 处理一次 Esc:只关栈顶;栈顶不可关时吞掉,不越层。返回 true = 已被弹窗消费 */
 export function handleEscape(): boolean {
   const top = stack[stack.length - 1]
   if (!top) return false

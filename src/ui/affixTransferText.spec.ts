@@ -1,8 +1,6 @@
 /**
- * 词条转移文案(议题 #22)—— 按界面文案规范守长度与措辞
- *
- * 规范:状态 ≤8 字、按钮 2~6 字、提示 ≤12 字;不解释、不劝导、不用客服话术。
- * 故障注入:把任一标签改成「请选择目标」→ 禁用措辞那条红。
+ * 词条转移文案(议题 #22):状态 ≤8 字、按钮 2~6 字、提示 ≤12 字;不解释、不劝导、不用客服话术。
+ * 故障注入:把任一标签改成「请选择目标」,禁用措辞那条红。
  */
 import { describe, expect, it } from 'vitest'
 import { AFFIXES } from '@/data/affixes'
@@ -70,7 +68,7 @@ describe('词条转移文案 · 长度与措辞', () => {
 
   it('数值行:价签带灵石;词条整句代入数值;属性变化只列变了的', () => {
     expect(transferStoneText(gn(12345))).toMatch(/^灵石 /)
-    // 名字取 STAT_NAMES:与面板、战报同一条词条同一个叫法
+    // 名取 STAT_NAMES,与面板、战报同名
     expect(transferAffixText({ id: 'atk1', roll: 1 })).toBe('「锋锐」攻击 +5%')
     // 重名的「破妄」靠效果句分得开
     expect(transferAffixText({ id: 'dmg1', roll: 0 })).not.toBe(transferAffixText({ id: 'ac2', roll: 0 }))

@@ -52,18 +52,14 @@ describe('成就达成时刻', () => {
     expect(quests.unlockAchievement('a_test')).toBe(true)
     const stamp = quests.achievedAt['a_test']
     expect(stamp).toBeGreaterThanOrEqual(before)
-    // 重复达成:不重记,保持最初那刻(成就页回看的是达成时刻,不是最近一次)
+    // 重复达成:不重记,保持最初那刻
     expect(quests.unlockAchievement('a_test')).toBe(false)
     expect(quests.achievedAt['a_test']).toBe(stamp)
     expect(quests.achieved).toContain('a_test')
   })
 })
 
-/**
- * 成就/名号/图鉴都是「集合」语义:坏档里同一条写两遍时,
- * 界面按 Set 判「有没有」只画一枚,而计数按 `.length` 数会多报 ——
- * 于是出现「成就 70/62」「名号 N/总数」这类自相矛盾的读数。
- */
+/** 成就/名号/图鉴是集合语义:坏档同一条写两遍时,界面按 Set 只画一枚,计数按 `.length` 会多报 */
 describe('sanitize:重复条目不再把计数撑破', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
@@ -95,10 +91,7 @@ describe('sanitize:重复条目不再把计数撑破', () => {
   })
 })
 
-/**
- * 主线任务链是游戏的脊梁:它曾只铺到化神(第 5 个大境界)。
- * 扩界后若忘了往下铺,玩家在 16 个新境界里会失去全部主线指引。
- */
+/** 扩界须同步往下铺主线节点 */
 describe('主线任务链覆盖', () => {
   it('每一个大境界都有对应的主线节点,且最后一个落在当前最高境界', () => {
     const questRealms = MAIN_QUESTS.filter(q => q.cond.type === 'realm').map(q => (q.cond as { major: number }).major)
@@ -150,20 +143,13 @@ describe('任务与日课公共写入边界', () => {
   })
 })
 
-/**
- * 每日任务领奖与跨日重置。
- *
- * checkDaily(progress)在每次 track 时走:当日达标 → markDailyDone + 发奖;
- * engine 在日期变化时调 rolloverDailyIfNeeded。quests.spec 之前只断言「每日任务仍为
- * 三条」,领奖一次/跨日可重领/按日 dailyDelta 从没直接测过。这里用显式日期字符串
- * 定死「当天/次日」,并清掉成就/主线的一次性赏钱(免干扰),只断言日课自己的账。
- */
+/** 日课领奖与跨日重置:checkDaily(progress)随 track 判达标并发奖,engine 换日调 rolloverDailyIfNeeded */
 describe('每日任务领奖与跨日重置(daily)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
   })
 
-  // 清掉成就/主线的一次性赏钱,免得 track 里 checkAchievements 的推进混进灵石差
+  // 清掉成就/主线一次性赏钱,免得 checkAchievements 混进灵石差
   function seedDay(date: string): void {
     useQuestsStore().$patch({ achieved: ACHIEVEMENTS.map(a => a.id), mainIdx: MAIN_QUESTS.length - 1 })
     useQuestsStore().rolloverDaily(date)
@@ -180,7 +166,7 @@ describe('每日任务领奖与跨日重置(daily)', () => {
     expect(after1).toBeGreaterThan(stone0) // 领到 stoneTier 20
     track('kills', 15) // 同一天再达标:done 已含
     const after2 = toNum(r.spiritStone)
-    expect(after2).toBe(after1) // 不重复领 —— no-double-claim
+    expect(after2).toBe(after1) // 不重复领
   })
 
   it('跨日重置:done 清空、base 重设;再达标可再领(跨日重领)', () => {
@@ -191,9 +177,9 @@ describe('每日任务领奖与跨日重置(daily)', () => {
     const day1 = toNum(r.spiritStone)
     expect(q.daily.done).toContain('d_kill')
     q.rolloverDaily('2026-10-11') // 次日
-    expect(q.daily.done).toEqual([]) // done 重置
+    expect(q.daily.done).toEqual([])
     track('kills', 15)
-    expect(q.daily.done).toContain('d_kill') // 跨日可再领
+    expect(q.daily.done).toContain('d_kill')
     expect(toNum(r.spiritStone)).toBeGreaterThan(day1)
   })
 
@@ -209,10 +195,10 @@ describe('每日任务领奖与跨日重置(daily)', () => {
   it('跨日后 dailyDelta 只算新一天,不把前一天进度并进来', () => {
     seedDay('2026-10-10')
     const q = useQuestsStore()
-    track('kills', 15) // 第一天完成,counters.kills=15
+    track('kills', 15) // counters.kills=15
     q.rolloverDaily('2026-10-11') // base.kills=15
-    expect(q.dailyDelta('kills')).toBe(0) // 前一天不累计
+    expect(q.dailyDelta('kills')).toBe(0)
     track('kills', 3)
-    expect(q.dailyDelta('kills')).toBe(3) // 只算新一天的 3
+    expect(q.dailyDelta('kills')).toBe(3)
   })
 })

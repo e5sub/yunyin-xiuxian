@@ -27,13 +27,7 @@
   import { formatGN } from '@/utils/format'
   import GameIcon from '@/components/common/GameIcon.vue'
 
-  /**
-   * 封存操作 —— 词条行上的「封存 / 解封」一组,自 EquipmentDetailDialog 迁入。
-   *
-   * 能封与否只问 core/reforge 的 sealCost / sealShortfall(与 sealAffix 同源):
-   * 价签读不出、或这条已在封存名单里,就换上解封钮;付不起则保留封存钮但置灰,
-   * 并把实际石差写在钮上。解封免费即时 —— 锁是花过的沉没成本。
-   */
+  /** 能封与否只问 core/reforge 的 sealCost / sealShortfall(与 sealAffix 同源);解封免费即时 */
   const props = defineProps<{ affixId: string; name: string }>()
 
   const ui = useUiStore()

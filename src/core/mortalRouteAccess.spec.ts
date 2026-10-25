@@ -1,22 +1,8 @@
 /* eslint-disable no-console */
 /**
- * 本世路线可达性审计
- *
- * 锚点被实测证明是体验污染源:三世的首段全部是青云山麓,
- * 起手路线形状也被钉死。根因不在表现层 ——
- * **旧 REGIONS 解锁链仍握有路线准入权。**
- *
- * 本轮把准入权迁到 mortalWorld.route,并验证同一条原则在各种状态下都成立:
- *
- *   **本世路线决定本世可达性。**
- *
- * 判据不是「首段不是锁着的」,而是:
- * **新号在不依赖任何旧区域解锁状态的情况下,能否完整走完随机生成的路线。**
- *
- * 另有一条必须写进测试的约束:按 route index 开放,**不按 tier**。
- * 生成器允许 `3 → 9 → 7 → 14 → 11` 这类回落,若按层级判定,
- * 第 7 段会因为层级低于前一段而被判为早该开放,直接与路线顺序矛盾。
- * 层级是路线的特征,不是解锁顺序。
+ * 本世路线可达性审计:本世路线决定本世可达性。
+ * 判据:新号不依赖任何旧区域解锁状态,能完整走完随机生成的路线。
+ * 按 route index 开放,不按 tier(路线允许层级回落;层级是路线特征,不是解锁顺序)。
  */
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -47,7 +33,6 @@ function walkRoute(): { step: number; name: string; couldEnter: boolean }[] {
   const out: { step: number; name: string; couldEnter: boolean }[] = []
   for (const [i, p] of w.chain.entries()) {
     out.push({ step: i + 1, name: p.name, couldEnter: canEnterNode(p.nodeId) })
-    // 通过这一段,下一段才该开
     advanceRoute(p.fromId)
   }
   return out
@@ -56,7 +41,6 @@ function walkRoute(): { step: number; name: string; couldEnter: boolean }[] {
 describe('路线可达性 · 新号', () => {
   it('新号不依赖任何旧解锁状态即可走完整条路线', () => {
     const adventure = useAdventureStore()
-    // 关键:把旧解锁链清空,证明路线不再依赖它
     adventure.unlocked = []
     adventure.cleared = []
     const w = ensureMortalWorld()
@@ -73,7 +57,6 @@ describe('路线可达性 · 新号', () => {
     const adventure = useAdventureStore()
     adventure.unlocked = []
     const w = ensureMortalWorld()!
-    // 一步都没走
     expect(canEnterNode(w.chain[0]!.nodeId)).toBe(true)
     for (let i = 1; i < w.chain.length; i += 1) {
       expect(canEnterNode(w.chain[i]!.nodeId)).toBe(false)
@@ -96,7 +79,6 @@ describe('路线可达性 · 按 route index 而非 tier', () => {
   it('回落路线上,层级更低的后续段仍须等前一段通过', () => {
     const adventure = useAdventureStore()
     adventure.unlocked = []
-    // 找一条带回落的路线(后一段层级低于前一段)
     let world = null
     for (let seed = 1; seed < 400 && !world; seed += 1) {
       const w = generateMortalWorld(seed * 7919)
@@ -110,9 +92,7 @@ describe('路线可达性 · 按 route index 而非 tier', () => {
     const dipIndex = world!.chain.findIndex((p, i) => i > 0 && p.tier < world!.chain[i - 1]!.tier)
     console.log(`\n回落路线:${tiers.join(' → ')}(第 ${dipIndex + 1} 段层级低于前一段)`)
 
-    // 按 tier 判定的话,这一段「层级更低」会被误判为早该开放
     expect(canEnterNode(world!.chain[dipIndex]!.nodeId)).toBe(false)
-    // 走到它的前一段才开
     for (let i = 0; i < dipIndex; i += 1) advanceRoute(world!.chain[i]!.fromId)
     expect(canEnterNode(world!.chain[dipIndex]!.nodeId)).toBe(true)
     console.log('层级低不等于早开放 —— 层级是路线特征,不是解锁顺序')
@@ -127,11 +107,9 @@ describe('路线可达性 · 按 route index 而非 tier', () => {
       if (w.chain.some((p, i) => i > 0 && p.tier < w.chain[i - 1]!.tier)) world = w
     }
     adventure.setMortalWorld(world)
-    // 按层级升序排出来的顺序,与路线顺序不同
     const byTier = [...world!.chain].sort((a, b) => a.tier - b.tier).map(p => p.nodeId)
     const byRoute = world!.chain.map(p => p.nodeId)
     expect(byTier).not.toEqual(byRoute)
-    // 而可达性只跟路线顺序走
     const walk = walkRoute()
     for (const s of walk) expect(s.couldEnter).toBe(true)
     console.log('\n层级序与路线序不同,可达性只认路线序')
@@ -144,7 +122,6 @@ describe('路线可达性 · 旧存档与换界', () => {
     adventure.unlocked = ['qingyun', 'luoxia']
     adventure.cleared = ['qingyun']
     const w = ensureMortalWorld()!
-    // 旧解锁状态不影响路线:首段可进,其余待通
     expect(canEnterNode(w.chain[0]!.nodeId)).toBe(true)
     const openedByOldState = w.chain.slice(1).filter(p => canEnterNode(p.nodeId))
     expect(openedByOldState).toHaveLength(0)
@@ -173,12 +150,10 @@ describe('路线可达性 · 旧存档与换界', () => {
     adventure.cleared = REGIONS.map(r => r.id)
     const w = ensureMortalWorld()!
     const first = w.chain[0]!
-    // 首段的地界恰在旧链里已「清」过 —— 这正是死锁的入口:boss 判定按旧链变 null
+    // 首段地界旧链已清(boss 判定按旧链变 null,死锁入口),本世节点未通
     expect(adventure.cleared).toContain(first.fromId)
-    // 但本世节点还没通;此前 clearRegionAndUnlockNext 在一进就 return,首段永远清不掉
     expect(isNodeCleared(first.nodeId)).toBe(false)
     clearRegionAndUnlockNext(first.fromId)
-    // 现在仍把本世节点推进:路线不再被旧链已清记录卡死
     expect(isNodeCleared(first.nodeId), '旧档已清区域的首段也要能推进本世路线').toBe(true)
     if (w.chain.length > 1) {
       expect(canEnterNode(w.chain[1]!.nodeId), '路线由此向前').toBe(true)
@@ -202,7 +177,6 @@ describe('路线可达性 · 旧存档与换界', () => {
   it('节点 id 随路线位置生成,同一区域换段不会串味', () => {
     const a = generateMortalWorld(11111)
     const b = generateMortalWorld(22222)
-    // 节点 id 含段序,故同一 region 在不同段是不同节点
     const shared = a.chain.filter(p => b.chain.some(q => q.fromId === p.fromId))
     for (const p of shared) {
       const q = b.chain.find(x => x.fromId === p.fromId)!
@@ -220,14 +194,11 @@ describe('路线可达性 · 本世路线是主线,不是唯一入口', () => {
     const w = ensureMortalWorld()!
     const inRoute = new Set(w.chain.map(p => p.fromId))
 
-    // 挑一处不在本世路线里的地界,显式放进旧解锁链。
-    // 原实现依赖 qingyun/luoxia 恰好在路线外 —— 世界种子是未播种的 Date.now(),
-    // 两处都被抽进路线时 outside 取到 undefined,startExploration 落回 !region 返 false(偶发失败)
+    // 路线外地界须动态挑:世界种子取 Date.now(),写死某处会偶发被抽进路线
     const outside = REGIONS.find(r => !inRoute.has(r.id) && !adventure.unlocked.includes(r.id))!
     adventure.unlocked = [outside.id]
     expect(inRoute.has(outside.id)).toBe(false)
 
-    // 曾经这里返回 false:本世之界一生成,诸界总览十四处全部点不动
     expect(startExploration(outside.id, 'normal')).toBe(true)
     adventure.setSession(null)
     console.log(
@@ -242,7 +213,6 @@ describe('路线可达性 · 本世路线是主线,不是唯一入口', () => {
     adventure.cleared = []
     const w = ensureMortalWorld()!
     const inRoute = new Set(w.chain.map(p => p.fromId))
-    // 既不在路线里、旧链也没开的地界,仍然进不去
     const locked = REGIONS.find(r => !inRoute.has(r.id) && !adventure.unlocked.includes(r.id))!
     expect(startExploration(locked.id, 'normal')).toBe(false)
     console.log(`\n「${locked.name}」既不在本世路线、旧链也未开 → 仍进不去`)
@@ -253,10 +223,8 @@ describe('路线可达性 · 本世路线是主线,不是唯一入口', () => {
     adventure.unlocked = REGIONS.map(r => r.id)
     adventure.cleared = []
     const w = ensureMortalWorld()!
-    // 路线中段:旧链已开,故仍可进 —— 路线不没收既有权限
     expect(startExploration(w.chain[1]!.fromId, 'normal')).toBe(true)
     adventure.setSession(null)
-    // 路线外的地界:旧链开了就能进
     const outside = REGIONS.find(r => !w.chain.some(p => p.fromId === r.id))!
     expect(startExploration(outside.id, 'normal')).toBe(true)
     adventure.setSession(null)
@@ -281,21 +249,9 @@ describe('路线可达性 · 本世路线是主线,不是唯一入口', () => {
 })
 
 /**
- * 界面与守卫必须共用同一个准入谓词,且任何状态下都走得动。
- *
- * 两次玩家反馈把这条不变量逼了出来:
- *
- * 1.「显示了进入按钮但依旧进不去」—— 判据分了两份:地图按钮读
- *    adventure.unlocked,守卫在地界属于本世路线时只看 canEnterNode。
- * 2.「进甲要先解锁乙,进乙要先解锁丙」—— 把界面改成服从守卫之后,
- *    路线内「只认段序」的语义暴露出更严重的后果:新号旧链只开一处,
- *    而路线首段常排在地界表靠后、被按旧链截断的可见范围挡住,
- *    实测**整页 0 个出发按钮**;拦截理由又指向同样被拦的前一段,
- *    连成一串推诿。
- *
- * 所以这里钉两条:
- *   **凡是界面给出出发按钮的地界,守卫都必须放行。**
- *   **任何存档状态下,至少有一处地界可进。**
+ * 界面与守卫共用同一个准入谓词。钉两条:
+ *   界面给出出发按钮的地界,守卫必须放行;
+ *   任何存档状态下至少有一处地界可进。
  */
 describe('路线可达性 · 界面与守卫共用一个谓词', () => {
   it('回归:界面谓词与守卫结论逐处一致', () => {
@@ -317,8 +273,6 @@ describe('路线可达性 · 界面与守卫共用一个谓词', () => {
   })
 
   it('回归:任何旧链进度下都至少有一处可进 —— 不会整页 0 个按钮', () => {
-    // 玩家反馈「进甲要先解锁乙,进乙要先解锁丙」的根因就是这条不成立:
-    // 新号旧链只开一处时实测 0 个出发按钮
     console.log('\n旧链已开  可进处数  路线首段')
     for (const open of [0, 1, 2, 3, 5, 8, 13, REGIONS.length]) {
       setActivePinia(createPinia())
@@ -333,13 +287,9 @@ describe('路线可达性 · 界面与守卫共用一个谓词', () => {
   })
 
   it('故障注入:还原旧的两套判据,新号的历练页确实一个按钮都没有', () => {
-    // 上一条若只统计「可进的地界数」会得出旧语义也没问题的错误结论 ——
-    // 路线首段在旧语义下**是可进的**,只是被历练页按旧链截断的可见范围挡住了。
-    // 死锁出在可见性,不在谓词,所以这里必须照着视图的算法数**可见的按钮**。
+    // 死锁出在可见性不在谓词:须照视图算法数可见按钮,只数可进地界数会误判旧语义无问题
     const OPEN = 1
-    // 死锁的成立条件比「首段靠后」更严格:旧链开着的那几处必须**全是**
-    // 路线成员且都还没轮到,此时它们在旧语义下逐个被路线拦住,
-    // 而路线首段又在可见范围之外 —— 于是一个能点的都不剩
+    // 死锁条件:旧链开着的几处全是路线成员且未轮到,且路线首段在可见范围外
     let world = null
     for (let seed = 1; seed < 3000 && !world; seed += 1) {
       const w = generateMortalWorld(seed * 7919)
@@ -394,7 +344,7 @@ describe('路线可达性 · 界面与守卫共用一个谓词', () => {
     const mid = w.chain[2]!
     const reason = entryBlockReason(mid.fromId)
     expect(reason).not.toBeNull()
-    // 关键:指向首段(眼下可去),而不是 mid 在路线上的前一段(它自己也被拦着)
+    // 指向首段(眼下可去),不指向 mid 在路线上的前一段(它自己也被拦)
     expect(reason).toContain(w.chain[0]!.name)
     expect(reason).not.toContain(w.chain[1]!.name)
     expect(entryBlockReason(w.chain[0]!.fromId)).toBeNull()
@@ -421,7 +371,6 @@ describe('路线可达性 · 界面与守卫共用一个谓词', () => {
 
 describe('路线可达性 · 锚点已可删除', () => {
   it('生成器不再需要 anchorRegionId,首段自由', () => {
-    // 锚点存在的唯一理由是「首段必须进得去」;可达性迁移后前提消失
     const firsts = new Set<string>()
     for (let i = 0; i < 12; i += 1) firsts.add(generateMortalWorld(i * 7919 + 3).chain[0]!.fromId)
     expect(firsts.size).toBeGreaterThan(1)
@@ -434,8 +383,7 @@ describe('路线可达性 · 锚点已可删除', () => {
   it('但首段层级仍只有两种取值 —— 骨架模板的既有局限,不是锚点残留', () => {
     const tiers = new Set<number>()
     for (let i = 0; i < 12; i += 1) tiers.add(generateMortalWorld(i * 104729 + 7).chain[0]!.tier)
-    // 七种骨架的起点都是 2 或 3,且 jitterTiers 刻意不扰动首点
-    //(首点决定「这一世从多深处起步」,乱动会破坏低起点的手感)
+    // 七种骨架的起点都是 2 或 3,jitterTiers 不扰动首点
     expect(tiers.size).toBeGreaterThan(1)
     expect(Math.max(...tiers)).toBeLessThanOrEqual(4)
     console.log(
@@ -448,26 +396,12 @@ describe('路线可达性 · 锚点已可删除', () => {
 })
 
 /**
- * 本世之界的种子与跨世去重 —— 两条判据都由实测逼出来。
- *
- * 一 **同一秒内转世两次,拿到的是同一个世界**。种子从前直接取
- *    `Date.now() % 1_000_003`,而墙钟秒位一天只有 86400 种取值:连按两次转世
- *    (或转世后读档再转)时两次种子一模一样,生成器从同一颗种子出发,交出来的是
- *    **同一方天地**。实测三次 reroll 的种子为 743775 → 949669 → 743775,首末两个
- *    世界逐字段相同 —— 转世这个动作最该给的东西,偏偏在最容易连按的那条路径上没给。
- *
- * 二 **跨世历史没有接上**。四门验收(结构新颖/可行构筑/路线骨架/事件节奏)全都要
- *    一个 history 去比,而 historyOf 只把**当前**世界喂进去 —— 转世后上一世那一方
- *    立刻从判据里消失。只与自己去重等于没有去重:连转两次可能拿到只差一次
- *    shuffle 的两世。
- *
- * 故障注入:种子退回 `return second` → 前两条红;
- * historyOf 退回 `cur ? [cur.seed] : []` → 第三条红。
+ * 本世之界的种子与跨世去重:同秒内连转须得不同种子;四门验收的 history 须含前几世,不止当前世界。
+ * 故障注入:种子退回 `return second` → 前两条红;historyOf 退回 `cur ? [cur.seed] : []` → 第三条红。
  */
 describe('本世之界 · 同一秒内的两次生成不能是同一方天地', () => {
   it('同一秒内连转两世,种子与骨架都不同', () => {
-    // 冻住墙钟:真实的 Date.now() 几乎不会让两次 reroll 落在同一秒,
-    // 而那条路径正是缺陷所在 —— 不冻就测不到
+    // 冻住墙钟,否则两次 reroll 几乎不会落在同一秒
     vi.useFakeTimers()
     vi.setSystemTime(1_760_000_000_000)
 
@@ -487,9 +421,7 @@ describe('本世之界 · 同一秒内的两次生成不能是同一方天地', 
   })
 
   it('同秒步进与验收门的候选链错开:步进取的不是 7919', () => {
-    // generateGatedMortal 的候选序列是 baseSeed + t * 7919,拿 7919 当同秒步进
-    // 只是把起点平移一格,仍落进同一条链 —— 实测同秒四回的受理种子全是 743775。
-    // 故这里钉住步进与候选链步长互质,平移后才真的落在链外。
+    // generateGatedMortal 的候选序列是 baseSeed + t * 7919:步进须与 7919 互质,取 7919 只是平移进同一条链
     const src = readFileSync(new URL('./mortalWorldService.ts', import.meta.url), 'utf8')
     expect(src, '同秒步进必须与验收门的候选步长(7919)错开').toMatch(/SEED_STEP = 104729/)
   })
@@ -509,17 +441,13 @@ describe('本世之界 · 跨世去重真的接上了历史', () => {
     const w2 = rerollMortalWorld()!
     const w3 = rerollMortalWorld()!
     expect(new Set([w1.seed, w2.seed, w3.seed]).size, '三世三颗种子,前世的种子不会原样重现').toBe(3)
-    // 种子不同不等于世界不同(不同种子可能交出同一份结构),故再钉一层骨架
+    // 种子不同不等于世界不同,再钉骨架
     expect(skeletonOf(w3), '第三世不该回到第一世的骨架').not.toBe(skeletonOf(w1))
   })
 
   /**
-   * 跨世历史这条判据**必须读源码**。
-   *
-   * 行为判据抓不住它:history 多一份少一份,生成器照旧交一方过四门的天地出来
-   * (实测把 history 整个清空,本条与上面两条全绿)。它的作用是让四门验收拿得到
-   * 「上一世是什么」,而这只能从「history 的原料是哪来的」上看出来 ——
-   * 退回 `cur ? [cur] : []` 的那一刻,判据就得红。
+   * 须读源码判:清空 history 时行为类用例仍全绿。
+   * 故障注入:退回 `cur ? [cur] : []`,本用例红。
    */
   it('history 的原料是历世账本,不是当前世界', () => {
     const src = readFileSync(new URL('./mortalWorldService.ts', import.meta.url), 'utf8')
@@ -534,8 +462,7 @@ describe('本世之界 · 跨世去重真的接上了历史', () => {
   it('历史里的种子仍能原样重建那一世(账目对得上)', () => {
     const w1 = ensureMortalWorld()!
     rerollMortalWorld()
-    // 种子是重建一方天地的唯一凭据:证明账上记的种子真的能取回那一世,
-    // 而不是记了一个再也对不上的号
+    // 种子是重建一世的唯一凭据
     const rebuilt = generateMortalWorld(w1.seed)
     expect(rebuilt.seed).toBe(w1.seed)
     expect(rebuilt.chain.length).toBe(w1.chain.length)

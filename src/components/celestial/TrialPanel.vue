@@ -131,7 +131,6 @@
           {{ m.name }}
         </button>
       </div>
-      <!-- 变数已选的,把效果正文亮出来 —— 手机没有 hover,赌约规则得看得见 -->
       <p v-if="selectedMutators.length" class="mt-1 text-[10px] leading-relaxed text-violet-ink">
         {{ selectedMutators.map(m => `${m.name}：${m.text}`).join('；') }}
       </p>
@@ -227,18 +226,14 @@
   import type { ReportView } from '@/components/celestial/BattleReportDialog.vue'
 
   /**
-   * 试炼册 —— 今日天道 / 天道变数 / 天道试炼 / 天道挑战书。
-   *
-   * 自 CelestialView 拆出:这四节只读 endgame 与各自的草稿态,变数抽取、挑战书草稿、
-   * 验约结果都只属于这一册,宿主不再代管 mutationDraw 与 draft。
-   * 开战结果仍经 emit('report') 交宿主统一判定归因(openReport 只此一处)。
+   * 试炼册:今日天道 / 天道变数 / 天道试炼 / 天道挑战书;草稿态归本册,宿主不代管。
+   * 开战结果经 emit('report') 交宿主统一判定归因(openReport 只此一处)。
    */
   const emit = defineEmits<{ report: [ReportView] }>()
   const endgame = useEndgameStore()
 
   // ---- 今日天道 ----
-  // 题面要随本地午夜更替:useWallNow 只每秒推进读数,日号 computed 只在
-  // 真正跨日时变化,daily 才重跑天道裁判 —— 同日内不会每秒重算整座模拟。
+  // 题面随本地午夜更替;日号 computed 只在跨日时变,daily 不会每秒重跑天道裁判
   const wallNow = useWallNow()
   const wallDay = computed(() => localDayNum(wallNow.value))
   const daily = computed(() => (endgame.daoPath ? todayChallenge(wallDay.value) : null))
@@ -253,8 +248,7 @@
   }
 
   function goDaily(): void {
-    // 用当下现取,不拿可能已跨午夜的缓存 daily.value(其 day 来自非响应式 todayChallenge,
-    // 驻足跨日仍是昨天那题):应战落闸与题面都要是今天的
+    // 现取当日题,不用 daily.value 缓存:驻足跨午夜时它可能仍是昨天那题
     const current = todayChallenge()
     if (!current) return
     const result = undertakeDaily(current)
@@ -303,7 +297,7 @@
   // ---- 天道挑战书 ----
   const draft = ref<ChallengeDraft>({ worldId: CELESTIAL_WORLDS[0]!.id, mutatorIds: [], pactId: null, name: '' })
   const challengeVerdict = ref<ChallengeVerdict | null>(null)
-  /** 已选变数(把效果正文亮到行内,移动端不靠 hover) */
+  /** 已选变数:效果正文亮到行内,移动端不靠 hover */
   const selectedMutators = computed(() => MUTATORS.filter(m => draft.value.mutatorIds.includes(m.id)))
   const challengePact = computed(() => (draft.value.pactId ? pactDef(draft.value.pactId) ?? null : null))
   const busy = computed(() => endgameBusy(endgame.worldRun, usePlayerStore().secretRealm, useAdventureStore().session))

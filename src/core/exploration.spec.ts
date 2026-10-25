@@ -28,10 +28,8 @@ import { startRetreat } from './earlyGameService'
 import { endgameBusy } from './endgameActivity'
 
 /**
- * 与 petPersonality.EFFECTS 里的 cautious 值保持一致(见 petPersonality.spec)。
- * 假 rng 用这个精确值来识别「败北保护那一掷」,测试不依赖调用顺序:
- * 只有 lossReduction 这一掷会被放行,其余 chance 一律为否
- * (事件跳掉、邂逅不触发、残魂不显现),从而干净地走到败北分支。
+ * 须与 petPersonality.EFFECTS 的 cautious 值一致(见 petPersonality.spec)。
+ * 假 rng 按此值识别败北保护那一掷,不依赖调用顺序;其余 chance 一律为否。
  */
 const CAUTIOUS_LOSS_REDUCTION = 0.04
 
@@ -59,7 +57,7 @@ vi.mock('@/utils/random', async importOriginal => {
   }
 })
 
-// resolveCombat 恒为可控胜负(默认败),makeEnemySnap 恒为占位敌
+// resolveCombat 胜负可控(默认败),makeEnemySnap 为占位敌
 vi.mock('./combat', async importOriginal => {
   const mod = await importOriginal<typeof import('./combat')>()
   return {
@@ -68,8 +66,7 @@ vi.mock('./combat', async importOriginal => {
       combatWin.value
         ? { win: true, rounds: 5, playerHpPct: 0.9 }
         : { win: false, rounds: 5, playerHpPct: combatHpPct.value },
-    // 敌战力从快照三维折出(enemyPowerOf 读 attack/defense/maxHp),
-    // 伪造件得按 CombatantSnap 的真形状给齐 —— 旧形状 {hp,def,atk} 会被 powerScore 踩到 undefined
+    // 伪造件须按 CombatantSnap 真形状给齐 attack/defense/maxHp(敌战力从这三维折出)
     makeEnemySnap: () => ({ attack: { m: 100, e: 0 }, defense: { m: 10, e: 0 }, maxHp: { m: 100, e: 0 } })
   }
 })
@@ -180,7 +177,7 @@ describe('连胜(TASK-022 接线 · runBattle 胜负驱动 player.winStreak)', (
     expect(player.winStreak).toBe(3)
     expect(useAdventureStore().session).not.toBeNull()
 
-    // 再来一场真正的败北(无灵兽保护):连胜清空
+    // 真正的败北:连胜清空
     player.setPet('pet_huoque') // fierce → lossReduction 0
     protect.value = false
     player.winStreak = 5
@@ -190,11 +187,6 @@ describe('连胜(TASK-022 接线 · runBattle 胜负驱动 player.winStreak)', (
   })
 })
 
-/**
- * 收尾总结的账 —— 会话里的 losses 与 wins 是同一本账,总结就不能只报一半。
- * 「胜 2 场」分不出是两战全胜还是九战两胜,而玩家判断这趟值不值得再来、
- * 以及成就门槛「胜+负 ≥3 算走过一趟」,看的正是总量。
- */
 describe('收尾总结 · 战绩报胜负两本账', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -247,13 +239,7 @@ describe('收尾总结 · 战绩报胜负两本账', () => {
   })
 })
 
-/**
- * 回合耗尽·遁走 vs 身死·败北:处置必须分开(回归)。
- *
- * 此前两种非胜结局吃同一套死亡级惩罚 —— 满血「遁走,你无功而返」也会被加 重伤、
- * 记一次宿敌败北,战报说「遁走」、总结却说「身负重伤」,自相矛盾且账目被污染。
- * 遁走(敌未死你亦未死,playerHpPct>0)只是无功而返:不重伤、不计宿敌,连胜照清。
- */
+/** 回归:遁走(playerHpPct>0)只是无功而返,不重伤、不计宿敌,连胜照清;身死照常惩罚 */
 describe('回合耗尽·遁走 ≠ 身死·败北(处置分开)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -297,10 +283,7 @@ describe('回合耗尽·遁走 ≠ 身死·败北(处置分开)', () => {
   })
 })
 
-/**
- * 镇压资格只在**首次**达成时自动接管(DEC-018):
- * 若每次优势取胜都自动转成收益态,玩家就没法自由选择「这一世我要历练它」。
- */
+/** 镇压资格只在首次达成时自动接管(DEC-018) */
 describe('镇压资格首次自动、此后自由', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -321,7 +304,7 @@ describe('镇压资格首次自动、此后自由', () => {
     expect(player.suppressedRegions, '首次达成应自动转收益').toContain('qingyun')
     expect(player.suppressQualified).toContain('qingyun')
 
-    // 玩家改主意:停取收益,重新历练此地
+    // 停取收益后再胜
     player.unsuppressRegion('qingyun')
     player.regionStats.qingyun = { ...stats }
     const now2 = Date.now() + 60_000
@@ -349,14 +332,7 @@ describe('闭关禁令:闭关期间不得进入历练(Phase 28 接线后)', () =
   })
 })
 
-/**
- * 在途互斥的**反方向** —— 远征途中不许再开一程历练。
- *
- * 330~332 轮把「同一时刻只走一条路」收进 endgameBusy,但只查了「别的活动在途时
- * 不许开远征/入秘境/立挑战书」。历练这一侧一直漏着:远征挂机时点「出发」照旧放行,
- * 于是历练心跳(tickExploration)与远征的 runSnap 携带气血/道途规则同时推进,
- * 两段在途互相串线 —— 正是那几轮要消灭的毛病。
- */
+/** 在途互斥的反方向:远征途中不许开历练,否则历练心跳与远征 runSnap 同时推进 */
 describe('在途互斥 · 远征途中不得再开一程历练', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -380,7 +356,7 @@ describe('在途互斥 · 远征途中不得再开一程历练', () => {
     }
     expect(startExploration('qingyun', 'normal'), '远征途中不该还能开历练').toBe(false)
     expect(adventure.session, '被拒就不该落会话').toBeNull()
-    // 拒因与 endgameBusy 单源:界面与核心说的是同一句话,不再各抄一份
+    // 拒因取 endgameBusy 单源
     expect(useUiStore().toasts.at(-1)?.text).toContain(endgameBusy(endgame.worldRun, null, null)!.reason)
   })
 
@@ -392,13 +368,7 @@ describe('在途互斥 · 远征途中不得再开一程历练', () => {
   })
 })
 
-/**
- * 会话账目与战报 —— 与 afterWin 的真实入账同源。
- *
- * 从前会话自己按 stoneByTier(tier, 10×modeMult) 记一份灵石(漏了福缘/区域事件/首领倍率),
- * expGain 从头到尾恒为 0,itemGain 数的是掉落**文案行数**(连「战利品翻倍!」也算一件)。
- * 于是「本次所得」和行囊里真正多出来的东西对不上 —— 这几个字段本来就是为了给玩家看。
- */
+/** 会话账目与战报:与 afterWin 的真实入账同源;itemGain 数实物件数,不数文案行 */
 describe('会话账目 · 与真实入账同源', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -414,7 +384,7 @@ describe('会话账目 · 与真实入账同源', () => {
 
     const now = Date.now()
     forgeSession(now)
-    // 第一战会带上首胜成就这类一次性奖励,不能拿来对账;比第二战的增量才干净
+    // 首战含首胜成就等一次性奖励,对账取第二战增量
     tickExploration(now)
     const s1 = adventure.session!
     const stoneBefore = { ...resources.spiritStone }
@@ -445,7 +415,7 @@ describe('会话账目 · 与真实入账同源', () => {
     forgeSession(now)
     tickExploration(now)
 
-    // 假 rng 把所有概率判定压成否:本战无实物掉落,但明细栏必须存在且为空表
+    // 假 rng 概率判定恒否:无实物掉落,明细栏须存在且为空表
     expect(Array.isArray(adventure.lastBattle?.loot)).toBe(true)
     expect(adventure.session!.itemGain, '无实物掉落时件数为 0(旧实现会把提示行算成一件)').toBe(0)
   })
@@ -461,7 +431,7 @@ describe('会话账目 · 与真实入账同源', () => {
     expect(view).not.toBeNull()
     expect(view!.enemyPower).toBeDefined()
     expect(view!.playerPower).toBeDefined()
-    // 无规则时「我」应等于面板战力(同一套 finalStats 三维折出)
+    // 无规则时「我」= 面板战力
     expect(toNum(view!.playerPower!)).toBeCloseTo(toNum(player.finalStats.power), 6)
   })
 })
@@ -481,8 +451,7 @@ describe('首领门槛 · 界面提示与战斗判定同源', () => {
   it('界面提示按本世路线判首领已靖(路线内的区域优先看本世节点,不看旧 REGIONS 链)', () => {
     const adventure = useAdventureStore()
     const regionId = 'qingyun'
-    // 本世路线上这个区域对应的节点已通,而旧 REGIONS cleared 链留空 ——
-    // 正是殛衰死锁出现过的构型:旧链清空后,regionBossCleared 仍应判「首领已靖」
+    // 本世节点已通、旧 REGIONS cleared 链为空:应判首领已靖
     adventure.$patch({
       mortalWorld: {
         seed: 1, shapeId: 's', shapeName: 's', rhythmId: 'r', rhythmName: 'r', ruleId: 'r',
@@ -505,13 +474,8 @@ describe('首领门槛 · 界面提示与战斗判定同源', () => {
 })
 
 /**
- * 历练 · 待决事件超时自动结算(手动模式,非勿扰)。
- *
- * tickExploration 的待决分支:待决事件若长时间(> EVENT_AUTO_RESOLVE_SECONDS)
- * 没人点,就按默认选项当场结清 —— 清了待决、事件数 +1、重排下一战,免得把这一程
- * 卡死在弹窗上。explorationDnd 只测了「遇事勿扰」那条(撞见即当场结清),
- * 手动模式这条**挂起后超时再结**的路径从来没人直接断言过。
- * tick 显式传 now,时间边界可控,不需假时钟。
+ * 待决事件超时(> EVENT_AUTO_RESOLVE_SECONDS)自动结算,手动模式;勿扰模式见 explorationDnd.spec。
+ * tick 显式传 now,不需假时钟。
  */
 describe('历练 · 待决事件超时自动结算', () => {
   beforeEach(() => {

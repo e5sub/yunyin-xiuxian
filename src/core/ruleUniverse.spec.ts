@@ -1,11 +1,10 @@
-/* eslint-disable no-console -- 模拟器体检报告的正式输出(bun run test:report 依赖) */
+/* eslint-disable no-console -- 体检报告输出(test:report 依赖) */
 /**
- * Phase 25 规则宇宙稳定性审计
- * 局部正确性此前各 spec 已管;本卷审计全局:
- * ① Meta 演化:连续削弱最强者,系统应温和轮换而非催生新霸主
- * ② 生态健康度:跨版本可比的仪表盘(红线管「不许坏」,健康度管「趋势」)
- * ③ 规则预算:内容复杂度同账管理
- * ④ 风险图谱覆盖:破墙结构必须在故障知识库有档案
+ * 规则宇宙全局稳定性审计:
+ * ① Meta 演化:连续削弱最强者应温和轮换,不催生新霸主
+ * ② 生态健康度:跨版本可比的仪表盘
+ * ③ 规则预算:内容复杂度同账
+ * ④ 风险图谱覆盖:破墙结构须在故障知识库有档案
  */
 import { describe, expect, it } from 'vitest'
 import { mulberry32, RandomService } from '@/utils/random'
@@ -52,7 +51,7 @@ describe('② 生态健康度仪表盘 + ④ 风险图谱覆盖', () => {
   const cross = crossWorldUniversals(60)
 
   it('生态健康度 ≥70,分项落盘可跨版本比较', () => {
-    // 二阶协同榜首(轻量重扫:速检定敌 + 30 场/对)
+    // 二阶协同榜首(速检定敌 + 30 场/对)
     const KEY_LEVELS: [string, number][] = [
       ['shieldPower', 0.3],
       ['speed', 0.21],
@@ -65,7 +64,7 @@ describe('② 生态健康度仪表盘 + ④ 风险图谱覆盖', () => {
       ['damageReduction', 0.15],
       ['lowHpDamage', 0.6]
     ]
-    // 纯净底座(与 synergyScan 同构:裸三维,无词条无法宝),避免基线失真
+    // 纯净底座,与 synergyScan 同构:裸三维,无词条无法宝
     const bare = (mods: Record<string, number>) => ({
       name: '扫描构筑',
       icon: 'user',

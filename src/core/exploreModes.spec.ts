@@ -1,12 +1,7 @@
 /**
  * 历练时长档 —— 时长曲线与读档放行。
- *
- * 由来:玩家反馈「挂机1小时2小时可以有更长时间的选择」。档位从四档长到六档
- * (0.5h→1h→2h→4h→8h→16h),曲线仍守两条既有纪律:
- *   ① 时长逐档翻倍,「睡一觉正好走完」有整档可选;
- *   ② 凶险比奖励涨得快 —— 长挂不是白嫖,拿三倍收益就得付三成以上的命。
- * 另钉一处易漏点:会话读档时的清洗(adventure 分片 sanitize)必须放行新档,
- * 否则 8h / 16h 单手滑到一半关游戏,回来会被洗成 normal,白等一场。
+ * 六档 0.5h→16h:时长逐档翻倍,凶险比奖励涨得快。
+ * 读档清洗(adventure 分片 sanitize)须放行新档,否则 8h / 16h 会话会被洗成 normal。
  */
 import { describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -41,8 +36,7 @@ describe('历练时长档', () => {
       expect(EXPLORE_MODES[ORDER[i]!].rewardMult).toBeGreaterThanOrEqual(EXPLORE_MODES[ORDER[i - 1]!].rewardMult)
       expect(EXPLORE_MODES[ORDER[i]!].dangerMult).toBeGreaterThanOrEqual(EXPLORE_MODES[ORDER[i - 1]!].dangerMult)
     }
-    // 凶险>奖励这条只对长挂档成立:最短的「寻常游历」是基准档(两项都取 1),
-    // 拿它去要求凶险高于奖励等于把基准档也判成违规。2h 起才有「多拿就要多付命」。
+    // 凶险>奖励只对 2h 起的档成立:基准档「寻常游历」两项都取 1
     for (const mode of ORDER.slice(2)) {
       expect(EXPLORE_MODES[mode].dangerMult, `${mode} 的凶险应高于奖励`).toBeGreaterThan(
         EXPLORE_MODES[mode].rewardMult
@@ -51,11 +45,8 @@ describe('历练时长档', () => {
   })
 
   /**
-   * 「险」的烫线要留余量 —— `deep` 的 1.45 对 1.4 也满足「凶险>奖励」,
-   * 而它明明是「小险」。出行弹窗的朱砂判据读这一枚常量,故这里钉住:
-   * `deep` 必须落在余量之内(不烫),2h 以上的长挂档必须越线(烫)。
-   *
-   * 故障注入:把 RISKY_DANGER_MARGIN 调成 1 → `deep` 一条红。
+   * 出行弹窗的朱砂判据读 RISKY_DANGER_MARGIN:`deep` 须落在余量之内(不烫),2h 以上须越线(烫)。
+   * 故障注入:把 RISKY_DANGER_MARGIN 调成 1,`deep` 一条红。
    */
   it('「险」的烫线留 5% 余量:小险不烫,长挂档才烫', () => {
     const risky = (mode: ExploreMode): boolean => {
@@ -70,7 +61,6 @@ describe('历练时长档', () => {
   })
 
   it('新增的两档与既有档同一套取舍:16h 的收益倍率低于其凶险倍率', () => {
-    // 8h ×3 / ×3.2、16h ×3.6 / ×3.9 —— 多出来的 0.2 与 0.3 就是「长挂要付的命」
     expect(EXPLORE_MODES.marathon.rewardMult).toBe(3)
     expect(EXPLORE_MODES.marathon.dangerMult).toBe(3.2)
     expect(EXPLORE_MODES.deepExpedition.rewardMult).toBe(3.6)

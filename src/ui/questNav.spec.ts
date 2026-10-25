@@ -1,7 +1,4 @@
-/**
- * questNav —— 修行志「去办」导航判据。
- * 纯函数契约:能确认落点的给页面,拿不准的必须 null(不给错地方,比不给更坏)。
- */
+/** 修行志「去办」导航判据:能确认落点的给页面,拿不准的必须 null */
 import { describe, expect, it } from 'vitest'
 import type { AchvCond, CounterKey } from '@/types'
 import { dailyTaskNav, mainQuestNav } from './questNav'
@@ -32,7 +29,7 @@ describe('修行志导航 · questNav', () => {
     for (const key of ['tribulations', 'decomposed', 'events', 'battles'] as CounterKey[]) {
       expect(mainQuestNav(counter(key)), `键 ${key} 应拿不准返回 null`).toBeNull()
     }
-    // 境界里程碑的 realm_<major>_<sub> 键 → 修炼页(开局主线就是这种)
+    // 境界里程碑 realm_<major>_<sub> 键 → 修炼页
     expect(mainQuestNav({ type: 'custom', key: 'realm_0_2' })).toEqual({ name: 'cultivation' })
     expect(mainQuestNav({ type: 'custom', key: 'realm_0_9' })).toEqual({ name: 'cultivation' })
     expect(mainQuestNav({ type: 'custom', key: 'stone1m' })).toBeNull()

@@ -10,12 +10,8 @@ import { eventDef } from '@/data/events'
 import { exploreModeOf } from '@/core/exploreModes'
 
 /**
- * 本世之界只收「结构完整、认得出」的那一份。
- *
- * 这份数据是生成器一次写成的,玩家永远不会逐字段改它 —— 形状不对只可能来自
- * 坏档/旧版。留着半份的代价不是「少看一点」:`worldView` 直接 map chain、
- * `worldIdentity` 读 `sorted[0]`,空链或非数组会让历练页与主页在渲染期抛错,
- * 整页白屏。故宁可整份丢掉(下次进页面会重新生成),也不让残骸进渲染。
+ * 本世之界只收结构完整的一份,否则整份丢弃(下次进页面重新生成)。
+ * 空链 / 非数组会让 `worldView`、`worldIdentity` 在渲染期抛错,历练页与主页白屏。
  */
 function sanitizeMortalWorld(raw: unknown): import('@/core/mortalWorldGen').MortalWorld | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
@@ -67,10 +63,7 @@ function sanitizeMortalWorld(raw: unknown): import('@/core/mortalWorldGen').Mort
   }
 }
 
-/**
- * 上一场战报:渲染层直接读 `result.win / result.log / result.rounds`,
- * 形状坏掉就是整块战斗面板白屏。结果对象或日志不对,整份作废(旧档没有它也能活)。
- */
+/** 上一场战报修形:渲染层直接读 `result.win / log / rounds`,结果或日志坏则整份作废 */
 function sanitizeLastBattle(raw: unknown): LastBattleView | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const b = raw as Partial<LastBattleView>
@@ -102,7 +95,7 @@ export interface LastBattleView {
   /** 敌人定义 id(供适配度展示;旧存档可能缺失) */
   enemyId?: string
   isBoss: boolean
-  /** 敌方战力(开打那一刻有效快照折出,战斗卡片「敌 X · 我 Y」用;旧存档可能缺失) */
+  /** 敌方战力:开打那一刻的快照(战斗卡片用;旧存档可能缺失) */
   enemyPower?: GNum
   /** 我方战力(战斗那一刻冻结 —— 卡片与敌力同刻比较,不拿战后的活数陪它站) */
   playerPower?: GNum
@@ -116,7 +109,7 @@ export interface LastBattleView {
   loot?: string[]
 }
 
-/** 战力栏修形:经 gn() 归一,归零即当作缺失(卡片 v-if 只看有值的 GNum 才渲染) */
+/** 战力栏修形:gn() 归一,归零视为缺失(卡片 v-if 只渲染有值的 GNum) */
 function gnStrict(v: unknown): GNum | undefined {
   const g = gn(v as GNum)
   return g.m === 0 && g.e === 0 ? undefined : g
@@ -127,31 +120,23 @@ export const useAdventureStore = defineStore(
   () => {
     const unlocked = ref<string[]>(['qingyun'])
     /**
-     * 本世之界(Phase 34)—— 这一世的世界气象。
-     *
-     * 由 mortalWorldGen 生成并过四门验收,转世时重新生成。
-     * 目前只承载展示:让玩家在打第一场之前就知道「这一世不是上一世那一套」。
-     * 实际历练仍走 REGIONS,两者通过 fromId 对应
+     * 本世之界:mortalWorldGen 生成并过四门验收,转世重新生成。
+     * 只承载展示;实际历练走 REGIONS,经 fromId 对应。
      */
     const mortalWorld = ref<import('@/core/mortalWorldGen').MortalWorld | null>(null)
-    /**
-     * 本世已通的路线节点。
-     *
-     * 与 cleared(旧 REGIONS 通关记录)分开:本世路线的推进只认这里,
-     * 转世换界时清空 —— 新的天地要从第一段重新走
-     */
+    /** 本世已通的路线节点;与 cleared(REGIONS 通关记录)分开,换界时清空 */
     const mortalCleared = ref<string[]>([])
     const cleared = ref<string[]>([])
     /** 已靖起钟:妖气复聚(旧主归来)从这一刻算,见 core/regionRevival */
     const clearedAt = ref<Record<string, number>>({})
-    /** 旧主已归来的地界(正待再靖);归来的不再是「已靖」 */
+    /** 旧主已归来的地界(待再靖);与 cleared 互斥 */
     const revived = ref<string[]>([])
     const session = ref<AdventureSession | null>(null)
     const pendingEventId = ref<string | null>(null)
     const pendingEventSince = ref(0)
     const seenOnceEvents = ref<string[]>([])
     const lastBattle = ref<LastBattleView | null>(null)
-    /** Phase 30.9 世界记忆:已完成事件的结果记录 */
+    /** 世界记忆:已完成事件的结果记录 */
     const eventMemories = ref<Record<string, import('@/types').EventMemory>>({})
 
     /** 存档修复:历练会话/解锁表/事件记忆被写坏会让历练页在渲染期抛错 */
@@ -160,31 +145,14 @@ export const useAdventureStore = defineStore(
       if (unlocked.value.length === 0) unlocked.value = ['qingyun']
       mortalCleared.value = [...new Set(asStringArray(mortalCleared.value))]
       cleared.value = [...new Set(asStringArray(cleared.value))]
-      /**
-       * 妖气复聚状态(Phase 30.11):两者都只认真存在的区域:
-       * revived 与 cleared 互斥(归来的不再是「已靖」),坏档里若重叠以 cleared 为准收掉 revived。
-       * clearedAt 是已靖起钟时刻,认不得/非正数一律丢弃(宁可晚复聚,不拿坏时刻误触)。
-       */
       revived.value = asStringArray(revived.value).filter(id => !!regionDef(id) && !cleared.value.includes(id))
       clearedAt.value = Object.fromEntries(
         Object.entries(asNumberRecord(clearedAt.value, 0)).filter(([id, at]) => at > 0 && !!regionDef(id))
       )
-      /**
-       * 旧档补票(境界扩界)—— 「前置已靖 → 此地已开」。
-       *
-       * 解锁从前只在击败那一刻发生,故数据表后来长出来的下游(仙界 21 起)
-       * 对旧档永远开不了:鸿蒙裂隙已靖、首领不复现,而云海仙门还挂着
-       * 「需先击败鸿蒙裂隙之主」。这不是「写坏了」,是**新版本欠旧档一张票**,
-       * 与 engine 里的 seedLoreIfNeeded 同类,故放在同一个读档修复口上。
-       * 幂等:重复读档不重复补。
-       */
+      // 旧档补票「前置已靖 → 此地已开」:解锁只在击败时发生,数据表新增的下游区域旧档开不了。幂等。
       unlocked.value = unlockClosure(unlocked.value, cleared.value)
       session.value = asObjectOrNull<AdventureSession>(session.value)
-      /**
-       * 历练会话是引擎每 tick 都要读的活状态:endsAt/nextBattleAt 若为 NaN,
-       * 历练会永远不停(或立刻结束);regionId 认不得则整场都取不到区域。
-       * 故除形状外,值也要修 —— 认不得的区域直接结束会话,不硬撑。
-       */
+      // 会话每 tick 都读:endsAt / nextBattleAt 为 NaN 会永不停或立刻结束;区域认不得则结束会话
       if (session.value) {
         const s = session.value
         const regionOk = !!regionDef(s.regionId)
@@ -202,30 +170,18 @@ export const useAdventureStore = defineStore(
             losses: Math.floor(asFiniteNumber(s.losses, 0, 0)),
             events: Math.floor(asFiniteNumber(s.events, 0, 0)),
             itemGain: Math.floor(asFiniteNumber(s.itemGain, 0, 0)),
-            // 两个 GNum 累加器经 gn() 归一:null/原始数字/坏对象一律归零。
-            // 漏掉这步的话,损坏档首胜时 exploration 的 add(s.stoneGain,…) 会在 .m 上炸,
-            // 被 tickSafe 吞掉后每场胜利都抛、历练永久卡死
+            // 须经 gn() 归一:坏 GNum 会让 exploration 的 add() 每场胜利都抛,历练永久卡死
             stoneGain: gn(s.stoneGain),
             expGain: gn(s.expGain)
           }
         }
       }
-      /**
-       * 待处理事件按事件 id 认事:认不出的 id 弹窗永远打不开(EventDialog 查不到定义),
-       * 历练却会被它一直堵着,直到 120 秒超时自动结算一个「不存在的事件」。
-       * 认不出就清掉,让下一拍照常开战。
-       */
+      // 认不出的待处理事件 id 须清:EventDialog 打不开,历练却被堵到 120 秒超时
       const pendingId = typeof pendingEventId.value === 'string' ? pendingEventId.value : null
       pendingEventId.value = pendingId && eventDef(pendingId) ? pendingId : null
       pendingEventSince.value = pendingEventId.value ? asFiniteNumber(pendingEventSince.value, 0, 0) : 0
-      /**
-       * 「一次就没了」的见闻与事件记忆都按事件 id 认事。
-       * 记忆条目形状坏掉时,LegacyView 直接读 `m.times`/`m.lastAt` ——
-       * `times` 是 NaN 就排在乱序、`lastAt` 是 NaN 就写出「NaN 次际遇」。
-       * 同一条事件写两遍同理:余波文案按「完成过几次」分档,两行会各算各的。
-       * 故这里按 id 合并取较大计数与较晚时刻,并把选择索引夹回选项数内。
-       * 认不出的事件 id 不清:它可能是改名/下线的旧档内容,认得的部分照旧生效。
-       */
+      // 事件记忆:times / lastAt 为 NaN 会让 LegacyView 乱序、写出「NaN 次际遇」。
+      // 认不出的事件 id 不清:可能是改名 / 下线的旧档内容。
       seenOnceEvents.value = [...new Set(asStringArray(seenOnceEvents.value))]
       const fixedMemories: Record<string, import('@/types').EventMemory> = {}
       for (const [id, raw] of Object.entries(asRecord<unknown>(eventMemories.value))) {
@@ -248,9 +204,6 @@ export const useAdventureStore = defineStore(
           : { eventId: id, times, lastAt, lastChoiceIdx }
       }
       eventMemories.value = fixedMemories
-      // 战报的 loot 是新增栏:形状不对就清成空表,别让损坏档在战报渲染里炸。
-      // 两个战力栏同款修形:坏对象(含 m/e 非数)经 gn() 归零,归零即当作缺失 ——
-      // 卡片 v-if 只认有值的 GNum,坏了就不渲染,格式GN 不会拿到坏数抛错
       lastBattle.value = sanitizeLastBattle(lastBattle.value)
       mortalWorld.value = sanitizeMortalWorld(mortalWorld.value)
     }
@@ -279,18 +232,15 @@ export const useAdventureStore = defineStore(
       if (!regionDef(regionId)) return false
       if (cleared.value.includes(regionId)) return false
       cleared.value = [...cleared.value, regionId]
-      // 已靖即起钟:妖气从这一刻重新聚(离线斩首也走这里,故离线也认得这个起点)
+      // 离线斩首也走这里起钟
       clearedAt.value = { ...clearedAt.value, [regionId]: Date.now() }
-      // 再靖:收掉此地的「旧主归来」标记 —— 已归过一次,复位待下一次复聚
       if (revived.value.includes(regionId)) revived.value = revived.value.filter(id => id !== regionId)
       return true
     }
 
     /**
-     * 妖气复聚:该地界不再「已靖」,旧主归来(见 core/regionRevival)。
-     *
-     * 只动「已靖」与起钟:镇压资格是永久的,松开镇压由 core 单独做 ——
-     * 复聚不构成对挂机的惩罚。
+     * 妖气复聚(见 core/regionRevival):只动「已靖」与起钟。
+     * 镇压资格永久,松开镇压由 core 单独做。
      */
     function markRevived(regionId: string): boolean {
       if (!regionDef(regionId)) return false
@@ -310,13 +260,7 @@ export const useAdventureStore = defineStore(
       pendingEventSince.value = id ? now : 0
     }
 
-    /**
-     * 暂停恢复:把按墙钟到期的历练状态顺延暂停时长。
-     *
-     * 暂停期间心跳不结算,但会话的 endsAt / nextBattleAt 仍是墙钟 ——
-     * 不顺延的话,开着重置 / 导入确认窗几分钟,回来这一程就「自己走完」了。
-     * 已靖起钟与待处理事件的超时同样顺延,免得暂停吃掉复聚与自动处置的宽限。
-     */
+    /** 暂停恢复:会话、已靖起钟、待处理事件超时都按墙钟,须顺延暂停时长 */
     function shiftTimedState(pausedMs: number): void {
       if (!Number.isFinite(pausedMs) || pausedMs <= 0) return
       if (session.value) {
@@ -347,7 +291,6 @@ export const useAdventureStore = defineStore(
 
     function setMortalWorld(w: import('@/core/mortalWorldGen').MortalWorld | null): void {
       mortalWorld.value = w
-      // 换界即换路:本世进度不跨界继承
       mortalCleared.value = []
     }
 

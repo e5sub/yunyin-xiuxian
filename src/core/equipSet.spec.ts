@@ -1,6 +1,4 @@
-/**
- * Phase 31.0 S5:装备共鸣 —— 机制组合而非数值堆叠
- */
+/** 装备共鸣:机制组合而非数值堆叠 */
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -36,7 +34,7 @@ describe('装备共鸣(equipSet)', () => {
     const three = [inst('a', 'n_yaoting'), inst('b', 'r_yaoting'), inst('c', 'tl_yaoting')]
     expect(setCounts(three).get('s_yaoting')).toBe(3)
     expect(hasActiveSet(three, 'peishi')).toBe(true)
-    // 效果文案与吸血常量同源,不手抄 8%
+    // 效果文案与吸血常量同源
     expect(equipSetDef('s_yaoting')!.effectDesc).toContain(String(Math.round(ACCESSORY_SET_LIFESTEAL * 100)))
     expect(equipSetDef('s_yaoting')!.effectDesc).toContain('转化为生命')
   })
@@ -53,8 +51,7 @@ describe('装备共鸣(equipSet)', () => {
   })
 
   it('每件带 set 的装备都指向一个真实存在的共鸣定义', () => {
-    // 扩界新增的仙甲/神铠/混沌套件若忘了登记,共鸣会静默失效——
-    // 界面上写着"套装",打起来却什么也不发生,正是最难被发现的暗伤
+    // 套件未登记,共鸣静默失效
     for (const t of EQUIPMENT_TEMPLATES) {
       if (!t.set) continue
       const def = equipSetDef(t.set)
@@ -82,18 +79,9 @@ describe('装备共鸣(equipSet)', () => {
       expect(n, `${def.name} 只有 ${n} 件,达不到触发所需的 ${def.required} 件`).toBeGreaterThanOrEqual(def.required)
     }
   })
-  /**
-   * 共鸣段的小标题不许把件数写死成「两件」。
-   *
-   * `SET_DEFS` 里 `required` 有 2 也有 3(饰品三件套「妖庭共鸣」要三件),
-   * 而界面那行从前写着「同组两件即共鸣」—— 对它是句假话:玩家数到 2/3
-   * 亮不起来,照标题去理解会以为 bug。逐行显示的 `{{ s.count }}/{{ s.def.required }}`
-   * 是对的,错的只是这一行总述。
-   *
-   * 故障注入:把小标题改回「同组两件即共鸣」→ 本条红。
-   */
+  /** 故障注入:把小标题改成「同组两件即共鸣」,本用例红 */
   it('共鸣段小标题不写死件数(有三件套在)', () => {
-    // 阳性对照:所有共鸣要的件数不止一种,否则「不许写死两件」这句在空集上假绿
+    // 阳性对照:件数不止一种,否则本条空集假绿
     const ids = [...new Set(EQUIPMENT_TEMPLATES.map(t => t.set).filter((x): x is string => !!x))]
     const requireds = ids.map(id => equipSetDef(id)!.required)
     expect(requireds.length, '共鸣定义不该是空的').toBeGreaterThan(1)

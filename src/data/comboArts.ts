@@ -1,7 +1,4 @@
-/**
- * 流派组合技(Phase 21)—— 主副体系凑成特定搭配时激活的真正组合规则
- * 不是新职业:只是两条道路交汇处的一式神通,引擎按 comboArt 键触发
- */
+/** 流派组合技 —— 主副体系凑成特定搭配时激活,引擎按 comboArt 键触发 */
 
 export interface ComboArtDef {
   id: string
@@ -9,7 +6,7 @@ export interface ComboArtDef {
   pair: [string, string]
   name: string
   desc: string
-  /** 结构性代价说明(构筑有得必有失) */
+  /** 结构性代价说明 */
   costText: string
 }
 

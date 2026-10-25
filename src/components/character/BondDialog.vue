@@ -1,5 +1,4 @@
 <template>
-  <!-- 道侣弹窗:这一世的关系与历世的同行 -->
   <BaseModal :open="open" :title="bondDef ? `道侣 · ${bondDef.name}` : '道侣'" @close="emit('close')">
     <template v-if="bondDef && bond">
       <p class="font-kai text-[14px] text-ink">{{ bondDef.name }}</p>
@@ -30,7 +29,7 @@
         离「{{ STAGE_NAMES[gateHint.stage] }}」尚差:{{ gateHint.lacking.join('、') }}
       </p>
 
-      <!-- 她自己提出的事(Phase 34.1):不是世界安排的事件,是她开的口 -->
+      <!-- 道侣自己提出的事,非世界安排的事件 -->
       <template v-if="herIntent">
         <div class="mt-4 border-t border-ink/10 pt-3">
           <p class="text-[12px] leading-relaxed text-gold-ink">{{ herIntent.line }}</p>
@@ -50,7 +49,7 @@
         </div>
       </template>
 
-      <!-- 共同事件:她的诉求与底线在此第一次被玩家看见并回应 -->
+      <!-- 共同事件 -->
       <template v-if="pendingEvent && !bond.fallen && !bond.departed">
         <div class="mt-4 border-t border-ink/10 pt-3">
           <p class="font-kai text-[13px] tracking-widest text-ink">{{ pendingEvent.title }}</p>
@@ -103,11 +102,8 @@
   import BaseModal from '@/components/common/BaseModal.vue'
 
   /**
-   * 道侣弹窗 —— 这一世的关系与历世的同行。
-   *
-   * 自 CharacterView 迁入:关系状态的本体投影(bond/bondDef/pastBonds/pendingEvent/herIntent)
-   * 收在 composables/useBondOverview.ts —— 入口卡与这里共用同一份定义;
-   * 本组件只留弹窗自己的交互态:回应后的尾账(lastEventText)、三维条、门槛提示、回应史。
+   * 道侣弹窗:这一世的关系与历世的同行。
+   * 关系状态投影在 composables/useBondOverview.ts,与入口卡共用;本组件只留弹窗交互态。
    */
   const props = defineProps<{ open: boolean }>()
   const emit = defineEmits<{ close: [] }>()
@@ -124,7 +120,7 @@
       : []
   )
   const gateHint = computed(() => nextGateHint())
-  /** 这件事因何而来(触发名取自 bondEvents,不在视图里手写) */
+  /** 事件因何而来:触发名取自 bondEvents,不手写 */
   const pendingEventTriggers = computed(() =>
     (pendingEvent.value?.triggers ?? []).map(t => TRIGGER_NAMES[t]).filter(Boolean).join('、')
   )

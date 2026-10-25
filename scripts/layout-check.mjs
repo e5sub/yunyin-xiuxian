@@ -4,85 +4,12 @@
  *
  * 用法:
  *   bun run build
- *   bunx playwright install chromium  # playwright 已是 devDependency;浏览器缓存在 ~/.cache/ms-playwright
- *   node scripts/layout-check.mjs     # 加 --shots 顺带存图到 /tmp/layout-shots
+ *   bunx playwright install chromium  # 浏览器缓存在 ~/.cache/ms-playwright
+ *   node scripts/layout-check.mjs     # --shots 存图到 /tmp/layout-shots
  *
- * 只作本地工具,不在 CI 里跑(2026-09-18 起从 deploy.yml / build.yml 摘掉:整套要十来分钟,
- * 且靠时机的判据在 runner 上时红时绿,曾连续挡住 Pages 部署与发版)。
- * Windows 上请用 node 而不是 bun 启动:Bun 起不来 Chromium 的调试管道(进程能拉起、握手不完成)。
- * playwright 写在 devDependencies 里(锁版本):它没有 postinstall,bun install 只带
- * JS 本体;真正占地的浏览器二进制由上面那句按需下。
- *
- * 它做这些事:
- *   一 走完真实建号流程(同意隐私 → 命名 → 踏入仙途),拿到一份真存档;
- *   二 在 390×844 / 375×812 / 320×568 三个宽度下,逐页量 scrollWidth 与越界元素,
- *      并核对**外壳本身**没被滚偏(overflow-hidden 的盒子玩家滚不动,浏览器滚得动);
- *   三 把「底部导航五项」「无 pageerror」「控件都有可访问名」「可点元素不小于 28px」也一并核对;
- *   四 把浏览器存储卡死(令 setItem 抛错),看设置页会不会把「写不进去」说出来 ——
- *      静默丢档是玩家看不见的事故,只能靠这一条端到端核。
- *   五 弹窗的 dialog 语义与焦点(进得去 / 困得住 / 关掉还给触发它的按钮);
- *   六 Tab 焦点看得见(全局 :focus-visible 是否有实际轮廓);
- *   七 浮出来的提示条点得掉 —— 它挂着 @click 关掉自己,不能被外框的
- *      pointer-events:none 继承掉(继承了就永远只能等超时)。
- *   八 引擎按概率触发的两扇弹窗(顿悟 / 洞府巡游):把概率钉成必中再量一遍 ——
- *      它们正常巡页碰不到,正是最容易悄悄退回「自己铺一层浮层」的角落。
- *   九 冷启动落在子页时,「返回」要回父页而不是退出游戏(书签 / deep link /
- *      PWA 恢复上次路由都会走到这个处境)。
- *   十 后期档复核:用夹具存档(神人境 + 装备/法宝/器魂/在途秘境 + 隔夜归来)
- *      再巡一遍 —— 空档量不出长数字与满屏内容,而归来卷轴那屏每几天就见一次。
- *   十一 渡劫突破真打一次:结果弹窗必须写清成败与雷数、成功要与页面境界对得上
- *      (每个玩家反复看的那一屏,此前从没被渲染过)。
- *   十二 走完一次转世(寿元将尽 → 此生已矣 → 轮回 → 新的一世):唯一会把存档
- *      推倒重来的仪式,此前一步都没被真浏览器走过。
- *   十三 挂机玩法真的在挂着跑:顶栏灵气只给 1 点,真等两轮看它自己涨不涨 ——
- *      「应用启动后引擎有没有跑起来」只有真浏览器能答。
- *   十四 存档往返:导出 → 投灵脉花掉灵石 → 导入回来,必须回到导出那一刻
- *      (最后一道保险,此前没人按过这两个按钮)。
- *   十五 后期档再走一遍 320 窄屏:「长数字 + 满屏内容 + 最窄屏」这个组合
- *      此前没量过(主巡页的 320 用的是刚建号的空档)。
- *   十六 坏档开局:坏掉一个分片也要进得去,并且说得出「哪一片坏了、原档在哪」。
- *   十七 导出失败也要说话:把浏览器的下载能力打断再点一次「导出存档」。
- *   十八 切后台/离开页面时,待刷的存档要立刻落盘(visibilitychange / pagehide)。
- *   十九 真打一场历练战斗:战报回放要出内容、结语要写清胜负、战斗分析点得开。
- *   二十 背包里的账目:强化写着扣多少尘就扣多少,分解说给多少尘就给多少。
- *   二十一 闭关期间不许历练:点出发要当场拦下(不开模式窗),换页回来闭关还在。
- *   二十二 减少动效真的减到了(并顺带在音效开着的情况下点一路按钮)。
- *   二十三 洞府营造的账目:卡片写多少石就扣多少石。
- *   二十四 法宝炼化的两笔账:按钮上两种代价都得写全,且两种都按所写扣。
- *   二十五 一键分解要「先勾后点」:勾品质只是标记,行囊里的东西须点「分 解」才化尘。
- *   二十六 智能收纳不替玩家扔「有投入的件」:练过/成套/近满的三件必须留下。
- *   二十七 顶栏底栏钉死:滚一遍窗口,两栏一步都不许动,文档层不许有纵向可滚余量。
- *      外加一条构建产物判据:外壳高度得认 dvh —— 无头浏览器的 100vh 恰好等于可视
- *      高度,把外壳换回 vh 它照样全绿,只有查产物这一条拦得住。
- *   二十八 页签栏吸顶:背包四册、图鉴、名号、界域志、天界的页签栏,滚过之后要贴在
- *      内容区顶、且铺满内容区宽度(空档滚不动,判据自己往容器里垫占位造余量)。
- *   二十九 不是手机竖屏的两档:横屏 844×390 与桌面 1280×800 也各巡一遍全量路由 ——
- *      自适应断点(高度 short:、大屏的册页留白)就在这两档上现形。
- *   三十 顶栏不许折行:数字断行看着像乱码,顶栏还会从 46px 涨到 58px(320 宽复发过)。
- *   三十一 iOS 存档风险提示:该出现的平台出现(且关掉就真不再出现),不该出现的平台
- *      一个字都不说 —— 桌面/安卓用应用自己的存储,在那儿喊「iOS 会清掉存档」是胡说。
- *   三十二 楷体统一:构建产物里内置字体必须排在字体栈第一位(系统楷体留作兜底),
- *      并且真渲染时楷体文字确实由它画出来(字体文件坏了、404 了都在这儿现形)。
- *   三十三 地界卡不许挤压:名字必须单行,头部与操作块不许相交。夹具里备了镇压中、
- *      临期复聚、已取得资格三态 —— 从前夹具一个镇压区域都没有,于是「自动产出」
- *      把地界名压成竖排的事故全绿通过(横向溢出量不到挤压:卡片没溢出,只是挤)。
- *   三十四 两条通用挤压判据,全页面生效:①文字被挤成竖排(宽 < 40px 且折成 3 行以上);
- *      ②数字与量词被换行拆开(「2,798 石」不许变成「2,798 / 石」)。两者都是
- *      「卡片没溢出、只是挤」这一类,横向溢出永远查不出来。
- *   三十五 标点不许被折成孤字:模板里把标点另起一行写(HTML 会把换行折成空格),
- *      窄屏上句号就会独自占一行 —— 量的是渲染结果,比在源码里认标点准。
- *   三十六 敌人卡最挤的一档:名字最长 9 字 + 满标签(首领/宿敌/3 特性)+ 星级。
- *      巡页用的档里敌人名字都短、认知层为 0(特性根本不显示),这一档从前没被量过。
- *   三十七 开炉炼丹弹窗(议题 #21):真打开量 —— 丹名单行、信息栏不被右列挤窄、
- *      正文之外没有第二个滚动盒、正文超长时上下有渐隐提示。
- *   三十八 词条转移面板(议题 #22):最挤的一档(九条词条的神品源件、满条带封存的目标)
- *      三档宽度真走一遍,每步过通用尺子,确认后器灵尘照价签扣。
- *   三十九 丹炉缺草 → 「去坊市续草」(议题 #130):跳过去必须切到「购」、带上
- *      focus=herb、把灵草格滚进视口并高亮;这一架恰好没有草时,要直说没有。
- *
- * 判据是「横向溢出」这一类——它正是窄屏上最常见的排版事故。
- * 说明:这是无头 Chromium 的视口模拟,不是真机;字体渲染与安全区(刘海/手势条)
- * 仍需真机确认,故本脚本过绿不等于真机过绿。
+ * 只作本地工具,不进 CI:整套十来分钟,靠时机的判据在 runner 上时红时绿。
+ * Windows 用 node 启动:Bun 起不来 Chromium 的调试管道(握手不完成)。
+ * 无头 Chromium 视口模拟,非真机:字体渲染与安全区(刘海/手势条)仍需真机确认。
  */
 import { chromium } from 'playwright'
 import CryptoJS from 'crypto-js'
@@ -96,24 +23,15 @@ const SHOTS_DIR = '/tmp/layout-shots'
 const SHOTS = process.argv.includes('--shots')
 
 const VIEWPORTS = [
-  // 390×844 = iPhone 12/13/14/15 的标称宽度,当下最常见的一档;
-  // 375/320 是旧机型与极窄档。三档一起量,免得只守住了其中一档。
-  // dpr 只影响截图栅格化(1px 边框、字体抗锯齿),不影响 CSS 布局与判据 ——
-  // 但 --shots 存下来的图因此更接近真机看到的密度,便于人眼复核。
+  // 390 = iPhone 12/13/14/15 标称宽度;375/320 为旧机型与极窄档。dpr 只影响截图,不影响布局与判据
   { width: 390, height: 844, tag: '390', dpr: 3 },
   { width: 375, height: 812, tag: '375', dpr: 3 },
   { width: 320, height: 568, tag: '320', dpr: 2 },
-  // 两档「不是手机竖屏」的设备。它们各自暴露过一类毛病,故各占一档:
-  //   横屏 844×390 —— 上下两栏吃掉 22% 的高度(改前 26%),而宽度只用掉一半;
-  //   桌面 1280×800 —— 窄栏顶天立地;不在大屏上收成一册,它就只是一条带子。
-  // 安卓壳与桌面客户端都能转到这两档;PWA manifest 锁了竖屏,浏览器里随意缩窗。
+  // 横屏与桌面两档:安卓壳与桌面客户端都能转到;高度断点 short:、大屏册页留白在此现形
   { width: 844, height: 390, tag: '844x390', dpr: 2 },
   { width: 1280, height: 800, tag: '1280x800', dpr: 1 }
 ]
-/**
- * 全量路由 —— 从前只巡八页,于是设置页与收藏页的排版与选中态从未被量过。
- * 页面各有各的布局风险,漏一页等于那一页没有守卫(加进来只多几秒)。
- */
+/** 全量路由:漏一页即该页无守卫 */
 const ROUTES = [
   '/',
   '/cultivation',
@@ -133,18 +51,11 @@ const ROUTES = [
 ]
 
 /**
- * 自检不许依赖公网。
- *
- * index.html 里挂着 `<script defer src="https://sdk.51.la/...">`(第三方统计)。`load` 事件
- * 要等它下载完才触发,而 GitHub 的 runner 到这家 CDN 时通时堵:堵住时 `page.goto(..., load)`
- * 就卡满 30 秒超时 —— 实测两次,一次在第一页(什么都还没跑),一次在第二十五件事的中途,
- * 位置随机、没有任何判据失败,只有 `goto: Timeout 30000ms`。
- * 让这个域名的 DNS 当场解析失败:脚本立刻 error、`load` 照常触发,统计脚本的运行时异常
- * 本来就由下面 watchPageErrors 分流不计。自检从此不再随别人的 CDN 起伏。
+ * 不依赖公网:index.html 的 sdk.51.la 第三方统计会拖住 `load`(CDN 堵时 goto 卡满 30 秒),
+ * host-resolver-rules 令它 DNS 解析失败;其运行时异常由 watchPageErrors 不计。
  */
 const browser = await chromium.launch({
-  // --no-sandbox / --disable-dev-shm-usage:容器里 headless 常崩(无用户命名空间、/dev/shm 只有 64M),
-  // 崩起来样式是一个个怪异(但真实)的失败 —— 见 ui-smoke 里同一处注释,这里一并防住
+  // --no-sandbox / --disable-dev-shm-usage:容器里 headless 常崩(无用户命名空间、/dev/shm 只有 64M);同 ui-smoke
   args: [
     '--allow-file-access-from-files',
     '--disable-web-security',
@@ -167,10 +78,7 @@ let zoomSeen = 0
  */
 async function auditModalControls(page) {
   return page.evaluate(() => {
-    // 测量标准化与 measurePage 同一口径:弹窗的入场过渡(page-fade / modal 过渡)进行中
-    // 量几何,量到的是动画中间帧 —— 「进入前请确认」弹窗里的《隐私政策》按钮
-    // 曾在桌面档被量出 26.3px(声明 min-h 28px),390 档却全绿。注入动画禁令后
-    // 量的是稳态布局,与截图口径一致。
+    // 动画禁令:量稳态布局,不量过渡中间帧;与 measurePage 同口径
     const st = document.createElement('style')
     st.textContent = '*,*::before,*::after{animation:none!important;transition:none!important}'
     document.head.appendChild(st)
@@ -179,9 +87,7 @@ async function auditModalControls(page) {
     const rows = [...panel.querySelectorAll('button, a, [role=button]')]
       .map(el => {
         const r = el.getBoundingClientRect()
-        // 23px 的弹窗按钮不在「声明了 28」之列,量出来多小就是多小;声明的 min-height
-        // 到了 28 的,给半像素容差(27.5+),再往下 27.6px 只是渲染精度,不是真的不够。
-        // 报数带一位小数 —— 不会像四舍五入那样把 27.6 打印成与下限同值的「28」。
+        // 声明 min-height ≥28 的给半像素容差(27.5);报数带一位小数,免得 27.6 打印成「28」
         const declared = parseFloat(getComputedStyle(el).minHeight) || 0
         const ok = r.height >= 28 || (declared >= 28 && r.height >= 27.5)
         return {
@@ -193,7 +99,6 @@ async function auditModalControls(page) {
       .filter(r => r.h > 0)
     return {
       count: rows.length,
-      // 对话框自己也得有个名字:读屏遇到 role=dialog 要念得出是哪一扇
       label: (panel.getAttribute('aria-label') || panel.querySelector('h3')?.textContent || '').trim(),
       unnamed: rows.filter(r => !r.name).map(r => `${r.h.toFixed(1)}px`),
       small: rows.filter(r => !r.ok).map(r => `${r.h.toFixed(1)}px «${r.name || '无名'}»`)
@@ -201,20 +106,13 @@ async function auditModalControls(page) {
   })
 }
 
-/**
- * 收集页面异常 —— 只认本项目代码抛的。
- *
- * 站点里挂了一段第三方统计脚本(51.la)。它自己抛的异常与游戏无关,却会把
- * 「无 pageerror」判否掉 —— 实测:把 Math.random 钉成常量(为了确定性地触发
- * 引擎事件)之后,那段脚本会抛 `TypeError: Invalid UUID`,而游戏本身一切正常。
- * 故按堆栈里的脚本来路分流:第三方脚本的异常只打印、不计入失败。
- */
+/** 收集页面异常:堆栈来自 51.la 统计脚本的只打印不计(钉死 Math.random 后它会抛 Invalid UUID) */
 function watchPageErrors(page, sink) {
   let thirdPartyNoted = false
   page.on('pageerror', e => {
     const stack = String(e.stack || e.message || '')
     if (/sdk\.51\.la/.test(stack)) {
-      // 逐页重载会把它重复抛出来,同一处只提一次,免得报告被噪声淹没
+      // 逐页重载会重复抛,只提一次
       if (!thirdPartyNoted) {
         thirdPartyNoted = true
         console.log(`  (第三方统计脚本异常,不计入失败:${String(e.message).slice(0, 60)})`)
@@ -226,25 +124,15 @@ function watchPageErrors(page, sink) {
 }
 
 /**
- * 把取景收拾干净:收掉提示条、钉死随机事件、关掉已经浮上来的弹窗。
- *
- * 由来:弹窗焦点场景三次偶发假红,真凶每次都是引擎随机浮上来的「悟道顿悟」——
- * 它是一整层遮罩,点它盖着的入口自然点不动。只钉 Math.random 不够:
- * 引擎每秒一拍,从「踏入仙途」到这条场景动手之间已经够它掷出一次了。
+ * 收掉提示条、钉死随机事件、关掉已浮上来的弹窗。
+ * 只钉 Math.random 不够:引擎每秒一拍,钉之前可能已掷出顿悟。
  */
 async function clearOverlays(page) {
   await page.evaluate(() => {
     for (const b of document.querySelectorAll('.pointer-events-none.fixed button')) b.click()
     Math.random = () => 1
   })
-  /*
-   * 关掉**已经浮起来**的浮层,并且等够一轮。
-   *
-   * 坑在这里:引擎掷出顿悟(每秒一拍)与弹窗自己每秒一次的轮询是两个独立定时器,
-   * 事件已经产生、窗还没画出来 —— 这时数 .modal-panel 是 0,当场就收工,
-   * 一秒后那扇窗才浮上来,正好盖住要点的入口。故这里固定转六圈(≈2.1 秒):
-   * 有窗就按 Esc 收掉,没窗就等着 —— 反正随机源已钉死,等到的只会是**之前那一扇**。
-   */
+  // 固定转六圈(≈2.1 秒):引擎掷顿悟与弹窗轮询是两个独立定时器,事件已产生时窗可能还没画出来
   for (let i = 0; i < 6; i += 1) {
     if ((await page.locator('.modal-panel').count()) > 0) await page.keyboard.press('Escape')
     await page.waitForTimeout(350)
@@ -266,18 +154,10 @@ async function readFormatted(page, title) {
   }, title)
 }
 
-/**
- * 一页一量:横向溢出、外壳偏移、越界元素、无名控件、过小可点元素、选择组选中态、底部导航项数。
- *
- * 抽成函数是为了让**后期档**那一遍复用同一把尺子 —— 空档量不出长数字与满屏内容,
- * 而两遍若各写一份判据,迟早会分叉成两套标准。
- */
+/** 一页一量(空档与后期档共用):横向溢出、外壳偏移、越界元素、无名控件、过小可点元素、选择组选中态、底部导航项数 */
 async function measurePage(page) {
   return page.evaluate(() => {
-    // 测量标准化:入场动画(stagger-in 的位移、breathe 的缩放)进行中量几何,
-    // 量到的是动画中间帧 —— /create 的灵根圆环曾在 stagger 中段被量出左右各越 5px。
-    // 截图有 animations:'disabled',测量也必须同一口径:测的是稳态布局,不是中间帧。
-    // (减动效自检按 duration/iteration 另量,不受这条注入影响。)
+    // 动画禁令:量稳态布局,与截图 animations:'disabled' 同口径;减动效自检另量,不受此注入影响
     const st = document.createElement('style')
     st.textContent = '*,*::before,*::after{animation:none!important;transition:none!important}'
     document.head.appendChild(st)
@@ -285,29 +165,15 @@ async function measurePage(page) {
     const overflows = [...document.querySelectorAll('body *')]
       .filter(el => {
         const r = el.getBoundingClientRect()
-        /**
-         * 越界 = 右缘冲出右界 或 左缘冲出左界。此前只查右缘:一个被推离**左**缘的块
-         * (负 left / -mx-*)只要右缘仍落在视口内,scrollWidth 不涨、r.right 也不超,
-         * 横向溢出判据整条失灵。
-         */
+        // 左右缘都查:被推离左缘的块(负 left / -mx-*)不涨 scrollWidth
         const rightOver = r.right > vw + 2
         const leftOver = r.left < -1
         if (r.width <= 0 || (!rightOver && !leftOver)) return false
-        /**
-         * 纯装饰层(墨爆 / 传送门 / 法球的三层旋转环)故意越过视口边缘,且不吃事件,不算排版事故。
-         *
-         * 判据看的是**计算后的 pointer-events**,不是类名 —— 组件里关掉事件用的是自定义类
-         * (如 .ring-layer),按类名找 .pointer-events-none 会漏掉它们;而旋转中的方形盒子
-         * 其 getBoundingClientRect() 会随动画相位涨到 √2 倍,于是同一处装饰一会儿过、一会儿不过
-         * —— 那是量法在抖,不是排版在坏。
-         */
+        // 装饰层(不吃事件)故意越界,豁免;按计算后的 pointer-events 判,不按类名(自定义类如 .ring-layer 会漏)
         for (let node = el; node; node = node.parentElement) {
           if (getComputedStyle(node).pointerEvents === 'none') return false
         }
-        /**
-         * 横向滚动轨里的内容**本来就该**超出取景 —— 容器自己负责滚,玩家滚得到。
-         * 只豁免 auto/scroll,不豁免 overflow-hidden(外壳那层 hidden 恰恰是「玩家滚不动」的事故层)。
-         */
+        // 横向滚动轨内容豁免;只豁免 auto/scroll,不豁免 hidden(外壳那层 hidden 正是玩家滚不动的事故层)
         for (let node = el.parentElement; node; node = node.parentElement) {
           const s = getComputedStyle(node)
           if (s.overflowX === 'auto' || s.overflowX === 'scroll') return false
@@ -324,15 +190,8 @@ async function measurePage(page) {
       hash: location.hash,
       horizontalOverflow: document.documentElement.scrollWidth > vw + 1,
       /**
-       * 外壳(#app 的第一层)不能被滚偏,也不该有可滚的横向余量。
-       *
-       * 它是 overflow-hidden 的:玩家滚不动,但**浏览器滚得动**。
-       * 云雾装饰故意越界画出盒子(左上 -64px、右下 -96px),曾把外壳撑到
-       * scrollWidth 516 vs clientWidth 390;建号结束时浏览器顺手把 scrollLeft
-       * 设成 24,此后整个界面永久左移 24px —— 顶栏名字被切掉左半边、底部
-       * 第一栏「洞府」只剩半个字。而「查 documentElement 有没有横向溢出」查不出
-       * 这件事:overflow-hidden 把子元素的溢出挡在外壳以内,量在最外层永远是绿的。
-       * 故这里直接量外壳自己:scrollLeft 必须为 0,且不该有横向可滚区间。
+       * 外壳(#app 第一层)须 scrollLeft 为 0 且无横向可滚余量:它 overflow-hidden,玩家滚不动但浏览器滚得动,
+       * documentElement 层的溢出判据查不出。
        */
       shellShift: (() => {
         const shell = document.getElementById('app')?.firstElementChild
@@ -341,10 +200,7 @@ async function measurePage(page) {
       })(),
       overflows,
       navItems: document.querySelectorAll('nav button, nav a').length,
-      /**
-       * 只有图标的控件必须自带可访问名(aria-label / 可见文字)。
-       * 没有名字,读屏只会念「按钮」「链接」,自动化也无从按名字点它。
-       */
+      // 控件须有可访问名(aria-label / 可见文字)
       unnamed: [...document.querySelectorAll('button, a, [role=button]')]
         .filter(el => {
           const name = (el.getAttribute('aria-label') || el.textContent || '').trim()
@@ -354,16 +210,11 @@ async function measurePage(page) {
         })
         .slice(0, 3)
         .map(el => el.outerHTML.slice(0, 80).replace(/\s+/g, ' ')),
-      /**
-       * 可点元素的高度下限 28px —— 拇指点得着的最起码尺寸。
-       * 实测(带装备的后期档,375/320 两档):修前有 47 个不足 24px、26 个不足 28px,
-       * 大多是把文字行直接当按钮(属性来源行、返回链接、设置里的胶囊按钮)。
-       */
+      // 可点元素高度下限 28px
       smallTargets: [...document.querySelectorAll('button, a, [role=button]')]
         .map(el => {
           const r = el.getBoundingClientRect()
-          // 与 auditModalControls 同一条尺子:声明的 min-height 到了 28 的给半像素容差
-          // (27.5+),报数带一位小数,免得 27.6px 的子像素抖动把 min-h-[28px] 无常判红
+          // 与 auditModalControls 同一条尺子
           const declared = parseFloat(getComputedStyle(el).minHeight) || 0
           const ok = r.height >= 28 || (declared >= 28 && r.height >= 27.5)
           return { el, r, ok }
@@ -371,13 +222,7 @@ async function measurePage(page) {
         .filter(({ r, ok }) => r.width > 0 && r.height > 0 && !ok)
         .slice(0, 3)
         .map(({ el, r }) => `${r.height.toFixed(1)}px «${(el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 12)}»`),
-      /**
-       * 禁用按钮上的字也得读得出来。
-       *
-       * 禁用态往往正是「为什么不让我点」那句(「修为未至圆满」「灵石不足」),
-       * 而它此前用最淡的 ink-ghost 打底 + 75% 白字 —— 实测对比度 1.79:1,
-       * 在手机上基本看不见。这里量的是**算出来的**前景/背景对比度(两条都是不透明色)。
-       */
+      // 禁用按钮文字须读得出:量前景/背景对比度
       dimDisabled: [...document.querySelectorAll('.btn-seal:disabled, .btn-ghost:disabled')]
         .map(el => {
           const cs = getComputedStyle(el)
@@ -389,12 +234,7 @@ async function measurePage(page) {
             }
             return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2])
           }
-          /**
-           * 把一层层半透明底色**合成**成实际看到的颜色。
-           *
-           * .btn-ghost:disabled 的底是 rgb(ink / 0.04),只看这一层的 RGB 会当成纯黑,
-           * 于是浅字对它算出 2.46:1 的假红。真实观感是「卡片色 + 4% 墨」,约 4:1。
-           */
+          // 半透明底色逐层合成为实际所见颜色:只取最上层会把 rgb(ink / 0.04) 当成纯黑
           const parse = c => {
             const m = /rgba?\(([^)]+)\)/.exec(c)
             if (!m) return null
@@ -429,12 +269,7 @@ async function measurePage(page) {
         .filter(x => x && x.ratio < 3)
         .slice(0, 3)
         .map(x => `${x.ratio}:1 «${x.text}»`),
-      /**
-       * 顶栏里的字都只能占一行。
-       *
-       * 320 宽时曾把「3000/1000 亿载」「9 兆」「25.33 亿」折成两行 —— 数字一断行
-       * 看着就像乱码,顶栏还从 46px 涨到 58px。故逐格量高:超过一行(≈24px)就是又折了。
-       */
+      // 顶栏文字只占一行:逐格量高,超过 ≈24px 即折行
       headerTall: (() => {
         const header = document.querySelector('header')
         if (!header) return []
@@ -443,13 +278,7 @@ async function measurePage(page) {
           .slice(0, 3)
           .map(el => `${Math.round(el.getBoundingClientRect().height)}px «${(el.textContent || '').trim().slice(0, 10)}»`)
       })(),
-      /**
-       * 地界卡不许把名字挤成竖排,也不许让操作块压到名字那一行。
-       *
-       * 「横向溢出」量不出这类事故:卡片并没有溢出,只是右侧那一列把左边的名字压到只剩一个字宽,
-       * 「青云山麓」当场变成一字一行,标签还会盖到产出字上 —— 玩家先看见,脚本量不到。
-       * 故直接量两块元素的位置关系(名字高度 + 头部与操作块是否相交)。
-       */
+      // 地界卡:名字不许被挤成竖排,头部与操作块不许相交(横向溢出量不出)
       regionCards: (() => {
         const tall = []
         const overlap = []
@@ -458,7 +287,7 @@ async function measurePage(page) {
           const label = (name?.textContent || '').trim()
           if (name) {
             const h = Math.round(name.getBoundingClientRect().height)
-            // 15px 楷体单行约 22px;超过 30px 就是折行了(竖排四行能到 88px)
+            // 15px 楷体单行约 22px,>30 即折行
             if (h > 30) tall.push(`${h}px «${label}»`)
           }
           const head = card.querySelector('[data-region-head]')
@@ -473,13 +302,7 @@ async function measurePage(page) {
         }
         return { tall: tall.slice(0, 3), overlap: overlap.slice(0, 3) }
       })(),
-      /**
-       * 通用挤压判据之一:**被挤成竖排的文字**。
-       *
-       * 一行 flex 里塞了「长文字 + shrink-0 的右列」时,左列会被压到只剩一个字宽,
-       * 于是「青云山麓」一字一行 —— 卡片并没有溢出,横向溢出查不出来。
-       * 判据取「宽度 < 40px 且折成 3 行以上」:正常的排版不会出现这种盒子。
-       */
+      // 通用挤压判据一:被挤成竖排的文字
       verticalTexts: [...document.querySelectorAll('span, p, div, h1, h2, h3, button')]
         .filter(el => {
           const text = (el.textContent || '').trim()
@@ -492,12 +315,7 @@ async function measurePage(page) {
         })
         .slice(0, 3)
         .map(el => `${Math.round(el.getBoundingClientRect().width)}px 宽 «${(el.textContent || '').trim().slice(0, 10)}»`),
-      /**
-       * 通用挤压判据之二:**数字与量词分家**。
-       *
-       * 「升级 · 2,798石 50铁」在 320 宽上会断成「升级 · 2,798 / 石 50铁」——
-       * 数与单位跨行看着像两个数。用 Range 逐字取矩形,量出「数字|量词」是否被换行拆开。
-       */
+      // 通用挤压判据二:数字与量词被换行拆开
       unitBreaks: (() => {
         const UNITS = '石铁尘株张载年次件层场阶枚缕时日'
         const rectAt = (node, i) => {
@@ -516,8 +334,7 @@ async function measurePage(page) {
             node = walker.nextNode()
             continue
           }
-          // 只量**标签/代价**这类短文本(≤24 字):长句子里的正常换行不算事故,
-          // 否则整页散文都会被卷进来,判据就没人看了
+          // 只量 ≤24 字的标签/代价短文本;长句里的正常换行不算
           if (t.trim().length > 24) {
             node = walker.nextNode()
             continue
@@ -539,13 +356,7 @@ async function measurePage(page) {
         }
         return out
       })(),
-      /**
-       * 通用挤压判据之三:**孤零零的标点**。
-       *
-       * 「……仍受益的财富」换行 + 后面单独一个「。」时,句号会被推到下一行独自站着
-       * (模板里把标点另起一行写的必然结果)。判据:某段只含标点的文字,
-       * 与同一父节点里其余文字不在同一行。
-       */
+      // 通用挤压判据三:被折到下一行独占的标点
       orphanPunctuation: (() => {
         const out = []
         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
@@ -553,7 +364,7 @@ async function measurePage(page) {
         while (node && out.length < 3) {
           const t = node.nodeValue || ''
           const trimmed = t.trim()
-          // 只认中文标点:半角「?」这类是占位符(未知装备就写着「?」),不是折行事故
+          // 只认中文标点:半角「?」是未知装备的占位符
           if (!/^[。、,]{1,2}$/.test(trimmed)) {
             node = walker.nextNode()
             continue
@@ -563,7 +374,7 @@ async function measurePage(page) {
             node = walker.nextNode()
             continue
           }
-          // 父节点里必须还有别的文字 —— 整块内容只有标点(装饰)不算孤字
+          // 整块只有标点(装饰)不算孤字
           const siblings = [...parent.childNodes].filter(n => n !== node && n.nodeType === Node.TEXT_NODE && (n.nodeValue || '').trim())
           if (siblings.length === 0) {
             node = walker.nextNode()
@@ -577,7 +388,6 @@ async function measurePage(page) {
             node = walker.nextNode()
             continue
           }
-          // 同一父节点里,有没有别的文字落在同一行(±4px)
           const alone = siblings.every(sn => {
             const sr = document.createRange()
             sr.setStart(sn, 0)
@@ -590,12 +400,7 @@ async function measurePage(page) {
         }
         return out
       })(),
-      /**
-       * 选择型控件的选中态要对机器可读,且**每组恰有一个**。
-       *
-       * 此前主题/战报速度/页签的选中全靠边色,读屏用户与自动化都看不出选了哪个
-       * (上一轮补了 aria-label/aria-pressed,这里把「恰好一个」钉住)。
-       */
+      // 选择型控件(aria-pressed / aria-selected / role=tab)每组恰有一个选中
       badGroups: (() => {
         const out = []
         for (const attr of ['aria-pressed', 'aria-selected']) {
@@ -611,7 +416,6 @@ async function measurePage(page) {
             if (on !== 1) out.push(`${attr} 组(${els.length} 项)里有 ${on} 个选中`)
           }
         }
-        // 页签:每一组(同一父容器下 ≥2 个 role=tab)恰有一个 aria-selected=true
         const tabsByParent = new Map()
         for (const el of document.querySelectorAll('[role=tab]')) {
           const parent = el.parentElement
@@ -623,7 +427,6 @@ async function measurePage(page) {
           const on = els.filter(e => e.getAttribute('aria-selected') === 'true').length
           if (on !== 1) out.push(`页签组(${els.length} 项)里有 ${on} 个选中`)
         }
-        // 设置页的两组选择(主题、战报速度)是明文约定:少了哪一组这里就红
         if (location.hash.startsWith('#/settings')) {
           const pressed = document.querySelectorAll('[aria-pressed]').length
           if (pressed < 6) out.push(`设置页的选择控件只有 ${pressed} 个带 aria-pressed(主题 3 + 速度 3)`)
@@ -631,13 +434,8 @@ async function measurePage(page) {
         return out.slice(0, 3)
       })(),
       /**
-       * 顶栏与底栏必须钉死 —— 滚一遍,两栏一步都不许动。
-       *
-       * 结构上两栏是滚动宿主的**兄弟**(内容在 main 里滚),按理动不了。可一旦
-       * **外壳比可视区高**,文档层就攒出纵向可滚余量,玩家一拖窗口两栏就跟着走,
-       * 看着就是「没固定」。手机浏览器的 100vh 正是大视口(地址栏收起时的高度),
-       * 所以这条 bug 只在手机浏览器里现形 —— 桌面与无头浏览器量不出差值,
-       * 只能量它的**机制**:文档层有可滚余量,且滚窗口时两栏真的位移了。
+       * 顶栏底栏钉死:外壳比可视区高时文档层有纵向可滚余量,两栏随窗口滚动。
+       * 手机 100vh 等于大视口,无头量不出差值,只量机制:文档层可滚余量与滚窗口时两栏位移。
        */
       railDrift: (() => {
         const main = document.querySelector('main')
@@ -667,16 +465,8 @@ async function measurePage(page) {
 }
 
 /**
- * 页签栏(InkTabs 的外壳 .tab-rail)要吸顶 —— 内容滚下去,它钉在内容区顶上。
- *
- * 这几册(背包四册、图鉴、名号、界域志、天界)都是越往下越长的列表,页签跟着滚走
- * 就得先滚回顶才能换一册。判据两条:滚过之后它还贴在内容区顶;盒子铺满内容区宽度
- * (两侧留缝的话,内容会从缝里明晃晃地穿过去)。
- *
- * 造余量那一段是有讲究的:空档的背包只有几件东西,页面根本滚不动,吸顶无从量起。
- * 于是往**视图根节点里**垫一块 1200px 的占位 —— 必须垫在容器里面:吸顶盒的活动
- * 范围是它的容器,容器到底了它就该跟着走;垫在容器外面等于没垫(第一版探针就是
- * 这么把背包页报成假红的)。
+ * 页签栏(InkTabs 的 .tab-rail)吸顶:滚过之后贴在内容区顶,且铺满内容区宽度。
+ * 空档滚不动,往视图根节点里垫 1200px 占位;须垫在容器里面(吸顶盒的活动范围是它的容器),垫在外面报假红。
  */
 async function measureTabRail(page) {
   return page.evaluate(() => {
@@ -701,20 +491,18 @@ async function measureTabRail(page) {
   })
 }
 
-/** 页签吸顶读数 → 失败清单(null = 这一页没有页签栏,不判) */
+/** 页签吸顶读数 → 失败清单(null = 无页签栏,不判) */
 function railProblems(rail) {
   const out = []
   if (!rail) return out
   if (rail.scrolled < 500) out.push(`页签吸顶没量到:内容只滚了 ${rail.scrolled}px(占位没垫进容器?)`)
-  // 吸顶允许 1px 亚像素误差:getBoundingClientRect 是小数,滚动容器的顶与吸顶盒的顶
-  // 各自落在半像素上时,差值四舍五入会在 0 与 1 之间跳(1280×800 的 /codex 实测时红时绿,
-  // 两边仓库的 CI 都撞过)。「没吸顶」的读数是几百像素,不是 1 像素。
+  // 容差 1px:两个顶各落在半像素上时,取整后差值在 0/1 间跳(1280×800 的 /codex 时红时绿)
   if (Math.abs(rail.drift) > 1) out.push(`页签栏没吸顶:滚 ${rail.scrolled}px 后偏离内容区顶 ${rail.drift}px`)
   if (rail.bleed > 0) out.push(`页签栏没铺满内容区宽度,两侧共留 ${rail.bleed}px 缝(内容会从缝里穿过去)`)
   return out
 }
 
-/** 一页量出来的读数 → 失败清单(两遍巡页共用同一套判据) */
+/** 一页读数 → 失败清单(两遍巡页共用) */
 function problemsOf(info) {
   const problems = []
   if (info.horizontalOverflow) problems.push(`横向溢出(scrollWidth ${info.hash})`)
@@ -741,13 +529,7 @@ function problemsOf(info) {
   return problems
 }
 
-/**
- * 两百档字号(200% 缩放)—— 390 宽的机型把字放大一倍后,布局视口只剩 195 CSS px,
- * 比 320 那一档还窄 125px。量的是**缩放档**而非宽度档:320 档量小屏真机的原样,
- * 这一档量「常用机型上把字放大一倍之后」的样子。判据与巡页共用同一把尺子
- * (measurePage):横向溢出、外壳被滚偏、越界元素。量完把视口还原,免得带偏
- * 前后按原尺寸量的读数。
- */
+/** 200% 缩放档:视口减半(390 → 195 CSS px)后用 measurePage 再量;量完须还原视口,否则带偏后续读数 */
 async function measureZoomScale(page, vp) {
   const width = Math.round(vp.width / 2)
   const height = Math.round(vp.height / 2)
@@ -760,7 +542,7 @@ async function measureZoomScale(page, vp) {
   return { ...info, innerWidth }
 }
 
-/** 缩放档的读数 → 失败清单(只判:确实量在 200%、溢出、外壳被滚偏、越界元素) */
+/** 缩放档读数 → 失败清单 */
 function zoomProblems(info, tag) {
   const problems = []
   if (info.innerWidth !== undefined && Math.abs(info.innerWidth * 2 - Number(tag)) > 2) {
@@ -776,18 +558,10 @@ function zoomProblems(info, tag) {
   return problems
 }
 
-/**
- * 仅量「可点元素够不够大」—— 欢迎/建号页不进 ROUTES(建号后才有游戏内路由),
- * 此前从没被量到过(欢迎页底部三枚链接就是 17px 缩过来的)。量尺与 measurePage.smallTargets 同一条。
- */
+/** 只量可点元素尺寸,给不进 ROUTES 的欢迎/建号页用;口径同 measurePage.smallTargets */
 async function measureSmallTargets(page) {
   return page.evaluate(() => {
-    /**
-     * 与 measurePage 同一条口径:测量前禁动画。
-     *
-     * 欢迎页与建号页是独立子集量尺,不走 measurePage —— 开局页的灵根圆环曾在这里
-     * 被 stagger-in 的入场位移量出假越界,而三把尺子各管一段、只给主尺注入就会漏。
-     */
+    // 测量前禁动画(同 measurePage):入场位移会量出假越界
     const st = document.createElement('style')
     st.textContent = '*,*::before,*::after{animation:none!important;transition:none!important}'
     document.head.appendChild(st)
@@ -810,17 +584,16 @@ for (const vp of VIEWPORTS) {
   watchPageErrors(page, pageErrors)
 
   await page.goto(INDEX, { waitUntil: 'load' })
-  // 欢迎页不进 ROUTES,触控目标从没被量到过(欢迎页底部三枚链接曾缩到 17px) —— 单独补一刀。
-  // 先等「开始游戏」渲染出来再量:欢迎页是懒挂载,量早了会量到一个空页(判据没跑到东西却全绿)。
+  // 欢迎页懒挂载:等「开始游戏」渲染再量,量早了是空页假绿
   await page.getByRole('button', { name: /开\s*始\s*游\s*戏/ }).first().waitFor()
   {
     const welcome = await measureSmallTargets(page)
     checked += 1
     if (welcome.length) failures.push(`[${vp.tag}] 欢迎页 可点元素过小:${welcome.join(' | ')}`)
   }
-  // 建号:同意隐私 → 传送门(约 2.5s)→ 命名 → 踏入仙途
+  // 建号:传送门约 2.5s
   await page.getByRole('button', { name: /开\s*始\s*游\s*戏/ }).first().click()
-  // 隐私弹窗也是弹窗:它的控件同样要过那两条尺子(页面上巡不到它)
+  // 隐私弹窗巡页巡不到,单独过尺子
   {
     const audit = await auditModalControls(page)
     checked += 1
@@ -836,7 +609,7 @@ for (const vp of VIEWPORTS) {
   {
     const create = await measureSmallTargets(page)
     checked += 1
-    // 建号页同样懒挂载:量到空页就让判据自己报错,不静默放过
+    // 建号页懒挂载:量到空页即报错
     if ((await page.locator('button').count()) === 0) failures.push(`[${vp.tag}] 建号页 没量到任何控件,判据没跑到东西`)
     if (create.length) failures.push(`[${vp.tag}] 建号页 可点元素过小:${create.join(' | ')}`)
   }
@@ -854,8 +627,7 @@ for (const vp of VIEWPORTS) {
     const railFails = railProblems(rail)
     if (rail) checked += 1
     if (railFails.length) failures.push(`[${vp.tag}] ${route} → ${railFails.join(' / ')}`)
-    // 两百档字号(200% 缩放)—— 390 那档顺带量一眼:放大一倍后只剩 195px,比 320 还窄。
-    // 量完原地还原视口,不占用一次额外建号。判据只在 390 档跑,别处重复装没意义。
+    // 200% 缩放只在 390 档量
     if (vp.tag === '390') {
       const zoom = await measureZoomScale(page, vp)
       zoomSeen += 1
@@ -871,7 +643,7 @@ for (const vp of VIEWPORTS) {
   await page.close()
 }
 
-// ---- 第四件事:存档写不进去时,设置页必须说话 ----
+// ---- 第四件事:存档写不进去时设置页须有提示 ----
 {
   const page = await browser.newPage({ viewport: { width: 375, height: 812 } })
   const pageErrors = []
@@ -885,7 +657,7 @@ for (const vp of VIEWPORTS) {
   await page.getByRole('button', { name: /踏\s*入\s*仙\s*途/ }).first().click()
   await page.waitForTimeout(1200)
 
-  // 卡死存储:此后任何写盘都抛配额错误(引擎每秒仍在改状态,故几秒内必然撞上一次刷盘)
+  // 卡死存储:此后写盘都抛配额错误(引擎每秒改状态,几秒内必撞上刷盘)
   await page.evaluate(() => {
     Storage.prototype.setItem = function () {
       throw new DOMException('quota', 'QuotaExceededError')
@@ -921,26 +693,16 @@ for (const vp of VIEWPORTS) {
   })
   await page.waitForTimeout(700)
 
-  /*
-   * 先把浮出来的提示条收掉再点「关于」。
-   *
-   * 提示条是浮在顶上的一层(而且现在真的可点),建号后的成就提示会停留两三秒;
-   * 它与设置页入口若落在同一区域,这条判据就会被一条无干的提示挡住而假红
-   * (实测偶发:waitFor 过了、click 超时)。要测的是弹窗焦点,不是提示条 ——
-   * 提示条自己那条判据在下面单独跑。
-   */
+  // 先收掉提示条再点「关于」:建号后的成就提示停两三秒,挡住入口会假红
   const stillOpen = await clearOverlays(page)
   if (stillOpen.length) failures.push(`[375] 弹窗焦点场景:动手前还开着浮层 —— ${stillOpen.join('、')}(取景没收拾干净)`)
 
   const trigger = page.getByRole('button', { name: /关于/ }).first()
-  // 先等它真的画出来:懒加载的分包 + 页面淡入都要时间,直接点会得到
-  // 「点了没反应」的假红(实测偶发),而这条判据要抓的是真问题,不是抢跑
+  // 等入口画出来再点:懒加载分包 + 页面淡入,直接点偶发假红
   try {
     await trigger.waitFor({ state: 'visible', timeout: 10000 })
     await trigger.click({ timeout: 5000 })
   } catch (err) {
-    // 把真实原因与**挡路的是谁**一起写进报告 —— 「页面没就绪?」这种猜测曾让人白跑两趟,
-    // 第二次才发现挡路的是一层随机浮上来的浮盖。抓不到线索的判据等于没有判据。
     const blocked = await page.evaluate(() => {
       const b = [...document.querySelectorAll('button')].find(x => (x.textContent || '').includes('关于'))
       if (!b) return '(页面上找不到「关于」)'
@@ -972,7 +734,6 @@ for (const vp of VIEWPORTS) {
   if (inModal?.unnamed.length) failures.push(`[375] 弹窗场景:面板里有 ${inModal.unnamed.length} 个无名控件(读屏只会念「按钮」)`)
   if (inModal?.small.length) failures.push(`[375] 弹窗场景:面板里可点元素过小:${inModal.small.join(' | ')}`)
 
-  // 连按六次 Tab:焦点必须一直在弹窗里(此前会一路跑到页面与底部导航)
   let escaped = false
   for (let i = 0; i < 6; i++) {
     await page.keyboard.press('Tab')
@@ -998,7 +759,7 @@ for (const vp of VIEWPORTS) {
   await page.close()
 }
 
-// ---- 第六件事:Tab 焦点看得见吗 ----
+// ---- 第六件事:Tab 焦点可见 ----
 {
   const page = await browser.newPage({ viewport: { width: 375, height: 812 } })
   const pageErrors = []
@@ -1018,7 +779,7 @@ for (const vp of VIEWPORTS) {
       location.hash = `#${r}`
     }, route)
     await page.waitForTimeout(650)
-    // 从「没有焦点」的干净状态开始数 Tab,免得把上一页残留的焦点算进来
+    // 清掉上一页残留的焦点再数
     await page.evaluate(() => document.activeElement?.blur())
     const seen = []
     for (let i = 0; i < 6; i++) {
@@ -1027,7 +788,7 @@ for (const vp of VIEWPORTS) {
         const el = document.activeElement
         if (!el || el === document.body || el === document.documentElement) return { blind: null, label: '(body)' }
         const cs = getComputedStyle(el)
-        // 透明的轮廓等于没有 —— 只看「有没有一圈线」会把 outline:transparent 也算通过
+        // 透明轮廓不算可见
         const hiddenOutline = cs.outlineColor === 'transparent' || /rgba\([^)]*,\s*0\)$/.test(cs.outlineColor)
         const ring =
           (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0 && !hiddenOutline) || cs.boxShadow !== 'none'
@@ -1037,14 +798,13 @@ for (const vp of VIEWPORTS) {
       seen.push(info.label)
       if (info.blind) failures.push(`[375] ${route} 第 ${i + 1} 个 Tab 落点看不见焦点:${info.blind}`)
     }
-    // 落点一个没数到 = 这段判据没跑到东西,也要红
     if (seen.filter(s => s !== '(body)').length === 0) failures.push(`[375] ${route} 的 Tab 落点一个都没数到`)
   }
   if (pageErrors.length) failures.push(`[375] 焦点可见场景页面异常:${[...new Set(pageErrors)].join(' | ')}`)
   await page.close()
 }
 
-// ---- 第七件事:浮出来的提示条能不能点掉 ----
+// ---- 第七件事:提示条点得掉 ----
 {
   const page = await browser.newPage({ viewport: { width: 375, height: 812 } })
   const pageErrors = []
@@ -1062,8 +822,7 @@ for (const vp of VIEWPORTS) {
     const buttons = [...document.querySelectorAll(`${sel} button`)]
     return {
       count: buttons.length,
-      // 判据是**计算出来的** pointer-events:外框写 none 时按钮会继承成 none,
-      // 于是 @click 挂在那儿却永远收不到事件 —— 写了不生效,等于没写
+      // 看计算后的 pointer-events:外框写 none 时按钮继承成 none,@click 收不到事件
       blocked: buttons.filter(b => getComputedStyle(b).pointerEvents === 'none').length
     }
   }, hostSel)
@@ -1074,11 +833,7 @@ for (const vp of VIEWPORTS) {
     const first = page.locator(`${hostSel} button`).first()
     const text = ((await first.textContent()) ?? '').trim()
     await first.click({ timeout: 3000 })
-    /*
-     * 「点了要收」还得看它**多快**收:提示条带 glow-pulse 无限动画时,过渡探测
-     * 会把 2.4 秒当成离场时长,点掉之后原地杵两秒才没(实测 460ms 仍在原地)。
-     * 故给一个 1 秒的窗口 —— 它短于最短的提示寿命(2.6 秒),不会把「自己超时消失」错认成点掉了。
-     */
+    // 1 秒窗口:须短于最短提示寿命(2.6 秒);glow-pulse 无限动画会让过渡探测把离场拖成 2.4 秒
     let gone = false
     for (let i = 0; i < 20 && !gone; i += 1) {
       await page.waitForTimeout(50)
@@ -1092,12 +847,8 @@ for (const vp of VIEWPORTS) {
 
 // ---- 第八件事:引擎按概率触发的两扇弹窗(顿悟 / 洞府巡游) ----
 /*
- * 这两扇由引擎自己掷概率弹出(顿悟 8% × 境界存在感、巡游每日一次),
- * 正常巡页永远碰不到;而它们此前是自己铺的 fixed inset-0,没有 dialog 语义、
- * 没有焦点管理。故这里把 Math.random 钉成 0 让那一掷必中 —— 下一次引擎心跳
- * 就会摆上来,然后按弹窗那套尺子量一遍。夹具只作用于测试页,不动生产代码
- * (注意 RandomService 在构造时就抓住了 Math.random 的函数引用,故引擎其余部分
- * 的随机数不受影响)。
+ * Math.random 钉成 0 让引擎那一掷必中(顿悟 8% × 境界存在感、巡游每日一次),下次心跳弹出后按弹窗尺子量。
+ * RandomService 构造时已抓住 Math.random 的引用,引擎其余随机数不受影响。
  */
 {
   const page = await browser.newPage({ viewport: { width: 375, height: 812 } })
@@ -1128,7 +879,7 @@ for (const vp of VIEWPORTS) {
         controls: [...panel.querySelectorAll('button, a, [role=button]')]
           .map(el => {
             const r = el.getBoundingClientRect()
-            // 与巡页/弹窗巡逻同一条尺子:声明的 min-height 到了 28 的给半像素容差
+            // 口径同巡页:声明 min-height ≥28 的给半像素容差
             const declared = parseFloat(getComputedStyle(el).minHeight) || 0
             const ok = r.height >= 28 || (declared >= 28 && r.height >= 27.5)
             return { name: (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 14), h: r.height, ok }
@@ -1154,12 +905,10 @@ for (const vp of VIEWPORTS) {
   await page.close()
 }
 
-// ---- 第九件事:冷启动落在子页时,「返回」不该把人送出游戏 ----
+// ---- 第九件事:冷启动落在子页时「返回」不退出游戏 ----
 /*
- * 书签、外部 deep link、PWA 冷启动恢复上次路由,都会让**第一次**导航就落在
- * 子页上;此时站内没有上一页,裸 router.back() 会退到 about:blank ——
- * 实测整个界面连同这一局的上下文一起消失,而玩家只觉得「点了一下返回,游戏没了」。
- * 复现要用同一 context 里新开的一页:它共享存档(localStorage),但历史是全新的。
+ * 书签 / deep link / PWA 冷启动时首次导航即落在子页,站内无上一页,裸 router.back() 会退到 about:blank。
+ * 复现用同一 context 新开一页:共享 localStorage,历史全新。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 375, height: 812 } })
@@ -1177,10 +926,9 @@ for (const vp of VIEWPORTS) {
   const page = await ctx.newPage()
   const pageErrors = []
   watchPageErrors(page, pageErrors)
-  // 这一页的第一次导航就是子页 —— 正是冷启动的处境
   await page.goto(INDEX + '#/dongfu', { waitUntil: 'load' })
   await page.waitForTimeout(1800)
-  // 同上:别让随机浮上来的引擎事件挡住「返回」
+  // 防随机引擎事件挡住「返回」
   await clearOverlays(page)
   checked += 1
   const coldBack = await page.evaluate(() => ({
@@ -1205,13 +953,10 @@ for (const vp of VIEWPORTS) {
   await ctx.close()
 }
 
-// ---- 第十件事:后期档的逐页复核(空档量不出长数字与满屏内容) ----
+// ---- 第十件事:后期档的逐页复核 ----
 /*
- * 前面九件事量的是「刚建号」那一份空档。可同一个页面在神人境是另一副样子:
- * 数字长到九位数、法宝两件、器魂、在途秘境、以及隔夜归来时的「归来卷轴」。
- * 那一屏玩家每隔几天就会见一次,却从来没有被无头浏览器画出来过。
- * 故这里用一份自检夹具(存档密钥就写在包里,见 utils/crypto 的注释:并非安全边界),
- * 走一遍后期档:先核归来卷轴,再逐页过同一把尺子。
+ * 夹具后期档(九位数数字、法宝、器魂、在途秘境、隔夜归来):先核归来卷轴,再逐页过同一把尺子。
+ * 存档密钥写在包里(见 utils/crypto 的注释:并非安全边界)。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
@@ -1228,11 +973,7 @@ for (const vp of VIEWPORTS) {
       lifespanBonusYears: 0,
       dead: false,
       reincarnation: { count: 2, daoFruit: 12, talents: [], insight: 400, lives: [], vow: null, trial: null, bonds: [] },
-      /*
-       * 五系杂灵根:灵根行最挤的一档(名字 + 五个圆环 + ×倍率)。
-       * 空档抽到「双灵根」时不挤,「杂灵根」被压成竖排的事故就靠运气才撞得到 ——
-       * 这里钉死最挤的一份,让那个人物页状态每次都被量。
-       */
+      // 五系杂灵根:灵根行最挤的一档(名字 + 五个圆环 + ×倍率)
       linggen: {
         roots: [
           { element: 'fire', aptitude: 42 },
@@ -1244,11 +985,7 @@ for (const vp of VIEWPORTS) {
         gradeName: '杂灵根',
         growthMult: 0.85
       },
-      /*
-       * 镇压三态都要在夹具里出现 —— 此前夹具一个镇压区域都没有,
-       * 于是「自动产出」那条长信息把地界名挤成竖排的事故,这脚本从来没量过(玩家先看到的)。
-       * qingyun 守了 7 小时(稳定)、wanyao 守到 71 小时(倒计时转红)、guzhanchang 守满一日(繁盛)。
-       */
+      // 镇压三态须都在夹具里:qingyun 7 小时(稳定)、wanyao 71 小时(倒计时转红)、guzhanchang 满一日(繁盛)
       suppressedRegions: ['qingyun', 'wanyao', 'guzhanchang'],
       suppressQualified: ['qingyun', 'wanyao', 'guzhanchang', 'heifeng'],
       suppressedSince: {
@@ -1260,10 +997,10 @@ for (const vp of VIEWPORTS) {
         qingyun: { totalFights: 40, avgRounds: 2.1, avgDamageTakenPct: 0.05, consecutiveWins: 9, lastUpdateAt: Date.now() - 3600000 },
         wanyao: { totalFights: 60, avgRounds: 2.4, avgDamageTakenPct: 0.06, consecutiveWins: 4, lastUpdateAt: Date.now() - 3600000 },
         guzhanchang: { totalFights: 55, avgRounds: 2.8, avgDamageTakenPct: 0.09, consecutiveWins: 3, lastUpdateAt: Date.now() - 3600000 },
-        // 黑风林:已取得镇压资格但当前仍在历练态(「转为镇压收益」那条要画出来)
+        // 黑风林:已取得镇压资格、仍在历练态(画出「转为镇压收益」)
         heifeng: { totalFights: 14, avgRounds: 3.9, avgDamageTakenPct: 0.18, consecutiveWins: 2, lastUpdateAt: Date.now() - 600000 }
       },
-      // 在途秘境:归来卷轴要说「原样留着」,历练页也要画出「在境中」那一版
+      // 在途秘境:归来卷轴说「原样保留」,历练页画「在境中」
       secretRealm: { realmId: 'sr_kurong', enteredAt: Date.now() - 600000, layer: 2, wins: 1, losses: 0, spoils: ['灵石少许'], rules: ['治疗减半'], carriedHpPct: 0.7, finished: false }
     },
     resources: { spiritStone: gn(9, 12), qi: 5000, wudao: 800, herb: 900, ore: 900, page: 300, dust: 500 },
@@ -1282,7 +1019,7 @@ for (const vp of VIEWPORTS) {
       daoSource: 1200,
       souls: [{ uid: 'late_s1', type: 'fengmang', grade: 1, fromName: '旧剑' }],
       equippedSouls: ['late_s1'],
-      // 在途远征:归来卷轴要说「原样留着」,天界页也要画出「走到第二重」那一版
+      // 在途远征:归来卷轴说「原样保留」,天界页画「走到第二重」
       worldRun: {
         worldId: 'chiyan',
         pactId: null,
@@ -1295,7 +1032,7 @@ for (const vp of VIEWPORTS) {
         winStacks: 1
       }
     },
-    // 地界表:解锁到黑风林一带,好让「镇压中 / 已取得资格」两种卡片都渲染出来
+    // 解锁到黑风林一带:「镇压中 / 已取得资格」两种卡片都要渲染
     adventure: {
       unlocked: ['qingyun', 'luoxia', 'heifeng', 'wanyao', 'cangwu', 'guzhanchang'],
       cleared: ['qingyun', 'luoxia', 'heifeng', 'wanyao'],
@@ -1325,7 +1062,7 @@ for (const vp of VIEWPORTS) {
       theme: 'dark'
     }
   }
-  // 夹具 payload 只做一次,后面 320 那一遍复用;播种加闸(见第十四件事的坑)
+  // payload 只做一次,320 那一遍复用;播种加闸(见第十四件事)
   const latePayload = Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
   await ctx.addInitScript(decisivePayload => {
     if (localStorage.getItem('__layoutSeeded')) return
@@ -1338,7 +1075,7 @@ for (const vp of VIEWPORTS) {
   await page.goto(INDEX, { waitUntil: 'load' })
   await page.waitForTimeout(2600)
 
-  // (一)隔夜归来第一眼:数字不许漏 NaN,收下之后要真的关掉
+  // (一)归来卷轴:不漏 NaN,收下即关
   checked += 1
   const offline = await page.evaluate(() => {
     const panel = document.querySelector('.modal-panel')
@@ -1418,21 +1155,12 @@ for (const vp of VIEWPORTS) {
   }
   if (pageErrors.length) failures.push(`[390] 后期档页面异常:${[...new Set(pageErrors)].join(' | ')}`)
 
-  /*
-   * (四)在途远征也要真的走得动。
-   *
-   * 与秘境同理:远征这一套只在单元用例里跑过,界面上「第 N 重择路」按下去会怎样,
-   * 从没有人看过。夹具身上带着一趟打到第二重的赤炎天远征(天界页会直接开在远征册上),
-   * 故这里真点一次择路:要么浮出战报、要么行程点列前移,并查占位符与页面异常。
-   */
+  // (四)在途远征(赤炎天第二重,天界页直接开在远征册)真点一次择路:要么浮出战报,要么行程点列前移
   await page.goto(INDEX + '#' + '/celestial', { waitUntil: 'load' })
   await page.waitForTimeout(900)
   checked += 1
   const runBefore = await page.evaluate(() => document.querySelector('main')?.innerText || '')
-  /*
-   * 入口怎么认:两条路各自的按钮上写着「道源 +N」(层号那行是独立的文本,不在按钮里);
-   * 若这一趟已经走到界主,入口换成「决战」。两者必有其一 —— 都找不到就是真没入口。
-   */
+  // 入口:择路按钮写「道源 +N」(层号不在按钮里);走到界主时换成「决战」
   const pickNode = page.locator('main button', { hasText: /道源 \+\d+/ }).first()
   const runEntry = (await pickNode.count()) > 0 ? pickNode : page.locator('main button', { hasText: /决\s*战/ }).first()
   if (!/远征 ·/.test(runBefore)) {
@@ -1446,16 +1174,13 @@ for (const vp of VIEWPORTS) {
     const after = await page.evaluate(() => ({
       text: document.querySelector('main')?.innerText || '',
       toasts: [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim()),
-      // 打输会开战报弹窗(赢了只是行程点列前移,不开弹窗)
+      // 打输开战报弹窗;赢了只前移行程点列
       report: (document.querySelector('.modal-panel h3')?.textContent || '').trim()
     }))
     if (!after.report && after.toasts.length === 0 && after.text === runBefore) {
       failures.push('[390-late] 天界页:点了远征的推进入口既没战报也没变化(点了没反应)')
     }
-    /*
-     * 开出来的战报必须**叫得出这一界**:标题得在动手前取。
-     * 从前先打后读 runWorld,而收尾那一场会把 worldRun 清空,标题就退成「远征」。
-     */
+    // 战报标题须叫得出这一界:收尾那场会清空 worldRun,先打后读则退成「远征」
     if (after.report && after.report !== '赤炎天') {
       failures.push(`[390-late] 天界页:远征战报弹窗标题是「${after.report}」,应为这一界的名字(赤炎天)`)
     }
@@ -1468,17 +1193,10 @@ for (const vp of VIEWPORTS) {
   if (pageErrors.length) failures.push(`[390] 后期档页面异常(远征):${[...new Set(pageErrors)].join(' | ')}`)
 
   /*
-   * (四续)天道试炼:第三条终局产线,同样只在单元用例里跑过。
-   * 切到「试炼」册,真按一次应试,要求开出战报、且写清止步/功成与赏格、不漏占位符。
-   *
-   * 这一步**另起一份不带在途活动的夹具**:上面那份后期档身上同时压着在途秘境与
-   * 在途远征,而 94e08bc 起终局共用 endgameBusy —— 应试按钮会被正确地置灰成
-   * 「应 试(远征在途)」。沿用同一份夹具,这条判据量到的永远是「置灰的按钮点了没反应」,
-   * 而真相是闸门在按设计工作:它再也不是在量试炼本身了。
-   * 故这里把 worldRun / secretRealm / session 摘掉,与天界页那步各用各的档。
+   * (四续)天道试炼:切到「试炼」册真按一次应试,须开出战报、写清止步/功成与赏格、不漏占位符。
+   * 须另起无在途活动的夹具:终局共用 endgameBusy,在途秘境/远征会把应试按钮置灰。
    */
   {
-    // 「没在途」那一份:只把三处在途状态摘掉,其余(道源 1200、境界、解锁表)照旧
     const idleSlices = {
       ...slices,
       player: { ...slices.player, secretRealm: null },
@@ -1497,16 +1215,11 @@ for (const vp of VIEWPORTS) {
     await trialPage.goto(INDEX + '#' + '/celestial', { waitUntil: 'load' })
     await trialPage.waitForTimeout(1600)
     await clearOverlays(trialPage)
-    /*
-     * 收掉还在飘的提示条再切册:它们挂在 top-12 的 fixed 层上,而页签轨道就在它下面 ——
-     * toast 正好盖住「试炼」那一格时,真实点击会被它截走(实测:playwright 报
-     * 「button ... intercepts pointer events」,这一格永远切不过去),判据于是报
-     * 「试炼册里没有应试入口」。真实玩家等两秒就点得到,这里等不了,故主动收掉。
-     */
+    // 收掉提示条再切册:toast(top-12 的 fixed 层)盖住「试炼」那格时会截走点击
     await trialPage.evaluate(() => {
       for (const b of document.querySelectorAll('.pointer-events-none.fixed button')) b.click()
     })
-    // 归来卷轴/引擎弹窗也可能正盖在页签轨道上:再收一轮,别让它们抢走切册那一下
+    // 归来卷轴/引擎弹窗也可能盖住页签,再收一轮
     for (let i = 0; i < 3; i += 1) {
       if ((await trialPage.locator('.modal-panel').count()) > 0) await trialPage.keyboard.press('Escape')
       await trialPage.waitForTimeout(250)
@@ -1525,24 +1238,10 @@ for (const vp of VIEWPORTS) {
       if ((await trialBtn.count()) === 0) failures.push('[390-late] 试炼册里没有「应试」入口(判据没跑到东西)')
       else {
         const trialName = ((await trialBtn.textContent()) || '').replace(/\s+/g, ' ').trim().slice(0, 20)
-        // 在途闸门先自证清白:这份夹具没有在途活动,按钮就不该挂着「在途」二字
         if (/在途|身在秘境/.test(trialName)) {
           failures.push(`[390-late] 试炼:夹具已摘掉在途活动,应试仍写着「${trialName}」—— 闸门误判`)
         }
-        /*
-         * 应试按钮也在 toast 层底下:点不到时用 JS 直点兜底,并**轮询等战报**。
-         *
-         * 从前这里点一次、等 2.2 秒、立刻读面板 —— 而这一格上面既有提示条、又可能有
-         * 上一秒引擎自己弹的窗,真实点击被截走时那一次就白等了,判据于是报「没有开出战报」,
-         * 与试炼本身无关。改成「最多试两轮、每轮等到真浮出面板为止」,量的还是同一件事。
-         */
-        /*
-         * 取证要认**试炼那一扇**面板,不能随手取第一扇。
-         *
-         * 这一屏上常有几扇窗叠着(离线归来卷轴、引擎自己在弹的窗),第一扇
-         * 未必是刚开出来的战报 —— 拿它的标题判「有没有开出战报」会得到假的战报
-         * (标题对不上,还会连带把别扇窗的正文当成战报正文去核)。故按标题找。
-         */
+        // 按标题认试炼那一扇:屏上常叠着几扇窗(归来卷轴、引擎弹窗),第一扇未必是战报
         const trialAfter = async () => await trialPage.evaluate(() => {
           const panels = [...document.querySelectorAll('.modal-panel')]
           const panel = panels.find(p => /试炼/.test(p.querySelector('h3')?.textContent || ''))
@@ -1557,8 +1256,7 @@ for (const vp of VIEWPORTS) {
         const clickTrial = async () => {
           await trialBtn.click({ timeout: 4000 }).catch(() => trialBtn.evaluate(el => el.click()).catch(() => {}))
         }
-        // 只认**试炼**那一扇:残留的别种弹窗(上一秒引擎自己弹的)带着自己的标题,
-        // 拿它当「战报已开出」会假绿
+        // 应试按钮在 toast 层底下,真实点击可能被截走:最多试两轮,每轮等面板浮出
         let after = await trialAfter()
         const opened = () => after.title.includes('试炼')
         for (let attempt = 0; attempt < 2 && !opened(); attempt += 1) {
@@ -1583,12 +1281,7 @@ for (const vp of VIEWPORTS) {
   }
   await ctx.close()
 
-  /*
-   * (五)同一份后期档在 320 窄屏再过一遍。
-   *
-   * 主巡页在 320 量的是刚建号的空档(数字短、内容少);「长数字 + 满屏内容 + 最窄屏」
-   * 这个组合此前没量过,而这正是最容易撑破的地方(实测当前全绿,故这一条是防回归)。
-   */
+  // (五)后期档在 320 再过一遍:主巡页的 320 只量空档,「长数字 + 满屏内容 + 最窄屏」最易撑破(防回归)
   {
     const narrow = await browser.newContext({ viewport: { width: 320, height: 568 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
     await narrow.addInitScript(decisivePayload => {
@@ -1615,13 +1308,10 @@ for (const vp of VIEWPORTS) {
   }
 }
 
-// ---- 第十一件事:渡劫突破真打一次(一局里最要紧的那一屏,此前没人画过) ----
+// ---- 第十一件事:渡劫突破真打一次 ----
 /*
- * 突破结果弹窗(成功/失败、渡劫雷数与「寿元增至」那一行)是每个玩家都会反复看的屏,
- * 而它从来没被无头浏览器渲染过 —— 空档修为不满,按钮是灰的;后期档又未必卡在大关上。
- * 故另起一份「炼气圆满」的夹具:修为与灵气给足、寿元留够,点「引 劫 突 破」真打一次。
- * 渡劫成不成是随机的,故判据只看**形状**:必须开出结果弹窗,写清成败与境界去向,
- * 失败不许漏占位符,成功要与页面上的境界对得上。
+ * 另起「炼气圆满」夹具(空档按钮是灰的,后期档未必卡在大关),点「引劫突破」真打一次。
+ * 成败随机,判据只看形状:开出结果弹窗、写清成败与雷数、不漏占位符,成功须与页面境界对得上。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
@@ -1630,7 +1320,7 @@ for (const vp of VIEWPORTS) {
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
-    // 炼气·圆满(大关)+ 修为灵气给足 + 寿元留够(寿元已尽会被「寿元将尽」截住)
+    // 炼气·圆满(大关);寿元已尽会被「寿元将尽」截住
     player: { major: 0, sub: 9, exp: gn(9, 30), age: 16, lifespanBonusYears: 0, dead: false, reincarnation: { count: 0, daoFruit: 0, talents: [], insight: 30, lives: [], vow: null, trial: null, bonds: [] }, linggen: { roots: [{ element: 'fire', aptitude: 90 }], gradeName: '单灵根', growthMult: 1.2 } },
     resources: { spiritStone: gn(3, 6), qi: 9999999, wudao: 300, herb: 400, ore: 400, page: 90, dust: 120 },
     inventory: { items: [], equipped: {}, pills: {}, artifacts: [], equippedArtifacts: [] },
@@ -1657,19 +1347,17 @@ for (const vp of VIEWPORTS) {
     await tribBtn.click({ timeout: 3000 }).catch(() => {})
     await page.waitForTimeout(1600)
     const view = await page.evaluate(() => {
-      // 只认**突破结果**那一扇:屏幕上可能同时浮着别的(顿悟/巡游),拿错扇就诊断错人
+      // 只认突破结果那一扇:屏上可能同时浮着别的(顿悟/巡游)
       const panels = [...document.querySelectorAll('.modal-panel')]
       const panel = panels.find(p => /突破成功|突破失败/.test(p.innerText || '')) ?? null
       const text = panel?.innerText || ''
       return {
         found: !!panel,
-        // 没开出来时,把「此刻开着的到底是谁」写进报告 —— 上一次注入就是靠这句才能一眼看懂
         others: panels.map(p => (p.querySelector('h3')?.textContent || p.getAttribute('aria-label') || '无标题').trim()).join('、'),
         text,
         label: panel?.getAttribute('aria-label') ?? null,
         outcome: /突破成功/.test(text) ? '成功' : /突破失败/.test(text) ? '失败' : null,
         hasWave: /共\s*\d+\s*道/.test(text),
-        // 页面上当前境界(成功之后应当已经换名)
         realm: (document.body.innerText.match(/炼气|筑基/) || [''])[0]
       }
     })
@@ -1697,8 +1385,7 @@ for (const vp of VIEWPORTS) {
 
 // ---- 第十二件事:走完一次转世(寿元将尽 → 此生已矣 → 轮回 → 新的一世) ----
 /*
- * 转世是每一世收官的那套仪式,也是**唯一会把存档推倒重来**的流程 ——
- * 三步弹窗 + 择姿立题 + 新的一世,此前一步都没被真浏览器走过。
+ * 转世是唯一会把存档推倒重来的流程:三步弹窗 + 择姿立题 + 新的一世。
  * 夹具把寿元写尽(一读档引擎就判定身故),然后一路点下去。
  */
 {
@@ -1734,18 +1421,14 @@ for (const vp of VIEWPORTS) {
   watchPageErrors(page, pageErrors)
   await page.goto(INDEX, { waitUntil: 'load' })
   await page.waitForTimeout(2600)
-  /*
-   * 钉死随机源、收掉提示条 —— 但**不要**去关弹窗:这一屏正开着「寿元将尽」,
-   * 它就是本场景的起点(而且它故意不可关)。钉随机的用意是免得引擎在转世途中
-   * 掷出一个顿悟/巡游浮层,把「关没关干净」的判据搅红(实测偶发)。
-   */
+  // 只钉随机、收提示条,不关弹窗:开着的「寿元将尽」就是起点(故意不可关)
+  // 钉随机:免得途中掷出顿悟/巡游浮层,搅红「关没关干净」的判据
   await page.evaluate(() => {
     for (const b of document.querySelectorAll('.pointer-events-none.fixed button')) b.click()
     Math.random = () => 1
   })
   await page.waitForTimeout(400)
 
-  /** 读一扇弹窗的形状:标题、正文、按钮、有没有漏占位符 */
   const readPanel = () =>
     page.evaluate(() => {
       const p = document.querySelector('.modal-panel')
@@ -1790,8 +1473,7 @@ for (const vp of VIEWPORTS) {
     await confirm.click({ timeout: 3000 }).catch(() => {})
     await page.waitForTimeout(1800)
     const after = await page.evaluate(() => ({
-      // 判据是「转世那几扇窗关干净了」,不是「一扇窗都没有」——新的一世里
-      // 引擎随时可能浮出顿悟/巡游,那是正常玩法,不该被算作转世没走完
+      // 只认转世那几扇窗:新的一世里引擎随时可能浮出顿悟/巡游,不算没走完
       rebirthStillOpen: [...document.querySelectorAll('.modal-panel')]
         .map(p => (p.querySelector('h3')?.textContent || p.getAttribute('aria-label') || '').trim())
         .filter(t => /寿元将尽|此生已矣|轮回/.test(t)),
@@ -1805,12 +1487,10 @@ for (const vp of VIEWPORTS) {
   await ctx.close()
 }
 
-// ---- 第十三件事:挂机游戏真的在挂着跑(页面上的数自己在涨) ----
+// ---- 第十三件事:挂机引擎在跑(页面上的数自己在涨) ----
 /*
- * 引擎每秒推进修为、灵气与洞府产出 —— 这是放置玩法的根,可此前没有被端到端看过一眼:
- * 单元用例直接调引擎,而「应用启动之后引擎到底跑起来没有」只有真浏览器能答。
- * 若哪天 engine.start() 被条件挡住、或 tick 被谁掐了,界面会安静地冻在那里,
- * 而所有单测照样全绿。故这里真等两轮:灵气只给 1 点,看它自己涨不涨。
+ * 单测直接调引擎,测不出 engine.start() 被挡、tick 被掐(界面冻住、单测全绿)。
+ * 灵气只给 1 点,真等两轮看它自己涨不涨。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
@@ -1846,11 +1526,10 @@ for (const vp of VIEWPORTS) {
   await page.goto(INDEX, { waitUntil: 'load' })
   await page.waitForTimeout(2200)
   await clearOverlays(page)
-  // 灵气自 07b29de 起收敛回修炼页(顶栏只留灵石),故到修炼页读那里常驻的灵气条
+  // 灵气只在修炼页常驻(顶栏只留灵石)
   await page.goto(INDEX + '#/cultivation', { waitUntil: 'load' })
   await page.waitForTimeout(600)
   checked += 1
-  /** 读修炼页灵气:文本按 formatGN 的档位(万/亿/兆…)还原成数值 */
   const readQi = () => readFormatted(page, '灵气')
   const first = await readQi()
   await page.waitForTimeout(3200)
@@ -1861,7 +1540,7 @@ for (const vp of VIEWPORTS) {
   if (nums.some(v => v === null || !Number.isFinite(v))) {
     failures.push(`[390] 挂机场景:灵气读数解析不出来 —— ${[first, second, third].map(x => x.text).join(' / ')}`)
   } else if (!(nums[2] > nums[0] && nums[0] <= nums[1] && nums[1] <= nums[2])) {
-    // 判据是「一直在涨、至少涨了一截」——不要求每步都严格变大:灵气涨到上限会平下来
+    // 不要求每步严格变大:灵气到上限会平下来
     failures.push(`[390] 挂机场景:灵气没有在涨(页面上的数冻住了 —— 引擎没跑?) ${nums.join(' → ')}`)
   } else {
     console.log(`\n挂机 6 秒:灵气 ${first.text} → ${second.text} → ${third.text}(页面上的数自己在涨)`)
@@ -1870,18 +1549,10 @@ for (const vp of VIEWPORTS) {
   await ctx.close()
 }
 
-// ---- 第十四件事:导出 → 改动 → 导入回来(存档备份这条路真的走得通吗) ----
+// ---- 第十四件事:导出 → 改动 → 导入回来 ----
 /*
- * 「存档只在本地」是这个游戏反复向玩家交代的一条(设置页也这么写),故「导出备份、
- * 事后导入救回来」是最后一道保险。单元用例测过 payload 的形状,却没人真按过这两个按钮:
- * 下载走的是 Blob + a[download],导入走 FileReader + 校验 + 写盘 + 重载,
- * 任何一环断了,玩家都要等到真丢档那天才知道。
- *
- * 判据用**不会自己变的数**(灵石;夹具里没有洞府产出):
- *   导出时的灵石 S0 → 投一点灵脉把灵石花掉(S1 < S0)→ 导入 → 必须回到 S0。
- *
- * 坑记一笔:这种会触发重载的场景,夹具**必须只种一次**
- * (addInitScript 每次导航都会跑,不加闸就会在重载时把刚导入的存档盖回夹具 —— 实测踩过)。
+ * 判据用不会自己变的数(灵石;夹具无洞府产出):导出时 S0 → 投灵脉花掉 → 导入 → 须回到 S0。
+ * 会触发重载,夹具须只种一次:addInitScript 每次导航都跑,不加闸会把刚导入的存档盖回夹具。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, acceptDownloads: true })
@@ -1935,8 +1606,7 @@ for (const vp of VIEWPORTS) {
   }
   if (downloaded && !/\.save$/.test(downloaded)) failures.push(`[390] 存读场景:导出的文件名不像存档(${downloaded})`)
 
-  // 动一下不会自己变的数:投一点灵脉,把灵石花掉
-  // 灵脉投资已从弹窗改为东府页展开区(默认折叠):走到东府页,点开折叠头再投点。
+  // 投一点灵脉花掉灵石:灵脉投资在洞府页「营造」右侧,点开是弹窗
   await page.goto(INDEX + '#' + '/dongfu', { waitUntil: 'load' })
   await page.waitForTimeout(900)
   await page.getByRole('button', { name: /灵脉投资/ }).first().click({ timeout: 3000 }).catch(() => {})
@@ -1953,11 +1623,7 @@ for (const vp of VIEWPORTS) {
     if (!(spent.value < s0.value)) {
       failures.push(`[390] 存读场景:投了灵脉灵石却没少(${s0.text} → ${spent.text}),后面的导入就证明不了什么`)
     }
-    /*
-     * 关键一步:等节流把这次改动**真写进磁盘**再导入。
-     * 否则「导入后回到 S0」与「压根没写进去」在读数上分不出来 —— 注入验证时正是这么骗过判据的
-     * (跳掉导入落盘,状态照样显示 100万,因为那次投入还躺在待刷队列里)。
-     */
+    // 等节流把改动写进磁盘再导入:否则「导入后回到 S0」与「压根没写进去」读数上分不出
     await page.waitForTimeout(5600)
     const onDisk = await storedStone()
     if (spent.value !== null && (onDisk === null || Math.abs(onDisk - spent.value) > spent.value * 0.01)) {
@@ -1965,7 +1631,7 @@ for (const vp of VIEWPORTS) {
     }
   }
 
-  // 导入回来:应当回到导出那一刻(灵石回到 S0)
+  // 导入回来:灵石须回到 S0
   await page.goto(INDEX + '#' + '/settings', { waitUntil: 'load' })
   await page.waitForTimeout(1000)
   await page.evaluate(() => {
@@ -1996,14 +1662,11 @@ for (const vp of VIEWPORTS) {
   await ctx.close()
 }
 
-// ---- 第二十六件事:智能收纳不替玩家扔「有投入的件」 ----
+// ---- 第二十六件事:智能收纳留下有投入的件 ----
 /*
- * 智能收纳卖的是「替你分辨值得留的」,而它此前只认品质/流派核心词条/组合技部件 ——
- * 于是三类明明该留的件会被当垃圾:练过的(+N / 重铸 / 封存)、成套共鸣件、词条近满件。
- * 「一键清理行囊」更狠:一按就把它们全化尘,连一次确认都只报个总数,玩家事后才知道少了什么。
- * 判据按玩家真按的两个按钮核:
- *   一 清理确认框写的件数 = 该清的件数(夹具 5 件里只有 2 件是废物);
- *   二 点下去之后,留下的正好是那 3 件有投入的(行囊 5 → 3),且练过那件的「+3」还在。
+ * 该留的三类:练过的(+N / 重铸 / 封存)、成套共鸣件、词条近满件。
+ *   一 清理确认框件数 = 该清件数(夹具 5 件里 2 件废物);
+ *   二 清理后正好留下那 3 件(行囊 5 → 3),练过那件的「+3」还在。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
@@ -2016,10 +1679,10 @@ for (const vp of VIEWPORTS) {
     resources: { spiritStone: gn(1, 6), qi: 1000, wudao: 10, herb: 5, ore: 5, page: 2, dust: 0 },
     inventory: {
       items: [
-        // 两件该走的:凡品、不带套、没词条 / 或词条拉胯
+        // 两件该清:凡品、不带套、无词条或词条低
         { uid: 'j1', templateId: 'b_qingyun', quality: 'mortal', tier: 3, level: 0, affixes: [] },
         { uid: 'j2', templateId: 'b_qingyun', quality: 'mortal', tier: 3, level: 0, affixes: [{ id: 'atk1', roll: 0.12 }] },
-        // 三件该留的:练过(有投入)/ 成套共鸣 / 词条条条近满
+        // 三件该留:练过(有投入)/ 成套共鸣 / 词条近满
         { uid: 'k_lv', templateId: 'b_qingyun', quality: 'mortal', tier: 3, level: 3, affixes: [], invested: { dust: 40, stone: gn(2, 3) } },
         { uid: 'k_set', templateId: 'w_xuantie', quality: 'mortal', tier: 3, level: 0, affixes: [] },
         { uid: 'k_roll', templateId: 'h_muzan', quality: 'mortal', tier: 3, level: 0, affixes: [{ id: 'atk1', roll: 0.95 }, { id: 'def1', roll: 0.9 }] }
@@ -2098,18 +1761,13 @@ for (const vp of VIEWPORTS) {
   await ctx.close()
 }
 
-// ---- 第二十五件事:一键分解要「先勾后点」,勾品质不许当场把东西烧了 ----
+// ---- 第二十五件事:一键分解先勾后点 ----
 /*
- * 勾选框的语义是**标记**,不是**执行** —— 玩家勾「精品」是想说「精品算废料」,
- * 不是想让行囊里的精品立刻消失。此前 toggleRank 在勾上的一瞬间就调了
- * decomposeByRanks,于是「勾一下就没了」,勾错了没得后悔,也看不到会拆掉几件。
- * 判据按玩家的动作顺序核两拍:
- *   一 勾上「精品」之后 —— 行囊件数一件不能少,也不能出现「化作器灵尘」的交代;
- *   二 再点下方「分 解(2 件)」 —— 这才能少,而且要少出个交代来。
- * 顺带核第二笔账:练过的那件拆了要按八成退强化投入。夹具里一件 0 级、一件 +4
- * (记账投入尘 100 / 灵石 8000),故返还 = 底材4 + (底材4 + 八成尘80) = 88 尘 + 灵石 6400,
- * 并且提示里写的数必须与器灵尘那一栏真涨的数对得上(所见即所得)。
- * (勾选仍然会被记住,并继续管着「此后拾取自动回收」;那条是不占行囊的入包裁决,与本题无关。)
+ * 勾选品质只是标记,不是执行:
+ *   一 勾上「精品」后行囊件数不变,不出「化作器灵尘」的交代;
+ *   二 点「分 解(2 件)」后才减少,且有交代。
+ * 练过的件按八成退强化投入:夹具一件 0 级、一件 +4(投入尘 100 / 灵石 8000),
+ * 返还 = 底材4 + (底材4 + 八成尘80) = 88 尘 + 灵石 6400;提示数须与器灵尘栏实涨数一致。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
@@ -2216,12 +1874,10 @@ for (const vp of VIEWPORTS) {
   await ctx.close()
 }
 
-// ---- 第二十四件事:法宝「炼化」的两笔账,一笔都不能少写 ----
+// ---- 第二十四件事:法宝炼化的两笔账 ----
 /*
- * 炼化既扣悟道点、也扣灵石(见 forge.artifactUpCost),而按钮此前只写「悟道 N」——
- * 玩家按标签算账,回头发现灵石也少了一大截。判据两件:
- *   一 按钮上必须把两种代价都写出来;
- *   二 两种都按所写扣(读数取磁盘精确值,并等开局奖励落定)。
+ * 炼化扣悟道点与灵石(见 forge.artifactUpCost)。
+ * 判据:按钮写全两种代价;两种都按所写扣(读磁盘精确值,等开局奖励落定)。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
@@ -2286,7 +1942,7 @@ for (const vp of VIEWPORTS) {
       if (before.wudao - after.wudao !== wantWudao) {
         failures.push(`[390] 炼化场景:按钮写悟道 ${wantWudao},实际 ${before.wudao} → ${after.wudao}`)
       }
-      // 灵石是浮点(stoneByTier 会乘倍率),比较留一点容差
+      // 灵石是浮点(stoneByTier 乘倍率),比较留容差
       if (!(Math.abs(before.stone - after.stone - wantStone) < 0.01)) {
         failures.push(`[390] 炼化场景:按钮写灵石 ${wantStone},实际 ${before.stone} → ${after.stone}`)
       }
@@ -2299,12 +1955,9 @@ for (const vp of VIEWPORTS) {
   await ctx.close()
 }
 
-// ---- 第二十三件事:洞府营造的账目 —— 卡上写多少料,就扣多少料 ----
+// ---- 第二十三件事:洞府营造按卡上所写扣料 ----
 /*
- * 洞府是中期最主要的一处灵石去处,卡上写着「建造 · 60石 6铁」。
- * 判据核的是**玄铁**那一半:灵石同一时间会被任务/成就奖励搅动(实测开局那一下
- * 就发了三十多万,差被冲得看不出来),而玄铁除了营造没人动它,差一分就是错。
- * 读数取自背包「材料」页(界面上的数),不去解密分片 —— 写盘是节流的,磁盘会落后。
+ * 只核玄铁:灵石同时会被任务/成就奖励搅动,玄铁除营造无人动。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
@@ -2331,12 +1984,7 @@ for (const vp of VIEWPORTS) {
   const pageErrors = []
   watchPageErrors(page, pageErrors)
   checked += 1
-  /**
-   * 玄铁余额:**磁盘那一份**(精确到个位)。
-   *
-   * 界面上的分片只有万位三位小数(9万 → 8.998万),一位数的漂移会被四舍五入吃掉 ——
-   * 实测把造价 +1 的注入就这样混过去了。故这里等节流落盘后解密比对,不取显示值。
-   */
+  /** 玄铁余额取磁盘(精确到个位):界面只显示到万位三位小数(9万 → 8.998万),个位漂移会被舍入吃掉 */
   const readOre = async () => {
     await page.waitForTimeout(5600)
     const cipher = await page.evaluate(() => localStorage.getItem('yunyin.resources') || '')
@@ -2347,14 +1995,14 @@ for (const vp of VIEWPORTS) {
     const n = typeof v === 'number' ? v : v.m * Math.pow(10, v.e)
     return { text: String(n), value: n }
   }
-  // 先落到页面上:任何 localStorage 读数都要有 document 在(localStorage 才能读)
+  // 读 localStorage 前须先落到页面上
   await page.goto(INDEX, { waitUntil: 'load' })
   await page.waitForTimeout(2400)
   await clearOverlays(page)
   const oreBefore = await readOre()
   await page.goto(INDEX + '#' + '/dongfu', { waitUntil: 'load' })
   await page.waitForTimeout(900)
-  // 正则留出空白余量:卡片上的代价换行(数 + 量词 nowrap)会在「·」后断行
+  // 正则留空白余量:代价会在「·」后断行
   const buildBtn = page.locator('main button', { hasText: /起\s*造\s*·|再\s*营\s*·/ }).first()
   if ((await buildBtn.count()) === 0) {
     failures.push('[390] 营造场景:洞府页没有可动工的建筑(判据没跑到东西)')
@@ -2378,14 +2026,10 @@ for (const vp of VIEWPORTS) {
   await ctx.close()
 }
 
-// ---- 第二十二件事:减少动效真的减到了(顺带在音效开着的情况下点一路按钮) ----
+// ---- 第二十二件事:减少动效生效(音效开着点一路按钮) ----
 /*
- * 「减少动效」是个容易摆设的开关:加个类名、忘了写 CSS,界面上谁也看不出来
- * (动效仍然在动,而这条设置一般是给晕动/省电的人用的)。
- * 判据按「还会不会动」来量:animation-name 仍在不算,要看 duration 与 iteration ——
- * 减动效的做法是把时长压到 0.01ms 且只跑一次。
- * 同一场里音效与音乐都开着:每次点击都会走 unlockAudio + playSfx,这条路径
- * 冒烟夹具一律关掉声音,此前没走过。
+ * 减动效把时长压到 0.01ms 且只跑一次。
+ * 本场音效音乐都开着:点击走 unlockAudio + playSfx,其余夹具一律关声音。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
@@ -2428,7 +2072,6 @@ for (const vp of VIEWPORTS) {
     )
   const before = await movingCount()
   if (before === 0) failures.push('[390] 减动效场景:默认设置下界面本来就不动,这条判据证明不了什么')
-  // 音效开着,一路点点按钮(每次点击都会走 unlockAudio + playSfx)
   for (const b of [0, 1, 2]) {
     await page.locator('main button').nth(b).click({ timeout: 2000 }).catch(() => {})
     await page.waitForTimeout(150)
@@ -2452,12 +2095,9 @@ for (const vp of VIEWPORTS) {
   await ctx.close()
 }
 
-// ---- 第二十一件事:闭关的跨页承诺 —— 闭关中不许历练,而且当场就说 ----
+// ---- 第二十一件事:闭关中出发当场被拦 ----
 /*
- * 「静坐一炷香,修炼速度 +150%;闭关期间无法外出历练」是修行页明写的一条。
- * 这条承诺跨两个页面,此前也没人真走过:去历练页点出发,模式窗照开,三选一之后
- * 才被告知「你正在闭关静修」——话是对的,但让人先白走一步。
- * 判据三件:闭关真的起效(有倒计时)、出发当场被拦且不开模式窗、回修行页闭关还在。
+ * 闭关卡写明「期间不可历练」。判据:闭关起效(有倒计时)、出发当场被拦且不开模式窗、回修行页闭关还在。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
@@ -2498,7 +2138,6 @@ for (const vp of VIEWPORTS) {
     }))
     if (!started.countdown) failures.push('[390] 闭关场景:点了闭关,修行页没有出现「闭关中」的倒计时')
     if (!/闭关/.test(started.toast)) failures.push(`[390] 闭关场景:闭关没有任何交代(${started.toast || '无提示'})`)
-    // 去历练页点出发:应当当场被拦,且不开模式窗
     await page.goto(INDEX + '#' + '/adventure', { waitUntil: 'load' })
     await page.waitForTimeout(900)
     await page.locator('main button', { hasText: /出\s*发/ }).first().click({ timeout: 3000 }).catch(() => {})
@@ -2511,7 +2150,6 @@ for (const vp of VIEWPORTS) {
     if (!/闭关/.test(blocked.toast)) failures.push(`[390] 闭关场景:闭关期间点出发,出面没有说「正在闭关」(${blocked.toast || '无提示'})`)
     if (blocked.modal) failures.push('[390] 闭关场景:闭关期间点出发,还开出了模式窗(该当场拦下,不让玩家白走一步)')
     if (blocked.running) failures.push('[390] 闭关场景:闭关期间居然真的出发了')
-    // 回修行页:闭关还在
     await page.goto(INDEX + '#' + '/cultivation', { waitUntil: 'load' })
     await page.waitForTimeout(800)
     const back = await page.evaluate(() => {
@@ -2525,14 +2163,10 @@ for (const vp of VIEWPORTS) {
   await ctx.close()
 }
 
-// ---- 第二十件事:背包里的账目 —— 显示多少就扣/给多少 ----
+// ---- 第二十件事:背包账目按显示扣/给 ----
 /*
- * 强化与分解是玩家天天用的两个资源动作,而它们各自都有一处**手写数字**:
- *   强化弹窗写着「器灵尘×N · 灵石 M」;
- *   分解完弹一条「分解得器灵尘×K」。
- * 这些数字若与服务实际扣/给的对不上,玩家不会知道该信哪个。
- * 判据就一件事:拿界面上的数对界面自己的变化(器灵尘那一栏)。
- * 灵石不在判据里 —— 同一段时间里任务/成就也会发灵石,拿它做差会被别处的收益搅乱。
+ * 强化弹窗「器灵尘×N」、分解提示「得器灵尘×K」须与器灵尘栏的实际变化一致。
+ * 不核灵石:任务/成就同时也发灵石。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
@@ -2577,13 +2211,7 @@ for (const vp of VIEWPORTS) {
       const m = /器灵尘\s*(\d+)/.exec(document.querySelector('main')?.innerText || '')
       return m ? Number(m[1]) : null
     })
-  /**
-   * 打开背包里那件(未装备、未锁定)——按 **uid** 找,不按名字找。
-   *
-   * 从前这里写死了「青云道袍」:内容一改名(这件后来按地界改成「风林道袍」),
-   * 点击就静默落空,场景报的是「判据没跑到东西」,而真相只是名字变了。
-   * 装备卡带上 data-uid(见 EquipmentCard),这一处从此与命名无关。
-   */
+  // 按 uid 找背包里那件(未装备、未锁定),不按名字:改名会让点击静默落空;data-uid 见 EquipmentCard
   const BAG_UID = 'b_1'
   await page.locator(`main button[data-uid="${BAG_UID}"]`).first().click({ timeout: 3000 })
   await page.waitForTimeout(500)
@@ -2601,7 +2229,7 @@ for (const vp of VIEWPORTS) {
     if (before === null || after === null || before - after !== costLine) {
       failures.push(`[390] 锻造场景:强化写着扣 ${costLine} 尘,实际 ${before} → ${after}(所见非所付)`)
     }
-    // 接着分解同一件:提示里说给多少尘,就该给多少 —— 而且这件要从包里消失
+    // 分解同一件:提示给多少尘就给多少,且这件须出包
     const dustBeforeSplit = await readDust()
     await page.locator('.modal-panel footer button').filter({ hasText: /^$/ }).first().click({ timeout: 3000 }).catch(() => {})
     await page.waitForTimeout(300)
@@ -2627,12 +2255,9 @@ for (const vp of VIEWPORTS) {
   await ctx.close()
 }
 
-// ---- 第十九件事:真打一场历练战斗,看战报回放与战斗分析 ----
+// ---- 第十九件事:真打一场历练战斗(战报回放与战斗分析) ----
 /*
- * 战报是这游戏里**看得最多**的一屏:出发 → 模式 → 等一场 → 逐行回放 → 结语,
- * 而这条链只在单元用例里跑过引擎、从没在真浏览器里走完过。
- * 判据只要四件事:探索真的开起来了、战报回放出了行、结语写清回合与胜负、
- * 战斗分析点得开且给得出数据面板(总输出/总承伤那一组)。
+ * 判据:探索开起来、战报有行、结语写清回合与胜负、战斗分析可开且有数据面板(总输出/总承伤)。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
@@ -2643,7 +2268,7 @@ for (const vp of VIEWPORTS) {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
     player: { name: '战斗自检', major: 5, sub: 3, exp: gn(1, 2), age: 40, lifespanBonusYears: 0, dead: false, reincarnation: { count: 0, daoFruit: 0, talents: [], insight: 0, lives: [], vow: null, trial: null, bonds: [] }, linggen: { roots: [{ element: 'wood', aptitude: 70 }], gradeName: '单灵根', growthMult: 1.1 } },
     resources: { spiritStone: gn(1, 6), qi: 1000, wudao: 10, herb: 5, ore: 5, page: 2, dust: 2 },
-    // 一件高 Tier 的武器:让首战打得赢、回放短,判据才不至于看运气
+    // 高 Tier 武器:首战打得赢、回放短,判据不看运气
     inventory: { items: [{ uid: 'p_w', templateId: 'w_zidian', quality: 'heaven', tier: 20, level: 4, affixes: [] }], equipped: { weapon: 'p_w' }, pills: {}, artifacts: [], equippedArtifacts: [] },
     endgame: { daoPath: null, daoSource: 0, souls: [], equippedSouls: [] },
     settings: { privacyAccepted: true, sfxOn: false, musicOn: false, musicVol: 0, sfxVol: 0, reduceMotion: true, battleSpeed: 4, decomposeRanks: [], smartKeep: { enabled: true, minQuality: 3, keepCoreAffix: true, keepComboPiece: true }, theme: 'light' }
@@ -2665,26 +2290,18 @@ for (const vp of VIEWPORTS) {
   checked += 1
   await page.locator('main button', { hasText: /出\s*发/ }).first().click({ timeout: 3000 }).catch(() => {})
   await page.waitForTimeout(600)
-  // 「出发」先开模式窗:此行欲作何打算
+  // 出发先开模式窗
   await page.locator('.modal-panel button', { hasText: /寻常游历/ }).first().click({ timeout: 3000 }).catch(() => {})
-  /*
-   * 把这一页拉到前台:后台页面的定时器会被浏览器节流(setInterval 从 1 秒拖到 1 分钟),
-   * 而引擎的心跳正是 1 秒一拍 —— 实测不拉前台时,45 秒里一场都没打(「胜 0 场」)。
-   */
+  // 须拉到前台:后台页定时器被节流(setInterval 从 1 秒拖到 1 分钟),引擎心跳 1 秒一拍
   await page.bringToFront()
-  // 首战间隔 12 秒 ÷ 历练速度,故最多等 30 秒
+  // 首战间隔 12 秒 ÷ 历练速度
   let summary = ''
   let logLines = 0
   let lastTail = ''
-  // 停下来的条件要带上「战报有行」:回放是逐行画出来的,结语先出现、行随后才铺满 ——
-  // 只看结语就收工,会偶发地在那一瞬数出 0 行(实测撞到过一次),把好代码判成坏代码
+  // 停止条件须带「战报有行」:结语先出现、行随后才铺满,只看结语偶发数出 0 行
   for (let i = 0; i < 60 && !(summary && logLines > 0); i += 1) {
     await page.waitForTimeout(1000)
-    /*
-     * 历练的第一步未必是战斗:引擎每个战斗槽位都会先掷一次「际遇」,中了就弹事件窗,
-     * 而事件窗挡着战斗(超时才会自动按默认选项处理)—— 实测这就是「等了 45 秒 0 场」的原因。
-     * 故这里遇到事件窗就当场选第一个选项把它了结,让历练继续往下走。
-     */
+    // 每个战斗槽位先掷「际遇」,事件窗挡着战斗(超时才自动处理):遇到就选第一个选项了结
     const modalChoice = page.locator('.modal-panel button').nth(0)
     if ((await page.locator('.modal-panel').count()) > 0 && (await modalChoice.count()) > 0) {
       const evTitle = await page.evaluate(() => (document.querySelector('.modal-panel h3')?.textContent || '').trim())
@@ -2697,12 +2314,7 @@ for (const vp of VIEWPORTS) {
       const text = document.querySelector('main')?.innerText || ''
       return {
         running: /余 \d+分\d+秒/.test(text),
-        /*
-         * 战报行直接数回放框里的 <p>,不再拿关键词去猜文本。
-         * 原来数的是 击中|施展|避开|打断|气血逆涌 五个词 —— 而暴击那行写的是
-         * 「会心一击!…受创甚重」,五个词一个不沾;一击暴击定胜负的战斗(实测碰到过,
-         * 战后气血 100%)于是被误判成「回放没出内容」,红得毫无道理。
-         */
+        // 战报行按元素数,不按关键词猜:暴击行「会心一击!…受创甚重」不含关键词,会误判成回放无内容
         lines: document.querySelectorAll('[data-battle-log]').length,
         summary: (text.match(/此战 \d+ 回合[^\r\n]*/) || [''])[0],
         tail: text.replace(/\s+/g, ' ').slice(-80)
@@ -2713,17 +2325,15 @@ for (const vp of VIEWPORTS) {
     lastTail = info.tail
     if (i === 0 && !info.running) failures.push('[390] 战斗场景:点了「出发」并择了模式,历练却没跑起来')
   }
-  // 兜底再等一拍:真的没有战报行时,这里仍然是 0,断言照旧会红
+  // 兜底再等一拍;真无战报行时仍是 0,照红
   if (summary && logLines === 0) {
     await page.waitForTimeout(1500)
     logLines = await page.evaluate(() => document.querySelectorAll('[data-battle-log]').length)
   }
-  // 首战间隔 12 秒 ÷ 历练速度;45 秒还没等到,就把当前页面写进报告(「搜寻猎物中」还是「胜 N 场」一看便知)
   if (!summary) failures.push(`[390] 战斗场景:等了 60 秒也没等到一场的结语(战报回放没走完?) 当前页面:${lastTail}`)
   else {
     if (logLines === 0) failures.push('[390] 战斗场景:有结语却没有战报行(回放没出内容)')
     if (!/胜|负/.test(summary)) failures.push(`[390] 战斗场景:结语没写清胜负 —— ${summary}`)
-    // 战斗分析:点开要看得到数据面板
     const analysisBtn = page.locator('main button', { hasText: /战斗分析/ }).first()
     if ((await analysisBtn.count()) === 0) failures.push('[390] 战斗场景:找不到「战斗分析」入口')
     else {
@@ -2743,13 +2353,8 @@ for (const vp of VIEWPORTS) {
 
 // ---- 第三十六件事:敌人卡的最挤一档(长名字 + 满标签) ----
 /*
- * 敌人名字最长 9 字(残魂·堕落冰魄仙子),标签最多 5 枚(首领 / 宿敌 + 3 个路数特性),
- * 再叠上适配星级。从前这些全挤在一行 nowrap 的 flex 里,320 宽下名字被折成两行、
- * 标签压在一起 —— 而巡页用的档里敌人名字都短、认知层也是 0(特性根本不显示),
- * 这一档从来没有被量过:夹具缺什么,判据就瞎什么。
- *
- * 夹具直接摆出这一档:认知层 2(知其路数 → 特性显示)、宿敌记录(→ 宿敌标签)、
- * 首领身份(→ 首领标签)、真仙境的敌人(→ 名字最长的那个)。
+ * 最挤一档:名字最长 9 字(残魂·堕落冰魄仙子)、标签最多 5 枚(首领 / 宿敌 + 3 个路数特性)、适配星级。
+ * 夹具:认知层 2(特性显示)、宿敌记录、首领身份、真仙境敌人(名字最长)。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 320, height: 568 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
@@ -2830,21 +2435,7 @@ for (const vp of VIEWPORTS) {
   const pageErrors = []
   watchPageErrors(page, pageErrors)
   await page.goto(INDEX + '#/adventure', { waitUntil: 'load' })
-  /**
-   * 等敌人卡出现,而不是固定等 2200ms 再读一次。
-   *
-   * 装备表涨到 288 件之后,冷启动到首帧的时间开始浮动 —— 单次定时读会偶发读空,
-   * 于是这条判据报的是「夹具没读出来」,而真相只是「还没画到」。判据本身不变:
-   * 卡必须出现,名字必须单行,标签必须够四枚。只是把「读一次」改成「等到出现为止」。
-   */
-  /*
-   * 等到出现为止,且**允许重载一次**。
-   *
-   * 这一档排在第 36 件事,前面已经开过三十多个 context;整轮跑下来机器被占满时,
-   * 冷启动到首帧会慢过 8 秒(实测单独跑 3/3 全过、整轮偶发读空)。
-   * 读空时判据报「战斗面板没渲染出来(夹具没被读出来?)」—— 与敌人卡无关。
-   * 故等到 15 秒,还没出来就重载一次再等。
-   */
+  // 等敌人卡出现(最多 15 秒,读空则重载一次再等),不用固定定时读:整轮跑满时冷启动到首帧会慢过 8 秒
   const foeReady = () => page.waitForSelector('[data-foe-name]', { timeout: 15000 }).then(() => true).catch(() => false)
   if (!(await foeReady())) {
     await page.reload({ waitUntil: 'load' }).catch(() => undefined)
@@ -2882,16 +2473,11 @@ for (const vp of VIEWPORTS) {
 
 // ---- 第三十七件事:开炉炼丹弹窗的窄屏排版(议题 #21) ----
 /*
- * 这扇弹窗从没被打开量过:巡页只量页面,弹窗不开就不存在;夹具也没有丹方,
- * 就算打开也只是「尚无丹方」的空态。于是批量炼丹加了「连炼 ×5」之后,右侧按钮列变宽,
- * 窄屏上丹名被压成竖排,方子列表自带的滚动框把下一张卡片切成一条圆角 —— 全绿通过,
- * 由玩家先看到(议题 #21)。
- *
  * 夹具备六张方子(含五字丹名「玄冥护体丹」「千年延寿丹」)与几项练过的技艺,三档宽度各开一次:
  *   一 通用尺子(竖排 / 量词分家 / 孤字标点 / 可点元素 ≥28px)对开着的弹窗再量一遍;
- *   二 丹名单行,方子信息栏不窄于卡片的六成(右侧不许再并排一列定宽的东西);
- *   三 弹窗里除正文外不许再有第二个会滚的盒子(两层滚动,内层底边就会切卡片);
- *   四 正文超长时底边要有渐隐提示;滚到底后底边提示消失、顶边提示出现。
+ *   二 丹名单行,方子信息栏不窄于卡片六成(右侧不许并排定宽列);
+ *   三 正文外不许有第二个会滚的盒子(内层底边会切卡片);
+ *   四 正文超长时底边有渐隐提示;滚到底后底边消失、顶边出现。
  */
 for (const vp of [
   { width: 320, height: 568, tag: '320', dpr: 2 },
@@ -2921,7 +2507,7 @@ for (const vp of [
     lore: {
       materialLore: {},
       materialSeen: {},
-      // 六张方子:一阶到高阶、含两个五字丹名(最长的名字),熟练度各不相同(把握数位数不同)
+      // 六张方子:一阶到高阶、含两个五字丹名,熟练度各异(把握数位数不同)
       recipeLore: { p_jvqidan: 1, p_huichun: 0.6, p_pojing: 0.4, p_xuanming: 0.3, p_yanshou: 0.5, p_qianshou: 0.2 },
       blueprintLore: {},
       skillExp: { herbLore: 400, pairing: 120, condense: 60, nurture: 900, flame: 1500, smithing: 30 },
@@ -2967,7 +2553,7 @@ for (const vp of [
         infoRatio: info ? info.getBoundingClientRect().width / card.getBoundingClientRect().width : 0
       }
     })
-    // 正文之外还会滚的盒子:overflow-y 是 auto/scroll,且内容确实超出了它
+    // 正文之外会滚的盒子
     const nestedScrollers = [...panel.querySelectorAll('*')]
       .filter(el => el !== body && /(auto|scroll)/.test(getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight + 1)
       .map(el => `${el.tagName.toLowerCase()}.${String(el.className).split(' ').slice(0, 3).join('.')}(${el.clientHeight}/${el.scrollHeight}px)`)
@@ -2986,7 +2572,7 @@ for (const vp of [
     if (craft.nestedScrollers.length) failures.push(`${tag} 弹窗正文里还套着会滚的盒子:${craft.nestedScrollers.join(' | ')}`)
     if (!craft.hasBody) failures.push(`${tag} 找不到弹窗正文(data-modal-body),渐隐判据没跑到东西`)
 
-    // 通用尺子:弹窗开着再量一遍(竖排 / 量词分家 / 孤字 / 过小的可点元素都会落进来)
+    // 弹窗开着再过通用尺子
     const info = await measurePage(page)
     for (const p of problemsOf(info)) failures.push(`${tag} 开炉弹窗 → ${p}`)
     const audit = await auditModalControls(page)
@@ -3033,14 +2619,13 @@ for (const vp of [
   await ctx.close()
 }
 
-// ---- 第三十八件事:词条转移面板(议题 #22)真走一遍,并对账 ----
+// ---- 第三十八件事:词条转移面板走一遍并对账(议题 #22) ----
 /*
- * 夹具摆出最挤的一档:源件是神品武器、九条词条(含最长的效果句与重名的「破妄」);
- * 目标是已装备的天品武器、七条满、封着一条;另有一件已有「洞虚」且更高的(置灰),
- * 再加八件候选,逼出「全部 N 件」。三档宽度各走一遍:
+ * 最挤一档:源件为神品武器、九条词条(含最长效果句与重名的「破妄」);目标为已装备天品武器,七条满、封一条;
+ * 另一件已有更高「洞虚」(置灰);再加八件候选逼出「全部 N 件」。三档宽度各走一遍:
  *   选「洞虚」→ 展开全部候选 → 选已装备那件 → 只有「顶替「破甲」」成立且已预选
  *   → 「转 移」→ 确认态写清顶替什么、源件失去什么 → 「确认转移」→ 器灵尘照价签扣。
- * 每一步都过通用尺子(竖排 / 量词分家 / 孤字 / 可点 ≥28px / 正文外无第二个滚动盒)。
+ * 每一步都过通用尺子。
  */
 for (const vp of [
   { width: 320, height: 568, tag: '320', dpr: 2 },
@@ -3153,7 +2738,7 @@ for (const vp of [
   if ((await entry.count()) === 0) {
     failures.push(`${tag} 转移场景:源件详情里没有「转移词条」入口(夹具没读出来?)`)
   } else {
-    // 先把详情滚到底再进转移:同一个滚动盒整块换内容,不回顶的话「转出」开头几条会在视口上方
+    // 先滚到底再进转移:同一滚动盒整块换内容,须回顶,否则「转出」开头几条在视口上方
     await page.evaluate(() => {
       const body = document.querySelector('.modal-panel [data-modal-body]')
       if (body) body.scrollTop = body.scrollHeight
@@ -3200,7 +2785,7 @@ for (const vp of [
     const pen = slots.find(s => s.text.includes('顶替「破甲」'))
     if (!append || !append.disabled || !append.text.includes('词条已满')) failures.push(`${tag} 满条目标的「新增」没挡下/没写「词条已满」`)
     if (!pen || pen.disabled || !pen.checked) failures.push(`${tag} 唯一成立的「顶替「破甲」」没预选`)
-    // 被挡的卡要一眼看得出(虚线框),不能与可选的长得一样、点了没反应
+    // 被挡的卡须为虚线框
     if (slots.some(s => s.disabled !== s.dashed)) failures.push(`${tag} 被挡的落位没有置灰(与可选的长得一样)`)
     const stacked = slots.filter(s => s.text.includes('属性重叠')).length
     if (stacked !== 6) failures.push(`${tag} 递减属性那几条应写「属性重叠」,实际 ${stacked} 条`)
@@ -3238,12 +2823,10 @@ for (const vp of [
   await ctx.close()
 }
 
-// ---- 第十八件事:切后台/离开页面时,待刷的存档要立刻落盘 ----
+// ---- 第十八件事:切后台/离开页面时待刷存档立刻落盘 ----
 /*
- * 写盘是节流的(省电,见 savePersistence.spec),于是「刚做的改动」可能还躺在队列里;
- * 手机上的保命时机就是切后台/离开页面 —— `visibilitychange → hidden` 与 `pagehide`。
- * 单元用例测过 flushSaveWrites 本身,却没人测过这两个监听究竟接上没有:
- * 接不上,玩家切出去接个电话、回来时这一段时间就没了,而且是无声无息地没。
+ * 写盘节流(见 savePersistence.spec);切后台/离开页面(visibilitychange → hidden 与 pagehide)须立刻落盘。
+ * 单测只测 flushSaveWrites 本身,不测两个监听是否接上。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
@@ -3303,26 +2886,16 @@ for (const vp of [
     return readFormatted(page, '灵石')
   }
   checked += 1
-  /**
-   * 投入之前先**强制刷一次盘**,把节流周期归零。
-   *
-   * 存档是节流的(SAVE_FLUSH_MS = 5 秒),定时器由「上次刷盘后的第一笔写入」启动 ——
-   * 而引擎每秒都在写(修为、灵气、产出),所以任何时刻都有一个定时器在跑、剩余 0~5 秒不等。
-   * 此前这里是「等满 5.8 秒再投入」,以为等出一个安静窗口;但引擎从不安静,
-   * 投入落在周期里的哪一点全凭运气:落在末尾 1.2 秒内,磁盘就「立刻变了」,
-   * 判据误报「节流没起作用」(CI 实测约四分之一的运行撞上,两边仓库都红过)。
-   *
-   * 派发 pagehide 即触发 flushSaveWrites:待写清空、定时器清掉。下一次写入(最迟 1 秒后
-   * 的引擎 tick)才重新起一个整 5 秒的定时器,而下面「投入 → 读磁盘」全程不到 2.5 秒,
-   * 稳落在窗口之内 —— 这条判据从此由节流说了算,不再由时机说了算。
-   * (仓库里只有 storage.ts 监听 pagehide,派发它没有别的副作用。)
+  /*
+   * 投入前派发 pagehide 强制刷盘,把节流周期(SAVE_FLUSH_MS = 5 秒)归零:引擎每秒都写,定时等待等不出安静窗口。
+   * 下一次写入才起整 5 秒定时器,「投入 → 读磁盘」全程不到 2.5 秒。只有 storage.ts 监听 pagehide,派发无别的副作用。
    */
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide')))
   await page.waitForTimeout(200)
   const start = await readFormatted(page, '灵石')
   const afterInvest = await investOnce()
   const onDiskBefore = await diskStone()
-  // 先确认节流确实在起作用:此刻磁盘还该是旧值,否则后面那一步证明不了什么
+  // 先确认节流在起作用:此刻磁盘须仍是旧值
   if (onDiskBefore !== null && afterInvest.value !== null && Math.abs(onDiskBefore - afterInvest.value) < afterInvest.value * 0.001) {
     failures.push('[390] 落盘场景:投入之后磁盘立刻就变了 —— 节流没起作用,这条判据也就证明不了什么')
   }
@@ -3349,12 +2922,10 @@ for (const vp of [
   await ctx.close()
 }
 
-// ---- 第十七件事:导出失败必须说出来(打断浏览器的下载能力再点一次) ----
+// ---- 第十七件事:导出失败须有提示 ----
 /*
- * 「导出存档」是玩家丢档前唯一的保险。而 Web 这条路靠 `saveAs`(Blob + a[download])——
- * 受限 WebView、部分应用内浏览器里 `URL.createObjectURL` 直接不可用,于是它抛错。
- * 调用方是 `void exportSaveToDevice()`,既不看返回值也不接异常,结果就是:
- * 点下去既没文件、也没提示。故这里把下载能力打断,要求界面**说得出这句话**。
+ * Web 导出靠 saveAs(Blob + a[download]);受限 WebView、部分应用内浏览器里 URL.createObjectURL 不可用会抛错。
+ * 打断下载能力后,界面须有提示。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, acceptDownloads: true })
@@ -3384,7 +2955,7 @@ for (const vp of [
   await page.waitForTimeout(2200)
   await clearOverlays(page)
   checked += 1
-  // 把下载这条路打断 —— 受限 WebView / 应用内浏览器正是这样
+  // 打断下载(受限 WebView / 应用内浏览器即如此)
   await page.evaluate(() => {
     URL.createObjectURL = () => {
       throw new Error('createObjectURL is not available')
@@ -3401,13 +2972,10 @@ for (const vp of [
   await ctx.close()
 }
 
-// ---- 第十六件事:坏档也能进游戏,而且要说得清哪一片坏了 ----
+// ---- 第十六件事:坏档开局 ----
 /*
- * 分片损坏是最容易变成「白屏」或「我的东西怎么没了」的一种事故:
- * 启动前的 preflightScan 会把读不出来的分片挪到备份键、其余照常开局。
- * 这条判据查三件事:① 照样进得去(不白屏);② 启动时说了话;
- * ③ 设置页常驻一条说得出「哪一片坏了、原档还在哪」——坏档只弹一条两秒的提示是不够的,
- *    玩家多半是先发现「灵石怎么归零了」,再回来找原因。
+ * 启动前 preflightScan 把读不出的分片挪到备份键,其余照常开局。
+ * 判据:① 进得去(不白屏);② 启动时有提示;③ 设置页常驻说明哪一片坏了、原档在哪。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
@@ -3433,21 +3001,14 @@ for (const vp of [
     },
     Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
   )
-  // 启动提示只活 2.6 秒:在页面脚本跑起来之前就装好观察器,提示一进 DOM 就抄下来
+  // 启动提示只活 2.6 秒:页面脚本运行前装好观察器,提示一进 DOM 就抄下
   await ctx.addInitScript(() => {
     window.__bootToastSaid = ''
     const pick = () => {
       const t = [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim()).join('|')
       if (/损坏|异常|隔离/.test(t)) window.__bootToastSaid = t
     }
-    /*
-     * 观察器必须挂在**一装好就存在**的节点上。
-     * 踩过两个坑:① 原先等 #app 出现再挂,而 app.mount 与那句坏档提示是同一次同步
-     * 执行 —— 等 DOMContentLoaded 再挂时提示早已飘出来(实测六跑一空);
-     * ② 改挂 documentElement 时 init script 仍在 document_start,`documentElement`
-     * 还是 null,observe(null) 直接抛错,观察器等于没装。
-     * 挂在 `document` 这个始终存在的节点上,两处都躲开。
-     */
+    // 须挂在 document 上:等 #app 再挂会错过(app.mount 与坏档提示同步执行);document_start 时 documentElement 还是 null
     new MutationObserver(pick).observe(document, {
       childList: true,
       subtree: true,
@@ -3460,14 +3021,7 @@ for (const vp of [
   watchPageErrors(page, pageErrors)
   await page.goto(INDEX, { waitUntil: 'load' })
   checked += 1
-  /**
-   * 启动提示只活两秒多,而 `goto(..., waitUntil:'load')` 在冷启动(字体/产物首次加载)
-   * 时可能先耗掉这段时间 —— 等 load 回来再开始轮询,提示可能已经收走(实测两次跑,
-   * 一次读到、一次读空)。故在页面脚本执行前装一只 MutationObserver 记账:
-   * 提示一进 DOM 就抄下来,判据仍是「启动时必须说过这句话」,不再靠读的时机。
-   *
-   * 优先用记账:两者都空才算「没说」。
-   */
+  // 优先用观察器记账(冷启动时等 load 回来提示可能已收走),再轮询;两者都空才算没说
   let bootToasts = await page.evaluate(() => window.__bootToastSaid || '')
   if (!bootToasts) {
     const live = await page
@@ -3505,16 +3059,12 @@ for (const vp of [
   await ctx.close()
 }
 
-// ---- 第三十一件事:iOS 的存档风险提示,该说的说、不该说的一个字不说 ----
+// ---- 第三十一件事:iOS 存档风险提示只在该出现的平台出现 ----
 /*
- * 由来:WebKit 会把**七天没被打开过**的站点的脚本可写存储整个清掉 —— localStorage 里
- * 那份存档与 Service Worker 缓存一起没。而这是个放置游戏,「隔几天回来」正是常态。
- * 唯一真管用的办法是让游戏成为已安装的 Web App(添加到主屏幕),故 iOS 未安装时提示一次。
- *
- * 判据两头都要钉,因为**说错话的代价**比不说更大:
- *   一 iOS 未安装:主页要出现,且「知道了」之后重载不再出现(写盘真落了),设置页常驻一份可回查
- *   二 iOS 已装到主屏幕:不再劝(它已经不吃那条规则了)
- *   三 桌面/安卓:一个字都不许说 —— 它们用应用自己的存储,在那儿喊「iOS 会清存档」是胡说
+ * WebKit 会清掉七天没打开过的站点的脚本可写存储(localStorage 与 Service Worker 缓存);添加到主屏幕后不受此限。
+ *   一 iOS 未安装:主页出现,「知道了」后重载不再出现,设置页常驻一份
+ *   二 iOS 已装到主屏幕:不出现
+ *   三 桌面/安卓:不出现(用应用自己的存储)
  */
 {
   const UA_IOS =
@@ -3554,11 +3104,7 @@ for (const vp of [
     await page.goto(INDEX, { waitUntil: 'load' })
     await page.waitForTimeout(1500)
 
-    /*
-     * 同一条已开局的页面,顺手把「楷体由谁画」也量了(再开一套存档不值当)。
-     * 查的是运行时那一半:产物里的次序对,不代表字体真加载成功 —— 文件坏了、因 base
-     * 变形而 404,都会安静地回退到系统字体,界面看着只是「有点不一样」,没人报错。
-     */
+    // 顺带量楷体由谁画(运行时):字体文件坏了或因 base 变形 404 都会静默回退到系统字体
     checked += 1
     const kaiFonts = await (async () => {
       const cdp = await ctx.newCDPSession(page)
@@ -3572,7 +3118,7 @@ for (const vp of [
       return fonts.map(f => f.familyName)
     })()
     if (!kaiFonts) failures.push('[楷体] 顶栏里找不到 font-kai 的元素,判据没量到东西')
-    // 只认前缀:字形分支可能换(原版 / GB / 屏幕阅读版),但「用的是我们内置那一支」不许变
+    // 只认前缀:字形分支(原版 / GB / 屏幕阅读版)可换,须是内置那一支
     else if (!kaiFonts.some(f => f.startsWith('LXGW WenKai'))) {
       failures.push(`[楷体] 楷体文字不是内置字体画的(实际 ${kaiFonts.join(' + ')})—— 字体没加载成功?`)
     } else {
@@ -3628,13 +3174,9 @@ for (const vp of [
   }
 }
 
-// ---- 第二十六B件事:弹窗触控巡逻 —— 主动开常见的窗,把内部控件过一遍尺子 ----
+// ---- 第二十六B件事:弹窗触控巡逻 ----
 /*
- * 「打开才存在」的控件是页面层巡页的盲区:巡页只量「当前恰好开着的弹窗」,
- * 而玩家每天点开的分解/收纳/炼丹/装备详情等,从没在打开态被量过 28px 与可访问名。
- * 此前实测就在这里放过三处 27px 的按钮(换装/重铸词条/自动重铸)。
- * 判据不猜弹窗会不会被内容顶掉:开出来有数据就量、量到过小就红、开不开说明夹具没
- * 铺够那扇窗,记为「判据没跑到东西」留给人工核对 —— 不因为某一扇打不开就连累其它几扇。
+ * 巡页量不到没打开的弹窗:主动开分解/收纳/装备详情/炼丹,量 28px 与可访问名。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
@@ -3673,19 +3215,17 @@ for (const vp of [
   await page.waitForTimeout(2400)
   checked += 1
 
-  /** 点开一扇窗 → 量内部控件 → 关掉。哪扇没开出来单独记账,不连坐。 */
+  /** 点开一扇窗 → 量内部控件 → 关掉;开不出来的单独记一句,不连坐 */
   const patrol = async (name, click) => {
     const hit = await click()
     if (!hit) {
-      // 入口点不开多半是夹具没铺够那扇窗的前置(收纳要有可清物、炼丹要有丹方)——
-      // 这是判据覆盖度的问题,不是产品缺陷,只留一句说明,不判失败
+      // 入口没出现多半是夹具未铺该窗前置(收纳要有可清物、炼丹要有丹方),不判失败
       console.log(`弹窗巡逻:${name} · 入口没出现(夹具未铺该窗前置,留待人工核对)`)
       return
     }
     await page.waitForTimeout(450)
     const audit = await auditModalControls(page)
-    // 弹出态再上一次排版尺子(竖排 / 量词分家 / 孤字 / 过小的可点元素):
-    // 这几扇窗平时不常开,开着的时候才是它们最容易偷偷溢出/挤行的时刻
+    // 弹出态再过排版尺子
     const info = await measurePage(page)
     for (const p of problemsOf(info)) failures.push(`[弹窗巡逻] ${name} 弹窗 → ${p}`)
     await page.keyboard.press('Escape').catch(() => {})
@@ -3713,7 +3253,6 @@ for (const vp of [
     return true
   })
   await patrol('装备详情', async () => {
-    // 装备已在夹具里,点第一件看详情
     const card = page.locator('main button[data-uid]').first()
     if ((await card.count()) === 0) return false
     await card.click({ timeout: 3000 }).catch(() => {})
@@ -3729,17 +3268,12 @@ for (const vp of [
   await ctx.close()
 }
 
-// ---- 第三十九件事:丹炉缺草 → 去坊市,落点必须真的滚到灵草格上(议题 #130) ----
+// ---- 第三十九件事:丹炉缺草 → 去坊市,落点滚到灵草格(议题 #130) ----
 /*
- * 由来:炼丹缺料只写一句「灵草或灵石未足」,玩家不知道该去坊市还是去历练;
- * 就算给了链接,跳过去之后货架在页面下方、灵草还只是六格之一 —— 看起来仍像
- * 「点了没反应」。这条端到端把三件事一起钉住:
- *   ① 缺草时丹炉里真的出现「去坊市续草」;
- *   ② 点下去落到 buy 签,并且 hash 带着 focus=herb;
- *   ③ 高亮的那一格是**方子要的那一品**灵草、且完整落在视口内(不是停在页面顶部
- *      就算完,也不是「有草就亮」—— 亮错品阶,买回来照样开不了炉)。
- * 夹具把目标草格排到货架最末一行,并在它前面摆一格别品的草:不滚、不按品挑,
- * 两种情况都会红。
+ *   ① 缺草时丹炉里出现「去坊市续草」;
+ *   ② 点下去落到 buy 签,hash 带 focus=herb;
+ *   ③ 高亮的是方子要的那一品灵草,且完整落在视口内。
+ * 夹具把目标草格排到货架最末一行,前面摆一格别品的草:不滚、不按品挑都会红。
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
@@ -3747,12 +3281,8 @@ for (const vp of [
   const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const now = Date.now()
-  /*
-   * 货架摆 15 格,把目标草挤到最末一行(390 宽两列)。
-   * 真实货架只有 6 格,但这里要量的是「滚没滚」,不是「货架多大」——
-   * 6 格在 844 高的视口里本来就看得见,量不出这条 bug。
-   * 第 6 格是**另一品**的草:按「有草就亮」挑,它会抢先被点亮。
-   */
+  // 货架 15 格,目标草在最末一行(390 宽两列):真实 6 格在 844 高视口里本就看得见,量不出滚没滚
+  // 第 6 格是另一品的草:按「有草就亮」挑会抢先点亮它
   const slot = (idx, matId, grade) => ({
     kind: 'material',
     idx,
@@ -3766,7 +3296,7 @@ for (const vp of [
     ...Array.from({ length: 6 }, (_, i) => slot(i, 'ore')),
     slot(6, 'herb', 2),
     ...Array.from({ length: 7 }, (_, i) => slot(7 + i, 'ore')),
-    // 玩家在炼气(3 境),天运丹要凡品草 —— 目标就是这一格
+    // 玩家在炼气(3 境),天运丹要凡品草:目标格
     slot(14, 'herb', 1)
   ]
   const slices = {
@@ -3787,7 +3317,7 @@ for (const vp of [
     inventory: { items: [], equipped: {}, pills: {}, artifacts: [], equippedArtifacts: [] },
     endgame: { daoPath: null, daoSource: 0, souls: [], equippedSouls: [] },
     dongfu: { levels: { mansion: 1, field: 1, alchemy: 5, forge: 1, library: 1 }, offlineCapHours: 24 },
-    // 只认这一张高耗草方子,免得入门三方的余量把「缺草」遮掉
+    // 只给这张高耗草方子:入门三方的余量会遮掉「缺草」
     lore: { recipeLore: { p_tianyun: 0.5 } },
     market: { stock, stockedAt: now, consign: [] },
     settings: { privacyAccepted: true, sfxOn: false, musicOn: false, musicVol: 0, sfxVol: 0, reduceMotion: true, battleSpeed: 4, decomposeRanks: [], smartKeep: { enabled: true, minQuality: 3, keepCoreAffix: true, keepComboPiece: true }, theme: 'light' }
@@ -3809,7 +3339,7 @@ for (const vp of [
 
   checked += 1
   const opener = page.getByRole('button', { name: /开\s*炉\s*炼\s*丹/ }).first()
-  // 等入口真的可点再点:不吃固定等待的运气
+  // 等入口可见再点,不靠固定等待
   await opener.waitFor({ state: 'visible', timeout: 8000 })
   await opener.click({ timeout: 3000 })
   const card = page.locator('.modal-panel .card-ink', { hasText: '天运丹' }).first()
@@ -3824,7 +3354,7 @@ for (const vp of [
       failures.push('[390] 续草场景:灵草不足却没有「去坊市续草」的去路')
     } else {
       await link.click({ timeout: 3000 })
-      // 等落点定下来(高亮或「续不上草」的说明),不赌固定延时
+      // 等落点定下来(高亮或缺草说明),不靠固定延时
       await page
         .waitForFunction(
           () => !!document.querySelector('[data-focus-herb-missing]') || !!document.querySelector('.card-ink.ring-2'),
@@ -3869,7 +3399,7 @@ for (const vp of [
       } else {
         if (!/灵草/.test(landed.herb.text)) failures.push(`[390] 续草场景:高亮格不是灵草 —— ${landed.herb.text.slice(0, 40)}`)
         if (!landed.herb.highlighted) failures.push('[390] 续草场景:灵草格没被高亮(玩家仍要自己一格格找)')
-        // 完整落在内容区可视范围里:顶边不能被顶栏吃掉,底边不能被底栏压住
+        // 须完整落在内容区可视范围内(不被顶栏、底栏遮住)
         const view = landed.view
         if (!view) failures.push('[390] 续草场景:找不到内容区(main),判据没量到东西')
         else if (landed.herb.top < view.top || landed.herb.bottom > view.bottom) {
@@ -3884,11 +3414,8 @@ for (const vp of [
   await ctx.close()
 }
 
-// ---- 第三十九件事(续):这一架真的没有草,也得说实话 ----
-/*
- * 六格随机,总有架上没草的时候。此时若只是滚到货架顶部,玩家看到的还是一架
- * 看不懂的货 —— 以为「续草」点空了。故这条把「没有草」也钉成一句话。
- */
+// ---- 第三十九件事(续):架上无草 ----
+/* 六格随机,架上可能没有该品草:须有明确提示 */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
   const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
@@ -3934,7 +3461,7 @@ for (const vp of [
   watchPageErrors(page, pageErrors)
   await page.goto(INDEX + '#/market?focus=herb', { waitUntil: 'load' })
   await page.waitForTimeout(2200)
-  // 等提示真的落进 DOM,不吃固定等待的运气
+  // 等提示落进 DOM,不靠固定等待
   await page
     .waitForFunction(() => !!document.querySelector('[data-focus-herb-missing]'), undefined, { timeout: 8000 })
     .catch(() => {})
@@ -3954,9 +3481,8 @@ await browser.close()
 
 // ---- 第二十七件事:外壳高度认 dvh,不认 vh ----
 /*
- * 上面「两栏钉死」那条量的是**机制**,可无头浏览器的 100vh 恰好等于可视高度 ——
- * 把外壳换回 vh,它照样全绿。差别只在手机浏览器里出现:地址栏挂着时 vh 是大视口,
- * 底栏被压在工具栏底下。所以这条退一步查**构建产物**:外壳高度得写成 dvh。
+ * 查构建产物:外壳高度须写成 dvh。无头浏览器 100vh 等于可视高度,换回 vh 运行时判据照样全绿;
+ * 手机浏览器地址栏挂着时 vh 是大视口,底栏会被压住。
  */
 {
   checked += 1
@@ -3965,8 +3491,7 @@ await browser.close()
     .filter(f => f.endsWith('.css'))
     .map(f => readFileSync(join(dir, f), 'utf8'))
     .join('\n')
-  // 认这个高度的选择器要凑齐四层 —— 少一层,那点差值就成了文档层的可滚余量
-  // (压缩器会把连着的选择器并进一条规则,所以这里是按选择器查,不是按声明数数)
+  // 四层选择器须都认这个高度,少一层即攒出可滚余量;按选择器查(压缩器会把连着的选择器并进一条规则)
   const covered = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
     .filter(([, , body]) => body.includes('height:var(--app-shell-height)'))
     .flatMap(([, sel]) => sel.split(',').map(s => s.trim()))
@@ -3975,13 +3500,7 @@ await browser.close()
   if (!css.includes('100dvh')) {
     failures.push('外壳高度没走 dvh(手机浏览器地址栏挂在外面时,底栏会被压住)')
   }
-  /*
-   * 楷体栈:内置那份必须**排第一**。
-   *
-   * 这条只能查产物,查运行时没有意义:无头容器里没有系统楷体,排在第四位也一样会被
-   * 选中 —— 绿得毫无信息。而真机上的差别恰恰全在次序里(iOS 会命中华文楷体、Windows
-   * 会命中楷体,三端于是三种字形)。谁要是「顺手优化」把次序换回系统优先,只有这条拦得住。
-   */
+  // 楷体栈内置那份须排第一,只能查产物:无头容器没有系统楷体,运行时量不出次序;真机上 iOS、Windows 会各自命中系统楷体
   const kaiRule = /--font-kai:([^;}]*)/.exec(css)
   if (!kaiRule) {
     failures.push('构建产物里找不到 --font-kai(字体栈的唯一事实源在 src/style.css)')

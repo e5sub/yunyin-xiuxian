@@ -1,9 +1,4 @@
-/**
- * 区域镇压系统 —— Phase 30.1
- *
- * 当玩家对某区域形成绝对优势后,该区域从主动玩法退出,变成被动收益源。
- * 核心理念:"成长改变世界",而非"世界永远跟着你缩放"。
- */
+/** 区域镇压:对某区域形成绝对优势后,该区域退出主动玩法,转为被动收益源。 */
 
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
@@ -22,28 +17,18 @@ import { deriveProsperity, prosperityYieldMult, regionReviveClock, regionWinsOfT
 import { settleRegionRevivals } from './regionRevival'
 import { AGE_YEARS_PER_HOUR } from '@/data/constants'
 
-/** 区域统计数据(使用指数移动平均) */
+/** 区域统计数据(指数移动平均) */
 export interface RegionStats {
-  /**
-   * 只有**胜场**会写进这里:在线 `runBattle` 的 `updateRegionStats` 位于
-   * `if (result.win)` 内,且一败即中止历练。字段名沿用旧档,别按字面读成
-   * 「打过的总场次」—— 界面上它显示为「胜 N 场」。
-   */
+  /** 只记胜场:在线 `runBattle` 的 `updateRegionStats` 位于 `if (result.win)` 内。字段名沿用旧档 */
   totalFights: number
   avgRounds: number          // 指数移动平均回合数
   avgDamageTakenPct: number  // 指数移动平均受伤百分比
   consecutiveWins: number
   lastUpdateAt: number
   /**
-   * 这本战绩属于第几世 —— 与 `player.suppressLife` 同一把世号。
-   *
-   * 镇压资格读的是这本战绩(20 胜 / 均≤3 回合 / 均受伤≤10%),而战绩刻意
-   * 跨世保留(「世界记得你」)。两件事撞在一起就是个漏洞:新世炼气回到旧世
-   * 那处高阶地界打赢**一场**,指数移动平均几乎不动,三判据照样全绿 ——
-   * 于是自动重新镇压,按旧阶位派发高阶装备与灵石,数值当场爆炸。
-   *
-   * 故战绩可以跨世留作叙事与兴衰底账,但**判据只认本世的战绩**。老档没有这一栏,
-   * 按当前世认(不追溯没收),此后每次写战绩都盖新章。
+   * 战绩所属世号,与 `player.suppressLife` 同一把世号。
+   * 战绩跨世保留,镇压判据只认本世战绩(否则新世打赢一场即按旧世战绩自动重新镇压);
+   * 老档无此栏按当前世认(不追溯没收)。
    */
   life?: number
 }
@@ -65,30 +50,17 @@ const SUPPRESS_YIELD_PER_HOUR = {
 export const SUPPRESS_EXP_PER_REGION = 0.08
 export const SUPPRESS_EXP_MAX = 0.4
 
-/** 老镇压区的装备成长:镇满一天,该区掉落的装备运气 +0.1,封顶 +0.8 */
+/** 老镇压区装备运气:每镇满一天 +0.1,封顶 +0.8 */
 export const SUPPRESS_EQUIP_LUCK_CAP = 0.8
 export const SUPPRESS_EQUIP_LUCK_PER_DAY = 0.1
 
-/**
- * 镇守道韵的挂机加成:每镇压一区 +8%,封顶 +40% —— 纯函数,便于断言。
- *
- * 语义是「我压着的地界在替我自己修行」:同一份挂机曲线(cultPerSec × 时长)乘以
- * 一个由镇压区数决定的倍率,故任何境界下都是挂机的固定加成,不随层级另开一套数值。
- * 封顶在 5 区(5 × 8% = 40%),是「多守几处还有意义、但别让收益无界」的那条线。
- */
+/** 镇守道韵倍率:乘在挂机曲线(cultPerSec × 时长)上,与境界无关 */
 export function suppressionExpRate(count: number): number {
   if (!Number.isFinite(count) || count <= 0) return 0
   return Math.min(count * SUPPRESS_EXP_PER_REGION, SUPPRESS_EXP_MAX)
 }
 
-/**
- * 老镇压区的装备运气:镇满一天 +0.1,封顶 +0.8(8 天封顶)—— 纯函数,便于断言。
- *
- * 起因与 suppressFrac 同一类:镇压是长期挂机玩法,而镇压产出的装备一直是「裸运气 0」——
- * 守了三天的地和刚压下的地掉率、品相完全一样,「守土之久」在装备上没有任何体现
- * (兴衰微调只动灵石与物产)。给装备加一条随守时渐长的运气,长守才有长守的回报。
- * 坏档(非有限、未来时刻)一律夹到 0,免得负运气或 NaN 传染进品质权重。
- */
+/** 老镇压区的装备运气;坏档(非有限、未来时刻)夹到 0,防负运气或 NaN 进品质权重 */
 export function suppressionEquipmentLuck(sinceMs: number, nowMs: number): number {
   const days = Math.floor(Math.max(0, nowMs - sinceMs) / 86_400_000)
   if (!Number.isFinite(days)) return 0
@@ -96,14 +68,8 @@ export function suppressionEquipmentLuck(sinceMs: number, nowMs: number): number
 }
 
 /**
- * 地界物产 —— 灵石之外,按地界气质给一份次级产出。
- *
- * 为什么要有它:只给灵石的话,"镇压哪几处"退化成"挑层级最高的那几处",
- * 没有取舍。接上物产后,火域出矿、林区出草、秘境出残页、天界以上出尘,
- * 于是「我这一世缺什么,就镇守哪一片」才成为真问题。
- *
- * 取值按标签优先表逐条匹配(与地界自身标签顺序无关,保证确定),
- * 产量随层级线性放大(灵材是小标量,不跟着灵石做指数)。
+ * 地界物产:灵石之外的次级产出。
+ * 按标签优先表顺序逐条匹配(与地界自身标签顺序无关);产量随层级线性放大,不走灵石的指数口径。
  */
 type SuppressResource = 'herb' | 'ore' | 'page' | 'dust'
 
@@ -136,10 +102,8 @@ export function suppressYield(regionId: string): { id: SuppressResource; name: s
   if (!region) return null
   const hit = YIELD_BY_TAG.find(y => region.eventTags.includes(y.tag))
   if (!hit) return null
-  // 层级越高,同一物产的产出越丰(线性,不参与灵石的指数口径)
   const perHour = Math.round(hit.perHour * (1 + region.tier * 0.15))
-  // 灵草按该地界的品阶明示(其余物产单标量无品):镇压产草按 region.minRealm 的品收集,
-  // 展示若只写「灵草」,玩家压着神/道域也看不出自己囤的是哪一品。
+  // 灵草名带品阶:结算按 region.minRealm 的品入账;其余物产无品
   const name =
     hit.resource === 'herb'
       ? `${HERB_GRADE_SHORT[herbGradeOfMajor(region.minRealm)]}灵草`
@@ -147,14 +111,7 @@ export function suppressYield(regionId: string): { id: SuppressResource; name: s
   return { id: hit.resource, name, perHour }
 }
 
-/**
- * 判定玩家是否已镇压某区域
- * 条件:胜 ≥20 场,平均回合 ≤3,平均受伤 ≤10%
- *
- * 「20」数的是**胜场**而不是交战次数:在线 `runBattle` 的 `updateRegionStats`
- * 就在 `if (result.win)` 内,而且一败即 `stopExploration` 中止这趟历练 ——
- * 败场走不到区域账。镇压的语义是「在此地已成统治之势」,连败不该帮着凑数。
- */
+/** 判定玩家是否已镇压某区域:胜 ≥20 场、平均回合 ≤3、平均受伤 ≤10%(只数胜场) */
 export function checkSuppression(player: ReturnType<typeof usePlayerStore>, regionId: string): boolean {
   if (player.suppressedRegions.includes(regionId)) return false
 
@@ -162,40 +119,28 @@ export function checkSuppression(player: ReturnType<typeof usePlayerStore>, regi
   return p.winsOk && p.roundsOk && p.damageOk
 }
 
-/**
- * 此刻的世号 —— `suppressLife` 是**镇压表的**世号(落笔镇压时才盖章),
- * 新档/尚未镇压过时是哨兵 −1。读战绩时不能把哨兵当世号,否则刚开的新档
- * 会把本世刚写下的战绩认成「上一世」。
- */
+/** 此刻的世号:`suppressLife` 落笔镇压时才盖章,未镇压过时为哨兵 −1,不能当世号读 */
 export function currentLifeOf(player: ReturnType<typeof usePlayerStore>): number {
   return player.suppressLife >= 0 ? player.suppressLife : player.reincarnation.count
 }
 
 /**
- * 镇压资格进度 —— 三条判据各差多少,给界面直接把未达标项指出来。
- *
- * 从前三条阈值(20 胜 / 均≤3 回合 / 均受伤≤10%)只活在 checkSuppression 里,
- * 玩家只看到「能不能镇压」这个结果,看不到自己卡在哪一项上 —— 打够了胜场却总压不住时,
- * 唯一的解释渠道是去读源码。纯函数:吃 stats,不碰 store,便于断言。
- *
- * 字段叫 `wins` 而不是 `fights`:它读的是 `RegionStats.totalFights`,而那个字段
- * 历史上只由胜场写入(见 checkSuppression 的说明)。叫「战」会让界面写着
- * 「7/20 战」、实际却在数胜场,读的人都以为败场也算 —— 这个歧义曾让一次修复
- * 把离线败场塞进地界账,反而给挂机开出一条镇压捷径。
+ * 镇压资格进度:三条判据各差多少,供界面指出未达标项。
+ * `wins` 读 `RegionStats.totalFights`(只记胜场);离线败场写进地界账会给挂机开出镇压捷径。
  */
 export interface SuppressionProgress {
   wins: number
   needWins: number
-  /** 指数移动平均回合数;无战绩时为 Infinity(界面据此不显示假平均值) */
+  /** 指数移动平均回合数;无战绩时为 Infinity */
   avgRounds: number
   maxAvgRounds: number
-  /** 指数移动平均受伤百分比(0~1,界面乘 100 显示);无战绩时为 1 */
+  /** 指数移动平均受伤百分比(0~1);无战绩时为 1 */
   avgDamagePct: number
   maxAvgDamagePct: number
   winsOk: boolean
   roundsOk: boolean
   damageOk: boolean
-  /** 是否已有战绩可谈平均值 */
+  /** 是否已有战绩 */
   hasStats: boolean
   /** 三条判据是否全部满足(不含「是否已镇压」) */
   qualified: boolean
@@ -205,11 +150,7 @@ export function suppressionProgress(
   stats: RegionStats | undefined,
   life?: number
 ): SuppressionProgress {
-  /**
-   * 旧世战绩不算数 —— 见 RegionStats.life 的说明。
-   * 没有世号(老档)或没传 life 时按「本世」认,不追溯没收已有战绩。
-   */
-  // life < 0 是「还没有世号」的哨兵,按未知处理(不追溯没收)
+  // 只认本世战绩;无世号(老档、未传 life、哨兵 <0)按本世认,不追溯没收
   const knownLife = life !== undefined && life >= 0 ? life : undefined
   const fromThisLife = knownLife === undefined || stats?.life === undefined || stats.life < 0 || stats.life === knownLife
   const src = fromThisLife ? stats : undefined
@@ -235,32 +176,20 @@ export function suppressionProgress(
   }
 }
 
-/** 某地界镇压产出的每小时速率(灵石 + 物产)—— 界面与结算共用这一份口径 */
+/** 某地界镇压每小时速率(灵石 + 物产);界面与结算同口径 */
 export interface SuppressRate {
   stonePerHour: GNum
   resource: { id: SuppressResource; name: string; perHour: number } | null
 }
 
-/**
- * 镇守道韵的一句话:**手上有几处镇压,就多拿多少修为**,与结算走同一个
- * `suppressionExpRate`,不让界面自己乘一遍「区数 × 8%」。
- *
- * 单位取「修速 × 倍率」而不是绝对点数:修为产出与挂机同源(`cultPerSec × 时长 × 倍率`),
- * 界面上说「修为 +7.2%/时」比堆一串会随境界漂移的绝对数更经得住读 —— 玩家看到的是
- * 「守一片就等于多挂一截」这个不变的关系。
- */
+/** 镇守道韵文案,与结算同走 `suppressionExpRate`;单位是修速倍率,不是绝对点数 */
 export function suppressDaoText(count: number): string {
   const rate = suppressionExpRate(count)
   if (rate <= 0) return '—'
   return `修为 +${Math.round(rate * 100)}%/时`
 }
 
-/**
- * 某地界**基础**镇压速率(未乘兴衰系数;繁荣度加成由界面另行叠加展示)。
- *
- * 从前历练页自己写了一份 stoneByTier(tier, 150) 并注释「= SUPPRESS_YIELD_PER_HOUR.stoneMultiplier」,
- * 调常数的那一刻界面就开始撒谎。速率只留这一份实现。
- */
+/** 某地界基础镇压速率(未乘兴衰系数);速率只此一份实现 */
 export function suppressRateFor(regionId: string): SuppressRate | null {
   const region = regionDef(regionId)
   if (!region) return null
@@ -270,13 +199,7 @@ export function suppressRateFor(regionId: string): SuppressRate | null {
   }
 }
 
-/**
- * 镇压产出行文案:灵石/时 × 物产,乘兴衰系数 —— 界面与「镇压达成」回执共用一份。
- *
- * 从前这段只活在 AdventureView 里,镇压达成那一瞬间的 toast 却只喊一句「自动产出」,
- * 成就时刻恰恰是玩家唯一听不到数字的地方。抽出这份单源实现,两处都报数,
- * 也免得界面一处、回执一处各写一套格式。
- */
+/** 镇压产出行文案(灵石/时 · 物产,乘兴衰系数);界面与「镇压达成」回执共用 */
 export function suppressRateLine(regionId: string, prosperity: RegionRecall['prosperity']): string {
   const rate = suppressRateFor(regionId)
   if (!rate) return '—'
@@ -287,55 +210,27 @@ export function suppressRateLine(regionId: string, prosperity: RegionRecall['pro
   return `${stone} · ${rate.resource.name}${perHour}/时`
 }
 
-/**
- * 结算已镇压区域的被动收益(每小时产出灵石和装备)
- * 由 GameEngine 每 tick 调用
- * 返回累计收益(供离线结算展示)
- */
+/** 镇压被动收益累计;GameEngine 每 tick 结算,也供离线结算展示 */
 export interface SuppressedYield {
   stone: GNum
-  /** 镇守道韵:这一段镇压折算的修为点数(与挂机同源,见 SUPPRESS_EXP_PER_REGION) */
+  /** 镇守道韵折算的修为点数 */
   expGain: GNum
   equipment: { name: string; quality: QualityId; recycled?: boolean; uid?: string }[]
-  /** 化尘所得的器灵尘(自动回收/满包化尘/腾位化掉的旧件;由 acquireEquipment 记账) */
+  /** 化尘所得器灵尘(自动回收/满包化尘/腾位旧件;acquireEquipment 记账) */
   recycledDust: number
-  /** 各地界的物产累计(灵草/玄铁/残页/器灵尘);灵草按品分账,grade 标明品阶 */
+  /** 物产累计;灵草按品分账,grade 标明品阶 */
   resources: { id: SuppressResource; name: string; amount: number; grade?: HerbGrade }[]
-  /**
-   * 这一段时间里妖气复聚的地界(见 core/regionRevival)。
-   *
-   * 跟着收益一起回给调用方,是为了让**归来卷轴**能把这件事写进账目 ——
-   * 刚回来的玩家看的是那一屏,而提示条正在跟它抢注意力(归来时它是弹窗)。
-   */
+  /** 本段妖气复聚的地界(core/regionRevival);归来卷轴据此入账 */
   revived: string[]
-  /**
-   * 这一段时间里被妖气复聚**松开**的镇压(资格仍在,收益停下)。
-   *
-   * 与 `revived` 分开记,是因为它说的是另一件事:「收益停了」而不是「首领复出」。
-   * 从前 `settleRegionRevivals` 只回报 `returned`,只镇压而未靖平的地界(最常见
-   * 的一种:玩家从不靖平、直接靠胜场压制)跨过 72 小时后,镇压被松开而卷轴
-   * 一个字都不提 —— 回来只看见产出条不见了、按钮变成「转为镇压收益」,
-   * 既不知道为什么,也看不出「再镇压回去」就能接上。
-   */
+  /** 本段被妖气复聚松开的镇压(资格仍在,收益停下);与 `revived`(首领复出)分开记 */
   loosened: string[]
 }
 
 /**
- * @param dt 本段时长(秒)
+ * @param dt 本段时长(秒);收益按它结(离线受洞府离线上限约束,见 offline.ts)
  * @param service 可注入随机源
- * @param worldAt 本段结束时**世界**推进到的时刻(毫秒);默认此刻。
- *
- * 两个时刻必须分开,因为它们答的是两个问题:
- *   - **收益**收多长:由 `dt` 决定(离线受洞府离线上限约束,见 offline.ts);
- *   - **妖气复聚**判在哪儿:由 `worldAt` 决定 —— 世界不会因为洞府等级低就
- *     停在半路,玩家离开了 80 小时,第 72 小时该复聚的照旧复聚。
- *
- * 从前这里只有一个墙钟 `now`,而它在离线路径上既当收益终点又当复聚终点:
- * 离线 75 小时、洞府满级(cap 72h)时,复聚在**开头**就被判真,镇压当场松开,
- * 于是本该拿到的 72 小时镇压收益一分不剩 —— 归来卷轴上连「镇压诸域仍有
- * 余韵」那一行都不出现。现在收益先按 `dt` 结清,复聚再按 `worldAt` 收尾。
- *
- * 在线路径两个时刻相同(`gameNow()`),行为与从前完全一致。
+ * @param worldAt 本段结束时世界推进到的时刻(毫秒),默认此刻;妖气复聚按它判,不受离线上限截断
+ * 在线路径两个时刻相同(`gameNow()`)
  */
 export function settleSuppressedRegions(
   dt: number,
@@ -356,14 +251,10 @@ export function settleSuppressedRegions(
   }
  const now = Date.now()
 
-  /**
-   * 本段的起点 —— 复聚边界要拿它算「这一段里镇压还生效多久」。
-   * 离线路径显式传的是终点,起点由终点倒推(见 offline.ts 的注释)。
-   */
+  // 本段起点(由终点倒推),复聚边界用
   const from = worldAt - dt * 1000
   const active = [...new Set(player.suppressedRegions)]
-  // 一份镇压都没有时仍要跑复聚:已靖却从不镇压的地界也够钟(regionRevival 的接线)。
-  // 两样都没有,才是「这一段时间什么也没发生」—— 返回 null,让调用方不必入账。
+  // 无镇压仍要跑复聚:已靖平未镇压的地界也会到钟;两样都没有才返回 null
   if (active.length === 0) {
     const revival = settleRegionRevivals(worldAt)
     total.revived = revival.returned
@@ -371,14 +262,7 @@ export function settleSuppressedRegions(
     return total.revived.length + total.loosened.length > 0 ? total : null
   }
 
-  /**
-   * 收益只结到**复聚那一刻**为止。
-   *
-   * 在线每秒一 tick,镇压很少正好在这一秒里到期;但离线整段动辄几十小时,
-   * 而镇压 72 小时就复聚 —— 若按整段 `dt` 结,离线 80 小时会连最后 8 小时
-   * (早已回到历练地的那段)一起收租。这里逐片算它在本段里还剩多久,
-   * 越界的那一截不计。
-   */
+  /** 某片本段内镇压仍生效的秒数:收益只结到复聚那一刻,越界部分不计 */
   const heldSecOf = (regionId: string): number => {
     const clock = regionReviveClock(regionId)
     if (!(clock > 0)) return dt
@@ -386,8 +270,7 @@ export function settleSuppressedRegions(
     return Math.max(0, Math.min(dt, remain))
   }
 
-  // ---- 镇守道韵:同源挂机曲线(cultPerSec × dt),每镇压一区 +8%,封顶 +40% ----
-  // 逐区按「本段里它还生效多久」结:一处先复聚,就少一处的道韵,不按整段 dt 一律结满
+  // ---- 镇守道韵:逐区按本段生效时长结 ----
   for (const regionId of active) {
     const heldSec = heldSecOf(regionId)
     if (heldSec <= 0) continue
@@ -400,19 +283,12 @@ export function settleSuppressedRegions(
   for (const regionId of active) {
     const region = regionDef(regionId)
     if (!region) continue
-    // 这一片在本段里还生效多久(越界的那一截不收租,见 heldSecOf)
     const heldSec = heldSecOf(regionId)
     if (heldSec <= 0) continue
     const hours = heldSec / 3600
 
-    // Phase 30.9:长期安稳 → 灵脉渐复(收益 99%);繁盛 → 商旅(100%)
     const recall = deriveProsperity({
-      /**
-       * 与界面(`regionRecallFor`)同一把尺:胜场读 `regionWins`,不读连败仗
-       * 一起数的 `totalFights` —— 否则界面按净胜场显示混乱、结算却按总场次
-       * 给繁盛的 110%,玩家看到的速率与实际入账当场分叉。
-       */
-      // 与界面同一把尺:只认本世胜场(旧世的 80 胜不该让新世地界立刻繁盛)
+      // 与界面(`regionRecallFor`)同一把尺:只认本世胜场,不读 `totalFights`
       totalWins: regionWinsOfThisLife(player, regionId),
       hasSuppressed: true,
       suppressedAt: player.suppressedSince[regionId],
@@ -421,26 +297,17 @@ export function settleSuppressedRegions(
     })
     const yieldMult = prosperityYieldMult(recall.prosperity)
 
-    // 灵石产出:基础倍率 × 区域阶位 × 时间 × 兴衰微调
     const stoneYield = stoneByTier(region.tier, SUPPRESS_YIELD_PER_HOUR.stoneMultiplier * hours * yieldMult)
     resources.addStone(stoneYield)
     total.stone = add(total.stone, stoneYield)
 
-    // 物产:按地界气质给一份次级产出(灵材是小标量,随层级线性增长)
     const yieldDef = suppressYield(regionId)
     if (yieldDef) {
-      /**
-       * 零头留给玩家,不要每 tick 丢掉。
-       *
-       * 这里从前是 `Math.floor(perHour × hours)`:在线一秒一 tick,`6 × 1/3600`
-       * 恒小于 1,floor 之后**永远是 0** —— 在线压着林区挂一整天收不到一件草,
-       * 而离线一次结算同样时长却能拿满。零头按区域攒进 suppressFrac,攒够一件即入账,
-       * 在线长挂与离线一次折算由此等价(离线一次给足整件,余数也一并记下)。
-       */
+      // 零头按区域攒进 suppressFrac,够一件才入账;逐 tick floor 会让在线产出恒为 0
       const amount = player.takeSuppressResource(regionId, yieldDef.perHour * hours * yieldMult)
       if (amount > 0) {
         if (yieldDef.id === 'herb') {
-          // 灵草按品分账:同一品聚一行、跨品分开,展示才不至于「只有灵草,不知何品」
+          // 灵草按品分账:同品聚一行
           const grade = herbGradeOfMajor(region.minRealm)
           resources.addHerb(grade, amount)
           const row = total.resources.find(r => r.id === 'herb' && r.grade === grade)
@@ -455,19 +322,10 @@ export function settleSuppressedRegions(
       }
     }
 
-    // 装备掉落:次数期望结算(0.4件/h × 时长)。不能用 Math.random()<equipChance:
-    // hours>2.5 时概率>1 恒真,离线一晚上每区只掉 1 件,与在线 0.4/h 的线性产出
-    // 差出好几倍。拆成「整数件 + 零头概率」:hours<1 时与原概率判定等价,长时离线才对齐
+    // 装备按期望件数结算(整数件 + 零头概率);单次概率判定在 hours>2.5 时恒真,长时离线会少掉
     const equipChance = SUPPRESS_YIELD_PER_HOUR.equipmentChance * hours
-    // 零头与装备生成走同一个可注入随机源:从前这里裸调 Math.random(生成装备却用 rng),
-    // 测试只能去 mock 全局 Math.random,而 rng 在构造时就把原函数抓走了 —— 注入才是可测的那条路
+    // 零头走同一可注入随机源,不裸调 Math.random:rng 构造时已抓走原函数,测试 mock 不到
     const equipCount = Math.floor(equipChance) + (service.chance(equipChance - Math.floor(equipChance)) ? 1 : 0)
-    /**
-     * 老镇压区的装备成长:镇满一天,该区掉落的装备运气 +0.1(封顶 +0.8)。
-     * 镇压是长期玩法,兴衰微调此前只动灵石与物产 —— 守了三天的地和刚压下的地
-     * 掉出来的装备一模一样,「守土之久」在装备账上完全没有体现。这里按
-     * `suppressedSince` 折算一份随守时渐长的运气,并入生成器的品质权重。
-     */
     const since = player.suppressedSince[regionId]
     const tenureLuck = since === undefined ? 0 : suppressionEquipmentLuck(since, now)
     for (let i = 0; i < equipCount; i += 1) {
@@ -481,18 +339,12 @@ export function settleSuppressedRegions(
         recycled: !res.bagged,
         uid: res.bagged ? equip.uid : undefined
       })
-      // 腾位时新件入了包、旧件化了尘:那份尘与那件旧物都要记上,只看 bagged 会漏报
+      // 腾位时旧件化尘也要记,只看 bagged 会漏报
       total.recycledDust += res.dust
     }
   }
 
-  /**
-   * 收益结清之后才收尾妖气复聚 —— 顺序就是这条修复本身。
-   *
-   * 复聚排在收益之前(从前的形状)时,离线越界的那一 tick 会在**开头**把镇压
-   * 松开,后面整段收益跟着归零。现在先按 `dt` 把这一段的租收完,再按
-   * `worldAt` 让该复聚的复聚:前 72 小时照收,72 小时起回到历练地。
-   */
+  // 复聚须在收益结清之后:先跑会在开头松开镇压,整段收益归零
   const revival = settleRegionRevivals(worldAt)
   total.revived = revival.returned
   total.loosened = revival.loosened
@@ -500,15 +352,12 @@ export function settleSuppressedRegions(
   return total
 }
 
-// ============ 区域凭吊叙事(Phase 31.4)============
+// ============ 区域凭吊叙事 ============
 
-/** 凭吊触发概率(低,4%) */
+/** 凭吊触发概率 */
 export const MEMORIAL_CHANCE = 0.04
 
-/**
- * 待念:进入已被你镇压的区域时,低概率触发一段"世界记得你"的叙事。
- * 纯文案,无奖励无属性。
- */
+/** 进入已镇压区域时低概率触发的凭吊叙事;纯文案,无奖励无属性 */
 export function memorialLine(
   regionId: string,
   player: ReturnType<typeof usePlayerStore>,

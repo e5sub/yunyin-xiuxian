@@ -20,11 +20,7 @@
           <!-- 卷轴上缘 -->
           <header v-if="props.title || props.closable" class="relative z-10 flex items-center justify-between px-5 pt-4 pb-1 shrink-0">
             <h3 class="font-kai text-lg tracking-[0.2em] text-ink">{{ props.title }}</h3>
-            <!--
-              关闭键此前只有一枚图标:读屏只念「按钮」(没有可访问名),
-              而且连内外边距只有 26px —— 拇指够得着的那条线是 28px。
-              补 aria-label 与 30px 触面(负外边距抵消,视觉位置不动)。
-            -->
+            <!-- aria-label 供读屏;30px 触面(负外边距抵消,视觉位置不动),下限 28px -->
             <button
               v-if="props.closable"
               class="p-1.5 -m-1.5 text-ink-faint active:scale-90"
@@ -69,21 +65,11 @@
       title?: string
       closable?: boolean
       wide?: boolean
-      /**
-       * 无标题弹窗的可访问名。
-       *
-       * 有的弹窗自带一张大标题卡(归来 / 寿元将尽 / 突破结果 / 灵脉),
-       * 再让 BaseModal 画一遍标题就是重复。但**对话框自己**总得有个名字 ——
-       * 不给的话 role=dialog 读出来就是光秃秃一句「对话框」。
-       */
+      /** 无标题弹窗的可访问名(自带大标题卡者用:归来 / 寿元将尽 / 突破结果 / 灵脉) */
       ariaLabel?: string
       /** 顶层弹窗:叠在普通弹窗(z-50)之上,用于详情盖列表等场景 */
       top?: boolean
-      /**
-       * 最顶层弹窗(z-70,与 toast 同层):叠在 top 弹窗(z-60)之上。
-       * 只给「弹框盖详情」这类真嵌套用 —— 词条信息盖在装备详情(它自己就是 top)之上时,
-       * 少这一档它会沉到详情下面,玩家只看得见一片被遮暗的边。
-       */
+      /** 最顶层弹窗(z-70,与 toast 同层):叠在 top 弹窗(z-60)之上,只给真嵌套用(如词条信息盖装备详情) */
       topmost?: boolean
     }>(),
     { title: '', closable: true, wide: false, top: false, topmost: false, ariaLabel: '' }
@@ -138,9 +124,9 @@
     if (props.closable) emit('close')
   }
 
-  // ---- 正文上下渐隐:量「离顶 / 离底还剩多少」,那一头还有内容才亮 ----
-  // 只听 scroll 不够:打开时就超长的正文、展开/增删列表、楷体后载撑高,都不经过滚动。
-  // 故用 ResizeObserver 盯住正文盒与内容层;没有它的老内核退化为打开时量一次 + 滚动时量。
+  // ---- 正文上下渐隐 ----
+  // 只听 scroll 不够:初始超长、列表增删、楷体后载撑高都不经过滚动,故加 ResizeObserver;
+  // 没有它的老内核退化为打开时量一次 + 滚动时量。
   const bodyRef = ref<HTMLElement | null>(null)
   const contentRef = ref<HTMLElement | null>(null)
   const edgeTop = ref(false)

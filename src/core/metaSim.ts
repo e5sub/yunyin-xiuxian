@@ -1,8 +1,4 @@
-/**
- * Meta 演化模拟(Phase 25)—— 规则系统对「版本变化」是否稳定
- * 循环:找出当前最强流派 → 削其词条 → 重测。
- * 健康的系统:最优解温和轮换、始终多解;病态的系统:每次削弱都催生新的近必胜
- */
+/** Meta 演化模拟:循环「找出最强流派 → 削其词条 → 重测」,看最优解是否温和轮换、始终多解 */
 import type { CombatantSnap, StatMods } from '@/types'
 import { mulberry32, RandomService } from '@/utils/random'
 import { CELESTIAL_WORLDS } from '@/data/endgame'
@@ -25,8 +21,7 @@ function avgClearRate(snap: CombatantSnap, runs: number, seedBase: number): numb
   let sum = 0
   for (let w = 0; w < CELESTIAL_WORLDS.length; w += 1) {
     const world = CELESTIAL_WORLDS[w]!
-    // 与 celestialSim.worldFoes / production expedition 同一口径:守关者按本流派形状
-    // 算道之理解判定(厚构筑会被加厚),否则厚筑流派的通关率会被系统性高估。
+    // 与 celestialSim.worldFoes / production expedition 同一口径(守关者按本流派形状加厚),否则厚筑流派通关率被系统性高估
     const rng = new RandomService(mulberry32(seedBase + w * 131))
     const foes = worldFoes(world, snap)
     let clears = 0
@@ -47,9 +42,7 @@ function nerfMods(mods: StatMods, factor: number): StatMods {
   return out
 }
 
-/**
- * 演化 N 轮:每轮把上一轮的最强流派全词条 ×0.75(累计),观察 Meta 是否温和轮换
- */
+/** 演化 N 轮:每轮把上一轮的最强流派全词条 ×0.75(累计) */
 export function runMetaEvolution(rounds = 5, runsPerWorld = 8): MetaRound[] {
   const nerfLevel = new Map<string, number>()
   const result: MetaRound[] = []

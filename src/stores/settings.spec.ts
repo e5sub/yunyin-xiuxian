@@ -1,8 +1,6 @@
 /**
- * 设置「版本与更新」的两把闸:hasUnseenRelease 该不该亮,markReleaseSeen 点了就熄。
- *
- * 这条判据直接影响顶栏那颗朱砂圆点与设置行的「新」角标 —— 就算永远不亮,
- * 也不许在「已是当前版本」时还亮着(那会让玩家反复点、点了又不熄)。
+ * 版本与更新:hasUnseenRelease 该不该亮,markReleaseSeen 点了就熄。
+ * 驱动顶栏朱砂圆点与设置行「新」角标;已是当前版本时不许亮。
  */
 import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -29,7 +27,7 @@ describe('设置 · 版本与更新', () => {
 
   it('未看过发布说明时,当前版本有说明 → 亮起', () => {
     const s = useSettingsStore()
-    // 默认 lastSeenVersion = ''(从没看过),而当前版本在发布说明里有条目
+    // 当前版本在发布说明里有条目
     expect(s.lastSeenVersion).toBe('')
     expect(s.hasUnseenRelease).toBe(true)
   })
@@ -45,7 +43,6 @@ describe('设置 · 版本与更新', () => {
     const s = useSettingsStore()
     s.lastSeenVersion = APP_VERSION
     expect(s.hasUnseenRelease).toBe(false)
-    // 看过比当前更新的版本(如对未来版本跳过)也不亮 —— 未来的发布说明不归这次提示管
     s.lastSeenVersion = '9.0.0'
     expect(s.hasUnseenRelease).toBe(false)
   })
@@ -67,13 +64,12 @@ describe('设置 · decomposeRanks 档位守卫', () => {
     const valid = QUALITIES.map(q => q.rank)
     s.decomposeRanks = [99, -4, 7, 7, NaN, 0, 0, 3]
     s.sanitize()
-    // 全在真实品质 rank 内,且无重复
     expect(s.decomposeRanks.every(r => valid.includes(r) && Number.isInteger(r))).toBe(true)
     expect(new Set(s.decomposeRanks).size).toBe(s.decomposeRanks.length)
     expect(s.decomposeRanks).not.toContain(99)
     expect(s.decomposeRanks).not.toContain(-4)
     expect(s.decomposeRanks).not.toContain(NaN)
-    // 合法值保留(0 与 3 都是真实存在的品质 rank)
+    // 0 与 3 是真实存在的品质 rank
     expect(s.decomposeRanks).toContain(0)
     expect(s.decomposeRanks).toContain(3)
   })
@@ -82,7 +78,6 @@ describe('设置 · decomposeRanks 档位守卫', () => {
 describe('设置 · 布尔开关坏档清洗', () => {
   it('只有字面 true 存活,其余字符串/数字真值一律 ===true 归一到 false', () => {
     const s = useSettingsStore()
-    // 损坏档:四个开关混入「真值但不是 true」的东西 —— 不清洗会永久减速 / 永不静音 / 假装已同意
     ;(s as unknown as { reduceMotion: unknown }).reduceMotion = 'false'
     ;(s as unknown as { musicOn: unknown }).musicOn = 1
     ;(s as unknown as { sfxOn: unknown }).sfxOn = 'true'

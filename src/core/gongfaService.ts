@@ -1,6 +1,4 @@
-/**
- * 功法服务 —— 参悟 / 习得 / 升级
- */
+/** 功法服务:参悟 / 习得 / 升级 */
 import { rng } from '@/utils/random'
 import { GONGFA, gongfaDef } from '@/data/gongfa'
 import { qualityDef } from '@/data/qualities'
@@ -37,8 +35,7 @@ export function learnRandomGongfa(specificId?: string): string | null {
   }
   const pool = GONGFA.filter(g => g.minRealm <= player.major + 1 && !cultivation.learned[g.id])
   if (pool.length === 0) return null
-  // Phase 32.2:同源功法更容易参悟到(倾向,非独占)——
-  // 无对应灵根者权重仍为原值,任何功法都拿得到,只是撞见的概率不同。
+  // 同源功法权重更高(倾向,非独占);无对应灵根者权重不变
   const elements = rootElements(player.linggen?.roots)
   const picked = rng.weighted(pool, g => (100 / (1 + qualityDef(g.quality).rank * 1.5)) * gongfaAffinity(g.element, elements))
   cultivation.learn(picked.id)
@@ -78,12 +75,12 @@ export function gongfaUpgradeCost(id: string): { wudao: number; page: number } |
   const lv = cultivation.learned[id]
   if (!def || !lv || lv >= def.maxLevel) return null
   const q = qualityDef(def.quality)
-  // 寒冥灵脉:参悟悟道点折扣(Phase 30.3)
+  // 寒冥灵脉:参悟悟道点折扣
   const discount = Math.min(INSIGHT_DISCOUNT_CAP, useDongfuStore().insightDiscount)
   return { wudao: Math.max(1, Math.ceil(gongfaUpCost(q.rank, lv) * (1 - discount))), page: Math.ceil(lv * (1 + q.rank * 0.5)) }
 }
 
-/** 这一层缺哪一样(付得起时为 null);两样都缺时明确报 both */
+/** 本层缺哪一样;付得起为 null */
 export function gongfaUpgradeShort(cost: { wudao: number; page: number }): 'wudao' | 'page' | 'both' | null {
   const resources = useResourcesStore()
   const wudao = !resources.hasSmall('wudao', cost.wudao)
@@ -94,7 +91,7 @@ export function gongfaUpgradeShort(cost: { wudao: number; page: number }): 'wuda
   return null
 }
 
-/** 这一层还差多少悟道点与残页;够用时各为 0 */
+/** 本层悟道点与残页的差额;够用为 0 */
 export function gongfaUpgradeShortfall(cost: { wudao: number; page: number }): { wudao: number; page: number } {
   const resources = useResourcesStore()
   return {

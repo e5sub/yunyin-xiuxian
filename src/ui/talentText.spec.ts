@@ -7,12 +7,12 @@ import { petFuncText } from './itemText'
 
 describe('天赋与灵兽详情带上实际词条', () => {
   it('人物页点开天赋会印 modsText,图鉴把词条接进说明', () => {
-    // 天赋芯片在轮回弹窗内(拆出后判据随本体走)
+    // 天赋芯片在轮回弹窗内
     const character = readFileSync(new URL('../components/character/RebirthDialog.vue', import.meta.url), 'utf8')
     const collection = readFileSync(new URL('../views/CollectionView.vue', import.meta.url), 'utf8')
     expect(character).toContain('modsText(tappedTalent.mods)')
     expect(collection).toContain('modsText(t.mods)')
-    // 灵兽册按「真到账」那份(r×宠苑×安抚)印,不能给 base —— 见 player.petModsFor 的不变式注释
+    // 灵兽册印真到账那份(r×宠苑×安抚),不给 base;见 player.petModsFor 的不变式注释
     expect(collection).toContain('modsText(player.petModsFor(p))')
   })
 

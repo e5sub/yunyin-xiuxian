@@ -1,11 +1,6 @@
 /**
- * 短期秘境服务(Phase 31.0 S3 · Phase 34.9 接上玩法)
- *
- * 结构:进入(付入口代价)→ 随机规则 1~2 条 → 三层 → 最终宝藏。
- * 复用 resolveCombat / makeEnemySnap / stoneByTier / generateEquipment,不建新数值体系。
- *
- * 本轮之前这里只有骨架:定义了状态与目录,却没有任何入口 ——
- * 玩家进不去,player.secretRealm 永远是 null,而轮回清单还在交代它的去留。
+ * 短期秘境服务:进入(付入口代价)→ 随机规则 1~2 条 → 三层 → 最终宝藏。
+ * 复用 resolveCombat / stoneByTier / generateEquipment,不建新数值体系。
  */
 import type { CombatantSnap, CombatRules, GNum } from '@/types'
 import type { WorldFoeShape } from '@/types'
@@ -40,22 +35,19 @@ export interface SecretRealmState {
   layer: number
   /** 已胜场 */
   wins: number
-  /** 已失败次数(失败 2 次强制出) */
+  /** 已失败次数 */
   losses: number
   /** 累计战利描述 */
   spoils: string[]
-  /** 本趟的随机规则(1~2 条,文本给玩家看、规则给引擎用) */
+  /** 本趟随机规则(1~2 条):文本给玩家看,规则给引擎用 */
   rules: string[]
   /** 层间携带的气血比例 */
   carriedHpPct: number
-  /** 结束标记(结束后即清空状态,故仅在一次结算内为真) */
+  /** 结束标记;结束即清空状态,仅在一次结算内为真 */
   finished: boolean
 }
 
-/**
- * 玩家当前地界层级(入口代价按它折算)。
- * 与装备来源上限是同一件事 —— 同源在数据层,不在这里再筛一遍区域表。
- */
+/** 玩家当前地界层级(入口代价按它折算);与装备来源上限同源于数据层,不另筛区域表 */
 export function tierOfMajor(major: number): number {
   return maxTierForMajor(major)
 }
@@ -67,7 +59,7 @@ export function entryCostOf(def: SecretRealmDef, major: number): { kind: 'stone'
     : { kind: 'daoSource', daoSource: def.cost.daoSource }
 }
 
-/** 代价的可读文案(界面直接用,不另写一份) */
+/** 代价可读文案;界面直接用,不另写 */
 export function entryCostText(def: SecretRealmDef, major: number): string {
   const c = entryCostOf(def, major)
   return c.kind === 'stone' ? `灵石 ${formatGN(c.stone)}` : `道源 ${c.daoSource}`
@@ -84,10 +76,8 @@ export interface SecretEntryShortfall {
 }
 
 /**
- * 入口代价的实际缺口 —— 卡面置灰、服务拒因与 toast 共用这一份判据。
- *
- * 「灵石不足 40」只报了总价,玩家仍要自己减一遍余额才知道差多少;
- * 与洞府 buildingShortfall 同规:付不起就点名缺哪一种货币、差多少。
+ * 入口代价的实际缺口:卡面置灰、服务拒因与 toast 共用这一份判据。
+ * 与洞府 buildingShortfall 同规:报缺哪种货币、差多少,不报总价。
  */
 export function entryShortfallOf(def: SecretRealmDef, major: number): SecretEntryShortfall | null {
   const cost = entryCostOf(def, major)
@@ -109,13 +99,12 @@ export function realmUnlock(gate: SecretRealmDef['gate'] = 'mortal'): boolean {
   return SECRET_REALMS.some(r => r.gate === gate && player.major >= r.minMajor)
 }
 
-/** 该册里可以进的秘境(未达门槛的不列出) */
+/** 该册里已达门槛的秘境 */
 export function availableRealms(gate: SecretRealmDef['gate'] = 'mortal'): SecretRealmDef[] {
   const player = usePlayerStore()
   return SECRET_REALMS.filter(r => r.gate === gate && player.major >= r.minMajor)
 }
 
-/** 当前秘境(无则 null) */
 export function currentRealm(): SecretRealmState | null {
   return usePlayerStore().secretRealm
 }
@@ -125,7 +114,7 @@ export interface EnterResult {
   reason?: string
 }
 
-/** 进秘境:验门槛、付代价(灵石或道源)、掷规则、落状态 */
+/** 进秘境:验门槛、付代价、掷规则、落状态 */
 export function enterSecretRealm(defId: string): EnterResult {
   const player = usePlayerStore()
   const resources = useResourcesStore()
@@ -161,7 +150,6 @@ export function enterSecretRealm(defId: string): EnterResult {
     ui.toast(reason, 'warn')
     return { ok: false, reason }
   }
-  // 随机规则 1~2 条,不重复
   const n = rng.int(1, 2)
   const pool = [...SECRET_RULES]
   const texts: string[] = []
@@ -183,7 +171,7 @@ export function enterSecretRealm(defId: string): EnterResult {
   return { ok: true }
 }
 
-/** 本趟生效的战斗规则:道途 + 秘境自带 + 随机规则(+ 层级递进的凶险) */
+/** 本趟战斗规则:道途 + 秘境自带 + 随机规则 + 层级递进的凶险 */
 export function secretFightRules(state: SecretRealmState, layer = state.layer): CombatRules {
   const def = secretRealmDef(state.realmId)
   const rolled = state.rules
@@ -205,13 +193,8 @@ export interface SecretLayerResult {
 }
 
 /**
- * 本层的敌人 —— **按玩家缩放**,与远征/试炼同法(不是按层级绝对值)。
- *
- * 秘境是一次性副本,和远征/试炼同类;若照地界那样按 tier 绝对值生成,
- * 一个刚飞升、还没来得及换装的真仙会撞上 tier 21 的绝对数值 —— 付了道源,
- * 两场就被逐出。玩家相对口径才谈得上"这是给你的考验",而不是"你换装慢了"。
- *
- * 抽成对外函数是为了可测:用例直接看「敌我比值」,不必跑完整场战斗。
+ * 本层敌人:按玩家缩放(与远征/试炼同法),不按 tier 绝对值,否则刚飞升未换装的真仙会撞上 tier 21 的绝对数值。
+ * 导出供用例直接测敌我比值。
  */
 export function secretLayerFoe(state: SecretRealmState, rand: typeof rng = rng): { snap: CombatantSnap; shape: WorldFoeShape } {
   const player = usePlayerStore()
@@ -234,17 +217,13 @@ export function secretLayerFoe(state: SecretRealmState, rand: typeof rng = rng):
 }
 
 /**
- * 本层战利:灵石随**层数**与**本境倍率**上浮,材料只随层数。
- *
- * 材料不吃倍率是有意的:倍率是「此地物产丰饶」的说法,若材料也跟着乘,
- * 高倍率境会把材料也顶穿,几条产线的产出结构就拉平了。抽成纯函数是为了可测 ——
- * 用例直接比「同一层级下两境倍率之比」,不必掷运气打完整场。
+ * 本层战利:灵石随层数与本境倍率上浮,材料只随层数。
+ * 材料不吃倍率:否则高倍率境会顶穿材料,拉平几条产线的产出结构。
  */
 export function secretLayerReward(tier: number, layer: number, rewardMult: number): { stone: GNum; material: number } {
   return { stone: stoneByTier(tier, (12 + 6 * layer) * rewardMult), material: 2 + layer }
 }
 
-/** 打一层 */
 export function fightSecretLayer(): SecretLayerResult | null {
   const player = usePlayerStore()
   const resources = useResourcesStore()
@@ -262,7 +241,6 @@ export function fightSecretLayer(): SecretLayerResult | null {
   const lines: string[] = []
 
   if (result.win) {
-    // 战利:灵石 + 材料,随层数与本境倍率上浮
     const { stone, material: mat } = secretLayerReward(tier, state.layer, def.rewardMult)
     resources.addStone(stone)
     resources.addSmall('herb', mat)
@@ -307,7 +285,7 @@ export function fightSecretLayer(): SecretLayerResult | null {
   return { win: false, finished: false, cleared: false, lines }
 }
 
-/** 离开秘境(结束/放弃):已得的战利不退 */
+/** 离开秘境(结束/放弃);已得战利不退 */
 export function abandonRealm(): void {
   usePlayerStore().setSecretRealm(null)
 }

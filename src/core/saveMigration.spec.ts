@@ -1,17 +1,9 @@
 /**
- * 旧版存档迁移 —— 老玩家的档必须进得来
- *
- * 存档版本从 1 走到 2 时改过一件事:法宝从「单法宝位」(`equippedArtifact`)换成
- * 「多法宝位」(`equippedArtifacts`)。这条路有两个入口,此前都没有用例:
- *
- *   · 启动时:`migrateLocalSchema` 就地升级本机分片,并把旧**明文**档转成密文;
- *   · 导入时:`save.ts` 的 migrate 按 version 走链式升级。
- *
- * 迁移写坏的后果不是报错,而是**悄悄少一件东西**:法宝位空了、旧字段留在档里
- * 反复参与后续迁移。故这里把三件事都钉住:值搬过去了、旧字段清掉了、幂等。
- *
+ * 旧版存档迁移:v1 单法宝位(`equippedArtifact`)→ v2 多法宝位(`equippedArtifacts`)。
+ * 两个入口:启动时 `migrateLocalSchema` 就地升级本机分片,并把旧明文档转成密文;
+ * 导入时 `save.ts` 的 migrate 按 version 链式升级。
  * 故障注入:让 migrateInventorySlice 丢掉旧值(或保留 equippedArtifact),第一条红;
- * 让 migrateLocalSchema 只迁移不加密(去掉 encryptSave),密文那条红。
+ * 去掉 migrateLocalSchema 里的 encryptSave,密文那条红。
  */
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { createApp } from 'vue'
@@ -105,9 +97,8 @@ describe('迁移 · 启动时就地升级本机分片', () => {
   })
 
   it('其它分片还是明文的老档,也读得出来(迁移只碰 inventory,但读取要认明文)', () => {
-    // v1 那个年代所有分片都是明文;迁移只把 inventory 转密文,其余的仍以明文留在盘上。
-    // 于是每一次启动都要靠 readSaveText 的「明文明文回退」把它们读回来 ——
-    // 上上一轮修的解密误判(明文被当密文解出乱码)正好会在这里咬人。
+    // v1 档分片全是明文;迁移只把 inventory 转密文,其余靠 readSaveText 的明文回退读回
+    // (明文被误当密文会解出乱码)
     localStorage.setItem(storageKey('player'), JSON.stringify({ major: 6, age: 300 }))
     localStorage.setItem(storageKey('inventory'), JSON.stringify(LEGACY_V1))
     migrateLocalSchema()
@@ -117,8 +108,7 @@ describe('迁移 · 启动时就地升级本机分片', () => {
   })
 
   it('已是新档的分片不再重写:迁移 no-op 时不重复加密落盘(不再白付 AES/parse)', () => {
-    // 现代档(已无旧字段)启动时 migrateLocalSchema 不得回写任何分片 ——
-    // 否则每次启动都重加密,密文因随机盐必变、字节绝不相同;这里断言原样不动
+    // 无旧字段时 migrateLocalSchema 不得回写分片:密文含随机盐,重加密必变字节
     const inv = { equippedArtifacts: ['af_youming'] }
     const res = { herbByGrade: { 1: 0, 2: 0, 3: 5, 4: 0, 5: 0 }, ore: 1 }
     localStorage.setItem(storageKey('inventory'), encryptSave(JSON.stringify(inv)))
@@ -171,7 +161,7 @@ describe('迁移 · 灵草五品(旧档单标量 herb → 品阶分账)', () => 
   })
 
   it('启动迁移:resources 分片旧 scalar 统一落凡品账,清掉、不丢草', () => {
-    // 混沌海(20 境)玩家,手里 40 株旧草 → 统一并入 40 株凡品账(不再随境界折算)
+    // 20 境玩家 40 株旧草 → 全部并入凡品账,不随境界折算
     localStorage.setItem(storageKey('player'), JSON.stringify({ major: 20 }))
     localStorage.setItem(storageKey('resources'), JSON.stringify({ herb: 40, wudao: 5 }))
     migrateLocalSchema()

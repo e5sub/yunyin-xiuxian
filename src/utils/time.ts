@@ -1,5 +1,3 @@
-/** 时间工具 */
-
 export function now(): number {
   return Date.now()
 }
@@ -10,7 +8,7 @@ export function todayStr(): string {
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
 }
 
-/** 时间戳 → 本地日整数(YYYYMMDD);纯函数,便于跨午夜读数不碰墙钟 */
+/** 时间戳 → 本地日整数(YYYYMMDD);纯函数,不碰墙钟 */
 export function localDayNum(at: number): number {
   const d = new Date(at)
   return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()
@@ -18,9 +16,7 @@ export function localDayNum(at: number): number {
 
 /**
  * 本地日整数(YYYYMMDD),用于「每日一次」类闸门。
- *
- * 与 todayStr 同一本地日口径:洞府巡游、日课都该跟着玩家墙上的日历走,
- * 而不是 UTC 日(UTC+8 玩家在本地 16:00 就被翻到"明天",同一本地日能白嫖两次巡游)。
+ * 与 todayStr 同一本地日口径,不用 UTC 日(否则同一本地日能巡游两次)。
  */
 export function todayLocalNum(): number {
   return localDayNum(Date.now())
@@ -32,12 +28,7 @@ export function formatDate(ts: number): string {
   return `${d.getMonth() + 1}月${d.getDate()}日`
 }
 
-/**
- * 距下一个本地午夜还有多少秒 —— 日课更替的时刻。
- *
- * 与 todayStr / todayLocalNum 同一面本地日历(不以 UTC 日计,见 todayLocalNum 注):
- * 取「今日 24:00」即明日 00:00。纯函数,输入是时间戳,便于测试不碰墙钟。
- */
+/** 距下一个本地午夜还有多少秒(日课更替);与 todayLocalNum 同一本地日口径,纯函数 */
 export function secsUntilNextMidnight(from: number): number {
   const d = new Date(from)
   const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0, 0, 0)

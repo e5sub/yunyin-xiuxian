@@ -1,11 +1,6 @@
 /**
- * Service Worker 新版本检测 —— useServiceWorkerUpdate 的状态机契约。
- *
- * 这里钉的是纯逻辑部分(registration/installing 的监听流转、controller 门、
- * reload 的消息补发),不真跑 SW:registration/installing 用消息捕获的假体,
- * navigator.serviceWorker.controller 与 location.reload 走 stub。
- * 真浏览器的 SW 生命周期(updatefound 是否派发、skipWaiting 是否生效)由
- * public/sw.js 的实现与浏览器保证,不在本 spec 的钉子范围内。
+ * useServiceWorkerUpdate 状态机契约:监听流转、controller 门、reload 消息补发。
+ * 不真跑 SW(假体 + stub);updatefound 是否派发、skipWaiting 是否生效由 public/sw.js 与浏览器保证,不在本 spec 范围。
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useServiceWorkerUpdate } from "./useServiceWorkerUpdate";
@@ -60,7 +55,7 @@ function makeRegistration(installing: ReturnType<typeof makeInstalling> | null) 
   };
 }
 
-/** node 环境没有 SW / location:stub 掉再跑,收尾还原 */
+/** node 环境无 SW / location,stub 掉再跑 */
 function stubBrowser(controller: ServiceWorker | null) {
   vi.stubGlobal("navigator", { serviceWorker: { controller } });
   const reload = vi.fn();
@@ -109,9 +104,7 @@ describe("useServiceWorkerUpdate · 更新提示", () => {
     expect(onUpdate).not.toHaveBeenCalled();
     installing.setState("installed");
     expect(onUpdate).toHaveBeenCalledTimes(1);
-    // 边界现状:同一次 statechange 若重复派发 installed,handleInstallerState
-    // 不去重、onUpdate 会再调 —— 浏览器的 statechange 只在真实状态跃迁时派发,
-    // installed 天然只来一次,故不算违约;此处记录现状,防后人误以为有去重守卫。
+    // 记录现状:无去重守卫,重复派发 installed 会再调 onUpdate;浏览器的 installed 只来一次
     installing.setState("installed");
     expect(onUpdate).toHaveBeenCalledTimes(2);
   });
@@ -143,7 +136,6 @@ describe("useServiceWorkerUpdate · 更新提示", () => {
     );
     found();
     handle.stop();
-    // 第二个 installing:换掉 registration.installing 再派发一次 updatefound
     (registration as { installing: unknown }).installing = second.worker;
     found();
     second.setState("installed");

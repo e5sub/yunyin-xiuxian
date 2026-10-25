@@ -1,23 +1,19 @@
 /**
- * 冒烟「死按钮」分类的**纯决策** —— 与 Playwright 无关,可被 vitest 直接单测。
- *
- * round-271 把「点了没反应」从只读数升级为判失败(dead → exitCode 1),但那段判定
- * (白名单命中 / 干净重试三态 → dead|silent)此前只藏在 9 分钟的 e2e 冒烟脚本里、
- * 没有任何单测 —— 判定器自己一出回归,冒烟要么误报、要么漏掉真死控件,CI 却无症状。
- * 于是把纯决策抽到这里(scripts/ui-smoke.mjs 与本单元测共用这一份,单一来源)。
+ * 冒烟死按钮分类的纯决策,不依赖 Playwright。
+ * 单一来源:scripts/ui-smoke.mjs 与单测共用这一份。
  */
-/** 幂等选中项:点「当前已选中值」本身就该没反应(×1 当已在 ×1、跟随系统当已开) —— 属设计内,不判失败 */
+/** 幂等选中项:点当前已选中的值本就无变化,不判失败 */
 export const SMOKE_ALLOWLIST: readonly string[] = [
-  '/settings 点「×1」', // 战报速度默认 ×1,点当下的选中值 = 无变化
-  '/settings 点「跟随系统」', // 主题默认跟随系统,点当下的选中值 = 无变化
-  '/inventory 弹窗内点「不设」' // 智能收纳的阶级线默认就是「不设」,点当下的选中值 = 无变化
+  '/settings 点「×1」', // 战报速度默认 ×1
+  '/settings 点「跟随系统」', // 主题默认跟随系统
+  '/inventory 弹窗内点「不设」' // 智能收纳的阶级线默认「不设」
 ]
 
 export function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-/** 干净重试定位同一按钮用的可匹配正则(容忍 CJK 之间的空格,如「战 力▸拆解」) */
+/** 干净重试按名定位按钮的正则;容忍 CJK 字间空格(如「战 力▸拆解」) */
 export function namePattern(label: string): RegExp {
   return new RegExp('^' + escapeRe(label).replace(/\s+/g, '\\s+') + '$')
 }
@@ -25,11 +21,11 @@ export function namePattern(label: string): RegExp {
 export type SmokeDecision = { bucket: 'dead' | 'silent'; line: string }
 
 /**
- * 死按钮分类的纯决策。cleanResult 由 ui-smoke 的干净重试给出:
- *   true   单独点有变化 → 功能正常(读数,不判失败)
+ * cleanResult 来自 ui-smoke 的干净重试:
+ *   true   单独点有变化 → 功能正常(读数)
  *   false  单独点也无变化 → 真死控件(判失败)
- *   null   干净态找不到该按钮(如弹窗按钮在干净态未开)→ 无法复现(读数,不误伤)
- * 白名单(幂等选中项)优先于一切,恒为读数。
+ *   null   干净态找不到该按钮 → 无法复现(读数)
+ * 白名单优先,恒为读数。
  */
 export function classifySmoke(
   route: string,

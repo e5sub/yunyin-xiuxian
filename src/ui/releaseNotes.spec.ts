@@ -1,10 +1,4 @@
-/**
- * 发布说明数据的形状判据。
- *
- * 发布说明最怕两件事:① 排序乱了(旧版压在新版上面,玩家以为倒退);
- * ② 第一条的版本与 package.json 对不上(「新版本已就绪」与「已是最新」自相矛盾)。
- * 这里把两件事都钉死;changes 非空 + 三件套齐备则是给「真事为纲」托底的最小形状约束。
- */
+/** 发布说明形状判据:新→旧排序;首条版本 == package.json;changes 非空、三件套齐备 */
 import { describe, expect, it } from 'vitest'
 import { RELEASE_NOTES } from './releaseNotes'
 import { compareVersions } from '@/utils/appVersion'

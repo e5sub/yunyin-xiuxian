@@ -34,7 +34,7 @@ describe('离线归来 ≠ 闭关', () => {
     const note = offlineBossNoteText('黑风老妖')
     expect(note).toContain('黑风老妖')
     expect(note).toContain(`×${Math.round(OFFLINE_BOSS_REWARD_MULT * 100)}%`)
-    // 折损≠0.9 离线效率,两者都带数才不算藏着
+    // 折损≠0.9 离线效率,两者都带数
     expect(note).not.toContain('闭关')
   })
 

@@ -72,7 +72,6 @@ describe('值日 · 二十八日一轮', () => {
     for (let d = 0; d < 28; d += 1) names.add(mansionOfDay(d).name)
     expect(names.size).toBe(28)
     expect(mansionOfDay(28).name).toBe(mansionOfDay(0).name)
-    // 逐日推进:x 宿之后必是 x 的下一宿
     for (let d = 0; d < 27; d += 1) {
       const i = MANSIONS.findIndex(m => m.name === mansionOfDay(d).name)
       expect(mansionOfDay(d + 1).name).toBe(MANSIONS[(i + 1) % 28]!.name)
@@ -88,7 +87,6 @@ describe('值日 · 二十八日一轮', () => {
 describe('所利 · 真的只利一方', () => {
   it('值日宿所配界域之地得利,他处不得利', () => {
     const game = useGameStore()
-    // 找一天,使其值日宿配人间界,再挑一处人间界地界与一处仙界地界对看
     let day = -1
     for (let d = 0; d < 28; d += 1) {
       if (favoredWorld(mansionOfDay(d)) === 'mortal') {
@@ -139,7 +137,6 @@ describe('星象 · 接线', () => {
   })
 
   it('在线与离线同源:际遇概率只有一份口径(含星象之利)', () => {
-    // 从前在线与离线各写一遍公式;星象只接进了在线,同一天同一地离线少算一成际遇
     const game = useGameStore()
     let day = -1
     for (let d = 0; d < 28; d += 1) {
@@ -151,12 +148,11 @@ describe('星象 · 接线', () => {
     game.$patch({ totalPlaySec: day * 86400 })
     const mortal = REGIONS.find(r => worldOf(r.minRealm).id === 'mortal')!
     const immortal = REGIONS.find(r => worldOf(r.minRealm).id === 'immortal')!
-    // 同一个函数算两地:得利之地高出 MANSION_EVENT_LUCK 的比例,他处原样
     const lucky = exploreEventChance(mortal.id, {})
     const plain = exploreEventChance(immortal.id, {})
     expect(lucky / plain).toBeCloseTo(1 + MANSION_EVENT_LUCK, 6)
 
-    // 离线结算文件必须调用这一个函数,不许再自己乘一遍
+    // 离线结算须调这一个函数,不许自己再乘一遍
     const offlineSrc = readFileSync(resolve(__dirname, 'offline.ts'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/.*$/gm, '')
@@ -167,14 +163,12 @@ describe('星象 · 接线', () => {
 
 describe('星象加成 · 百分数一处出', () => {
   it('mansionLuckPercent 忠实换算,不魔改常量', () => {
-    // 0.1 → 10%;若哪天加成改成 0.15,这里应得 15,而不是 10 原地撒谎
     expect(mansionLuckPercent()).toBe(Math.round(MANSION_EVENT_LUCK * 100))
     expect(mansionLuckPercent()).toBeGreaterThan(0)
   })
 
   it('历练页 / 界域志 / 数值体系三处同源,不许硬编码 10', () => {
-    // FIX A 后真值落在 data/constants(MANSION_EVENT_LUCK);页面走共享 helper 换算,
-    // 数值体系直接由 data 常量换算 —— 任何一处都不许写死 10(加成若是 0.15 必须跟着变)
+    // 真值在 data/constants(MANSION_EVENT_LUCK)
     const adventure = readFileSync(resolve(__dirname, '../views/AdventureView.vue'), 'utf8')
     const realm = readFileSync(resolve(__dirname, '../views/RealmCodexView.vue'), 'utf8')
     const doc = readFileSync(resolve(__dirname, '../data/progressionDoc.ts'), 'utf8')
@@ -226,7 +220,6 @@ describe('星象 · 值日定向(A-2)', () => {
     expect(effectiveFavoredWorld()).toBe(chosen)
     expect(mansionEventLuck(regionOfWorld(chosen))).toBeCloseTo(MANSION_EVENT_LUCK)
     expect(mansionEventLuck(regionOfWorld('mortal'))).toBe(0)
-    // 当日已兑满:继续改向被拒(count 不再增长)
     expect(player.redirectFavoredWorld('immortal')).toBe(false)
     expect(player.mansionRedirect?.count).toBe(MANSION_REDIRECT_MAX)
   })
@@ -234,12 +227,10 @@ describe('星象 · 值日定向(A-2)', () => {
   it('未定向(count = 0)或非当日覆盖不生效 —— 一律回落到天数派生', () => {
     const player = usePlayerStore()
     const day = setTodayAutoMortal()
-    // 覆盖记在别的日子:不算数,回落到天数派生
     player.mansionRedirect = { gameDay: day + 1, worldId: 'immortal', count: 1 }
     expect(effectiveFavoredWorld()).toBe('mortal')
-    // activeRedirectWorld 对坏界 id 直接拒
     expect(activeRedirectWorld(day, { gameDay: day, worldId: 'nope' as WorldId, count: 1 })).toBeNull()
-    // count = 0 代表「今日尚未改向」:即使记了也没生效
+    // count = 0 即今日尚未改向
     expect(activeRedirectWorld(day, { gameDay: day, worldId: 'immortal', count: 0 })).toBeNull()
   })
 
@@ -247,7 +238,6 @@ describe('星象 · 值日定向(A-2)', () => {
     const player = usePlayerStore()
     player.mansionRedirect = { gameDay: 3, worldId: 'nope' as WorldId, count: 99 }
     player.sanitize()
-    // 界域认不出 → 整块清空(回落到天数派生,不残留坏覆盖)
     expect(player.mansionRedirect).toBeNull()
   })
 

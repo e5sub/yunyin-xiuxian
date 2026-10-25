@@ -1,10 +1,8 @@
 <template>
-  <!-- 远征册:在途行程 + 特殊规则世界 + 虚界之门 -->
   <!-- 进行中的远征 -->
   <section v-if="run && runWorld">
     <SectionTitle :title="`远征 · ${runWorld.name}`" :hint="runPact ? `契约「${runPact.name}」` : '未立契约'" />
     <div class="card-ink mt-2 px-4 py-3">
-      <!-- 行程点列:走到哪一重,一目了然 -->
       <div class="mb-2 flex items-center gap-1.5">
         <template v-for="(s, i) in RUN_STAGES" :key="s">
           <span v-if="i > 0" class="h-px min-w-3 grow transition-colors" :class="i <= run.layer ? 'bg-cinnabar/45' : 'bg-ink/15'" />
@@ -231,16 +229,12 @@
         <span class="text-ink-faint"> · {{ selectedGate.gua }}{{ selectedGate.direction }}{{ selectedGate.palace }}宫 · {{ selectedGate.kind }}</span>
         <br />
         {{ selectedGate.desc }}
-        <!--
-          数值与结算同源:上面那句是「打法」的散文,这一行是真正进 resolveCombat 的数。
-          从前只有散文,改规则时那句话不会跟着变,玩家读到的「攻势大增」与结算当场分家。
-        -->
+        <!-- 数值与结算同源(进 resolveCombat 的数);上一句只是散文 -->
         <br />
         <span class="tabular text-ink-faint">{{ gateRuleSummary(selectedGate.rules) }}</span>
         <br />
         <span class="text-ink-faint">{{ selectedGate.gist }}</span>
       </p>
-      <!-- 天道赌约:整程预估(信息归玩家,答案也归玩家) -->
       <div v-if="prepForecast" class="mt-2.5 rounded-md bg-paper-deep/70 px-3 py-2">
         <p class="flex items-center justify-between text-[11px]">
           <span class="font-kai text-ink-soft">天道推演</span>
@@ -306,11 +300,8 @@
   import type { ReportView } from '@/components/celestial/BattleReportDialog.vue'
 
   /**
-   * 远征册 —— 在途行程 / 特殊规则世界 / 虚界之门,连同「择契 · 择门 · 启程」准备弹窗。
-   *
-   * 自 CelestialView 拆出:这一册自读 endgame 的在途远征与世界清单,择路/界主/中道而返
-   * 的确认态也只属于这一域,宿主不再代管 prepWorldId / prepPact / prepGate / abandonConfirm。
-   * 开战结果仍经 emit('report') 交宿主统一判定归因(openReport 只此一处)。
+   * 远征册:在途行程 / 特殊规则世界 / 虚界之门 + 准备弹窗;确认态归本册,宿主不代管。
+   * 开战结果经 emit('report') 交宿主统一判定归因(openReport 只此一处)。
    */
   const emit = defineEmits<{ report: [ReportView] }>()
   const player = usePlayerStore()
@@ -318,12 +309,12 @@
   const adventure = useAdventureStore()
   const busy = computed(() => endgameBusy(endgame.worldRun, player.secretRealm, adventure.session))
 
-  /** 某界的锚点层级落在哪一个境界 —— 界面上「此界宜 X 及以上」用它,不在模板里手写境界名 */
+  /** 锚点层级所在境界;「此界宜 X 及以上」用它,不在模板里手写境界名 */
   function anchorMajorOf(anchorTier: number): number {
     return tierMajor(anchorTier)
   }
 
-  /** 远征行程点列:重层择路 + 界主(层号与 EXPEDITION_* 同源,不另外数) */
+  /** 行程点列:择路各重 + 界主,层数与 EXPEDITION_* 同源 */
   const RUN_STAGES = [
     ...Array.from({ length: EXPEDITION_ROUTE_LAYERS }, (_, i) => `${cnNumber(i + 1)}重`),
     '界主'
@@ -346,7 +337,7 @@
         })
       : null
   )
-  /** 天道赌约:整程预估(随契约选择实时重算) */
+  /** 天道赌约:整程预估 */
   const prepForecast = computed(() =>
     prepWorldId.value ? forecastExpedition(prepWorldId.value, prepPact.value, prepGate.value) : null
   )
@@ -393,14 +384,7 @@
     handleOutcome(outcome, title)
   }
 
-  /**
-   * 战报标题要在动手**之前**取。
-   *
-   * 从前写成 `handleOutcome(chooseRouteNode(i), runWorld.value?.name ?? '远征')` ——
-   * 实参从左往右求值:先打完这一场,而「连败被逐」「功成出界」都会把 worldRun 清成 null,
-   * 于是轮到读 runWorld 时它已经是空的,标题就退成了光秃秃的「远征」。
-   * 实测(后期档真点一次择路):弹窗标题「远征」,而不是「赤炎天」。
-   */
+  /** 战报标题须在开战前取:被逐/出界会把 worldRun 清成 null */
   function titleOfRun(): string {
     return runWorld.value?.name ?? '远征'
   }
@@ -415,7 +399,7 @@
     handleOutcome(challengeGuardian(), title)
   }
 
-  /** 中道而返二步确认:整场远征(沿途道源 + 推进 + 留一记殁痕)一脚就没了,要点明白再还 */
+  /** 中道而返二步确认:沿途道源与推进全失,留一记殁痕 */
   const abandonConfirm = ref(false)
   function abandonRun(): void {
     abandonConfirm.value = false

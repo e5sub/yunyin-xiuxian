@@ -31,7 +31,7 @@
       换伙伴的决定点在这里,把它的跟脚照实摊开(departButtonText 同表)
     -->
     <p v-if="petTripLine" class="mb-2 text-[10px] leading-relaxed text-violet-ink tabular">{{ petTripLine }}</p>
-    <!-- 档位名与档数都取自 EVENT_TIERS:加一档、改一档名,这一行自己跟上 -->
+    <!-- 档位名与档数取自 EVENT_TIERS -->
     <p class="mb-2 text-[10px] leading-relaxed text-ink-faint tabular">
       途中{{ cnNumber(EVENT_TIERS.length) }}档:
       <template v-for="(t, i) in EVENT_TIERS" :key="t.id">
@@ -59,19 +59,9 @@
           <span class="font-kai text-[14px] tracking-widest text-ink">{{ EXPLORE_MODES[modeId].name }}</span>
           <span class="ml-2 text-[11px]" :class="risky(modeId) ? 'text-cinnabar' : 'text-ink-faint'">{{ exploreModeRiskLabel(modeId) }}</span>
         </span>
-        <!--
-          收益一直是亮着的,危险却是暗的:最凶那一档比最稳那一档凶 {{ modeDangerSpan }} 倍,
-          玩家却只看得到钱。两个数并排摆出来,「要不要涉险」才是个可算的账。
-          (档位数与跨度都从 EXPLORE_MODES 现算 —— 这句话从前写死「三档里敌人差了 2.1 倍」,
-          档位扩到六档、最凶抬到 3.9 之后它留在原处没动,读到的就是上一个版本的世界)
-        -->
         <span class="text-right text-[11px] text-ink-faint tabular">
           {{ departText(modeId) }}
           <span class="block text-[10px] text-gold-ink">{{ departReward(modeId) }}</span>
-          <!--
-            超过离线上限的档位要说清「离线只结到上限」:16h 的行程配 8h 的洞府,
-            关掉游戏回来只按 8h 结算,不说的话玩家会以为整程都跑完了。
-          -->
           <span v-if="cappedOf(modeId)" class="block text-[10px] text-cinnabar">{{ cappedOf(modeId) }}</span>
         </span>
       </button>
@@ -114,35 +104,19 @@
   const player = usePlayerStore()
 
   /**
-   * 哪几档算「险」—— 朱砂只给真的可能赔命的出行方式。
-   *
-   * 判据取「凶险高出奖励一截」而不是「凶险>奖励」:`deep` 的 1.45 对 1.4
-   * 也满足后者,而它明明是「小险」;原先按 id 硬编码恰好把它排除在外,改成读数值
-   * 时若直接用 `>`,这一档会从淡墨跳成朱砂 —— 那是回归,不是改进。
-   * 现按超出幅度判:高出 5% 以上才烫(见 exploreModes.spec 的同名判据)。
+   * 朱砂标险:凶险须高出奖励 5% 以上(见 exploreModes.spec 的同名判据)。
+   * 不用裸 `>`:`deep` 的 1.45 对 1.4 是小险,会被误判成险。
    */
   function risky(mode: ExploreMode): boolean {
     const def = EXPLORE_MODES[mode]
     return def.dangerMult > def.rewardMult * RISKY_DANGER_MARGIN
   }
 
-  /**
-   * 「N档行程 · 最凶较最稳凶 X 倍」—— 数字在 ui/adventureText 里现算。
-   *
-   * 从前这两个数写在 HTML 注释里(「三档里敌人差了 2.1 倍」),档位从四档扩到
-   * 六档、最凶一档从 2.1 抬到 3.9 之后它留在原处没动,而注释不渲染 ——
-   * 玩家读到的永远是上一个版本的世界,且没有任何东西会因此报错。
-   */
+  /** 「N档行程 · 最凶较最稳凶 X 倍」,两个数在 ui/adventureText 里由 EXPLORE_MODES 现算 */
   const modeSummary = exploreModeSummaryLine()
 
 
-  /**
-   * 这一程若中途关掉游戏,离线只结到洞府上限 —— 超出的部分是白挂的。
-   *
-   * 16h 档配 0 级洞府(8h)时,回来只拿到一半行程的收益,而界面看不出这件事;
-   * 于是「选最长的一档」在最常见的新档里反而是亏的。就地写明差多少,
-   * 让玩家自己决定是升级洞府还是换一档。
-   */
+  /** 行程超出洞府离线上限时的标注:离线只结到上限 */
   function cappedOf(mode: ExploreMode): string {
     const capSec = useDongfuStore().offlineCapHours * 3600
     const durationSec = exploreDurationSec(mode, player.petId)
@@ -155,19 +129,10 @@
 
   const currentBuild = computed(() => detectBuild(player.finalStats.mods))
 
-  /**
-   * 有没有缘在续 —— 三档的稀度**此刻**是多少,取决于这个。
-   *
-   * 引擎的掷法是先掷奇缘(闸门 0.3,且必须真有该走的下一程)、再掷机缘、
-   * 剩下才是际遇;故「际遇约每 6 程」只在无缘在续时成立(有缘在续时约每 9 程,
-   * 那三成去了奇缘)。档位胶囊按当前状态显示,而不是报一组永远同时成立的数。
-   */
+  /** 有无缘在续:决定三档此刻的稀度(引擎先掷奇缘、再掷机缘,余下才是际遇) */
   const chainPending = computed(() => pendingChainStages(player.major).length > 0)
 
-  /**
-   * 出发前的当境三档实算率:与途中的「途中三档」同一条乘链(星象/福缘/区域事件
-   * eventMult),但按选中地域算 —— 决策点就该看见它,不必等上路才见。
-   */
+  /** 出发前的三档实算率:与途中同一条乘链(星象/福缘/区域事件 eventMult),按选中地域算 */
   const departEventChance = computed(() => exploreEventChance(props.region?.id ?? '', player.finalStats.mods))
 
   /** 出发预览:当前构筑适配 + 推荐方向 */
@@ -179,7 +144,7 @@
     return { mine, recs }
   })
 
-  /** 灵兽之性折进这一行的账(遇险/行程/掉宝/护持,与结算同表) —— 有伴才有一行 */
+  /** 灵兽之性那一行(遇险/行程/掉宝/护持,与结算同表);无伴为空 */
   const petTripLine = computed(() => {
     if (!player.petId) return ''
     const def = petDef(player.petId)
@@ -206,7 +171,7 @@
     })
   }
 
-  /** 一胜的期望所得(与 afterWin 同公式的均值):给「收益 ×Y」补一把尺子 */
+  /** 一胜的期望所得(与 afterWin 同公式的均值) */
   function departReward(mode: ExploreMode): string {
     const region = props.region
     if (!region) return ''

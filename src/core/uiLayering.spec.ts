@@ -1,22 +1,7 @@
 /* eslint-disable no-console -- 分层审计的产出是给人看的清单 */
 /**
- * 界面分层审计 —— 浮层只该有一个出处,弹窗只该有一套契约
- *
- * 由来:两个事件弹窗(悟道顿悟 / 洞府巡游)是自己铺的 `fixed inset-0`。
- * 单看截图看不出问题,代价却有三样:**没有 role=dialog / aria-modal**(读屏不知道
- * 有弹窗开了)、**没有焦点管理**(打开后焦点还在背后的按钮上,Tab 会一路跑出去)、
- * 样式自成一套(font-bold / text-sm / rounded,与本作的水墨设计系统两回事)。
- *
- * 而排版自检那两条尺子(控件要有可访问名、不小于 28px)与弹窗焦点契约都挂在
- * BaseModal 上 —— 自己铺浮层就等于同时退出这三套保障,还不会有人发现。
- *
- * 故这里把「浮层只有一个出处」钉成红线,判据是源码级的:
- *   一 全屏浮层只该出现在 BaseModal 里(自己铺 `fixed inset-0` 又带按钮 = 退出契约);
- *   二 每个弹窗都要有可辨识的名字(title 或 aria-label),读屏才念得出是哪一扇;
- *   三 每个弹窗都要关得掉(@close 有人接,或明写 :closable="false" 说明为何不给关)。
- *
- * 故障注入:把 EnlightenmentModal 改回自己铺浮层 → 第一条红;
- * 把某个 title 删掉 → 第二条红;把 @close 删掉 → 第三条红。
+ * 界面分层审计:全屏浮层只出自 BaseModal(dialog 语义、焦点陷阱、控件尺子都挂在它上面)。
+ * 故障注入:把 EnlightenmentModal 改回自己铺浮层 / 删掉某个 title / 删掉 @close,对应用例红。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -37,7 +22,7 @@ const FILES = walk(SRC)
   .filter(f => f.includes(`${join('src', 'components')}`) || f.includes(`${join('src', 'views')}`))
   .map(f => ({
     path: relative(SRC, f).replace(/\\/g, '/'),
-    // 注释里会提到这些写法(比如「曾经是自己铺的一层 fixed inset-0」),判据只看真代码
+    // 剥掉注释,判据只看代码
     src: readFileSync(f, 'utf8')
       .replace(/<!--[\s\S]*?-->/g, '')
       .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -61,7 +46,6 @@ describe('界面分层 · 浮层只有一个出处', () => {
   it('每个弹窗都有可辨识的名字 —— 读屏要念得出是哪一扇', () => {
     const nameless: string[] = []
     for (const f of FILES) {
-      // 逐个取 <BaseModal ...> 开标签
       for (const m of f.src.matchAll(/<BaseModal\b[^>]*>/g)) {
         const tag = m[0]
         const title = /(?<![:\w-])title="([^"]*)"/.exec(tag)?.[1]
@@ -90,17 +74,13 @@ describe('界面分层 · 浮层只有一个出处', () => {
   })
 
   it('视图里不许裸 back() —— 冷启动时它会把人送出游戏', () => {
-    // 判据:站内没有上一页时(书签 / deep link / PWA 冷启动恢复路由),
-    // history.state.back 为 null,裸 back() 会退到 about:blank,界面整个消失。
-    // 统一走 router/goBack.ts 的 goBack(router, 父页)。
+    // 冷启动(书签 / deep link / PWA 恢复路由)时 history.state.back 为 null,裸 back() 退到 about:blank
     const offenders = FILES.filter(f => /\.back\(\)/.test(f.src))
       .map(f => f.path)
     expect(offenders, '这些视图直接调了 back() —— 改用 @/router/goBack 的 goBack(router, 父页)').toEqual([])
   })
 
   it('派活说明不许只挂 hover —— 手机上没有 hover,那是谁也看不见的死提示', () => {
-    // 道童派活会把弟子锁走 30~90 分钟,而任务说明此前只写在 :title 上。
-    // 现在与适配理由 / 天赋芯片同族:点一下展开一行,再点同枚才真派出(aria-expanded 报给读屏)。
     // 故障注入:把 tapTask 改回 dispatcher、或把说明改回 :title → 红。
     const f = FILES.find(x => x.path === 'views/ApprenticeView.vue')
     expect(f, 'ApprenticeView 不见了').toBeDefined()
@@ -114,10 +94,7 @@ describe('界面分层 · 浮层只有一个出处', () => {
   })
 
   it('白费/未达门槛要置灰 —— 丹药顶满、兵解未达境,不许点了才 toast', () => {
-    // 同族规:不可行就置灰 + 就地列因,别让点下去才知道。
-    // ① 丹药详情「服 用」顶满仍可点,按下就真·白吃一颗;修行快捷卡对同一个
-    //    buffOverflowOf 判据置灰「已顶」,两处此前相反。
-    // ② 兵解转世未达金丹仍可点,点了才 toast 拦。
+    // 丹药详情与修行速服同读 buffOverflowOf 判据
     const inv = FILES.find(f => f.path === 'views/InventoryView.vue')
     expect(inv, 'InventoryView 不见了').toBeDefined()
     expect(inv!.src, '丹药顶满要置灰(判据 currentPillOverflow)').toContain(
@@ -130,7 +107,6 @@ describe('界面分层 · 浮层只有一个出处', () => {
     expect(inv!.src, '顶满判据读 now.value,不读一次性 Date.now()').toContain(
       'buffOverflowOf(cultivation.buffs, def.buffId, now.value)'
     )
-    // 修行页的速服快捷栏也必须按同一判据置灰:此前注释说它「已置灰」,实际仍无条件 usePill。
     const cultivation = FILES.find(f => f.path === 'views/CultivationView.vue')
     expect(cultivation, 'CultivationView 不见了').toBeDefined()
     expect(cultivation!.src, '修行速服顶满要置灰').toContain(':disabled="p.overflow === \'full\'"')
@@ -145,8 +121,7 @@ describe('界面分层 · 浮层只有一个出处', () => {
   })
 
   it('问卦与点化付不起就置灰列差 —— 缺哪样、直说,不许点了才弹', () => {
-    // 同族规:付不起的按钮当场置灰、内联写出差额(防御臂仍在 core)。
-    // 故障注入:把 :disabled 改回只看「卦在身」/删掉点化 disabled → 本条红。
+    // 防御臂仍在 core。故障注入:把 :disabled 改回只看「卦在身」/删掉点化 disabled → 本条红。
     const codex = FILES.find(f => f.path === 'views/RealmCodexView.vue')
     expect(codex, 'RealmCodexView 不见了').toBeDefined()
     expect(codex!.src, '问卦置灰要合成「卦在身或不足」').toContain(':disabled="askDisabled"')
@@ -248,16 +223,8 @@ describe('界面分层 · 浮层只有一个出处', () => {
 })
 
 /**
- * 空态只有一个出处。
- *
- * 本仓早就有 `.empty-seal`(单字哑印),用于「这一册还没有东西」—— 章的分量;
- * 但卡片里「尚无快照 / 尚无秘境 / 此世气象尚未凝成」这类**整块留白**一直是裸写
- * 淡字,一行孤字浮在卡中央,读着像出错留下的空白。`.empty-note` 补的是这一档:
- * 顶上一道两端收笔的淡墨短横,块就有了形状,不用加字号也不用加重颜色。
- *
- * 判据分两段:样式本身要真存在且是「两端透明、中线 20% 墨」的收笔横线
- * (被改成一条实心 border 就失了这个出处);已知的四处漏网要真的挂上类,
- * 免得下次改版又退回裸写。故障注入:摘掉任一处的 empty-note,或把渐变改成实心 —— 红。
+ * 块级空态只有一个出处:`.empty-note`(两端透明收笔的淡墨短横);`.empty-seal` 是单字哑印,另一档。
+ * 故障注入:摘掉任一处的 empty-note,或把渐变改成实心 —— 红。
  */
 describe('界面分层 · 块级空态只有一个出处', () => {
   const STYLE = readFileSync(resolve(SRC, 'style.css'), 'utf8')
@@ -269,7 +236,6 @@ describe('界面分层 · 块级空态只有一个出处', () => {
     expect(NOTE_BLOCK, '短横要走墨的透明度,不写裸 hex').toContain('rgb(var(--color-ink-rgb) /')
     expect(NOTE_BLOCK, '两端须透明收笔,齐口的线读作分隔符').toContain('linear-gradient')
     expect(NOTE_BLOCK, '两头透明才叫收笔').toContain('transparent')
-    // 视觉尺度:1px 高、34px 宽 —— 空态多在列表里,不能为了好看长个头
     expect(NOTE_BLOCK).toMatch(/height:\s*1px/)
     expect(NOTE_BLOCK).toMatch(/width:\s*34px/)
   })
@@ -288,8 +254,7 @@ describe('界面分层 · 块级空态只有一个出处', () => {
         missing.push(`${path} → 文件不见了`)
         continue
       }
-      // 找带这句话的那个空态段落(v-else / v-if 两种写法都算 —— 列表空态常写
-      // v-if="list.length === 0"),看它的 class 里有没有 empty-note
+      // 空态段落 v-else / v-if 两种写法都算
       const tag = [...f.src.matchAll(/<p\b[^>]*>/g)].find(m => {
         const after = f.src.slice(m.index! + m[0].length, m.index! + m[0].length + 120)
         return /\bv-(?:else|if)\b/.test(m[0]) && after.includes(phrase)
@@ -302,39 +267,8 @@ describe('界面分层 · 块级空态只有一个出处', () => {
 })
 
 /**
- * 组件到底有没有被导进来 —— 模板里写了 `<GameIcon>`,script 里却没 import。
- *
- * 病灶(玩家实报「法宝的各个 icon 不显示了」):`refactor(inventory): 法宝册迁
- * ArtifactPanel` 把法宝那两处 `<GameIcon>` / `<QualityTag>` 整段搬进新组件,却把
- * import 留在了宿主 `InventoryView.vue` —— 新组件里那是两个**未注册**的标签。
- *
- * 为什么三道现成的闸门都没拦住:
- *   一 `vue-tsc` 默认不把模板里的未知大写标签当错误(它当成自定义元素/原生标签),
- *      类型检查照过;
- *   二 `eslint src` 走的是 `.ts` / `.vue` 脚本块的规则,不解析 template;
- *   三 `GameIcon` 与 `QualityTag` 都**不会抛错** —— 未注册标签被 Vue 原样渲染成一个
- *      空的 `<gameicon>` 元素,页面上就是「图标那格空着」,没有任何红字。
- * 单看截图只会以为「这个法宝没有图标」,查起来要一路翻到 import 那几行。
- *
- * 判据:模板里用到的**大写开头的标签**,其名字必须在同一文件的 script 块里出现过
- * (import / `components:` 注册 / `defineAsyncComponent` 任一写法都算)。内置组件
- * 与 `RouterLink` 这类由 vue-router 提供的全局组件登记在 BUILTIN 里。
- *
- * 故障注入:删掉 ArtifactPanel 的 `import GameIcon` → 本条红并点名 GameIcon。
- */
-/**
- * 法宝换件的提示名单,必须在动手之前取。
- *
- * 病灶:`ArtifactPanel.toggleArtifact` 先去调 `inventory.toggleArtifact`(它会改写
- * `equippedArtifacts`),再回 `artifactRows.value` 里找这一行的 `evicts` —— 而 `evicts`
- * 是从 `equippedArtifacts` 现算的。于是 toast 念的是**刚戴上来的那一件**的名字:
- * 实测 1 位之下换件,按钮写着「替下玄天镜」,真正让位的墨玉葫芦只字未提。
- * 玩家照 toast 去行囊核对,永远对不上账。
- *
- * 判据只读 `toggleArtifact` 那一个函数体(从它的签名到右花括号),在里面比两处的
- * 先后。整文件 `indexOf` 会先在 `artifactRows` computed 里撞见同一个调用 —— 那一处
- * 本来就在函数之前,判据于是恒真、永不红,等于没写。
- *
+ * 法宝换件的让位名单须在 inventory.toggleArtifact 之前取(它会改写 equippedArtifacts)。
+ * 判据只在 toggleArtifact 函数体内比先后:整文件 indexOf 会先撞上 artifactRows 里的同一调用,恒真。
  * 故障注入:把 ArtifactPanel 那两行的先后调换,本条必红。
  */
 describe('界面分层 · 换件提示的让位名单取在动手之前', () => {
@@ -344,7 +278,7 @@ describe('界面分层 · 换件提示的让位名单取在动手之前', () => 
     const src = readFileSync(PANEL, 'utf8')
     const start = src.indexOf('function toggleArtifact(defId: string): void {')
     expect(start, 'ArtifactPanel 里找不到 toggleArtifact —— 判据失效了').toBeGreaterThan(-1)
-    // 函数体:从签名后第一个 '{' 起,按花括号配平找到收尾那一个
+    // 按花括号配平圈出函数体
     const open = src.indexOf('{', start)
     let depth = 0
     let end = -1
@@ -372,14 +306,13 @@ describe('界面分层 · 换件提示的让位名单取在动手之前', () => 
   })
 })
 
+/**
+ * 模板里的大写标签须在本文件 script 里出现(import / `components:` / `defineAsyncComponent` 任一写法)。
+ * vue-tsc 与 eslint 都不查模板里的未注册标签,Vue 将其原样渲染成空元素,不抛错。
+ * 故障注入:删掉 ArtifactPanel 的 `import GameIcon` → 本条红并点名 GameIcon。
+ */
 describe('界面分层 · 模板用到的组件必须在本文件里有来路', () => {
-  /**
-   * 框架自带 / 全局注册的组件:它们本来就不需要 local import。
-   *
-   * 这份名单要**保守** —— 往里塞一个本该 import 的自有组件,判据就漏了那一个。
-   * 目前项目里全局可用的只有 Vue 内置与 vue-router 的 RouterLink / RouterView
-   * (router 在 main.ts 里 `app.use(router)` 注册),其余自有组件一个都不在其中。
-   */
+  /** 免 import 的组件:Vue 内置与 vue-router 全局组件(main.ts 注册);自有组件不得加入 */
   const BUILTIN = new Set([
     'Transition',
     'TransitionGroup',
@@ -394,7 +327,7 @@ describe('界面分层 · 模板用到的组件必须在本文件里有来路', 
   it('模板里的每个大写标签都能在本文件的 script 里找到', () => {
     const missing: string[] = []
     for (const f of FILES) {
-      // 只看模板:script 之后的部分是脚本本身,拿它当证据会自证自洽
+      // 标签只从模板取,不拿 script 自证
       const scriptAt = f.src.indexOf('<script')
       if (scriptAt < 0) continue
       const template = f.src.slice(0, scriptAt)
@@ -413,9 +346,7 @@ describe('界面分层 · 模板用到的组件必须在本文件里有来路', 
   })
 
   it('判据自家不是空转:名单里的全局组件确实不许写进 import,是自有组件就必须写', () => {
-    // 阳性对照:若把 BUILTIN 名单当成「随便加」,判据会被一件件稀释。
-    // 这里钉住两件事:内置组件确实不在任何文件的 import 里;而 GameIcon 这种
-    //自有组件在用到它的文件里必须有 import 语句(不是碰巧名字撞上别的标识符)。
+    // 阳性对照:用到 GameIcon 的文件须有 import 语句,而非碰巧撞上同名标识符
     const iconUsers = FILES.filter(f => /<GameIcon\b/.test(f.src))
     expect(iconUsers.length, '全仓一处 <GameIcon> 都没有,说明 glob 或解析坏了').toBeGreaterThan(5)
     const rawImportMissing = iconUsers

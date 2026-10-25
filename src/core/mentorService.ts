@@ -1,22 +1,15 @@
-/**
- * 师承服务(Phase 31.0 S1)
- *
- * 师尊评价:根据玩家真实行为(quests 计数器)判断与师承理念的契合度。
- * 纯叙事,无惩罚:契合→「剑心渐明」,相左→「剑意未纯」。
- * 师承词条并入 finalStats(较轻,不封 Build)。
- */
+/** 师承服务:按 quests 计数器判断与师承理念的契合度。纯叙事,无惩罚;师承词条并入 finalStats(较轻,不封 Build)。 */
 import type { MentorId } from '@/data/mentors'
 import { mentorDef, MENTORS } from '@/data/mentors'
 import { useQuestsStore } from '@/stores/quests'
 
 export interface MentorVerdict {
   mentor: ReturnType<typeof mentorDef>
-  /** 契合度 -1~1
-   *  >0.2 契合;<-0.2 未纯;其间 中正 */
+  /** 契合度 -1~1:>0.2 契合,<-0.2 未纯,其间中正 */
   affinity: number
   /** 叙事的师尊评价 */
   line: string
-  /** 归一化的行为特征(供人物页展示) */
+  /** 行为特征(供人物页展示) */
   traits: { name: string; value: number }[]
 }
 
@@ -28,7 +21,7 @@ const MENTOR_WEIGHTS: Record<MentorId, Partial<Record<string, number>>> = {
   hunter: { explores: 1, equipsGained: 1, events: 0.5 }
 }
 
-/** 判别契合度:按师承权重对计数器归一化(加权和,阈值切档) */
+/** 判别契合度(按师承权重加权和归一化,阈值切档) */
 export function mentorVerdict(mentorId: MentorId | null): MentorVerdict | null {
   if (!mentorId) return null
   const quests = useQuestsStore()
@@ -44,7 +37,7 @@ export function mentorVerdict(mentorId: MentorId | null): MentorVerdict | null {
     score += v * (w as number)
     total += (w as number) ** 2
   }
-  // 归一化到 -1~1(对后取 √,避免前期小数值过早饱和)
+  // 归一化到 -1~1(取 √ 避免前期小数值过早饱和)
   const raw = score / Math.max(1, Math.sqrt(total) * 50)
   const affinity = Math.max(-1, Math.min(1, raw))
 

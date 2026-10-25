@@ -1,40 +1,28 @@
 /**
- * 宿命传承 —— 深修「跨生死、可累积、不滚雪球」的长期目标线。
- *
- * 与 daoFruit / talents 同类 kind='legacy' 的永久项:随神魂不灭,跨世不清零。
- * 一个传承 = 某个可停世境界(金丹..真仙)给深修的独一份「我是谁」;
- * 浅修农场(金丹以下)永远锻造不出任何传承 —— 给深修一条不去追量的念想。
- *
- * 核心纪律(评审红线,由 heritageForge.spec / heritageEffects.spec 的结构断言钉死):
- *   **任何传承不得声明为攻防 / 修速 / 战力倍率** —— 一旦可折算成量,就塌回
- *   「深修指数补偿」的陷阱。故效果全落在 信息 / 选择 / 容错 / 荣誉 轴:
- *   有界、平直的**能力位**,绝不随道果或世数无界增长。
- *
- * 判定与锻造的**生命周期**在 core/heritageForge.ts;效果的**落地实现**在
- * core/heritageEffects.ts。这里只定义「有哪些传承、门槛、效果轴」。
- * 跨世去留在 core/samsaraAudit 的 HERITAGE 表另登记一行(kind='legacy', mode='full')。
+ * 宿命传承:kind='legacy' 永久项(同 daoFruit / talents),跨世不清零;门槛金丹..真仙,金丹以下锻造不出。
+ * 红线(heritageForge.spec / heritageEffects.spec 结构断言):不得声明为攻防 / 修速 / 战力倍率;
+ * 效果只落有界、平直的能力位,不随道果或世数增长。
+ * 锻造生命周期在 core/heritageForge.ts,效果实现在 core/heritageEffects.ts;此处只定义传承、门槛、效果轴。
+ * 跨世去留另在 core/samsaraAudit 的 HERITAGE 表登记(kind='legacy', mode='full')。
  */
 export interface HeritageDef {
   id: string
   name: string
-  /** 境界门槛 2..9 —— 本世必须达到该境界才解锁对应传承;金丹(major 2)以下浅修永远锻造不出 */
+  /** 境界门槛 2..9:本世达到该境界才可锻造 */
   gateMajor: number
-  /** 必须有界、平直的能力位,禁止「随世缩放」的百分数效果 */
+  /** 有界平直的能力位,禁止随世缩放的百分数效果 */
   effect: 'bounded-flat'
-  /** 效果轴:选择 / 容错 / 荣誉 —— 不允许攻防 / 修速这类量词混进来 */
+  /** 效果轴:选择 / 容错 / 荣誉 */
   axis: 'choice' | 'fault-tolerant' | 'honor'
   /** 玩家向文案(参与红线扫描) */
   desc: string
-  /** 机制侧描述(参与红线扫描 —— 防把能力位偷偷写成倍率) */
+  /** 机制侧描述(参与红线扫描) */
   effectDesc: string
 }
 
 export type HeritageId = string
 
-/**
- * 基线六道传承(可替换增删,但必须守住「有界平直 + 非倍率 + 金丹刷不出」三条)。
- * 门槛随境界走:2 金丹 / 3 元婴 / 5 炼虚 / 7 大乘 / 8 渡劫 / 9 真仙(见 data/realms)。
- */
+/** 基线六道传承;增删须守「有界平直 + 非倍率 + 金丹以下锻造不出」 */
 export const HERITAGE_DEFS: HeritageDef[] = [
   {
     id: 'danxin',

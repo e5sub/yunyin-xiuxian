@@ -27,7 +27,7 @@
 
       <p class="flex justify-between text-[13px]">
         <span class="text-ink-soft">剩余</span>
-        <!-- 剩余每秒在走:定宽(见 utils/format.formatCountdown),否则这一行的数字一直在跳 -->
+        <!-- 定宽倒计时(见 utils/format.formatCountdown),否则逐秒跳宽 -->
         <span class="countdown-slot tabular">{{ formatCountdown(remainSec) }}</span>
       </p>
       <p v-if="stackCount > 1" class="mt-1 flex justify-between text-[13px]">
@@ -36,15 +36,9 @@
       </p>
       <p class="mt-1 flex justify-between text-[13px]">
         <span class="text-ink-soft">全程</span>
-        <!-- formatDuration 收秒;totalMs 是毫秒,转一下 -->
+        <!-- formatDuration 收秒;totalMs 是毫秒 -->
         <span class="tabular text-ink-faint">{{ formatDuration(totalMs / 1000) }}</span>
       </p>
-      <!--
-        丹药类增益还有一条**绝对天花板**:四个时辰,再吃也只延续到顶。
-        不写出来,玩家贴着上限连服时看到的每一颗都只加几十秒 ——
-        下一个结论就是「这游戏坏了」而不是「已至上限」。非丹药来源
-        (事件祝福/闭关/重伤)没有这条顶,故这一行只对丹药 buff 出现。
-      -->
       <p v-if="capText" class="mt-1 flex justify-between text-[13px]">
         <span class="text-ink-soft">至多</span>
         <span class="tabular" :class="atCap ? 'text-gold-ink' : 'text-ink-faint'">{{ capText }}</span>
@@ -83,45 +77,34 @@
   }
   const kindText = computed(() => KIND_TEXT[def.value?.kind ?? ''] ?? '')
 
-  /** 剩余秒数(随引擎实时递减) */
-  /** 当前打开的这条 buff 实例(老档案可能没有 added,回退按单份计) */
+  /** 当前打开的这条 buff 实例(老档可能没有 added,回退按单份计) */
   const inst = computed(() =>
     ui.buffDetailId ? cultivation.buffs.find(b => b.defId === ui.buffDetailId) ?? null : null
   )
 
-  /** 剩余秒数(随引擎实时递减) */
   const remainSec = computed(() => {
     if (!inst.value) return 0
     return Math.max(0, (inst.value.endsAt - now.value) / 1000)
   })
 
-  /**
-   * 本条实例的累计时长(毫秒):有时长叠加(同一状态卒过多次)时它是
-   * 叠起来的本命 total(added),兜底才是单份 durationSec —— 「全程」与
-   * 进度条都按这份算,叠 2 份时不会看剩 40 分钟却显示全程 20 分钟。
-   */
+  /** 本条实例累计时长,单位毫秒:叠加时取 added,兜底单份 durationSec;「全程」与进度条都按它算 */
   const totalMs = computed(() => {
     const dur = def.value?.durationSec ?? 0
     if (dur <= 0) return 0
     return (inst.value?.added ?? dur * 1000)
   })
 
-  /**
-   * 丹药增益的绝对天花板 —— 四个时辰(buffCapSec);非丹药来源没有这条顶。
-   *
-   * 「至多」这一行只对丹药 buff 出现:闭关/重伤/事件祝福不受上限管,
-   * 给它们也印一个「至多四个时辰」就是一句假话。
-   */
+  /** 丹药增益的绝对天花板:四个时辰(buffCapSec);闭关/重伤/事件祝福没有这条顶,「至多」行只对丹药出现 */
   const capSec = computed(() => (def.value ? buffCapSec(def.value.id) : undefined))
-  // classicalDuration 已自带「四个时辰(8小时)」这种古今对照,不再拼一遍
+  // classicalDuration 已自带古今对照,不再拼
   const capText = computed(() => (capSec.value === undefined ? '' : classicalDuration(capSec.value)))
-  /** 是否已贴顶(容差 0.5 秒:剩余时间以毫秒在走,差半秒不算到顶) */
+  /** 是否已贴顶(容差 0.5 秒) */
   const atCap = computed(() => {
     if (capSec.value === undefined) return false
     return remainSec.value >= capSec.value - 0.5
   })
 
-  /** 已叠份数(向上取整防 1.06 份这种只差几秒的误判;老档无 added → 恒 1) */
+  /** 已叠份数(老档无 added → 恒 1) */
   const stackCount = computed(() => {
     const dur = def.value?.durationSec ?? 0
     if (dur <= 0) return 1
@@ -133,7 +116,7 @@
     return total > 0 ? Math.min(1, remainSec.value * 1000 / total) : 0
   })
 
-  /** Buff 词条全为比率;正向增益记绿,减益记朱 */
+  /** Buff 词条全为比率 */
   const modRows = computed(() =>
     Object.entries(def.value?.mods ?? {}).map(([key, value]) => {
       const v = value as number

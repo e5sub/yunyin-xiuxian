@@ -46,7 +46,7 @@ describe('ui store · Toast', () => {
     ui.toast('道源不足 10', 'warn')
     expect(ui.toasts).toHaveLength(1)
     expect(ui.toasts[0]!.text).toBe('道源不足 10')
-    // 第三种更长的失败文案另起一条
+    // 更长的失败文案另起一条
     ui.toast('道源不足 100', 'warn')
     expect(ui.toasts).toHaveLength(2)
   })
@@ -62,14 +62,14 @@ describe('ui store · Toast', () => {
     vi.useFakeTimers()
     try {
       const ui = useUiStore()
-      ui.toast('提示', 'info') // ttl 2600ms,旧计时器将在 t=2600 触发
+      ui.toast('提示', 'info') // ttl 2600ms,旧触点 t=2600
       vi.advanceTimersByTime(1000)
-      ui.toast('提示', 'info') // 原位刷新,新 TTL 触点在 t=3600
+      ui.toast('提示', 'info') // 原位刷新,新触点 t=3600
       vi.advanceTimersByTime(600)
       expect(ui.toasts.some(t => t.text === '提示')).toBe(true)
-      vi.advanceTimersByTime(1001) // t=2601:旧触点已过 —— 若旧计时器没撤,刷新那条就该被收走了
+      vi.advanceTimersByTime(1001) // t=2601:旧触点已过
       expect(ui.toasts.some(t => t.text === '提示')).toBe(true)
-      vi.advanceTimersByTime(999) // t=3600:新触点才到
+      vi.advanceTimersByTime(999) // t=3600:新触点
       expect(ui.toasts.some(t => t.text === '提示')).toBe(false)
     } finally {
       vi.useRealTimers()
@@ -83,7 +83,7 @@ describe('ui store · Toast', () => {
       ui.toast('点掉我', 'info')
       const id = ui.toasts[0]!.id
       ui.dismissToast(id)
-      vi.advanceTimersByTime(10_000) // 早过了原 TTL,队列不应有任何动静
+      vi.advanceTimersByTime(10_000) // 早过了原 TTL
       expect(ui.toasts).toHaveLength(0)
     } finally {
       vi.useRealTimers()

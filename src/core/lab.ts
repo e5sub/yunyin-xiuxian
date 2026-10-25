@@ -1,7 +1,6 @@
 /**
- * 修士实验室(Phase 26)—— 反事实换装推演
- * 原则:回答「换了以后局面会怎样」,不回答「该不该换」。
- * 与实战同口径:敌人按本界锚点定标,玩家的基础三维与构筑厚度都会体现在读数里
+ * 修士实验室:反事实换装推演。只回答「换了以后局面会怎样」,不回答「该不该换」。
+ * 与实战同口径:敌人按本界锚点定标,玩家的基础三维与构筑厚度都体现在读数里。
  */
 import type { AnyStatKey, CombatantSnap, StatMods } from '@/types'
 import { add, subClamp } from '@/utils/gnum'
@@ -43,13 +42,7 @@ function rateRank(rate: number): number {
 
 
 function worldRate(world: (typeof CELESTIAL_WORLDS)[number], snap: CombatantSnap, seed: number): number {
-  /**
-   * 与实战**同一口径**:敌人按本界锚点定标,判定按推演中那个人的厚度与境界算。
-   *
-   * 从前这里是「敌人与你等比、三维变化自动抵消」,于是推演读数只体现构筑形状 ——
-   * 换一件更厚的装备,四个天界的局面一动不动,玩家看不出自己变强了。
-   * 现在基础三维作数:换装带来的绝对强度变化会直接写进每一界的那一行读数里。
-   */
+  // 敌人若与推演者等比,三维变化自动抵消,换更厚的装备读数不动
   const { ref, judgement } = celestialFoeCaliber(usePlayerStore().major, snap.mods, world.anchorTier)
   const foes: CombatantSnap[] = []
   for (let i = 0; i < world.fights - 1; i += 1) foes.push(worldFoeSnap(world.foes[i % world.foes.length]!, ref, 1, judgement))
@@ -63,10 +56,7 @@ function worldRate(world: (typeof CELESTIAL_WORLDS)[number], snap: CombatantSnap
   return clears / 6
 }
 
-/**
- * 若装备此件(替换同部位当前佩戴),四天局面各会怎样。
- * 近似:词条与平铺数值按增减量修正快照,忽略百分比乘区的二阶项——推演给档位,不给假精确
- */
+/** 若装备此件(替换同部位当前佩戴),四天局面各会怎样。按增减量修正快照,忽略百分比乘区的二阶项 */
 export function whatIfEquip(uid: string): WhatIfReport | null {
   const inventory = useInventoryStore()
   const item = inventory.findItem(uid)
@@ -80,10 +70,7 @@ export function whatIfEquip(uid: string): WhatIfReport | null {
   const currentItem = currentUid ? inventory.findItem(currentUid) : undefined
   const lose = currentItem ? resolveEquipStats(currentItem) : undefined
 
-  /**
-   * 词条变化:凡界口径直接取增量。器魂是**叠加**上去的一层(见 stores/player 的 celestialStats),
-   * 故这里不必再做「压缩后取差」那一套 —— 换装带来的变化会原样体现在读数里。
-   */
+  // 词条直接取增量:器魂是叠加上去的一层(见 stores/player 的 celestialStats),不做压缩后取差
   const mods: StatMods = { ...before.mods }
   for (const k of new Set([...Object.keys(gain.mods), ...Object.keys(lose?.mods ?? {})])) {
     const key = k as AnyStatKey
@@ -91,7 +78,6 @@ export function whatIfEquip(uid: string): WhatIfReport | null {
     if (d !== 0) mods[key] = (mods[key] ?? 0) + d
   }
 
-  // 平铺三维照常作数:它就是基础属性
   let attack = add(before.attack, gain.flats.attack)
   let defense = add(before.defense, gain.flats.defense)
   let maxHp = add(before.maxHp, gain.flats.maxHp)

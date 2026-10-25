@@ -1,6 +1,4 @@
-/**
- * 洞府建筑服务 —— 升级
- */
+/** 洞府建筑服务:升级 */
 import type { BuildingId, GNum } from '@/types'
 import { buildingDef } from '@/data/buildings'
 import { buildingCost } from './formulas'
@@ -27,28 +25,17 @@ import type { BuildingShortSide } from '@/ui/buildingText'
 export interface BuildingUpgradePreview {
   /** 预览指向的目标级(单步即下一级;连升即 level+steps) */
   nextLevel: number
-  /**
-   * 升级到 nextLevel 会变的那些效果行 —— 与卡面同读 effectText,只报会变的那部分,
-   * 不抄第二份文案:字面不变的行走(如「炉子只管出丹多寡」)、尚未触发的档
-   * (如每 3 级才涨的强化上限)都不该当成「增益」搬上来。
-   */
+  /** 升到 nextLevel 会变的效果行 */
   lines: string[]
   /** 首建(0→1):还没有当前效果,预览=整张下一级效果 */
   built: boolean
 }
 
-/**
- * 升级/建造的「升上去会怎样」预览。卡面已显当前效果与代价,这里只补赢得什么:
- * 取 effectText(toLevel) 与 effectText(level) 逐行比对,留下字面变掉的行 ——
- * 与 effectText 同一事实源,门槛、档位一致,不会出现「卡面印的出不去」。
- *
- * steps 缺省 1(单步);连升整段传实际步数 —— 连升买的是整段,玩家不该拿
- * 看不到的逐级增量自己加总(与 batch 的花费总账同摆:钱多少、得多少,一眼对上)。
- */
+/** 升级/建造预览:effectText(toLevel) 与 effectText(level) 逐行比对,留下字面变掉的行;与卡面同读 effectText */
 export function buildingUpgradePreview(
   id: BuildingId,
   level: number,
-  /** 有效上限(洞府档闸门 < 品类上限时已到顶的卡不该再印「下一级」);缺省回退 def.maxLevel */
+  /** 有效上限(洞府档闸门 < 品类上限时,到顶的卡不再印「下一级」);缺省 def.maxLevel */
   cap?: number,
   /** 连升步数:从 level 直接 diff 到 level+steps(1 即单步) */
   steps = 1
@@ -56,16 +43,14 @@ export function buildingUpgradePreview(
   const def = buildingDef(id)!
   const toLevel = level + Math.max(1, steps)
   if (toLevel > (cap ?? def.maxLevel)) return { nextLevel: toLevel, lines: [], built: level === 0 }
-  // 本仓 effectText 是整段散文,不是逐行数组:按句读切成行再 diff,
-  // 与卡面展示口径一致,也避免把「离线收益上限 48 小时;洞府每升一级…」
-  // 这样的两句当成一行而整句重复。
+  // effectText 是整段散文,切行再 diff
   const cur = level > 0 ? splitEffectLines(def.effectText(level)) : []
   const nxt = splitEffectLines(def.effectText(toLevel))
   const lines = nxt.filter((line, i) => line !== cur[i])
   return { nextLevel: toLevel, lines, built: level === 0 }
 }
 
-/** 建筑效果散文按分号拆行 —— 只拆给预览比对,不改数据层文案 */
+/** 按分号拆行,只供预览比对 */
 function splitEffectLines(text: string): string[] {
   return text
     .split(/[;；]/)
@@ -92,10 +77,7 @@ export interface BuildingShortfall {
   reason: string
 }
 
-/**
- * 建筑升级的资源缺口 —— 卡片、单升二次校验与连升 0 级拒因共用这一份判据。
- * 石头是 GNum、玄铁是 number,分别算差;只缺一样就只报那一样。
- */
+/** 建筑升级的资源缺口:卡片、单升二次校验与连升 0 级拒因共用;只缺一样只报那一样 */
 export function buildingShortfall(stone: GNum, ore: number): BuildingShortfall {
   const resources = useResourcesStore()
   const stoneShort = gte(resources.spiritStone, stone) ? gnZero() : subClamp(stone, resources.spiritStone)
@@ -131,7 +113,7 @@ export function buildingUpgradeInfo(id: BuildingId): BuildingUpgradeInfo {
     canUpgrade = false
     reason = buildingMansionGateToast()
   } else {
-    // 资源检查(xian 仓纪律:付不起要先置灰、把差多少列出来,别让玩家点了才被弹教训)。
+    // 资源不足即置灰并列差
     const shortfall = buildingShortfall(stone, ore)
     if (shortfall.side) {
       canUpgrade = false
@@ -181,9 +163,8 @@ export interface BuildingBatchPlan {
 }
 
 /**
- * 建筑连升计划:只算不动手。逐级累加 buildingCost(每级随级数涨)与玄铁,
- * 到品类满级、洞府辖限或余额缺口即止 —— 判据与 buildingUpgradeInfo 同源
- * (改一处的门槛/上限,另一处别忘跟)。返回至少 1 级才可连;0 级带拒因。
+ * 建筑连升计划:只算不动手,逐级累加至品类满级、洞府辖限或余额缺口即止;0 级带拒因。
+ * 门槛/上限须与 buildingUpgradeInfo 同步。
  */
 export function buildingBatchPlan(id: BuildingId): BuildingBatchPlan {
   const dongfu = useDongfuStore()
@@ -205,7 +186,7 @@ export function buildingBatchPlan(id: BuildingId): BuildingBatchPlan {
   let lv = from
   let stone = gnZero()
   let ore = 0
-  // 洞府(自身抬辖限的那一栋)不受辖限约束,只被品类满级顶住
+  // 洞府自身不受辖限约束
   while (lv < def.maxLevel && (id === 'mansion' || lv < dongfu.buildingLevelCap)) {
     const c = buildingCost(def.costBase, lv)
     const o = def.costOre * (lv + 1)
@@ -226,10 +207,7 @@ export function buildingBatchPlan(id: BuildingId): BuildingBatchPlan {
   return { levels, stone, ore, atMax: lv >= def.maxLevel, blocked: null }
 }
 
-/**
- * 建筑连升:按计划一次升到位 —— 一笔扣、一笔加,总账与界面预览分毫不差
- * (逐级累扣会有 GNum 尾差,账目对不齐)。返回实际升的级数;0 = 未升(toast 会说明)。
- */
+/** 建筑连升:按计划一笔扣、一笔加(逐级累扣有 GNum 尾差);返回实际升的级数,0 = 未升 */
 export function upgradeBuildingBatch(id: BuildingId): number {
   const dongfu = useDongfuStore()
   const resources = useResourcesStore()
@@ -245,7 +223,7 @@ export function upgradeBuildingBatch(id: BuildingId): number {
   resources.spendStone(plan.stone)
   resources.spendSmall('ore', plan.ore)
   dongfu.setLevel(id, from + plan.levels)
-  // 一次连升 = 升了 plan.levels 级,统计照实记(与逐级升级同源),否则「累计升级建筑 N 次」永远毕业不了
+  // 按实际级数计,与逐级升级同源
   track('buildingUpgrades', plan.levels)
   playSfx('success')
   ui.toast(buildingBatchDoneToast(def.name, plan.levels, from + plan.levels, formatGN(plan.stone), plan.ore), 'success')

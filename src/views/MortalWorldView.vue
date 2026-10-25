@@ -1,7 +1,6 @@
 <template>
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
     <template v-if="view">
-      <!-- 地界卷首:题签 + 朱印 —— 这一世的名字是世界的门面,卷轴开卷先是一枚印 -->
       <div class="card-ink paper-grain relative overflow-hidden px-4 pb-3.5 pt-3">
         <p class="font-kai text-[10px] tracking-[0.35em] text-ink-faint">本 世 之 界</p>
         <div class="mt-1 flex items-end gap-3">
@@ -9,7 +8,6 @@
             <h1 class="font-kai text-[19px] tracking-[0.12em] text-ink">{{ view.title }}</h1>
             <p class="mt-1 text-[11px] leading-relaxed text-ink-faint">{{ view.summary }}</p>
           </div>
-          <!-- 卷首题印:朱泥打底,留「世」字为记 —— 此世由你亲历,故以印为凭(印面样式见 style.css .world-seal) -->
           <span
             class="world-seal mb-1 grid h-11 w-11 shrink-0 -rotate-2 place-items-center rounded-sm font-kai text-[19px]"
           >世</span>
@@ -28,8 +26,6 @@
             </linearGradient>
           </defs>
           <rect x="0" y="0" :width="VIEW_W" :height="VIEW_H" rx="7" fill="url(#world-sky)" />
-          <!-- 路段三态:终点已通的路画玉实线,眼下可往的画青实线,仍未至的画淡虚线 ——
-               走过的路在纸上被一段段点染成色 -->
           <polyline
             v-for="(seg, i) in segments"
             :key="i"
@@ -50,7 +46,6 @@
             fill="currentColor"
             :fill-opacity="cleared(p.nodeId) ? 1 : unlocked(p) ? 0.85 : 0.35"
           />
-          <!-- 眼下将赴的那一处:外圈一道潺潺墨环,替玩家在图上指路(路尽则隐) -->
           <circle
             v-if="focusNode"
             :cx="focusNode.x"
@@ -167,7 +162,6 @@
     return worldView(w, id => enemyDef(id)?.name ?? id)
   })
 
-  /** 眼下这处 —— 路线里第一个「可往却尚未通关」的节点,地图上的「下一步」 */
   const focusNode = computed(() => view.value?.places.find(p => unlocked(p) && !cleared(p.nodeId)) ?? null)
 
   /** 标题旁那一句:「已通 X/Y 段」—— 与下方路段卡读同一份 view.places + cleared,不另报口径 */
@@ -198,9 +192,8 @@
   })
 
   /**
-   * 地图上「可往」= 地界准入唯一出口(canEnterRegion):本世路线只**追加**可达性,
-   * 不收回旧解锁链已给的权限。此前照 canEnterNode(纯路线段序)判 —— 旧链已解锁的
-   * 地域在历练页能出发、本页却标成锁死还写一句「须先走完来时路」,两页互相打脸
+   * 「可往」读地界准入唯一出口 canEnterRegion:本世路线只追加可达性,不收回旧解锁链已给的权限。
+   * canEnterNode(纯路线段序)会把历练页能出发的地域标成锁死。
    */
   function unlocked(node: { nodeId: string; regionId: string }): boolean {
     return canEnterRegion(node.regionId)
@@ -214,12 +207,7 @@
     return entryBlockReason(regionId)
   }
 
-  /**
-   * 出发 —— 带着地界回历练页选出行方式。
-   *
-   * 模式弹窗连着适配预览与流派推荐,只应有一处实现;
-   * 在这里重做一遍等于把同一段逻辑养成两份
-   */
+  /** 带地界回历练页选出行方式;模式弹窗只应有一处实现 */
   function depart(regionId: string): void {
     router.push({ path: '/adventure', query: { go: regionId } })
   }

@@ -1,13 +1,6 @@
 /**
- * 文档自检 —— 文档里写下的**命令、路径与规模数**,必须与仓库里真实的东西一致。
- *
- * 移植自参考仓(玄枢录 scripts/docs-check.mjs),按云隐的实际裁剪:
- *   本仓没有 packages/engine,规模数只对「全量 N 个 spec」(src 下的 spec 文件数);
- *   归档豁免与 xian 一致(plans/ 是历史计划,里面的路径是"当时打算建的"),
- *   另加 docs/study-xian.md —— 那是研读参考仓的学习笔记,引用的是 *xian* 的脚本
- *   (bun run check:engine 之类),拿云隐的清单去校对只会假红。
- *
- * 用法: bun run docs-check(也接在 bun run check 里)。
+ * 文档自检:文档里的命令、路径与规模数须与仓库一致。规模数只认「全量 N 个 spec」(src 下 spec 文件数,见 README 的写法)。
+ * 移植自参考仓(玄枢录 scripts/docs-check.mjs)。用法: bun run docs-check(也接在 bun run check 里)。
  */
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -15,7 +8,7 @@ import { join, resolve } from "node:path";
 const ROOT = resolve(import.meta.dirname, "..");
 
 const scripts = Object.keys(JSON.parse(readFileSync(join(ROOT, "package.json"), "utf-8")).scripts);
-/** 归档豁免:历史计划(路径是"当时打算建的")+ 研读参考仓的学习笔记(引用 xian 的脚本) */
+/** 豁免:历史计划(路径是"当时打算建的")+ 研读参考仓的学习笔记(引用 xian 的脚本,校对会假红) */
 const EXCLUDES = ["docs/superpowers/plans/", "docs/study-xian.md"];
 const isExcluded = (rel) => EXCLUDES.some((prefix) => rel.startsWith(prefix));
 
@@ -25,11 +18,10 @@ const docFiles = [
     .filter((name) => typeof name === "string" && name.endsWith(".md"))
     .map((name) => `docs/${name}`),
 ]
-  // 归一化分隔符(Windows 上 readdirSync recursive 会带反斜杠),统一按正斜杠处理
+  // Windows 上 readdirSync recursive 返回反斜杠
   .map((rel) => rel.replace(/\\/g, "/"))
   .filter((rel) => !isExcluded(rel));
 
-/** 递归数 src 下的 .spec.ts */
 const countSpecs = (dir) =>
   readdirSync(dir, { recursive: true, encoding: "utf-8" }).filter(
     (name) => typeof name === "string" && name.endsWith(".spec.ts"),
@@ -44,9 +36,8 @@ let sizeClaims = 0;
 for (const rel of docFiles) {
   const text = readFileSync(join(ROOT, rel), "utf-8");
 
-  // ① 命令 —— `bun run X` 与 `bun/node scripts/*`
   for (const [, name] of text.matchAll(/bun run ([a-zA-Z:_-]+)/g)) {
-    if (name.length < 2) continue; // 占位写法 `bun run x`,不当命令查
+    if (name.length < 2) continue; // 占位写法 `bun run x`
     commands += 1;
     if (!scripts.includes(name))
       failures.push(`${rel}: \`bun run ${name}\` 在 package.json 里没有这个脚本`);
@@ -56,9 +47,7 @@ for (const rel of docFiles) {
     if (!existsSync(join(ROOT, path))) failures.push(`${rel}: \`${path}\` 不存在`);
   }
 
-  // ② 路径 —— 反引号里的源码/脚本/公共路径 + 相对链接
-  // 只查「带扩展名」的引用(模块常用无扩展名写法 src/core/equipSet,省略不查;
-  // android/ 是本地可造的产物目录,keystore.local.properties 这类"待创建"文件不查)。
+  // 只查带扩展名的引用;android/ 不查(本地可造的产物目录,keystore.local.properties 这类"待创建"文件)
   const FILE_EXT = "(?:ts|js|mjs|mts|cts|vue|css|json|html|py|txt|toml|webp|png|ico|svg|woff2)";
   for (const [, path] of text.matchAll(new RegExp(`\`((?:src|scripts|public|electron)\\/[\\w./@-]+\\.${FILE_EXT})\``, "g"))) {
     if (path.includes("*")) continue;
@@ -79,7 +68,6 @@ for (const rel of docFiles) {
     if (!existsSync(full)) failures.push(`${rel}: 链接 \`${target}\` 指向的地方不存在`);
   }
 
-  // ③ 规模数 —— 只守「全量 N 个 spec」这一条规范措辞(见 README 的写法)
   for (const [, n] of text.matchAll(/全量 (\d+) 个 spec/g)) {
     sizeClaims += 1;
     if (Number(n) !== totalSpecs)
@@ -87,7 +75,7 @@ for (const rel of docFiles) {
   }
 }
 
-// 防空转:文档被挪走、正则失灵时,这条判据会"通过"得毫无意义
+// 防空转:文档挪走或正则失灵时判据会空过
 if (commands < 4) failures.push(`只从文档里读出 ${commands} 条命令 —— 路径变了,或者写法改了?`);
 if (paths < 5) failures.push(`只从文档里读出 ${paths} 条路径 —— 写法变了?`);
 if (sizeClaims < 2)

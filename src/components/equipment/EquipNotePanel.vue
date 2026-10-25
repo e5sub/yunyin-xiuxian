@@ -1,5 +1,4 @@
 <template>
-  <!-- 装备标记(玩家反馈:同名装备想按不同流派区分) -->
   <div class="mt-2 flex items-center gap-2">
     <input
       v-model="noteDraft"
@@ -20,12 +19,7 @@
   import { useUiStore } from '@/stores/ui'
   import { useInventoryStore } from '@/stores/inventory'
 
-  /**
-   * 装备标记 —— 自 EquipmentDetailDialog 迁入。
-   *
-   * 草稿随当前件走(自读 ui.equipDetailUid + inventory,与宿主同一份 inst),
-   * 写回也直接落 inventory,空串 = 清除。面板不持任何独立账。
-   */
+  /** 草稿随当前件走(与宿主同读 ui.equipDetailUid);写回直落 inventory,空串 = 清除 */
   const ui = useUiStore()
   const inventory = useInventoryStore()
 
@@ -35,7 +29,7 @@
   watch(
     () => inst.value?.note,
     (n, old) => {
-      // 只在来源变化时同步草稿;自己写回(applyNote)引发的同一值回灌不迭代
+      // 只在来源变化时同步草稿;applyNote 写回的同值回灌跳过
       if (n === noteDraft.value || n === old) return
       noteDraft.value = n ?? ''
     },

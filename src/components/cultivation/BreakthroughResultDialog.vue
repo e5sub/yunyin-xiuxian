@@ -1,11 +1,10 @@
 <template>
-  <!-- 突破成功:全屏墨色冲击波(与弹窗同现,荡开即散) -->
+  <!-- 突破成功:全屏墨色冲击波 -->
   <Teleport to="body">
     <div v-if="view?.success" class="ink-wave" />
   </Teleport>
   <BaseModal :open="view !== null" :closable="false" aria-label="突破结果">
     <div v-if="view" class="text-center">
-      <!-- 印心:成功时朱砂墨点迸溅、金环荡开 -->
       <div class="relative mx-auto mt-2 h-20 w-20">
         <div v-if="view.success" class="ink-burst">
           <span v-for="i in 10" :key="i" />

@@ -1,8 +1,5 @@
 /* eslint-disable no-console -- 模拟器体检报告的正式输出(bun run test:report 依赖) */
-/**
- * 程序化世界生成器裁判(Phase 23)
- * 生成的每一座虚界都必须过 P20/P22 的门:有解、无近必胜、不塌缩、奖励由难度定价
- */
+/** 虚界生成器裁判:每座虚界须过门 —— 有解、无近必胜、不塌缩、奖励由难度定价 */
 import { describe, expect, it } from 'vitest'
 import { CELESTIAL_WORLDS } from '@/data/endgame'
 import { auditVoidWorld, generateApprovedWorld, noveltyScore, NOVELTY_MIN } from './worldGen'
@@ -16,24 +13,21 @@ describe('虚界生成器', () => {
       if (!generated) continue
       ok += 1
       const { world, audit, novelty } = generated
-      // 裁判条件复验
       expect(audit.viable, `${world.name} 可行流派不足`).toBeGreaterThanOrEqual(3)
       expect(audit.best, `${world.name} 存在近必胜`).toBeLessThanOrEqual(0.97)
       expect(audit.best, `${world.name} 无人能破`).toBeGreaterThanOrEqual(0.5)
       expect(audit.second, `${world.name} 分布塌缩`).toBeGreaterThanOrEqual(audit.best * 0.5)
-      // 新颖度门:不许随机换皮
       expect(novelty, `${world.name} 与既有世界过于相似`).toBeGreaterThanOrEqual(NOVELTY_MIN)
-      // 奖励由实测难度定价,天然有界
+      // 奖励由实测难度定价,有界
       expect(world.rewardDaoSource).toBeGreaterThanOrEqual(55)
       expect(world.rewardDaoSource).toBeLessThanOrEqual(100)
-      // 结构完整:≥2 条规则、双敌池、三层二择且同层赏格不等、界主
+      // 结构完整:≥2 条规则、三层二择且同层赏格不等、界主
       expect(world.ruleText.length).toBeGreaterThanOrEqual(2)
       expect(world.routes.length).toBe(3)
       for (const layer of world.routes) {
         expect(layer[0].bonus).not.toBe(layer[1].bonus)
       }
       expect(world.guardian.name.endsWith('之主')).toBe(true)
-      // 语义完整性(P25):有主题身份,规则预算同账
       expect(world.desc.includes('之界'), `${world.name} 缺少主题身份`).toBe(true)
       expect(budgetOfRules(world.rules), `${world.name} 规则超预算`).toBeLessThanOrEqual(WORLD_BUDGET_CAP)
       console.log(

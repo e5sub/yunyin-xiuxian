@@ -21,14 +21,12 @@ describe('Build 决策层(区域生态与适配)', () => {
   })
 
   it('适配评级遵循克制矩阵:真伤压制罡盾,多段喂养反震', () => {
-    // 合成生态直接验证映射方向
     const pierceHeavy = { burst: 0 as const, multi: 0 as const, pierce: 3 as const, dodge: 0 as const }
     expect(styleAdaptation('gangdun', pierceHeavy).stars).toBeLessThan(3)
     expect(styleAdaptation('beishui', pierceHeavy).stars).toBeGreaterThan(3)
-    // 真实区域:雷泽多段生态利反震
     const leize = regionEcology(regionDef('leize')!)
     expect(styleAdaptation('fanzhen', leize).stars).toBeGreaterThan(3)
-    // 首领战:背水/沐泽占优,连击吃亏
+    // 首领战:背水占优,连击吃亏
     const neutral = regionEcology(regionDef('qingyun')!)
     expect(styleAdaptation('beishui', neutral, true).stars).toBeGreaterThan(styleAdaptation('lianji', neutral, true).stars)
   })
@@ -37,7 +35,6 @@ describe('Build 决策层(区域生态与适配)', () => {
     const recs = recommendForRegion(regionDef('jianzhong')!)
     expect(recs.length).toBe(6)
     expect(recs[0]!.adaptation.stars).toBeGreaterThanOrEqual(recs[5]!.adaptation.stars)
-    // 有生态的区域至少给出一条理由
     expect(recs.some(r => r.adaptation.reasons.length > 0)).toBe(true)
   })
 

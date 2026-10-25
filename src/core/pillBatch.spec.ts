@@ -1,8 +1,5 @@
 /**
- * 批量服丹 / 批量炼丹(玩家反馈:「批量吃丹,批量炼丹」)。
- *
- * 高界玩家的丹匣动辄成百上千枚,逐枚点按与逐炉开炼都很废手指 ——
- * 批量只是把「点 N 下」合成「点 1 下」,结果与连点完全一致:
+ * 批量服丹 / 批量炼丹:结果与连点一致。
  * 逐枚结算(修为/状态/计数/破题照旧),只把提示合为一条。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -27,16 +24,16 @@ import { useQuestsStore } from '@/stores/quests'
 import { ACHIEVEMENTS } from '@/data/achievements'
 import { MAIN_QUESTS } from '@/data/quests'
 
-/** 最低阶回春丹:有方、材料便宜 —— 与 pillService.spec 同一条最普通的路径 */
+/** 最低阶回春丹,与 pillService.spec 同一条路径 */
 const ID = 'p_huichun'
 
-/** 结清成就/主线一次性赏钱,免得开炉的差账被赏钱搅浑 */
+/** 结清成就/主线一次性赏钱,免得搅浑开炉差账 */
 function settleRewards(): void {
   const quests = useQuestsStore()
   quests.$patch({ achieved: ACHIEVEMENTS.map(a => a.id), mainIdx: MAIN_QUESTS.length - 1 })
 }
 
-/** 让玩家「认得方子、认得灵材」,才炼得动 */
+/** 认得方子与灵材才炼得动 */
 function knowRecipe(mastery = 0.8): void {
   const lore = useLoreStore()
   lore.addRecipeMastery(ID, mastery)
@@ -160,7 +157,7 @@ describe('批量炼丹', () => {
     expect(out.failed).toBe(3)
     expect(res.herbOf(g), '炸炉也烧草,只保下 salvage 那份').toBe(h0 - (c.herb - kept) * 3)
     expect(s0 - toNum(res.spiritStone), '炸炉石照扣').toBeCloseTo(toNum(c.stone) * 3, 6)
-    expect(res.herbOf(g)).toBeGreaterThanOrEqual(0) // 不欠料
+    expect(res.herbOf(g)).toBeGreaterThanOrEqual(0)
   })
 
   it('料恰够 1 炉:连炼 5 炉就 1 炉,草到 0 干净停、石不为负', () => {
@@ -177,17 +174,13 @@ describe('批量炼丹', () => {
 })
 
 /**
- * 炼丹计划与运行守恒(craftBatchPlan ↔ craftPillBatch)。
- *
- * craftBatchPlan 是纯计划(rounds=min(草炉数,石炉数),herb/stone=rounds×单炉成本),
- * craftPillBatch 是逐炉实跑 —— 两者在不同 spec 文件里各测各的,「计划即实耗」从没
- * 交叉断言。若计划算错(漏看石、±1),界面报的「炼满 N 炉/耗 X 料」就会与实际对不上,
- * 或实跑越料。这里确定性 mockRand=0(必成)把两者钉到一起。
+ * craftBatchPlan 是纯计划(rounds=min(草炉数,石炉数),herb/stone=rounds×单炉成本),craftPillBatch 逐炉实跑;
+ * 界面「炼满 N 炉/耗 X 料」须与实耗一致。
  */
 describe('批量炼丹 · 计划与运行守恒(craftBatchPlan ↔ craftPillBatch)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    mockRand = 0 // 必成 —— 计划按「每炉全额烧料」预测,必成才是同一语义
+    mockRand = 0 // 必成:计划按每炉全额烧料预测
     settleRewards()
     knowRecipe()
   })
@@ -196,7 +189,7 @@ describe('批量炼丹 · 计划与运行守恒(craftBatchPlan ↔ craftPillBatc
     const res = useResourcesStore()
     const c = pillCraftCost(ID)!
     const g = c.grade
-    res.addSmall('herb', c.herb * 5) // 草恰够 5 炉,石充足 → rounds 由草限
+    res.addSmall('herb', c.herb * 5) // 草够 5 炉、石充足:rounds 由草限
     res.addStone({ m: 1, e: 9 })
     const plan = craftBatchPlan(ID)
     expect(plan.rounds).toBeGreaterThan(0)
@@ -215,16 +208,16 @@ describe('批量炼丹 · 计划与运行守恒(craftBatchPlan ↔ craftPillBatc
     res.addSmall('herb', c.herb * 5)
     res.addStone({ m: 1, e: 9 })
     const plan = craftBatchPlan(ID)
-    const out = craftPillBatch(ID, plan.rounds + 5) // 多要 5 炉
+    const out = craftPillBatch(ID, plan.rounds + 5)
     expect(out.rounds, '受草限制仍停在计划炉数').toBe(plan.rounds)
-    expect(res.herbOf(g)).toBe(0) // 草打光,不越扣
+    expect(res.herbOf(g)).toBe(0)
   })
 
   it('计划即实耗:灵石是唯一限制时,rounds 被石限住且 stone 恰对应实跑', () => {
     const res = useResourcesStore()
     const c = pillCraftCost(ID)!
     const g = c.grade
-    // 草给足 10 炉,石只够 2 炉 → rounds 由灵石维度唯一决定
+    // 草够 10 炉、石够 2 炉:rounds 由石限
     res.addSmall('herb', c.herb * 10)
     res.addStone(mulN(c.stone, 2))
     const plan = craftBatchPlan(ID)
@@ -233,7 +226,7 @@ describe('批量炼丹 · 计划与运行守恒(craftBatchPlan ↔ craftPillBatc
     const out = craftPillBatch(ID, plan.rounds)
     expect(out.rounds, '实跑炉数应等于计划(2)').toBe(2)
     expect(s0 - toNum(res.spiritStone), '实耗石 = 计划 stone = 2 炉成本,恰花光').toBeCloseTo(toNum(plan.stone), 6)
-    expect(res.herbOf(g)).toBeGreaterThanOrEqual(0) // 草充足,不欠不超
+    expect(res.herbOf(g)).toBeGreaterThanOrEqual(0)
   })
 })
 
@@ -244,7 +237,7 @@ describe('批量炼丹 · 开炉前置(方子未到手)', () => {
   })
 
   it('count===1 但炉没开(方子未知):不算「开了一炉又炸了」,与连炼循环口径一致', () => {
-    // 未 knowRecipe → craftability 拿不到 → craftPill 直接 abort(炉没开,机器没动)
+    // 未 knowRecipe:craftability 拿不到,craftPill 直接 abort
     expect(craftPillBatch(ID, 1)).toEqual({ rounds: 0, made: 0, failed: 0 })
   })
 })

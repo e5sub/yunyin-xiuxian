@@ -1,7 +1,3 @@
-/**
- * 玩家行为生态裁判(Phase 27)
- * 今日天道:同日必同题、定价有界;构筑对照:同构筑对照自身差异必为零(测量无系统偏差)
- */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { gn } from '@/utils/gnum'
@@ -85,8 +81,6 @@ describe('道痕今昔之比', () => {
   }
 
   it('同一世的两道痕不配对:这一栏比的是今世与往世,不是一世之内的两次出手', () => {
-    // 从前守卫是「life 与 at 都相同才跳过」,于是同世两个不同 at 的痕照样产出一组,
-    // 界面上印出「第 3 世(剑)X → 第 3 世(刀)Y」—— 标题写的可是「今昔之比」
     const sameLife = legacyComparisons([mark(100, 3, '剑'), mark(200, 3, '刀')])
     expect(sameLife, '同世两痕被说成「过去的自己」').toHaveLength(0)
   })

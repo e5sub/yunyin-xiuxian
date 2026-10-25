@@ -15,7 +15,7 @@ describe('玩家反馈: 镇压后在线产出(真实场景)', () => {
     const player = usePlayerStore()
     const resources = useResourcesStore()
 
-    // 玩家镇压区域:tier1(青云)、tier10(剑冢)、tier20(鸿蒙)
+    // tier1 青云、tier10 剑冢、tier20 鸿蒙
     player.suppressedRegions = ['qingyun', 'jianzhong', 'hongmeng']
 
     const before = { ...resources.spiritStone }
@@ -50,7 +50,6 @@ describe('玩家反馈: 镇压后在线产出(真实场景)', () => {
     const dongfu = useDongfuStore()
     player.suppressedRegions = ['qingyun']
 
-    // 设置灵脉投资加成
     dongfu.veinPoints = { gather: 30, craft: 0, alchemy: 0, insight: 0 }
 
     const before = { ...resources.spiritStone }

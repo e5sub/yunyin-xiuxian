@@ -1,6 +1,4 @@
-/**
- * Phase 31.1:机缘链 —— 选择记忆 → 影响未来
- */
+/** 机缘链:选择记忆 → 影响未来 */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { recordFortuneChoice, mentorHint } from './fortuneChain'

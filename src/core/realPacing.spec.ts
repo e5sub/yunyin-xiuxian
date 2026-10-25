@@ -1,25 +1,8 @@
-/* eslint-disable no-console -- 真实档对账表是给人看的 */
+/* eslint-disable no-console -- 输出真实档对账表 */
 /**
- * 真实档节奏对账 —— 解析模型算的那条曲线,真存档走得到吗
- *
- * 节奏设计一直挂在 progressionSim 上,而它是一支**解析笔**:假设一套 kit,
- * 直接套公式算耗时。这类模型的危险不在算错,而在**算的是玩家凑不出的东西** ——
- * 上一轮刚修掉一例(它以为洞府能给 120%,而建筑表满级只有 76%)。
- *
- * 故这里拿真存档对一遍,判据是个**包夹**:
- *
- *   满配真实档 ≤ 模型 ≤ 裸档真实档
- *
- * 左边说模型没有乐观到「连满配都达不到」;右边说它没有悲观到「比裸档还慢」。
- * 两边都用真实 store 通路量(装备/功法/建筑/灵脉/灵根/灵气充盈/天时/命格全走一遍),
- * 而不是照着公式再抄一遍。
- *
- * 实测(境界 9→20):满配约为模型的 0.73~0.86;裸档约为模型的 3.0~4.5。
- * 文件里那句「真实约为估算的 1.5~3 倍」说的正是**带了一部分 kit 的真实玩家**,
- * 它落在裸档与满配之间 —— 与这里的读数一致。
- *
- * 故障注入:把模型的 kit 假设抬到满配之上(如功法给 5.0)→ 左侧红;
- * 把 kit 假设清空(只剩裸档)→ 右侧红。
+ * 真实档节奏对账:满配真实档 ≤ progressionSim 模型 ≤ 裸档真实档,两端都走真实 store 通路。
+ * 实测(境界 9→20):满配约为模型的 0.73~0.86,裸档约为模型的 3.0~4.5。
+ * 故障注入:把模型的 kit 假设抬到满配之上(如功法给 5.0),左侧红;把 kit 假设清空,右侧红。
  */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -36,7 +19,7 @@ import { GONGFA } from '@/data/gongfa'
 import { GONGFA_BRANCHES } from '@/data/gongfaBranches'
 import { BUILDINGS } from '@/data/buildings'
 
-/** 修满一个大境界要多久 —— 走真实 store 的 cultPerSec,不另算公式 */
+/** 修满一个大境界要多久:走真实 store 的 cultPerSec,不另算公式 */
 function realSecondsForMajor(major: number, kind: 'bare' | 'max'): number {
   setActivePinia(createPinia())
   const player = usePlayerStore()
@@ -45,10 +28,9 @@ function realSecondsForMajor(major: number, kind: 'bare' | 'max'): number {
   const res = useResourcesStore()
 
   if (kind === 'max') {
-    // 典型灵根 1.6(不是顶配)+ 该境可用的最优功法 + 辅修栏占满(槽位预算)+ 建筑满级 + 灵脉主脉吃满
+    // 典型灵根 1.6(非顶配)+ 该境最优功法 + 辅修栏占满 + 建筑满级 + 灵脉主脉吃满
     player.linggen = { roots: [{ element: 'wood', aptitude: 96 }], gradeName: '单灵根', growthMult: 1.6 }
-    // 先定下洞府满级后的辅修槽位预算,再选「占满槽位」的功法 —— 超槽的伴生功法不生效,
-    // 满配建模不该把它们算进去(否则跟 gongfaMods 的真实截断打架)
+    // 先定辅修槽位预算再选功法:超槽功法不生效(与 gongfaMods 的真实截断一致)
     for (const b of BUILDINGS) dongfu.setLevel(b.id, b.maxLevel)
     dongfu.veinPoints = { gather: 70, craft: 0, alchemy: 0, insight: 0 }
     dongfu.veinMain = 'gather'
@@ -84,7 +66,7 @@ function realSecondsForMajor(major: number, kind: 'bare' | 'max'): number {
   let total = 0
   for (let s = 0; s < SUB_LEVELS; s++) {
     player.sub = s
-    res.qi = player.qiCapValue // 灵气充盈(两档都算,免得比出来的是这一项的差)
+    res.qi = player.qiCapValue // 灵气充盈(两档都算)
     total += toNum(expRequirement(major, s)) / player.cultPerSec
   }
   return total
@@ -104,11 +86,9 @@ describe('真实档节奏对账 · 模型必须落在裸档与满配之间', () 
         `${m}\t${(model / 86400).toFixed(0)}\t${(max / 86400).toFixed(0)}\t${(bare / 86400).toFixed(0)}` +
           `\t${(max / model).toFixed(2)}\t${(bare / model).toFixed(2)}`
       )
-      // 左端:模型不能乐观到满配也追不上
       if (max > model * 1.02) failures.push(`境界 ${m}:满配真实档比模型还慢(${(max / model).toFixed(2)}×)`)
-      // 右端:模型也不能悲观到比裸档还慢(留 1.5× 余量,天气与命格带来的浮动远小于它)
+      // 留 1.5× 余量(天气与命格带来的浮动远小于它)
       if (bare < model * 1.5) failures.push(`境界 ${m}:裸档只比模型慢 ${(bare / model).toFixed(2)}× —— 模型过于悲观`)
-      // 满配档至少要真的比裸档快(否则「凑 kit」这件事在这条轴上没有意义)
       if (max >= bare) failures.push(`境界 ${m}:满配档不比裸档快 —— 这条对账量错了东西`)
     }
     expect(failures, failures.join('\n')).toEqual([])

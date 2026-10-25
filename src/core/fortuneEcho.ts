@@ -1,48 +1,27 @@
 /**
- * 遗产回声(Phase 31.3)
- *
- * 历史选择 → 持久记忆 → 再次触发旧内容 → 世界表现出「认识你」。
- *
- * 边界(锁死):
- *   只读 fortuneChoices
- *   不新增资源 / 属性 / 奖励 / 战斗规则 / 独立 UI
- *   回声是叙事,不改变任何数值利益
- *
- * 规则:
- *   - 新玩家(无 leave 记录): 永不回声
- *   - 曾 leave: 原机缘仍正常出现;极低概率(5%)替换为回声叙事;不进入推荐
- *   - 曾 take: 不触发 leave-回声(它已是你的缘)
- *   - 多次 leave: 效果不叠加(布尔判断)
+ * 遗产回声:曾放弃的机缘再次出现时,低概率替换为回声叙事。
+ * 边界:只读 fortuneChoices;不新增资源 / 属性 / 奖励 / 战斗规则 / 独立 UI。
+ * 规则:仅曾 leave 可回声;take 不触发;多次 leave 不叠加;回声不进入推荐。
  */
 import { usePlayerStore } from '@/stores/player'
 import { aftermathText, shouldTriggerAftermath } from './worldMemory'
 import type { EventMemory } from '@/types'
 
-/** 回声触发概率(稀有,5%) */
 export const ECHO_CHANCE = 0.05
 
-/**
- * 三种回声形态(按机缘叙事语境选择):
- *   认出你 —— 世界记得你的脸
- *   缘分已尽 —— 未结之缘无法重续
- *   留下痕迹 —— 你曾在此留下过什么
- */
+/** 回声形态:认出你 / 缘分已尽 / 留下痕迹 */
 export type EchoForm = 'recognize' | 'fate-over' | 'traces'
 
 export interface FortuneEcho {
   eventId: string
   form: EchoForm
-  /** 回声前的导语(显示在抉择文案上方) */
+  /** 导语,显示在抉择文案上方 */
   line: string
 }
 
 /**
- * 一次事件打开的叙事快照。
- *
- * 回声与余波都各掷一次骰子,而 EventDialog 是常驻全局的组件:若把掷骰放在
- * computed 里,任何父级重渲染都会重掷,同一扇窗会自己变脸;若把「已掷过」
- * 放在组件级布尔量里,下一件事又会继承上一件的答案。故把「这一件事」的
- * 掷骰结果收成一份快照,由事件 id 变化时重建。
+ * 一次事件打开的叙事快照,事件 id 变化时重建。
+ * EventDialog 常驻全局:掷骰放 computed 会随重渲染重掷,放组件级布尔量会继承上一件。
  */
 export interface EventNarrative {
   eventId: string
@@ -102,7 +81,7 @@ export function echoEligible(eventId: string): boolean {
   return usePlayerStore().fortuneChoices[eventId] === 'leave'
 }
 
-/** 组装回声(事件 id 有回声文本时;否则 null) */
+/** 组装回声;无回声文本则 null */
 export function echoFor(eventId: string): FortuneEcho | null {
   if (!echoEligible(eventId)) return null
   const data = FORTUNE_ECHO_TEXTS[eventId]
@@ -111,11 +90,8 @@ export function echoFor(eventId: string): FortuneEcho | null {
 }
 
 /**
- * 掷定一次事件打开期间的叙事快照。
- *
- * `roll` 可注入,测试无需碰全局随机源。回声与余波互斥:回声是「世界认得你」
- * 的更强叙事,余波只是同一件事留下的痕迹;两者同时出现会把一屏小字叠成两段。
- * 掷骰顺序固定为「先回声、再余波」,且每个事件只调用一次。
+ * 掷定一次事件打开期间的叙事快照;每个事件只调用一次。
+ * 回声与余波互斥,掷骰顺序固定:先回声、再余波。roll 可注入。
  */
 export function rollEventNarrative(
   eventId: string,

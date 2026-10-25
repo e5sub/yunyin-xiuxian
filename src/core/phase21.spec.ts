@@ -1,7 +1,4 @@
-/**
- * Phase 21 裁判 —— 契约 / 变数 / 路线节点 / 组合技 / 道途深化的自动验收
- * 原则:每条新规则都必须「有解、无万金油」;模拟器就是发布门
- */
+/** 契约 / 变数 / 路线节点 / 组合技 / 道途深化的自动验收:每条规则须有解、无万金油 */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -96,7 +93,6 @@ describe('天道变数裁判', () => {
       }
       expect(best, `变数组合 ${MUTATORS[a]!.name}/${MUTATORS[b]!.name}/${MUTATORS[c]!.name} 无解`).toBeGreaterThanOrEqual(0.15)
     }
-    // 没有流派在 ≥90% 的组合里都近乎必胜
     for (const [id, n] of alwaysHigh) {
       expect(n / combos.length, `${id} 变数通吃`).toBeLessThan(0.9)
     }
@@ -135,7 +131,7 @@ describe('路线节点裁判', () => {
 })
 
 describe('组合技裁判', () => {
-  // 优势界看增益不缩水,劣势界看不被组合技翻成通吃(单界高通率本就是允许的正反馈)
+  // 优势界看增益不缩水,劣势界看不翻成通吃;单界高通率允许
   const CASES = [
     { art: 'xuangang', profileId: 'gangdun', strongIdx: 1, weakIdx: 0 },
     { art: 'kuze', profileId: 'muze', strongIdx: 0, weakIdx: 2 },
@@ -201,7 +197,7 @@ describe('道途深化裁判', () => {
       displayName: '锋芒流'
     })
     expect(pure.layers).toBe(4)
-    // 无流派可言者谈不上「纯」:四项皆不满足
+    // 无流派:四项皆不满足
     const impure = swordPurity({ lifesteal: 0.08 }, 2, null)
     expect(impure.layers).toBe(0)
   })
@@ -232,13 +228,13 @@ describe('契约机制单元', () => {
       buildLog: false
     })
     expect(report.cleared).toBe(true)
-    // 叠层生效的间接证据:第三场(+100% 伤害)回合数不多于第一场
+    // 间接证据:第三场(+100% 伤害)回合数不多于第一场
     expect(report.rows[2]!.rounds).toBeLessThanOrEqual(report.rows[0]!.rounds)
   })
 })
 
 describe('剑意层数与门槛 · 一处出', () => {
-  // 「当前 X/4 层」与「契合 ≥60%」都曾被手抄 —— 层数该等于判定项数,百分比该对着成形门槛
+  // 层数须等于判定项数,百分比须读成形门槛
   const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '').replace(/<!--[\s\S]*?-->/g, '')
 
   it('层数是判定项的推导,不是另写的一份', () => {

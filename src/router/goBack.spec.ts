@@ -1,11 +1,6 @@
 /**
- * 返回键的冷启动审计
- *
- * 裸 `router.back()` 在「本站没有上一页」时会退出游戏:实测新标签页第一次
- * 就导航到 `#/dongfu` 时,`history.state.back` 为 null,浏览器退到 about:blank,
- * 整个界面连同这一局的上下文一起消失。
- *
- * 故障注入:把 goBack 改回裸 router.back(),第二条立刻红。
+ * 返回键冷启动审计:无站内来路时不得退出游戏。
+ * 故障注入:把 goBack 改成裸 router.back(),第二条用例红。
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Router } from 'vue-router'

@@ -1,11 +1,6 @@
 /**
- * 构筑快照 store —— 深度修形 / 上限 / 增删改 / 换装接线
- *
- * 构筑是持久化分片里嵌套最深的一类(each 槽位 → uid 的 equipment 表、
- * subGongfa/artifactIds 数组、savedAt),此前只有 storeResilience 的「恶意值不炸」红线
- * 兜着(不炸 ≠ 值修对了),一旦 applyLoadout 在换装时踩到 Object.keys/.filter 里的
- * null / 非数组,就是一场白屏(见 loadouts.sanitize 的注释)。这里把 value-correction
- * 逐条钉死。
+ * 构筑快照 store:深度修形 / 上限 / 增删改 / 换装接线。
+ * storeResilience 只钉「恶意值不炸」;这里钉修形后的值。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -24,7 +19,7 @@ describe('构筑 · sanitize 深度修形', () => {
     const l = useLoadoutsStore()
     l.$patch({
       list: [
-        // 正常条目 + 深坏值:名字/印/功法/数组/equipment 表/时刻全被写坏
+        // 深坏值:名字/印/功法/数组/equipment 表/时刻全坏
         {
           id: 'x',
           name: 42,
@@ -35,7 +30,7 @@ describe('构筑 · sanitize 深度修形', () => {
           equipment: { weapon: NaN, head: 'u1', body: 5 },
           savedAt: 'bad'
         },
-        { id: 99, name: '扔', equipment: {}, savedAt: 2 } // id 非字符串 → 整条丢
+        { id: 99, name: '扔', equipment: {}, savedAt: 2 }
       ]
     } as never)
     l.sanitize()
@@ -59,10 +54,6 @@ describe('构筑 · sanitize 深度修形', () => {
     expect(l.list[0]).toEqual(clean)
   })
 
-  /**
-   * 同号两套:apply/rename 走 find 只命中第一套,remove 却按 id 过滤把两套一起删。
-   * 构筑是玩家亲手存的不同快照,不能丢 —— 从第二套起换新号。
-   */
   it('同号构筑重排 id:两套都留、各自可切可删,不相互误伤', () => {
     const l = useLoadoutsStore()
     l.$patch({ list: [mk('dup', { name: '甲' }), mk('dup', { name: '乙' })] } as never)
@@ -78,10 +69,6 @@ describe('构筑 · sanitize 深度修形', () => {
     expect(l.list.map(x => x.name), '删一套不漏另一套').toEqual(['乙改'])
   })
 
-  /**
-   * 快照里的辅修/法宝是集合:重复项会被 applyLoadout 原样写回当前状态,
-   * 同一门功法或同一件法宝算两次、槽位也被白占。
-   */
   it('快照里重复的辅修/法宝去重,应用时不重复占槽', () => {
     const l = useLoadoutsStore()
     l.$patch({
@@ -91,7 +78,7 @@ describe('构筑 · sanitize 深度修形', () => {
     expect(l.list[0]!.subGongfa, '同门辅修只留一次').toEqual(['g1'])
     expect(l.list[0]!.artifactIds, '同一件法宝只留一次').toEqual(['art1'])
 
-    // 未过 sanitize 的旧快照(内存里直接塞重复)在应用路径上同样不该重复占槽
+    // 未过 sanitize 的快照(内存直塞重复)应用时同样不重复占槽
     const raw = mk('raw', { subGongfa: ['g1', 'g1'], artifactIds: ['art1', 'art1'] })
     l.$patch({ list: [raw] } as never)
     const inv = useInventoryStore()
@@ -142,7 +129,7 @@ describe('构筑 · 换装接线(applyLoadout)', () => {
 
   it('换装选对那件装备并真正穿上(值级断言,不止于不炸)', () => {
     const inv = useInventoryStore()
-    // 一件青竹剑(模板槽=武器)躺在多挂里,尚未穿着
+    // 青竹剑(模板槽=武器),未穿着
     inv.$patch({ items: [{ uid: 'sword1', templateId: 'w_zhuqing', quality: 'fine', tier: 1, level: 0, affixes: [] }] })
     const l = useLoadoutsStore()
     l.add(mk('load1', { name: '剑修', equipment: { weapon: 'sword1' } }))
@@ -153,15 +140,11 @@ describe('构筑 · 换装接线(applyLoadout)', () => {
   it('换装缺件的槽不乱穿:uid 对应的件不存在时不抛、不脏穿', () => {
     const inv = useInventoryStore()
     const l = useLoadoutsStore()
-    l.add(mk('load2', { equipment: { weapon: 'ghost' } })) // ghost 不存在
+    l.add(mk('load2', { equipment: { weapon: 'ghost' } }))
     expect(applyLoadout('load2')).toBe(true)
     expect(inv.equipped['weapon'], '缺件槽不该被穿上').toBeUndefined()
   })
 
-  /**
-   * 坏档里写进不存在的槽名(`artifact` 不在九槽之列):照字面穿上后,
-   * 该件会被排除出行囊,却没有任何槽卡画它 —— 装备凭空消失。
-   */
   it('快照里的野槽名被清掉,那件装备留在行囊里看得见', () => {
     const inv = useInventoryStore()
     inv.$patch({ items: [{ uid: 'sword1', templateId: 'w_zhuqing', quality: 'fine', tier: 1, level: 0, affixes: [] }] })

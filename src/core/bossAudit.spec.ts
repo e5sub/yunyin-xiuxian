@@ -1,21 +1,9 @@
-/* eslint-disable no-console -- Phase 30.6 Boss 生态审计报告 */
+/* eslint-disable no-console -- 审计报告 */
 import { describe, expect, it } from 'vitest'
 import { ENEMIES } from '@/data/enemies'
 import { REGIONS } from '@/data/regions'
 
-/**
- * Phase 30.6: Boss 生态审计
- *
- * 核心问题: Boss 的机制是否足够多样化,提供不同的战斗体验?
- *
- * 审计维度:
- * 1. Boss 技能多样性(多段、真伤、治疗、控制等)
- * 2. Boss mod 多样性(闪避、反伤、护甲穿透等)
- * 3. Boss 数值分布(攻防血倍率是否有差异化设计)
- *
- * 注: 不测试"玩家能否击败 Boss"(这取决于装备强度),
- * 而是验证 Boss 设计本身是否多样化,提供不同的机制克制解法。
- */
+/** Boss 生态审计:技能、mod、攻防血倍率与机制组合的多样性;不测玩家能否击败 */
 
 const ALL_BOSSES = ENEMIES.filter(x => x.isBoss)
 
@@ -65,7 +53,6 @@ describe('Phase 30.6: Boss 生态审计', () => {
     console.log(`  高爆发(倍率≥2.0): ${mechanicsCount.highCrit}/${ALL_BOSSES.length}`)
     console.log(`  无特殊机制: ${mechanicsCount.noSpecial}/${ALL_BOSSES.length}`)
 
-    // 至少 3 种不同的技能机制应被使用
     const usedMechanics = [
       mechanicsCount.multiHit,
       mechanicsCount.trueDamage,
@@ -112,7 +99,6 @@ describe('Phase 30.6: Boss 生态审计', () => {
     console.log(`  破甲: ${modCount.defBreak}/${ALL_BOSSES.length}`)
     console.log(`  无 mod: ${modCount.noMod}/${ALL_BOSSES.length}`)
 
-    // 至少 4 种不同的 mod 应被使用
     const usedMods = [
       modCount.dodge,
       modCount.thorns,
@@ -139,7 +125,6 @@ describe('Phase 30.6: Boss 生态审计', () => {
       })
     }
 
-    // 计算攻防血倍率的极差
     const atkSpread = Math.max(...profiles.map(p => p.atk)) - Math.min(...profiles.map(p => p.atk))
     const defSpread = Math.max(...profiles.map(p => p.def)) - Math.min(...profiles.map(p => p.def))
     const hpSpread = Math.max(...profiles.map(p => p.hp)) - Math.min(...profiles.map(p => p.hp))
@@ -148,7 +133,6 @@ describe('Phase 30.6: Boss 生态审计', () => {
     console.log(`  防御倍率极差: ${defSpread.toFixed(2)}`)
     console.log(`  生命倍率极差: ${hpSpread.toFixed(2)}`)
 
-    // 攻击和生命倍率应有显著差异(极差 > 1.0)
     expect(atkSpread, '攻击倍率应有显著差异').toBeGreaterThan(1.0)
     expect(hpSpread, '生命倍率应有显著差异').toBeGreaterThan(1.0)
   })
@@ -169,7 +153,6 @@ describe('Phase 30.6: Boss 生态审计', () => {
     const uniqueCount = signatures.size
     console.log(`  独特机制组合: ${uniqueCount}/${ALL_BOSSES.length}`)
 
-    // 至少 80% 的 Boss 应有独特的机制组合
     expect(uniqueCount / ALL_BOSSES.length, 'Boss 机制组合应多样化').toBeGreaterThanOrEqual(0.8)
   })
 
@@ -179,7 +162,6 @@ describe('Phase 30.6: Boss 生态审计', () => {
     for (const boss of ALL_BOSSES) {
       console.log(`  ${boss.name} (tier ${boss.tier})`)
     }
-    // 每处区域恰由一位首领镇守:首领池随区域表一同增长,不再钉死某个历史数字
     expect(ALL_BOSSES.length, '每位区域首领都应有定义,且总数与区域数一致').toBe(REGIONS.length)
     expect(ALL_BOSSES.every(b => b.archetype !== undefined), '首领必须带 archetype 机制家族').toBe(true)
   })

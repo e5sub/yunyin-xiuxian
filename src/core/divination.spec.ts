@@ -211,7 +211,6 @@ describe('问卦 · 真的进了属性汇总', () => {
     expect(out.ok).toBe(true)
     expect(resources.wudao).toBe(0)
     expect(player.activeDivination?.hexagram).toBe(out.reading!.hexagram.name)
-    // 卦力真的进了最终属性(挑一个该卦必有的通道)
     const keys = Object.keys(readingMods(out.reading!)) as (keyof typeof player.finalStats.mods)[]
     expect(keys.length).toBeGreaterThan(0)
     for (const k of keys) expect(player.finalStats.mods[k] ?? 0).not.toBe(0)
@@ -237,7 +236,7 @@ describe('问卦 · 真的进了属性汇总', () => {
     const before = JSON.stringify(player.finalStats.mods)
     expect(before).not.toBe(JSON.stringify({}))
     vi.setSystemTime(1_700_000_000_000 + readingMinutes(out.reading!) * 60_000 + 1)
-    // 引擎心跳:卦的过期判定挂在修行时长上,须由心跳带出来(而非只在界面上碰巧重算)
+    // 卦的过期判定挂在修行时长上,须由引擎心跳带出
     useGameStore().addPlayTime(1)
     expect(player.activeDivination).toBeNull()
     expect(player.divinationMods).toEqual({})
@@ -250,12 +249,10 @@ describe('问卦 · 真的进了属性汇总', () => {
     withWudao(DIVINATION_COST * 2)
     const first = askDivination(seeded(13))
     expect(first.ok).toBe(true)
-    // 先读一次派生值,把「卦在身」这个 computed 结果缓存下来;
-    // 旧实现随后只让游戏时钟走过有效期、不推进 totalPlaySec,就会继续读到旧的 true。
+    // 先读一次派生值,把「卦在身」这个 computed 结果缓存下来
     expect(usePlayerStore().activeDivination).not.toBeNull()
 
-    // 只让游戏时钟走过有效期,不调用 addPlayTime:
-    // 旧实现读 activeDivination 的缓存,会在这段 5 秒心跳间隙继续拒绝问卦。
+    // 只让游戏时钟走过有效期,不调用 addPlayTime:读 activeDivination 的缓存会在 5 秒心跳间隙误拒问卦
     vi.setSystemTime(t0 + readingMinutes(first.reading!) * 60_000 + 1)
     const second = askDivination(seeded(14))
     expect(second.ok).toBe(true)

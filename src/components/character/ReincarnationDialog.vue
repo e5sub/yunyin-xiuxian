@@ -219,7 +219,7 @@
   const chosen = ref<string | null>(null)
   const theme = ref<string | null>(null)
   const step = ref<'review' | 'next'>('review')
-  // 交割清单「点一枚看取舍」:detail 只 hover 可见,移动端读不到这全屏唯一的关键信息
+  // 芯片点按看去留:title 只 hover 可见,移动端读不到
   const detailId = ref<string | null>(null)
   const detailRow = computed(() => {
     if (!detailId.value) return null
@@ -234,11 +234,7 @@
   const reviewTheme = computed(() => (view.value?.review.themeId ? lifeThemeDef(view.value.review.themeId) : undefined))
   const themeDefs = computed(() => (view.value?.themeChoices ?? []).flatMap(id => lifeThemeDef(id) ?? []))
 
-  /**
-   * 天赋池会被抽空(可选天赋有限,多周目后 talentChoices 可能为空)。
-   * 那种情况下没有可选项,却仍要能踏入轮回——否则玩家被永久卡死在此弹窗。
-   * 只有「确有天赋可选却尚未择定」时才拦
-   */
+  /** talentChoices 多周目后可能为空,此时须放行,否则卡死在此弹窗;只拦「有可选却未择定」 */
   const canConfirm = computed(() => (view.value?.talentChoices.length ?? 0) === 0 || chosen.value !== null)
 
   // 每次新开轮回界面都从"回顾"这一程重新走起

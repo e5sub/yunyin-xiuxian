@@ -1,7 +1,4 @@
 /* eslint-disable no-console */
-/**
- * Phase 31.0 S1:师承 —— 修行理念与行为叙事
- */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { mentorVerdict, mentorChoices } from './mentorService'
@@ -61,7 +58,7 @@ describe('师承(mentor)', () => {
     const quests = useQuestsStore()
     quests.inc('kills', 500)
     quests.inc('bossKills', 30)
-    // 未拜师也能对每位师尊预读契合(人物页拜师卡用的就是这一行)
+    // 人物页拜师卡用的就是这一行
     const verdict = mentorVerdict('swordsman')
     expect(verdict).not.toBeNull()
     expect(verdict!.affinity).toBeGreaterThan(0)

@@ -46,10 +46,7 @@ import { enemyDef } from '@/data/enemies'
 
 const seeded = (seed = 1): RandomService => new RandomService(mulberry32(seed))
 
-/**
- * 一只「厚甲但打不死人」的靶子:防御让减伤落在五成上下(不是被上限压死),
- * 气血够厚到能撑过十个回合 —— 这样破甲带来的有效伤害提升才量得出来。
- */
+/** 厚甲但打不死人的靶子:减伤不被上限压死,气血撑过十个回合 */
 function tankyWolf(): ReturnType<typeof makeEnemySnap> {
   const snap = makeEnemySnap(enemyDef('e_wolf')!, 1, 1)
   snap.attack = gn(1)
@@ -60,7 +57,7 @@ function tankyWolf(): ReturnType<typeof makeEnemySnap> {
   return snap
 }
 
-/** 从类型声明里扫出 ArtifactEffect 的判别值 —— 手写联合,只能扫源码 */
+/** ArtifactEffect 是手写联合,只能扫源码取判别值 */
 function effectTypesFromTypes(): string[] {
   const src = readFileSync(resolve(__dirname, '../types/index.ts'), 'utf8')
   const start = src.indexOf('export type ArtifactEffect =')
@@ -79,10 +76,9 @@ describe('法宝效果 · 词汇表不虚设', () => {
   })
 
   it('高界法宝里不止是数值放大:至少有一件用的是别的手艺', () => {
-    // 「高界法宝」泛指 fromTier ≥ 21 的那批(仙界/神界/混沌海)
+    // fromTier ≥ 21:仙界/神界/混沌海
     const high = ARTIFACTS.filter(a => a.fromTier >= 21)
     expect(high.length, '高界法宝一件都没有,判据失去对象').toBeGreaterThan(4)
-    // 基础四效 = 打/回/盾/削:高界若全在这四样里按倍率放大,那就是纯数值阶梯
     const BASIC = ['damage', 'heal', 'shield', 'weaken']
     const beyondBasic = high.filter(a => !BASIC.includes(a.active.effect.type))
     expect(
@@ -91,16 +87,7 @@ describe('法宝效果 · 词汇表不虚设', () => {
     ).toBeGreaterThan(0)
   })
 
-  /**
-   * 文案里写的回合数,必须就是它真的出手的节拍。
-   *
-   * 法宝的主动说明是手写的(「每 4 回合青莲护身…」),而节拍写在 `active.interval` 里。
-   * 两处各写各的,改一处忘另一处不会有任何报错 —— 玩家照着文案数回合,发现对不上,
-   * 却没有任何地方能告诉他哪个是对的。故这里把「每 N 回合」与 interval 钉在一起。
-   *
-   * 唯一的例外是净念(无相念珠):它是随身被动,不走节拍(interval 记 1 表「常在」,
-   * 见 types 里 ArtifactEffect.purge 的注释),文案也刻意不写回合数。
-   */
+  /** 净念(无相念珠)除外:随身被动,interval 记 1 表「常在」(见 ArtifactEffect.purge),文案不写回合数 */
   it('说明里写的回合数 = 它真的出手的节拍', () => {
     const CN: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 }
     const bad: string[] = []
@@ -121,15 +108,6 @@ describe('法宝效果 · 词汇表不虚设', () => {
     expect(bad, `这些法宝的说明与节拍对不上:\n${bad.join('\n')}`).toEqual([])
   })
 
-  /**
-   * 说明里的**数值**也必须等于数据里的数值。
-   *
-   * 与上一条同源:主动说明是手写的(「每 4 回合获得 32% 生命护盾」「造成 260% 攻击伤害」
-   * 「其攻击降低 20%」),而真正的账在 effect 里(pctMaxHp / mult / pct)。
-   * 手写的数字不会自己跟着数据走 —— 改数据忘改文案,玩家就会按错的数去配装。
-   *
-   * 例外:净念写的是「七成」(中文成数),单独换算。
-   */
   it('说明里写的数值 = 数据里的数值', () => {
     const CN: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 }
     const bad: string[] = []
@@ -137,7 +115,6 @@ describe('法宝效果 · 词汇表不虚设', () => {
     for (const a of ARTIFACTS) {
       const eff = a.active.effect
       const desc = a.active.desc
-      /** 说明里写的百分比(数值主体) */
       const pct = /([\d.]+)\s*%/.exec(desc)
       const cheng = /以([一二三四五六七八九十]+)成/.exec(desc)
       let claimed: number | null = null
@@ -148,7 +125,6 @@ describe('法宝效果 · 词汇表不虚设', () => {
         // 「七成」= 70%
         if (n !== undefined) claimed = n * 10
       }
-      /** 数据里写的百分比 */
       let actual: number | null = null
       if (eff.type === 'heal' || eff.type === 'shield') actual = eff.pctMaxHp * 100
       else if (eff.type === 'damage' || eff.type === 'drain') actual = eff.mult * 100
@@ -160,11 +136,9 @@ describe('法宝效果 · 词汇表不虚设', () => {
         bad.push(`${a.name}:说明里没写数值(「${desc}」),数据里却是 ${actual}%`)
         continue
       }
-      // 浮点比较留一点余量(0.1 的倍数级别)
       if (Math.abs(claimed - actual) > 0.01) {
         bad.push(`${a.name}:说明写 ${claimed}%,数据是 ${actual}%`)
       }
-      // 吸命还有第二个数:回复占比(`healPct`)也要与「回复其中 N%」对得上
       if (eff.type === 'drain') {
         const back = /回复其中\s*([\d.]+)\s*%/.exec(desc)
         checkedCount += 1
@@ -181,20 +155,13 @@ describe('法宝效果 · 词汇表不虚设', () => {
 })
 
 /**
- * 品阶与祭炼之后,说明得跟着说实话。
- *
- * 上一条对账只比「基线文案」与「基线数值」—— 而表里的数写的是**凡品零重基线**:
- * 玩家手里那件还带着自己的品阶(凡 1.0 → 神 ≈3.08,见 ARTIFACT_QUALITY_EXP),
- * 再炼到九重(×1.72)。战斗一直按这两条倍率算,卡片上印的却永远是基线那句:
- * 实测玄虚拂尘写着「造成 230% 攻击伤害」,真打出去是 395.6%;神鞭写着「防御降低 30%」,
- * 实际早已顶到 50% 的上限。故说明改成由 artifactValue 现算(战斗与文案读同一个函数),
- * 这里守住三件事:措辞不动、数值随品阶与祭炼走、封顶到了要写封顶值。
+ * 表里的数是凡品零重基线;品阶(凡 1.0 → 神 ≈3.08,见 ARTIFACT_QUALITY_EXP)与祭炼(九重 ×1.72)由 artifactValue 现算(战斗与文案读同一个函数)。
+ * 守三件事:措辞不动、数值随品阶与祭炼走、封顶到了要写封顶值。
  */
 describe('法宝说明 · 数字随品阶与祭炼等级走', () => {
-  /** 把一件法宝压回「凡品」—— desc 说的就是这个基线,不是任意一件的零重 */
   const asMortal = (a: (typeof ARTIFACTS)[number]) => ({ ...a, quality: 'mortal' as const })
 
-  /** 期望值独立复算:从原始 effect 字段 + 品阶倍率 + 祭炼增幅 + 封顶推出来,不复用被测函数 */
+  /** 期望值独立复算,不复用被测函数 */
   function expected(def: (typeof ARTIFACTS)[number], level: number): { main: number | null; heal?: number } {
     const eff = def.active.effect
     const mult = artifactQualityMult(def.quality) * (1 + level * ARTIFACT_LEVEL_BONUS)
@@ -206,7 +173,7 @@ describe('法宝说明 · 数字随品阶与祭炼等级走', () => {
       case 'heal':
         return { main: eff.pctMaxHp * mult }
       case 'shield':
-        // 护盾单次给的那一份也受总盾上限约束(战斗侧 gainShield 钳在 SHIELD_CAP_RATIO)
+        // 单次护盾也受总盾上限约束(战斗侧 gainShield 钳在 SHIELD_CAP_RATIO)
         return { main: Math.min(SHIELD_CAP_RATIO, eff.pctMaxHp * mult) }
       case 'weaken':
         return { main: Math.min(ARTIFACT_WEAKEN_CAP, eff.pct * mult) }
@@ -220,7 +187,7 @@ describe('法宝说明 · 数字随品阶与祭炼等级走', () => {
   }
 
   const pcts = (text: string): number[] => [...text.matchAll(/([\d.]+)\s*%/g)].map(m => Number(m[1]))
-  /** 中文成数换算(净念写的是「七成」,不比百分号) */
+  /** 中文成数换算(净念写「七成」) */
   const CHENG = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
   const chengOf = (text: string): number | null => {
     const m = /([一二三四五六七八九十])成/.exec(text)
@@ -258,7 +225,7 @@ describe('法宝说明 · 数字随品阶与祭炼等级走', () => {
           continue
         }
         const got = pcts(text)
-        // 小数位由 formatPercent 决定,故比对到一位小数
+        // 小数位由 formatPercent 决定,比到一位小数
         expect(got.length, `${a.name} 的说明少了数值:「${text}」`).toBeGreaterThan(0)
         expect(Math.abs(got[0]! - want.main * 100), `${a.name} 第 ${level} 级说明写 ${got[0]}%,实际 ${want.main * 100}%`).toBeLessThan(0.11)
         if (want.heal !== undefined) {
@@ -276,14 +243,8 @@ describe('法宝说明 · 数字随品阶与祭炼等级走', () => {
   })
 
   /**
-   * 护盾也有一条**总盾上限** —— 战斗侧 `gainShield` 把盾钳在 50% 气血。
-   *
-   * 这一条从前漏在封顶名单外:`effectValuesAt` 的 shield 分支只乘倍率,
-   * 于是本源莲台(仙品)九重报 76.2%、混沌青莲 69.5%、帝阙神符 69.1%、
-   * 太虚镜 61.5% —— 真打出去最多 50%,卡片、图鉴、法宝谱三处一起撒谎。
-   *
-   * 故障注入:把 shield 分支改回 `eff.pctMaxHp * mult`(不套 SHIELD_CAP_RATIO),
-   * 下面四条各自转红。
+   * 总盾上限:战斗侧 `gainShield` 把盾钳在 50% 气血。
+   * 故障注入:把 effectValuesAt 的 shield 分支改回 `eff.pctMaxHp * mult`(不套 SHIELD_CAP_RATIO),下面四条各自转红。
    */
   it('护盾法宝的说明不越过总盾上限 —— 高祭炼的几件一律报 50%', () => {
     const capped = ['af_benyuanlian', 'af_qinglian', 'af_diquefu', 'af_taixu'].map(id => artifactDef(id)!)
@@ -307,12 +268,12 @@ describe('法宝说明 · 数字随品阶与祭炼等级走', () => {
   })
 
   it('品阶顶到封顶的那几件,零重就写封顶值(祭炼只涨被动)', () => {
-    // 神鞭的破甲基线是 30%,乘上它的品阶(玄品 ≈1.67)已经越过 50% 的顶
+    // 神鞭破甲基线 30% × 玄品 ≈1.67,已越过 50% 的顶
     const shenbian = artifactDef('af_shenbian')!
     expect(shenbian.quality, '神鞭若不是高品阶,这条判据就失去对象').not.toBe('mortal')
     expect(artifactActiveText(shenbian, 0), '破甲上限 50%,零重就该报 50%').toContain('50%')
     expect(artifactActiveText(shenbian, 9)).toContain('50%')
-    // 净念七成的基线乘上品阶也已越顶:上限九成,留一丝「摄魂也不是吃素的」
+    // 净念七成的基线乘上品阶也已越顶:上限九成
     const nianzhu = artifactDef('af_wuxiangzhu')!
     expect(artifactActiveText(nianzhu, 0), '净念上限九成').toContain('九成')
     expect(artifactActiveText(nianzhu, 9)).toContain('九成')
@@ -330,7 +291,7 @@ describe('法宝说明 · 数字随品阶与祭炼等级走', () => {
     for (const a of ARTIFACTS) {
       const cap = capOf[a.active.effect.type]
       if (cap === undefined) continue
-      /** 受封顶管的那一笔(吸命的伤害那一侧本来就不封顶,封的是回补) */
+      /** 受封顶管的那一笔:吸命封回补,不封伤害 */
       const reach = (lv: number): number => {
         const v = artifactValue(a, lv).active
         return a.active.effect.type === 'drain' ? (v.heal ?? 0) : v.amount
@@ -339,9 +300,8 @@ describe('法宝说明 · 数字随品阶与祭炼等级走', () => {
       expect(reach(9), `${a.name} 越炼越小`).toBeGreaterThanOrEqual(reach(0))
       if (reach(0) >= cap - 1e-9) saturatedAtZero += 1
     }
-    // 高品阶的那几件零重就在顶(神鞭的破甲、神魔镜的回补、无相念珠的净念)——
-    // 这是设计:品阶买的是「更早到顶」,不是「更高的顶」。故障注入:把品阶压回凡品,
-    // 这几件会各自退回「炼到第 N 重才到顶」,本判据随之转红。
+    // 零重就在顶的:神鞭的破甲、神魔镜的回补、无相念珠的净念。
+    // 故障注入:把品阶压回凡品,这几件退回「炼到第 N 重才到顶」,本判据转红。
     expect(saturatedAtZero, '一件零重到顶的都没有 —— 这条口径的注脚失去对象').toBeGreaterThan(0)
   })
 
@@ -418,7 +378,7 @@ describe('法宝说明 · 下一重给多少', () => {
     const low = artifactNextLevelGain(drum, 0)!
     expect(low.active!.to).toBeGreaterThan(low.active!.from)
     expect(low.heal).toBeDefined()
-    // 灵品 × 1.45 之后是 72%,离十成的顶还有余量
+    // 灵品 × 1.45 之后是 72%
     expect(low.heal!.capped, '零重还没吃到十成').toBe(false)
     const high = artifactNextLevelGain(drum, 8)!
     expect(high.heal!.to).toBeCloseTo(ARTIFACT_DRAIN_HEAL_CAP, 10)
@@ -431,7 +391,7 @@ describe('法宝效果 · 震慑真打断敌人那一手', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
   it('仙琴每四回合摄神:敌人的出手被掐掉', () => {
-    // 造一场「打不死彼此」的仗,好让回合数走到第 4 回合(法宝每 4 回合出手一次)
+    // 打不死彼此,回合数才走得到第 4 回合(法宝每 4 回合出手一次)
     const p = buildPlayerSnap()
     p.attack = gn(1)
     p.defense = gn(1e12)
@@ -448,7 +408,7 @@ describe('法宝效果 · 震慑真打断敌人那一手', () => {
       const result = resolveCombat(p, enemy, seeded(seed))
       const text = result.log.map(l => l.text).join('\n')
       if (text.includes('摄住')) proc += 1
-      // 真正算数的是**敌人的那一手被跳过**那一条(只数法宝自己的台词等于没验)
+      // 只数敌人被跳过的那一手,不数法宝自己的台词
       broken += result.log.filter(l => l.text.includes('被生生打断')).length
     }
     expect(proc, '20 场里一次震慑都没触发 —— 效果没接上').toBeGreaterThan(0)
@@ -460,11 +420,7 @@ describe('法宝效果 · 破甲真让后续打得更疼', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
   it('神鞭裂甲:同一场对局里,破甲之后回合数更少', () => {
-    /**
-     * 造一对「防御很厚、彼此都打不死」的对手,让破甲的效果能被量出来:
-     * 同一个种子跑两遍 —— 带神鞭的那一遍从第 4 回合起敌人的防御降三成,
-     * 于是同样的伤害掷点打出更高的有效伤害,结束得更早。
-     */
+    /** 同一个种子跑两遍:带神鞭那遍从第 4 回合起敌人防御降三成,结束得更早 */
     const withSunder = (): { rounds: number; text: string } => {
       const p = buildPlayerSnap()
       p.mods = {}
@@ -493,11 +449,7 @@ describe('法宝效果 · 破甲真让后续打得更疼', () => {
   })
 })
 
-/**
- * 一只「必定摄魂、但打不死人」的靶子:e_hog 的技能率拉到 100% 且带 stun,
- * 于是玩家每回合都有约一半的机会被震慑(引擎里 stun 还要再过 50% 那一掷)。
- * 攻击与气血都调成打不死彼此 —— 量的是「被跳过多少个回合」,不是谁赢。
- */
+/** 必定摄魂、打不死人的靶子:技能率 100% 且带 stun(引擎里 stun 还要再过 50% 那一掷) */
 function stunningFoe(): ReturnType<typeof makeEnemySnap> {
   const snap = makeEnemySnap(enemyDef('e_wolf')!, 1, 1)
   snap.name = '摄魂靶子'
@@ -510,7 +462,6 @@ function stunningFoe(): ReturnType<typeof makeEnemySnap> {
   return snap
 }
 
-/** 打一场「打不死彼此」的对局,返回玩家被震慑跳过的回合数 */
 function stunnedTurnsAgainst(withPurge: boolean, seed: number): number {
   const p = buildPlayerSnap()
   p.mods = {}
@@ -552,8 +503,7 @@ describe('法宝效果 · 净念真能挣脱震慑', () => {
     const fight = withPearls(stunningFoe(), 7)
     const text = fight.log.map(l => l.text).join('\n')
     expect(text, '念珠一次的台词都没出现 —— 挣脱没接上').toContain('摄魂之力散于无形')
-    // 它是随身被动:对手不摄魂时,它一次都不该"出手"
-    // (若有人把 combat 里那句 purge 跳过删掉,它就会每回合掉进 weaken 分支刷满触发)
+    // 随身被动:对手不摄魂时一次都不该"出手"(删掉 combat 里那句 purge 跳过,它会每回合掉进 weaken 分支)
     const noStun = withPearls(tankyWolf(), 7)
     expect(
       noStun.stats!.player.artifactProcs,
@@ -562,21 +512,11 @@ describe('法宝效果 · 净念真能挣脱震慑', () => {
   })
 })
 
-/**
- * 吸命(drain)—— 高界法宝的第五种手艺:**打的与回的,是同一件事**。
- *
- * 此前高界法宝的续航全是「回复 N% 生命」(与输出各占一件),故一个法宝位永远要在
- * 「打得更疼」与「活得久一点」之间二选一。吸命让一份伤害同时办两件事,
- * 于是「带哪一件」这个问题在高界多出一种答案。
- *
- * 这里量的是真发生:同一批种子、同一只靶子,带拂尘的那一场回的血更多,
- * 且日志里留得下「吸取敌手精血」那一条。故障注入:把 combat 里 drain 那条分支
- * 删掉,它就掉进 else 的 weaken 分支 —— 回血不见了,判据立刻红。
- */
+/** 故障注入:删掉 combat 里 drain 那条分支(掉进 else 的 weaken 分支),本用例红。 */
 describe('法宝效果 · 吸命真把伤害补回自己身上', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  /** 一只打得疼你但打不死你的靶子:好让"回血"这件事有量可量 */
+  /** 打得疼你但打不死你的靶子 */
   function bleedingFoe(): ReturnType<typeof makeEnemySnap> {
     const foe = tankyWolf()
     foe.attack = gn(3e5)
@@ -613,29 +553,19 @@ describe('法宝效果 · 吸命真把伤害补回自己身上', () => {
 })
 
 /**
- * 削弱(weaken)—— 与破甲并列的第二种「本场余下回合持续」的减益。
- *
- * 持续减益一旦落在对手身上就**从不回落**,故同类叠加只能取强不取新。
- * 破甲一直是这么做的(`Math.max`),削弱却长期是**直接赋值** ——
- * 于是两个法宝位各带一件削弱时,出手顺序决定谁说了算:缚妖索(20%)排在
- * 摄魂铃(30%)之后,末了一赋值就把 30% 顶回 20%,玩家把更强的法宝换上第二个位,
- * 反而削得更少。这里量的正是那条**与顺序无关**的不变式:
- * 同一对法宝、同一批种子,只把佩带顺序对调,玩家承伤必须一模一样。
- *
- * 故障注入:把 weaken 改回 `foe.weaken = values.amount`,`弱在前`那一组的承伤
- * 会立刻高于`强在前` —— 判据必红。
+ * 持续减益同类叠加取强不取新(同破甲的 `Math.max`):只对调佩带顺序,承伤须一模一样。
+ * 故障注入:把 weaken 改回 `foe.weaken = values.amount`,判据必红。
  */
 describe('法宝效果 · 削弱取强不取新,与佩带顺序无关', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  /** 一只「打得疼你但打不死你」的靶子:好让削弱带来的减伤有量可量 */
+  /** 打得疼你但打不死你的靶子 */
   function heavyFoe(): ReturnType<typeof makeEnemySnap> {
     const foe = tankyWolf()
     foe.attack = gn(4e5)
     return foe
   }
 
-  /** 按给定佩带顺序打一场,返回玩家这一场承伤 */
   function takenWith(order: [string, string], seed: number): number {
     const p = buildPlayerSnap()
     p.mods = {}
@@ -677,7 +607,7 @@ describe('法宝效果 · 削弱取强不取新,与佩带顺序无关', () => {
         return toNum(resolveCombat(p, heavyFoe(), seeded(seed)).stats!.player.taken)
       })()
       onlyStrong += withOnlyStrong
-      // 弱件排在后面:若削弱是赋值,末位就把 30% 顶回 20%,这一组立刻变差
+      // 弱件在后:削弱若是赋值,末位就把 30% 顶回 20%
       both += takenWith(['af_shehun', 'af_fuyao'], seed)
     }
     expect(onlyStrong, '只带摄魂铃的对照组一场都没吃到伤害,判据失去对象').toBeGreaterThan(0)

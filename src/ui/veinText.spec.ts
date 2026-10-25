@@ -35,7 +35,7 @@ describe('灵脉效果行与每点加成同源', () => {
 
   it('参悟省耗展示与结算同顶(封到 INSIGHT_DISCOUNT_CAP,越过了也不再虚报)', () => {
     const insight = VEINS.find(v => v.id === 'insight')!
-    // 200 点 → 0.8,越过封顶 0.5;展示必须停在封顶值,不随点数一路上扬(与结算同口径)
+    // 200 点 → 0.8,越过封顶 0.5
     const line = veinEffectText(insight, 200)
     expect(line, '越过封顶后应停在 0.5 而不是 0.8').toContain(`${INSIGHT_EFFECT_NAME} −${formatPercent(INSIGHT_DISCOUNT_CAP)}`)
     expect(line, '不得报出越过封顶的名义值').not.toContain(formatPercent(INSIGHT_DISCOUNT_PER_POINT * 200))

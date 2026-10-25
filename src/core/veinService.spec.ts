@@ -1,8 +1,4 @@
-/**
- * 灵脉投资服务的核心契约 —— 修复前 UI 把主脉和副脉一刀切卡在 30,
- * UI 上主脉到不了 70、「改立主脉」没有入口。服务侧逻辑本就是 70/30 分轨,
- * 这里把服务契约锁死,杜绝 UI 与服务再分叉。
- */
+/** 灵脉投资服务契约:主脉 70 / 副脉 30 分轨,UI 须与此一致 */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { gn, toNum } from '@/utils/gnum'
@@ -23,15 +19,13 @@ describe('灵脉投资(Phase 30.3)', () => {
   it('未定主脉时首投即成主脉,主脉可投过 30 直达 70', () => {
     const dongfu = useDongfuStore()
     expect(dongfu.veinMain).toBeNull()
-    expect(veinCap('gather')).toBe(70) // 未定主脉时每条都可能是首投之脉 → 按主脉档,与批量同口径
+    expect(veinCap('gather')).toBe(70) // 未定主脉按主脉档,与批量同口径
 
-    // 连投 40 点:首投定主,之后一路投到 40(越过副脉 30 上限)
     for (let i = 0; i < 40; i += 1) investVein('gather')
     expect(dongfu.veinMain).toBe('gather')
     expect(dongfu.veinPoints.gather).toBe(40)
-    expect(veinCap('gather')).toBe(70) // 主脉 70
+    expect(veinCap('gather')).toBe(70)
 
-    // 继续投到 70 仍可行,再多则拒
     for (let i = 40; i < 70; i += 1) expect(investVein('gather')).toBe(true)
     expect(dongfu.veinPoints.gather).toBe(70)
     expect(investVein('gather')).toBe(false)
@@ -47,7 +41,6 @@ describe('灵脉投资(Phase 30.3)', () => {
     expect(dongfu.veinPoints.gather ?? 0).toBe(0)
     expect(toNum(veinPointShortfall()), '单点缺口要按实际石差报').toBeCloseTo(1, 9)
     expect(useUiStore().toasts.at(-1)?.text, '拒因写实际石差').toContain('灵石尚差 1')
-    // 主脉仍可择:有了灵石,gather 照常能成为首投之脉
     useResourcesStore().spiritStone = gn(1e9)
     expect(investVein('gather')).toBe(true)
     expect(dongfu.veinMain).toBe('gather')
@@ -55,15 +48,13 @@ describe('灵脉投资(Phase 30.3)', () => {
 
   it('改立主脉:付费换向,原主脉点数保留但降至副脉上限不可续投', () => {
     const dongfu = useDongfuStore()
-    for (let i = 0; i < 40; i += 1) investVein('gather') // gather 成主,40 点
+    for (let i = 0; i < 40; i += 1) investVein('gather')
 
     expect(switchMainVein('craft')).toBe(true)
     expect(dongfu.veinMain).toBe('craft')
-    // 原主脉点数不回收:gather 保持 40,但已是副脉,再投被上限拦下
     expect(dongfu.veinPoints.gather).toBe(40)
     expect(veinCap('gather')).toBe(30)
     expect(investVein('gather')).toBe(false)
-    // 新主脉 craft 可过 30
     for (let i = 0; i < 35; i += 1) expect(investVein('craft')).toBe(true)
     expect(dongfu.veinPoints.craft).toBe(35)
   })
@@ -73,9 +64,9 @@ describe('灵脉投资(Phase 30.3)', () => {
     for (let i = 0; i < 70; i += 1) expect(investVein('gather')).toBe(true)
     for (let i = 0; i < 30; i += 1) expect(investVein('craft')).toBe(true)
     expect(d.veinTotal).toBe(100)
-    expect(investVein('insight')).toBe(false) // 第 101 点:单点拒
-    expect(investVeinBatch('insight')).toBe(0) // 批量一口也开不了
-    expect(veinInvestPlan('insight').blocked).toBe('full') // 计划如实报「满却」
+    expect(investVein('insight')).toBe(false)
+    expect(investVeinBatch('insight')).toBe(0)
+    expect(veinInvestPlan('insight').blocked).toBe('full')
   })
 
   it('未定主脉首投按主脉档 70(不是副脉 30):批量一口气注满 70', () => {
@@ -88,20 +79,20 @@ describe('灵脉投资(Phase 30.3)', () => {
 
   it('副脉到顶(30):计划报 peak,批量一口也开不了', () => {
     const d = useDongfuStore()
-    for (let i = 0; i < 40; i += 1) investVein('gather') // gather 主脉 40
-    expect(veinInvestPlan('craft').points).toBe(30) // 副脉可再注 30
+    for (let i = 0; i < 40; i += 1) investVein('gather')
+    expect(veinInvestPlan('craft').points).toBe(30)
     expect(investVeinBatch('craft')).toBe(30)
     expect(d.veinPoints.craft).toBe(30)
-    expect(veinInvestPlan('craft').blocked).toBe('peak') // 已到副脉顶
+    expect(veinInvestPlan('craft').blocked).toBe('peak')
     expect(investVeinBatch('craft')).toBe(0)
   })
 
   it('计划按灵石取 floor(灵石/单价),不四舍五入', () => {
     const cost = toNum(veinPointCost())
     useResourcesStore().spiritStone = gn(2.5 * cost) // 2.5 倍单价:floor 2 / round 3
-    const plan = veinInvestPlan('gather') // 未定主脉,主脉档 70,总容量空
+    const plan = veinInvestPlan('gather')
     expect(plan.blocked).toBeNull()
-    expect(plan.points).toBe(2) // floor,不是 round
+    expect(plan.points).toBe(2)
   })
 
   it('批量按总账一笔扣一笔加:预览==实账(stone=plan.stone,points=plan.points,return=plan.points)', () => {
@@ -122,7 +113,7 @@ describe('灵脉投资(Phase 30.3)', () => {
     useResourcesStore().spiritStone = gn(cost) // 恰好够
     expect(switchMainVein('craft')).toBe(true)
     expect(d.veinMain).toBe('craft')
-    expect(toNum(useResourcesStore().spiritStone)).toBe(0) // 恰好扣清
+    expect(toNum(useResourcesStore().spiritStone)).toBe(0)
   })
 
   it('迁移费不足:拒绝换主,主脉不动、分文不扣', () => {

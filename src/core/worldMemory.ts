@@ -1,12 +1,6 @@
 /**
- * 世界记忆服务(Phase 30.9)—— 区域兴衰 / 宿敌 / 事件余波
- *
- * S1: 区域兴衰 — 玩家长期行为改变区域状态(混乱→稳定→繁盛)
- * S2: 宿敌记忆 — 同一敌人败我 ≥3 次标记宿敌,击败触发雪耻
- * S3: 事件余波 — 已完事件在再次遭遇时产生轻微文本/效果变化
- *
- * 原则:不新增货币 / 不新增境界 / 不改变核心经济 / 不引入高频操作 / 不破坏挂机
- * 全部为「记录与展示」层,数值影响极轻(材料掉落微调、无强制 debuff)
+ * 世界记忆服务:S1 区域兴衰 / S2 宿敌记忆 / S3 事件余波。
+ * 约束:不新增货币 / 境界,不改核心经济,不引入高频操作,不破坏挂机;数值影响极轻,无强制 debuff。
  */
 import type { RegionProsperity, RegionRecall, NemesisRecord, EventMemory } from '@/types'
 import { usePlayerStore } from '@/stores/player'
@@ -14,31 +8,21 @@ import { useAdventureStore } from '@/stores/adventure'
 
 // ============ S1: 区域兴衰 ============
 
-/** 玩家在区域内累计胜场达到多少进入稳定 */
+/** 区域内累计胜场达到多少进入稳定 */
 export const STABLE_WINS = 30
 /** 累计胜场达到多少进入繁盛 */
 export const FLOURISH_WINS = 80
-/**
- * 守土之年:镇压后「守得住」本身也该算数。
- *
- * 镇压一落地,该地就不再产出胜场 —— 于是繁盛(80 胜)只能在镇压**之前**刷出来,
- * 与「镇压后守多久」无关。这里补上时长一路:守满即成,不必先刷满。
- */
+/** 守土时长(小时):镇压后守满即成稳定 / 繁盛,不必先刷满胜场(镇压后不再产胜场) */
 export const STABLE_HOURS = 6
 export const FLOURISH_HOURS = 24
-/** 无活动多长时间(小时)后,繁华短暂回落 */
+/** 无活动超过多少小时,兴衰回落 */
 export const DECAY_HOURS = 48
 /** 镇压后无活动超过多少小时,区域开始复苏(自动解除镇压) */
 export const REVIVE_AFTER_HOURS = 72
 
 /**
- * 妖气复聚的钟:最后一次在当地战斗、或把它镇压下来、或把它靖平。
- * 三个时刻取最晚 —— 任一活动都会推迟旧主归来。
- *
- * 从前还另有一个 `isReviving(suppressedSince)`「镇压是否满 72 小时」的判据,
- * 它只看得见镇压一条钟,于是同一片地界在一处按 `suppressedSince` 判「镇压该松了」、
- * 另一处按这里的 `regionTouchedAt` 判「旧主该归来了」,一个 tick 弹两条复聚提示。
- * 现在四处共用这一份钟:够不够钟由 `isRegionRevived(regionTouchedAt(...), now)` 回答。
+ * 妖气复聚的钟:最后一次战斗 / 镇压 / 靖平取最晚。
+ * 复聚判定只用这一份钟(配 isRegionRevived);另按 suppressedSince 判会一个 tick 弹两条复聚提示。
  */
 export function regionTouchedAt(
   lastUpdateAt: number | undefined,
@@ -48,12 +32,7 @@ export function regionTouchedAt(
   return Math.max(lastUpdateAt ?? 0, suppressedSince ?? 0, clearedAt ?? 0)
 }
 
-/**
- * 某片地界此刻的复聚钟(现取三个来源的最晚者)。
- *
- * 结算(regionRevival)与界面倒计时(RegionCard)都读它 —— 钟只此一份。
- * 分两处各取各的,就会出现「界面写着 0 时后复聚、结算却还早」这一类分叉。
- */
+/** 某片地界此刻的复聚钟;结算(regionRevival)与界面倒计时(RegionCard)同读这一份 */
 export function regionReviveClock(regionId: string): number {
   const player = usePlayerStore()
   const adventure = useAdventureStore()
@@ -64,20 +43,12 @@ export function regionReviveClock(regionId: string): number {
   )
 }
 
-/** 够钟(超过 REVIVE_AFTER_HOURS 小时)地界妖气复聚,旧主归来(纯函数) */
+/** 够钟(超过 REVIVE_AFTER_HOURS 小时)即妖气复聚 */
 export function isRegionRevived(touchedAt: number, now: number): boolean {
   return touchedAt > 0 && (now - touchedAt) / 3600_000 > REVIVE_AFTER_HOURS
 }
 
-/**
- * 距妖气复聚还剩多少小时(吃**那一份钟**,不是镇压表自己另起的一把)。
- *
- * 倒计时必须与判定读同一份钟:曾经这里只收 `suppressedSince` 一个时刻,
- * 而「够不够钟」读的是 `regionTouchedAt`(最后一次在当地战斗 / 镇压 / 靖平取最晚)。
- * 于是玩家守着地界还在打时,倒计时按更早的镇压时刻一路走到「0 时后复聚」并**停在那里**,
- * 而结算按最后一次战斗判「还早得很」—— 同一格读数与真实期限当场分叉。
- * 现在两边都吃 `touchedAt`:倒计时归零的那一刻,正是判定翻真的位置。
- */
+/** 距妖气复聚还剩多少小时;touchedAt 须与判定同一份钟(regionTouchedAt),不能只传 suppressedSince */
 export function hoursUntilRevive(touchedAt: number, now: number = Date.now()): number {
   if (!(touchedAt > 0)) return 0
   return Math.max(0, REVIVE_AFTER_HOURS - (now - touchedAt) / 3600_000)
@@ -91,24 +62,14 @@ interface RegionStateInput {
   now: number
 }
 
-/** 派生区域兴衰状态(纯函数,无副作用) */
+/** 派生区域兴衰状态(纯函数) */
 export function deriveProsperity(input: RegionStateInput): RegionRecall {
-  // 守土时长:镇压后守了多久(与「打赢过多少场」是两条路)
   const heldHours = input.suppressedAt !== undefined ? (input.now - input.suppressedAt) / 3600_000 : 0
   const idleHours = (input.now - input.lastActivityAt) / 3600_000
   let prosperity: RegionProsperity = 'chaos'
-  // 镇压过才有资格谈「稳定/繁盛」;持续活动(或一直守着)才可维持
   if (input.hasSuppressed) {
-    /**
-     * 「一直守着」本身就是活动。
-     *
-     * 此前只看 `lastActivityAt`(最后一战):镇压后不再产胜场,该地界的
-     * `lastUpdateAt` 就停在镇压前那一战,守到 48 小时便被判成「久无人烟」
-     * 回落混乱 —— 可它要到 72 小时才妖气复聚,守满 24 小时的繁盛收益
-     * 在 48~72 小时这一段凭空消失,与「持续活动(或一直守着)才可维持」自相矛盾。
-     * `suppressedAt` 有值 = 此刻仍在镇压中,按守算;没有则仍按最后一战回落
-     * (坏档里只有镇压标记、缺起钟时,宁可回落也不白给收益)。
-     */
+    // suppressedAt 有值 = 仍在镇压中,按活动算(只看最后一战会在 48~72 小时误判回落);
+    // 坏档只有镇压标记、缺起钟时按最后一战回落
     const alive = input.suppressedAt !== undefined || idleHours < DECAY_HOURS
     if (alive && (input.totalWins >= FLOURISH_WINS || heldHours >= FLOURISH_HOURS)) {
       prosperity = 'flourish'
@@ -135,12 +96,7 @@ export function prosperityName(p: RegionProsperity): string {
   return PROSPERITY_NAMES[p]
 }
 
-/**
- * 区域繁荣度对「被动产出」的微调:
- * 镇压后的安定收益随繁荣度变化 —— 混乱 100% / 稳定 105% / 繁盛 110%。
- * 守满一日由混乱走到繁盛,约 +10%:仍属"轻"(产出大头在层级与时长),
- * 但"守得住"从此看得见回报,不再只是一个 ±2% 的装饰。
- */
+/** 兴衰对镇压后被动产出的倍率(仍属轻量:产出大头在层级与时长) */
 export function prosperityYieldMult(p: RegionProsperity): number {
   switch (p) {
     case 'flourish':
@@ -193,14 +149,9 @@ export function isNemesis(nemeses: NemesisRecord[], enemyId: string): boolean {
 }
 
 /**
- * 整段败北一次入账(离线整段结算用)。
- *
- * 在线每败一场就 `recordLoss` 一次;离线按期望值整段结算,没有「哪一场」可言,
- * 但败了几场的账是有的 —— 从前这一段整段漏记,挂机一夜被打死几回也不算宿敌,
- * 「此敌败我三次」的征战录与图鉴、区域账各说各话。
- *
- * @param times 这一批败北次数(向下取整、非正数即不动)
- * @returns 入账后的列表,以及这批之后是否**新**达门槛(与单场 recordLoss 同义)
+ * 整段败北一次入账(离线整段结算用),与逐场 recordLoss 等价(旗标即逐场取或)。
+ * @param times 败北次数(向下取整,非正数不动)
+ * @returns 入账后的列表,以及本批是否使 isNemesis 由假转真(已过门槛不重报;雪耻永久,雪耻后不再报)
  */
 export function recordLossBatch(
   nemeses: NemesisRecord[],
@@ -235,7 +186,7 @@ export function markAvenged(nemeses: NemesisRecord[], enemyId: string, now: numb
 /** 再次遭遇已完成事件时,触发「余波」文案的概率 */
 export const AFTERMATH_CHANCE = 0.2
 
-/** 记录事件已完成:更新计数与最近选择 */
+/** 记录事件已完成 */
 export function recordEvent(
   memories: Record<string, EventMemory>,
   eventId: string,
@@ -249,14 +200,13 @@ export function recordEvent(
   return { ...memories, [eventId]: next }
 }
 
-/** 余波触发条件(纯函数):完成过一次即可触发(余波是回声,可反复) */
+/** 余波触发条件:完成过即可,可反复触发 */
 export function shouldTriggerAftermath(memories: Record<string, EventMemory>, eventId: string, rand: number): boolean {
   const m = memories[eventId]
   if (!m || m.times < 1) return false
   return rand < AFTERMATH_CHANCE
 }
 
-/** 余波文案生成(纯函数) */
 export function aftermathText(eventTitle: string, kind: 'good' | 'echo' | 'silence'): string {
   switch (kind) {
     case 'good':
@@ -268,28 +218,17 @@ export function aftermathText(eventTitle: string, kind: 'good' | 'echo' | 'silen
   }
 }
 
-// ============ 通用查询(供 UI 使用) ============
+// ============ 通用查询(UI 用) ============
 
-/**
- * 当前区域兴衰(UI 用)。
- *
- * `now` 必须可注入:界面用每秒推进的游戏钟调用,守满 6 / 24 小时的那一刻
- * 兴衰章与镇压速率才会自己翻档,而不是冻在进页那一刻。
- */
+/** 当前区域兴衰;now 须可注入(界面按每秒游戏钟重算,守满时长那一刻才翻档) */
 export function regionRecallFor(regionId: string, now = Date.now()): RegionRecall {
   const player = usePlayerStore()
   const stats = player.regionStats[regionId]
   return deriveProsperity({
-    /**
-     * 胜场取 `regionWins`(每胜一场 +1),不是 `regionStats.totalFights`。
-     * 后者连败仗一起数:同一地界连输五十场也会被判成「繁盛」,而兴衰的原意是
-     * 「你在这里赢过多少」。`recordRegionWin` 一直只写不读,正是这条接错了线。
-     */
-    // 只认本世胜场:旧世刷出的 80 胜不该把新世的地界判成繁盛(见 player.regionWinsLife)
+    // 胜场取本世 regionWins,不取 regionStats.totalFights
     totalWins: regionWinsOfThisLife(player, regionId),
     hasSuppressed: player.suppressedRegions.includes(regionId),
-    // 「镇压后稳定多久」的起点是镇压时刻,suppressedSince;不能拿最近战斗时间 lastUpdateAt 充数
-    // —— 否则镇压后继续刷战,`since` 会随战斗一路前移,「此地已稳定 N 小时」越算越短
+    // 起点取镇压时刻,不取 lastUpdateAt(否则镇压后刷战会把 since 一路前移)
     suppressedAt: player.suppressedSince[regionId],
     lastActivityAt: stats?.lastUpdateAt ?? now,
     now
@@ -297,12 +236,8 @@ export function regionRecallFor(regionId: string, now = Date.now()): RegionRecal
 }
 
 /**
- * 本世的区域胜场 —— 兴衰判据的唯一读法。
- *
- * `regionWins` 跨世保留(「世界记得你」),但胜场是兴衰的**判据**(30 胜稳定 /
- * 80 胜繁盛)。新世若直接读旧世那本,只要重新镇压一次就立刻「繁盛」,
- * 凭空多拿 10% 产出,而新世一场都还没在这里打过。故按 `regionWinsLife` 认世:
- * 世号不符即视为本世 0 胜。
+ * 本世的区域胜场,兴衰判据的唯一读法。
+ * regionWins 跨世保留;按 regionWinsLife 认世,世号不符视为本世 0 胜。
  */
 export function regionWinsOfThisLife(
   player: ReturnType<typeof usePlayerStore>,
@@ -310,29 +245,24 @@ export function regionWinsOfThisLife(
 ): number {
   const life = player.suppressLife >= 0 ? player.suppressLife : player.reincarnation.count
   const tagged = player.regionWinsLife[regionId]
-  // 没有世号(老档 / 新档刚写)按本世认;只有明确盖了别的世号才算旧账
+  // 无世号(老档 / 新档刚写)按本世认
   if (tagged === undefined || tagged < 0 || tagged === life) return player.regionWins[regionId] ?? 0
   return 0
 }
 
-// ============ 宿敌残魂(Phase 31.4)============
+// ============ 宿敌残魂 ============
 
-/** 残魂再现概率(低,3%) */
+/** 残魂再现概率 */
 export const ECHO_GHOST_CHANCE = 0.03
 
-/**
- * 宿敌残魂:已雪耻的宿敌以"历史形态"再现。
- * 纯叙事:改变战报前缀与敌人名冠("残魂"字样),不改属性与奖励。
- * 每次遭遇独立判定,低概率。
- */
+/** 宿敌残魂:仅已雪耻的宿敌有;纯叙事,只改战报前缀与敌名,不改属性与奖励 */
 export function ghostOf(nemeses: NemesisRecord[], enemyId: string): NemesisRecord | null {
   const n = nemeses.find(x => x.enemyId === enemyId)
-  // 只有已雪耻(avengedAt)的宿敌才有残魂形态
   if (!n || n.avengedAt === undefined) return null
   return n
 }
 
-/** 残魂战报前缀(叙事) */
+/** 残魂战报前缀 */
 export function ghostTitle(n: NemesisRecord): string {
   return `残魂·${n.enemyName}`
 }

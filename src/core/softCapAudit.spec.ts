@@ -1,24 +1,9 @@
-/* eslint-disable no-console -- Phase 30.4 软阈值审计报告 */
+/* eslint-disable no-console -- 软阈值审计报告 */
 import { describe, expect, it } from 'vitest'
 import { ENEMY_ARCHETYPES, fullMatrix, type MatrixRow } from './buildSim'
 import { searchBuilds } from './buildSearch'
 
-/**
- * Phase 30.4:属性软阈值审计
- *
- * 目标:验证软阈值(SOFT_CAPS)是否破坏 Phase 19-25 建立的生态平衡
- *
- * 审计维度:
- * 1. 流派胜率变化(6流派 × 7敌型)
- * 2. 破墙构筑数量变化(万金油红线 ≤1.5%)
- * 3. 战力-胜率相关系数变化(r 应维持在 0.15-0.92)
- * 4. 特别关注:罡盾是否进一步变强,背水/连击是否被削,锋芒/沐泽是否受软阈值压制
- *
- * 基线:当前版本(含软阈值)作为 Phase 30 baseline
- * 对照:需与 Phase 25 数据对比(如有存档)
- */
-
-const N = 80 // 每个流派对战每种敌型的场次
+const N = 80 // 每流派 × 每敌型的场次
 
 function cell(rows: MatrixRow[], buildId: string, archId: string): number {
   return rows.find(r => r.build.id === buildId)!.cells[archId]!.winRate
@@ -61,10 +46,8 @@ describe('Phase 30.4:软阈值对流派生态的影响审计', () => {
 
   it('罡盾审计:是否因减伤软阈值进一步变强', () => {
     const gangdun = matrix.find(r => r.build.id === 'gangdun')!
-    // 罡盾综合胜率应在健康区间,不应因软阈值削弱其他流派而相对变强
     expect(gangdun.avgWinRate, '罡盾综合胜率').toBeLessThan(0.82)
 
-    // 罡盾对真伤仍应显著弱于其最强场景(真伤是护盾天敌)
     const rates = ENEMY_ARCHETYPES.map(a => gangdun.cells[a.id]!.winRate)
     const best = Math.max(...rates)
     const pierce = gangdun.cells.pierce!.winRate
@@ -76,10 +59,8 @@ describe('Phase 30.4:软阈值对流派生态的影响审计', () => {
     const lianji = matrix.find(r => r.build.id === 'lianji')!
     const fengmang = matrix.find(r => r.build.id === 'fengmang')!
 
-    // 背水依赖低血触发,生命软阈值不应破坏其核心机制
     expect(beishui.avgWinRate, '背水综合胜率').toBeGreaterThan(0.45)
 
-    // 背水对首领应保持相对优势(Phase 16/21 确立:背水是攻击流中最擅攻坚的)
     const beishuiBoss = beishui.cells.boss!.winRate
     const lianjiBoss = lianji.cells.boss!.winRate
     const fengmangBoss = fengmang.cells.boss!.winRate
@@ -89,10 +70,8 @@ describe('Phase 30.4:软阈值对流派生态的影响审计', () => {
 
   it('连击审计:是否因速度软阈值受过大影响', () => {
     const lianji = matrix.find(r => r.build.id === 'lianji')!
-    // 连击依赖多次攻击,速度软阈值不应破坏其核心
     expect(lianji.avgWinRate, '连击综合胜率').toBeGreaterThan(0.45)
 
-    // 连击对疾影的劣势应保持(Phase 16 克制关系)
     const normal = lianji.cells.normal!.winRate
     const dodge = lianji.cells.dodge!.winRate
     expect(normal - dodge, '连击·疾影克制').toBeGreaterThan(0.12)
@@ -100,20 +79,16 @@ describe('Phase 30.4:软阈值对流派生态的影响审计', () => {
 
   it('锋芒审计:是否因攻击软阈值被压制', () => {
     const fengmang = matrix.find(r => r.build.id === 'fengmang')!
-    // 锋芒堆攻击,软阈值可能削弱其爆发
     expect(fengmang.avgWinRate, '锋芒综合胜率').toBeGreaterThan(0.45)
 
-    // 锋芒对首领仍应乏力(Phase 16 设计短板)
     const boss = fengmang.cells.boss!.winRate
     expect(boss, '锋芒攻坚短板').toBeLessThan(0.4)
   })
 
   it('沐泽审计:生命/续航软阈值是否产生新破墙', () => {
     const muze = matrix.find(r => r.build.id === 'muze')!
-    // 沐泽依赖回复和生命池,软阈值可能影响其持久战能力
     expect(muze.avgWinRate, '沐泽综合胜率').toBeGreaterThan(0.45)
 
-    // 沐泽对首领应优于爆发(Phase 16 确立的久战特性)
     const boss = muze.cells.boss!.winRate
     const burst = muze.cells.burst!.winRate
     expect(boss - burst, '沐泽·久战优势').toBeGreaterThan(0.08)
@@ -130,15 +105,15 @@ describe('Phase 30.4:软阈值对流派生态的影响审计', () => {
   })
 
   it('克制关系存续:软阈值不应模糊既有克制矩阵', () => {
-    // 破盾斩杀:罡盾对真伤仍应显著弱于其他场景
+    // 破盾斩杀:罡盾怕真伤
     const gangdun = matrix.find(r => r.build.id === 'gangdun')!
     const gdRates = ENEMY_ARCHETYPES.map(a => gangdun.cells[a.id]!.winRate)
     expect(Math.max(...gdRates) - gangdun.cells.pierce!.winRate).toBeGreaterThan(0.12)
 
-    // 反震吃多段:反震对多段应优于疾影
+    // 反震吃多段
     expect(cell(matrix, 'fanzhen', 'multi')).toBeGreaterThan(cell(matrix, 'fanzhen', 'dodge') + 0.12)
 
-    // 连击怕闪避:连击对常规应优于疾影
+    // 连击怕闪避
     expect(cell(matrix, 'lianji', 'normal')).toBeGreaterThan(cell(matrix, 'lianji', 'dodge') + 0.12)
   })
 })

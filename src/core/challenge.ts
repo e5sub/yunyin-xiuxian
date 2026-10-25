@@ -1,7 +1,6 @@
 /**
- * 玩家挑战协议(Phase 26)—— 简化版规则编辑器
- * 玩家定规则(世界 × 变数 × 契约 × 名号),系统定其余:
- * 难度实测、有解校验、奖励定价——全部由模拟裁判说了算,堵死「最低难度最高奖励」
+ * 玩家挑战协议:玩家定规则(世界 × 变数 × 契约 × 名号),
+ * 难度实测、有解校验、奖励定价全由模拟裁判定,堵死「最低难度最高奖励」。
  */
 import type { CombatantSnap, CombatRules } from '@/types'
 import { rng } from '@/utils/random'
@@ -66,8 +65,8 @@ function draftFoes(
 }
 
 /**
- * 验证挑战:六大标准流派实测。近乎无解与形同虚设皆被天道驳回;
- * 奖励只由实测难度定价(契约/变数的难度贡献已被实测吸收,不重复计倍)
+ * 验证挑战:六大标准流派实测,近乎无解与形同虚设皆驳回。
+ * 奖励只由实测难度定价,契约/变数的难度贡献已被实测吸收,不重复计倍。
  */
 export function verifyChallenge(draft: ChallengeDraft): ChallengeVerdict | null {
   const world = celestialWorldDef(draft.worldId)
@@ -110,7 +109,7 @@ export function undertakeChallenge(draft: ChallengeDraft, verdict: ChallengeVerd
     ui.toast(busy.reason, 'warn')
     return null
   }
-  // 先认界再扣费:草案可能来自过期 UI 状态或外部调用,非法世界不应白烧入场道源
+  // 先认界再扣费:草案可能来自过期 UI 状态或外部调用
   const world = celestialWorldDef(draft.worldId)
   if (!world) return null
   const short = daoSourceShortfall(CHALLENGE_ENTRY_COST, endgame.daoSource)
@@ -119,7 +118,7 @@ export function undertakeChallenge(draft: ChallengeDraft, verdict: ChallengeVerd
     return null
   }
   const player = usePlayerStore()
-  // 与远征/试炼同源:敌人按本界锚点定标,判定按玩家的厚度与境界算(见 celestialFoeCaliber)
+  // 与远征/试炼同源
   const { ref, judgement } = celestialFoeCaliber(player.major, player.celestialStats.mods, world.anchorTier)
   const rules = mergeRules(currentDaoRules(), draftRules(draft))
   const pact = draft.pactId ? pactDef(draft.pactId) : undefined

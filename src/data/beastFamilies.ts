@@ -1,34 +1,16 @@
 /**
- * 敌人与灵宠的「族类 → 形」表
- *
- * 原先敌人的 icon 是「大类够用就行」那一套:132 只敌人只用了 19 枚图标,
- * 其中 47 只共用骷髅 —— 独角妖狼、霞光巨蟒、玄冰蛟、万妖林主、瑶池仙后、
- * 混沌道祖全是一枚骷髅;18 只共用兽爪(野狼、野猪、石猿、灵狐、妖熊、霜狼
- * 与「麒麟」同形)。名字写着狼,画的是骷髅;麒麟画成猪爪 —— 浸入感就是这么碎的。
- *
- * 这里的规矩只有两条:
- *   一 一族共形 —— 同类可以共用,「各方神兽」不必各画一枚;
- *   二 异族不共形 —— 这条由 src/ui/beastFamilies.spec.ts 的判据盯着:
- *      一枚图标被一个以上族类共用即红,不是靠自觉。
- *
- * 族类表是**唯一事实源**:数据里只写 `family`,形从这里取。新加敌人时先问
- * 「它是什么族类」,而不是「哪个图标差不多」—— 后者正是「长刀配斧形」的来路。
- *
- * 图标沿用云隐现有的 lucide 注册表(见 src/ui/icons.ts);lucide 没有蛇/龙/麒麟
- * 的专形,这三类暂以神异的抽象形代(波浪/云纹/幻城),待未来补水墨专形,
- * 归属治理不受影响 —— 数据只认族类,换形只改这一张表。
+ * 敌人与灵宠的「族类 → 形」表,唯一事实源:数据里只写 `family`,形从这里取。
+ * 一族共形;异族不共形(spec 钉:src/ui/beastFamilies.spec.ts,一枚图标被一个以上族类共用即红)。
+ * lucide 没有蛇/龙/麒麟的专形,暂以波浪/云纹/幻城代。
  */
 import type { BeastFamily } from '@/types'
 
 export interface BeastFamilyDef {
-  /** 族类在人话里的名字(写进注释与文档,不直接上界面) */
+  /** 族类名(写进注释与文档,不直接上界面) */
   name: string
-  /**
-   * 这一族共用的那枚形(注册在 src/ui/icons.ts)。
-   * 同一枚形只能出现在一个族类上 —— beastFamilies.spec.ts 会红。
-   */
+  /** 本族共用的形,注册在 src/ui/icons.ts */
   icon: string
-  /** 归入这一族的都长什么样 —— 数据侧照着它归类 */
+  /** 归入本族的范围,数据侧照此归类 */
   covers: string
 }
 
@@ -49,7 +31,7 @@ export const BEAST_FAMILIES: Record<BeastFamily, BeastFamilyDef> = {
   construct: { name: '傀儡机关', icon: 'hammer', covers: '傀儡、俑、石像、神像、泥塑 —— 土木金石做出的人形' },
   blade: { name: '剑器', icon: 'sword', covers: '剑之属:剑灵、断剑、剑冢之主、枪灵' },
 
-  // ---- 人形一类:按名目里的「魔/仙/神」分,不按强弱 ----
+  // ---- 人形:按名目里的「魔/仙/神」分,不按强弱 ----
   armored: { name: '甲士', icon: 'shield', covers: '卫、兵、将、守卫、执事、卫士、骑士、斥候 —— 披甲执兵之士' },
   demon: { name: '妖魔', icon: 'wand', covers: '妖、魔:妖王、魔尊、妖圣、域主、罗刹、古魔、神魔' },
   immortal: { name: '仙人', icon: 'user', covers: '仙道:仙娥、仙翁、仙后、道童、道尊、仙子、道祖' },
@@ -63,7 +45,7 @@ export const BEAST_FAMILIES: Record<BeastFamily, BeastFamilyDef> = {
   treasure: { name: '金玉', icon: 'gem', covers: '金玉之精:三足金蟾、帝印神兽' }
 }
 
-/** 族类取形 —— 数据侧与渲染侧共用这一个入口,免得两处各写一份 icon */
+/** 族类取形;数据侧与渲染侧共用此入口 */
 export function beastIcon(family: BeastFamily): string {
   return BEAST_FAMILIES[family].icon
 }

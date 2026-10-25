@@ -1,4 +1,4 @@
-/** 天道契约(Phase 21)—— 玩家主动签下的不公平规则,风险换道源 */
+/** 天道契约:玩家主动签下的不公平规则,风险换道源 */
 import type { PactDef } from '@/types'
 
 export const PACTS: PactDef[] = [

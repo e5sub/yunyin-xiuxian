@@ -28,7 +28,7 @@ export const BUFFS: BuffDef[] = [
     'skull'
   ),
   b('bless_qingfeng', '清风拂面', 'blessing', 900, '心旷神怡,修炼速度提升 20%', { cultivationSpeed: 0.2 }, 'wind'),
-  // 名字里不带「机缘」:「机缘」已专属 ft_ 取/弃事件,这条祝福给的是气运与历练际遇
+  // 名字不带「机缘」:「机缘」已专属 ft_ 取/弃事件
   b('bless_jiyuan', '气运加身', 'blessing', 1200, '气运提升 20%,历练际遇提升 15%', { luck: 0.2, eventLuck: 0.15 }, 'star'),
   b('bless_daoyun', '道韵加身', 'blessing', 1800, '修炼速度提升 40%,战斗修为提升 20%', { cultivationSpeed: 0.4, expGain: 0.2 }, 'scroll'),
   b(
@@ -42,27 +42,24 @@ export const BUFFS: BuffDef[] = [
   ),
   b('buff_pofu', '破釜沉舟', 'pill', 900, '生命低于三成时伤害提升 30%,受伤降低 15%', { lowHpDamage: 0.3, lowHpReduction: 0.15 }, 'flame'),
   b('buff_gangdun', '罡气盾', 'pill', 900, '开战护盾提升 15%,持盾时伤害提升 12%', { shieldOnStart: 0.15, shieldPower: 0.12 }, 'shield'),
-  // ---- Phase 28 前期玩法:悟道顿悟(选择后生效,数值与 earlyGame.ts 文案对齐) ----
+  // ---- 悟道顿悟(数值与 earlyGame.ts 文案对齐) ----
   b('enlighten_cult', '静心凝神', 'blessing', 600, '心神沉静,修炼速度提升 20%', { cultivationSpeed: 0.2 }, 'moon'),
   b('enlighten_cult_strong', '道心通明', 'blessing', 300, '道心澄澈,修炼速度提升 35%', { cultivationSpeed: 0.35 }, 'sun'),
   b('enlighten_dmg', '锤炼筋骨', 'blessing', 600, '筋骨如钢,战斗伤害提升 15%', { damageBonus: 0.15 }, 'sword'),
   /**
-   * 减伤走纯乘数,不走「防御加成」——
-   * 防御加成经 `攻×攻/(攻+防)` 那条除法曲线折损:防御只有敌方攻击一半时,
-   * 名义 12% 到手只有 3.8%;而并列的「锤炼筋骨」是纯乘数 +15%,
-   * 两个选项实际差到 3.4 倍,二选一退化成唯一解(判据见 enlightenBalance.spec)。
+   * 减伤走纯乘数,不走「防御加成」:防御加成经 `攻×攻/(攻+防)` 折损,
+   * 与并列的「锤炼筋骨」(纯乘数 +15%)二选一会退化成唯一解(判据见 enlightenBalance.spec)。
    */
   b('enlighten_def', '凝气护体', 'blessing', 600, '真气护体,受到伤害降低 12%', { damageReduction: 0.12 }, 'shield'),
   b('enlighten_bt', '悟透瓶颈', 'blessing', 1800, '瓶颈松动,小进阶成功率提升 8%(大关天劫,不与此悟)', { breakthroughRate: 0.08 }, 'zap'),
   b('enlighten_qi', '吐纳有序', 'blessing', 600, '气息绵长,灵气回复提升 25%', { qiRegen: 0.25 }, 'wind'),
-  // ---- Phase 28 洞府巡游奖励 buff(修复前是纯空转:addBuff 查无此定义静默返回) ----
+  // ---- 洞府巡游奖励 buff(addBuff 查无此定义会静默返回) ----
   b('cave_furnace_cult', '药气入体', 'blessing', 600, '吸纳丹炉药气,修炼速度提升 20%', { cultivationSpeed: 0.2 }, 'flame'),
   b('cave_array_qicap', '阵枢焕新', 'blessing', 600, '修复后的阵法运转如意,灵气上限提升 25%', { qiCapPct: 0.25 }, 'wind'),
   b('cave_garden_pet', '灵兽相随', 'blessing', 600, '安抚后的灵兽更尽心,灵兽效果提升 30%', { beastPct: 0.3 }, 'paw'),
   // 惩罚 buff:id 与 penalty.type 对齐(见 earlyGameService.chooseCaveOption)
   b('cave_penalty_cultivationSpeed', '修炼倦怠', 'injury', 300, '强行吸纳伤了根基,修炼速度下降 15%', { cultivationSpeed: -0.15 }, 'skull'),
-  // ---- Phase 28 闭关:5 分钟 +150% 修炼、期间禁止历练。
-  // durationSec=300 必须与 earlyGameService.startRetreat 的 5 分钟口径一致(同一真相源=buff 本身) ----
+  // ---- 闭关:durationSec=300 须与 earlyGameService.startRetreat 的 5 分钟口径一致(真相源 = buff 本身) ----
   b('retreat', '闭关', 'blessing', 300, '闭关静修,修炼速度提升 150%,期间无法外出历练', { cultivationSpeed: 1.5 }, 'mountain'),
   // ---- 仙界及以上丹药增益(每 buff 仅一味丹产出,见 pillValue 法则 C) ----
   b('buff_xianli', '仙力加身', 'pill', 1200, '仙力贯体,攻击提升 35%,暴击伤害提升 30%', { attackPct: 0.35, critDamage: 0.3 }, 'sword'),
@@ -71,7 +68,6 @@ export const BUFFS: BuffDef[] = [
     cultivationSpeed: 0.8,
     breakthroughRate: 0.1
   }, 'sparkles'),
-  // ---- 深邃设计:仙界以上的神/道品丹药增益(每 buff 仅一味丹产出,见 pillValue 法则 C) ----
   b('buff_daluo', '大罗金身', 'pill', 1200, '大罗金身不坏,攻击提升 40%,暴击率提升 5%', { attackPct: 0.4, critRate: 0.05 }, 'crown'),
   b('buff_shenyuan', '神元淬体', 'pill', 1800, '神元淬炼肉身,修炼速度提升 70%;小进阶成功率提升 6%(大关天劫,不食此源)', {
     cultivationSpeed: 0.7,

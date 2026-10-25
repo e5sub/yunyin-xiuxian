@@ -1,15 +1,4 @@
-/**
- * 区域动态事件(Phase 31.0 A2)
- *
- * 区域临时进入异常状态(30 分钟 ~ 2 小时),改变敌人组成/掉落/生态。
- * 低频、自动过期,不做 MMO 打卡。与 Build/区域生态/世界记忆衔接。
- *
- * 事件:
- *   yaochao   妖潮 —— 多段敌人↑,掉落↑,危险↑
- *   lingmai   灵脉暴动 —— 修为获取↑,灵气恢复↑
- *   gumu      古墓开启 —— 事件率↑,稀有掉落↑
- *   shangdui  商队遇袭 —— 灵石掉落↑,战斗节奏快
- */
+/** 区域动态事件:区域临时进入异常状态(改变敌人组成/掉落/生态),低频、自动过期 */
 import { usePlayerStore } from '@/stores/player'
 import { rng } from '@/utils/random'
 import type { RegionDef } from '@/types'
@@ -23,22 +12,21 @@ export interface RegionEventState {
   endsAt: number
 }
 
-// 事件表是纯静态内容,放在 data/ 免得 player store 为了校验 id 反向依赖本模块(会成环)
+// 事件表放 data/:player store 校验 id 时不反向依赖本模块(会成环)
 export { REGION_EVENTS, regionEventDef }
 export type { RegionEventDef, RegionEventId }
 
 /** 事件持续时间(分钟,30~120) */
 const DURATION_MIN = [30, 60, 90, 120] as const
 
-/** 当前生效的区域事件(未过期;被过期清理) */
+/** 当前生效的区域事件;过期即清理 */
 export function currentRegionEvent(regionId: string): RegionEventState | null {
   const player = usePlayerStore()
-  // gameNow() 暂停时冻住:确认窗背后不该把区域事件耗掉
+  // gameNow() 暂停时冻住:确认窗背后不耗区域事件
   const now = gameNow()
   const ev = player.regionEvent
   if (!ev || ev.regionId !== regionId) return null
   if (ev.endsAt <= now) {
-    // 过期自动清理
     player.setRegionEvent(null)
     return null
   }
@@ -48,17 +36,11 @@ export function currentRegionEvent(regionId: string): RegionEventState | null {
 /** 尝试为某区域生成一次事件(低频:引擎周期性调用,按概率) */
 export function rollRegionEvent(region: RegionDef): RegionEventState | null {
   const player = usePlayerStore()
-  /**
-   * 区域事件属于可冻结域:`regionEvent.endsAt` 在
-   * `player.shiftTimedState` 里被顺延。这里读游戏时钟,与同文件的
-   * `currentRegionEvent` 同一把尺 —— 否则一处读冻结的「还没过期」、
-   * 另一处读墙钟判定「早过期了」,同一件事当场分异。
-   */
+  // 可冻结域:`regionEvent.endsAt` 由 `player.shiftTimedState` 顺延;须与 `currentRegionEvent` 同读游戏时钟
   const now = gameNow()
-  // 已有未过期事件则不重复
   const cur = player.regionEvent
   if (cur && cur.endsAt > now) return null
-  // 低频概率:每小时约一次(配合引擎 30s 周期 → 约 0.85% / 检查)
+  // 每小时约一次(引擎 30s 周期 → 约 0.85% / 检查)
   if (!rng.chance(0.0085)) return null
   const eventId = rng.pick(REGION_EVENTS.map(e => e.id))
   const durationMin = rng.pick(DURATION_MIN) ?? 60

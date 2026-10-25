@@ -1,23 +1,14 @@
 /**
- * 逆旅契服务 —— 道果的第一个非效率出口
+ * 逆旅契服务:道果的非效率出口。
+ *   spendDaoFruit(cost) → reincarnation.trial → lifeTrialRules() 注入本世历练战斗
+ *     → 转世时写入 LifeRecord.trialId(履历)
  *
- * 链路只有一条,刻意做到最小:
- *
- *   spendDaoFruit(cost)  余额真的下降
- *     → reincarnation.trial  这一世的契
- *     → lifeTrialRules()  注入本世历练战斗
- *     → 转世时写入 LifeRecord.trialId  成为履历
- *
- * ## 本模块刻意不做的事(这是判据,不是遗漏)
- *
- * 以下四种「回报」都被出口空间审计否掉,因此本文件**不得**出现:
+ * 本文件不得出现以下回报(`lifeTrialService.spec.ts` 扫描源码):
  *   - player.addDaoFruit  自供能循环:道果生道果
  *   - player.addInsight   宿慧 → aptitudeFloorNow → growthMult → cultivationSpeed
  *   - 任何资源发放        灵石/丹药 → 强化 → 战力 → 历练更快
  *   - 任何 StatMods       直接落在效率链上
- *
- * 履历是唯一合格的回报:它不进任何计算。
- * `lifeTrialService.spec.ts` 会扫描本文件源码强制这四条。
+ * 履历是唯一回报,不进任何计算。
  */
 import type { CombatRules } from '@/types'
 import { type LifeTrialDef, isPurelyAdverse, lifeTrialDef } from '@/data/lifeTrials'
@@ -55,12 +46,7 @@ export function lifeTrialShortfall(id: string): number | null {
   return have >= def.cost ? null : def.cost - have
 }
 
-/**
- * 签下这一世的逆旅契。
- *
- * 一世只能签一份,签下不可解除 —— 可退款等于没花掉,
- * 出口就退回成「记一笔已花费」的假消费
- */
+/** 签下这一世的逆旅契:一世一份,不可解除(可退款即假消费) */
 export function signLifeTrial(id: string): boolean {
   const player = usePlayerStore()
   const ui = useUiStore()

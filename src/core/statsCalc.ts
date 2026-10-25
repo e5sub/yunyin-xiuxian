@@ -1,7 +1,4 @@
-/**
- * 属性汇总 —— Base × 装备 × 功法 × 天赋 × Buff × 建筑 = FinalStats
- * 纯函数:输入快照,输出最终属性
- */
+/** 属性汇总(纯函数):Base × 装备 × 功法 × 天赋 × Buff × 建筑 = FinalStats */
 import type { AnyStatKey, FinalStats, GNum, StatMods, StatSourceRow } from '@/types'
 import { add, mulN } from '@/utils/gnum'
 import {
@@ -22,9 +19,9 @@ export interface StatsInput {
   sub: number
   /** 灵根修炼倍率(1.0 为基准) */
   linggenMult: number
-  /** 各来源的百分比加成集合(装备/功法/天赋/称号/灵兽/Buff/建筑) */
+  /** 各来源百分比加成(装备/功法/天赋/称号/灵兽/Buff/建筑) */
   modSources: StatMods[]
-  /** 各来源的名字(与 modSources 一一对应);漏写的那几个会显示成「来源 N」并被审计点名 */
+  /** 与 modSources 一一对应;漏写的显示成「来源 N」,审计会点名 */
   sourceNames?: string[]
   /** 装备平铺数值 */
   equipFlats: { attack: GNum; defense: GNum; maxHp: GNum }
@@ -38,20 +35,15 @@ const DIMINISH_SET = new Set<AnyStatKey>(DIMINISH_KEYS)
 
 /**
  * 合并多个来源的百分比属性。
- * 普通词条同键相加;条件/触发词条(DIMINISH_KEYS)按来源贡献降序以 100%/75%/50%/25% 递减计入——
- * 同一词条重复堆叠边际递减,混合构筑相对更值(Phase 19.5)
+ * 普通词条同键相加;条件/触发词条(DIMINISH_KEYS)按来源贡献降序以 100%/75%/50%/25% 递减计入。
  */
 export function mergeMods(sources: StatMods[]): StatMods {
   return mergeModsDetailed(sources).mods
 }
 
 /**
- * 与 mergeMods 同一套算法,但额外回答「每一份最终值是谁给的」。
- *
- * 面板要显示来源明细,而合并里有两道非线性:递减词条按来源强弱排队打折、
- * 软阈值再对合计折算。若直接把各来源的原始值列出来,明细之和会对不上面板 ——
- * 这正是「解释了等于没解释」。故这里把两道折算都摊回来源身上:
- * 打折后的那一份记给该来源,软阈值则给所有相关来源同乘一个系数(线性,故仍相加正确)。
+ * 与 mergeMods 同一套算法,另回答「每一份最终值是谁给的」:
+ * 递减打折后的那一份记给该来源,软阈值给相关来源同乘一个系数,明细之和仍等于面板值。
  */
 export function mergeModsDetailed(sources: StatMods[]): { mods: StatMods; effective: StatMods[] } {
   const out: StatMods = {}
@@ -84,14 +76,12 @@ export function mergeModsDetailed(sources: StatMods[]): { mods: StatMods; effect
     }
     out[key] = sum
   }
-  // Phase 30.4 软阈值:合计越过 cap 后超出部分折算(极端堆叠的第二道防线)
   for (const k in SOFT_CAPS) {
     const key = k as AnyStatKey
     const v = out[key]
     const rule = SOFT_CAPS[key]
     if (rule && typeof v === 'number' && v > rule.cap) {
       const scaled = rule.cap + (v - rule.cap) * rule.diminish
-      // 同乘一个系数摊回各来源:明细之和仍等于面板值
       const factor = scaled / v
       for (const bucket of effective) {
         const own = bucket[key]
@@ -110,10 +100,8 @@ export function isSoftCapped(mods: StatMods, key: AnyStatKey): boolean {
 }
 
 /**
- * 构筑深度:所有正向「构筑词条」的数值总和。
- *
- * 基础三维百分比与修炼速度不计——前者在天界已由 worldFoeSnap 等比抵消,
- * 后者不参与战斗。剩下的暴击、闪避、吸血、反击、护盾等才是构筑的实际厚度
+ * 构筑深度:正向构筑词条的数值总和。
+ * 不计三维百分比(天界已由 worldFoeSnap 等比抵消)与修炼速度(不参与战斗)。
  */
 export function modDepth(mods: StatMods): number {
   let sum = 0
@@ -130,12 +118,12 @@ export function modOf(mods: StatMods, key: AnyStatKey): number {
   return mods[key] ?? 0
 }
 
-/** 概率进判定前一并归一 [0,1]:词条堆过 1 不该变「必然触发」,堆为负不该变「永不触发」 */
+/** 概率进判定前夹到 [0,1] */
 export function capChance(p: number): number {
   return Math.min(1, Math.max(0, p))
 }
 
-/** 有效道果:超过一定数量后收益递减,避免多周目变成无限加速器 */
+/** 有效道果:超过一定数量后收益递减 */
 export function effectiveDaoFruit(fruit: number): number {
   if (fruit <= 0) return 0
   return Math.pow(fruit, DAO_FRUIT_SOFT_EXP)
@@ -151,16 +139,13 @@ export function computeFinalStats(input: StatsInput): FinalStats {
   const defense = mulN(add(base.defense, input.equipFlats.defense), Math.max(0.1, 1 + modOf(mods, 'defensePct') + combatBonus))
   const maxHp = mulN(add(base.maxHp, input.equipFlats.maxHp), Math.max(0.1, 1 + modOf(mods, 'maxHpPct') + combatBonus))
 
-  // 修炼速度汇入:灵根倍率 + 道果 + 灵气充盈
   const linggenExtra = input.linggenMult - 1
   const daoCultExtra = fruit * DAO_FRUIT_CULT_BONUS
   const qiRichExtra = input.qiRich ? QI_RICH_BONUS : 0
   const cultExtra = linggenExtra + daoCultExtra + qiRichExtra
 
-  // 修炼速度软阈值(见 CULT_SPEED_SOFT_CAP_T):攻防血在 mergeMods 里有 SOFT_CAPS,
-  // 修炼速度是多轮回无界叠加的主线,这里补一道防线 —— 越过阈值后超出部分折算。
-  // 折算同乘一个系数摊回灵根/道果/充盈与各 mod 源,令「明细之和 == 面板值」恒成立。
-  // 正常单世构筑远低于阈值(factor 恒为 1),数值与其来源明细分毫不动。
+  // 修炼速度软阈值:越过 CULT_SPEED_SOFT_CAP_T 后超出部分折算;正常单世构筑低于阈值(factor 恒为 1)。
+  // 系数同乘摊回灵根/道果/充盈与各 mod 源,明细之和 == 面板值
   const cultTotal = Math.max(-0.9, (mods.cultivationSpeed ?? 0) + cultExtra)
   const cultCapped =
     cultTotal > CULT_SPEED_SOFT_CAP_T
@@ -174,11 +159,8 @@ export function computeFinalStats(input: StatsInput): FinalStats {
   }
   mods.cultivationSpeed = cultCapped
 
-  /*
-   * 来源明细:两部分 —— 各 mod 源真正计入的那一份(已有两道折算),以及
-   * 不走 modSources 的三条(灵根/道果/灵气充盈走修炼,道果另乘攻防血)。
-   * 面板据此回答「这个数从哪来」,而审计会核对「明细之和 = 面板值」。
-   */
+  // 来源明细:各 mod 源计入的份额,加上不走 modSources 的灵根/道果/灵气充盈(道果另乘攻防血);
+  // 审计会核对「明细之和 = 面板值」
   const breakdown: StatSourceRow[] = input.modSources.map((_, i) => ({
     name: input.sourceNames?.[i] ?? `来源 ${i + 1}`,
     mods: effective[i] ?? {}

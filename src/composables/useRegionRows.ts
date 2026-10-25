@@ -19,11 +19,8 @@ import {
 } from '@/core/buildAdvisor'
 
 /**
- * 一行地界的全部事实 —— 区域卡、分组与「可见到哪一处」共用这一份投影。
- *
- * 时间相关的两列(复聚倒计时、已守时长)**刻意不在这里**:本表要为每处地界跑
- * `regionEcology` / `detectionAdaptation` / `suppressionProgress`,每秒一跳的
- * `now` 一旦写进来,整表就会跟着秒针重算四十余遍。
+ * 一行地界的全部事实:区域卡、分组与「可见到哪一处」共用这一份投影。
+ * 时间相关列(复聚倒计时、已守时长)不进本表,读 `now` 会让整表随秒针重算。
  */
 export interface RegionRow {
   def: RegionDef
@@ -43,10 +40,7 @@ export interface RegionRow {
 
 /**
  * 历练页的地界投影与分组。
- *
- * `visibleRows` 的截断条件必须带上 `canEnter`:本世路线的首段可能排在地界表靠后的
- * 位置,若只按旧链「已发现」截断,它会被挡在可见范围外 —— 实测新号因此整页 0 个
- * 出发按钮。展示序则倒序(新解锁的地界排最上),但截断仍在数据序上算。
+ * `visibleRows` 截断须带上 `canEnter`:本世路线首段可能排在表靠后,只按「已发现」截断会把它挡在可见范围外。
  */
 export function useRegionRows() {
   const adventure = useAdventureStore()
@@ -59,34 +53,28 @@ export function useRegionRows() {
       const eco = regionEcology(r)
       const suppressed = player.suppressedRegions.includes(r.id)
       /**
-       * 妖气复聚是**落盘的世界状态**(core/regionRevival 写 adventure.revived),
-       * 不是「镇压到点的临时读数」:两者含义不同 —— 复聚只发生在已靖地界,
-       * 而镇压满 72 小时只是松开镇压。此前这里拿 `isReviving` 现算,
-       * 于是 `adventure.revived` 只写不读,复聚只在结算那一瞬的 toast 里出现过,
-       * 之后再进历练页,地界既没有「妖气复聚」章、也不说「再历一程即可复靖」。
+       * 妖气复聚读落盘的世界状态(core/regionRevival 写 adventure.revived),不拿 `isReviving` 现算:
+       * 复聚只发生在已靖地界,镇压满 72 小时只是松开镇压。
        */
       const revived = adventure.revived.includes(r.id)
       return {
         def: r,
-        // 旧链:这处地界是否**已被发现** —— 决定列表可见性、锁图标与简介
+        // 是否已被发现:只参与列表可见性截断
         unlocked: adventure.unlocked.includes(r.id),
-        // 统一准入谓词:此刻**能否进去** —— 决定出发按钮。
-        // 两者必须分开:visibleRows 按「已发现」截断列表,
-        // 若拿准入当可见性,路线上未轮到的地界会把后面能进的一并藏掉
+        // 此刻能否进去:决定出发按钮。须与「已发现」分开,拿准入当可见性会把后面能进的地界一并藏掉
         canEnter: canEnterRegion(r.id),
         blockReason: entryBlockReason(r.id),
         cleared: regionBossCleared(r.id),
         suppressed,
         revived,
-        /** 是否取得过镇压资格(本世取得即永久,转世随皮囊散去) */
+        /** 是否取得过镇压资格(本世取得即永久,转世散去) */
         qualified: player.suppressQualified.includes(r.id),
-        /** 镇压资格进度(三条判据的当前值/阈值) */
-        // 传世号:界面进度条与 checkSuppression 同判,旧世战绩不再显示成「三项全绿」
+        /** 镇压资格进度(三条判据的当前值/阈值);与 checkSuppression 同判,旧世战绩不计 */
         progress: suppressionProgress(player.regionStats[r.id], currentLifeOf(player)),
         tooHard: r.minRealm > player.major,
         /** 此地之敌的加成来源(层级补偿 × 地界凶险;出行方式那一档另算) */
         foeOrigin: regionFoeOrigin(r),
-        // 第一层信息:只保留最强的两个生态标签
+        // 只留最强的两个生态标签
         chips: ecologyChips(eco).slice(0, 2),
         adaptation: currentBuild.value ? detectionAdaptation(currentBuild.value, eco) : null
       }
@@ -99,13 +87,7 @@ export function useRegionRows() {
     return firstLocked < 0 ? rows : rows.slice(0, firstLocked + 1)
   })
 
-  /**
-   * 按界域分组:人间界/仙界/神界/混沌海的历练地界各自成段,便于在高界导航。
-   *
-   * 展示序 = 倒序(玩家反馈:「历练列表应该倒序排列,每次都要往下活动很久」)——
-   * 进阶路线上每次新解锁的地界排在最上。判定截断仍在数据序上算:
-   * 谜一样的「下一个地界」谁也不提前剧透,只是摆出来的时候反着排罢了。
-   */
+  /** 按界域分组(人间界/仙界/神界/混沌海各成一段);展示序倒序,新解锁的排最上,截断仍按数据序 */
   const groupedRows = computed(() => {
     const groups: { world: WorldDef; rows: RegionRow[] }[] = []
     for (const row of [...visibleRows.value].reverse()) {

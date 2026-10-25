@@ -48,7 +48,7 @@ import { EXPLORE_MODES, BAG_CAPACITY } from '@/data/constants'
 const GAP_HOURS = 60
 const HOUR_MS = 3600 * 1000
 
-/** 攒一份「每个离线产线都在动」的档 */
+/** 各离线产线都在动的档 */
 function setupBusySave(): void {
   const game = useGameStore()
   const player = usePlayerStore()
@@ -90,14 +90,7 @@ describe('离线总结 · 变动了多少就报多少', () => {
     setActivePinia(createPinia())
   })
 
-  /**
-   * 道童按墙钟走工,但发奖只在 `collectFinished` 里。这个入口此前只挂在
-   * ApprenticeView 的 onMounted/每秒轮询上:离线期间已完工、归来先转世,
-   * `resetForRebirth()` 会把道童与未领取资材一起清掉,归来卷轴只字未提。
-   *
-   * 故障注入:删掉 settleOffline 里的 collectFinished 调用 → 任务仍挂着、
-   * 灵草差额为 0、notes 无道童回执,本条红。
-   */
+  /** 故障注入:删掉 settleOffline 里的 collectFinished 调用,本条红 */
   it('离线期间完工的道童在归来结算时收割并入卷轴,不留到转世被清空', () => {
     const now = Date.now()
     const game = useGameStore()
@@ -136,7 +129,7 @@ describe('离线总结 · 变动了多少就报多少', () => {
     const inventory = useInventoryStore()
     const bagged = summary.equipment.filter(e => !e.recycled)
     const recycled = summary.equipment.filter(e => e.recycled)
-    // 这一档打得凶,包里至少该拾得装备;若断言因夹具变动而失效,先一眼看得出
+    // 守夹具:这一档须拾得装备
     expect(bagged.length, '60 小时沐浴一场,归来清单里该有入包的装备').toBeGreaterThan(0)
     for (const eq of bagged) {
       expect(eq.uid, '入包的装备该能点开详情,uid 不能缺').toBeTruthy()
@@ -150,7 +143,7 @@ describe('离线总结 · 变动了多少就报多少', () => {
   it('行囊已满归来:装不下的件都标回收且不带 uid(让回收断言真有事可断)', () => {
     setupBusySave()
     const inventory = useInventoryStore()
-    // 塞满行囊(120 件旧物、未锁),新掉落无处可放 —— 无智能收纳时一律化尘
+    // 塞满行囊(未锁),无智能收纳时新掉落一律化尘
     for (let i = 0; i < BAG_CAPACITY; i += 1) {
       inventory.items.push({ uid: `bagfull${i}`, templateId: 'b_mabu', quality: 'mortal', tier: 1, level: 0, affixes: [] })
     }
@@ -161,22 +154,20 @@ describe('离线总结 · 变动了多少就报多少', () => {
     for (const eq of recycled) {
       expect(eq.uid, '化尘的件已不在包,不该留 uid').toBeUndefined()
     }
-    // 满包且无智能收纳:没有任何件真的入包,清单里不该再有「可点开」的件
+    // 满包无收纳:无件入包
     expect(bagged.length).toBe(0)
   })
 
   /**
-   * 智能收纳腾位:新件值得留、包已满时,挤掉包里最差的一件旧物化尘再入包。
-   * 此时入账结果是 bagged:true,而 dust 记的是那件旧物 —— 结算若只在 !bagged 时计尘,
-   * 归来卷轴就少报了这份尘,件数也少算(审查讨论指出)。
-   * 注入:offline.ts / suppress.ts 改回 `if (!res.bagged) recycledDust += res.dust` → 本条红。
+   * 腾位入包时 bagged 为真,dust 是被挤掉旧物的尘。
+   * 故障注入:offline.ts / suppress.ts 改回 `if (!res.bagged) recycledDust += res.dust`,本条红。
    */
   it('智能收纳腾位归来:被挤掉的旧件化出的尘与件数都要报', () => {
     setupBusySave()
     const settings = useSettingsStore()
     settings.smartKeep = { ...settings.smartKeep, enabled: true, minQuality: 1, keepCoreAffix: false, keepComboPiece: false, keepSetPiece: false, keepPerfectRolls: false }
     const inventory = useInventoryStore()
-    // 塞满凡品旧物(未锁、无投入,收纳判「无缘」可挤);良品以上的新掉落会把它们挤出去
+    // 凡品旧物未锁、无投入,良品以上新掉落可挤掉
     const junk = Array.from({ length: BAG_CAPACITY }, (_, i) => ({ uid: `junk${i}`, templateId: 'b_mabu', quality: 'mortal' as const, tier: 1, level: 0, affixes: [] }))
     inventory.items = junk.map(j => ({ ...j }))
     acquired.length = 0
@@ -220,10 +211,10 @@ describe('离线总结 · 变动了多少就报多少', () => {
         ` · 悟道 +${summary.wudao} · 战斗 ${summary.battles} · 寿元 -${summary.ageYears}`
     )
 
-    // 一 资源类:摘要报的数就是实际差额(灵气取整,故容 1)
+    // 资源类报数 = 实际差额(灵气取整,容 1)
     expect(summary.qi, '灵气回充没报,或报的数不是实际差额').toBeCloseTo(delta.qi, 0)
     expect(summary.herb).toBe(delta.herb)
-    // 灵草逐品净增:各品实际差额要一一对上,且之和等于总差额 —— 灵田前瞻产的高一品不能被单品名吞掉
+    // 逐品净增须逐品对上:灵田可产高一品
     const gradeDelta = ([1, 2, 3, 4, 5] as const)
       .map(g => ({ grade: g, amount: resources.herbOf(g) - (before.herbByGrade[g] ?? 0) }))
       .filter(e => e.amount > 0)
@@ -231,7 +222,7 @@ describe('离线总结 · 变动了多少就报多少', () => {
     expect(gradeDelta.reduce((s, e) => s + e.amount, 0), '逐品之和应等于总差额').toBe(summary.herb)
     expect(summary.ore).toBe(delta.ore)
     expect(summary.wudao).toBe(delta.wudao)
-    // 二 寿元:流逝多少就报多少(它不受离线上限约束,按真实时长算)
+    // 寿元不受离线上限约束,按真实时长
     expect(summary.ageYears, '寿元流逝没报').toBeCloseTo(delta.age, 0)
     expect(summary.ageYears, '这一档离开 60 小时,寿元不该一点没动').toBeGreaterThan(50)
     expect(

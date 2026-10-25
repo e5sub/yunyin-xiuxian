@@ -1,7 +1,4 @@
-/**
- * Phase 30.9:世界活性与服务层审计
- * S1 区域兴衰 / S2 宿敌记忆 / S3 事件余波
- */
+/** 世界记忆:S1 区域兴衰 / S2 宿敌记忆 / S3 事件余波 */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -64,14 +61,7 @@ describe('S1 区域兴衰', () => {
     expect(idle.prosperity).toBe('chaos')
   })
 
-  /**
-   * 「守着」本身就是活动。
-   *
-   * 镇压后该地不再产胜场,`lastUpdateAt` 停在镇压前最后一战;若闲置判定只看它,
-   * 守到 48 小时就会被判「久无人烟」回落混乱,可镇压要到 72 小时才复聚 ——
-   * 守满 24 小时的繁盛收益会在 48~72 小时这一段凭空消失。
-   * 故障注入:把 `lastTouchedAt` 改回 `input.lastActivityAt` → 本条红。
-   */
+  /** 故障注入:闲置判定改回只看 `input.lastActivityAt`,本条红 */
   it('镇压中一直守着不算无活动:守满一日仍繁盛,直到复聚那一刻', () => {
     const held10h = deriveProsperity({
       totalWins: 0,
@@ -91,7 +81,7 @@ describe('S1 区域兴衰', () => {
     })
     expect(held50h.prosperity, '守了 50 小时却判成混乱,等于把守土收益吃掉').toBe('flourish')
 
-    // 未镇压的地界仍按最后一战回落 —— 修的是「守着」,不是把回落一并废掉
+    // 未镇压的地界仍按最后一战回落
     const idleUnsuppressed = deriveProsperity({
       totalWins: FLOURISH_WINS,
       hasSuppressed: false,
@@ -111,10 +101,9 @@ describe('S1 区域兴衰', () => {
       qingyun: { totalFights: FLOURISH_WINS, avgRounds: 3, avgDamageTakenPct: 0.4, consecutiveWins: FLOURISH_WINS, lastUpdateAt: lastFight }
     }
     const recall = regionRecallFor('qingyun')
-    // since 应以镇压时刻为起点:50h 前镇压 → since 应为 50h 前的密钥
     expect(recall.suppressedAt).toBe(suppressedAt)
     expect(recall.since).toBe(suppressedAt)
-    // 若误用 lastUpdateAt,since 会变成 1h 前 —— 回归点(TASK-026)
+    // 回归点 TASK-026
     expect(recall.since).not.toBe(lastFight)
   })
 
@@ -124,13 +113,7 @@ describe('S1 区域兴衰', () => {
     expect(prosperityName('flourish')).toBe('繁盛')
   })
 
-  /**
-   * 兴衰看的是「赢过多少」,不是「打过多少」。
-   *
-   * 此前 `regionRecallFor` 读 `regionStats.totalFights` —— 那里面连败仗一起数:
-   * 同一地界连输五十场也会被判成「繁盛」,而 `regionWins`(exploration 每胜一场
-   * 才 +1)一直只写不读。故障注入:把判据改回 totalFights → 本条红。
-   */
+  /** 故障注入:把胜场判据改回 regionStats.totalFights(本例故意与 regionWins 不一致),本条红 */
   it('regionRecallFor 按净胜场判兴衰:连输再多也不算繁盛', () => {
     const player = usePlayerStore()
     player.suppressedRegions = ['qingyun']
@@ -154,13 +137,7 @@ describe('S1 区域兴衰', () => {
     expect(regionRecallFor('qingyun').prosperity).toBe('flourish')
   })
 
-  /**
-   * 兴衰要能按调用时刻重算。
-   *
-   * 界面停在历练页时不会重进页面,只靠每秒游戏钟重算这一张卡;若 `now`
-   * 仍藏在函数体内读墙钟,传进来的时刻就被无视,守满 6 / 24 小时仍冻在
-   * 进页那一刻。故障注入:删掉 `now` 形参、改回 `const now = Date.now()` → 红。
-   */
+  /** 故障注入:删掉 `now` 形参、改回 `const now = Date.now()`,本条红 */
   it('regionRecallFor 接受注入时刻:同一份存档随守土时长从混乱走到稳定、繁盛', () => {
     const player = usePlayerStore()
     const suppressedAt = Date.now()
@@ -177,7 +154,6 @@ describe('S1 区域兴衰', () => {
   })
 
   it('守土之年:镇压后守满时长也能走到稳定/繁盛(不必先刷满胜场)', () => {
-    // 镇压后不再产出胜场,故「守多久」是另一条通往兴衰的路
     const held7h = deriveProsperity({
       totalWins: 0,
       hasSuppressed: true,
@@ -194,7 +170,6 @@ describe('S1 区域兴衰', () => {
       now
     })
     expect(held25h.prosperity).toBe('flourish')
-    // 未镇压者再久也不算数
     const notSuppressed = deriveProsperity({
       totalWins: 0,
       hasSuppressed: false,
@@ -213,16 +188,11 @@ describe('S1 区域兴衰', () => {
     expect(prosperityYieldMult('chaos')).toBeCloseTo(1.0, 6)
   })
 
-  /**
-   * 复苏判定只有**一份钟**:`regionTouchedAt`(最后一次与它打交道)配
-   * `isRegionRevived`。从前镇压那一路另有一个只看 `suppressedSince` 的
-   * `isReviving`,同一片地界因此会在一个 tick 里被两处各报一次复聚。
-   */
   it('复苏判定:从最后一次打交道起算,超过 72 小时则复苏', () => {
     const t = Date.now()
     expect(isRegionRevived(t, t + REVIVE_AFTER_HOURS * 3600_000 + 1)).toBe(true)
     expect(isRegionRevived(t, t + REVIVE_AFTER_HOURS * 3600_000 - 1)).toBe(false)
-    // 从没打过交道(touchedAt 为 0)不算够钟:没有起点的钟不该自己走
+    // touchedAt 为 0 不算够钟
     expect(isRegionRevived(0, t + REVIVE_AFTER_HOURS * 3600_000 + 1)).toBe(false)
   })
 
@@ -232,16 +202,12 @@ describe('S1 区域兴衰', () => {
     expect(regionTouchedAt(500, undefined, undefined)).toBe(500)
   })
 
-  /**
-   * 复聚倒计时 —— 界面把「还能守多久」写出来,与复苏判定共用同一个阈值。
-   * 从前 72 小时的期限完全没有预告,玩家的体感是「镇压某天突然没了」。
-   */
   it('复聚倒计时:与复苏判定同一条线,没有钟为 0', () => {
     const t = Date.now()
     expect(hoursUntilRevive(0, t), '没有起点的钟不该自己走').toBe(0)
     expect(hoursUntilRevive(t, t)).toBeCloseTo(REVIVE_AFTER_HOURS, 6)
     expect(hoursUntilRevive(t, t + 12 * 3600_000)).toBeCloseTo(REVIVE_AFTER_HOURS - 12, 6)
-    // 倒计时归零的那一刻,正是复苏判定翻真的位置(两条口径不许分叉)
+    // 倒计时归零处即复苏判定翻真处
     const atRevive = t + REVIVE_AFTER_HOURS * 3600_000
     expect(hoursUntilRevive(t, atRevive)).toBe(0)
     expect(isRegionRevived(t, atRevive - 1)).toBe(false)
@@ -249,14 +215,7 @@ describe('S1 区域兴衰', () => {
     expect(hoursUntilRevive(t, atRevive + 999 * 3600_000), '过期不出现负数').toBe(0)
   })
 
-  /**
-   * 倒计时必须吃**结算用的那一份钟** —— 三处各取各的必然分叉。
-   *
-   * 从前的反例:镇压 73 小时、但一小时前还在那片战斗。卡片只把 suppressedSince
-   * 喂给 hoursUntilRevive,于是显示「妖气 0 时后复聚」**并停在那里**,而结算按
-   * regionTouchedAt(最后一次战斗)判「还早 71 小时」—— 玩家守着一片永远「即将复聚」
-   * 却从不复聚的地界。故障注入:卡片改回只读 suppressedSince → 本条红。
-   */
+  /** 故障注入:regionReviveClock 改回只读 suppressedSince,本条红 */
   it('复聚倒计时与结算读同一份钟:还在最后战斗的那片地界不显示「即将复聚」', () => {
     setActivePinia(createPinia())
     const player = usePlayerStore()
@@ -272,11 +231,9 @@ describe('S1 区域兴衰', () => {
       consecutiveWins: 20,
       lastUpdateAt: t + 72 * 3600_000 // 但一小时前还在打
     }
-    // 结算读整份钟 ⇒ 只看镇压时刻会误判成「已够钟」
     expect(isRegionRevived(regionReviveClock('qingyun'), Date.now()), '最后一战把钟推后了').toBe(false)
-    // 倒计时同样读整份钟 ⇒ 应还剩约 71 小时,而不是 0
     expect(hoursUntilRevive(regionReviveClock('qingyun'), Date.now())).toBeCloseTo(REVIVE_AFTER_HOURS - 1, 6)
-    // 只有镇压一条钟的地界(never fought since)才真的快到点
+    // 只剩镇压一条钟时才到点
     delete player.regionStats.qingyun
     expect(hoursUntilRevive(regionReviveClock('qingyun'), Date.now())).toBe(0)
     expect(adventure.clearedAt.qingyun).toBeUndefined()
@@ -336,10 +293,6 @@ describe('S2 宿敌记忆', () => {
     expect(list[0]?.lossCount).toBe(5)
   })
 
-  /**
-   * 整批败北(离线整段结算)与逐场等价:
-   * 一批 N 场与连调 N 次 recordLoss 得到同一份账,且 only 过门槛那一批报「新成宿敌」。
-   */
   it('整批败北与逐场入账等价,门槛只在跨过的那一批报一次', () => {
     const now = Date.now()
     let single: NemesisRecord[] = []

@@ -1,12 +1,5 @@
 /* eslint-disable no-console */
-/**
- * 收窄方案影响面审计
- *
- * 收窄决议已定,但动参数之前必须先确认这三样东西现在连着什么。
- * 上一轮审计证明模型稳定,这一轮要保证结构性修改不会把另一套系统打穿。
- *
- * 所有断言跑在两份真实存档的探针上,不跑假设的玩家行为。
- */
+/** 收窄方案影响面审计;断言跑在两份真实存档的探针上 */
 import { describe, expect, it } from 'vitest'
 import {
   INSIGHT_CHANNELS,
@@ -49,7 +42,6 @@ describe('影响面 · 宿慧的来源有两条', () => {
     const live = INSIGHT_CHANNELS.filter(c => c.source === 'live')
     expect(stock.length).toBeGreaterThan(0)
     expect(live.length).toBeGreaterThan(0)
-    // 只有现量天然带境界门槛 —— 这一条本就偏向深修,不需要改
     for (const c of live) expect(c.realmGated).toBe(true)
     for (const c of stock) expect(c.realmGated).toBe(false)
     console.log(
@@ -73,8 +65,7 @@ describe('影响面 · 真实存档实测', () => {
   })
 
   it('实测:靠本体系攒出的存量是零 —— 存量通道在真实玩家身上从未跑起来', () => {
-    // 小黄鸭 17 世的 238 全部来自旧存档折算(字段缺失走 legacyInsightOf);
-    // 白望舒 4 世字段为 0,一分未记。两人都没有一点存量是本体系发放的
+    // 小黄鸭字段缺失走 legacyInsightOf 折算;白望舒字段为 0
     const duck = PROBES.find(p => p.name === '小黄鸭')!
     const bai = PROBES.find(p => p.name === '白望舒')!
     expect(duck.stockAfterLoad).toBe(legacyInsightOf(duck.rebirths))
@@ -96,8 +87,6 @@ describe('影响面 · 真实存档实测', () => {
   })
 
   it('发现迁移欠账:字段存在但为 0 的老存档拿不到历世折算', () => {
-    // sanitize 判据 `Number.isFinite(r?.insight) ? max(0,r.insight) : legacyInsightOf(count)`
-    // 把「字段已建、值为 0」当成合法新值,于是不补折算
     const gaps = PROBES.map(p => ({ name: p.name, gap: migrationGap(p) }))
     const owed = gaps.filter(g => g.gap > 0)
     expect(owed.length).toBeGreaterThan(0)
@@ -141,7 +130,6 @@ describe('影响面 · 宿慧的消费者链', () => {
     const top = SAMSARA_STAGES.length - 1
     const keep = INSIGHT_CONSUMERS.find(c => c.id === 'keepGongfa')!
     expect(keep.fromStage).toBe(top)
-    // 两份真实存档都停在第 1 阶,离顶阶还有三阶
     for (const p of PROBES) expect(stageAt(totalOf(p)).index).toBeLessThan(top)
     console.log(
       `\n「留一门功法」要第 ${top} 阶「${SAMSARA_STAGES[top]!.name}」才开,` +
@@ -150,7 +138,7 @@ describe('影响面 · 宿慧的消费者链', () => {
   })
 
   it('资质地板走双口径取 max,移出宿慧对它零影响', () => {
-    // aptitudeFloorNow = max(次数×5, 宿慧/12)。两份存档都由次数口径决定
+    // aptitudeFloorNow = max(次数×5, 宿慧/12)
     for (const p of PROBES) expect(aptitudeBinding(p)).toBe('count')
     console.log(
       `\n两份存档的资质地板都由**次数口径**决定(${PROBES.map(p => p.name).join('、')}),` +
@@ -176,9 +164,6 @@ describe('影响面 · 移出存量的后果落在谁身上', () => {
   })
 
   it('故因此:收窄宿慧应改「发放条件」而非「移除通道」', () => {
-    // 存量通道本身产出极小(金丹世 +6),真正的问题不在它的量,
-    // 而在它无境界门槛。改成按境界发放即可,不必整条移除 ——
-    // 整条移除的唯一实际后果是让老存档的折算凭空蒸发
     const lifeRealm = INSIGHT_CHANNELS.find(c => c.id === 'lifeRealm')!
     expect(lifeRealm.perGoldLife).toBeLessThan(10)
     expect(lifeRealm.realmGated).toBe(false)
@@ -217,7 +202,6 @@ describe('影响面 · 灵脉与先天之姿的存量处理', () => {
   })
 
   it('意外发现:主脉机制从未被真实玩家用过', () => {
-    // 主脉可投 70,副脉上限 30。两人都是「三条投满 30 + 第四条投剩下的 10」
     expect(mainVeinEverUsed()).toBe(false)
     for (const p of PROBES) {
       expect(veinPeakOf(p)).toBeLessThanOrEqual(VEIN_SIDE_CAP)
@@ -233,7 +217,6 @@ describe('影响面 · 灵脉与先天之姿的存量处理', () => {
     const talents = LEGACY_ASSETS.find(a => a.id === 'talents')!
     expect(talents.touchedByRebirth).toBe(false)
     expect(verdictOf(talents)).toBe('heritage')
-    // 饱和度分化明显:一个已满、一个三分之一,说明这条轴仍有推进空间
     const rates = PROBES.map(p => p.talents)
     expect(Math.max(...rates)).toBeGreaterThan(Math.min(...rates) * 2)
     console.log(
@@ -243,7 +226,6 @@ describe('影响面 · 灵脉与先天之姿的存量处理', () => {
   })
 
   it('三者共用一条处理规则:保既得、改来源', () => {
-    // 轮回本就不触碰这三样,所以清零属于新增惩罚而非恢复原设计
     for (const a of LEGACY_ASSETS) expect(a.touchedByRebirth).toBe(false)
     console.log(
       '\n宿慧存量、灵脉、先天之姿:轮回代码本就一概不动。' +

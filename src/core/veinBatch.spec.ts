@@ -1,9 +1,4 @@
-/**
- * 灵脉连投 · 批量账
- * veinInvestPlan 只算不动手(点数受该脉上限、总容量与灵石共同约束),
- * investVeinBatch 按计划一口气注到位,扣费/点数与计划一致;
- * 一注都注不出(0 点计划)时绝不扣一分。
- */
+/** 灵脉连投 · 批量账(veinInvestPlan / investVeinBatch) */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { gn, mulN, sub, toNum } from '@/utils/gnum'
@@ -48,7 +43,6 @@ describe('灵脉连投 · 批量账', () => {
   it('总容量封顶:四脉全满 100 时记 full;匀出 1 点余量就只报 1 点', () => {
     seat('gather', { gather: VEIN_MAIN_CAPACITY, craft: VEIN_SIDE_CAP })
     expect(veinInvestPlan('craft')).toMatchObject({ points: 0, blocked: 'full' })
-    // 主脉仍满 70、副脉挪出 1 点 → total=99,craft 还能且只能注 1 点
     seat('gather', { gather: VEIN_MAIN_CAPACITY, craft: VEIN_SIDE_CAP - 1 })
     expect(veinInvestPlan('craft')).toMatchObject({ points: 1 })
   })

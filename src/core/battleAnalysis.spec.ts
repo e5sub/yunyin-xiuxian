@@ -43,7 +43,6 @@ describe('战斗分析', () => {
   it('真伤致败被点名,并指向不依赖护盾的方向', () => {
     const a = analyzeBattle(result(false, stats({ pierceTaken: gn(1200) })), 'gangdun')!
     expect(a.findings.some(f => f.text.includes('真伤'))).toBe(true)
-    // 方向不包含当前流派
     expect(a.directions.every(d => d.styleName !== '罡盾流')).toBe(true)
     expect(a.directions.length).toBeGreaterThan(0)
   })
@@ -72,13 +71,7 @@ describe('战斗分析', () => {
     expect(rows.map(r => r.label)).toContain('护盾吸收')
   })
 
-  /**
-   * 先手判定是一条阈值,不是连续收益。
-   *
-   * 从前词条写「出手速度提升 6%」,玩家自然会以为多打一点就多赚一点;真相是
-   * 差一点就完全没有。故战后分析要把**两个数与差额**摆出来:既解释「你为什么后手」,
-   * 也给出「再凑几个百分点能跨线」——解释原因、给方向,不替玩家做决定。
-   */
+  /** 先手是阈值判定,不是连续收益:报双方速度读数与「尚差 N%」,只报数 */
   describe('先手判定', () => {
     const withFirst = (win: boolean, playerFirst: boolean, ps: number, es: number): CombatResult => ({
       ...result(win, stats({})),

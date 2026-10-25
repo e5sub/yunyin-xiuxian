@@ -13,21 +13,15 @@
           <p class="text-[11px]" :class="player.lifespanRatio < LIFESPAN_WARN_RATIO ? 'text-cinnabar' : 'text-ink-faint'">
             {{ statusText }}
           </p>
-          <!-- 今日天时:确定性环境,影响当日产出与渡劫 -->
           <div class="mt-3 flex items-center gap-1.5">
             <GameIcon name="sparkles" :size="13" class="shrink-0 text-gold-ink" />
             <span class="font-kai text-[12px] tracking-widest text-ink">{{ weather.name }}</span>
           </div>
           <p class="mt-0.5 text-[10px] leading-relaxed text-ink-faint">{{ weather.desc }}</p>
-          <!-- 风味句不负责报数:加减从天时定义现算,避免「火属 / 雷属」这类并未生效的承诺 -->
+          <!-- 风味句不报数:加减从天时定义现算 -->
           <p class="mt-0.5 text-[10px] leading-relaxed text-ink-soft tabular">{{ weatherLine }}</p>
         </div>
-        <!--
-          修炼法球 · 灵气法阵环绕。
-          窄屏并排时 140px 的法球会占到主卡大半宽,把左侧的天气/风味句压成极窄高列;
-          380px 以下改用 108px 法球(内部粒子/八卦环随 size 比例缩放,不是简单 blur),
-          给左侧文本让出地方。
-        -->
+        <!-- 380px 以下改用 108px 法球,给左侧文本让出地方 -->
         <div class="relative mr-1 -mt-1 h-35 w-35 shrink-0 max-[380px]:h-[108px] max-[380px]:w-[108px]">
           <CultivationOrb :active="true" :full="player.expFull" :progress="player.expProgress" :size="orbSize">
             <span class="text-[17px] max-[380px]:text-[13px]">☯</span>
@@ -238,12 +232,11 @@
   const endgame = useEndgameStore()
   const quests = useQuestsStore()
 
-  // 法球尺寸:380px 以下卡片内宽骤减,法球随断点同步缩到 108px(与模板容器 max-[380px] 一致)。
-  // 不能只算一次:横竖屏切换、窗口拖拽都会改 matchMedia 结果,故监听 change 让 orbSize 跟着变,
-  // 否则容器(纯 CSS 断点)已缩、法球(JS size)仍是 140px,两者脱节会溢出。
+  // 法球尺寸须与模板容器 max-[380px] 断点一致(以下 108px)。
+  // 须监听 change:横竖屏切换、窗口拖拽会改 matchMedia 结果,容器已缩、法球仍是 140px 会溢出
   const narrower = ref(false)
   const orbSize = computed<number>(() => (narrower.value ? 108 : 140))
-  // 直接平铺、不用 {} 作用域块 —— 该块内容在 script setup 里会被编译器提升重排,花括号反而碍事
+  // 直接平铺,不用 {} 作用域块(script setup 里会被编译器提升重排)
   const orbMq = window.matchMedia('(max-width: 380px)')
   narrower.value = orbMq.matches
   const onOrbMqChange = (e: MediaQueryListEvent): void => {
@@ -252,7 +245,7 @@
   orbMq.addEventListener('change', onOrbMqChange)
   onUnmounted(() => orbMq.removeEventListener('change', onOrbMqChange))
 
-  /** 洞府入口右侧实况:离线可攒小时 + 已营座数(与洞府页纪要同源现算) */
+  /** 洞府入口实况:离线可攒小时 + 已启座数,与洞府页纪要 / 营造标题同源现算 */
   const offlineHrs = computed(() => dongfu.offlineCapHours)
   const builtCount = computed(() => BUILDINGS.filter(b => (dongfu.levels[b.id] ?? 0) > 0).length)
 
@@ -263,9 +256,9 @@
     return worldView(w, id => id).title
   })
 
-  // Phase 29 修行目标:只给方向,不替玩家做决定(goal.ts 此前零展示,接线摆上主页)
+  // 修行目标:只给方向,不替玩家做决定
   const currentGoal = computed<Goal | null>(() => generateCurrentGoal(player))
-  /** 新手第一步(开局这一段才有;给不给完全由存档推出来,没有「已看过」字段) */
+  /** 新手第一步:只在开局这一段有,完全由存档推出,没有「已看过」字段 */
   const firstStep = computed(() => currentFirstStep())
 
   const statusText = computed(() =>
@@ -281,14 +274,14 @@
     })
   )
 
-  // Phase 31 A1:今日天时(确定性,refreshed 每游戏日)
+  // 今日天时:确定性,每游戏日刷新,影响当日产出与渡劫
   const weather = computed(() => todayWeather())
   const weatherLine = computed(() => weatherEffectText(weather.value))
 
   const mainQuest = computed(() => MAIN_QUESTS[quests.mainIdx])
   /** 主线的「去办」落点:拿得准才给箭头(判据见 questNav) */
   const mainNav = computed(() => (mainQuest.value ? mainQuestNav(mainQuest.value.cond) : null))
-  /** 主线进度读数(与发赏判定同源):计数型报 X/Y,境界与层数里程碑点名目标 */
+  /** 主线进度读数,与发赏判定同源 */
   const mainProgress = computed(() => currentMainQuestProgress())
 
   const dailyRows = computed(() =>
@@ -300,8 +293,7 @@
     }))
   )
 
-  /** 距午夜更替的活倒计时 —— 日课「未成即作罢」还剩几时,同屏数得出来 */
-  // 日课按本地日历午夜更替,属于墙钟域;暂停确认窗时也必须照常走向真实更替时刻。
+  // 距重置倒计时属墙钟域:暂停时也须照常走向真实重置时刻
   const now = useWallNow()
   const tilRollover = computed(() => formatCountdown(secsUntilNextMidnight(now.value)))
 </script>

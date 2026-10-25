@@ -1,9 +1,4 @@
-/**
- * 灵脉效果行 —— 数字只从 perPoint / INSIGHT_DISCOUNT_PER_POINT 现算。
- *
- * 手写「p * 0.4」会在改每点加成那天变成谎话;「炼丹双成率」「炼器耗材」
- * 又和当前加成栏的词条名不是一套,同一张卡上左右对不上。
- */
+/** 灵脉效果行:数字只从 perPoint / INSIGHT_DISCOUNT_PER_POINT 现算;词条名与加成栏同一套 */
 import { formatPercent } from '@/utils/format'
 import { INSIGHT_DISCOUNT_CAP, INSIGHT_DISCOUNT_PER_POINT, INSIGHT_EFFECT_NAME, type VeinDef } from '@/data/veins'
 import { modsText } from '@/data/statNames'

@@ -14,7 +14,6 @@
     android:gravity="center"
     android:orientation="vertical">
 
-    <!-- 游戏标题 -->
     <TextView
       android:layout_width="wrap_content"
       android:layout_height="wrap_content"
@@ -24,7 +23,6 @@
       android:textStyle="bold"
       android:layout_marginBottom="8dp" />
 
-    <!-- 副标题 -->
     <TextView
       android:layout_width="wrap_content"
       android:layout_height="wrap_content"
@@ -33,14 +31,12 @@
       android:textSize="14sp"
       android:layout_marginBottom="32dp" />
 
-    <!-- 加载动画 -->
     <ProgressBar
       android:layout_width="32dp"
       android:layout_height="32dp"
       android:indeterminateTint="#c9554e"
       android:layout_marginBottom="12dp" />
 
-    <!-- 加载文字 -->
     <TextView
       android:layout_width="wrap_content"
       android:layout_height="wrap_content"
@@ -48,7 +44,7 @@
       android:textColor="#6b7280"
       android:textSize="12sp" />
 
-    <!-- 超时后显示的进入按钮 -->
+    <!-- 超时后显示 -->
     <TextView
       android:id="@+id/enterButton"
       android:layout_width="wrap_content"

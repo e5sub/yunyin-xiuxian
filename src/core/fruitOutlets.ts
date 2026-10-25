@@ -1,33 +1,15 @@
 /**
- * 道果非效率出口空间审计
- *
- * 轮回线已收尾:根因是道果同时承担「战力」与「修炼速度」两个职责,
- * 而只有后者闭合了跨世正反馈。处理方式是断开速度职责 ——
- * 但**光断不补**会把道果变成「无限增长 → 只堆战力 → 制造膨胀」。
- * 所以断边必须与「建立非效率类消费出口」配套。
- *
- * 本模块只回答三个问题,不设计具体兑换、不改数值:
- *
- *   1. 哪些出口**绝对不能**再进效率链?
- *      —— 要做成可判定的约束,而不是一张凭感觉列的禁止清单。
- *      判据是图可达性:该出口发放的东西,经任意跳数能否到达「轮回速度」。
- *
- *   2. 「消耗型 / 永久型」与「可复利 / 不可复利」是**两个正交维度**,
- *      此前一直被当成一个。区分清楚才知道理想出口长什么样。
- *
- *   3. 道果该不该被花掉?零消费会让任何阈值型出口最终失去决策意义。
+ * 道果非效率出口空间审计(不设计具体兑换、不改数值):
+ *   1. 哪些出口不能进效率链:判据为图可达性,经任意跳数能否到达「轮回速度」;
+ *   2. 「消耗型 / 永久型」与「可复利 / 不可复利」是两个正交维度;
+ *   3. 零消费会让阈值型出口失去决策意义。
  */
 import type { AnyStatKey } from '@/types'
 import { fruitAtLife } from './compoundingAudit'
 
 // ============ 一、效率链可达性 ============
 
-/**
- * 一个属性键抵达「轮回速度」的路径。
- *
- * 终点定义:**重修到下一次轮回所需的时间**。
- * 任何能压缩它的东西都会重建正反馈,无论中间隔了几跳
- */
+/** 属性键抵达「轮回速度」(重修到下一次轮回所需时间)的路径 */
 export interface ReachPath {
   key: AnyStatKey
   /** 到终点的跳数;1 表示直接影响耗时 */
@@ -36,7 +18,7 @@ export interface ReachPath {
   via: string
 }
 
-/** 直接压缩重修耗时的键(fullSecondsForMajor 的四个因子) */
+/** 直接压缩重修耗时的键(fullSecondsForMajor 的因子) */
 const DIRECT: readonly ReachPath[] = [
   { key: 'cultivationSpeed', hops: 1, via: '修为累积速度' },
   { key: 'expGain', hops: 1, via: '战斗修为 → 历练战胜所得' },
@@ -45,7 +27,7 @@ const DIRECT: readonly ReachPath[] = [
   { key: 'lifespanPct', hops: 1, via: '寿元 → 一世可用的修行时长' }
 ]
 
-/** 经战斗力抵达的键 —— 战斗更顺则历练更快,修为与掉落都来得更快 */
+/** 经战斗力抵达的键 */
 const VIA_COMBAT: readonly AnyStatKey[] = [
   'attackPct',
   'defensePct',
@@ -75,7 +57,7 @@ const VIA_COMBAT: readonly AnyStatKey[] = [
   'overhealShield'
 ]
 
-/** 经资源抵达的键 —— 资源换装备/丹药/建筑,最终仍回到战力或速度 */
+/** 经资源抵达的键 */
 const VIA_RESOURCE: readonly { key: AnyStatKey; via: string }[] = [
   { key: 'luck', via: '装备成色 → 装备 → 战力;小进阶另折入 5%' },
   { key: 'dropRate', via: '装备掉落率 → 装备 → 战力' },
@@ -102,10 +84,7 @@ export function reachesEfficiency(key: AnyStatKey): boolean {
 
 /**
  * 整个 StatMods 命名空间是否全部可达效率链。
- *
- * 这是本次审计最要紧的一条:**没有一个属性键是「安全」的**。
- * 因此禁止清单不该逐键去列,而应整类禁止 ——
- * 任何以 StatMods 形式发放的道果出口都会重建回路
+ * 结论:以 StatMods 形式发放的道果出口都会重建回路,须整类禁止。
  */
 export function statModsAllReachable(all: readonly AnyStatKey[]): boolean {
   return all.every(k => reachesEfficiency(k))
@@ -145,17 +124,12 @@ export interface OutletCandidate {
   payload: PayloadKind
   /** 是否重建效率回路 */
   rebuildsLoop: boolean
-  /** 是否已在项目里存在可挂载的系统 */
+  /** 是否已存在可挂载的系统 */
   hasHost: boolean
   note: string
 }
 
-/**
- * 候选出口。
- *
- * 注意 `rebuildsLoop` 与 `spend` 不相关 —— 这正是两个维度正交的证据:
- * 「一次性花掉」并不保证安全,若买到的是永久属性,回路照样闭合
- */
+/** 候选出口;rebuildsLoop 与 spend 不相关 */
 export const OUTLETS: OutletCandidate[] = [
   {
     id: 'permStat',
@@ -236,7 +210,6 @@ export function qualifiedOutlets(): OutletCandidate[] {
   return OUTLETS.filter(o => !o.rebuildsLoop)
 }
 
-/** 被否决的出口 */
 export function rejectedOutlets(): OutletCandidate[] {
   return OUTLETS.filter(o => o.rebuildsLoop)
 }
@@ -269,13 +242,7 @@ export interface BudgetRow {
   timesPrice: number
 }
 
-/**
- * 零消费下的余额曲线。
- *
- * 道果只进不出,余额随世代线性增长。任何**阈值型**出口
- * (「300 道果解锁 X」)在余额远超定价之后就不再构成选择 ——
- * 玩家不必权衡,只需等待
- */
+/** 零消费下的余额曲线(余额随世代线性增长) */
 export function budgetCurve(price: number, lives = 30): BudgetRow[] {
   const out: BudgetRow[] = []
   for (let life = 1; life <= lives; life += 1) {
@@ -285,7 +252,7 @@ export function budgetCurve(price: number, lives = 30): BudgetRow[] {
   return out
 }
 
-/** 一个定价 P 的阈值型出口,在第几世后余额超过它 n 倍(即失去权衡意义) */
+/** 定价 P 的阈值型出口在第几世余额超过它 n 倍(失去权衡意义) */
 export function trivialAtLife(price: number, times = 3, maxLives = 200): number {
   for (let life = 1; life <= maxLives; life += 1) {
     if (fruitAtLife(life) >= price * times) return life

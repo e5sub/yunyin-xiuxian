@@ -1,13 +1,10 @@
-/**
- * 生态健康度(Phase 25)—— 把散落各处的平衡指标汇成一个可跨版本比较的仪表盘
- * 不替代红线断言;红线管「不许坏」,健康度管「趋势如何」
- */
+/** 生态健康度:平衡指标汇成可跨版本比较的仪表盘;不替代红线断言 */
 import { BUILD_PROFILES } from './buildSim'
 
 export interface HealthInput {
   /** 各终局世界可行流派数(0~BUILD_PROFILES.length) */
   viablePerWorld: number[]
-  /** 各世界 次优/最优 通率比(0~1,越高越不塌缩) */
+  /** 各世界 次优/最优 通率比(0~1) */
   secondOverBest: number[]
   /** 随机构筑万金油率(破墙) */
   universalRate: number

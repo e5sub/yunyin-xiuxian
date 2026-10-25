@@ -1,4 +1,4 @@
-/** 属性中文名映射 —— 词条、面板、战报共用的唯一一份命名表 */
+/** 属性中文名映射 —— 词条、面板、战报共用的唯一命名表 */
 import { formatPercent } from '@/utils/format'
 import {
   CRIT_BASE,
@@ -9,12 +9,7 @@ import {
 } from '@/data/constants'
 import type { AffixRarity, AnyStatKey, StatMods } from '@/types'
 
-/**
- * 词条稀有度的名目与颜色(展示层)。
- *
- * 稀有度此前只在数据里参与加权抽取,界面上从没露过面;现在装备卡片按它排序上色,
- * 玩家才看得出「这一条是撞上的大运」还是「这条是搭头」。名目沿用本作的四档叫法。
- */
+/** 词条稀有度的名目与颜色(展示层;装备卡片按它排序上色) */
 export const AFFIX_RARITY_META: Record<AffixRarity, { name: string; color: string }> = {
   common: { name: '常见', color: 'var(--color-ink-faint)' },
   rare: { name: '稀有', color: 'var(--color-azure)' },
@@ -28,97 +23,50 @@ export const STAT_NAMES: Record<AnyStatKey, string> = {
   maxHpPct: '生命上限',
   critRate: '暴击率',
   critDamage: '暴击伤害',
-  /**
-   * 先手判定(speed)——这个名字必须与机制同形。
-   *
-   * 它是一条**阈值**:1 + 本项修正 ≥ 对手速度即抢先(见 core/combat.ts)。
-   * 从前叫「出手速度」,读起来像连续收益,于是「+6% 为什么还是后手」成了必然的困惑。
-   */
+  /** 阈值:1 + 本项修正 ≥ 对手速度即抢先(见 core/combat.ts)。不叫「出手速度」:读作连续收益 */
   speed: '先手判定',
   damageBonus: '伤害增幅',
   damageReduction: '伤害减免',
   cultivationSpeed: '修炼速度',
   qiRegen: '灵气恢复',
   /**
-   * 「进阶成功率」——**不是**大关成功率。
-   *
-   * 它只进 `breakthroughInfo` 的那一次掷点:每大境 9 次小进阶(一世约 180 次)。
-   * 大关(筑基起,含三个跨界入口)一律走天劫的逐波推演,压根不掷这个骰子
-   * (见 core/breakthrough 的 attemptBreakthrough 与 tribulationDecision)。
-   * 所以这条作用域是**恰好等于**小进阶的 —— 没有例外,不必带星号。
-   *
-   * 从前这里叫「突破成功率」,读起来像"万事皆管":玩家把「天命」「破境」堆满再
-   * 去渡大关,发现一点用没有 —— 那是名字在过度承诺,不是数值失效。
+   * 只作用于小进阶:`breakthroughInfo` 的那一次掷点。大关(筑基起,含三个跨界入口)走天劫逐波推演,不掷此骰
+   * (见 core/breakthrough 的 attemptBreakthrough 与 tribulationDecision)。不叫「突破成功率」:读作含大关。
    */
   breakthroughRate: '进阶成功率',
-  /**
-   * Equipment quality weights (equipGen) and 5% of this value folded into
-   * the minor-step rate (breakthroughInfo). It does not raise event odds.
-   */
+  /** 作用于装备品质权重(equipGen),另以本值的 5% 折入小进阶成功率(breakthroughInfo);不提高事件概率 */
   luck: '气运',
-  /**
-   * Divides EXPLORE_BATTLE_INTERVAL. Trip length is modeDef.durationSec
-   * (and pet exploreDurMult). Calling it 「历练速度」looks like a shorter walk.
-   */
+  /** 除 EXPLORE_BATTLE_INTERVAL;行程长度由 modeDef.durationSec(及灵兽 exploreDurMult)决定。不叫「历练速度」:读作缩短行程 */
   explorationSpeed: '历练遇敌',
   lifespanPct: '寿元上限',
-  /**
-   * loot.ts / offline explore only scale battle stone. Cave yield, events,
-   * salvage, and suppress ticks ignore this key.
-   */
+  /** 只放大战斗灵石(loot.ts / 离线历练);洞府产出、事件、分解、镇压产出不吃此项 */
   spiritStoneGain: '战利灵石',
-  /**
-   * loot.ts / offline.ts only multiply EQUIP_DROP_CHANCE.
-   * Stone, herb, ore, pages, and pills ignore this key — calling it
-   * 「掉落率」makes a title or weather day look like every bag fill.
-   */
+  /** 只乘 EQUIP_DROP_CHANCE(loot.ts / offline.ts);灵石、草、矿、残页、丹药不吃此项。不叫「掉落率」:读作全部掉落 */
   dropRate: '装备掉落率',
   expGain: '战斗修为',
-  /**
-   * pillService adds this to craftability.bonusChance for a second pill,
-   * then caps the roll at 0.8. It is not a 10% larger batch.
-   */
+  /** pillService 把它加进 craftability.bonusChance(再得一枚的概率),掷点封顶 0.8;不是产量 +10% */
   alchemyYield: '双枚成丹',
-  /**
-   * forge.equipUpgradeCost only. Artifact ritual, reforge, and crafting
-   * ignore this key — 「炼器减耗」read like the whole forge table.
-   */
+  /** 只作用于 forge.equipUpgradeCost;法宝祭炼、重铸、炼制不吃此项。不叫「炼器减耗」:读作整张炼器表 */
   forgeDiscount: '强化减耗',
   qiCapPct: '灵气上限',
   beastPct: '灵兽效果',
   armorPen: '破甲',
-  // 与 speed 分开命名:那个管「谁先出手」,这个管「首回合打得更重」(先发/雷霆词条)
-  /**
-   * Round-1 damage only (combat.ts factor on round === 1).
-   * It does not move the speed threshold.
-   */
+  /** 只增首回合伤害(combat.ts 中 round === 1),不改 speed 的先手阈值;先发/雷霆词条走此项 */
   firstStrike: '首回合伤害',
   counterRate: '反击概率',
   lifesteal: '吸血',
   shieldOnStart: '开战护盾',
   executeDamage: '处决伤害',
   regenPerRound: '回合回复',
-  /**
-   * Net dodge after subtracting attacker accuracy (combat.ts).
-   * Accuracy does nothing against a foe who does not dodge.
-   */
+  /** 扣除攻方命中后的净闪避(combat.ts);对不闪避的敌人,命中无用 */
   dodgeRate: '闪避',
   accuracy: '命中',
   lowHpReduction: '濒危减伤',
-  /**
-   * Fail path only: shrinks BT_FAIL_EXP_LOSS. Qi is spent before the roll
-   * and never comes back. The old name 「突破返还」read like a success rebate.
-   */
+  /** 只在失败时缩减 BT_FAIL_EXP_LOSS;灵气在掷点前已扣,不返还。不叫「突破返还」:读作成功返利 */
   breakRefund: '失败返还修为',
-  /**
-   * loot.afterWin rolls this once: stone, battle exp, herb/ore count,
-   * pages, extra equip tries. It is not "more item drops only".
-   */
+  /** loot.afterWin 掷一次:灵石、战斗修为、草/矿数量、残页、额外装备掷点一并翻倍;不只是多掉物品 */
   doubleDropRate: '双倍战利',
-  /**
-   * Multiplies EXPLORE_EVENT_CHANCE in exploreEventChance.
-   * Cave tours, bonds, and shop luck ignore this key.
-   */
+  /** 在 exploreEventChance 中乘 EXPLORE_EVENT_CHANCE;洞府巡游、道侣事件、坊市运气不吃此项 */
   eventLuck: '历练际遇',
   tribulationResist: '御劫',
   comboRate: '连击',
@@ -131,25 +79,16 @@ export const STAT_NAMES: Record<AnyStatKey, string> = {
   overhealShield: '溢疗成盾'
 }
 
-/** Every panel that lists mods walks this, so a new key cannot hide on the character sheet. */
+/** 列词条的面板统一遍历此表,新键不会在角色面板漏显 */
 export const STAT_KEYS = Object.keys(STAT_NAMES) as AnyStatKey[]
 
-/**
- * 把一组词条摊成一行人话。
- *
- * 功法分支的词条既在择道界面出现,也在悟道录里出现 ——
- * 两处若各写一份格式化,措辞迟早分叉。
- */
-/** Percent with an explicit sign. formatPercent already has a minus; do not prefix '+'. */
+/** 带符号百分比;formatPercent 负数自带负号,不再前缀 '+' */
 export function signedPercent(n: number): string {
   if (n < 0) return `-${formatPercent(Math.abs(n))}`
   return `+${formatPercent(n)}`
 }
 
-/**
- * Scope notes that belong on the number, not only in comments.
- * Titles, pills, weather, veins, and talent chips all read this map.
- */
+/** 数值旁的作用域注脚;称号、丹药、天气、灵脉、天赋标签共读此表 */
 const STAT_CAVEATS: Partial<Record<AnyStatKey, string>> = {
   breakthroughRate: '只入小进阶;大关天劫不与',
   luck: '主器物成色;小进阶另借此数半成',
@@ -202,6 +141,7 @@ export function statModPhrase(key: string, n: number): string {
   return `${name} ${statValueText(key, n)}`
 }
 
+/** 一组词条摊成一行;择道界面与悟道录共用,不另写格式化 */
 export function modsText(mods: StatMods): string {
   return Object.entries(mods)
     .map(([k, v]) => statModPhrase(k, v as number))

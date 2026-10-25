@@ -1,26 +1,18 @@
 /**
- * 灵兽性格服务(Phase 31.0 S4)
- *
- * 灵兽不只是数值加成:性格决定历练时的行为倾向。
- * 玩家选伙伴 = 选路线风格,而非单纯"哪个数值高"。
- *
- * 性格只动这四件事(见 EFFECTS,界面 petTraitText 同源):
- *   greedy 贪宝 —— 装备成色更好,遇险略高
- *   steady 慢稳 —— 行程更久,遇险略低,败北偶有护持
- *   fierce 好战 —— 遇险更高,成色略涨(不另加战斗修为或灵石)
- *   cautious 谨慎 —— 行程略短,遇险略低,成色稍降,败北更有护持
+ * 灵兽性格:决定历练时的行为倾向。
+ * 性格只动 EFFECTS 里四项;界面 petTraitText 同源。
  */
 import type { PetDef } from '@/types'
 import { petDef } from '@/data/pets'
 
 export interface PetPersonalityEffects {
-  /** 历练时长倍率(steady 更久) */
+  /** 历练时长倍率 */
   exploreDurMult: number
-  /** 危险率修正(fierce 更高) */
+  /** 危险率修正 */
   dangerMult: number
-  /** 掉落品质修正(greedy 更高) */
+  /** 掉落品质修正 */
   dropLuck: number
-  /** 战败率修正(cautious 更低) */
+  /** 战败率修正 */
   lossReduction: number
 }
 

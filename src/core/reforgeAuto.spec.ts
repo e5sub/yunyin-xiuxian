@@ -1,10 +1,7 @@
 /**
- * 自动重铸(玩家反馈:「一键快速重铸多次,且洗到指定词条就停,可指定数值范围」)。
- *
- * 判据与手动连点完全等价:逐次照常消耗/长技艺,只把提示合成一条。
- * rng 全 mock 成确定性(0.64 / 取池首项),于是「洗出哪个词条」可预测:
- *   - atk1(锋锐)在词条池最前,武器/无槽位限制 → 一次重铸必抽到它;
- *   - 0.64 够不着 >=0.9 那条线 → 带 minRoll 的高要求不会误触发。
+ * 自动重铸:逐次与手动连点等价,只把提示合成一条。
+ * mock 下 atk1(锋锐)在词条池最前、武器可用,一次重铸必抽到它;
+ * 0.64 够不着 0.9,带 minRoll 的高要求不会误触发。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -14,7 +11,7 @@ import { useLoreStore } from '@/stores/lore'
 import { autoReforge, refRoleMatches, reforgeCost } from './reforge'
 import { gn } from '@/utils/gnum'
 
-/** rng:重掷条数取区间下沿即可,词条取池中第一项,roll 恒 0.64 */
+/** rng:条数取区间下沿,词条取池中第一项,roll 恒 0.64 */
 vi.mock('@/utils/random', async importOriginal => {
   const mod = await importOriginal<typeof import('@/utils/random')>()
   return {
@@ -84,7 +81,7 @@ describe('自动重铸', () => {
   it('带最低 roll 的目标:命中线过了才算(0.9 的要求对 0.64 不出手)', () => {
     giveWealth()
     const uid = forgeWeapon()
-    // atk2 已封存保留,但 roll 恒 0.5/0.64,够不着 0.9
+    // atk2 已封存保留,roll 恒 0.5/0.64,够不着 0.9
     const out = autoReforge(uid, [{ affixId: 'atk2', minRoll: 0.9 }], 3)
     expect(out.stop, '0.64 够不着 0.9,应撞预算').toBe('budget')
     expect(out.rolls).toBe(3)
@@ -102,7 +99,7 @@ describe('自动重铸', () => {
 
   it('灵石见底:洗到没钱就停,不负债', () => {
     const uid = forgeWeapon()
-    // 只给刚好一次重铸的灵石;目标 atk1 洗不出(它还没有),于是下一轮就撞墙
+    // 只给刚好一次重铸的灵石;目标洗不出,下一轮就撞墙
     const item = useInventoryStore().findItem(uid)!
     const cost = reforgeCost(item)!
     useResourcesStore().addStone(cost.stone)

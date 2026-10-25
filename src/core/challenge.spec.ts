@@ -1,17 +1,7 @@
 /**
- * 相元挑战(challenge.ts)—— undertakeChallenge 清/败原子守卫。
- *
- * 此前的零覆盖审计发现 undertakeChallenge(自 challenge)不被任何 spec 直接触碰:
- * verifyChallenge 只在 r293 的今日天道 spec 里走过校验定价,真正的「立约应战」路径
- * (扣入场费 → 真刀真枪打 → 赏/记谱)无人看守。任何一个让「未清也发奖」或
- * 「入场费不扣」的回归都会沉默通过 CI。
- *
- * 刻意不 mock 战斗(避免压弱 celestialStats,同 trialChallenge 惯例):走真实 combat,
- * 用「顶配清/裸装败」的极大战力差驱动确定性的清/败两案。
- *
- * 草案选用 chiyan(赤炎天)无变数:经天道裁判(verifyChallenge)判定 ok、
- * 报酬有限为正;真仙(major 9,ENDGAME 门槛)裸装必败、一身混沌顶配必清
- * (same 极大战力差惯例 as expedition 败战即结;实测跨随机状态 20/20 稳定)。
+ * 相元挑战(challenge.ts):undertakeChallenge 清/败原子守卫。
+ * 不 mock 战斗(避免压弱 celestialStats,同 trialChallenge 惯例),走真实 combat。
+ * 草案 chiyan 无变数:真仙裸装必败、一身混沌顶配必清(实测跨随机状态 20/20 稳定)。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -38,7 +28,7 @@ describe('相元挑战 · undertakeChallenge 清/败原子', () => {
   function seed(topGear: boolean): void {
     const player = usePlayerStore()
     player.initCharacter('挑战自检', { roots: [{ element: 'wood', aptitude: 90 }] } as never)
-    // 真仙 = WORLD_BREAK_MAJOR = 9(endgame 门槛),裸装空属性战力必败赤炎天
+    // 真仙 = WORLD_BREAK_MAJOR = 9(endgame 门槛)
     player.major = 9
     player.sub = 0
     if (topGear) {
@@ -71,7 +61,6 @@ describe('相元挑战 · undertakeChallenge 清/败原子', () => {
     expect(out).not.toBeNull()
     expect(out!.report.cleared, '顶配应清, fw=' + out!.report.fightsWon).toBe(true)
     expect(out!.rewardDaoSource).toBe(verdict.reward)
-    // 原子:入场费 -15,奖 +rewardDaoSource
     expect(before - e.daoSource).toBe(CHALLENGE_ENTRY_COST - verdict.reward)
     expect(e.records.best_custom?.value).toBe(verdict.reward)
     expect(e.milestones.some(m => m.id === 'first_custom'), '清约应记 first_custom 里程碑').toBe(true)
@@ -94,7 +83,7 @@ describe('相元挑战 · undertakeChallenge 清/败原子', () => {
   it('道源不足：不进战斗、不扣账、返回 null', () => {
     seed(true)
     const e = useEndgameStore()
-    e.daoSource = 10 // 入场费 15，不够
+    e.daoSource = 10 // 入场费 15
     const verdict = verifyChallenge(DRAFT)!
     const before = e.daoSource
     const out = undertakeChallenge(DRAFT, verdict)

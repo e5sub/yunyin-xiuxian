@@ -1,10 +1,5 @@
 /**
- * 突破 / 渡劫 —— 端到端判据(门槛 → 结算 → 境界 / 资源 / 代价)
- *
- * 突破是玩家走得最频繁的一条主干:修为攒满、灵气付得起,才谈得上冲境。
- * 这里守的是**账**:门槛不满足时一分不动;结算之后境界、灵气、修为、
- * 伤与计数各自落在该在的地方;失败要真的疼(掉修为 + 疗伤),成功要真的进境。
- *
+ * 突破 / 渡劫端到端判据:门槛不满足时一分不动;结算后境界、灵气、修为、伤与计数各归其位。
  * 随机源固定:0 → 概率判定皆成、天雷取最小伤害;0.999 → 皆不成、天雷取最大伤害。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -28,7 +23,7 @@ import { ACHIEVEMENTS } from '@/data/achievements'
 import { MAIN_QUESTS } from '@/data/quests'
 import { toNum } from '@/utils/gnum'
 
-/** 一次性赏钱先结清:成就要发的灵石/悟道点混进来,账就不好看了(它们另有判据) */
+/** 一次性赏钱先结清,免得成就的灵石/悟道点混进账 */
 function settleRewards(): void {
   useQuestsStore().$patch({ achieved: ACHIEVEMENTS.map(a => a.id), mainIdx: MAIN_QUESTS.length - 1 })
 }
@@ -111,7 +106,7 @@ describe('突破 · 小关(无劫)', () => {
       cultivation.buffs.some(b => b.defId === 'injury'),
       '突破失败该留下伤势'
     ).toBe(true)
-    // 掉的是「一成修为 ×(1 − 退返)」,没有退返词条时就是 BT_FAIL_EXP_LOSS
+    // 无退返词条时掉 BT_FAIL_EXP_LOSS
     expect(toNum(player.exp) / expBefore).toBeCloseTo(1 - BT_FAIL_EXP_LOSS, 3)
   })
 

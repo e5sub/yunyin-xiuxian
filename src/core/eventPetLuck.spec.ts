@@ -1,8 +1,4 @@
-/**
- * 际遇/机缘掉装备 —— 品质 luck 与战斗/离线掉落同源,并入灵兽性格掉落倾向(dropLuck)。
- * 此前事件路径只带 mods.luck,漏了性格:贪宝宠物让战斗/离线装备更易稀出,
- * 事件杯装备却不受影响 —— 同一只宠物,两套运气。
- */
+/** 际遇/机缘掉装备:品质 luck 与战斗/离线掉落同源,含灵兽性格掉落倾向(dropLuck) */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { EventDef } from '@/types'
@@ -38,7 +34,7 @@ describe('际遇/机缘掉装备并入灵兽性格掉落倾向(dropLuck)', () =>
     if (petId) player.setPet(petId)
   }
 
-  /** 品质 luck 里还叠着命格等常驻底色 —— 这里钉的是「性格贡献了多少」 */
+  /** 扣除命格等常驻底色,只量性格贡献 */
   function luckExceptFate(): number {
     const call = vi.mocked(generateEquipment).mock.calls.at(-1)!
     const kwargs = call[2] as { luck: number; minQualityRank: number } | undefined

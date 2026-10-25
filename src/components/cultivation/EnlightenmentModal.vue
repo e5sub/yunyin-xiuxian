@@ -8,15 +8,8 @@ import type { EnlightenmentEvent } from '@/types'
 import BaseModal from '@/components/common/BaseModal.vue'
 
 /*
- * 顿悟弹窗 —— 曾经是自己铺的一层 fixed inset-0。
- *
- * 那样写有三个代价,而它们都不会在界面上露馅:没有 role=dialog / aria-modal
- * (读屏不知道有弹窗开了)、没有焦点管理(打开后焦点还在背后的按钮上,Tab 会跑出去)、
- * 样式也自成一套(font-bold/text-sm/rounded,与本作的水墨设计系统两回事)。
- * 全屏浮层只该有一个出处 —— 故改用 BaseModal:语义、焦点、Esc/背板关闭、
- * 以及排版自检里那两条尺子(控件要有名、不小于 28px)一并继承。
- *
- * 倒计时的口径不变:秒数每秒刷一次,到点由引擎自己收场;「忽略」= 关掉即散。
+ * 顿悟弹窗:全屏浮层只走 BaseModal(语义、焦点、Esc/背板关闭、排版自检尺子一并继承)。
+ * 倒计时每秒刷一次,到点由引擎收场;「忽略」= 关掉即散。
  */
 const event = ref<EnlightenmentEvent | null>(null)
 const remaining = ref(0)
@@ -42,7 +35,7 @@ onMounted(() => {
   refresh()
 })
 
-// 轮询随心跳冻结:确认窗背后不该再叠一扇机缘窗(与 useNow 同一条口径)
+// 轮询随心跳冻结(与 useNow 同一条口径)
 useGameClock(refresh, 1000)
 
 const show = computed(() => event.value !== null)

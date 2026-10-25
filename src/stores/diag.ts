@@ -1,17 +1,9 @@
 /**
- * 异常留档 —— 最近若干条未捕获异常,供玩家复制、供我们定位
+ * 异常留档 —— 最近若干条未捕获异常,供玩家复制、供定位
  *
- * 为什么要有它:全局 errorHandler 从前只 `console.error` + toast「出现异常,已记录」——
- * 「已记录」是句空话(手机上根本没有控制台)。玩家来报「刚才卡了一下」时,
- * 我们手上什么都没有,只能反推;而未处理的 Promise 拒绝连 toast 都没有,完全静默。
- *
- * 三条取舍:
- *  · **独立分片**(与 pacing 遥测同理):它不是游戏进度,清档之外不该跟着转世走,
- *    但必须随「导出存档」一起带出 —— 那正是玩家把问题交给我们时唯一会走的通路;
- *  · **只记摘要**:时间 / 来源(Vue 的 info 或 unhandledrejection)/ 摘要 / 当时路由 / 次数,
- *    不记调用栈也不记玩家数据 —— 留档是给人看的线索,不是全量日志;
- *  · **同一条连发只加计数**:挂机时同一条异常可能每秒一次,不这样做会把 20 格刷满,
- *    真正有用的第一条反而被挤出去。
+ * - 独立分片(同 pacing 遥测):不随转世清,须随「导出存档」带出
+ * - 只记摘要,不记调用栈与玩家数据
+ * - 相邻同条只加计数:连发会刷满格子,挤掉第一条
  */
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
@@ -31,12 +23,12 @@ interface DiagEntry {
   count: number
 }
 
-/** 只留最近这么多条:够定位一次问题,又不至于把存档撑大 */
+/** 只留最近这么多条 */
 export const DIAG_MAX = 20
 /** 单条摘要长度上限 */
 export const DIAG_MESSAGE_MAX = 200
 
-/** 把任意异常值压成一行摘要(不记调用栈,不留原始对象) */
+/** 任意异常值 → 一行摘要 */
 export function summarizeError(err: unknown): string {
   if (err instanceof Error) return `${err.name}: ${err.message}`.slice(0, DIAG_MESSAGE_MAX)
   if (typeof err === 'string') return err.slice(0, DIAG_MESSAGE_MAX)
@@ -50,10 +42,10 @@ export function summarizeError(err: unknown): string {
 export const useDiagStore = defineStore(
   'diag',
   () => {
-    /** 由旧到新排列(最后一条是最近一次) */
+    /** 由旧到新排列 */
     const errors = ref<DiagEntry[]>([])
 
-    /** 存档修复:分片被写坏(非数组 / 数组里塞垃圾 / 字段类型不对)时修回可用值 */
+    /** 存档修复:分片坏了修回可用值 */
     function sanitize(): void {
       errors.value = asArray<DiagEntry>(errors.value, [], e => !!e && typeof (e as DiagEntry).message === 'string')
         .map(e => ({
@@ -67,12 +59,9 @@ export const useDiagStore = defineStore(
     }
 
     function record(input: { info: string; message: string; route?: string; at?: number }): void {
-      // 诊断自身绝不许再抛:分片被写坏时先自修(记录异常的那一行,不该成为第二个异常)
+      // 诊断自身不许抛:分片坏了先自修
       if (!Array.isArray(errors.value)) sanitize()
-      /*
-       * 入参同样来自运行期(全局 errorHandler / unhandledrejection),
-       * 不能假设它一定是对象或字段类型正确:诊断自身抛错比不记录更糟。
-       */
+      // 入参来自运行期,不能假设其形状
       const raw = input !== null && typeof input === 'object' ? input : null
       const rawAt = raw?.at
       const at = typeof rawAt === 'number' && Number.isFinite(rawAt) && rawAt >= 0 ? rawAt : Date.now()

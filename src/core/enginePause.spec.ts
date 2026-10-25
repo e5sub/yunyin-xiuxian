@@ -1,10 +1,4 @@
-/**
- * 心跳暂停的墙上时钟 —— 暂停期间「现在」必须冻住。
- *
- * 暂停只发生在重置 / 导入确认窗。若到期判定继续读真实时钟,确认窗背后
- * Buff 会过期、卦会散、区域事件会翻篇、突破准备会自己就绪 —— 玩家看到的是
- * 「我没点它自己动了」。这组用例把冻结、幂等与恢复三条契约钉死。
- */
+/** 心跳暂停的墙上时钟:钉冻结、幂等、恢复三条契约 */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { enginePaused, gameNow, pauseElapsedMs, setEnginePaused } from './enginePause'
 

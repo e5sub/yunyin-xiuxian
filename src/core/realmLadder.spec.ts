@@ -45,19 +45,13 @@ describe('仙路旅途 · 21 境刻度', () => {
   })
 
   /**
-   * 无障碍标签里的境数要从刻度的**真实长度**来,不许写死「21」。
-   *
-   * 读屏用户听到的境数与实际格子数必须是同一个数:刻度本身读 `REALMS`
-   * (`realmLadderPoints` 逐境映射),加一境、减一境它自己会长会缩,
-   * 而标签里那个数字从前停在原处。看得见的人永远不会发现这件事。
-   *
-   * 故障注入:把 RealmLadder.vue 的 aria-label 改回写死「仙路 21 境」→ 本条红。
+   * 无障碍标签的境数从刻度真实长度现算,不写死「21」。
+   * 故障注入:把 RealmLadder.vue 的 aria-label 改成写死「仙路 21 境」,本用例红。
    */
   it('无障碍标签里的境数与刻度同长', () => {
     const vue = readFileSync(resolve(__dirname, '../components/cultivation/RealmLadder.vue'), 'utf8')
     expect(vue, '境数要从 points 现算,不写死').toMatch(/aria-label="`仙路 \$\{cnNumber\(realmsCount\)\} 境`"/)
     expect(vue, 'realmsCount 要读 points 的长度').toContain('const realmsCount = computed(() => points.value.length)')
-    // 模板里不许再出现写死的「21 境」
     expect(vue, '又把境数写死进了标签').not.toMatch(/仙路\s*21\s*境/)
   })
 })
@@ -75,7 +69,6 @@ describe('仙路旅途 · 界段', () => {
     const ws = realmLadderWorlds()
     // 段 (0,8)/(9,13)/(14,17)/(18,20) 中点折算:((a+b)/2+0.5)/21×100
     expect(ws.map(w => w.centerPct).map(v => Math.round(v))).toEqual([21, 55, 76, 93])
-    // 单调递增,且都在刻度内(0~100)
     for (let i = 1; i < ws.length; i++) expect(ws[i]!.centerPct).toBeGreaterThan(ws[i - 1]!.centerPct)
     expect(ws[0]!.centerPct).toBeGreaterThan(0)
     expect(ws[ws.length - 1]!.centerPct).toBeLessThan(100)

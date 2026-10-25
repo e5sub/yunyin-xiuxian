@@ -147,7 +147,7 @@ describe('重铸动作 · 条数与数值一起重掷', () => {
       sealedAffixIds: ['atk1']
     }
     setup(inst)
-    // 把新掷点钉成一个一眼可辨的值:未封存的那几条若还带着从前的 0.2/0.3,就说明没重掷
+    // 新掷点钉成 0.99:未封存的若仍是 0.2/0.3 即没重掷
     vi.spyOn(rng, 'weighted').mockImplementation(((items: readonly unknown[]) => items[0]) as never)
     vi.spyOn(rng, 'next').mockReturnValue(0.99)
     expect(reforgeEquipment('sealed-keep')).toBe(true)
@@ -179,7 +179,6 @@ describe('重铸动作 · 条数与数值一起重掷', () => {
     expect(reforgeEquipment('one-slot')).toBe(true)
     const after = useInventoryStore().findItem('one-slot')!
     const [min, max] = qualityDef('excellent').affixes
-    // 条数按品质区间重掷(精品 2~3),但封存的那条一定还在、且至少补一条新的
     expect(after.affixes.length).toBeGreaterThanOrEqual(min)
     expect(after.affixes.length).toBeLessThanOrEqual(max)
     expect(after.affixes.some(a => a.id === 'atk1')).toBe(true)
@@ -250,10 +249,7 @@ describe('重铸动作 · 条数与数值一起重掷', () => {
     expect(sealShortfall({ ...inst, sealedAffixIds: ['atk1'] })).toBeNull()
   })
 
-  /**
-   * 缺哪一样就报哪一样(议题 #130 同族):灵石来自历练与悬赏,器灵尘来自分解,
-   * 两条去路相反。一句「灵石或器灵尘未足」会把玩家指得两头都跑。
-   */
+  /** 缺哪一样就报哪一样(议题 #130 同族) */
   it('缺料分得清灵石与器灵尘,提示不再两头都说', () => {
     const inst: EquipmentInstance = { ...base, uid: 'short' }
     useInventoryStore().items = [inst]
@@ -292,17 +288,14 @@ describe('重铸动作 · 条数与数值一起重掷', () => {
     const res = useResourcesStore()
     res.addStone(gn(1e30))
     res.addSmall('dust', 0)
-    // 目标不能选它已有的那条 —— 否则首轮就命中,压根走不到缺料那一支
+    // 目标须是它没有的那条,否则首轮命中,走不到缺料那一支
     const out = autoReforge('auto-short', [{ affixId: 'hp1' }], 10)
     expect(out.stop).toBe('broke')
     expect(out.rolls).toBe(0)
     expect(out.short).toBe('dust')
   })
 
-  /**
-   * 首炉缺料若只写「未足」,面板上却已算得出器灵尘尚差 N —— 同一笔账两套口径。
-   * 故障注入:把 useAutoReforge 的 gap 改回不传 / 固定写「未足」→ 本条红。
-   */
+  /** 故障注入:把 useAutoReforge 的 gap 改成不传 / 固定写「不足」,本用例红 */
   it('自动重铸首炉缺料回执写出实际差额', () => {
     const inst: EquipmentInstance = { ...base, uid: 'auto-short-receipt' }
     useInventoryStore().items = [inst]
@@ -376,8 +369,7 @@ describe('封存 ↔ 解封 · 循环可逆', () => {
 })
 
 describe('界面与判定同源 · 条数上限不写死', () => {
-  // 自动重铸整体拆出后判据随本体走:预算与结账在 composable,输入框与「至多花销」按钮在面板。
-  // 宿主 + 两处合扫,防拆分后只查宿主假绿。
+  // 预算与结账在 composable,输入框与「至多花销」按钮在面板;宿主与各处合扫,防只查宿主假绿
   const dialog =
     readFileSync(resolve(__dirname, '../components/equipment/EquipmentDetailDialog.vue'), 'utf8') +
     readFileSync(resolve(__dirname, '../components/equipment/AutoReforgePanel.vue'), 'utf8') +
@@ -390,10 +382,7 @@ describe('界面与判定同源 · 条数上限不写死', () => {
     expect(dialog, '不该再出现「重铸次数 x/10」这类写死的分母').not.toMatch(/重铸次数\s*\{\{/)
   })
 
-  /**
-   * 付不起时两个重铸钮都该置灰,并把缺口写出来。
-   * 故障注入:删掉任一处 :disabled、或退回 click-then-toast → 本条红。
-   */
+  /** 故障注入:删掉任一处 :disabled、或改成 click-then-toast,本用例红 */
   it('重铸入口与确认钮都按缺口置灰,并就地写出尚差多少', () => {
     const footer = readFileSync(resolve(__dirname, '../components/equipment/EquipReforgeFooter.vue'), 'utf8')
     expect(footer, '入口钮按缺口置灰').toMatch(/v-if="reforgeCostVal"[\s\S]*?:disabled="reforgeShortVal\?\.short != null"/)
@@ -421,23 +410,18 @@ describe('界面与判定同源 · 条数上限不写死', () => {
 
   /**
    * 自动重铸的预算上限只许有一处(AUTO_REFORGE_MAX_BUDGET)。
-   *
-   * 从前 500 有三份:输入框 `max="500"`、执行路径 `Math.min(500, …)`、
-   * 以及「至多花销」预览(它没夹取)。手输 800 → 预览按 800 报、执行只洗 500,
-   * 玩家按虚高的账做决定。故障注入:把预览改回用 autoBudget 原值 → 末条红。
+   * 故障注入:把预览改成用 autoBudget 原值,末条红。
    */
   it('自动重铸预算:上限单源,预览与执行都走 autoReforgeBudget', () => {
     expect(dialog, '输入框上限读具名常量,不写死 500').toContain(':max="AUTO_REFORGE_MAX_BUDGET"')
     expect(dialog, '执行路径走归一 helper').toContain('autoReforgeBudget(autoBudget.value)')
-    // 预览 computed(autoMaxCost)必须也用归一后的预算 —— 独立抓这一段,
-    // 别让「执行那行还在」把预览侧的漂移掩盖过去
+    // 单独截预览段(autoMaxCost),免得执行那行掩盖预览侧的漂移
     const flow = readFileSync(resolve(__dirname, '../composables/useAutoReforge.ts'), 'utf8')
     const preview = flow.slice(flow.indexOf('const autoMaxCost'), flow.indexOf('watch([autoTargets, autoBudget]'))
     expect(preview, '预览须走 autoReforgeBudget,不拿 autoBudget 原值虚报花销').toContain(
       'autoReforgeBudget(autoBudget.value)'
     )
     expect(preview, '预览不许直接把 autoBudget 原值当次数').not.toMatch(/Math\.max\(0,\s*autoBudget/)
-    // 归一 helper 内部也必须读具名常量,别在 core 里又内联一份 500
     const core = readFileSync(resolve(__dirname, './reforge.ts'), 'utf8')
       .split('\n')
       .filter(line => !line.trim().startsWith('*') && !line.trim().startsWith('//'))

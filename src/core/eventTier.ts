@@ -1,22 +1,8 @@
 /**
  * 历练三档触发 —— 际遇 / 机缘 / 奇缘
  *
- * 这三种东西都会在历练途中弹同一个窗,从前它们**长得一模一样**:
- * 标题一律「际遇」,没有档位、没有稀有度、没有概率,玩家根本不知道自己撞上的是
- * 日常小事、一个稀有到千分之几的大机遇,还是自己那条缘的下一程。
- * 于是「机缘」这个低概率高价值的内容在体感上等于普通事件 —— 白做了一套稀有度。
- *
- * 本文件是这三档的**唯一口径**:谁属于哪一档、每档叫什么、稀到什么程度、
- * 界面该染什么色,全部从这里取。事件引擎(选谁)、弹窗(怎么讲)、审计(梯级对不对)
- * 都读同一份,不许在别处再写一份「ft_ 开头是机缘」的判据。
- *
- * 触发顺序(见 core/eventEngine.pickEventFor)决定了一个天然稀度梯级:
- *   一次遭遇先掷「是否出事」→ 出事才在奇缘 / 机缘 / 际遇池里取一个。
- * 所以三档的每程期望次数是**乘出来的**,不是三个独立数字:
- *   际遇 = 1 / p(出事)
- *   奇缘 = 1 / (p(出事) × p(缘起))
- *   机缘 = 1 / (p(出事) × p(奇遇))
- * 这条乘法关系写在 tierEncountersPerTrigger 里,由 eventTier.spec 守着梯级不许倒挂。
+ * 三档的唯一口径:归属、名称、稀度、界面色都从这里取;别处不许再写「ft_ 开头是机缘」的判据。
+ * spec 钉:eventTier.spec(梯级不许倒挂)。
  */
 import { CHAIN_STAGE_CHANCE, EXPLORE_EVENT_CHANCE, FORTUNE_CHANCE } from '@/data/constants'
 import { chainOfEvent } from '@/data/chains'
@@ -69,12 +55,7 @@ export function eventTierDef(id: EventTier): EventTierDef {
   return BY_ID.get(id) ?? EVENT_TIERS[0]!
 }
 
-/**
- * 这个事件属于哪一档 —— 判据只有两条,且都取自各自的真相源:
- *   奇缘:链条表认得它(core/chains.chainOfEvent)
- *   机缘:机缘池登记的 ft_ 前缀(id 前缀是这批事件自己的身份,见 data/events)
- * 其余一律是际遇。
- */
+/** 事件所属档位;ft_ 是机缘池事件的 id 前缀(见 data/events) */
 export function eventTierOf(eventId: string): EventTier {
   if (chainOfEvent(eventId)) return 'qiyuan'
   if (eventId.startsWith('ft_')) return 'jiyuan'
@@ -82,21 +63,11 @@ export function eventTierOf(eventId: string): EventTier {
 }
 
 /**
- * 一次遭遇里各档的触发概率 —— **逐字复刻引擎的掷法**(eventEngine.pickEventFor):
- *
- *   1. 先看这一程出不出事:EXPLORE_EVENT_CHANCE。不出事就什么都没有。
- *   2. 出事后先掷奇缘:CHAIN_STAGE_CHANCE 的闸门,**且必须真有该走的下一程**
- *      (缘未起 / 已走完时这扇门是关的)—— 这时 chain 取 0。
- *   3. 没走奇缘才掷机缘:FORTUNE_CHANCE,且该区域的机缘池非空。
- *   4. 剩下的都是际遇。
- *
- * 从前这里写成「三档各自 = 出事概率 × 各自的数」,把三档当成互斥抽取 ——
- * 于是三档概率之和 0.211 大于「出事」本身的 0.16,数学上就不可能成立:
- * 公告的「际遇约每 6 程」实际是「每 6.4 程会出一次事」,出的事里还有三成是奇缘。
- * 现在按闸门顺序算,并且**把"有没有缘在续"当成入参**(它本来就改变答案):
- *   无缘在续 → 际遇 ≈ 每 6.4 程 · 机缘 ≈ 每 319 程 · 奇缘 不出现
- *   有缘在续 → 际遇 ≈ 每 9.1 程 · 奇缘 ≈ 每 20.8 程 · 机缘 ≈ 每 446 程
- * 判据 eventTier.spec 用真引擎做蒙特卡洛对账,两边不许分叉。
+ * 一次遭遇里各档的触发概率,须与 eventEngine.pickEventFor 的掷法逐步一致:
+ *   出事(EXPLORE_EVENT_CHANCE)→ 奇缘(CHAIN_STAGE_CHANCE,仅有下一程可走时,否则取 0)
+ *   → 机缘(FORTUNE_CHANCE,区域机缘池非空)→ 其余为际遇。
+ * 不得写成「各档 = 出事概率 × 各自的数」的互斥抽取:三档之和会超过出事概率。
+ * spec 钉:eventTier.spec 用真引擎做蒙特卡洛对账。
  */
 export function tierChances(stagePending: boolean, anyChance = EXPLORE_EVENT_CHANCE): Record<EventTier, number> {
   const any = anyChance
@@ -108,7 +79,7 @@ export function tierChances(stagePending: boolean, anyChance = EXPLORE_EVENT_CHA
   }
 }
 
-/** 折成「平均多少程遭遇才见一次」—— 玩家真正读得懂的量级(0 = 这一档此刻不出现) */
+/** 折成「平均多少程遭遇见一次」 */
 export function tierEncountersPerTrigger(tier: EventTier, stagePending: boolean, anyChance = EXPLORE_EVENT_CHANCE): number {
   const p = tierChances(stagePending, anyChance)[tier]
   return p > 0 ? 1 / p : Number.POSITIVE_INFINITY

@@ -1,30 +1,8 @@
 /**
- * 逆旅契(道果的第一个非效率出口)
- *
- * ## 它要解决什么
- *
- * 道果此前只进不出:无限积累、零消费,且自动汇入修炼速度与战力。
- * 出口空间审计已经把边界钉死 —— **发放物不得属于 StatMods 命名空间,
- * 也不得是可兑换成它的资源**,否则回路只是多绕两跳又接回来。
- *
- * 逆旅契是按这条约束造出的第一个出口:
- *
- *   花道果 → 为这一世签一份只加难度的契 → 本世历练全程生效
- *          → 转世时记入履历 → 记录不进任何计算
- *
- * ## 为什么回报只能是「记录」
- *
- * 这不是保守,是判据推出来的唯一解。逐条试过:
- *   给属性   → 直接落在 StatMods 里
- *   给资源   → 灵石换强化换战力,三跳回环
- *   给宿慧   → 宿慧进 aptitudeFloorNow,资质进 growthMult,再进 cultivationSpeed
- *   给道果   → 自供能循环,道果生道果
- * 四条路全被堵死,剩下的只有「这一世确实与众不同,且它被记住了」。
- *
- * ## 只许加难,不许减难
- *
- * 契约施加的是 CombatRules。规则本身若让战斗变容易,等价于给了效率 ——
- * 所以每一条都必须是纯逆境,由 isPurelyAdverse 强制校验。
+ * 逆旅契:道果的非效率出口。花道果为本世签一份只加难的契,本世历练全程生效,转世记入履历;记录不进任何计算。
+ * 出口空间审计:发放物不得属于 StatMods 命名空间,也不得是可兑换成它的资源。
+ * 回报只能是记录:属性直落 StatMods;资源(灵石→强化→战力)、宿慧(aptitudeFloorNow→growthMult→cultivationSpeed)绕回;道果自供能。
+ * 契约施加 CombatRules,每条须纯逆境(isPurelyAdverse 校验);减难即等于给效率。
  */
 import type { CombatRules, StatMods } from '@/types'
 import { MAX_COMBAT_ROUNDS } from '@/data/constants'
@@ -34,7 +12,7 @@ export interface LifeTrialState {
   trialId: string
   /** 签约时刻 */
   at: number
-  /** 实付道果 —— 记账用,不参与任何计算 */
+  /** 实付道果;只记账,不参与计算 */
   paid: number
 }
 
@@ -53,11 +31,7 @@ export interface LifeTrialDef {
   rules: CombatRules
 }
 
-/**
- * 定价说明:金丹圆满转世一次凝 21 枚道果。
- * 故最低一档约合一世所得,最高一档需攒三世 ——
- * 让「签不签」在头几世就是真问题,而不是等余额自然淹没
- */
+/** 定价:金丹圆满转世一次凝 21 枚道果;最低一档约合一世所得,最高一档需攒三世 */
 export const LIFE_TRIALS: LifeTrialDef[] = [
   {
     id: 'tr_gu',
@@ -117,8 +91,7 @@ export function adverseViolations(rules: CombatRules): string[] {
   lte(rules.healMult, 1, 'healMult')
   lte(rules.shieldCapRatio, 1, 'shieldCapRatio')
   lte(rules.playerStartHpPct, 1, 'playerStartHpPct')
-  // 回合上限只能压到「战斗真实默认」以内——压得比 50 低是更难(合法),高于 50 才是减难。
-  // 曾用自拟的 40 作界,把 41~50 这段「比默认更严」的合法努力型契约误判成减难、永久拒签。
+  // 回合上限以战斗真实默认为界,高于默认才是减难;另拟更小的界(如 40)会把 41~50 的合法契约误判成减难
   lte(rules.maxRounds, MAX_COMBAT_ROUNDS, 'maxRounds')
   // 属性修正:给玩家的只能是负数,给敌人的只能是正数
   const scan = (mods: StatMods | undefined, sign: 1 | -1, name: string): void => {
@@ -128,7 +101,6 @@ export function adverseViolations(rules: CombatRules): string[] {
   }
   scan(rules.playerExtraMods, 1, 'playerExtraMods')
   scan(rules.enemyExtraMods, -1, 'enemyExtraMods')
-  // perRounds 是长生印那类增益结构,契约不许携带
   if (rules.perRounds) bad.push('perRounds 是增益结构,契约不得携带')
   return bad
 }

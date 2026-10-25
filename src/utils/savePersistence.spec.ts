@@ -1,21 +1,9 @@
 /* eslint-disable no-console -- 写盘频次审计需要打印读数 */
 /**
- * 存档写入频次与完整性
- *
- * 玩家反馈:手机越玩越烫。实测根因之一是**写盘频次**:
- * 引擎每秒推进修为、灵气、洞府产出,而 pinia-plugin-persistedstate
- * 默认对每次 store 变更同步落盘 —— 仅 game/player/resources 三片就是
- * 每秒 3 次「JSON 序列化 + 全片 AES 加密 + 主线程同步磁盘写」,
- * 真实游玩再加上 adventure/dongfu/quests 会到 4~6 次。挂机一天约 26 万次。
- * crypto-js 是纯 JS 实现,localStorage.setItem 在 Android WebView 上又是
- * 同步落盘,两者叠加就是持续发热。
- *
- * 改为定期批量刷盘之后,这里钉的是两条不能各自成立的不变量:
- *
- *   **写盘频次有上界**(否则又会烫回去)
- *   **且落盘内容必须正确、不丢、不被回写**(否则省下的电是拿存档换的)
- *
- * 只测前者会退化成「写得越少越好」,把不写档也判成通过 —— 故两条必须同测。
+ * 存档写盘频次与完整性。
+ * pinia-plugin-persistedstate 默认每次 store 变更同步落盘(序列化 + AES + 主线程同步写),
+ * Android WebView 上持续发热;须定期批量刷盘。
+ * 两条不变量须同测:写盘频次有上界;落盘内容正确、不丢、不被回写。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -32,13 +20,7 @@ import {
 interface Probe {
   disk: Map<string, string>
   writes: number
-  /**
-   * 每次写盘记一条调用栈。
-   *
-   * 由来:这个文件里出现过一次「还没到点却写了盘」的偶发红(见 ISS-049),
-   * 而断言只报了个数字,谁写的、从哪写的一概不知,于是复现不了也修不了。
-   * 记下调用栈,下一次再出现就能直接点名。
-   */
+  /** 每次写盘记一条调用栈;偶发红(ISS-049)时报文点名写入方 */
   stacks: string[]
 }
 
@@ -66,7 +48,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   dropPendingWrites()
   probe = installFakeStorage()
-  // 写盘失败状态是模块级的:每个用例都得从「没出过事」出发,否则前一条的失败会漏给下一条
+  // 写盘失败状态是模块级的,每个用例须清零
   clearAllSave()
 })
 
@@ -81,7 +63,6 @@ describe('存档写盘 · 频次有上界', () => {
     const { storage, serializer, key } = persistConfig('player')
     const TICKS = 60
     for (let i = 0; i < TICKS; i += 1) storage.setItem(key, serializer.serialize({ exp: i }))
-    // 周期内一次都不写 —— 这正是省下来的那部分
     expect(probe.writes).toBe(0)
     vi.advanceTimersByTime(SAVE_FLUSH_MS)
     expect(probe.writes).toBe(1)
@@ -103,7 +84,7 @@ describe('存档写盘 · 频次有上界', () => {
   })
 
   it('故障注入:绕过节流直连 localStorage,次数立刻回到每次一写', () => {
-    // 若不做这一步,上面两条可能只是「计数器没在数」而非节流真的生效
+    // 不做这一步,上面两条可能只是计数器没在数
     for (let i = 0; i < 60; i += 1) localStorage.setItem(storageKey('player'), String(i))
     expect(probe.writes).toBe(60)
     console.log(`\n绕过节流直写 60 次 → 落盘 ${probe.writes} 次,计数器确实在数`)
@@ -117,7 +98,7 @@ describe('存档写盘 · 省下的电不能拿存档换', () => {
     vi.advanceTimersByTime(SAVE_FLUSH_MS)
     const raw = probe.disk.get(key)
     expect(raw).toBeDefined()
-    // 磁盘上必须是密文(明文落盘等于把加密改没了)
+    // 磁盘上须是密文
     expect(raw).not.toContain('云隐')
     expect(serializer.deserialize(raw!)).toEqual({ exp: 9, name: '云隐' })
   })
@@ -125,7 +106,7 @@ describe('存档写盘 · 省下的电不能拿存档换', () => {
   it('读己所写:尚未落盘也能立刻读回最新值', () => {
     const { storage, serializer, key } = persistConfig('player')
     storage.setItem(key, serializer.serialize({ exp: 42 }))
-    // 一次都还没落盘(若这条偶发红,报文会带上是谁写的调用栈 —— 见 Probe.stacks 的说明)
+    // 偶发红时报文带调用栈(见 Probe.stacks)
     expect(probe.writes, `还没到刷盘点就写了盘。调用栈:${probe.stacks.join(' // ')}`).toBe(0)
     expect(serializer.deserialize(storage.getItem(key)!)).toEqual({ exp: 42 })
   })
@@ -159,14 +140,10 @@ describe('存档写盘 · 省下的电不能拿存档换', () => {
 })
 
 /**
- * 写盘失败不许静默 —— 「省电」那一套的另一面。
- *
- * 从前 flushSaveWrites 的 catch 里什么也不做,紧接着 pending.clear() 把这一批丢掉:
- * 存储被占满或被 WebView 拒绝时,玩家可能玩了几小时,一批分片一片也没落盘,
- * 而界面上毫无迹象(设置页照旧显示「存档版本 v2」)。这一组守三件事:
- *   一 失败要浮出来(订阅方收得到,状态读得到);
- *   二 失败的那一片不许丢 —— 留在队列里,下一次刷盘重试;
- *   三 恢复之后要报一声「好了」,并清掉警告(不能一红到底)。
+ * 写盘失败不许静默(存储占满 / WebView 拒绝):
+ *   一 失败浮出来(订阅方收得到,状态读得到);
+ *   二 失败的分片留在队列里,下次刷盘重试;
+ *   三 恢复后报一声并清掉警告。
  */
 describe('存档写盘 · 失败不许静默', () => {
   /** 让 localStorage.setItem 按开关抛错(模拟容量满/被拒);allow(true) = 能写得进去 */
@@ -209,7 +186,7 @@ describe('存档写盘 · 失败不许静默', () => {
     flushSaveWrites()
     expect(saveWriteFailure(), '写失败却没有任何状态').not.toBeNull()
     expect(seen, '订阅方应当收到一次失败通知').toEqual([[key]])
-    // 磁盘上还是失败前那一版;最新的那一份留在队列里(读得到),下一次刷盘还有机会写进去
+    // 磁盘仍是失败前那版;最新一份留在队列里(读得到)
     expect(probe.disk.get(key), '写失败却把磁盘上的旧档动了').toBe(beforeFail)
     expect(serializer.deserialize(storage.getItem(key)!)).toEqual({ exp: 2 })
     jam.allow(true)

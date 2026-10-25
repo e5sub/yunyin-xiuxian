@@ -1,19 +1,6 @@
 /**
- * 敌人认知的呈现(Phase 32.5)—— 「你知道它会怎么打」
- *
- * 认知层不发属性,它发的是**情报**:交手越多,战前看得越清楚。
- * 四层逐级揭示 ——
- *
- * - 0 未识:什么都不给。第一次照面就该是未知的。
- * - 1 眼熟:体格与本命属性。你至少记得它壮不壮、快不快。
- * - 2 知其路数:惯用招式与那一招的门道。
- * - 3 洞悉:残血变阵与本相。它什么时候翻脸、翻脸之后是哪一套,你门儿清。
- *
- * 「熟知修仙界」一阶(见 data/samsara.ts)把门槛整体下调一档 ——
- * 带着几世记忆投胎的人,不必再从"这是什么东西"从头认起。
- *
- * 本文件只做映射与文案,不改任何状态。describeEnemy 是纯函数(可独立测试),
- * enemyLoreView 才是读 store 的那层薄封装。
+ * 敌人认知呈现:认知层只发情报,不发属性。只做映射与文案,不改状态。
+ * 「熟知修仙界」一阶(见 data/samsara.ts)门槛下调一档。
  */
 import { ELEMENTS } from '@/data/linggen'
 import { enemyDef } from '@/data/enemies'
@@ -56,13 +43,13 @@ export interface EnemyPhaseNote {
   label: string
 }
 
-/** 战前情报:每一项都由认知层决定给不给 */
+/** 战前情报:每项由认知层决定给不给 */
 export interface EnemyLoreView {
   /** 有效认知层(已计入轮回阶的门槛下调) */
   stage: number
-  /** 实打实交手挣来的认知层 */
+  /** 交手挣来的认知层 */
   raw: number
-  /** 是否吃到了「熟知修仙界」的下调 */
+  /** 是否吃到「熟知修仙界」下调 */
   boosted: boolean
   stageName: string
   /** 体格评语(层 ≥1) */
@@ -75,37 +62,36 @@ export interface EnemyLoreView {
   phases: EnemyPhaseNote[]
   /** 首领本相(层 = 3;非首领为 null) */
   archetype: string | null
-  /** 首领机制家族名与印(如「狂暴型 · 狂」),与本相同层揭示 */
+  /** 首领机制家族名与印,与本相同层揭示 */
   archetypeLabel: string | null
-  /** 距下一层的实账(已洞悉为 null):照面几记、还差几记,与 noteEnemy 同一张门槛表 */
+  /** 距下一层的实账(已洞悉为 null) */
   progress: EnemyLoreProgress | null
 }
 
-/** 距下一认知层的实账 —— 与 noteEnemy 读同一张门槛表,差多少就是多少 */
+/** 距下一认知层的实账,与 noteEnemy 读同一张门槛表 */
 export interface EnemyLoreProgress {
   /** 已攒的有效交手次数(胜一记、败以重计,见 ENEMY_LORE_LOSS_WEIGHT) */
   seen: number
   /** 下一层所需的有效交手总数(首领加倍,见 ENEMY_LORE_BOSS_MULT) */
   need: number
-  /** 还差几记有效交手(≤0 时不该出现:noteEnemy 会在达到门槛那一刻立即升层) */
+  /** 还差几记有效交手(≤0 不该出现:noteEnemy 达门槛即升层) */
   remain: number
-  /** 下一层里**还没见过**的那一层的名字;宿慧照见已把最高层摊开时为空(无新层可窥) */
+  /** 下一未见层的名字;宿慧照见已摊开最高层时为空 */
   nextName: string
-  /** 首领门槛加倍过(说明里那枚「首领倍算」的凭据) */
+  /** 首领门槛加倍过(说明里「首领倍算」的凭据) */
   isBoss: boolean
 }
 
 export function enemyLoreProgress(raw: number, seen: number, isBoss: boolean, eff: number): EnemyLoreProgress | null {
   if (raw < 0 || raw >= ENEMY_LORE_MAX) return null
   const need = ENEMY_LORE_THRESHOLDS[raw + 1]! * (isBoss ? ENEMY_LORE_BOSS_MULT : 1)
-  // 下一层以「有效层」为基准:宿慧照见把 raw 抬过一档时,真正还没见的是 eff+1,
-  // 不是 raw+1 —— 否则会对着已经摊开的那一层喊「再攒几记可窥」(对照可见不可见)。
+  // 下一层取 eff+1 而非 raw+1:宿慧照见抬过一档时 raw+1 已摊开
   const next = eff + 1
   const nextName = next <= ENEMY_LORE_MAX ? (ENEMY_LORE_STAGE_NAMES[next] ?? '') : ''
   return { seen, need, remain: Math.max(0, need - seen), nextName, isBoss }
 }
 
-/** 体格评语 —— 从倍率反推成人话,只说值得一说的那几条 */
+/** 体格评语,由倍率反推 */
 function frameOf(def: EnemyDef): string[] {
   const out: string[] = []
   if (def.hpMult >= 1.5) out.push('气血绵长')
@@ -134,7 +120,7 @@ function skillNote(sk: EnemySkill): string {
   return `${odds}。寻常一击`
 }
 
-/** 残血变阵的招式也算它的路数 —— 层 3 才见得到,合并进招式表反而乱,单列 */
+/** 残血变阵,层 3 才见;单列,不并入招式表 */
 function phaseNotes(def: EnemyDef): EnemyPhaseNote[] {
   return (def.phases ?? []).map(p => ({
     at: `血余 ${Math.round(p.hpThreshold * 100)}%`,
@@ -143,9 +129,8 @@ function phaseNotes(def: EnemyDef): EnemyPhaseNote[] {
 }
 
 /**
- * 按认知层揭示一头敌人。
- *
- * @param stage 有效认知层(调用方须先算好轮回阶的加成,见 effectiveEnemyStage)
+ * 按认知层揭示一头敌人,纯函数。
+ * @param stage 有效认知层(调用方须先经 effectiveEnemyStage 算好轮回阶加成)
  */
 export function describeEnemy(def: EnemyDef, stage: number, boosted = false): EnemyLoreView {
   const lv = Math.max(0, Math.min(ENEMY_LORE_MAX, Math.floor(stage)))
@@ -170,18 +155,13 @@ export function describeEnemy(def: EnemyDef, stage: number, boosted = false): En
   }
 }
 
-/**
- * 有效认知层 = 实打实交手挣来的层 + 轮回阶的门槛下调。
- *
- * 下调只补一档,且不能凭空把"从未交手"变成"眼熟" ——
- * 记忆能省去从头辨认的工夫,替不了亲手打过的那一场。
- */
+/** 有效认知层 = 交手挣来的层 + 轮回阶下调;只补一档,从未交手不补 */
 export function effectiveEnemyStage(raw: number, insightful: boolean): number {
   if (!insightful || raw <= 0) return raw
   return Math.min(ENEMY_LORE_MAX, raw + 1)
 }
 
-/** 读当下状态,给出这头敌人此刻看得见的情报(未知 id 返回 null) */
+/** 读 store,给出该敌人此刻可见的情报(未知 id 返回 null) */
 export function enemyLoreView(enemyId: string): EnemyLoreView | null {
   const def = enemyDef(enemyId)
   if (!def) return null

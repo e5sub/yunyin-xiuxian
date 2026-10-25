@@ -1,7 +1,4 @@
-/**
- * 构筑韧性(Phase 22)—— 主流派核心词条被封后,战斗力还剩几成
- * 不是数值,是「第二套答案」的存在性度量;逆命契前最值得看一眼
- */
+/** 构筑韧性:主流派核心词条被封后,战斗力还剩几成 */
 import type { CombatantSnap, StatMods } from '@/types'
 import { mulberry32, RandomService } from '@/utils/random'
 import { TRIAL_FOES } from '@/data/endgame'
@@ -19,7 +16,7 @@ export interface ResilienceReport {
   retention: number
 }
 
-/** 等比敌采样场次 —— BuildView 的「N 场等比敌采样」注释就是它(曾写崩成 120) */
+/** 等比敌采样场次;BuildView 注释里的「N 场等比敌采样」就是它 */
 export const RESILIENCE_SAMPLE_RUNS = 60
 
 /** 封印指定流派的核心词条(清零,不改其他) */
@@ -40,10 +37,7 @@ function winRate(snap: CombatantSnap, foe: CombatantSnap, runs: number, seed: nu
   return wins / runs
 }
 
-/**
- * 测定构筑韧性:对「与自身等比的基准敌」分别以完整构筑与封核构筑各战 runs 场。
- * 敌人等比生成(天界思路),任何数值段的玩家都可测
- */
+/** 测定构筑韧性:对与自身等比的基准敌,完整构筑与封核构筑各战 runs 场 */
 export function measureResilience(snap: CombatantSnap, runs = RESILIENCE_SAMPLE_RUNS): ResilienceReport | null {
   const build = detectBuild(snap.mods)
   if (!build) return null

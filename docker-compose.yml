@@ -12,7 +12,6 @@ services:
       - yunyin-net
     environment:
       - TZ=Asia/Shanghai
-    # 资源限制
     deploy:
       resources:
         limits:
@@ -21,7 +20,6 @@ services:
         reservations:
           cpus: '0.25'
           memory: 128M
-    # 日志滚动
     logging:
       driver: "json-file"
       options:

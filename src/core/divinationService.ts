@@ -1,9 +1,4 @@
-/**
- * 问卦的动作层 —— 扣悟道点、落卦象状态。
- *
- * 与 core/divination(纯函数)分开:那边只算卦,这边才碰存档与资源,
- * 免得 stores/player 为了取卦力反手 import 一个又会 import 自己的模块。
- */
+/** 问卦动作层:扣悟道点、落卦象;core/divination 只算卦,这边才碰存档与资源,免得 player 与卦算互相 import */
 import type { RandomService } from '@/utils/random'
 import { rng } from '@/utils/random'
 import {
@@ -24,10 +19,7 @@ export interface DivinationOutcome {
   reading?: HexagramReading
 }
 
-/**
- * 已有卦在身时不再受卦(一事不二卜),等它自己过去。
- * 卦是"此一时的时机":故有代价、有时限、不叠加。
- */
+/** 已有卦在身时不再受卦(一事不二卜);有代价、有时限、不叠加 */
 export function askDivination(rand: RandomService = rng): DivinationOutcome {
   const player = usePlayerStore()
   const resources = useResourcesStore()

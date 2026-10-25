@@ -1,18 +1,6 @@
 /**
- * 道果职责拆分审计
- *
- * 上一轮把问题收束到一句话:长期跨世复利的根因不是「永久资产太多」,
- * 而是**存在唯一一个无界、自动、持续有效的复利项:道果**。
- *
- * 于是问题从「道果该怎么衰减」前移一步:
- * **为什么道果必须同时承担「永久战力」与「永久修炼速度」两个职责?**
- *
- * 本模块把道果的全部引用点逐一归类,回答三件事:
- *   1. 它到底有几个真消费者(读它并产生游戏效果的地方)
- *   2. 两个职责各自的量级曲线,以及各自怎样反馈回轮回
- *   3. 反事实:若只剥离速度职责,长期正反馈还剩多少
- *
- * 只做度量,不改数值。
+ * 道果职责拆分审计:把道果的全部引用点归类,度量战力与修炼速度两个职责的量级、
+ * 各自怎样反馈回轮回,以及剥离速度职责的反事实。只做度量,不改数值。
  */
 import { effectiveDaoFruit } from './statsCalc'
 import { fruitAtLife, lifeTable, saturationLife, speedupAt } from './compoundingAudit'
@@ -20,12 +8,7 @@ import { DAO_FRUIT_COMBAT_BONUS, DAO_FRUIT_CULT_BONUS, DAO_FRUIT_SOFT_EXP } from
 
 // ============ 一、引用点归类 ============
 
-/**
- * 一个引用点在系统里扮演的角色。
- *
- * 只有 `speed` 与 `power` 是**真消费者** —— 读道果并产生游戏效果。
- * 其余三类不改变任何数值,不该与消费者混为一谈
- */
+/** 引用点的角色:只有 `speed` 与 `power` 是真消费者(读道果并产生游戏效果),其余三类不改任何数值 */
 export type FruitRole =
   /** 消费者:转成修炼速度 */
   | 'speed'
@@ -42,9 +25,9 @@ export type FruitRole =
 export type Necessity =
   /** 非道果不可 */
   | 'must'
-  /** 历史遗留:当初顺手挂上去的 */
+  /** 历史遗留 */
   | 'legacy'
-  /** 可以换别的来源承担 */
+  /** 可换别的来源承担 */
   | 'replaceable'
 
 /** 反馈回轮回的方式 */
@@ -67,13 +50,7 @@ export interface FruitConsumer {
   evidence: string
 }
 
-/**
- * 道果的全部引用点。
- *
- * 关键事实:**道果没有任何消费出口** —— 它不解锁天界、不进命题、
- * 不换任何东西、也不参与阶位(阶位走宿慧)。它只是一个单调递增的数字,
- * 被 computeFinalStats 读一次,同时喂给两个乘区
- */
+/** 道果的全部引用点。道果无消费出口,只被 computeFinalStats 读一次,同时喂给两个乘区 */
 export const FRUIT_CONSUMERS: FruitConsumer[] = [
   {
     id: 'cultSpeed',
@@ -131,12 +108,11 @@ export const FRUIT_CONSUMERS: FruitConsumer[] = [
   }
 ]
 
-/** 真消费者:读道果并产生游戏效果 */
 export function realConsumers(): FruitConsumer[] {
   return FRUIT_CONSUMERS.filter(c => c.role === 'speed' || c.role === 'power')
 }
 
-/** 用户猜测过、但实际与道果无关的系统 */
+/** 猜测过、实际与道果无关的系统 */
 export const NOT_FRUIT_DRIVEN: readonly { name: string; actual: string }[] = [
   { name: '轮回阶位', actual: '走宿慧 totalInsight(存量+认知折算),与道果无关' },
   { name: '天界与道痕', actual: 'endgameUnlocked() 只看 major >= WORLD_BREAK_MAJOR(真仙)' },
@@ -189,9 +165,7 @@ export interface Counterfactual {
 
 /**
  * 若道果不再进 cultivationSpeed,长期正反馈还剩多少。
- *
- * 实现上等价于把耗时模型里的道果项置零 —— 因为 estimateCultMult 中
- * 道果**只**进速度,不进别处。剩下的提速全部来自资质地板
+ * 等价于把耗时模型里的道果项置零(estimateCultMult 中道果只进速度);余下提速全来自资质地板。
  */
 export function counterfactualAt(life: number): Counterfactual {
   const now = speedupAt(life, 'both')
@@ -200,11 +174,8 @@ export function counterfactualAt(life: number): Counterfactual {
 }
 
 /**
- * 核心指标:无界自动复利项的数量。
- *
- * 「无界」= 不会饱和,「自动」= 无需玩家操作即汇入下一世效率。
- * 剥离速度职责后,道果不再进效率链,而资质地板/称号/灵兽都会饱和,
- * 于是该指标归零
+ * 无界(不会饱和)、自动(无需玩家操作即汇入下一世效率)复利项的数量。
+ * 资质地板/称号/灵兽都会饱和,剥离速度职责后归零。
  */
 export function unboundedLoopCount(speedRoleAttached: boolean): number {
   return speedRoleAttached ? 1 : 0

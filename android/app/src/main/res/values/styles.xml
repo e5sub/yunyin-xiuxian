@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-  <!-- Base application theme. -->
   <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
-    <!-- Customize your theme here. -->
     <item name="colorPrimary">@color/colorPrimary</item>
     <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
     <item name="colorAccent">@color/colorAccent</item>
@@ -17,13 +15,9 @@
     <item name="android:background">@null</item>
   </style>
 
-  <!-- 启动主题(Android 11 及以下)
-       不再继承 Theme.SplashScreen:该库在 pre-31 需要 windowSplashScreenBackground /
-       windowSplashScreenAnimatedIcon 这组兼容属性(无 android: 前缀)才生效,
-       此前只设了 android:background,于是回退到默认的「launcher 图标 + 白底」,
-       也就是那块多余的启动画面。换成普通 NoActionBar 主题后 pre-31 完全没有
-       系统启动画面,启动瞬间只剩 windowBackground 这块底色,
-       与 activity_main 加载层同为 #0d1117,衔接无感 -->
+  <!-- 启动主题(Android 11 及以下):不继承 Theme.SplashScreen;该库在 pre-31 缺
+       windowSplashScreenBackground / windowSplashScreenAnimatedIcon(无 android: 前缀)时回退成「launcher 图标 + 白底」。
+       windowBackground 与 activity_main 加载层同为 #0d1117 -->
   <style name="AppTheme.NoActionBarLaunch" parent="Theme.AppCompat.DayNight.NoActionBar">
     <item name="windowActionBar">false</item>
     <item name="windowNoTitle">true</item>

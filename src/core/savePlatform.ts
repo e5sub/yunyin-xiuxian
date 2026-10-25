@@ -1,17 +1,8 @@
 /**
- * 存档导出平台抽象 —— Web/Electron 走浏览器下载,Android 走 SAF 保存面板,
- * 其他 Capacitor 原生端写 Documents。
- *
- * 背景:SettingsView 原把导出/导入整体用 `!Capacitor.isNativePlatform()` 藏起,
- * 因为 Capacitor WebView 没有 DownloadListener,`saveAs` 触发的下载在安卓上
- * 根本没着落。但存档只存本地、无法备份,卸载/清数据即永久丢失 —— 导出能力
- * 恰恰是移动端最需要的一环。
- *
- * Android 不能继续写公共 Documents:新安装时 Export 父目录不存在,而
- * @capacitor/filesystem 的 writeFile 默认不建父目录;Android 10 的 legacy
- * storage 与 Android 11+ 的分区存储又让公共目录权限变得不可靠。故改由
- * SaveTransfer 原生插件打开 ACTION_CREATE_DOCUMENT,让系统保存面板选择位置,
- * 再用 ContentResolver 写入,既不需要存储权限,也能确认文件真的落盘。
+ * 存档导出:Web/Electron 走浏览器下载,Android 走 SAF 保存面板,其他 Capacitor 原生端写 Documents。
+ * Capacitor WebView 无 DownloadListener,`saveAs` 在安卓上无效。
+ * Android 不写公共 Documents(Android 10 legacy storage 与 11+ 分区存储下公共目录权限不可靠):
+ * SaveTransfer 原生插件开 ACTION_CREATE_DOCUMENT,ContentResolver 写入,无需存储权限且能确认落盘。
  */
 import { Capacitor } from '@capacitor/core'
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem'
@@ -23,7 +14,7 @@ interface SaveTransferPlugin {
   save(options: { text: string; fileName: string }): Promise<{ saved?: boolean }>
 }
 
-/** Android 的 SAF 导出桥;只在 Android 分支取用,避免 Web 端注册一个不存在的原生插件 */
+/** Android SAF 导出桥;只在 Android 分支取用,Web 端不注册 */
 function saveTransferPlugin(): SaveTransferPlugin {
   return Capacitor.registerPlugin<SaveTransferPlugin>('SaveTransfer')
 }
@@ -50,12 +41,7 @@ async function exportSaveOnAndroid(text: string, file: string): Promise<string |
   }
 }
 
-/**
- * 本机存档导出:按平台落到可被用户取走的地方。
- *
- * 返回 `null` 表示存档真的落盘成功;返回字符串表示未形成持久备份,
- * 内容为给玩家看的失败/退路说明。两条路都会给 toast 回执。
- */
+/** 本机存档导出。返回 null 表示已落盘(记「上次导出」);返回字符串表示未形成持久备份。各路均 toast。 */
 export async function exportSaveToDevice(): Promise<string | null> {
   const text = exportSaveText()
   if (Capacitor.getPlatform() === 'android') {
@@ -76,7 +62,7 @@ export async function exportSaveToDevice(): Promise<string | null> {
         data: text,
         directory: Directory.Documents,
         encoding: Encoding.UTF8,
-        // 首次导出时 Documents/Export 还不存在;不递归建目录会报 missing parent
+        // 首次导出时 Documents/Export 不存在,不递归建目录会报 missing parent
         recursive: true
       })
       useUiStore().toast(`已导出到「文档/Export/${file}」`, 'success')
@@ -88,26 +74,19 @@ export async function exportSaveToDevice(): Promise<string | null> {
     }
   }
   /*
-   * Web 端靠 `saveAs`(Blob + a[download]) + **剪贴板兜底**。
-   *
-   * 下载本身不是处处都通:受限 WebView、应用内浏览器(taptap 也是其一)里
-   * a[download] 常被**静默吞掉** —— 不抛错、也没文件,旧实现于是像点了空气。
-   * 故在挂下载之外,一律把存档文本写进剪贴板:无论下载成不成,玩家都拿得走。
-   * 提示语把这条退路讲明,不再假装「已导出」。
-   *
-   * 成功语义:真落盘的下载才算数(返回 null → 记账「上次导出」);
-   * 只有剪贴板时返回提示(不记账 —— 文本躺在剪贴板里不算持久备份)。
+   * Web 端:saveAs(Blob + a[download])+ 剪贴板兜底。
+   * 受限 WebView、应用内浏览器(如 taptap)会静默吞掉 a[download](不抛错、无文件),剪贴板须无条件写。
+   * 只有剪贴板时不算持久备份,返回非 null。
    */
   const file = exportFileName()
 
-  // 剪贴板先行:写它要有用户手势 + secure context,导出按钮的单击正好给足。
-  // 剪贴板不可用(非安全上下文/被禁)不影响下载那条路。
+  // 剪贴板先行:需用户手势 + secure context;不可用不影响下载
   let clipped = false
   try {
     await navigator.clipboard.writeText(text)
     clipped = true
   } catch {
-    /* 剪贴板不可用,静默 —— 下载路还在 */
+    /* 剪贴板不可用 */
   }
 
   let downloaded = false
@@ -115,7 +94,7 @@ export async function exportSaveToDevice(): Promise<string | null> {
     saveAs(new Blob([text], { type: 'application/json' }), file)
     downloaded = true
   } catch {
-    /* 下载被拦,看剪贴板 */
+    /* 下载被拦 */
   }
 
   if (downloaded && clipped) {

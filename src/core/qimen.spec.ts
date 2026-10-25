@@ -1,14 +1,7 @@
-/* eslint-disable no-console -- 八门是过程性验收,打印择门与规则差异 */
+/* eslint-disable no-console -- 打印择门与规则差异 */
 /**
- * 奇门遁甲 · 择门验收(Phase 34.7)
- *
- * 界域志四门的最后一门,也是最容易做成"第三份契约"的一门 ——
- * 故这里的判据先划清界限,再验效果:
- *
- *   一 八门据九宫:宫位 1~9 且不占中五,吉/平/凶俱全,门门有释义与规则;
- *   二 不夺契约之职:择门不动道源倍数(那是契约的事),只改打法;
- *   三 不择门 = 从前逐字相同:审计基线(远征模拟)不受影响;
- *   四 择了门就真的算数:远征规则合并、预估与实战同源、道痕记下当年之门。
+ * 奇门遁甲 · 择门验收。
+ * 择门不动道源倍数(那是契约的事),只改打法;不择门时规则不变,审计基线(远征模拟)不受影响。
  */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -88,7 +81,7 @@ describe('择门 · 预估与实战同源', () => {
     const si = forecastExpedition('chiyan', null, 'si')!
     const kai = forecastExpedition('chiyan', null, 'kai')!
     const shown = [none, si, kai].map(f => `${f.difficulty}/${f.stars}`)
-    // 三者的可行流派数或星级至少有一处不同(否则择门等于没择)
+    // 三者的可行流派数或星级至少一处不同
     const distinct = new Set([`${none.stars}|${none.viableStyles}`, `${si.stars}|${si.viableStyles}`, `${kai.stars}|${kai.viableStyles}`])
     expect(distinct.size, `择门后预估毫无差别:${shown.join(' ')}`).toBeGreaterThan(1)
     console.log(`\n常道 ${shown[0]} · 死门 ${shown[1]} · 开门 ${shown[2]}`)
@@ -100,10 +93,10 @@ describe('择门 · 预估与实战同源', () => {
     const plain = { worldId: 'chiyan', pactId: null, gateId: null } as unknown as WorldRunState
     const gated = expeditionRules(world, run)
     const base = expeditionRules(world, plain)
-    // 世界自有其规则(赤炎天本就把治疗打到 0.65),故这里钉的是「门再乘了几成」
+    // 赤炎天自带治疗 0.65,只钉门再乘的倍率
     expect((gated?.healMult ?? 1) / (base?.healMult ?? 1)).toBeCloseTo(1.4, 6)
     expect((gated?.playerAtkMult ?? 1) / (base?.playerAtkMult ?? 1)).toBeCloseTo(0.95, 6)
-    // 常道:门那几项一个都不出现,与从前逐字相同
+    // 常道:门的规则项一个都不出现
     expect(base?.playerAtkMult).toBeUndefined()
     expect(base?.perRounds).toBeUndefined()
   })
@@ -113,7 +106,7 @@ describe('择门 · 预估与实战同源', () => {
     const endgame = useEndgameStore()
     const out = startWorldExpedition('chiyan', null, 'sheng')
     expect(out).not.toBeNull()
-    // 入界战有胜有败:胜则 run 在途,败则当场落痕 —— 两条路都必须带着所择之门
+    // 入界战胜则 run 在途,败则当场落痕;两路都须带所择之门
     const inRun = endgame.worldRun?.gateId
     const inMark = endgame.marks.at(-1)?.context?.gateId
     expect(inRun ?? inMark).toBe('sheng')
@@ -124,7 +117,6 @@ describe('择门 · 预估与实战同源', () => {
     recordMark('chiyan', '赤炎天', false, 3, null, { gateId: 'sheng' })
     const mark = endgame.marks.at(-1)!
     expect(mark.context?.gateId).toBe('sheng')
-    // 道痕里的 context.gateId 必须回到规则里 —— 否则忆战就不是"重打当年那一场"
     const withGate = markRules(mark)
     expect(withGate?.healMult).toBe(gateDef('sheng')!.rules.healMult)
 
@@ -142,7 +134,6 @@ describe('择门 · 预估与实战同源', () => {
 
 describe('择门 · 接线', () => {
   it('远征准备里能择门,且预估把门算进去了', () => {
-    // 远征准备弹窗随远征册迁入 components/celestial/ExpeditionPanel.vue
     const src = readFileSync(resolve(__dirname, '../components/celestial/ExpeditionPanel.vue'), 'utf8')
       .replace(/<!--[\s\S]*?-->/g, '')
       .replace(/\/\*[\s\S]*?\*\//g, '')

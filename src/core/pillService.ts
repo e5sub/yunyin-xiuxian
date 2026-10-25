@@ -1,9 +1,4 @@
-/**
- * 丹药服务 —— 服用与炼制
- *
- * Phase 32.3 起,炼制不再是「够级必成」的兑换按钮:
- * 成败由认知与技艺决定(见 core/craftability.ts),失手要赔料,但也长本事。
- */
+/** 丹药服务:服用与炼制。炼制成败见 core/craftability.ts。 */
 import { gnZero, mulN, ratio, subClamp } from '@/utils/gnum'
 import { rng } from '@/utils/random'
 import { pillDef } from '@/data/pills'
@@ -30,13 +25,7 @@ import { playSfx } from './audio'
 import { craftOkToast, craftShortToast, craftUnknownToast, pillGoneToast, pillTakenToast } from '@/ui/pillText'
 import type { GNum } from '@/types'
 
-/** 服用丹药 */
-/**
- * 服用一枚丹药。
- *
- * quiet=true 供批量服丹用:逐枚结算(修为/状态/计数/破题照旧),提示与音效
- * 由批量那一层合为一条,免得连服十枚连弹十条。
- */
+/** 服用一枚丹药。quiet=true 供批量服丹:逐枚结算照旧,提示与音效由批量层合为一条。 */
 export function usePill(id: string, quiet = false): boolean {
   const player = usePlayerStore()
   const resources = useResourcesStore()
@@ -51,14 +40,8 @@ export function usePill(id: string, quiet = false): boolean {
   }
   const lines: string[] = []
   if (def.kind === 'instant' && def.instant) {
-    /**
-     * 修为丹:药力 = 服丹者当下的修炼速度 × 等效闭关秒数,封顶在「不满一层」。
-     *
-     * 走的是与一场遭遇、一次际遇**同一个**结算函数(expFromSecs)——
-     * 三条来源只在"这段时长有多长"上不同,不再各有各的公式与各自的漂移。
-     * 读 player.cultPerSec 而不是裸修速:丹药说的那句"服之如闭关一段等效时长",
-     * 就该是他自己那一段的等效时长(功法/建筑/状态/增益都在里头)。
-     */
+    // 修为丹:药力 = player.cultPerSec(含功法/建筑/状态/增益,非裸修速)× 等效秒数,封顶不满一层;
+    // 与遭遇、际遇同走 expFromSecs
     if (def.instant.expSecs) {
       const gain = expFromSecs(player.expReq, def.instant.expSecs, player.cultPerSec, INSTANT_EXP_LAYER_CAP)
       player.gainExp(gain)
@@ -84,17 +67,8 @@ export function usePill(id: string, quiet = false): boolean {
       lines.push(`悟道点 +${def.instant.wudao}`)
     }
   } else if (def.buffId) {
-    /**
-     * 读**游戏时钟**而不是墙钟 —— 与界面(`useNow` → `gameNow()`)同一把尺。
-     *
-     * 暂停(重置 / 导入确认窗)时心跳停了,但 `Date.now()` 照走:界面按冻结的
-     * `gameNow()` 读「药力已至上限」,服务却按墙钟判,两处当场分叉 —— 暂停期间
-     * 服下的那一颗,判 overflow 用的是走远的墙钟、写 endsAt 用的也是它,
-     * 恢复后引擎再按暂停时长顺延一次,药力凭空多出一段。这正是 enginePause 头注释
-     * 写明的那条纪律:「可冻结的到期判定读 gameNow(),不要直接读 Date.now()」。
-     *
-     * 取一次 `now` 供判与写共用:两次读墙钟若跨过一毫秒,判与写也会各算各的。
-     */
+    // 读 gameNow() 不读 Date.now(),与界面 useNow 同尺(纪律见 enginePause 头注释):
+    // 暂停时墙钟照走,恢复后引擎再顺延,药力凭空多一段。now 只取一次,判 overflow 与写 endsAt 共用。
     const now = gameNow()
     const overflow = buffOverflowOf(cultivation.buffs, def.buffId, now)
     cultivation.addBuff(def.buffId, now)
@@ -146,57 +120,36 @@ export function usePillBatch(id: string, count: number): number {
   return eaten
 }
 
-/** 炼丹消耗 */
 export function pillCraftCost(id: string): { herb: number; stone: GNum; grade: HerbGrade } | null {
   const def = pillDef(id)
   if (!def?.recipe) return null
-  /**
-   * 灵草按方子准入境界决定品阶:方子出自哪一界,就要哪一品的草。
-   * 「新手村的青芝炼混沌道祖的丹」从此不可能 —— 低阶草进不了高阶方子。
-   */
+  // 灵草品阶取方子准入境界:低阶草进不了高阶方子
   const grade = herbGradeOfMajor(def.minRealm)
-  /**
-   * 灵石开销按这张方子**准入境界能拿到的最高层级**折算。
-   *
-   * 从前这里自写 `minRealm × 2 + 1`,界外就飞出区域表了:第 18 境的方子算出层级 37,
-   * 而玩家在混沌海能到的最高层级是 32 —— 一张方子的价格凭空高出 322 倍(1.9^5),
-   * 于是界外炼丹被自己的报价挡在门外(ISS-211)。层级只有一个事实源:区域表。
-   * 这一份是「炼制石耗」的唯一事实源:坊市买/售、悬赏募丹都拿它当基准(见 market/bounty)。
-   */
+  // 灵石按准入境界能拿到的最高层级折算;层级单一事实源:区域表
   return { herb: def.recipe.herb, stone: pillStoneCost(def), grade }
 }
 
-// 「炼制石耗」基准已抽到纯公式层 core/formulas(见其定义),此处 re-export 保持公开 API:
-// 坊市买/售、悬赏募丹都从 ./pillService 引入它,签名与语义不变。
+// 「炼制石耗」唯一事实源(定义在 core/formulas);re-export 保持公开 API,坊市买/售、悬赏募丹从 ./pillService 引入
 export { pillStoneCost }
 
-/**
- * 当前看得见的丹方 —— 你知道的,不是你够级的。
- * 炸炉风险由 craftability 呈现给玩家自行判断,这里不代玩家做决定。
- */
+/** 当前看得见的丹方:已知的,不按够级筛;炸炉风险由 craftability 呈现 */
 export function availableRecipes(): string[] {
   return knownRecipes().map(p => p.id)
 }
 
-/** 炼不动的原因 —— 界面要靠它决定「去哪补」,不能只有一句含糊的「料不足」 */
+/** 炼不动的原因;界面按它决定「去哪补」 */
 export type CraftBlockReason = 'unknown' | 'mastery' | 'herb' | 'stone' | 'both'
 
 export interface CraftBatchPlan {
   /** 按当前料保底可开的最大炉数(炉炉皆成也够);0 = 炼不动 */
   rounds: number
-  /** 开 rounds 炉的灵草总量(每炉 cost.herb × rounds) */
+  /** 开 rounds 炉的灵草总量 */
   herb: number
   /** 开 rounds 炉的灵石总量 */
   stone: GNum
-  /** rounds=0 时的阻塞理由(未知此方 / 掌握不够 / 料不足);炼得动时为 undefined */
+  /** rounds=0 时的阻塞理由;炼得动时为 undefined */
   blocked?: string
-  /**
-   * rounds=0 时的**结构化**原因。
-   *
-   * 一句「灵草或灵石未足」分不出该去坊市续草、还是该去历练攒石 —— 界面想给
-   * 一条能点的去路,就得先知道缺的是哪一头。unknown / mastery 是「补不了料」的
-   * 两类,不该给采购入口。
-   */
+  /** rounds=0 时的结构化原因;unknown / mastery 补不了料,界面不给采购入口 */
   reason?: CraftBlockReason
   /** reason 含 herb 时,还差多少株当前品灵草 */
   shortHerb?: number
@@ -204,10 +157,7 @@ export interface CraftBatchPlan {
   shortStone?: GNum
 }
 
-/**
- * 一炉的草石差额:草按当前品库存算,石按大数减法算。
- * 计划、单炉开炉与连炼零炉回执同读这一处,不在三处各减一遍余额。
- */
+/** 一炉的草石差额(草按当前品库存);计划、单炉开炉、连炼零炉回执同读此处 */
 export function craftShortfall(cost: { herb: number; stone: GNum; grade: HerbGrade }): { herb: number; stone: GNum } {
   const resources = useResourcesStore()
   return {
@@ -217,9 +167,8 @@ export function craftShortfall(cost: { herb: number; stone: GNum; grade: HerbGra
 }
 
 /**
- * 炼丹连开计划:按当前料保底算清能开几炉 —— 纯算不动炉,炉炉皆成也够。
- * 每炉灵草按全额算(炸炉省下的残料只多不少),灵石按每炉整扣折算;
- * 未知方子/掌握不足先于材料缺口说。界面「炼满」预览与执行共用这一份。
+ * 炼丹连开计划:按当前料保底算能开几炉(炉炉皆成也够),不动炉。
+ * 灵草按每炉全额、灵石按每炉整扣;未知方子/掌握不足先于材料缺口报。界面「炼满」预览与执行共用。
  */
 export function craftBatchPlan(id: string): CraftBatchPlan {
   const resources = useResourcesStore()
@@ -235,26 +184,20 @@ export function craftBatchPlan(id: string): CraftBatchPlan {
     ...(shortHerb === undefined ? {} : { shortHerb }),
     ...(shortStone === undefined ? {} : { shortStone })
   })
-  // 方子并不存在/没解析出配方:这与「知道方子但缺料」是两回事 —— 分开说,
-  // 调用方才能区分掌握问题与材料问题(未知方先于掌握度阻塞返回)
   if (!def || !cost || !able) return blocked(craftUnknownToast(), 'unknown')
   if (able.blockers.length > 0) return blocked(able.blockers[0]!, 'mastery')
   const herbHeld = resources.herbOf(cost.grade)
   const herbRounds = Math.floor(herbHeld / cost.herb)
-  // 灵石可开几炉:直接求商,不逐炉减 —— 库存大时按炉计数会跑成百万次 GNum 减法
-  // (ratio 的指数差钳制只会把币额超大的情况估算得略保守,再与 herbRounds 取小,安全)
+  // 直接求商不逐炉减(库存大时会跑百万次 GNum 减法);ratio 指数差钳制只会偏保守
   const stoneRoundsRaw = Math.floor(ratio(resources.spiritStone, cost.stone))
-  /** 灵石是否真构成了约束 —— ratio 在除数为 0 时给 Infinity,那不是「一分不剩」 */
+  /** ratio 在除数为 0/NaN 时给 Infinity/NaN:灵石不构成约束,炉数只由灵草定 */
   const stoneLimited = Number.isFinite(stoneRoundsRaw)
   const stoneRounds = Math.max(0, stoneLimited ? stoneRoundsRaw : 0)
-  // ratio 在除数(cost.stone)为 0/NaN 时返回 Infinity/NaN —— 此处把非有限的「灵石可开炉数」
-  // 显式收束为「不构成限制」:此时炉数由灵草维度唯一决定,绝不把 Infinity 传进 round/plan。
   const rounds = Math.min(herbRounds, stoneLimited ? stoneRounds : herbRounds)
   if (rounds === 0) {
     const gap = craftShortfall(cost)
     const stoneShort = stoneLimited && stoneRounds === 0 && gap.stone.m > 0
-    // 只缺草时把缺口报成株数:玩家拿着这个数去坊市,才知道该买几摞。
-    // 石差同报,避免「只缺石」时仍写一句笼统的「未足」。
+    // 缺草报株数、缺石报石差,不写笼统的「不足」
     if (stoneShort && gap.herb > 0) {
       return blocked(craftShortToast({ herb: gap.herb, stone: formatGN(gap.stone) }), 'both', gap.herb, gap.stone)
     }
@@ -264,16 +207,11 @@ export function craftBatchPlan(id: string): CraftBatchPlan {
   return { rounds, herb: rounds * cost.herb, stone: mulN(cost.stone, rounds) }
 }
 
-/**
- * 失手时按技艺随机保下的残料比例:手越稳,赔得越少。
- *
- * 导出供 core/pillValue.ts 折算炼制代价 —— 那边若另抄一份,两处口径迟早分叉。
- */
+/** 失手时按技艺保下的残料比例;core/pillValue.ts 折算炼制代价共用此处,不另抄 */
 export function salvageRatio(skill: number): number {
   return 0.2 + 0.3 * Math.min(1, skill / 100)
 }
 
-/** 开炉长的本事:成功长得快,失败也长——只是慢些,且偏向补最欠缺的一环 */
 function gainCraftExp(skills: Readonly<Partial<Record<SkillId, number>>>, rank: number, succeeded: boolean): void {
   const lore = useLoreStore()
   const base = (succeeded ? 10 : 6) * (1 + rank * 0.35)
@@ -287,20 +225,13 @@ export interface CraftOutcome {
   ok: boolean
   /** 出丹数;失败为 0 */
   count: number
-  /** 未开炉(材料不足/不知此方)时为 true —— 与"开炉失败"是两回事 */
+  /** 未开炉(材料不足/不知此方)时为 true,不同于开炉失败 */
   aborted?: boolean
 }
 
 /**
- * 炼制丹药。
- *
- * 失败不是白费:料照赔(按技艺保下一部分),但技艺照长,
- * 而且失手对灵材的印象比顺手时更深(见 noteMaterialUsed)。
- */
-/**
- * 开炉炼丹。
- *
- * quiet=true 供批量炼丹用:逐炉结算照旧,提示与音效由批量那一层合并。
+ * 开炉炼丹。失手料照赔(按技艺保下一部分),技艺照长,对灵材印象更深(见 noteMaterialUsed)。
+ * quiet=true 供批量炼丹:逐炉结算照旧,提示与音效由批量层合并。
  */
 export function craftPill(id: string, quiet = false): CraftOutcome {
   const resources = useResourcesStore()
@@ -332,12 +263,11 @@ export function craftPill(id: string, quiet = false): CraftOutcome {
   }
 
   const craft = recipeCraft(def)
-  // 浴火丹心(宿命传承):本世前几炉必成 —— 只在真开炉时读取并消费每世额度
+  // 浴火丹心:本世前几炉必成,只在真开炉时消费每世额度
   const guarantee = craftGuaranteeRemaining(player.reincarnation.heritage, player.reincarnation.heritageUses)
   const succeeded = guarantee > 0 || rng.chance(able.successRate)
   if (guarantee > 0) player.consumeHeritageUse('danxin', 3)
 
-  // 无论成败,炉先开了,料先下了
   resources.spendStone(cost.stone)
   if (succeeded) {
     resources.spendHerb(cost.grade, cost.herb)
@@ -350,7 +280,6 @@ export function craftPill(id: string, quiet = false): CraftOutcome {
   for (const mid of able.materials) noteMaterialUsed(mid, succeeded)
 
   if (!succeeded) {
-    // 炸炉长记性:这张方子反而更熟了一点
     useLoreStore().addRecipeMastery(id, 0.02)
     track('pillsFailed')
     if (!quiet) {
@@ -360,14 +289,11 @@ export function craftPill(id: string, quiet = false): CraftOutcome {
     return { ok: false, count: 0 }
   }
 
-  // 双丹掷点读 craftability 算好的真实概率(含 alchemyYield、已按 PILL_SECOND_CAP 封顶)——
-  // 展示页写的那个数与这里掷的就是同一个,不再自算一遍(封顶单源)
+  // 双丹概率读 craftability(含 alchemyYield、已按 PILL_SECOND_CAP 封顶),与展示同源,不自算
   const extra = rng.chance(able.bonusChanceWithYield) ? 1 : 0
   inventory.addPill(id, 1 + extra)
   track('pillsCrafted', 1 + extra)
   collect('pill', id)
-  // 会炼的方子越开越熟(炸炉 0.02 长记性;成功 0.01 熟能生巧)——
-  // 否则「多炼几炉便到通晓」这句界面承诺永不兑现(历史上只有失败/研读加掌握度)
   useLoreStore().addRecipeMastery(id, 0.01)
   if (!quiet) {
     playSfx('success')
@@ -403,7 +329,6 @@ export function craftPillBatch(id: string, count: number): { rounds: number; mad
   const name = pillDef(id)?.name ?? id
   const ui = useUiStore()
   if (rounds === 0) {
-    // 第一炉就炼不动:把真实理由交给非静默开炉那句 toast
     craftPill(id)
   } else {
     playSfx('success')

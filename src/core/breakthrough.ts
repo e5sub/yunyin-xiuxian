@@ -38,7 +38,6 @@ import type { BreakthroughView } from '@/stores/ui'
 import type { StatMods } from '@/types'
 import { playSfx } from './audio'
 import { gameNow } from './enginePause'
-// Phase 28 突破准备:静坐/服丹的一次性加成(见 earlyGameService;仅无劫突破受益)
 import { breakthroughPrepState, consumeBreakthroughPrep, type BreakthroughPrepView } from './earlyGameService'
 
 /** 进阶成功率的一个构成项(展示用) */
@@ -60,28 +59,23 @@ export interface BreakthroughInfo {
   isMajor: boolean
   needTribulation: boolean
   targetLabel: string
-  /** 突破准备状态(就绪时 rate 已并入加成,见 AN 接线) */
+  /** 突破准备状态;就绪时 rate 已并入加成(大关不食) */
   prep: BreakthroughPrepView
 }
 
-/** 蒙特卡洛采样次数:渡劫波次少(4~15),几千次也在毫秒级 */
+/** 蒙特卡洛采样次数;波次 4~15,几千次仍在毫秒级 */
 const TRIB_SAMPLE = 4000
 
 /**
- * 按玩家词条推演渡劫成功率(审计口径,非 UI 展示口径)。
- *
- * Phase 32.0 起,玩家看到的是"劫型 + 四维准备度 + 风险",不再是单一成功率数字;
- * 本函数只服务于平衡审计与回归测试。不传 kind 时取五种劫型的平均,
- * 代表"不挑天时的长期基线",不代表任何一次具体渡劫。
- *
- * 数学主干与实际结算 runTribulation 共用 tribulationDecision 的度量函数。
+ * 按玩家词条推演渡劫成功率:审计口径,只服务平衡审计与回归测试,不进 UI。
+ * 不传 kind 时取五种劫型的平均。数学主干与 runTribulation 共用 tribulationDecision 的度量函数。
  */
 export function tribulationSuccessRate(
   targetMajor: number,
   mods: StatMods,
   kind?: TribulationKind,
   relief: TribulationRelief = NO_RELIEF,
-  /** 三维折算(防御→抗性 / 气血→水位);审计口径默认不传 = 只看词条,读数偏保守 */
+  /** 三维折算(防御→抗性 / 气血→水位);默认不传 = 只看词条,读数偏保守 */
   stat: TribStatGuard = NO_STAT_GUARD
 ): number {
   const kinds = kind ? [tribulationDef(kind)] : TRIBULATIONS
@@ -111,25 +105,17 @@ export function breakthroughInfo(at: number = gameNow()): BreakthroughInfo {
   const isMajor = player.isMajorStep
   const nextMajor = isMajor ? player.major + 1 : player.major
   const nextSub = isMajor ? 0 : player.sub + 1
-  /**
-   * 大关皆劫 —— 这张表里不再有"无劫大关"。
-   *
-   * 从前境界数据上挂着一枚 `tribulation` 开关,真仙是唯一的 false(旧设计当它是
-   * 飞升之赏)。那条例外让三件事说不清:进阶成功率的作用域、三个跨界入口
-   * (真仙/神人/混沌真灵)的规矩不一样、"大关未必渡劫"这条规则玩家猜不到。
-   * 现在只剩一条规则:小进阶掷点,大关渡劫 —— 想要无劫的路,得先有本事免劫。
-   */
+  /** 大关皆劫,跨界入口(真仙/神人/混沌真灵)不例外:小进阶掷点,大关渡劫 */
   const needTribulation = isMajor
   const qiCost = Math.floor(player.qiCapValue * BT_QI_COST_RATIO)
   const mods = player.finalStats.mods
-  // Phase 28 突破准备:就绪的静坐/丹药加成并入展示率(消费在 attemptBreakthrough,一次性)
+  // 就绪的突破准备并入展示率;消费在 attemptBreakthrough,一次性
   const prep = breakthroughPrepState(at)
-  // 4 项操作数先各自成行,再合出 rate —— 界面要解释「凭什么是这个数」,这里就得给得出明细
+  // 4 项操作数先各自成行再合出 rate,供界面列明细
   const baseRate = breakthroughBaseRate(player.major, player.sub)
   const rateMod = modOf(mods, 'breakthroughRate')
   const luckPart = modOf(mods, 'luck') * 0.05
-  // 大关皆劫,渡劫成败走的是天劫模拟(runTribulation),不是这颗 rate —— 突破准备只给平概率掷点那条路,
-  // 大关不食此益:既不抬高展示率,也不把它算进「成败」,与消费端(仅无劫分支)同一个口径
+  // 大关成败走 runTribulation,不吃准备加成;须与消费端(仅无劫分支)同口径
   const prepBonus = !needTribulation && prep.ready ? prep.bonus : 0
   const rateParts: RatePart[] = [{ label: '基础', value: baseRate }]
   if (rateMod !== 0) rateParts.push({ label: '词条加成', value: rateMod })
@@ -162,10 +148,10 @@ export function breakthroughInfo(at: number = gameNow()): BreakthroughInfo {
   }
 }
 
-/** 模拟渡劫:返回(是否渡过, 战报)
- * Phase 32.1:与 tribulationDecision 共用度量函数,预览与结算不可能分叉
- * Phase 32.2:灵根解法通道同样经 currentTribulationRelief 取,与预览同源
- * 渡劫难度随天时:与预览 currentTribulationPlan 同一乘数(雷鸣日+8%) */
+/**
+ * 模拟渡劫:返回(是否渡过, 战报)。与预览同源:度量函数共用 tribulationDecision,
+ * 灵根解法经 currentTribulationRelief,天时乘数与 currentTribulationPlan 相同(雷鸣日+8%)。
+ */
 function runTribulation(targetMajor: number): { survived: boolean; log: string[] } {
   const player = usePlayerStore()
   const mods = player.finalStats.mods
@@ -174,7 +160,7 @@ function runTribulation(targetMajor: number): { survived: boolean; log: string[]
   const tDef = tribulationDef(kind)
   const relief = currentTribulationRelief(kind)
   const weatherMult = todayWeather().tribulationMult
-  // 三维折算与预览同源(currentTribulationPlan 走同一个 helper):血厚防高者硬抗一部分
+  // 三维折算与预览同源(currentTribulationPlan 走同一个 helper)
   const stat = currentStatGuard()
   const regen = sustainScore(mods, tDef, relief)
   let hpLeft = 1 + guardScore(mods, tDef, relief) + stat.guard
@@ -214,10 +200,10 @@ export function attemptBreakthrough(): BreakthroughView | null {
     const result = runTribulation(player.major + 1)
     success = result.survived
     tribulationLog = result.log
-    // 「渡过」才算渡过:失败不计数(否则连败三次自动解锁 a_trib3 劫后余生)
+    // 失败不计数,否则连败三次即解锁 a_trib3
     if (success) track('tribulations')
   } else {
-    // 无劫突破消费掉就绪的准备加成(info.rate 已并入,见 breakthroughInfo peek)
+    // info.rate 已并入准备加成
     consumeBreakthroughPrep()
     success = rng.chance(info.rate)
   }
@@ -231,8 +217,7 @@ export function attemptBreakthrough(): BreakthroughView | null {
     checkStateAchievements()
     playSfx('breakthrough')
     const realm = player.realm
-    // 跨界飞升:渡劫→真仙入仙界,大罗→神人入神界,神帝→混沌真灵入混沌海。
-    // 这三步是全流程仅有的「换一片天」,给独立叙事与跨世节点(人间界入口不算)
+    // 跨界飞升三步(入仙界/神界/混沌海)给独立叙事与跨世节点,人间界入口不算
     const crossedWorld = info.isMajor && player.major > 0 && isWorldEntry(player.major)
     const world = crossedWorld ? worldOf(player.major) : null
     if (world) recordMilestone(`first_${world.id}`)
@@ -252,7 +237,7 @@ export function attemptBreakthrough(): BreakthroughView | null {
           : `${baseMessage}${loreLine}`
     }
   } else {
-    // 渡劫跬步(宿命传承):本世唯一一次突破失败豁免 —— 不散修为(一次性容错,跨世不带)
+    // 渡劫跬步(宿命传承):本世一次突破失败豁免,不散修为,跨世不带
     const exempted =
       hasBreakExemption(player.reincarnation.heritage) && player.consumeHeritageUse('dubu', 1)
     if (!exempted) {
@@ -260,7 +245,7 @@ export function attemptBreakthrough(): BreakthroughView | null {
       const refund = Math.min(0.8, modOf(mods, 'breakRefund'))
       player.loseExpPct(BT_FAIL_EXP_LOSS * (1 - refund))
     }
-    // 可冻结的到期判定读游戏时钟(见 enginePause 头注释):暂停中写墙钟,恢复后会多出一段
+    // 到期判定读游戏时钟(见 enginePause):写墙钟会在暂停恢复后多出一段
     cultivation.addBuff('injury', gameNow())
     track('breakthroughFails')
     playSfx('fail')

@@ -1,6 +1,4 @@
-/**
- * 统一数值格式化 —— 中文单位 + 科学计数法兜底
- */
+/** 统一数值格式化:中文单位 + 科学计数法兜底 */
 import type { GNum } from '@/types'
 import { gn, toNum } from './gnum'
 
@@ -16,20 +14,19 @@ export function formatGN(v: GNum | number): string {
     const n = toNum(g)
     if (n < 1000) {
       if (n < 100 && !Number.isInteger(n)) {
-        // 0.04 显示成 0.04、0.004 也应收着——任何正收益都不该因为太细碎而显示成 0。
-        // 位数随数量级抬升(0.04→2 位,0.004→3 位),封顶 6 位,杜绝 0.0000000001 刷屏
+        // 正数不显示成 0:位数随数量级抬升(0.04→2 位,0.004→3 位),封顶 6 位
         const tiny = n > 0 && n < 0.1 ? n.toFixed(Math.max(2, Math.min(6, 1 - Math.floor(Math.log10(n))))) : n.toFixed(1)
         return trimZero(tiny)
       }
-      // 与 <100 档(四舍五入)一致,不再向下取整:999.6 显示 1000 而非 999
+      // 与 <100 档同为四舍五入
       return String(Math.round(n))
     }
-    // 千位档也取整,与 <1000 档同口径:9999.6 该读 10,000,不是向下取整的 9,999
+    // 千位档同口径四舍五入
     return Math.round(n).toLocaleString('en-US')
   }
   const unitIdx = Math.floor(g.e / 4) - 1
   if (unitIdx >= UNITS.length) {
-    // 科学计数兜底:mantissa 四舍五入到 10.00 时进位(9.99…e407 → 1.00e408),不许 10.00e407
+    // 科学计数兜底;mantissa 四舍五入到 10.00 时进位(9.99…e407 → 1.00e408)
     const m = g.m.toFixed(2)
     if (m === '10.00') return `1.00e${g.e + 1}`
     return `${m}e${g.e}`
@@ -49,7 +46,6 @@ function trimZero(s: string): string {
   return s.includes('.') ? s.replace(/\.?0+$/, '') : s
 }
 
-/** 格式化普通数字(整数展示) */
 export function formatNum(n: number): string {
   return formatGN(gn(n))
 }
@@ -66,9 +62,9 @@ const NOT_AVAILABLE = '--'
 export function formatPercent(x: number, dp = 1): string {
   if (!Number.isFinite(x)) return NOT_AVAILABLE
   const v = x * 100
-  // x 有限但 x*100 上溢(约 1e306 以上)时,v 会变 Infinity —— 同样要给占位,不能吐 "Infinity%"
+  // x 有限但 x*100 上溢(约 1e306 以上)
   if (!Number.isFinite(v)) return NOT_AVAILABLE
-  // -0.001% 这类连一位小数都到不了的极小值,不该显示成「-0%」吓人
+  // 极小值显示 0%,不出「-0%」
   if (Math.abs(v) < Math.pow(10, -dp)) return '0%'
   const s = Number.isInteger(v) ? String(v) : v.toFixed(dp)
   return `${trimZero(s)}%`
@@ -88,10 +84,7 @@ export function formatDuration(totalSec: number): string {
   return `${s}秒`
 }
 
-/**
- * 选择项上的时长。整分钟写成「10分钟」,不走倒计时那套「10分0秒」——
- * 那是为了定宽,放在三选一的说明里反而像计时器在跳。
- */
+/** 选择项上的时长;整分钟写「10分钟」,不写「10分0秒」 */
 export function formatChoiceSpan(totalSec: number): string {
   if (!Number.isFinite(totalSec)) return NOT_AVAILABLE
   const sec = Math.max(0, Math.floor(totalSec))
@@ -100,16 +93,8 @@ export function formatChoiceSpan(totalSec: number): string {
 }
 
 /**
- * 倒计时 —— 与 formatDuration 同义,但**逐位定宽**。
- *
- * 状态面板里的每一枚状态胶囊都在倒计时,而 formatDuration 的宽度会随数值变:
- * 「9分59秒」(6 字)下一秒变「10分0秒」,再下一秒变「10分1秒」——
- * 胶囊是 nowrap 的,宽度一涨一缩,同一行里后面的胶囊整排跟着左右跳,
- * 于是玩家看到的就是「状态信息一直在抖」。
- *
- * 定宽的做法:分钟/秒一律补零到两位,不足一分钟也写「00分SS秒」,
- * 于是**同一量级内**每一秒的文本宽度完全相同(逐位替换,不换行不回流)。
- * 数字本身另由 .tabular(tabular-nums)保证等宽,两者合起来才真的不动。
+ * 倒计时:与 formatDuration 同义,但同一量级内逐位定宽(状态胶囊 nowrap,宽度变化会挤动整排)。
+ * 数字等宽另靠 .tabular(tabular-nums)。
  */
 export function formatCountdown(totalSec: number): string {
   if (!Number.isFinite(totalSec)) return NOT_AVAILABLE
@@ -124,7 +109,7 @@ export function formatCountdown(totalSec: number): string {
   return `${pad2(m)}分${pad2(s)}秒`
 }
 
-/** 时间戳 → 「HH:MM」(本地时)—— 倒计时旁那句「约几时归」的落点 */
+/** 时间戳 → 「HH:MM」(本地时) */
 export function formatClock(ts: number): string {
   const d = new Date(ts)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -137,13 +122,8 @@ export function formatYears(y: number): string {
 }
 
 /**
- * 小数字 → 汉字(4 → 四,21 → 二十一)。
- *
- * 用途只有一个:**页面上写「四界二十一境」「六十四卦」这类数量时,数字得从来源数出来**,
- * 而不是手打。手打的数字在内容增长那天就变成谎话(加了第 5 个界域,文案还写四界),
- * 且没有任何地方会因此报错。
- *
- * 只做到 9999:此范围之外说明这个数字不该以汉字出现,原样返回阿拉伯数字更诚实。
+ * 小数字 → 汉字(4 → 四,21 → 二十一);页面上的数量从来源数出来再转,不手打。
+ * 只做到 9999,范围外原样返回阿拉伯数字。
  */
 export function cnNumber(n: number): string {
   if (!Number.isInteger(n) || n < 0 || n > 9999) return String(n)

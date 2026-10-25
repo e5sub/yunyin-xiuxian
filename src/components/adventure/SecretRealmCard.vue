@@ -1,5 +1,5 @@
 <template>
-  <!-- 秘境:一次性内容,出则散。凡境册元婴起(灵石),天界册真仙起(道源) -->
+  <!-- 凡境册元婴起(灵石),天界册真仙起(道源) -->
   <section v-if="unlocked" class="card-ink px-4 py-3">
     <p class="flex items-center gap-2">
       <span class="font-kai text-[14px] tracking-[0.2em] text-ink">秘境</span>
@@ -26,7 +26,7 @@
       </div>
     </template>
 
-    <!-- 未入:择一处 -->
+    <!-- 未入 -->
     <template v-else>
       <!-- 身在另一册的境中:先说明进不去,不摆一列点了才被拒的门 -->
       <p v-if="elsewhere" class="mt-1 text-[10px] leading-relaxed text-ink-faint">
@@ -90,17 +90,13 @@
   const props = withDefaults(defineProps<{ gate?: 'mortal' | 'celestial' }>(), { gate: 'mortal' })
 
   const unlocked = computed(() => realmUnlock(props.gate))
-  /**
-   * 在境中(仅认本册):`currentRealm` 是全局单份、不分册 —— 不筛的话,身在凡境
-   * 的境中时,天界册(试炼域)这张卡也会以「天界秘境」的册头渲染凡境的境况,
-   * 册头与内容当场对不上。两册互不串门,与 `availableRealms` 的 gate 过滤同口径。
-   */
+  /** 在境中(仅认本册):`currentRealm` 全局单份不分册,须按 gate 过滤,与 `availableRealms` 同口径 */
   const state = computed(() => {
     const s = currentRealm()
     if (!s) return null
     return secretRealmDef(s.realmId)?.gate === props.gate ? s : null
   })
-  /** 身在**另一册**的境中:本册卡不摆入口,就地说明为什么进不去 */
+  /** 身在另一册的境中:本册卡不摆入口,只报所在 */
   const elsewhere = computed(() => {
     const s = currentRealm()
     if (!s) return null
@@ -136,9 +132,8 @@
   function fight(): void {
     const r = fightSecretLayer()
     if (!r) return
-    // 战报合并为单条多行 toast:逐条 push 会被 toast 位(上限 5)把自己前面的行挤掉,长战报读不全
-    // 级别跟结果性质走:胜 = 得了战利,与全库「有得有获」同归 success;败 = 气血折损,归 warn。
-    // 此前胜也写 info,与「已换上 N 件」那批正结果不在一个级别,胜负两级配色分不开。
+    // 合并为单条多行 toast:逐条 push 会被 toast 上限 5 挤掉前面的行
+    // 胜归 success(与全库「有得有获」同级),败归 warn
     if (r.lines.length) ui.toast(r.lines.join('\n'), r.win ? 'success' : 'warn')
   }
 </script>

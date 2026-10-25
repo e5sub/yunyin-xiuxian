@@ -71,7 +71,7 @@
   const ui = useUiStore()
   const { bountyRemaining, bountyRows } = useBountyRows()
 
-  /** 展开中的「贡兵刃」悬赏单(idx);null=全部收起 */
+  /** 展开中的贡兵刃单 idx;null = 全收起 */
   const openEquipOrder = ref<number | null>(null)
 
   function claimOne(idx: number): void {
@@ -106,7 +106,6 @@
       })
   }
 
-  /** 点选一件贡出;成交即收拢清单 */
   function claimEquipOne(b: BountyRow, c: { uid: string }): void {
     const result = bounty.claimEquip(b.idx, c.uid)
     if (result === 'ok') {
@@ -120,10 +119,7 @@
     }
   }
 
-  /**
-   * 换单后收起贡器清单 —— 展开态盯的是旧单,留着会挂在新单下面选货交。
-   * 换单检测随本体:宿主不再需要为悬赏的内部展开态留一个 ref。
-   */
+  /** 换单即收起贡器清单:展开态指向旧单 */
   watch(
     () => bounty.orders,
     (next, prev) => {

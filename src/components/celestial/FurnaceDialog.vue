@@ -12,7 +12,7 @@
               ? `灵草(仙品+存 ${formatNum(row.have)})`
               : `${row.rate.name}(存 ${formatNum(row.have)})`
           }}</span>
-          <!-- 全熔防误触:文案亮出『整包』与可得道源(不再是『按 25:1 换』的可兑换暗示),再按一下才熔 -->
+          <!-- 全熔防误触:亮出整包与可得道源,再按一下才熔 -->
           <button
             class="btn-ghost !px-3 !py-2 !text-[11px] tabular"
             :disabled="furnacePreview(row.rate) <= 0"
@@ -78,7 +78,6 @@
             }}
           </button>
         </div>
-        <!-- S3 链路:本次凝聚后,下世收益变化 -->
         <p class="mt-1 text-[10px] leading-relaxed text-ink-faint tabular">
           当前 {{ fruitInfo.total }} 枚 · 有效 {{ fruitCountLabel(fruitInfo.effective) }}
           <span class="text-gold-ink"
@@ -151,7 +150,7 @@ const resources = useResourcesStore()
 const player = usePlayerStore()
 const endgame = useEndgameStore()
 
-/** 熔炉全熔确认态(按资源键)。熔炉弹窗关闭即复位,不残留旧行 */
+/** 全熔确认态(按资源键);弹窗关闭即复位 */
 const furnaceConfirm = ref<FurnaceRate['resource'] | null>(null)
 watch(
   () => props.open,
@@ -160,7 +159,7 @@ watch(
   }
 )
 
-/** 全熔一包可得道源(预览,与 furnaceConvert 同口径 floor(have/per));灵草按仙品+计 */
+/** 全熔预览与 furnaceConvert 同口径 floor(have/per);灵草按仙品+计 */
 const furnaceRows = computed(() =>
   FURNACE_RATES.map(rate => ({
     rate,
@@ -177,7 +176,7 @@ function doFurnace(rate: FurnaceRate): void {
 
 const fruitInfo = computed(() => fruitMarginalInfo())
 const fruitShort = computed(() => daoSourceShortfall(DAO_SOURCE_PER_FRUIT, endgame.daoSource))
-/** 灵石熔铸缺石 —— 与 furnaceConvertStone 的 spendStone 同读一份价签 */
+/** 灵石熔铸缺口;价签与 furnaceConvertStone 同源 */
 const stoneShort = computed(() => {
   const cost = furnaceStoneCost()
   return resources.hasStone(cost) ? gnZero() : subClamp(cost, resources.spiritStone)

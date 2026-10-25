@@ -1,16 +1,11 @@
 /**
  * 短期秘境 —— 一次性内容:进入一次、规则随机、结束后消失,不污染大地图。
- *
  * 结构:进入(付入口代价)→ 随机规则 1~2 条 → 三层 → 最终宝藏。
- *
- * **规则必须是能生效的规则**:Phase 31 留下的那版规则是一串纯文本
- * (「灵力枯竭(每战首回合无灵气加成)」之类),引擎里没有对应通道 ——
- * 写了也白写。此处每条规则都带一组既有的 CombatRules,文本只是它的说法。
- * 凡是既有规则表达不出来的,不进这个池子。
+ * 每条规则须带一组既有 CombatRules,文本只是它的说法;既有规则表达不出来的不进池。
  */
 import type { CombatRules } from '@/types'
 
-/** 秘境层数:固定三层(放数据里,player.sanitize 读档修形也要用它,免得反手 import core) */
+/** 秘境层数:固定三层(放 data,供 player.sanitize 读档修形,免得反手 import core) */
 export const SECRET_LAYERS = 3
 /** 败两次即被逐出 */
 export const SECRET_MAX_LOSSES = 2
@@ -41,7 +36,7 @@ export interface SecretRealmDef {
   gate: 'mortal' | 'celestial'
   /** 可进入的最低大境界(凡境元婴 = 3,天界真仙 = 9) */
   minMajor: number
-  /** 入口代价:凡境按地界层级折算灵石;天界用道源(与远征/试炼同一种终局资粮) */
+  /** 入口代价:凡境按地界层级折算灵石;天界用道源 */
   cost: { stone: number } | { daoSource: number }
   /** 本境自带的规则(进入即生效,与随机规则叠加) */
   rules: CombatRules
@@ -52,14 +47,8 @@ export interface SecretRealmDef {
 }
 
 /**
- * 秘境目录 —— 门槛与代价都写在这张表上,改口径只改这里。
- *
- * ⚠ 入口经济:Phase 31 原稿把它们定在「元婴门槛 + 道源代价」上,而道源是
- * 真仙之后才有的资源 —— 元婴玩家付不出,等于进不去(见 RIL TASK-031/DEC-014)。
- *
- * 产品口径是「都做」,故分两阶:**凡境秘境**保留 minMajor=3 与灵石代价,
- * 让门槛境界就能真的走进去;**天界秘境**是新增的一阶,minMajor=9、道源代价,
- * 与远征/试炼并列 —— 同一套玩法循环,换门槛与货币,不多写一行战斗代码。
+ * 秘境目录:门槛与代价只写在这张表上。
+ * 道源真仙之后才有:凡境秘境只能收灵石,天界秘境(minMajor=9)才收道源(见 RIL TASK-031/DEC-014)。
  */
 export const SECRET_REALMS: SecretRealmDef[] = [
   {
@@ -95,7 +84,7 @@ export const SECRET_REALMS: SecretRealmDef[] = [
     healBetweenPct: 0.3,
     rewardMult: 1.5
   },
-  // ---- 天界秘境:真仙起,道源代价,与远征/试炼并列 ----
+  // ---- 天界秘境 ----
   {
     id: 'sr_xingchen',
     gate: 'celestial',

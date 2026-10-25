@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dissolveNote, refineCostLine } from './soulText'
 
-/** 器魂页文案 —— 后果(毁器/不返)与账目(道源余额)同屏,页面只许调用不许手打 */
+/** 器魂页文案:后果(毁器/不返)与道源余额同屏;页面只许调用不许手打 */
 describe('器魂页文案', () => {
   it('凝炼台把代价与余额一起报出', () => {
     expect(refineCostLine(10, '25')).toContain('耗道源 10')

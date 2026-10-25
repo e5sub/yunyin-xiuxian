@@ -1,12 +1,7 @@
 /**
- * 前期玩法 buff 闭环(Phase 28)
- *
- * 背景:悟道顿悟/洞府巡游的选项此前引用了一堆 buffId,但 buffs.ts 里全都没有
- * 对应定义,addBuff 查无此定义静默 return —— 玩家选什么都等于没选。
- * 本文件锁住两条防线:
- *  1. 数据完整性:凡选项引用的 buffId(含惩罚 type)都必须在 buffs.ts 有定义;
- *  2. 行为闭环:选顿悟真的挂上 buff、选巡游惩罚真的扣生效、qiCapPct/beastPct
- *     两个新词条真的抬高灵气上限与灵兽效果。
+ * 前期玩法 buff 闭环。addBuff 查无此定义静默 return。
+ *  1. 数据完整性:凡选项引用的 buffId(含惩罚 type)都须在 buffs.ts 有定义;
+ *  2. 行为闭环:选顿悟挂上 buff、选巡游惩罚生效、qiCapPct/beastPct 抬高灵气上限与灵兽效果。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -70,7 +65,6 @@ describe('悟道顿悟选择实际生效(修复前是纯空转)', () => {
     const { mayTriggerEnlightenment, getCurrentEnlightenment, chooseEnlightenment } = await import('./earlyGameService')
     mayTriggerEnlightenment()
     expect(getCurrentEnlightenment()).not.toBeNull()
-    // mock 0.01 下第一个选项是 ENLIGHTENMENT_OPTIONS[0]「静心凝神」
     const cult = useCultivationStore()
     chooseEnlightenment(0)
     expect(cult.buffs.find(b => b.defId === 'enlighten_cult'), '顿悟选择的 buff 应当真的挂上').toBeDefined()
@@ -78,7 +72,6 @@ describe('悟道顿悟选择实际生效(修复前是纯空转)', () => {
   })
 
   it('选「灵机一动」走即时奖励,悟道点 +5', async () => {
-    // 独立模块实例:顿悟冷却 5 分钟,不 resetModules 会被上次触发挡住
     vi.resetModules()
     vi.spyOn(Math, 'random').mockReturnValueOnce(0.01) // 触发判定
       .mockReturnValueOnce(0.95) // 池尾 → 灵机一动
@@ -141,7 +134,7 @@ describe('qiCapPct / beastPct 接线(修复阵法 / 安抚灵兽语出必践)', 
     // 灵兽园 8 级(beastMult=1.8)+ 安抚增益(1.3):0.1×1.8×1.3 = 0.234
     dongfu.setLevel('beast', 8)
     cultivation.addBuff('cave_garden_pet', Date.now())
-    // 卡片渲染源与「真到账」finalStats 同一份 —— 若卡片拿裸 base 0.1,这里就漏了灵兽园/安抚的放大
+    // 卡片渲染源与「真到账」finalStats 同一份
     expect(player.petModsFor(petDef('pet_qingyu')!).explorationSpeed).toBeCloseTo(0.234)
     expect(player.finalStats.mods.explorationSpeed).toBeCloseTo(0.234)
   })

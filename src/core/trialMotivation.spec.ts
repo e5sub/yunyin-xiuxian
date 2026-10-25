@@ -1,18 +1,5 @@
 /* eslint-disable no-console */
-/**
- * 逆旅契动机审计
- *
- * 逆旅契的技术验证已经完成:道果第一次真的会下降,回路没被接回来。
- * 但「不可复利」不等于「有吸引力」。本套用例只回答一个问题:
- *
- *   **四份契创造了玩法变化,还是只是让数字变差?**
- *
- * 判据:若签契后最优构筑不变、排序不变,只是全体胜率等比下降,
- * 那就是纯罚款。这时该改的是契的玩法改变程度,不是给它补奖励 ——
- * 补奖励会把刚切断的回路又接回来。
- *
- * 不改数值、不加任何奖励。
- */
+/** 逆旅契动机审计:契改变了构筑排序,还是只让胜率等比下降 */
 import { describe, expect, it } from 'vitest'
 import {
   AXIS_COVERAGE,
@@ -63,7 +50,7 @@ describe('动机 · 四份契到底改变了什么', () => {
       `\n改变构筑排序的:${reshaping.map(i => i.trial.name).join('、') || '无'}` +
         `\n纯粹等比变难的:${flat.map(i => i.trial.name).join('、') || '无'}`
     )
-    // 这一条不预设结果,只把事实钉住:若全部为 flat,则四份契都只是罚款
+    // 不预设结果,只钉事实
     expect(reshaping.length + flat.length).toBeLessThanOrEqual(impacts.length)
   })
 
@@ -72,7 +59,6 @@ describe('动机 · 四份契到底改变了什么', () => {
     for (const im of impacts) {
       console.log(`${im.trial.name.padEnd(8)} ${(im.spread * 100).toFixed(1)}pp`)
     }
-    // 等比变难时 spread 接近 0;针对性强时 spread 大
     const maxSpread = Math.max(...impacts.map(i => i.spread))
     console.log(
       `\n最大不均 ${(maxSpread * 100).toFixed(1)}pp —— ` +
@@ -83,8 +69,7 @@ describe('动机 · 四份契到底改变了什么', () => {
 
 describe('动机 · 决策维度覆盖', () => {
   it('静态标注必须与实测一致:build 格是否激活逐契比对', () => {
-    // 逐索引比对 AXIS_COVERAGE[i] 与 impacts[i],而不是两侧 .every 聚合 ——
-    // 否则恰好一份契漂移会让两边同为 false、false===false 照样通过(全盲)
+    // 须逐索引比对:两侧 .every 聚合在恰一份契漂移时 false===false 照样通过
     for (let i = 0; i < AXIS_COVERAGE.length; i += 1) {
       const labeled = AXIS_COVERAGE[i]!.axes.includes('build')
       const measured = playValueOf(impacts[i]!) === 'reshapes'
@@ -96,7 +81,6 @@ describe('动机 · 决策维度覆盖', () => {
     const untouched = untouchedAxes()
     console.log('\n未被任何契触及的决策维度:')
     for (const a of untouched) console.log(`  ${AXIS_NAMES[a]}`)
-    // 契约全部挂在 CombatRules 上,故这四格碰不到
     expect(untouched).toContain('region')
     expect(untouched).toContain('order')
     expect(untouched).toContain('encounter')
@@ -109,9 +93,6 @@ describe('动机 · 决策维度覆盖', () => {
 
   it('诊断:动机不足不是因为「只会变难」,而是因为改变只发生在战斗内部', () => {
     const untouched = untouchedAxes()
-    // 实测已推翻「纯罚款」的假设:契约确实创造了构筑取舍。
-    // 但取舍全部发生在一场战斗之内,一世的**结构**没有变 ——
-    // 玩家走的还是同样的区域、同样的顺序、同样的目标
     expect(untouched.length).toBeGreaterThanOrEqual(4)
     expect(impacts.every(im => playValueOf(im) === 'reshapes')).toBe(true)
     console.log(
@@ -130,8 +111,6 @@ describe('动机 · 架构边界', () => {
   })
 
   it('这条边界允许大胆内容而不制造新闭环', () => {
-    // 「本世不得使用某类丹药」「只能带一件法宝」「历练路线受限」
-    // 都在可动空间内,都改变玩法,都不产生跨世成长
     expect(MUTABLE_SPACE).toContain('可用物品')
     expect(MUTABLE_SPACE).toContain('历练路线')
     expect(IMMUTABLE_SPACE).toContain('DaoFruit')

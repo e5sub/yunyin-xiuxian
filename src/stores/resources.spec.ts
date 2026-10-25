@@ -1,10 +1,4 @@
-/**
- * 资源 store —— 天道熔炉跨品扣款(spendHerbMeltable)的原子性
- *
- * 熔炉的草按「仙品起、按总和算、自低品起扣、余数保留」实扣。这里的红线是原子性:
- * 与其余 spend(spendSmall/spendStone/spendHerb)同契约 —— 不足则不吐、失败不得白扣,
- * 否则一次「熔不动」竟把可熔草啃成 0(历史缺陷,见 spendHerbMeltable 注释)。
- */
+/** 天道熔炉跨品扣款(spendHerbMeltable)原子性:不足则不吐、失败不得白扣,与其余 spend 同契约 */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useResourcesStore } from './resources'

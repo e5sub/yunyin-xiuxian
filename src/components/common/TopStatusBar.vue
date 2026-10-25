@@ -4,25 +4,19 @@
     :style="`padding-top: max(env(safe-area-inset-top), ${statusInset}px, ${Capacitor.isNativePlatform() ? `30px` : `8px`})`"
   >
     <!--
-      窄屏不许折行:320 宽时右组的「9 兆」「25.33 亿」与左组的「3000/1000 亿载」
-      曾被压成两行,顶栏从 46px 涨到 58px,数字看着像乱码。故右组 shrink-0(整组
-      不参与收缩)、每格 whitespace-nowrap(数不许断行),让左组先让位:
-      名字 truncate、境界行 overflow-hidden,被裁掉的尾巴只能是「N 世」这种闲格。
+      窄屏(320 宽)不许折行:右组 shrink-0、每格 whitespace-nowrap,左组先让位
+      (名字、境界名 truncate,左组 overflow-hidden),被裁的只能是「N 世」这种闲格。
     -->
     <div class="flex min-w-0 items-center gap-2 overflow-hidden">
       <div class="min-w-0 leading-tight">
         <p class="truncate font-kai text-[13px] tracking-wider text-ink">{{ player.name }}</p>
         <p class="flex items-center gap-1.5 whitespace-nowrap text-[10px] text-ink-faint">
-          <!-- 局促时先让境界名吃省略号:寿元(告急转朱砂)与「N 世」都 shrink-0 保住 -->
+          <!-- 局促时境界名先省略;寿元与「N 世」shrink-0 -->
           <span class="min-w-0 flex-1 truncate">{{ player.realmName }}</span>
-          <!-- 年龄:寿元将尽时转朱砂,顶栏常驻便于随时察觉 -->
           <span class="tabular shrink-0" :class="player.lifespanRatio < LIFESPAN_WARN_RATIO ? 'text-cinnabar' : ''">
             {{ Math.floor(player.age) }}/{{ formatYears(player.lifespanMax) }}
           </span>
-          <!--
-            轮回次数:从主页人物卡移来,置于全局顶栏常驻。
-            但它是最闲的一格 —— 340px 以下宁可不要,也不能把灵石挤走。
-          -->
+          <!-- 轮回次数:最闲的一格,340px 以下隐藏,不挤灵石 -->
           <span v-if="player.reincarnation.count > 0" class="hidden shrink-0 text-violet-ink min-[340px]:inline">
             {{ player.reincarnation.count }} 世
           </span>
@@ -34,14 +28,14 @@
         <GameIcon name="gem" :size="13" class="text-gold-ink" />
         {{ formatGN(resources.spiritStone) }}
       </span>
-      <!-- 只有图标的入口必须自带名字:否则读屏只会念「链接」,自动化也点不着它 -->
+      <!-- 纯图标入口须自带名字:读屏与自动化都靠它 -->
       <RouterLink
         to="/settings"
         aria-label="设置"
         class="-my-1.5 -mr-1.5 relative flex min-h-[32px] min-w-[32px] items-center justify-center p-1.5 text-ink-faint active:scale-90"
       >
         <GameIcon name="settings" :size="15" />
-        <!-- 有新发布说明时点一枚朱砂圆点:绝对定位,不挤动 32px 的触面与布局 -->
+        <!-- 新发布说明圆点:绝对定位,不挤动 32px 触面 -->
         <span
           v-if="settings.hasUnseenRelease"
           class="pointer-events-none absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-cinnabar"
@@ -62,7 +56,7 @@
   import { useSettingsStore } from '@/stores/settings'
   import GameIcon from './GameIcon.vue'
 
-  // 安卓状态栏的真实高度(非安卓为 0);与 env() 及原有的 40px 保底取大者,只会更准不会更矮
+  // 安卓状态栏真实高度(非安卓为 0),与 env() 及保底值取大者
   const { top: statusInset } = useNativeInsets()
   const player = usePlayerStore()
   const resources = useResourcesStore()

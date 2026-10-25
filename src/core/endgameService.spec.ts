@@ -14,12 +14,8 @@ import { gn, gnZero } from '@/utils/gnum'
 import { formatGN } from '@/utils/format'
 
 /**
- * 飞升也要渡天劫(大关皆劫)。
- *
- * 这条用例验的是**跨界叙事与跨世节点**,不是渡劫平衡 —— 故把准备度钉到"该有的
- * 样子"(抗性封顶 + 三维折算满),让十二道雷真的走完。真实玩家达到同一量级靠的是
- * 功法分支(劫印/渡厄)、天赋雷体、灵兽、护腕、称号与丹药,见 tribulationDecision
- * 的 statGuardOf 与 tribulationSpace.spec 的逐境普查。
+ * 飞升也要渡天劫(大关皆劫)。用例验跨界叙事与跨世节点,不验渡劫平衡:准备度钉到抗性封顶 + 三维折算满,让十二道雷走完。
+ * 真实玩家达到同一量级的来源见 tribulationDecision 的 statGuardOf 与 tribulationSpace.spec 的逐境普查。
  */
 vi.mock('@/core/tribulationDecision', async importOriginal => {
   const real = await importOriginal<typeof import('@/core/tribulationDecision')>()
@@ -28,7 +24,7 @@ vi.mock('@/core/tribulationDecision', async importOriginal => {
 
 function ascend(): void {
   const player = usePlayerStore()
-  // (0,0) → (9,x):每个大境界需 10 次推进(九层 + 跨境)
+  // (0,0) → (9,x):每大境界 10 次推进(九层 + 跨境)
   for (let i = 0; i < 95; i += 1) player.advanceRealm()
 }
 
@@ -40,7 +36,6 @@ describe('真仙终局服务', () => {
   it('未至真仙不得踏天', () => {
     expect(endgameUnlocked()).toBe(false)
     expect(chooseDaoPath('sword')).toBe(false)
-    // 旧线性入口 challengeWorld 已删(Phase 21 起由路线远征取代),这里改为钉现役入口的同一道闸
     expect(startWorldExpedition('chiyan', null)).toBeNull()
   })
 
@@ -99,17 +94,17 @@ describe('真仙终局服务', () => {
     const resources = useResourcesStore()
     const endgame = useEndgameStore()
     const rate = FURNACE_RATES.find(r => r.resource === 'herb')! // per 60
-    // 凡品 40 + 灵品 20 = 60,但凡/灵不入炉 → meltable 0,既熔不了也入不了账
+    // 凡/灵不入炉:凡 40 + 灵 20 = 60 也熔不了
     resources.$patch({ herbByGrade: { 1: 40, 2: 20, 3: 0, 4: 0, 5: 0 } })
     expect(furnaceConvert(rate)).toBe(0)
     expect(endgame.daoSource).toBe(0)
-    // 仙品 120 → 2 缕,只扣仙品,凡/灵分毫未动
+    // 仙品 120 → 2 缕
     resources.$patch({ herbByGrade: { 1: 40, 2: 20, 3: 120, 4: 0, 5: 0 } })
     expect(furnaceConvert(rate)).toBe(2)
     expect(endgame.daoSource).toBe(2)
     expect(resources.herbMeltable).toBe(0)
     expect(resources.herbByGrade[1] + resources.herbByGrade[2], '凡/灵品不入炉').toBe(60)
-    // 跨品:仙 30 + 神 35 = 65 → 1 缕,自低品起扣 60(仙30+神30),神余 5;道源只按实扣入账
+    // 跨品:仙 30 + 神 35 → 1 缕,自低品起扣 60,神余 5
     endgame.daoSource = 0
     resources.$patch({ herbByGrade: { 1: 0, 2: 0, 3: 30, 4: 35, 5: 0 } })
     expect(furnaceConvert(rate)).toBe(1)
@@ -138,7 +133,7 @@ describe('真仙终局服务', () => {
     const result = startWorldExpedition('chiyan', null)
     expect(result).not.toBeNull()
     expect(result!.row.foeName.length).toBeGreaterThan(0)
-    // 入界战有胜有败:胜则 run 在途,败则当场落痕并清空 run —— 两条路都算"进过界"
+    // 胜则 run 在途,败则当场落痕并清空 run
     expect(endgame.worldRun?.worldId ?? endgame.marks.at(-1)?.targetId).toBe('chiyan')
     expect(endgame.daoSource).toBe(before - world.entryCost)
   })
@@ -163,7 +158,6 @@ describe('真仙终局服务', () => {
     expect(player.worldName).toBe('仙界')
     expect(endgameUnlocked()).toBe(true)
 
-    // 从真仙沿真实突破继续推进(每大境界九层 + 跨境,共十步)
     let guard = 0
     while (!player.atMaxRealm && guard < 500) {
       player.advanceRealm()
@@ -200,18 +194,14 @@ describe('真仙终局服务', () => {
     expect(player.realm.name).toBe('真仙')
     expect(endgame.milestones.some(m => m.id === 'first_immortal')).toBe(true)
     expect(view?.message).toContain('仙界')
-    // 大关进阶时附上该境出处(可解释性):真仙取道教仙阶
+    // 大关进阶附该境出处:真仙取道教仙阶
     expect(view?.message).toContain('道教仙阶')
   })
 })
 
 /**
- * 天道熔炉 · 灵石熔铸价随层级(ISS-214 口径直测)。
- *
- * economySim 只守「凝一枚道果的材料代价不随层级漂移」,但它用的是自己那份
- * stoneByTier(tier, FURNACE_STONE_TIER_AMOUNT)(economySim.ts:217),不调用现役的
- * furnaceStoneCost —— 现役函数此前没有任何直测。旧病(SS-214)是把熔铸价冻在真仙那层,
- * 一到混沌海道果就相对收入塌 1.9^12。这三条把现役函数钉死在「价随层级、相对收入恒定」。
+ * 现役 furnaceStoneCost 直测(ISS-214)。economySim 用自己那份 stoneByTier(tier, FURNACE_STONE_TIER_AMOUNT),不调用现役函数。
+ * 熔铸价冻在真仙那层会让混沌海道果相对收入塌 1.9^12。
  */
 describe('天道熔炉 · 灵石熔铸价随层级(现役函数直测)', () => {
   function toN(g: { m: number; e: number }): number {
@@ -244,7 +234,6 @@ describe('天道熔炉 · 灵石熔铸价随层级(现役函数直测)', () => {
     const resources = useResourcesStore()
     const endgame = useEndgameStore()
     const player = usePlayerStore()
-    // 不足:灵石清零 → 转不出,道源与灵石分文不动(原子)
     resources.spiritStone = gnZero()
     expect(furnaceConvertStone()).toBe(false)
     expect(endgame.daoSource).toBe(0)

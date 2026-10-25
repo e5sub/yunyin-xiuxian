@@ -1,6 +1,4 @@
-/**
- * 坊市货架生成与定价 —— 数据层不变量
- */
+/** 坊市货架生成与定价:数据层不变量 */
 import { describe, expect, it } from 'vitest'
 import { mulberry32, RandomService } from '@/utils/random'
 import { toNum } from '@/utils/gnum'
@@ -24,10 +22,7 @@ function rng(seed = 0x5eed): RandomService {
 }
 
 describe('坊市 · 货架生成', () => {
-  /**
-   * 寄卖格有两个上限,别把它们搞混:能挂几件(SLOTS)是玩法,铺几格(RENDER_MAX)
-   * 是渲染护栏。坏档/导入档能塞进成千上万条,全铺出来会把这一页卡死。
-   */
+  /** 寄卖两个上限:SLOTS 是能挂几件(玩法),RENDER_MAX 是铺几格(渲染护栏;坏档/导入档可塞成千上万条) */
   it('寄卖渲染上限存在且不低于正常格数,也不至于铺出长列表', () => {
     expect(MARKET_CONSIGN_RENDER_MAX).toBeGreaterThanOrEqual(MARKET_CONSIGN_SLOTS)
     expect(MARKET_CONSIGN_RENDER_MAX).toBeLessThanOrEqual(10)
@@ -56,8 +51,7 @@ describe('坊市 · 货架生成', () => {
       for (let s = 0; s < 10; s += 1) {
         for (const slot of generateMarketStock(major, rng(major + s), 1).goods) {
           if (slot.kind !== 'equipment') continue
-          // 定价骑在 1.9^市场层级 上,货也得是那个层级:major 层级的东西按市场层级标价,
-          // 买来的会无端比掉落次一层(身价与货对不上)
+          // 定价骑在 1.9^市场层级 上;货按 major 层级生成则买来的比掉落次一层
           expect((slot as MarketEquipSlot).tier, `major ${major} 的装备货应为市场层级`).toBe(marketTier(major))
         }
       }
@@ -65,13 +59,12 @@ describe('坊市 · 货架生成', () => {
   })
 
   it('丹药价 = 炼制石耗 × 倍率,绝不比自炼便宜(无套利,全境界含顶层)', () => {
-    // 全境界扫:顶层是重灾区 —— 旧写死 stoneBase×2.5,道祖丹自炼 ~1.7e11 却只标 4250(4 千万倍白送)
+    // 须含顶层:基准是 layer 曲线上的 pillStoneCost;写死 stoneBase×2.5 时道祖丹低标约 4 千万倍
     for (const major of [0, 3, MAX_MAJOR]) {
       const stock = generateMarketStock(major, rng(major + 0x222), 1)
       for (const s of stock.goods) {
         if (s.kind !== 'pill') continue
         const def = pillDef(s.pillId)!
-        // 基准是「实际炼制石耗」= layer 曲线上的 pillStoneCost(不是写死 stoneBase)
         const craft = pillStoneCost(def)
         expect(toNum(s.price), `${def.name} 坊价不该低于实际自炼石耗`).toBeGreaterThanOrEqual(toNum(craft))
         expect(toNum(s.price) / toNum(craft), `${def.name} 倍率应恰是 2.5`).toBeCloseTo(MARKET_PILL_MARKUP, 5)
@@ -101,7 +94,7 @@ describe('坊市 · 货架生成', () => {
 
 describe('坊市 · 购入 vs 悬赏贡器 无套利', () => {
   it('同一件装备的坊价必高于贡器所得 —— 买回来交悬赏亏本,不成环', () => {
-    // 修过 run-off:原件按「预览同一件」的真实品质档标价,而非品质下限标价
+    // 坊价按「预览同一件」的真实品质档标价,不按品质下限
     for (let s = 0; s < 60; s += 1) {
       const stock = generateMarketStock(6, rng(s + 1), 1)
       for (const slot of stock.goods) {

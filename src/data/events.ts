@@ -24,7 +24,7 @@ function ev(
 const leave = (text = '你摇了摇头,转身离去。') => c('离开', [o(1, text)], { isDefault: true })
 
 export const EVENTS: EventDef[] = [
-  // 奇缘的阶段事件:一律带 chain 标签,只有 pickChainStageEvent 能把它们请出来
+  // 奇缘阶段事件带 chain 标签,只经 pickChainStageEvent 出现
   ...CHAIN_EVENTS,
   ev(
     'ev_jade_slip',
@@ -901,12 +901,7 @@ export const EVENTS: EventDef[] = [
     ],
     { minRealm: 9 }
   ),
-  /**
-   * 仙界 / 神界各补一只灵兽。
-   *
-   * 灵兽位只有一个 —— 一个界域只给一只,「带哪只」这个选择就根本不存在,
-   * 与法宝那条「件数要多于槽位数」是同一条理由(contentDensity 的判据已改为每界 ≥2)。
-   */
+  // 仙界 / 神界各补一只灵兽:每界灵兽须多于灵兽位(contentDensity 判据每界 ≥2)
   ev(
     'ev_qingluan_yun',
     '云海青鸾',
@@ -1063,12 +1058,8 @@ export const EVENTS: EventDef[] = [
 ]
 
 /**
- * 机缘事件(Phase 31.0 S2)——— 极低概率、带代价选择、影响构筑方向
- * 与普通事件池分离:触发概率低,遇后必须面临"取 / 弃"的决策
- *
- * Phase 32.2:部分机缘带元素倾向,同源灵根更容易撞见。
- * 刻意留下无元素的中性机缘(妖兽认主 / 隐世高人)——
- * 若条条机缘都认灵根,灵根就从"倾向"变成了"分配职业"。
+ * 机缘事件:极低概率、带取 / 弃代价选择、影响构筑方向,与普通事件池分离。
+ * 部分机缘带元素倾向(同源灵根更易撞见);刻意保留无元素的中性机缘(妖兽认主 / 隐世高人)。
  */
 export const FORTUNE_EVENTS: EventDef[] = [
   ev(
@@ -1254,11 +1245,8 @@ const FORTUNE_BY_ID = new Map(FORTUNE_EVENTS.map(x => [x.id, x]))
 const BY_ID = new Map(EVENTS.map(x => [x.id, x]))
 
 /**
- * 按 id 取事件 —— **普通事件与机缘同表**。
- *
- * 机缘(ft_)同样是 pickEventFor 选出来的,也会写进 adventure.pendingEventId。
- * 此前这个查表只搜 EVENTS,于是 EventDialog 查不到机缘 → 弹窗不开,
- * 会话卡到超时、自动结算又同样查不到 → 玩家白白丢掉一次机缘(2% 概率的静默空转)。
+ * 按 id 取事件,普通事件与机缘同查:机缘(ft_)也由 pickEventFor 写进 adventure.pendingEventId,
+ * 只查 EVENTS 会让机缘弹窗不开、结算查不到。
  */
 export function eventDef(id: string): EventDef | undefined {
   return BY_ID.get(id) ?? FORTUNE_BY_ID.get(id)

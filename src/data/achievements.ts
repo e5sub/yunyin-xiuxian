@@ -1,8 +1,6 @@
 /**
- * 成就库 —— 62 个,长期目标
- *
- * 未达成者在界面上一律以「???」示人(见 views/CollectionView.vue),
- * 所以此表不再有"隐藏成就"一说 —— 每个位子人人平等,成了才现名目。
+ * 成就库 —— 62 个
+ * 未达成者界面一律显示「???」(见 views/CollectionView.vue),此表无隐藏成就。
  */
 import type { AchievementDef, AchvCond, CounterKey, RewardBundle } from '@/types'
 
@@ -88,7 +86,6 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   ac('a_lifelow', '寿元将尽', '寿元只剩不到一成', { type: 'custom', key: 'lifespanLow' }, { herb: 50 }),
   ac('a_lifespan', '万古长生', '寿元上限超过一万载', { type: 'custom', key: 'lifespan10k' }, { titleId: 'ti_changsheng' }),
   ac('a_rich', '富可敌国', '持有灵石超过一百万', { type: 'custom', key: 'stone1m' }, { wudao: 30 }),
-  // 炼气一境走到底:给「炼气修士」这个称号一条真正的获取路径
-  // (此前该称号只有定义、没有来源 —— 玩家在称号页看得见,永远拿不到)
+  // 「炼气修士」称号的获取路径(删掉则该称号无来源)
   ac('a_lianqi_full', '炼气圆满', '炼气境修至圆满', { type: 'custom', key: 'realm_0_9' }, { stoneTier: 30, titleId: 'ti_lianqi' })
 ]

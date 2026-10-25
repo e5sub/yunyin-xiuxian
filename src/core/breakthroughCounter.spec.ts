@@ -1,11 +1,6 @@
 /**
- * 突破 · 天劫计数口径 —— 「渡过」才算渡过
- *
- * 成就 a_trib3「渡过 3 次天劫」的计数器此前在天劫**成败判定之前**就 +1:
- * 渡劫失败也计数,于是连败三次自动解锁「劫后余生」。语义应为按 success 记账。
- *
- * 确定性判据:裸装 炼气→筑基(4 波天雷)在最小伤害抖动下稳过(余量 ≈+0.21)、
- * 最大伤害抖动下稳败 —— 故把 rng 钉成固定值即可让成败确定,不掷运气。
+ * 天劫计数口径:成就 a_trib3 的计数只在渡劫成功时 +1。
+ * 裸装 炼气→筑基(4 波天雷)最小伤害抖动下稳过(余量 ≈+0.21)、最大下稳败,故钉死 rng 即定成败。
  */
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -36,10 +31,10 @@ describe('突破 · 天劫计数口径', () => {
   })
 
   it('渡劫失败不计数:连败不该解锁「渡过 3 次天劫」', () => {
-    mockTribRand = 1 // 每道雷都打到最大伤害 → 必败
+    mockTribRand = 1 // 必败
     const quests = useQuestsStore()
     for (let i = 0; i < 3; i += 1) {
-      atTribeGate() // 失败会掉一成修为,每次重试前回补
+      atTribeGate() // 失败掉修为,重试前回补
       const view = attemptBreakthrough()
       expect(view?.success).toBe(false)
       expect(quests.counter('tribulations')).toBe(0)
@@ -47,13 +42,13 @@ describe('突破 · 天劫计数口径', () => {
   })
 
   it('渡劫成功才计数:每渡一劫 +1,为「劫后余生」攒进度', () => {
-    mockTribRand = 0 // 每道雷都取最小伤害 → 必过
+    mockTribRand = 0 // 必过
     atTribeGate()
     const quests = useQuestsStore()
     const player = usePlayerStore()
     const view = attemptBreakthrough()
     expect(view?.success).toBe(true)
-    expect(player.major).toBe(1) // 真的进阶了
+    expect(player.major).toBe(1)
     expect(quests.counter('tribulations')).toBe(1)
   })
 })

@@ -1,10 +1,9 @@
 /**
- * Phase 22 玩家决策质量审计
- * 核心问题:玩家是真的在做选择,还是系统已经替玩家把答案算出来了?
- * ① 最优解塌缩:可行 Build 的性能分布必须足够分散
- * ② 契约答案化:最优契约必须随 Build×世界变化,不存在全局答案契约
- * ③ 逆命第二答案:混合构筑在主派被封后必须显著优于纯构筑(冗余有价值)
- * ④ 词条递减数学:同词条多来源按 100/75/50/25 计入
+ * 玩家决策质量审计
+ * ① 最优解塌缩:可行 Build 的性能分布须足够分散
+ * ② 契约答案化:最优契约须随 Build×世界变化,无全局答案契约
+ * ③ 逆命第二答案:混合构筑在主派被封后须显著优于纯构筑
+ * ④ 词条递减:同词条多来源按 100/75/50/25 计入
  */
 import { describe, expect, it } from 'vitest'
 import type { CombatRules, CombatantSnap, StatMods } from '@/types'
@@ -67,7 +66,7 @@ describe('① 最优解塌缩检测', () => {
 })
 
 describe('② 契约答案化检测', () => {
-  // 可模拟的契约选项:无契约 + 三条规则契 + 无伤契(孤剑契对单法宝模拟构筑无差别,逆命契依赖玩家构筑结构)
+  // 可模拟的契约选项;孤剑契对单法宝模拟构筑无差别、逆命契依赖玩家构筑结构,不列入
   interface PactOption {
     id: string
     mult: number
@@ -111,7 +110,7 @@ describe('③ 逆命契第二答案检测', () => {
     const fanzhen = BUILD_PROFILES.find(p => p.id === 'fanzhen')!
     const gangdunStyle = BUILD_STYLES.find(s => s.id === 'gangdun')!
 
-    // 纯罡盾:全预算押注主派;混合:同预算分给罡盾 + 反震副体系(词条经真实递减聚合)
+    // 纯罡盾全预算押主派;混合同预算分给罡盾 + 反震副体系(词条经真实递减聚合)
     const pureMods = mergeMods([gangdun.mods, { shieldOnStart: 0.15, shieldPower: 0.2 }])
     const halfFanzhen: StatMods = {
       counterRate: (fanzhen.mods.counterRate ?? 0) * 0.55,
@@ -123,8 +122,7 @@ describe('③ 逆命契第二答案检测', () => {
     const pure: CombatantSnap = { ...base, mods: sealStyleMods(pureMods, gangdunStyle) }
     const mixed: CombatantSnap = { ...base, mods: sealStyleMods(mixedMods, gangdunStyle) }
 
-    // 对手取万刃天界主(等比 1.15):厚血消耗墙。封盾后纯罡盾输出乏力打不穿(超时判负),
-    // 混合构筑的反击伤害恰好跨过 DPS 阈值——「第二套答案」在此从必败变稳赢
+    // 对手取万刃天界主(等比 1.15),厚血消耗墙:封盾后纯罡盾超时判负,混合的反击伤害恰好跨过 DPS 阈值
     const foe = worldFoeSnap(CELESTIAL_WORLDS[1]!.guardian, SIM_REFERENCE, 1.15)
     const winRate = (snap: CombatantSnap, seed: number): number => {
       const rng = new RandomService(mulberry32(seed))

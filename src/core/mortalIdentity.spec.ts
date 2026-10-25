@@ -1,16 +1,5 @@
 /* eslint-disable no-console */
-/**
- * 凡界生成 · 主观新颖度代理审计
- *
- * 上一轮的结论带着一个明确的边界:结构新颖 0.42~0.53 证明的是
- * 「组合确实变了」,不能证明玩家打开这一世时不会想
- * 「还是那些区域、那些怪,只是重排了一遍」。
- *
- * 这一层用代理指标先排除**明显换皮**:把生成结果拆成玩家实际会看到的层,
- * 再问两个世界的表面特征是否仍高度相似。
- *
- * 不改生成器、不改玩法。
- */
+/** 凡界生成 · 主观新颖度代理审计:把生成结果拆成玩家实际会看到的层比较表面特征,只能排除明显换皮。 */
 import { describe, expect, it } from 'vitest'
 import { generateSeries } from './mortalWorldGen'
 import {
@@ -40,12 +29,9 @@ describe('可见新颖 · 世界身份', () => {
   it('身份是从已有素材抽出来的,不需要新写剧情', () => {
     for (const w of WORLDS) {
       const id = worldIdentity(w)
-      // 地貌来自区域 icon,主题来自变数语义轴,偏向来自资源
       expect(id.terrain).toBeTruthy()
       expect(id.themeName).toBeTruthy()
-      // 名字未必含主地貌 —— 占比不足时不许拿它代表整个世界
-      //(见 worldNaming.spec.ts:众数 ≠ 主导)。
-      // 但主题词恒在:它是唯一横贯全程的属性
+      // 名字未必含主地貌(见 worldNaming.spec.ts:众数 ≠ 主导);主题词恒在
       if (id.form === 'single') expect(id.name).toContain(id.terrain)
       if (id.form === 'dual') expect(id.name).toContain(id.secondary!)
       if (id.form === 'scattered') expect(id.name).toContain(id.themeName)
@@ -64,7 +50,7 @@ describe('可见新颖 · 世界身份', () => {
       `\n${unfocused}/${WORLDS.length} 个世界语义发散 ——` +
         '\n地界是随机选的,地貌自然混杂;天界的「≤2 轴」语义门在这里不成立'
     )
-    // 这一条不预设结果,把事实钉住:随机选地界必然带来语义发散
+    // 不预设结果,只钉事实
     expect(unfocused).toBeGreaterThanOrEqual(0)
   })
 })
@@ -90,8 +76,7 @@ describe('可见新颖 · 结构与可见的落差', () => {
       `\n平均结构新颖 ${avgStruct.toFixed(3)},平均可见新颖 ${avgVisible.toFixed(3)},` +
         `落差 ${(avgStruct - avgVisible).toFixed(3)}`
     )
-    // 原本预期落差为正(内部变了玩家看不出),实测两者接近甚至反向。
-    // 但这个聚合读数不能拿来下结论——见下一条
+    // 聚合读数不能拿来下结论,见下一条
     expect(Math.abs(avgStruct - avgVisible)).toBeLessThan(0.2)
     console.log('\n两者接近。但聚合值在这里是个坏指标,下一条拆开看')
   })
@@ -103,8 +88,6 @@ describe('可见新颖 · 结构与可见的落差', () => {
       const bar = '█'.repeat(Math.round(v * 20))
       console.log(`${k.padEnd(14)} ${v.toFixed(3)}  ${bar}`)
     }
-    // 历史记录:路线形状与事件密度曾恒为 0,被地界名 0.81 的高分整个平均掉。
-    // 那次失效正是「不可用综合分数掩盖关键维度缺失」这条原则的由来
     expect(dims['地界名']!).toBeGreaterThan(0.7)
     expect(dims['路线形状']!).toBeGreaterThan(0)
     expect(dims['事件密度']!).toBeGreaterThan(0)
@@ -138,7 +121,6 @@ describe('可见新颖 · 体验骨架去重', () => {
   it('路线形状不再恒定 —— 曾经是当前生成器最明显的可见缺陷', () => {
     const dims = skeletonDimensions(WORLDS)
     const shape = dims.find(d => d.dim === '路线形状')!
-    // 曾经:tier 硬编码为 `2 + i * 3`,六世的推进曲线一模一样
     expect(shape.values).toBeGreaterThan(1)
     console.log(
       `\n六世出现 ${shape.values} 种路线形状 —— 曾经全部是 2-5-8-11-14-17(硬编码 \`2 + i * 3\`)。` +
@@ -152,7 +134,6 @@ describe('可见新颖 · 体验骨架去重', () => {
     for (const [i, w] of WORLDS.entries()) {
       console.log(`  ${i + 1}. ${skeletonOf(w)}`)
     }
-    // 连续重复比总重复更伤体验
     expect(r.longestRun).toBeLessThanOrEqual(WORLDS.length)
   })
 
@@ -161,7 +142,6 @@ describe('可见新颖 · 体验骨架去重', () => {
     const dead = dims.filter(d => d.values === 1).map(d => d.dim)
     console.log('\n各维取值数:')
     for (const d of dims) console.log(`  ${d.dim.padEnd(14)} ${d.values}`)
-    // 曾经「事件密度结构」与「路线形状」恒为单值
     expect(dead).not.toContain('路线形状')
     expect(dead).not.toContain('事件密度结构')
     console.log(
@@ -175,9 +155,6 @@ describe('可见新颖 · 体验骨架去重', () => {
 
 describe('可见新颖 · 本轮的边界', () => {
   it('代理指标只能排除明显换皮,不能证明玩家会觉得新鲜', () => {
-    // visibleDistance 度量的仍是特征差异,不是主观体验。
-    // 它能抓出「地界名与推进节奏都一样」这类硬伤,
-    // 但「叙事是否有新鲜感」只有实际游玩能判断
     const w = WORLDS[0]!
     const v = visibleFeatures(w)
     expect(v.placeNames.length).toBe(v.shape.length)

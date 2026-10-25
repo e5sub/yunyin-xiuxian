@@ -1,14 +1,7 @@
 /**
- * Android 存档导入/导出接线审计。
- *
- * 这里没有 Android SDK,无法在单测里启动系统文件选择器;但两条最容易回退的接线
- * 可以静态钉住:
- *   一 MainActivity 必须在 super.onCreate 前注册 SaveTransfer,否则 JS 根本看不到插件;
- *   二 原生导出必须走 ACTION_CREATE_DOCUMENT + ContentResolver,不能回到公共 Documents;
- *   三 两个导入入口都不能再用 MIME 过滤掉 .save。
- *
+ * Android 存档导入/导出接线审计(静态)。
  * 故障注入:删掉 registerPlugin、把 ACTION_CREATE_DOCUMENT 改回 Documents、
- * 或把 accept 改回 application/json,.save,对应用例必红。
+ * 或把 accept 改回 application/json,.save,对应用例红。
  */
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'

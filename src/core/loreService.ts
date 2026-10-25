@@ -1,9 +1,6 @@
 /**
- * 所知服务(Phase 32.3)—— 认知怎么长、技艺怎么长
- *
- * 设计要点:知识不靠点击"学习"按钮获得。
- * 它来自照面(采到过)、来自动手(炼过/砸过)、来自失手(炸过炉)、来自交手(打过/被打过)、
- * 来自藏经阁的日夜翻检。因此这里没有一个叫 unlock() 的函数——只有 encounter / note / study。
+ * 所知服务:认知与技艺的增长。
+ * 知识只来自照面、动手、失手、交手与藏经阁翻检;不设 unlock(),只有 encounter / note / study。
  */
 import type { PillDef } from '@/types'
 import { rng } from '@/utils/random'
@@ -19,58 +16,32 @@ import { useUiStore } from '@/stores/ui'
 
 /** 认知层 1→2 所需的照面次数 */
 export const SEEN_FOR_NATURE = 4
-/**
- * 藏经阁每级每小时推进的丹方掌握度。
- *
- * 原值 0.006 是按"只补熟旧存档折算下来那几张半生方子"定的。自 studyTick 兼管
- * 求索新方之后,它扛的是整条丹方获取线——按旧值,一级藏经阁翻出一张方子要四十
- * 余个时辰,再读通它又是一百四十个,高阶丹依旧等同于拿不到。故按新职能重定。
- *
- * 现值下:六级藏经阁约三个时辰翻出一张新方,再五个时辰把它读通。
- */
+/** 藏经阁每级每小时推进的丹方掌握度(兼管求索新方,扛整条丹方获取线) */
 export const STUDY_MASTERY_PER_HOUR = 0.05
-/**
- * 翻出一张全新丹方所需的钻研量。
- *
- * 比读熟一张(0→1)省力得多 —— 听说有这么一张方子,与真把它读通,本就是两回事。
- * 但也绝非唾手可得:一级藏经阁要熬四十来个时辰才翻得出一张。
- */
+/** 翻出一张全新丹方所需的钻研量(远小于读熟一张的 0→1) */
 export const NEW_RECIPE_COST = 0.25
-/** 新翻到的方子只是"抄下来了",火候节点仍全靠猜 */
+/** 新翻到的方子的掌握度 */
 export const NEW_RECIPE_START = 0.15
-/** 藏经阁翻得动的上限:够得着的,再往上够一阶 */
+/** 藏经阁翻得动的上限:够得着的阶位再往上一阶 */
 export const STUDY_REACH_OVER = 1
 
-/**
- * 敌人认知的三道门槛(以「有效交手次数」计)。
- *
- * 1 眼熟:打过一次就记得它长什么样、有多硬。
- * 2 知其路数:交手够多,它惯用哪几招你已经数得出来。
- * 3 洞悉:连它残血变阵的那一手都在你意料之中。
- */
+/** 敌人认知的三道门槛(以「有效交手次数」计):1 眼熟、2 知其路数、3 洞悉 */
 export const ENEMY_LORE_THRESHOLDS = [0, 1, 5, 14] as const
-/** 首领机制繁复,认知门槛加倍 */
+/** 首领认知门槛加倍 */
 export const ENEMY_LORE_BOSS_MULT = 2
-/** 败在它手里,一次抵得上打赢数次 —— 疼过才记得牢 */
+/** 一次败场抵数次胜场 */
 export const ENEMY_LORE_LOSS_WEIGHT = 3
 
-// ============ 认知检定(纯函数,可独立测试) ============
+// ============ 认知检定(纯函数) ============
 
-/**
- * 辨识一味未知灵材的概率。
- * 材料阶位越高越难认,识材技艺越高越容易,照面次数给一点保底——
- * 见得够多,再迟钝的人也总有认出来的一天。
- */
+/** 辨识一味未知灵材的概率 */
 export function discernChance(rank: number, discernLevel: number, seen: number): number {
   const base = 0.2 + discernLevel / 260 - (rank - 1) * 0.018
   const familiarity = Math.min(0.35, seen * 0.03)
   return Math.max(0.04, Math.min(0.9, base + familiarity))
 }
 
-/**
- * 从"知道它叫什么"到"知道它什么性子"的概率。
- * 这一步吃的是专业技艺:草木问辨药,金石问锻打。
- */
+/** 从知其名到知其性的概率(吃专业技艺) */
 export function natureChance(rank: number, discernLevel: number, craftLevel: number, seen: number): number {
   if (seen < SEEN_FOR_NATURE) return 0
   const base = 0.1 + discernLevel / 500 + craftLevel / 300 - (rank - 1) * 0.015
@@ -80,14 +51,14 @@ export function natureChance(rank: number, discernLevel: number, craftLevel: num
 
 // ============ 服务 ============
 
-/** 该材料的"专业技艺":草木看辨药,金石看锻打 */
+/** 该材料的专业技艺:草木看辨药,金石看锻打 */
 function craftSkillOf(def: MaterialDef): SkillId {
   return def.bucket === 'herb' ? 'herbLore' : 'smithing'
 }
 
 /**
- * 与一味灵材照面。采集、掉落、事件都应调用。
- * 只推进到第 2 层——第 3 层"已通用"必须靠真正用它做过东西,见 noteMaterialUsed。
+ * 与一味灵材照面,只推进到第 2 层。
+ * 历练掉落、秘境层胜、事件经 harvestMaterials 计照面;洞府、弟子、镇压、坊市、任务所得不计。
  * @returns 本次是否推进了认知层
  */
 export function encounterMaterial(id: string, quiet = false): boolean {
@@ -106,7 +77,6 @@ export function encounterMaterial(id: string, quiet = false): boolean {
       ? rng.chance(discernChance(def.rank, discernLv, seen))
       : rng.chance(natureChance(def.rank, discernLv, lore.skillLevel(craftSkillOf(def)), seen))
   if (!hit) {
-    // 没认出来也不算白看:识材技艺照长,只是长得慢
     lore.addSkillExp('discern', 0.6)
     return false
   }
@@ -121,19 +91,15 @@ export function encounterMaterial(id: string, quiet = false): boolean {
   return true
 }
 
-/**
- * 采集/掉落时抽一味当前层级会撞见的灵材并推进认知。
- * 这是把既有的 `herb+3` 标量掉落接进认知体系的钩子:数量照旧进标量库存,
- * 但"你到底采到了什么"从此有了答案。
- */
+/** 采集/掉落时抽一味当前层级会撞见的灵材(数量照旧进标量库存) */
 export function rollFieldMaterial(tier: number, bucket?: MaterialBucket): MaterialDef | null {
   const pool = materialsNearRank(Math.max(1, Math.ceil(tier / 2)), bucket)
   if (pool.length === 0) return null
-  // 低阶材料更常见,但高阶材料永远有一线机会撞见
+  // 低阶更常见,高阶永远有一线机会
   return rng.weighted(pool, x => 1 / x.rank)
 }
 
-/** 采集一批材料:抽出具体是什么并推进认知(静默,避免刷屏) */
+/** 采集一批材料:抽出具体是什么并推进认知(静默) */
 export function harvestMaterials(tier: number, bucket: MaterialBucket, times = 1): void {
   for (let i = 0; i < Math.min(3, times); i += 1) {
     const def = rollFieldMaterial(tier, bucket)
@@ -141,14 +107,13 @@ export function harvestMaterials(tier: number, bucket: MaterialBucket, times = 1
   }
 }
 
-/** 真正用一味材料做过东西 —— 唯一能推到"已通用"的途径 */
+/** 用一味材料做过东西:唯一能推到第 3 层"已通用"的途径 */
 export function noteMaterialUsed(id: string, succeeded: boolean): void {
   const def = materialDef(id)
   if (!def) return
   const lore = useLoreStore()
   lore.markSeen(id)
   if (lore.loreOf(id) !== 2) return
-  // 上手过才谈得上"通用";失败反而记得更牢
   const chance = succeeded ? 0.22 : 0.34
   if (!rng.chance(chance)) return
   if (lore.advanceLore(id, LORE_MAX)) {
@@ -158,13 +123,8 @@ export function noteMaterialUsed(id: string, succeeded: boolean): void {
 }
 
 /**
- * 炼器(强化/重铸)算作"上手过"一味矿材 —— 矿石进「通晓」的渠道。
- *
- * 玩家反馈:「识材部分矿物无法达到通晓」「大量强化装备或重铸却看不见熟练度提升」。
- * 根因:通晓(第 3 层)只由 noteMaterialUsed 可达,而它此前只在炼丹路径被调,
- * 炼器从不登记 —— 矿石永远卡在 2 层,锻造技艺也原地踏步。
- * 这里当作「这批料里有一味被真上手」:取一件与装备层级相称的矿石登记(判据与
- * 丹药同源),并像炼丹那样按次给锻造技艺经验 —— 熟练度开始看得见地涨。
+ * 炼器(强化/重铸)算作"上手过"一味矿材:矿石进「通晓」的渠道。
+ * 取一件与装备层级相称的矿石登记,并按次给锻造技艺经验。
  */
 export function noteSmithingUsed(tier: number, succeeded: boolean): void {
   const pool = materialsNearRank(Math.max(1, Math.ceil(tier / 2)), 'ore')
@@ -176,13 +136,8 @@ export function noteSmithingUsed(tier: number, succeeded: boolean): void {
 }
 
 /**
- * 与一头敌人交手 —— 敌人认知的唯一来源(Phase 32.5)。
- *
- * 认知层不给任何属性,它给的是"知道它会怎么打":
- * 遭遇与战报界面据此逐层揭示元素、招式、残血变阵(见 ui/enemyLore.ts)。
- * 这份认知随神魂转世不灭 —— 第五世的你确实已经知道哪头妖物残血才发狂。
- *
- * @param win 本场是否取胜。败绩加倍计入:被打疼过的敌人记得最牢。
+ * 与一头敌人交手:敌人认知的唯一来源。认知层不给属性,只供界面逐层揭示(见 ui/enemyLore.ts);随转世不灭。
+ * @param win 本场是否取胜(败绩加权计入)
  * @returns 本次是否推进了认知层
  */
 export function noteEnemy(enemyId: string, win: boolean): boolean {
@@ -204,10 +159,8 @@ export function noteEnemy(enemyId: string, win: boolean): boolean {
 }
 
 /**
- * 整段照面一次入账(离线整段结算用)。
- *
- * 照面权重与单场 `noteEnemy` 同式:胜 +1、负 +`ENEMY_LORE_LOSS_WEIGHT`。
- * 升档循环到不再够门槛为止,toast 最多一声(报最高档),免得挂一夜弹几十条。
+ * 整段照面一次入账(离线整段结算用)。照面权重与 noteEnemy 同式:胜 +1、负 +ENEMY_LORE_LOSS_WEIGHT;
+ * toast 最多一声(报最高档)。
  */
 export function noteEnemyMany(enemyId: string, wins: number, losses: number): boolean {
   const def = enemyDef(enemyId)
@@ -243,10 +196,10 @@ export function studyBlueprint(id: string, amount: number): number {
   return useLoreStore().addBlueprintMastery(id, amount)
 }
 
-/** 藏经阁翻检的当刻概况 —— 研究与 studyTick 同一优先序读数,不另造口径 */
+/** 藏经阁翻检的当刻概况 */
 export interface StudyEta {
   library: number
-  /** 此刻正读通哪张方子(null = 都在手,谈不到补熟) */
+  /** 此刻正读通哪张方子(null = 无半生方子) */
   readingId: string | null
   /** 下一件事是新方,还是先把某张读通 */
   nextIsNew: boolean
@@ -255,11 +208,8 @@ export interface StudyEta {
 }
 
 /**
- * 藏经阁此刻离「下一件事」还有多远。
- *
- * 被动翻检全程无进度条:玩家只知道某天突然翻出一张方子,不知道它快到了。
- * 这里的读数与 studyTick 完全同序 —— 先补最生的那张、都读通了才求索新方 ——
- * 只做减法所列的除法,不掺自己的估计。藏经阁未建时返回 null(无事可报)。
+ * 藏经阁此刻离「下一件事」还有多远。须与 studyTick 同序:先补最生的那张、都读通了才求索新方。
+ * 藏经阁未建时返回 null。
  */
 export function studyEta(): StudyEta | null {
   const dongfu = useDongfuStore()
@@ -277,28 +227,21 @@ export function studyEta(): StudyEta | null {
       target = id
     }
   }
-  // studyFrac 里的余量先抵掉:还没喂出去的钻研,可以先喘口气
+  // 先抵掉 studyFrac 里的余量
   const frac = lore.studyFrac
   if (target !== null) {
     const room = 1 - lore.recipeMastery(target)
     return { library: libLv, readingId: target, nextIsNew: false, nextInSec: Math.max(0, room - frac) / ratePerSec }
   }
-  // 都在手了 —— 求索新的那张
   const found = studiableRecipes(usePlayerStore().major, id => lore.recipeMastery(id))[0]
   if (!found) {
-    // 够得着的都已到手,再积也无书可翻(与 studyTick 的 studyFrac 清零同一判据)
+    // 与 studyTick 的 studyFrac 清零同一判据
     return { library: libLv, readingId: null, nextIsNew: false, nextInSec: 0 }
   }
   return { library: libLv, readingId: null, nextIsNew: true, nextInSec: Math.max(0, NEW_RECIPE_COST - frac) / ratePerSec }
 }
 
-/**
- * 藏经阁此刻翻得到的方子 —— 按阶位从低到高,先易后难。
- *
- * 两道限制都不是"解锁开关"(那是 Phase 32.3 废掉的旧口径):
- * 准入境界说的是这张方子写给谁看,阶位上限说的是你现在读不读得懂。
- * 够一够能到的高一阶也收进来,免得境界卡在半途时架上无书可读。
- */
+/** 藏经阁此刻翻得到的方子,按阶位从低到高;多收够一够能到的高一阶,境界卡在半途时架上仍有书可读 */
 export function studiableRecipes(major: number, masteryOf: (id: string) => number): PillDef[] {
   const ceiling = bearableRank(major) + STUDY_REACH_OVER
   const rankOf = (p: PillDef): number => recipeCraft(p)?.rank ?? Number.MAX_SAFE_INTEGER
@@ -308,12 +251,8 @@ export function studiableRecipes(major: number, masteryOf: (id: string) => numbe
 }
 
 /**
- * 藏经阁被动钻研:每次心跳先补熟手头的方子,都读通了才向外求索。
- * 放着不管也在长学问——这是本体系与放置节奏的接缝,不需要玩家点任何按钮。
- * 在线与离线共用此函数,只是 dtSec 不同。
- *
- * 「翻出新方子」这一支是丹方的唯一持续来源。少了它,开局播种的那几张
- * 就是玩家这辈子会的全部——高阶丹会全部沦为看得见炼不出的死内容。
+ * 藏经阁被动钻研:每次心跳先补熟手头的方子,都读通了才向外求索。在线与离线共用,只是 dtSec 不同。
+ * 「翻出新方子」这一支是丹方的唯一持续来源;少了它,高阶丹全成看得见炼不出的死内容。
  */
 export function studyTick(dtSec: number): void {
   const dongfu = useDongfuStore()
@@ -323,7 +262,6 @@ export function studyTick(dtSec: number): void {
   lore.studyFrac += (libLv * STUDY_MASTERY_PER_HOUR * dtSec) / 3600
   if (lore.studyFrac < 0.001) return
 
-  // 先专精:挑一张已知但未通的方子,专补最生的那张
   let target: string | null = null
   let lowest = 1
   for (const [id, v] of Object.entries(lore.recipeLore)) {
@@ -333,9 +271,7 @@ export function studyTick(dtSec: number): void {
     }
   }
   if (target !== null) {
-    // 贴着这张方子还差的量吃,不整袋倒光:临近完成的方子(如 0.999)吃不下全部
-    // studyFrac 时,超出的部分留在 studyFrac 里,下一拍继续喂下一张最生的方子,
-    // 而不是 clamp 到 1 后把整段钻研连同溢出一起归零(那是进度蒸发)
+    // 只吃这张方子还差的量,盈余留在 studyFrac 给下一拍;整袋倒进会被 clamp 到 1,溢出蒸发
     const room = 1 - lore.recipeMastery(target)
     const gain = Math.min(room, lore.studyFrac)
     lore.studyFrac -= gain
@@ -348,11 +284,9 @@ export function studyTick(dtSec: number): void {
     return
   }
 
-  // 手头的都读通了,才谈得上求索新方
   if (lore.studyFrac < NEW_RECIPE_COST) return
   const found = studiableRecipes(usePlayerStore().major, id => lore.recipeMastery(id))[0]
   if (!found) {
-    // 够得着的方子都已在手,再积也无书可翻
     lore.studyFrac = 0
     return
   }
@@ -363,24 +297,13 @@ export function studyTick(dtSec: number): void {
 
 /** 入门修士都会的三张方子 —— 不会做这几样,连炉都开不了 */
 const STARTER_RECIPES = ['p_jvqisan', 'p_jvqidan', 'p_huichun'] as const
-/** 旧存档折算:过去按等级门槛"能炼"的方子,折成半生不熟的掌握度 */
+/** 旧存档折算的掌握度(旧口径下"能炼"只代表够级,不给 1) */
 const LEGACY_MASTERY = 0.7
-/**
- * 开局技艺底子(约合熟练度 25「入门」)。
- *
- * 会背三张方子的人,不可能没碰过炉子。若从零技艺起步,首炉聚气散把握不足两成,
- * 五炉炸四炉——那不叫"知识决定成败",那叫劝退。给个底子,让第一炉是搏一把,
- * 而不是必输。
- */
+/** 开局技艺底子(约合熟练度 25「入门」);从零技艺起步,首炉聚气散把握不足两成 */
 const STARTER_SKILL_EXP = 200
 const STARTER_SKILLS: readonly SkillId[] = ['discern', 'herbLore', 'pairing', 'condense', 'temper', 'nurture', 'flame']
 
-/**
- * 播种入门认知(幂等)。
- *
- * 两件事:新号得到三张入门方子;旧存档把过去凭丹炉等级能炼的方子折算成掌握度——
- * 折成 0.7 而非 1,因为旧口径下"能炼"只代表够级,并不代表真的懂。
- */
+/** 播种入门认知(幂等):新号得三张入门方子;旧存档把凭丹炉等级能炼的方子折算成掌握度 */
 export function seedLoreIfNeeded(): void {
   const lore = useLoreStore()
   if (lore.seeded) return
@@ -395,13 +318,13 @@ export function seedLoreIfNeeded(): void {
     const reachable = (p.alchemyLevel ?? 1) <= dongfu.alchemyLevel && p.minRealm <= player.major
     if (reachable && lore.recipeMastery(p.id) <= 0) lore.addRecipeMastery(p.id, LEGACY_MASTERY)
   }
-  // 入门方子里的药必然见过,否则新号连第一炉都开不出来
+  // 入门方子的药材必然见过,否则新号开不了第一炉
   for (const id of STARTER_RECIPES) {
     const def = pillDef(id)
     const craft = def ? recipeCraft(def) : null
     for (const mid of craft?.materials ?? []) lore.advanceLore(mid, 1)
   }
-  // 底子只补差额:老存档若已练出真本事,不该被这行重置或白送
+  // 只补差额:老存档已练出的技艺不重置、不白送
   for (const id of STARTER_SKILLS) {
     const lack = STARTER_SKILL_EXP - lore.expOf(id)
     if (lack > 0) lore.addSkillExp(id, lack)

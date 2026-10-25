@@ -1,13 +1,5 @@
 /* eslint-disable no-console */
-/**
- * 道果职责拆分审计
- *
- * 问题前移一步:不问「道果该怎么衰减」,而问
- * **为什么道果必须同时承担「永久战力」与「永久修炼速度」两个职责**。
- *
- * 因为若不拆职责,任何软帽(^0.9 → log → 周期折算)都只是在压一个
- * 仍然存在的正反馈回路,结果只会是「晚一点爆」。
- */
+/** 道果职责拆分审计。不拆职责,任何软帽(^0.9 → log → 周期折算)都只是压着仍在的正反馈回路 */
 import { describe, expect, it } from 'vitest'
 import {
   DAO_FRUIT_COMBAT_BONUS,
@@ -41,7 +33,6 @@ describe('道果职责 · 引用点全貌', () => {
   it('道果只有一个真消费者,却在同一处被赋予两个职责', () => {
     const real = realConsumers()
     expect(real).toHaveLength(2)
-    // 两个职责挂在同一个函数、同一个 fruit 值上
     const sites = new Set(real.map(c => c.site.split(' → ')[0]))
     expect(sites.size).toBe(1)
     console.log(
@@ -51,7 +42,6 @@ describe('道果职责 · 引用点全貌', () => {
   })
 
   it('道果没有任何消费出口:它不解锁、不兑换、不参与阶位', () => {
-    // 全部引用点里没有一处「花掉」道果
     const spends = FRUIT_CONSUMERS.filter(c => /消耗|扣除|spend|cost/i.test(c.evidence))
     expect(spends).toHaveLength(0)
     console.log('\n以下系统与道果无关(此前一度被认为相关):')
@@ -64,7 +54,6 @@ describe('道果职责 · 引用点全貌', () => {
     const speed = FRUIT_CONSUMERS.find(c => c.id === 'cultSpeed')!
     expect(power.necessity).toBe('must')
     expect(speed.necessity).toBe('legacy')
-    // 两者的入环方式不同,这决定了它们的危害性质不同
     expect(speed.loop).toBe('direct')
     expect(power.loop).toBe('indirect')
     console.log(
@@ -91,7 +80,7 @@ describe('道果职责 · 两个职责的量级', () => {
   it('两个职责到三十世都已是数量级级别的加成', () => {
     const m = roleMagnitudes(30)
     const last = m[m.length - 1]!
-    // 速度加成是「倍率上再加」,战力是直接乘区
+    // 速度加成是倍率上再加,战力是直接乘区
     expect(last.speedAdd).toBeGreaterThan(5)
     expect(last.powerMult).toBeGreaterThan(4)
     console.log(
@@ -104,8 +93,6 @@ describe('道果职责 · 两个职责的量级', () => {
   it('两者危害性质不同:速度制造回路,战力碾压内容', () => {
     const m = roleMagnitudes(30)
     const at12 = m.find(r => r.life === 12)!
-    // 速度职责的后果是复利(回路),战力职责的后果是膨胀(碾压内容曲线)
-    // 两者都大,但要用不同的手段处理
     expect(at12.speedAdd).toBeGreaterThan(1)
     expect(at12.powerMult).toBeGreaterThan(2)
     console.log(
@@ -140,7 +127,6 @@ describe('道果职责 · 反事实:只剥离速度职责', () => {
     const s20 = steadySpeedupWithoutSpeedRole(20)
     const s30 = steadySpeedupWithoutSpeedRole(30)
     const s60 = steadySpeedupWithoutSpeedRole(60)
-    // 资质地板封顶后,提速不再变化——第 20、30、60 世完全相同
     expect(s30).toBeCloseTo(s20, 6)
     expect(s60).toBeCloseTo(s30, 6)
     console.log(
@@ -161,8 +147,6 @@ describe('道果职责 · 反事实:只剥离速度职责', () => {
   })
 
   it('结论:该动的是职责,不是曲线', () => {
-    // 若只改增长曲线(^0.9 → log → 周期折算),回路仍在,只是走得慢些;
-    // 剥离速度职责则直接把回路断开,而道果可以继续无限增长
     const c = counterfactualAt(30)
     const speed = FRUIT_CONSUMERS.find(c2 => c2.id === 'cultSpeed')!
     expect(speed.loop).toBe('direct')

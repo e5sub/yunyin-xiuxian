@@ -32,26 +32,19 @@
 
   <TribulationDetail :need-tribulation="btInfo.needTribulation" :qi-cost="btInfo.qiCost" />
 
-  <!-- Phase 28 突破准备:静坐调息 / 服聚气丹(无劫突破时,一次性加成) -->
+  <!-- 突破准备:静坐调息 / 服聚气丹(无劫突破时,一次性加成) -->
   <div v-if="!btInfo.needTribulation" class="mt-2 flex items-start gap-2.5 rounded-md border border-ink/10 bg-paper-deep/50 px-2.5 py-2">
-    <!-- 备:与全页印章同语言,一眼认出这是突破前的准备板 -->
     <span class="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md bg-jade/15 font-kai text-[12px] text-jade">备</span>
     <div class="min-w-0 grow">
       <div class="flex items-center justify-between text-[10px] text-ink-faint">
         <span>突破准备(一次有效)</span>
-        <!--
-          倒计时一律走 formatCountdown(定宽),不用 formatDuration:
-          后者每秒都可能改宽度,这枚胶囊一涨一缩,同一行的其余内容会跟着跳。
-        -->
+        <!-- 倒计时用定宽的 formatCountdown,不用 formatDuration(宽度逐秒变,整行会跳) -->
         <span v-if="btInfo.prep.sitting" class="text-amber-ink tabular">
           调息中 · <span class="countdown-slot">{{ formatCountdown(btInfo.prep.remainingSec) }}</span>
         </span>
         <span v-else-if="btInfo.prep.ready" class="text-jade">加成 +{{ Math.round(btInfo.prep.bonus * 100) }}% 就绪</span>
       </div>
-      <!--
-        两个准备选项并排,但 chip-ink 是 nowrap 的胶囊,320px 窄屏放不下两枚
-        (实测第二枚右缘到 331px,越界 11px)。故允许换行:宽屏并排、窄屏上下。
-      -->
+      <!-- 允许换行:chip-ink 是 nowrap 胶囊,320px 窄屏放不下两枚 -->
       <div v-if="!btInfo.prep.sitting && !btInfo.prep.ready" class="mt-1.5 flex flex-wrap gap-1.5">
         <button type="button" class="chip-ink chip-ink-wrap !py-1.5 text-[10px]" @click="startPrep('meditate')">
           {{ prepMeditate.label }} · {{ Math.round(prepMeditate.duration / 60) }}分钟

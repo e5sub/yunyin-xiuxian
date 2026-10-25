@@ -1,19 +1,7 @@
 /* eslint-disable no-console -- 三条渠道的对账表是给人看的 */
 /**
- * 修为收入结构 —— 守设计不变量,不守当时的快照
- *
- * Phase 39 续的口径(见 core/expIncome 头部与那份设计记录):
- *   修为只有一条基线(挂机 1.0×),另外两条是**有界的**,
- *   且三者恰好闭合:**闭关 ≈ 挂机 + 历练**(2.5× vs 2.51×)。
- *
- * 每个用例对应一个玩家能理解的场景,而不是把常数再抄一遍:
- *   ① 三角场景:21 境里「挂机+历练」与「闭关」都 ≈2.5× 挂机,且彼此相差 <5%
- *   ② 通关场景:界末圆满那道修为墙(×2),单靠战斗也要十天以上
- *   ③ 前期场景:炼气期一场遭遇填不满一层 —— 连首领+涉险+福缘叠满也只给不满一层
- *   ④ 同源场景:离线 N 场 = N 次单场(上限一并放大,不偷跑也不被封顶吃掉)
- *   ⑤ 一把尺子:同一段时长在深境只更不值钱;修速翻倍则收益翻倍
- *   ⑥ 数据侧:每一条际遇/机缘的修为都落在 30~120 秒
- *   ⑦ 接线红线:四条来源都走同一个结算函数(读源码,不在别处另写百分比)
+ * 修为收入结构 —— 守设计不变量(口径见 core/expIncome 头部),不守当时的快照。
+ * 用例按场景断言,不把常数再抄一遍。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -59,14 +47,12 @@ describe('修为收入 · 设计不变量', () => {
     for (const r of rows) {
       expect(r.ratio, `${REALMS[r.major]!.name} 的合计倍率落在设计区间之外`).toBeGreaterThan(2.3)
       expect(r.ratio, `${REALMS[r.major]!.name} 的合计倍率落在设计区间之外`).toBeLessThan(2.7)
-      // 闭关与「挂机+历练」打平 —— 这个差额就是"要不要掉落"的价码,不该超过 5%
       const gap = Math.abs(r.retreatPerHour - r.totalPerHour) / r.totalPerHour
       expect(gap, `${REALMS[r.major]!.name}:闭关与挂机+历练差 ${(gap * 100).toFixed(1)}%`).toBeLessThan(0.05)
     }
-    // 「一模一样」不是修辞:三条线都只跟修速走,故任何两境比值相同
+    // 三条线都只跟修速走,任何两境比值相同
     const first = rows[0]!.ratio
     for (const r of rows) expect(r.ratio).toBeCloseTo(first, 9)
-    // 历练那一半单独看也在合理区间(不是装饰,也不喧宾夺主)
     const tripOnly = tripExpSecsPerHour() / 3600
     expect(tripOnly).toBeGreaterThan(1.2)
     expect(tripOnly).toBeLessThan(1.8)
@@ -123,18 +109,15 @@ describe('修为收入 · 设计不变量', () => {
   it('际遇与战斗的相对量级:一次际遇 = 五场遭遇(典型值)', () => {
     expect(TYPICAL_EVENT_EXP_SECS / BATTLE_EXP_SECS).toBeCloseTo(5, 9)
     expect(battlesPerHour() + eventsPerHour()).toBeCloseTo(encountersPerHour(), 9)
-    // 胜率是唯一的"打折":常驻词条与状态不该被绕过
+    // 胜率是唯一的折扣
     expect(winsPerHour()).toBeCloseTo(battlesPerHour() * TYPICAL_WIN_RATE, 9)
     expect(expIncomeAt(9).tripPerHour).toBeGreaterThan(0)
   })
 })
 
 /**
- * 接线红线 —— 算得对,还得**真的有人在用**。
- *
- * 读源码:五条即时修为来源(丹药 / 一场遭遇 / 离线 N 场 / 际遇 / 洞府巡游)都必须走
- * formulas.expFromSecs。从前它们各写一遍「需求 × 百分比」,于是每一处都随境界
- * 指数膨胀 —— 只要有一处被漏回去,这里就红。
+ * 接线红线(读源码):五条即时修为来源(丹药 / 一场遭遇 / 离线 N 场 / 际遇 / 洞府巡游)
+ * 都须走 formulas.expFromSecs;任一处改回「需求 × 百分比」即红。
  */
 describe('即时修为 · 同源接线', () => {
   const src = (p: string): string => readFileSync(resolve(__dirname, p), 'utf8')

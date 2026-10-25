@@ -1,9 +1,6 @@
 /**
- * 词条图的字面 —— 名、效果、数值区间、部位、品质门槛。
- *
- * 全部从 data/affixes 与 data/qualities 现算,不在表里抄第二份数:
- * 区间的一端就是 affixValue(roll=0)、另一端 affixValue(roll=1),
- * 即掉落装备上真正会出现的那两头;改词条数值,这里自动跟上。
+ * 词条图的字面:名、效果、数值区间、部位、品质门槛。
+ * 全部从 data/affixes 与 data/qualities 现算,不抄第二份数;区间两端 = affixValue(roll=0) / affixValue(roll=1)。
  */
 import type { AffixDef } from '@/types'
 import { affixValue } from '@/data/affixes'
@@ -18,7 +15,6 @@ export function affixRangeText(def: AffixDef): string {
   return def.desc.replace('{v}', lo === hi ? String(lo) : `${lo}~${hi}`)
 }
 
-/** 数值区间两头(供「数值区间 lo ~ hi」一行) */
 export function affixRangeEnds(def: AffixDef): { lo: number; hi: number } {
   return { lo: affixValue(def, 0), hi: affixValue(def, 1) }
 }
@@ -35,7 +31,7 @@ export function affixRankText(def: AffixDef): string | null {
   return `需${QUALITIES.find(q => q.rank === def.minRank)?.name ?? `${def.minRank} 品`}起`
 }
 
-/** 稀有度章与品位色 —— 直接喂 id 或整条定义都行 */
+/** 稀有度章与品位色:接受 id 或整条定义 */
 export function affixRarityLabel(def: AffixDef | AffixDef['rarity']): string {
   const r = typeof def === 'string' ? def : def.rarity
   return AFFIX_RARITY_META[r]?.name ?? String(r)

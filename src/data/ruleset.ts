@@ -1,7 +1,4 @@
-/**
- * 规则纪元(Phase 25)—— 规则体系的版本化
- * 道痕会记下每一战所处的纪元;规则变更后,旧道痕的「忆战」将标注天道已变
- */
+/** 规则纪元:规则体系的版本化。道痕记录每战所处纪元,规则变更后旧道痕的「忆战」标注天道已变 */
 
 export const RULESET_VERSION = '25.0'
 
@@ -14,7 +11,7 @@ export const RULESET_CHANGELOG: { version: string; note: string }[] = [
   { version: '25.0', note: '规则宇宙审计基线固化' }
 ]
 
-/** 纪元先后比较(19.0 < 19.5 < 20.0)——只认点号分段数字,不引第三方 semver */
+/** 纪元先后比较:只认点号分段数字 */
 export function rulesetBefore(a: string, b: string): boolean {
   const pa = a.split('.').map(n => Number(n) || 0)
   const pb = b.split('.').map(n => Number(n) || 0)
@@ -26,18 +23,12 @@ export function rulesetBefore(a: string, b: string): boolean {
   return false
 }
 
-/** 此痕是否录于旧纪 —— 当年那局的规则,与今日已不是一回事 */
+/** 此痕是否录于旧纪 */
 export function isStaleRuleset(version: string | undefined): boolean {
   return version !== undefined && version !== RULESET_VERSION
 }
 
-/**
- * 某个纪元之后,天道改了什么(不含该纪元本身)。
- *
- * 战录上只标了纪元号,玩家看不出"变了什么"——
- * 忆战/重写前的这一句解释,就是把这些年改过的规则摆到台面上。
- * 无纪元(远古战录)时返回空:不知道录于何时,就不装作知道。
- */
+/** 某纪元之后(不含该纪元)的规则变更,供忆战/重写前展示;无纪元(远古战录)返回空 */
 export function rulesetChangesSince(version: string | undefined): { version: string; note: string }[] {
   if (!version) return []
   return RULESET_CHANGELOG.filter(c => rulesetBefore(version, c.version))

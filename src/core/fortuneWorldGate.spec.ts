@@ -1,12 +1,7 @@
 /**
- * 机缘的界域门(扩界审计)
- *
- * 机缘不像普通事件那样带 minRealm —— 它按**区域标签**出现(见 eventEngine.pickEventFor)。
- * 扩界引进了三个界域标签(immortal / god / chaos),于是多了一条必须守住的线:
- *
- *   1. 每条机缘的标签至少被一处区域引用 —— 否则它永远碰不到,是一行死数据
- *   2. 仙界及以上的机缘不得与人间界区域共享标签 —— 否则神界机缘会漏到炼气期
- *      (这条正是 "ft_ 机缘只按标签选、不看境界" 这一实现的代价)
+ * 机缘的界域门:机缘不带 minRealm,只按区域标签出现(见 eventEngine.pickEventFor)。
+ *   1. 每条机缘的标签至少被一处区域引用;
+ *   2. 界域标签(immortal / god / chaos)的机缘不得与人间界区域共享标签。
  */
 import { describe, expect, it } from 'vitest'
 import { FORTUNE_EVENTS } from '@/data/events'

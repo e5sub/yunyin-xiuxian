@@ -17,7 +17,7 @@ const options: CaveOption[] = (Object.values(CAVE_EVENT_POOL) as { options: Cave
   list.flatMap(ev => ev.options)
 )
 
-/** 巡游修为展示与结算同一把 expFromSecs,文案里的数值就是实到的数值 */
+/** 巡游修为展示与结算同用 expFromSecs */
 function expText(secs: number): string {
   const player = usePlayerStore()
   return `修为 +${formatGN(expFromSecs(player.expReq, secs, player.cultPerSec, INSTANT_EXP_LAYER_CAP))}`

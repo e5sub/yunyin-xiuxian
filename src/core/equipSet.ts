@@ -1,10 +1,4 @@
-/**
- * 装备共鸣(Phase 31.0 S5)
- *
- * 不是数值堆叠式的套装(2件+10%):同组多件触发**机制效果**,
- * 成为 Build 组件(如:铁壁 = 首次致命伤保留 1 点气血)。
- * 组内装备要求件数宽松(挂载中的同 set 件数 ≥2 即共鸣)。
- */
+/** 装备共鸣:同组已装备件数达到该套 required 即触发机制效果(非数值堆叠) */
 import type { EquipmentInstance } from '@/types'
 import { equipmentTemplate } from '@/data/equipment'
 import { formatPercent } from '@/utils/format'
@@ -14,13 +8,13 @@ export interface EquipSetDef {
   name: string
   /** 触发所需件数 */
   required: number
-  /** 机制效果文案 + 战斗钩子标记 */
+  /** 机制效果文案 */
   effectDesc: string
   /** 机制钩子 Id(战斗引擎可识别) */
   hook: 'ironwall' | 'astral' | 'peishi'
 }
 
-/** astral 共鸣:开战时护盾 = 最大生命的该比例(并入快照盾 mod,共三层同一常量) */
+/** astral 共鸣:开战护盾 = 最大生命 × 该比例(并入快照盾 mod,三层共用) */
 export const ASTRAL_SET_SHIELD = 0.05
 /** 饰品共鸣:造成伤害按该比例转化为生命(吸血被动,并入快照 lifesteal mod) */
 export const ACCESSORY_SET_LIFESTEAL = 0.08

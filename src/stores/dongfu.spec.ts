@@ -29,7 +29,6 @@ describe('dongfu store · sanitize', () => {
     dongfu.sanitize()
     expect(dongfu.levels.mansion).toBe(0)
     expect(dongfu.levels.alchemy).toBe(0)
-    // 修复后离线封顶小时恢复合法值,不再 NaN
     expect(dongfu.offlineCapHours).toBeGreaterThan(0)
     expect(Number.isFinite(dongfu.offlineCapHours)).toBe(true)
   })
@@ -65,7 +64,7 @@ describe('dongfu store · sanitize', () => {
 
   it('灵脉点数只留认得的四条脉,单脉超出主脉容量的部分裁回', () => {
     const dongfu = useDongfuStore()
-    // 坏档塞进来的多余键会计进「已投 N/100」,却没有卡能显示或迁出它
+    // 多余键会计入「已投 N/100」,却无卡可显示或迁出
     dongfu.veinPoints = { gather: 60, craft: 999, alchemy: 2, insight: 0, ghost: 400 } as never
     dongfu.sanitize()
     expect(Object.keys(dongfu.veinPoints).sort()).toEqual(['alchemy', 'craft', 'gather', 'insight'])
@@ -154,7 +153,7 @@ describe('dongfu store · buildingCap', () => {
     for (const def of BUILDINGS) {
       if (def.id === 'mansion') continue
       expect(dongfu.buildingCap(def.id)).toBe(def.maxLevel)
-      expect(def.maxLevel).toBeLessThan(25) // 品类上限都在 25 之下
+      expect(def.maxLevel).toBeLessThan(25)
     }
   })
 
@@ -165,11 +164,7 @@ describe('dongfu store · buildingCap', () => {
   })
 })
 
-/**
- * 比率体检:洞府产出对**等级**必须是线性的(与镇压对时长的线性同一条尺子)。
- * 只看"有没有产出"看不出某处被 clamp 或按整点取整 —— 三级灵田的余数
- * 应当恰是一级的三倍。
- */
+/** 洞府产出对等级须线性:三级余数恰为一级的三倍 */
 describe('洞府产出 · 等级线性', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -185,11 +180,7 @@ describe('洞府产出 · 等级线性', () => {
   }
 
   it('三级灵田/藏经阁的产出恰是一级的三倍(取整前看余数,避免被 floor 掩盖)', () => {
-    /**
-     * 时长要短到"一份整产出都不满":produce 每次调用都会把整数量 floor 进资源,
-     * 一旦某条产线凑够 1,余数就不再与总量成比例(实测 1332 秒时铁矿余数比只剩 0.75)。
-     * 120 秒下三条产线都不到 1,frac 就是总量本身,比值才干净。
-     */
+    // 时长须短到三条产线都不满 1 份:否则整数已 floor 进资源,余数不再成比例
     const seconds = 120
     const one = fracAfter(1, seconds)
     const three = fracAfter(3, seconds)
@@ -219,7 +210,7 @@ describe('建筑卡与结算同源', () => {
     const library = BUILDINGS.find(b => b.id === 'library')!
     expect(modsText(mansion.mods!(1))).toContain('修炼速度 +4%')
     expect(modsText(library.mods!(1))).toContain('战斗修为 +3%')
-    // effectText 不再手写这两条,避免和词条行各说各的
+    // 这两条只由词条行给出,effectText 不写
     expect(mansion.effectText(1)).not.toContain('修炼速度')
     expect(library.effectText(1)).not.toContain('战斗修为')
   })
@@ -248,7 +239,7 @@ describe('洞府产出 · 灵田品阶(灵田等级越高产更高品)', () => {
     setActivePinia(createPinia())
   })
 
-  const SECONDS = 2400 // 久到 1 级田也凑得出一整株:fieldLv × 6/3600 × 2400 = fieldLv×4 株
+  const SECONDS = 2400 // fieldLv × 6/3600 × 2400 = fieldLv × 4 株
   const herbCount = (fieldLv: number): number => (fieldLv * FIELD_HERB_PER_HOUR * SECONDS) / 3600
 
   const yieldByGrade = (major: number, fieldLv: number): Record<HerbGrade, number> => {
@@ -270,7 +261,7 @@ describe('洞府产出 · 灵田品阶(灵田等级越高产更高品)', () => {
   })
 
   it('高境界低灵田:仍保当前品下限,不掉回低品', () => {
-    // 道品(5)境、1 级田:田上限只是凡品,但 max(当前品=5) 兜住,仍给道品
+    // 1 级田上限凡品,max(当前品 5) 兜住
     expect(yieldByGrade(MAX_MAJOR, 1)).toEqual({ 1: 0, 2: 0, 3: 0, 4: 0, 5: herbCount(1) })
   })
 
@@ -280,8 +271,7 @@ describe('洞府产出 · 灵田品阶(灵田等级越高产更高品)', () => {
 })
 
 describe('fieldHerbGrade 直接判定(洞府纪要的「前瞻 ↑」信号源)', () => {
-  // 界面「前瞻 ↑ XX品」就靠 fieldHerbGrade 是否高于当前境品判 —— 与 produce 同一判据,
-  // 单独把它钉在边界上,免得界面提示与实际入账漂移。
+  // 界面「前瞻 ↑」与 produce 同用此判据;钉住边界,防二者漂移
 
   it('低灵田未到跃迁档:产当前境品(凡境 3 级田仍凡品)', () => {
     expect(fieldHerbGrade(0, 3)).toBe(1)
@@ -299,11 +289,7 @@ describe('fieldHerbGrade 直接判定(洞府纪要的「前瞻 ↑」信号源)'
     expect(fieldHerbGrade(MAX_MAJOR, 15)).toBe(5)
   })
 
-  /**
-   * 中档夹逼 —— 极端(band 两端)之外,「至多高当前一档」「保当前品下限」在
-   * 中间境界才真正发威:major 9-13 当前品=3,田拉满(可种 5)只许前瞻到 4,
-   * 绝不一步到道品;田低(可种 2)仍保 3,不掉回灵品。
-   */
+  /** 中档夹逼:major 9-13 当前品 3,田满(可种 5)只到 4,田低(可种 2)仍保 3 */
   it('中境界拉满(当前品3/可种5):只前瞻+1到4,不跳到田上限5', () => {
     expect(fieldHerbGrade(9, 15)).toBe(4)
     expect(fieldHerbGrade(13, 15)).toBe(4) // band 上缘(13)同一判据
@@ -338,8 +324,7 @@ describe('洞府产出 · 跨整界原子(拆批等值/余数进位)', () => {
   const herbTotal = (): number => Object.values(useResourcesStore().herbByGrade).reduce((a, b) => a + (b ?? 0), 0)
 
   it('拆开多次与一次连产等值:produce(450)×2 的落账与 frac 恰等于 produce(900) 一次', () => {
-    // 灵田 lv1 = 6 株/时 -> 450s=0.75 株、900s=1.5 株;粗看 floor 会吞小数,
-    // 但余数进位必须两边一致(逐次取整的漂移在此会露头)
+    // 灵田 lv1 = 6 株/时:450s = 0.75 株、900s = 1.5 株;拆批与一次的余数进位须一致
     const batch = (): { herb: number; frac: number } => {
       setActivePinia(createPinia())
       const d = useDongfuStore()
@@ -372,7 +357,7 @@ describe('洞府产出 · 跨整界原子(拆批等值/余数进位)', () => {
     d.produce(900) // 1.5 株 -> 整发 1
     expect(herbTotal() - before).toBe(1)
     expect(d.frac.herb).toBeCloseTo(0.5, 9)
-    // 再补 300s(=0.5 株) -> 余数 0.5+0.5=1.0,恰好再整发 1 株
+    // 再补 300s(0.5 株):余数凑满 1,再整发 1 株
     const mid = herbTotal()
     d.produce(300)
     expect(herbTotal() - mid).toBe(1)
@@ -400,7 +385,7 @@ describe('洞府产出 · 长时间量级(长时整发恰准/拆批等值不漂)
   const oreTotal = (): number => useResourcesStore().ore
 
   it('长时单次(field/library 2 × 200000s ≈ 55.6h)产出恰按 floor 整发,余数收进 [0,1) 不丢不漂', () => {
-    // lv2:herb = 2*6*dt/3600、ore = 2*2.4*dt/3600、wudao = 2*1.5*dt/3600 (dt=200000 → 666.67/266.67/166.67)
+    // lv2:herb = 2*6*dt/3600、ore = 2*2.4*dt/3600、wudao = 2*1.5*dt/3600
     const d = useDongfuStore()
     d.levels.field = 2
     d.levels.library = 2
@@ -411,7 +396,6 @@ describe('洞府产出 · 长时间量级(长时整发恰准/拆批等值不漂)
     expect(herbTotal() - herbBefore).toBe(Math.floor((2 * FIELD_HERB_PER_HOUR * 200_000) / 3600))
     expect(oreTotal() - oreBefore).toBe(Math.floor((2 * FIELD_ORE_PER_HOUR * 200_000) / 3600))
     expect(wudaoTotal() - wudaoBefore).toBe(Math.floor((2 * LIBRARY_WUDAO_PER_HOUR * 200_000) / 3600))
-    // 3 层整发后余数都收敛在 [0,1):量级放大不该丢整份、也不该多给
     expect(d.frac.herb).toBeGreaterThanOrEqual(0)
     expect(d.frac.herb).toBeLessThan(1)
     expect(d.frac.ore).toBeLessThan(1)
@@ -462,7 +446,7 @@ describe('灵田产草品阶 · 等级表唯一事实源', () => {
   it('灵田卡面 effectText 也写明品阶,不再只写「每小时 X 株」(等级表同为数据事实源)', () => {
     const field = BUILDINGS.find(b => b.id === 'field')!
     const text = field.effectText(15)
-    // 满级可种道品 —— 卡面必须把「产的是哪一品」交代出来,否则玩家看不出囤的是哪档
+    // 满级可种道品,卡面须写明品阶
     expect(text).toContain('道品')
     expect(text).toContain('灵草')
   })

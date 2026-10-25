@@ -1,10 +1,4 @@
-/**
- * 战力五维评级审计
- *
- * powerRating 自 Phase 30.2 起就在代码里(进攻/生存/身法/恢复/机制),
- * 却一直没有界面在用 —— 等于没接线。接到流派页之后补上行为验证:
- * 星级要真的随词条形状分化,而不是人人一串三星。
- */
+/** 战力五维评级审计:星级须随词条形状分化。 */
 import { describe, expect, it } from 'vitest'
 import { ratePower, ratingStars } from './powerRating'
 import { STAT_NAMES } from '@/data/statNames'
@@ -51,12 +45,8 @@ describe('战力五维评级', () => {
 })
 
 /**
- * 五维的「为什么」—— 与属性来源明细同一条规矩:解释这个数,就得算得回这个数。
- *
- * 星级是结果,词条才是原因。面板若只给一串星,玩家看到「生存 ★★☆☆☆」也不知道
- * 差在哪一条词条;而如果给的明细相加对不上得分,那还不如不给。
- *
- * 故障注入:从任一一维里删掉一条 term(例如进攻少算破甲),本文件立刻变红。
+ * 五维评级的来路:明细之和须等于得分。
+ * 故障注入:从任一维删掉一条 term(如进攻少算破甲),本文件红。
  */
 describe('五维评级的来路', () => {
   const SAMPLE: StatMods[] = [
@@ -111,7 +101,6 @@ describe('五维评级的来路', () => {
   })
 
   it('机制维点名是哪一路 —— 成路与副系各算各的', () => {
-    // 堆一路核心词条到成路,机制维明细里应当出现该路的名字
     const r = ratePower(statsWith({ lowHpDamage: 0.6, lowHpReduction: 0.35, executeDamage: 0.4, lifesteal: 0.16 }))
     const mech = r.labels.find(l => l.key === 'mechanics')!
     expect(mech.terms.length, '成路之后机制维却没有任何来路').toBeGreaterThan(0)

@@ -1,22 +1,15 @@
 /**
- * 历世履历 / 历世同行 / 本世命题的坏条目修形 —— 轮回页与角色页的白屏面。
- *
- * 这三栏此前只做了 `Array.isArray` 就原样收下:
- *   - `lives` 里一条 `null` 会让「轮回录」的 `l.index` 当场抛错(整页白屏),
- *     而 `NaN` 会印成「第 NaN 世 · 寿 NaN 载」;
- *   - `bonds` 里一条 `null` 会让角色页「历世同行」读 `r.name` 抛错,
- *     野 `stage`/`ending` 则直接把英文原文印在中文界面里;
- *   - `vow` 里认不出的 `themeId` 会让 `vowProgress()` 恒返回 null ——
- *     界面写着「在途」,进度却永远不推进,下次兵解也不可能换题(题还在)。
- *
- * 判据按「界面会读到的那几处」钉死,而不是只断言 sanitize 不抛。
+ * 历世履历 / 历世同行 / 本世命题的坏条目修形:判据按界面会读到的那几处钉死,不只断言 sanitize 不抛。
+ * lives 一条 null 让轮回录 lifeRows 抛错(整页白屏),NaN 印成「第NaN世」「寿 NaN 载」;
+ * bonds 一条 null 让「历世同行」读 r.name 抛错,野 stage/ending 查不到中文名;
+ * vow 认不出的 themeId 让 vowProgress() 恒返回 null,命题永不得成。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { usePlayerStore } from '@/stores/player'
 import { ENDING_NAMES, STAGE_NAMES } from '@/data/daolu'
 
-/** 轮回录里真正会被渲染的字段(见 views/LegacyView.vue 的 lifeRows) */
+/** 轮回录会渲染的字段(见 views/LegacyView.vue 的 lifeRows) */
 function renderLife(l: ReturnType<typeof usePlayerStore>['reincarnation']['lives'][number]): void {
   expect(Number.isFinite(l.index), '第 N 世').toBe(true)
   expect(typeof l.realmLabel, '境界名').toBe('string')
@@ -25,7 +18,7 @@ function renderLife(l: ReturnType<typeof usePlayerStore>['reincarnation']['lives
   expect(['done', 'unfinished', 'broken', null]).toContain(l.themeResult)
 }
 
-/** 角色页「历世同行」直接拿这两个枚举当下标查中文名 */
+/** 角色页「历世同行」拿这两个枚举当下标查中文名 */
 function renderBond(r: ReturnType<typeof usePlayerStore>['reincarnation']['bonds'][number]): void {
   expect(typeof r.name).toBe('string')
   expect(STAGE_NAMES[r.stage], '阶位必须查得到中文').toBeTruthy()

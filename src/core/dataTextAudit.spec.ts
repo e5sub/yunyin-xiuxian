@@ -1,19 +1,8 @@
 /**
- * 文案数值对账 —— 「写了多少,就得给多少」
+ * 文案数值对账:说明文本里的数字须与实现一致。
  *
- * 玩家最容易撞见的缺陷不是崩溃,而是**说明与实现不一致**:文案写「攻击 +20%」,
- * 数据里却是 0.15;或者规则改过一版,文案忘了跟。这类问题单元测试看不见
- * (两边各自都"对"),静态审计也看不见(类型不关心数字),只有把两者对起来才现形。
- *
- * 判据只钉**形状保证配对**的那几张表:条目自带说明文本、也自带数值负载
- * (变数、秘境随机规则、增益)。其余地方文案里的数字可能来自别的表
- * (例如顿悟选项的数值挂在 buffs 上),硬对只会误报,故不在此列。
- *
- * 编码有三种,都要认:
- *   x      —— 0.15 表示 +15%(概率、词条)
- *   1+x    —— 1.15 表示 +15%(敌方/治疗倍率)
- *   1-x    —— 0.25 与「-75%」同义(治疗压制)
- * 另有「降低/减少/下降」这类反向措辞,允许数值为负。
+ * 只钉条目自带说明、也自带数值负载的表(变数、秘境随机规则、增益);
+ * 其余文案的数字可能来自别的表,硬对只会误报。
  */
 import { describe, expect, it } from 'vitest'
 import { MUTATORS } from '@/data/mutators'
@@ -41,7 +30,7 @@ import { STAT_NAMES } from '@/data/statNames'
 import { classicalDuration } from '@/data/timeUnits'
 import { MARKET_CONSIGN_SECONDS, MARKET_REFRESH_SECONDS } from '@/data/market'
 
-/** 文案里的百分比是否能在同一条目的数值里找到对应 */
+/** 文案里的百分比是否能在同一条目的数值里找到;「降低/减少/下降」类反向措辞允许数值为负 */
 function percentBacked(percent: number, nums: number[]): boolean {
   const p = percent / 100
   return nums.some(v => {
@@ -78,12 +67,8 @@ describe('文案数值对账 · 天道变数', () => {
 
 describe('文案数值对账 · 词条说明的名字只有一处', () => {
   /**
-   * 说明曾经逐条手写:「造成伤害提升」「受到伤害降低」「生命上限提升」,
-   * 而面板、战报、图鉴里同一个键叫「伤害增幅」「伤害减免」「气血上限」。
-   * 同一个键两套名字,玩家没法把装备上那条与面板上那条对上号。
-   *
-   * 现在 desc 由 STAT_NAMES[key] 派生,数值位只留一个 {v}。
-   * 故障注入:把任一条 desc 改回手写旧名 → 本条红。
+   * desc 由 STAT_NAMES[key] 派生,数值位只留一个 {v}。
+   * 故障注入:把任一条 desc 改回手写旧名,本用例红。
    */
   it('每条词条说明以自己的键名为开头,且 {v} 恰好一个', () => {
     const offenders = AFFIXES.flatMap(a => {
@@ -129,12 +114,7 @@ describe('文案数值对账 · 增益(Buff)', () => {
 })
 
 describe('文案数值对账 · 天道契约', () => {
-  /**
-   * 契约的规则文案里有两类数字:
-   *   ① 数值型 —— maxRounds / playerStartHpPct 等,写在 rules 里;
-   *   ② 特殊约束 —— 如 `special: 'endHp80'`(每场战后气血须 ≥80%),
-   *      数值就藏在特殊标记的名字里,故额外允许"百分比数字出现在 special 字符串里"。
-   */
+  /** 契约文案的数字来自 rules,或藏在 special 标记名里(如 'endHp80' 即战后气血 ≥80%),两处都认 */
   it('每条契约的规则文案,数字都能在它自己的 rules / sourceMult / special 里找到', () => {
     let checked = 0
     for (const p of PACTS) {
@@ -156,8 +136,7 @@ describe('文案数值对账 · 天道契约', () => {
   })
 
   it('契约文案里的**裸数字**也要对得上(「回合上限 25」这类不带宽高符号的写法)', () => {
-    // 只扫 % 会漏掉契约最典型的写法:「回合上限 25」「道源 ×1.6」。
-    // 契约文案是公式化的,故这里连裸数字一起对账(变数/增益的文案更散文,不适用)。
+    // 契约文案公式化(「回合上限 25」「道源 ×1.6」),裸数字一起对账;变数/增益文案不适用
     let checked = 0
     for (const p of PACTS) {
       const rules = p.rules ?? {}
@@ -176,11 +155,7 @@ describe('文案数值对账 · 天道契约', () => {
   })
 })
 
-/**
- * 视图文案也要对账 —— 这一类更难自动核:模板里的数字可能是常量、也可能来自别的表。
- * 故只钉**已经确认过归属**的几处:它们曾经手抄过数字(注释还写着"唯一来源是 X",
- * 数字却是手打的),改常数就会撒谎。判据 = 引用来源 + 不再出现那个字面量。
- */
+/** 视图文案对账:只钉已确认归属的几处。判据 = 引用来源 + 不再出现那个字面量 */
 describe('文案数值对账 · 视图不手抄数字', () => {
   const src = (from: string): string =>
     readFileSync(resolve(__dirname, from), 'utf8')
@@ -189,18 +164,15 @@ describe('文案数值对账 · 视图不手抄数字', () => {
       .replace(/\/\/.*$/gm, '')
 
   it('人物页的道果说明与边际收益都取自 DAO_FRUIT_* 常数', () => {
-    // 轮回弹窗拆出后判据随本体走
     const view = src('../components/character/RebirthDialog.vue')
     expect(view, '道果每枚加成应读常数').toContain('DAO_FRUIT_CULT_BONUS')
     expect(view, '道躯加成应读常数').toContain('DAO_FRUIT_COMBAT_BONUS')
-    // 手抄过的两处字面量必须消失(改了常数却忘了改文案,正是这条要拦的)
     expect(view).not.toContain('修行 +3%')
     expect(view).not.toContain('道躯 +1.5%')
     expect(view, '边际收益里的 ×3 也是手抄的,应改成常数').not.toMatch(/effective \* 3\b/)
   })
 
   it('修行页的闭关文案取自 buffs.ts 的 retreat 本体', () => {
-    // 闭关卡拆出后判据随本体走
     const view = src('../components/cultivation/RetreatCard.vue')
     expect(view, '闭关时长与加成应读 buff 定义').toContain("buffDef('retreat')")
     expect(view).not.toContain('5 分钟,修炼速度 +150%')
@@ -208,7 +180,6 @@ describe('文案数值对账 · 视图不手抄数字', () => {
   })
 
   it('坊市售出段的四类价签取自同一套定价函数', () => {
-    // 售出段随本体迁入 MarketSellSection:判据跟着走
     const sell = src('../components/market/MarketSellSection.vue')
     for (const fn of ['consignPrice(', 'herbSellBatch(', 'materialSellPrice(', 'pillSellPrice(']) {
       expect(sell, `售出段该读 ${fn} 定价`).toContain(fn)
@@ -219,18 +190,11 @@ describe('文案数值对账 · 视图不手抄数字', () => {
   })
 
   /**
-   * 工期文案与秒数常量对账 —— 这一类此前没人守,实测撞上两处失真:
-   * 坊市货架周期 7200s(一个时辰)而文案写「两时辰」(4 小时);寄卖 2400s
-   * (两刻有余 / 40 分钟)而文案写「一炷香」(30 分钟);闭关 buff 300s(5 分钟)
-   * 也写「一炷香」。「改工期忘改文案」在其余地方早有判据(timeUnits 表 + 丹方),
-   * 唯独这三处手打的古语漏在外面。
-   *
-   * 判据 = 现算(读常量) + 旧字面量不许回来。故障注入:把任一处的 `classicalDuration(...)`
-   * 换回手打古语,或把常量改掉而文案不动,本条立刻红。
+   * 工期文案从秒数常量经 classicalDuration 现算,旧字面量不许回来。
+   * 故障注入:把任一处的 `classicalDuration(...)` 换回手打古语,或把常量改掉而文案不动,本用例红。
    */
   it('工期文案从秒数常量现算,不手打古语时辰', () => {
-    // 判据用**具体错字面量**而非宽泛的古语正则:模板里「这一刻没有…」这类正常中文
-    // 含「刻」,泛正则会误伤;这里钉的是实测写错过的那几个词。
+    // 只钉实测写错过的具体字面量,不用泛古语正则(「这一刻」含「刻」,会误伤)
     const shelf = src('../components/market/MarketShelfSection.vue')
     expect(shelf, '货架换新工期应读 MARKET_REFRESH_SECONDS').toContain('MARKET_REFRESH_SECONDS')
     expect(shelf, '货架工期应现算古语对照').toContain('classicalDuration(MARKET_REFRESH_SECONDS)')
@@ -245,22 +209,19 @@ describe('文案数值对账 · 视图不手抄数字', () => {
     expect(retreat, '闭关时长应现算古语对照').toContain('classicalDuration(')
     expect(retreat, '闭关是 300s(5 分钟),不许再写「一炷香」(30 分钟)').not.toContain('一炷香')
 
-    // 现算的落点必须真是那几个常量:「一个时辰(2 小时)」/「两刻有余(40 分钟)」/「将近一刻(5 分钟)」
     expect(classicalDuration(MARKET_REFRESH_SECONDS)).toBe('一个时辰(2 小时)')
     expect(classicalDuration(MARKET_CONSIGN_SECONDS)).toBe('两刻有余(40 分钟)')
     expect(classicalDuration(buffDef('retreat')!.durationSec)).toBe('将近一刻(5 分钟)')
   })
 
   it('发布说明里的寄卖工期与 MARKET_CONSIGN_SECONDS 同向', () => {
-    // 历史发布说明曾经写「约一炷香售出」,而实到 40 分钟 —— 玩家读到的与等到的对不上。
-    // 这条只断言措辞已改对:古语短语可被 timeUnits 的同一把尺折回 2400s 附近。
+    // 只断言措辞已改对
     const notes = src('../ui/releaseNotes.ts')
     expect(notes, '寄卖工期不许再写「一炷香」').not.toMatch(/寄卖[\s\S]{0,40}一炷香/)
     expect(notes, '寄卖工期该写「两刻有余(40 分钟)」').toContain('两刻有余')
   })
 
   it('坊市悬赏板的可交判据与页签圆点读同一份订单投影', () => {
-    // 悬赏板随本体迁入 BountyBoardSection,投影收进 useBountyRows
     const board = src('../components/market/BountyBoardSection.vue')
     const rows = src('../composables/useBountyRows.ts')
     const host = src('../views/MarketView.vue')
@@ -316,15 +277,9 @@ describe('文案数值对账 · 视图不手抄数字', () => {
   })
 
   /**
-   * 游戏时钟纪律 —— 可冻结的到期判定读 gameNow(),不读 Date.now()。
-   *
-   * `enginePause` 的头部注释写着这条纪律,而落到代码里靠的是人记:
-   * 每一处写到期时间的地方都得想一遍「这个可以冻吗」。忘记的后果是暂停期间的墙钟就会超过未来到期判定。
-   *
-   * 这五份文件写的到期时间全部进了 `shiftTimedState` 的顺延名单
-   * (player.ts / adventure.ts / earlyGameService.ts),即官方认定的「可冻结域」。
-   *
-   * 故障注入: 把其中任何一处 gameNow() 改回 Date.now(),本条必红。
+   * 可冻结域的到期判定读 gameNow(),不读 Date.now()(纪律见 enginePause 头注释)。
+   * 这五份文件的到期时间都在 shiftTimedState 的顺延名单里(player.ts / adventure.ts / earlyGameService.ts)。
+   * 故障注入:把其中任何一处 gameNow() 改回 Date.now(),本用例红。
    */
   it('可冻结域的到期判定不读墙钟', () => {
     const strip = (from: string): string =>
@@ -373,14 +328,8 @@ describe('文案数值对账 · 视图不手抄数字', () => {
 })
 
 /**
- * 数量也要对账 —— 「四界二十一境」「六十四卦」「三层」这类写法,数字同样是手抄的。
- *
- * 与百分比不同:数量不会自己变,只有**内容增长**时才变 —— 那正是最容易漏的时刻
- * (加了界域、加了卦,没人会想起界面上还有一句写着旧数字)。故这里逐处钉:
- * 页面写的数量必须由来源表数出来,且原来的字面量必须消失。
- *
- * 判据同时钉住「值没变」:算法换了,玩家看到的还得是原来那句(四界二十一境、
- * 六十四卦、三层……),否则接线就成了改文案的借口。
+ * 视图数量对账:页面写的数量(四界二十一境、六十四卦、三层…)由来源表数出,原字面量须消失;
+ * 同时钉住数值不变。
  */
 describe('文案数值对账 · 视图不手抄数量', () => {
   const src = (from: string): string =>
@@ -406,7 +355,7 @@ describe('文案数值对账 · 视图不手抄数量', () => {
   })
 
   it('洛书排布句是一张地图:八门各占一宫、中五无门', () => {
-    // 视图把这句从 GATES 推出来;表里若出现两门同宫、或门落到中五,那句话就会说谎
+    // 排布句由 GATES 推出:两门同宫或门落中五,该句即失真
     const palaces = GATES.map(g => g.palace)
     expect(new Set(palaces).size, '两门同宫 —— 排布句会漏掉一门').toBe(GATES.length)
     expect(palaces.every(p => p >= 1 && p <= 9)).toBe(true)
@@ -436,7 +385,6 @@ describe('文案数值对账 · 视图不手抄数量', () => {
     const card = src('../components/adventure/SecretRealmCard.vue')
     expect(card).toContain('cnNumber(SECRET_LAYERS)')
     expect(card).not.toContain('三层 · 出则散')
-    // 远征在途时入口必须与核心同判据置灰并写出原因,不能等点下去才被拒
     expect(card, '秘境入口该读统一在途判据').toContain('endgameBusy(endgame.worldRun, player.secretRealm, useAdventureStore().session)')
     expect(card, '在途原因要显示到卡面').toContain('entryBlockText(')
     expect(card, '入口 disabled 必须走合判据').toContain(':disabled="!canPay(r)"')
@@ -444,12 +392,10 @@ describe('文案数值对账 · 视图不手抄数量', () => {
   })
 
   /**
-   * 在途互斥是**双向**的:别的活动在途时不许开历练,历练在途时也不许开别的。
-   * 330~332 轮只补了后一半,历练这一侧一直漏着 —— 远征挂机时点「出发」照旧放行,
-   * 历练心跳与 runSnap 携带气血同时推进。故两处都钉住:
-   *   ① core 的 startExploration 必须问统一判据 endgameBusy,不再手抄一句拒因;
-   *   ② 历练页「出发」前置同判据 —— 玩家不该点了才被告知「远征在途」。
-   * 故障注入:删掉 core 里那一支 → 本条的 core 断言红;把界面前置改回只问闭关 → 界面断言红。
+   * 在途互斥是双向的:别的活动在途时不许开历练,历练在途时也不许开别的。
+   * 若远征在途时放行「出发」,历练心跳与 runSnap 携带气血会同时推进。
+   * core 的 startExploration 与历练页「出发」都问统一判据 endgameBusy。
+   * 故障注入:删掉 core 里那一支,core 断言红;把界面前置改回只问闭关,界面断言红。
    */
   it('历练与终局的在途互斥是双向的,核心与界面共用 endgameBusy', () => {
     const core = src('./exploration.ts')
@@ -458,7 +404,7 @@ describe('文案数值对账 · 视图不手抄数量', () => {
     const view = src('../views/AdventureView.vue')
     expect(view, '出发前置也要认出远征/秘境在途').toContain('endgameBusy(endgame.worldRun, player.secretRealm, null)')
     expect(view, '前置拒因同样取判据本体').toContain('ui.toast(busy.reason, \'warn\')')
-    // 秘境入口也归入同一份判据:此前它手抄了两支拒因,与秘境卡的 reason 分叉
+    // 秘境入口也归入同一份判据
     const secret = src('./secretRealm.ts')
     expect(secret, '秘境入口该读统一在途判据').toContain('endgameBusy(endgame.worldRun, player.secretRealm, useAdventureStore().session)')
     expect(secret, '秘境入口拒因取判据本体').toContain('return { ok: false, reason: busy.reason }')
@@ -466,7 +412,7 @@ describe('文案数值对账 · 视图不手抄数量', () => {
   })
 
   it('远征行程与变数连战数取自 EXPEDITION_* / MUTATION_FIGHTS', () => {
-    // 远征册拆出后判据随本体走。宿主与子面板合扫:拆分只搬了位置,数仍只有一份
+    // 宿主与子面板合扫
     const view =
       src('../views/CelestialView.vue') +
       src('../components/celestial/ExpeditionPanel.vue') +
@@ -480,7 +426,7 @@ describe('文案数值对账 · 视图不手抄数量', () => {
   })
 
   it('法宝位与门槛取自 artifacts.ts,界面与切换构筑共用一份', () => {
-    // 法宝册拆出后判据随本体走。宿主与子面板合扫:拆分只搬了位置,规则仍只有一份
+    // 宿主与子面板合扫
     const view = src('../views/InventoryView.vue') + src('../components/inventory/ArtifactPanel.vue')
     expect(view).toContain('artifactSlotsFor(player.major)')
     expect(view).toContain('ARTIFACT_SLOT_UNLOCK_MAJOR')
@@ -501,13 +447,7 @@ describe('文案数值对账 · 视图不手抄数量', () => {
   })
 })
 
-/**
- * 手写的门槛与容量 —— 数字的另一种写法:阿拉伯数字 + 单位。
- *
- * 「主脉可投 70 点」「可行流派 3/6」这类句子里的数字同样是抄的,只是长得不像
- * 「二十一境」那样明显。它们抄的是**另一张表**(容量常数、构筑流派数),
- * 而这张表正是最常被调的东西 —— 调完数值,句子还在说旧数。
- */
+/** 手写门槛与容量对账(阿拉伯数字 + 单位,如「主脉可投 70 点」「可行流派 3/6」):须读容量常数与构筑流派数 */
 describe('文案数值对账 · 手写的门槛与容量', () => {
   const src = (from: string): string =>
     readFileSync(resolve(__dirname, from), 'utf8')
@@ -533,7 +473,6 @@ describe('文案数值对账 · 手写的门槛与容量', () => {
   })
 
   it('「不能全部点满」是算术事实:全部脉的上限之和确实超过总容量', () => {
-    // 文案这么说,是因为投满所有脉需要的点数 > 总容量;若哪天不成立了,取舍就没了
     const allIn = VEIN_MAIN_CAPACITY + VEIN_SIDE_CAP * (VEINS.length - 1)
     expect(allIn, `共 ${VEINS.length} 条脉,投满需 ${allIn} 点,总容量 ${VEIN_TOTAL_CAPACITY}`)
       .toBeGreaterThan(VEIN_TOTAL_CAPACITY)
@@ -541,7 +480,7 @@ describe('文案数值对账 · 手写的门槛与容量', () => {
 
   it('「可行流派 x/N」的分母取自 BUILD_PROFILES(界面与生态健康度同源)', () => {
     expect(BUILD_PROFILES.length).toBe(6)
-    // 今日天道与挑战书的「可行流派 x/N」随试炼册迁入 components/celestial/TrialPanel.vue
+    // 今日天道与挑战书的「可行流派 x/N」在 TrialPanel
     const view = src('../views/CelestialView.vue') + src('../components/celestial/TrialPanel.vue')
     expect(view, '分母应读构筑流派数').toContain('BUILD_PROFILES.length')
     expect(view, '界面里的分母不该手写').not.toMatch(/\}\}\s*\/6\b/)
@@ -557,29 +496,21 @@ describe('文案数值对账 · 手写的门槛与容量', () => {
     expect(dialog, '手写的 约 ×100 与寿元表差了一档').not.toContain('约 ×100')
   })
 
-  /**
-   * 「七/二十 战」这种数字长得最像人话,也最容易被当成装饰 ——
-   * 可它读的是一个会变的门槛。界面必须从 SUPPRESS_THRESHOLDS 现取。
-   */
   it('镇压门槛的「20」与「胜」都取自 SUPPRESS_THRESHOLDS,界面不手抄', () => {
-    // 判据分两处:门槛总纲仍在宿主,逐行进度随地界卡迁走
+    // 门槛总纲在宿主,逐行进度在地界卡
     const view = src('../views/AdventureView.vue')
     const card = src('../components/adventure/RegionCard.vue')
     expect(view, '总纲应读 minWins').toContain('SUPPRESS_THRESHOLDS.minWins')
     expect(card, '进度应读 needWins').toContain('row.progress.needWins')
-    // 这一项数的是胜场:写成「战」会让人以为败场也算(曾因此误导过一次修复)
+    // 数的是胜场:写成「战」会被读成败场也算
     expect(view, '门槛说成「胜」而不是「战」').toContain('胜 {{ SUPPRESS_THRESHOLDS.minWins }} 场')
     expect(card, '进度也说成「胜」').toContain('}} 胜')
     expect(view + card, '手写的「20 战」应改读常数').not.toContain('20 战')
   })
 
-  /**
-   * 八门带的是**真规则**,不是文案。界面上必须由 rules 派生,
-   * 否则改 rules 时那句散文不会跟,玩家读到的与结算里的数当场分家。
-   */
   it('八门的行军数值由 gateRuleSummary 派生,图鉴与选门都不手写', () => {
     const view = src('../views/RealmCodexView.vue')
-    // 择门在远征准备弹窗里,随远征册迁入 components/celestial/ExpeditionPanel.vue
+    // 择门在远征准备弹窗里
     const celestial = src('../views/CelestialView.vue') + src('../components/celestial/ExpeditionPanel.vue')
     expect(view, '奇门册应读 gateRuleSummary').toContain('gateRuleSummary(g.rules)')
     expect(celestial, '选门详情应读 gateRuleSummary').toContain('gateRuleSummary(selectedGate.rules)')
@@ -587,20 +518,14 @@ describe('文案数值对账 · 手写的门槛与容量', () => {
 })
 
 /**
- * 术语一致性 —— 同一个东西只能有一个名字
- *
- * 起因:同一个"历练中偶遇的随机事件"在项目里有四个近义叫法——奇遇(词条名/成就文案)、
- * 际遇(成就名)、机缘(ft_ 取弃事件)、奇缘(我后来接的连锁)。它们各自是**不同机制**,
- * 但四个近义词并排出现时,玩家会把它们当成一件事(「奇遇概率」涨的是哪一类?)。
- *
- * 约定(写进判据,不再靠记性):
+ * 术语一致性:同一个东西只能有一个名字。
  *   际遇 = 历练中偶遇的随机事件(eventLuck 词条、经历计数)
  *   机缘 = 稀有的取/弃事件(ft_,界域志的机缘取弃)
  *   奇缘 = 阶段性连锁(奇缘录)
- * 另:vein 系统一律叫"灵脉"(不再混用"地脉")。
+ *   vein 系统一律叫"灵脉",不叫"地脉"
  */
 describe('术语一致性 · 用户可见文本', () => {
-  /** 数据里的字符串字面量 + 视图模板(即玩家真正读得到的那部分) */
+  /** 用户可见文本:数据里的字符串字面量 + 视图模板 */
   const userText = (): { file: string; text: string }[] => {
     const out: { file: string; text: string }[] = []
     const walk = (dir: string): void => {
@@ -614,7 +539,6 @@ describe('术语一致性 · 用户可见文本', () => {
         }
         const src = readFileSync(resolve(__dirname, rel), 'utf8')
         if (entry.endsWith('.vue')) {
-          // 只取模板(去掉注释)
           out.push({ file: rel, text: src.split('</script>')[0]!.replace(/<!--[\s\S]*?-->/g, '') })
         } else if (entry.endsWith('.ts')) {
           const body = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
@@ -630,7 +554,7 @@ describe('术语一致性 · 用户可见文本', () => {
     return out
   }
 
-  /** 允许保留的例外:这里的地脉说的是村子的风水脉,不是洞府灵脉系统 */
+  /** 例外:此处「地脉」指村子的风水脉,不是洞府灵脉系统 */
   const ALLOWED = ['须惊动山下一整座村子的地脉']
 
   it('随机事件一律叫「际遇」:用户可见文本里不再出现「奇遇」', () => {
@@ -670,13 +594,7 @@ describe('术语一致性 · 用户可见文本', () => {
     }
   })
 
-  /**
-   * 名与机制同形:先手判定(speed)那条**阈值**不许再叫「出手速度」。
-   *
-   * 「出手速度提升 6%」读起来是连续收益,真相是「1 + 修正 ≥ 对手速度」的开关:
-   * 差一点就完全没有。术语不对,玩家对词条的理解就必然是错的 ——
-   * 这条红线盯的是名字,战后分析(两数 + 差额)盯的是解释。
-   */
+  /** 先手判定(speed)是「1 + 修正 ≥ 对手速度」的阈值开关,不是连续收益 */
   it('「出手速度」这个名字退休:它实际是阈值判定,一律叫「先手判定」', () => {
     const hits: string[] = []
     for (const { file, text } of userText()) {
@@ -747,14 +665,8 @@ describe('术语一致性 · 用户可见文本', () => {
 })
 
 /**
- * 界面读同源函数,而不是各写一份。
- *
- * 这一条与上面「视图不手抄数字」同源,只是对象换成了**功能**:法宝的神通说明
- * 会随祭炼等级变(×1.72),装备详情要报共鸣件数,图鉴要讲功用 —— 这些都有
- * 现成的同源函数(artifactActiveText / setCounts / codex 的几个 FuncText)。
- * 界面若绕开它们自己拼,今夜是对的,改数值那一夜就开始撒谎。
- *
- * 故障注入:把 InventoryView 的神通行换回 `row.def.active.desc`,本文件立刻红。
+ * 界面读同源函数(artifactActiveText / setCounts / codex 的几个 FuncText),不自己拼。
+ * 故障注入:把 ArtifactPanel 的神通行换回 `row.def.active.desc`,本用例红。
  */
 describe('文案数值对账 · 用具三类的界面读同源函数', () => {
   const src = (from: string): string =>
@@ -764,29 +676,21 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
       .replace(/\/\/.*$/gm, '')
 
   it('法宝卡片的神通说明随祭炼走,等级也不叫「阶」', () => {
-    // 法宝册拆出后判据随本体走(components/inventory/ArtifactPanel.vue)
     const view = src('../components/inventory/ArtifactPanel.vue')
     expect(view, '神通说明应读 artifactActiveText(与战斗同一份数值)').toContain('artifactActiveText(')
     expect(view, '不许直接印 0 级文案').not.toMatch(/\.active\.desc/)
     expect(view, '等级说法应读 artifactLevelLabel(「重」,不是「阶」)').toContain('artifactLevelLabel(')
-    // 祭炼给多少、至多重:取自 artifacts 的常数,不在界面里另写一份
     expect(view, '祭炼每重的增幅应读 ARTIFACT_LEVEL_BONUS').toContain('ARTIFACT_LEVEL_BONUS')
     expect(view, '祭炼上限应读 ARTIFACT_MAX_LEVEL').toContain('ARTIFACT_MAX_LEVEL')
     /**
-     * 总纲不许替「零重封顶」的那几件打包票:神鞭/无相念珠的神通主体、神魔镜的回补
-     * 祭炼都不会再涨。图鉴那边已按件给话,这里若仍写死「被动与神通各强」,
-     * 同一件事在两张页面上各说一套。
-     *
-     * 故障注入:把「通常」删回「被动与神通各强」→ 本条红。
+     * 神鞭/无相念珠的神通主体、神魔镜的回补不随祭炼再涨,总纲不得无条件承诺神通也涨。
+     * 故障注入:把「通常」删回「被动与神通各强」,本用例红。
      */
     expect(view, '总纲要留出「并非每件都涨神通」的余地').toContain('通常各强')
     expect(view, '不许再无条件承诺神通也涨').not.toContain('被动与神通各强')
   })
 
-  /**
-   * 付不起时按钮置灰只是第一层:玩家还得看得见差哪一样、差多少。
-   * 故障注入:把 canUp 改回只查布尔、删掉行内缺口 → 本条红。
-   */
+  /** 故障注入:把 canUp 改回只查布尔、删掉行内缺口,本用例红 */
   it('法宝炼化按缺口置灰,行内写清悟道点与灵石各差多少', () => {
     const view = src('../components/inventory/ArtifactPanel.vue')
     expect(view, '禁用态读同一份缺口判定').toContain('artifactShortfall(upCost)')
@@ -817,8 +721,7 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
   })
 
   it('图鉴的用具三类取自 itemText 的功用函数', () => {
-    // 装备/法宝/丹药三类已收进 codex 的派生视图,功用行在那里拼;
-    // 功法阁仍是两态列表,由视图直接拼 —— 两边都得取同一份文案函数
+    // 装备/法宝/丹药在 codex 派生视图里拼,功法阁由视图直接拼;两边取同一份文案函数
     const codexSrc = src('../ui/codex.ts')
     for (const fn of ['equipFuncText', 'equipMetaText', 'artifactFuncText', 'artifactMetaText', 'pillFuncText', 'pillMetaText']) {
       expect(codexSrc, `图鉴该用 ${fn} 讲功用与出处`).toContain(fn)
@@ -836,12 +739,11 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
   })
 
   it('丹药详情与丹方清单说得出「服下去会怎样」', () => {
-    // 丹方清单随开炉弹窗迁入 BrewingDialog;丹药详情仍在宿主 —— 两处合扫,防只查宿主假绿
+    // 丹方清单在 BrewingDialog,丹药详情在宿主:两处合扫,防只查宿主假绿
     const view = src('../views/InventoryView.vue') + src('../components/inventory/BrewingDialog.vue')
-    // 两处都要读同一份:丹药详情弹窗 + 开炉炼丹的方子清单
     const uses = view.match(/pillFuncText\(/g)?.length ?? 0
     expect(uses, '丹药详情与方子清单都该写清效果(同一份 pillFuncText)').toBeGreaterThanOrEqual(2)
-    // 熟练度读 lore.recipeMastery 留在宿主(丹药详情),丹方清单本身不重复一份
+    // 熟练度只在宿主(丹药详情)读
     expect(src('../views/InventoryView.vue'), '丹方读到几分熟取自 lore.recipeMastery').toContain('recipeMastery(')
   })
 
@@ -855,12 +757,10 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
   })
 
   /**
-   * 议题 #130:缺料只说「未足」而不给去路,玩家得自己翻到坊市、再自己往下滚找草。
-   * 这条锁住两端:① 缺草时真的给一条带 focus=herb 的入口;② 坊市真接得住这个参数,
-   * 且只在渲染出灵草格时才高亮 —— 货架六格随机,没有草还硬指一格就是指错路。
+   * 议题 #130:缺草时给一条带 focus=herb 的入口;坊市接住这个参数,
+   * 只在渲染出灵草格时才高亮(货架六格随机)。
    */
   it('炼丹缺草给去坊市的去路,坊市接住 focus=herb 并只高亮灵草格', () => {
-    // 方子行随开炉弹窗迁入 BrewingDialog,判据随本体走
     const inv = src('../components/inventory/BrewingDialog.vue')
     expect(inv, '缺草/草石都缺时该给「去坊市续草」').toMatch(
       /name: 'market', query: \{ focus: 'herb', grade: String\(r\.cost\.grade\) \}/,
@@ -868,14 +768,12 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(inv, '入口只该在草是短板时出现(不该给掌握不足指路)').toMatch(
       /r\.plan\.reason === 'herb' \|\| r\.plan\.reason === 'both'/,
     )
-    // 货架段随本体迁入 MarketShelfSection:判据跟着走
     const market = src('../components/market/MarketShelfSection.vue')
     expect(market, '货架段要读 focus 参数').toContain("route.query.focus === 'herb'")
     expect(market, '按方子要的品阶挑草格(缺灵品却亮凡品,买回来照样开不了炉)').toContain(
       'focusHerbSlot(market.stock, want,'
     )
     expect(market, '认到灵草格后要滚进视口').toContain('scrollIntoView(')
-    // 货架六格随机,碰上没有草的那一架:不许静默停住,得说清「这一架没有」
     expect(market, '这一架没有灵草时要明说').toContain('data-focus-herb-missing')
     const host = src('../views/MarketView.vue')
     expect(host, '宿主只切签,不再自己算落点').not.toContain('focusHerbSlot(')
@@ -891,8 +789,7 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
   })
 
   it('天界道源付不起时按钮置灰并写出实际差额', () => {
-    // 天界各册共用 daoSourceShortfall;付不起仍可点,等于让玩家拿一次点击去试余额。
-    // 故障注入:把任一处的 `daoSourceShortText(` 换回 `道源不足`,或删掉 :disabled → 本条红。
+    // 故障注入:把任一处的 `daoSourceShortText(` 换回 `道源不足`,或删掉 :disabled,本用例红
     const trial = src('../components/celestial/TrialPanel.vue')
     const expedition = src('../components/celestial/ExpeditionPanel.vue')
     const marks = src('../components/celestial/MarksPanel.vue')
@@ -912,7 +809,7 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(trial, '今日天道付不起要置灰').toContain('endgame.daoSource < CHALLENGE_ENTRY_COST')
     expect(trial, '天道变数付不起要置灰').toContain('busy !== null || endgame.daoSource < MUTATION_ENTRY_COST')
     expect(trial, '天道试炼付不起要置灰').toContain('busy !== null || endgame.daoSource < trial.entryCost')
-    // 挑战书有三条禁用原因:未验约、远征在途、道源不足 —— 文案必须逐因说明
+    // 挑战书三条禁用原因(未验约、远征在途、道源不足)须逐因说明
     expect(trial, '挑战书按钮文案统一走分因投影').toContain('challengeButtonText')
     expect(trial, '挑战书 title 统一走分因投影').toContain(':title="challengeBlockText"')
     expect(trial, '挑战书在途拒因来自统一判据').toContain('endgameBusy(endgame.worldRun, usePlayerStore().secretRealm, useAdventureStore().session)')
@@ -929,10 +826,7 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(furnace, '灵石熔铸未付时直接写尚差').toContain('熔铸(灵石尚差 ${formatGN(stoneShort)})')
   })
 
-  /**
-   * 天道熔炉的材料熔铸同族:预览只显示能换几缕,回执却只报总门槛。
-   * 现差额由 furnaceMaterialShortfall 单源给出,两条失败路径都写实际差量。
-   */
+  /** 天道熔炉材料差额由 furnaceMaterialShortfall 单源给出,两条失败路径都写实际差量 */
   it('天道熔炉材料不足时回执写出实际差量', () => {
     const service = src('./endgameService.ts')
     expect(service, '材料差额单源').toContain('export function furnaceMaterialShortfall(')
@@ -959,11 +853,8 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
   })
 
   /**
-   * 修行页三处「付不起」同族:悟道兑换、突破备药、灵气疗伤。
-   *
-   * 从前按钮亮着等点、toast 只报总需求,玩家得自己拿余额做减法。
-   * 现在禁用判据与文案都读 core 的同一份差额;故障注入:删掉余额判据、
-   * 或把「尚差」改回「未足」→ 本条红。
+   * 悟道兑换、突破备药、灵气疗伤:禁用判据与文案都读 core 的同一份差额。
+   * 故障注入:删掉余额判据,或把「尚差」改回「未足」,本用例红。
    */
   it('修行页三处付不起都前置置灰并写出实际差额', () => {
     const gongfa = src('../components/cultivation/GongfaSection.vue')
@@ -982,9 +873,8 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
   })
 
   /**
-   * 灵脉投点与改立同族:付不起时按钮与回执都只写「灵石未足 / 缺灵石」,
-   * 玩家还得拿单价减余额。现单点、连投与服务拒因同读 veinPointShortfall。
-   * 故障注入:把按钮改回「缺灵石」、或把服务 toast 改回不带差数 → 本条红。
+   * 灵脉单点、连投与服务拒因同读 veinPointShortfall。
+   * 故障注入:把按钮改回「缺灵石」,或把服务 toast 改回不带差数,本用例红。
    */
   it('灵脉单点与连投付不起时写出实际石差', () => {
     const card = src('../components/dongfu/VeinInvestCard.vue')
@@ -1008,9 +898,8 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
   })
 
   /**
-   * 词条转移与封存同族:付不起时主按钮只写「灵石未足 / 器灵尘未足」,
-   * 价签却已有总额、core 也已有 transferShortfall。故障注入:把 blockLabel 改回
-   * 只传 short、或把服务拒因改回 transferShortText(short) → 本条红。
+   * 词条转移的主按钮与服务拒因同读 transferShortfall。
+   * 故障注入:把 blockLabel 改回只传 short,或把服务拒因改回 transferShortText(short),本用例红。
    */
   it('词条转移缺料写出灵石与器灵尘实际差额', () => {
     const flow = src('../composables/useAffixTransfer.ts')
@@ -1024,23 +913,20 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(service, '不许退回只传缺料类型').not.toContain('ui.toast(transferShortText(short)')
   })
 
-  /**
-   * 只缺灵石时同理:灵石只能从历练/悬赏挣,坊市是花灵石的地方。
-   * 若给「去坊市」就是把玩家指反了方向 —— 那里只会再缺一次。
-   */
+  /** 灵石只能从历练/悬赏挣,坊市只花灵石:只缺灵石时不给「去坊市」 */
   it('炼丹只缺灵石时指去历练,不给坊市(那儿只有花灵石)', () => {
     const inv = src('../components/inventory/BrewingDialog.vue')
     expect(inv, '只缺灵石给历练去路').toMatch(/r\.plan\.reason === 'stone'/)
     expect(inv, '两条去路互斥,同屏只摆一条').toMatch(/v-else-if="r\.plan\.reason === 'stone'"/)
-    // 目标路由也要锁:只断言标签的话,把 link 改回 market 这条测试照样绿
+    // 同时锁目标路由:只断言标签,把 link 改回 market 照样绿
     expect(inv, '灵石那条必须指向历练').toMatch(
       /v-else-if="r\.plan\.reason === 'stone'"[\s\S]{0,200}?:to="\{ name: 'adventure' \}"[\s\S]{0,200}?去历练攒石 →/,
     )
   })
 
   /**
-   * 计划、单炉与连炼零炉同读 craftShortfall:只缺哪样就说哪样,并报实际差额。
-   * 故障注入:把单炉回执改回无参 craftShortToast()、或把计划石差写死「未足」→ 本条红。
+   * 计划、单炉与连炼零炉同读 craftShortfall。
+   * 故障注入:把单炉回执改回无参 craftShortToast(),或把计划石差写死「灵石不足」,本用例红。
    */
   it('炼丹计划与单炉回执写出实际草石差额', () => {
     const service = src('./pillService.ts')
@@ -1053,10 +939,7 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(text, '缺料文案报石差').toContain('灵石尚差 ${gap.stone}')
   })
 
-  /**
-   * 功法参悟与进修同族:服务拒因只报「未足」,详情弹窗却已列实际差额。
-   * 现参悟与进修都读 core 的短差,详情文案不再就地减余额。
-   */
+  /** 功法参悟与进修都读 core 的短差;详情文案不就地减余额 */
   it('功法参悟与进修回执写出实际差额', () => {
     const service = src('./gongfaService.ts')
     const dialog = src('../components/cultivation/GongfaDialog.vue')
@@ -1090,20 +973,18 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
 
   it('建号页未定格前有回到欢迎页的入口 —— 否则 web 端建号无退路可比', () => {
     const create = src('../views/CreateView.vue')
-    // 路由守卫允许 create→welcome(未开始前);建号全程可逆(无限重掷),
-    // 但没有「上一步」控件时 web 端就只能卡在这一页(手机可借系统返回,桌面无处退)
+    // 路由守卫允许 create→welcome(未开始前);桌面端无系统返回
     expect(create, '建号页该有回欢迎页的 RouterLink').toMatch(
       /<RouterLink[\s\S]{0,120}to="\/welcome"[\s\S]{0,240}欢迎/,
     )
   })
 
   it('登临导览的「天道熔炉」是真按钮 —— 无 href 的 <a> 键盘到不了', () => {
-    // 导览弹窗拆出后判据随本体走,宿主与子组件合扫(防只查宿主假绿)
+    // 宿主与子组件合扫,防只查宿主假绿
     const view = src('../views/CelestialView.vue') + src('../components/celestial/TutorialDialog.vue')
     expect(view, '天道熔炉该是可聚焦的 button').toMatch(
       /<button[\s\S]{0,240}@click="emit\('close'\)"[\s\S]{0,80}天道熔炉/,
     )
-    // 无 href 却挂 @click 的 <a>:不在 Tab 序列里,读屏也只念「链接」
     const deadLinks = [...view.matchAll(/<a\b[^>]*>/g)]
       .map(m => m[0])
       .filter(tag => !/\shref=/.test(tag) && /@click=/.test(tag))

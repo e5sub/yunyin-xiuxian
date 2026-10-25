@@ -1,25 +1,8 @@
 /* eslint-disable no-console */
 /**
- * 因果可感知性审计(Phase 34.1 收尾)
- *
- * 34.1 已经解决了「系统内部有因果」:意图由经历催生,不由阈值触发。
- * 但那回答的是**她为什么会开口**,而玩家真正会问的是另一句:
- *
- *   **她为什么在这一刻开口?**
- *
- * 这两个问题必须分开。前者是代码正确性,后者是体验可理解性 ——
- * 后者不能靠「speakIntent 有没有被调用」来验证。
- *
- * ## 三级判据
- *
- *   可追溯  玩家从近期经历中很容易想起:「她一直在找那个东西」
- *   可推断  玩家需要翻道侣资料才能明白:「原来她之前提过」
- *   突兀    玩家几乎无法知道:「为什么偏偏现在?」
- *
- * 判定依据是**玩家可见的信息**,不是代码里有没有那个变量。
- * 内部记着 sparks 序列,玩家看不到,就不算足迹。
- *
- * 本模块只度量,不改任何东西。
+ * 因果可感知性审计:只度量,不改任何东西。
+ * 三级:可追溯(近期经历中很容易想起)· 可推断(需要翻道侣资料)· 突兀(几乎无法知道)。
+ * 判定依据是玩家可见的信息;内部记着的 sparks 序列不算足迹。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -28,7 +11,7 @@ import { SPARK_NAMES, SPARK_WEIGHT } from '@/data/bondIntent'
 import { BOND_EVENTS, TRIGGER_NAMES } from '@/data/bondEvents'
 import { DAOLU } from '@/data/daolu'
 
-// 道侣弹窗拆出后判据随本体走。宿主与子面板合扫:拆分只搬了位置,因果展示仍只有一处
+// 道侣弹窗拆出后,宿主与子面板合扫
 const VIEW =
   readFileSync(resolve(__dirname, '../views/CharacterView.vue'), 'utf-8') +
   readFileSync(resolve(__dirname, '../components/character/BondDialog.vue'), 'utf-8')
@@ -54,29 +37,18 @@ interface CausalLink {
   level: Traceability
 }
 
-/**
- * 判级规则。
- *
- * 关键是 footprints:原因在暗中累积时,玩家有没有收到过任何征兆。
- * 一次都没有 → 事件只能靠当场那句话解释自己 → 至多「可推断」
- */
+/** 判级:一次足迹都没有,至多「可推断」 */
 function levelOf(evidence: string[], footprints: number): Traceability {
   if (footprints >= 2) return 'traceable'
   if (evidence.length > 0) return 'inferable'
   return 'abrupt'
 }
 
-/**
- * 当前各条因果链的实际状态。
- *
- * evidence 只填**玩家真的能看到**的东西 —— 界面上有的、
- * 提示里出现过的。内部字段(sparks / ripeness / opportunities)一律不算
- */
+/** evidence 只填玩家真的能看到的(界面上有的、提示里出现过的);内部字段(sparks / ripeness / opportunities)不算 */
 const LINKS: CausalLink[] = [
   {
     surface: '她开口提出自己的事',
     cause: '共历 / 支持 / 未了之事的征兆累积到酝酿度上限',
-    // 弹窗里常驻「她所求」,故玩家翻一下能明白她为什么想去
     evidence: ['道侣弹窗常驻「她所求」', '开口那句话本身点明了方向'],
     footprints: 0,
     level: 'abrupt'
@@ -116,7 +88,6 @@ describe('因果可感知 · 现状', () => {
   })
 
   it('没有任何一条因果链达到「可追溯」', () => {
-    // 可追溯的条件是原因累积期间留下过足迹。当前全部为 0
     expect(LINKS.every(l => l.footprints === 0)).toBe(true)
     expect(LINKS.some(l => l.level === 'traceable')).toBe(false)
     console.log(
@@ -131,11 +102,7 @@ describe('因果可感知 · 现状', () => {
     for (const [k, v] of Object.entries(SPARK_NAMES)) {
       console.log(`  ${v.padEnd(24)} ${SPARK_WEIGHT[k as keyof typeof SPARK_WEIGHT] > 0 ? '+' : ''}${SPARK_WEIGHT[k as keyof typeof SPARK_WEIGHT]}`)
     }
-    /**
-     * 曾经这里断言的是「界面不含 sparks」—— 那条缺口本轮补上了:
-     * 道侣弹窗里「她开的口」下面多了一行「因何而起」(SPARK_NAMES)。
-     * 于是本条从"记录缺口"改成"钉住接口":记录的因,界面上必须真看得到。
-     */
+    /** 记录的因界面上须看得到:道侣弹窗「她开的口」下的「因何而起」(SPARK_NAMES) */
     expect(VIEW, '界面应呈现 sparks 与 SPARK_NAMES').toMatch(/sparks/)
     expect(VIEW).toMatch(/SPARK_NAMES/)
     expect(VIEW).not.toMatch(/ripeness/)
@@ -148,7 +115,6 @@ describe('因果可感知 · 现状', () => {
 
 describe('因果可感知 · 缺的是什么', () => {
   it('缺的不是解释文本,是过程中的足迹', () => {
-    // 反例:把因果写进弹窗会把游戏做成系统说明
     const badExample = '因为你已与她同行十六次,并且之前支持过她两次,所以她……'
     expect(VIEW).not.toContain('同行十六次')
     console.log(
@@ -163,7 +129,6 @@ describe('因果可感知 · 缺的是什么', () => {
   })
 
   it('素材已经就位:每个人的所求都写好了', () => {
-    // 轻量记忆不需要新素材,pursuit 已经能长出四句话
     for (const d of DAOLU) expect(d.pursuit.length).toBeGreaterThan(0)
     console.log('\n十位道侣各有所求,足迹文本可由它派生 —— 缺的是机制,不是内容')
     for (const d of DAOLU.slice(0, 3)) console.log(`  ${d.name}:${d.pursuit}`)
@@ -174,7 +139,6 @@ describe('因果可感知 · 缺的是什么', () => {
     for (const e of BOND_EVENTS) {
       console.log(`${e.title.padEnd(8)} ${e.triggers.map(t => TRIGGER_NAMES[t]).join('、')}`)
     }
-    // 事件文本描述了当下场景,故比意图稍好 —— 但仍无「之前」
     const eventLink = LINKS.find(l => l.surface === '共同事件出现')!
     expect(eventLink.evidence.length).toBeGreaterThan(0)
     expect(eventLink.footprints).toBe(0)
@@ -184,8 +148,6 @@ describe('因果可感知 · 缺的是什么', () => {
 
 describe('因果可感知 · 本轮的边界', () => {
   it('这份判级是我的判断,不是玩家实测', () => {
-    // evidence 列的是「界面上有什么」,level 是据此推的。
-    // 玩家会不会真的回想起来,只有真人玩几世才知道
     expect(LINKS.length).toBeGreaterThan(0)
     console.log(
       '\n判级依据是「界面上玩家能看到什么」,属于可核对的事实;' +
@@ -196,8 +158,6 @@ describe('因果可感知 · 本轮的边界', () => {
   })
 
   it('结论:代码层的因果已经稳了,缺的是让它浮出水面', () => {
-    // 34.1 的 907 项测试证明系统内部有因果;
-    // 本审计证明这些因果目前没有留下玩家可见的足迹
     expect(LINKS.every(l => l.cause.length > 0)).toBe(true)
     expect(LINKS.every(l => l.footprints === 0)).toBe(true)
     console.log(

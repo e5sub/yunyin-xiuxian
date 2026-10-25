@@ -1,9 +1,7 @@
 /**
  * 智能收纳 · 自动裁决的边界
- * 应有之物(O):品质达标的、流派核心的、组合技部件的、成套共鸣的、词条近满的,
- * 都算值得留;行囊满时挤掉的是最弱的那件无缘旧物。
- * 不该有的(X):把玩家练过的件(强化/重铸/封存)当垃圾自动扔掉 ——
- * 那是他自己花资源养起来的,工具没资格替他决定。
+ * 留:品质达标、流派核心、组合技部件、成套共鸣、词条近满;行囊满时挤掉最弱的无缘件。
+ * 不自动扔:练过的件(强化/重铸/封存)。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -14,7 +12,7 @@ import { useInventoryStore } from '@/stores/inventory'
 import { acquireEquipment } from './loot'
 import { compareEvictable, hasInvestment, keepVerdict, perfectRolls, shouldAutoRecycle, sweepTargets } from './smartKeep'
 
-/** 夹具一律用「不带套」的青云道袍,免得套件规则混进别的判据 */
+/** 夹具用不带套的青云道袍,隔开套件规则 */
 function mk(uid: string, quality: QualityId = 'mortal', opts: Partial<EquipmentInstance> = {}): EquipmentInstance {
   return {
     uid,
@@ -29,7 +27,7 @@ function mk(uid: string, quality: QualityId = 'mortal', opts: Partial<EquipmentI
 
 /** 智能收纳全开、品质线 灵品 */
 function smartOn(): void {
-  useSettingsStore().decomposeRanks = [] // 本文件测的是智能收纳那半边,不掺「一键分解勾选档」
+  useSettingsStore().decomposeRanks = [] // 不掺「一键分解勾选档」
   useSettingsStore().smartKeep = {
     enabled: true,
     minQuality: 3,
@@ -100,11 +98,11 @@ describe('智能收纳 · 自动裁决的边界', () => {
     settings.smartKeep.keepComboPiece = false
     settings.smartKeep.keepSetPiece = false
     settings.smartKeep.keepPerfectRolls = false
-    // 一高二低:阶到了(12)、品质不足(精品 rank 2 < 灵品 3)→ 不藏(旧「阶线硬保底」反例)
+    // 阶到(12)、品质不足(精品 rank 2 < 灵品 3)→ 不藏
     expect(keepVerdict(mk('hi_t_lo_q', 'excellent', { tier: 12 })).keep).toBe(false)
-    // 一高一低:品质够(灵品)、阶不够(11 < 12)→ 不藏(旧「品质线兜底」反例)
+    // 品质够(灵品)、阶不够(11 < 12)→ 不藏
     expect(keepVerdict(mk('hi_q_lo_t', 'spirit', { tier: 11 })).keep).toBe(false)
-    // 双线皆满:灵品·12 阶 → 藏,理由点明两线
+    // 灵品·12 阶 → 藏,理由点明两线
     const kept = keepVerdict(mk('both', 'spirit', { tier: 12 }))
     expect(kept.keep).toBe(true)
     expect(kept.reason).toContain('双线')
@@ -113,9 +111,9 @@ describe('智能收纳 · 自动裁决的边界', () => {
   })
 
   it('阶级自留线未设(0)时视为「通过」:单设品质线照旧留珍,阶数不掺和裁决', () => {
-    // keepMinTier 已是 0:凡品(tier 3)不进品质线、也不进阶级线 → 无缘
+    // keepMinTier 为 0:凡品(tier 3)→ 无缘
     expect(keepVerdict(mk('t3', 'mortal')).keep).toBe(false)
-    // 阶线虽未设,品质达标者照旧当藏 —— 通过语义不误伤单线使用
+    // 阶线未设,品质达标照旧当藏
     const v = keepVerdict(mk('hq', 'spirit', { tier: 3 }))
     expect(v.keep).toBe(true)
     expect(v.reason).toBe('灵品当藏')
@@ -154,12 +152,11 @@ describe('智能收纳 · 自动裁决的边界', () => {
   })
 
   it('「一键分解」勾选的品质档与自动裁决彻底隔离 —— 手动筛的是行囊,落包不看它', () => {
-    // 即便手动把「全套分解」勾满,智能收纳要留的件一个也不会被勾选档卷走
     useSettingsStore().decomposeRanks = [0, 1, 2, 3, 4, 5]
-    // 练过的成套件:是玩家投入又命中套件 —— 手动档再宽也碰不得
+    // 练过的成套件
     const invested = mk('set2', 'mortal', { templateId: 'w_xuantie', level: 3 })
     expect(shouldAutoRecycle(invested)).toBe(false)
-    // 素而无缘的件仍归自动回收 —— 那是智能收纳自己的裁决,与勾选档无关
+    // 无缘件仍归智能收纳自己裁决
     expect(shouldAutoRecycle(mk('plain'))).toBe(true)
   })
 

@@ -1,14 +1,7 @@
 /**
- * 分解返还 —— 一件装备化尘时该退回什么
- *
- * 两条账,分开算:
- *   底材  按品质给一份固定器灵尘(DECOMPOSE_DUST),这是它本身的料;
- *   强化  练过的件另退强化投入的八成(尘与灵石同率),免得「练了三级,一拆全没了」。
- *
- * 强化投入以**实例上记的账**为准(item.invested,每次强化时累加),不按公式重算:
- * 公式里的 forgeDiscount 是当时那一身装束的折扣,只有账本记得住。
- * 老档(本次改动之前强化过的件)没有这本账,退回标价 —— 顶多让带折扣的旧档多退一点;
- * 新账一律按实付记,故「强化再拆」永远拿不回本(八成 < 十成),不构成套利。
+ * 分解返还 = 底材(按品质 DECOMPOSE_DUST)+ 强化投入的八成(尘与灵石同率)。
+ * 强化投入以 item.invested 为准(每次强化按实付累加),不按公式重算:forgeDiscount 是当时装束的折扣,只有账本记得住。
+ * 没有这本账的老档按标价补算(带折扣的旧档会多退一点);新账按实付记,「强化再拆」不构成套利。
  */
 import type { EquipmentInstance, GNum } from '@/types'
 import { DECOMPOSE_DUST, DECOMPOSE_REFUND_RATE } from '@/data/constants'
@@ -17,7 +10,7 @@ import { add, gn, gnZero, mulN } from '@/utils/gnum'
 import { upgradeCost } from './formulas'
 import { formatPercent } from '@/utils/format'
 
-/** Player-facing refund rate. Tracks DECOMPOSE_REFUND_RATE, not a handwritten 八成. */
+/** 返还比例文案,跟 DECOMPOSE_REFUND_RATE 走,不手写「八成」 */
 export function salvageRefundPhrase(): string {
   return `含强化 ${formatPercent(DECOMPOSE_REFUND_RATE)}`
 }
@@ -41,7 +34,7 @@ export function enhanceInvested(item: EquipmentInstance): Salvage {
   return { dust, stone }
 }
 
-/** 分解 / 回收一件装备的返还:底材 + 强化投入的八成 */
+/** 分解 / 回收一件装备的返还 */
 export function salvageOf(item: EquipmentInstance): Salvage {
   const base = DECOMPOSE_DUST[qualityDef(item.quality).rank] ?? 1
   const spent = enhanceInvested(item)

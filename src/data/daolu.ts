@@ -1,51 +1,22 @@
 /**
- * 道侣(Phase 33.8)
- *
- * ## 核心定义
- *
- * **道侣不是让你变强的人,而是让这一世变得不一样的人。**
- *
- * 她不是装备、不是灵兽、不是 Buff,而是一个拥有自己目标、性格、
- * 修行道路和选择权的角色。玩家不是「获得一个道侣」,而是
- * **这一世遇到了一个人,决定要不要和她一同修行**。
- *
- * ## 硬约束:绝不进入效率链
- *
- * 前面的审计已经证明:任何进入 StatMods 的永久出口,最终都能
- * 找到通往 cultivationSpeed 的路径(见 core/fruitOutlets.ts ——
- * 45 个属性键全部可达)。故道侣的关系值**只转化为事件概率与选项资格**,
- * 不转化为任何数值加成:
- *
+ * 道侣:关系值只转化为事件概率与选项资格,绝不进入效率链 ——
  *   不进 StatMods · 不兑换资源 · 不产道果 · 不产宿慧 · 不碰修炼速度
+ * `daoluService.spec.ts` 用源码扫描强制这五条。进 StatMods 的永久出口都可达 cultivationSpeed(core/fruitOutlets.ts)。
  *
- * `daoluService.spec.ts` 用源码扫描强制这五条。
- *
- * ## 三维关系,不是一根好感度
- *
- * 单一 affection 会退化成送礼数值条。三维各管一件事,且可以背离:
- *
- *   缘分  你们是否真正建立了关系(相遇与共历的累积)
- *   信任  她愿不愿意把自己的事交给你
+ * 三维关系,不是一根好感度;各管一件事,可以背离:
+ *   缘分  相遇与共历的累积
+ *   信任  道侣愿不愿意把自己的事交给你
  *   契合  两人对修行道路的根本理解是否一致
- *
- * 「缘分深、信任高、契合低」是完全合法的状态 ——
- * 两人依然可以结契,但会在重大选择上冲突。
  */
 import type { ElementId } from '@/types'
 
-/** 道途倾向 —— 决定她在共同选择上偏向什么 */
+/** 道途倾向:共同选择上的偏向 */
 export type DaoLean =
-  /** 以杀证道 */
   | 'slaughter'
-  /** 长生久视 */
   | 'longevity'
-  /** 剑心通明 */
   | 'sword'
-  /** 丹鼎济世 */
   | 'alchemy'
-  /** 器道格物 */
   | 'artifice'
-  /** 问心求真 */
   | 'truth'
 
 export const LEAN_NAMES: Record<DaoLean, string> = {
@@ -57,15 +28,15 @@ export const LEAN_NAMES: Record<DaoLean, string> = {
   truth: '问心'
 }
 
-/** 行为倾向 —— 共同历练时她会建议什么 */
+/** 行为倾向:共同历练时道侣会建议什么 */
 export type Temperament =
-  /** 谨慎:遇险主张绕行 */
+  /** 遇险主张绕行 */
   | 'cautious'
-  /** 激进:更愿挑战高危 */
+  /** 更愿挑战高危 */
   | 'bold'
-  /** 惜物:主张保存丹药灵材 */
+  /** 主张保存丹药灵材 */
   | 'frugal'
-  /** 好奇:偏向未知与秘境 */
+  /** 偏向未知与秘境 */
   | 'curious'
 
 export const TEMPER_NAMES: Record<Temperament, string> = {
@@ -88,15 +59,14 @@ export interface DaoluDef {
   brief: string
   /** 性格 */
   temper: Temperament
-  /** 道途倾向 */
   lean: DaoLean
   /** 灵根本源(影响相遇地界的偏好) */
   element: ElementId
   /** 初见时的境界(大境界序号) */
   startMajor: number
-  /** 她自己要做的事 —— 与玩家无关,但玩家可以介入 */
+  /** 道侣自己要做的事(玩家可介入) */
   pursuit: string
-  /** 她不肯越过的线;玩家逼近时契合下降 */
+  /** 道侣不肯越过的线;玩家逼近时契合下降 */
   taboo: string
   /** 相遇偏好的地貌轴;空表示随处可遇 */
   terrains: readonly string[]
@@ -256,19 +226,12 @@ export function daoluDef(id: string): DaoluDef | undefined {
  * 关系阶段 —— 每一步靠**行为条件**推进,不是把数字刷满。
  */
 export type BondStage =
-  /** 素昧平生 */
   | 'none'
-  /** 遇见:打过照面 */
   | 'met'
-  /** 熟识:多次相遇 */
   | 'known'
-  /** 同行:共历过一次险 */
   | 'together'
-  /** 知交:替她了结过一桩事 */
   | 'confidant'
-  /** 结契:立过共同的道 */
   | 'pledged'
-  /** 道侣 */
   | 'daolv'
 
 export const STAGE_NAMES: Record<BondStage, string> = {
@@ -302,13 +265,7 @@ export interface StageGate {
   desc: string
 }
 
-/**
- * 阶段门槛。
- *
- * 注意契合(accord)只在结契一步成为硬条件 ——
- * 「缘分深、信任高、契合低」的两人可以同行、可以知交,
- * 却走不到立下共同的道那一步
- */
+/** 阶段门槛;契合(accord)到结契一步才成硬条件,契合低者可同行、可知交,结不了契 */
 export const STAGE_GATES: readonly StageGate[] = [
   { stage: 'met', fate: 0, trust: 0, accord: 0, shared: 0, desc: '打过照面' },
   { stage: 'known', fate: 20, trust: 0, accord: 0, shared: 0, desc: '数次相遇,记住了彼此' },
@@ -319,15 +276,11 @@ export const STAGE_GATES: readonly StageGate[] = [
 ]
 
 
-/** 关系结局 —— 一世走完之后留下的那句话 */
+/** 一世结束时的关系结局 */
 export type BondEnding =
-  /** 一同走到了这一世的尽头 */
   | 'accompanied'
-  /** 半途分道 */
   | 'parted'
-  /** 她死在了这一世 */
   | 'perished'
-  /** 终究只是错过 */
   | 'missed'
 
 export const ENDING_NAMES: Record<BondEnding, string> = {

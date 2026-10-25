@@ -1,15 +1,5 @@
 /* eslint-disable no-console */
-/**
- * 道果非效率出口空间审计
- *
- * 断开速度职责必须与「建立非效率类消费出口」配套,否则道果会变成
- * 「无限增长 → 只堆战力 → 制造膨胀」。
- *
- * 本套用例回答三件事,不设计具体兑换、不改数值:
- *   1. 哪些出口绝对不能进效率链 —— 用图可达性判定,不靠感觉列清单
- *   2. 「消耗/永久」与「可复利/不可复利」是两个正交维度
- *   3. 零消费会让阈值型出口最终失去决策意义
- */
+/** 道果非效率出口空间审计 */
 import { describe, expect, it } from 'vitest'
 import {
   ALL_STAT_KEYS,
@@ -34,7 +24,6 @@ describe('出口空间 · 效率链可达性', () => {
   })
 
   it('最要紧的一条:没有一个属性键是安全的', () => {
-    // 逐键判定的结果是全部可达 —— 因此禁止清单不该逐项去列
     expect(statModsAllReachable(ALL_STAT_KEYS)).toBe(true)
     const direct = EFFICIENCY_REACH.filter(r => r.hops === 1).length
     const indirect = EFFICIENCY_REACH.length - direct
@@ -47,8 +36,6 @@ describe('出口空间 · 效率链可达性', () => {
   })
 
   it('间接路径才是陷阱:换成资源同样闭合回路', () => {
-    // 「道果 → 修炼速度」被禁掉后,「道果 → 灵石 → 强化 → 战力 → 历练更快」
-    // 依然把回路接回去,只是多绕两跳
     expect(reachesEfficiency('spiritStoneGain')).toBe(true)
     expect(reachesEfficiency('dropRate')).toBe(true)
     expect(reachesEfficiency('luck')).toBe(true)
@@ -73,7 +60,6 @@ describe('出口空间 · 两个正交维度', () => {
   })
 
   it('「花掉」不等于「安全」——这是两个维度而非一个', () => {
-    // 反例:花掉道果买永久属性。余额确实减少了,回路却原样闭合
     const bad = OUTLETS.find(o => o.id === 'permStat')!
     expect(bad.spend).toBe('consume')
     expect(bad.rebuildsLoop).toBe(true)
@@ -138,7 +124,6 @@ describe('出口空间 · 零消费的后果', () => {
   })
 
   it('故道果必须真的被花掉,否则出口只是延后的既得', () => {
-    // 只进不出 → 余额单调增 → 任何固定定价终将被淹没
     const early = trivialAtLife(100, 3)
     const late = trivialAtLife(1000, 3)
     expect(late).toBeGreaterThan(early)
@@ -152,8 +137,6 @@ describe('出口空间 · 零消费的后果', () => {
   it('结论:断边与补出口是同一件事的两半', () => {
     const ok = qualifiedOutlets()
     const ideal = idealQuadrant()
-    // 只断边不补出口 → 道果无限增长且只堆战力
-    // 只补出口不断边 → 回路仍在
     expect(ok.length).toBeGreaterThan(0)
     expect(ideal.loops).toBe(false)
     console.log(

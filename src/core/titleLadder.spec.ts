@@ -1,21 +1,13 @@
 /**
- * 境界称号的梯子 —— 每一大境界都得有一顶
- *
- * 称号此前零散地挂在几个境界上(0~3、9、14、20),中间十余境走完连个名字都没留下:
- * 荣誉是这套游戏里最便宜的"里程碑"表达,却只在两头有。这条判据把它补齐并钉住:
- *
- *   一 每个「突破某境」的成就(a_rN)都得给一顶称号 —— 缺了谁就点名;
- *   二 每顶称号都得真实存在(TITLES 里查得到),且两境不共用一顶;
- *   三 称号不能是空壳(至少给一条词条)—— 荣誉也得有实感。
- *
- * 故障注入:去掉任一 a_rN 的 titleId,或让两境指向同一顶称号,本文件立刻红。
+ * 境界称号:每个大境界一顶。
+ * 钉:每个 a_rN 成就给称号;称号在 TITLES 里存在、两境不共用、至少一条词条。
+ * 故障注入:去掉任一 a_rN 的 titleId,或让两境指向同一顶称号,本文件红。
  */
 import { describe, expect, it } from 'vitest'
 import { ACHIEVEMENTS } from '@/data/achievements'
 import { TITLES, titleDef } from '@/data/titles'
 import { REALMS, MAX_MAJOR } from '@/data/realms'
 
-/** 「突破某境」的成就:条件类型是 realm */
 const REALM_ACHIEVEMENTS = ACHIEVEMENTS.filter(a => a.cond.type === 'realm')
 
 describe('境界称号 · 每一境都有一顶', () => {

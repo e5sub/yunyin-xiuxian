@@ -1,20 +1,13 @@
-/**
- * 行军一指 —— 把一部 CombatRules 的数值摊成一行
- *
- * 八门(奇门/择门)每门带一份真正参与结算的 CombatRules,但图鉴与远征选门
- * 界面都只给一句定性的 desc:改 `rules` 时那句散文不会跟着变,玩家读到的
- * 「攻势大增」与结算里的 +15% 就此分家。此处把 rules 的每个生效字段派生为
- * 一行文案 —— 规则加字段,只要不是空值这里就自动多出一行。
- */
+/** 行军一指:把八门(奇门/择门)CombatRules 的生效字段派生为一行文案,与结算同源 */
 import type { CombatRules } from '@/types'
 import { formatPercent } from '@/utils/format'
 import { modsText } from '@/data/statNames'
 
-/** 倍率字段(m≈1 即无改动)→ 自己的/敌方的 攻势/气血/治疗 增贬 */
+/** 倍率字段(m=1 即无改动)→ 攻势/气血/治疗 增贬 */
 function multLine(parts: string[], m: number | undefined, label: string): void {
   if (m == null || m === 1) return
   const delta = m - 1
-  // 负号自带,正号手加 —— 与 data/statNames 的 signedPercent 同一读法
+  // 正负号与 data/statNames 的 signedPercent 同一读法
   if (!Number.isFinite(delta)) return
   parts.push(`${label} ${delta < 0 ? '-' : '+'}${formatPercent(Math.abs(delta))}`)
 }
@@ -28,11 +21,7 @@ function perRoundsLine(p: NonNullable<CombatRules['perRounds']>): string {
   return seg.join(' · ')
 }
 
-/**
- * 这部规则的行军数值串(没有生效字段则返回空串)。
- *
- * 空串是**有意的**:调用方据此不渲染这一行,而不是挂一条空白说明。
- */
+/** 行军数值串;无生效字段返回空串,调用方据此不渲染 */
 export function gateRuleSummary(rules: CombatRules): string {
   const parts: string[] = []
   multLine(parts, rules.playerAtkMult, '攻势')

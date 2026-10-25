@@ -51,7 +51,6 @@
         </ul>
       </div>
 
-      <!-- 命名出处 -->
       <div class="card-ink px-3 py-2">
         <p class="text-[10px] text-ink-faint">境界名的出处</p>
         <ul class="mt-1 space-y-1">
@@ -94,7 +93,6 @@
         </p>
       </div>
 
-      <!-- 突破与天劫:难度落在哪里,说清楚 -->
       <div class="card-ink px-3 py-2">
         <p class="text-[10px] text-ink-faint">突破与天劫</p>
         <ul class="mt-1 space-y-1">

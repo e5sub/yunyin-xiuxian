@@ -1,8 +1,3 @@
-/**
- * Next upgrade line for equipment flats.
- * Each level adds EQUIP_LEVEL_BONUS of the naked base, so the gain
- * relative to the stats on screen shrinks as the level rises.
- */
 import { EQUIP_LEVEL_BONUS } from '@/data/constants'
 import { formatPercent } from '@/utils/format'
 

@@ -34,7 +34,7 @@ import { DAOLU, ENDING_NAMES, STAGE_NAMES, STAGE_ORDER, type BondEnding, type Bo
 import { lifeThemeDef } from '@/data/lifeThemes'
 import { bondEventDef } from '@/data/bondEvents'
 import { regionDef } from '@/data/regions'
-// 事件表放在 data/ 是有意的:core/regionEvent 依赖本 store,这里反向 import 会成环
+// 事件表从 data/ 引:core/regionEvent 依赖本 store,反向 import 会成环
 import { regionEventDef } from '@/data/regionEvents'
 import { artifactSlotsFor } from '@/data/artifacts'
 import { lifeTrialDef, type LifeTrialState } from '@/data/lifeTrials'
@@ -52,7 +52,7 @@ import { useResourcesStore } from './resources'
 import { useEndgameStore } from './endgame'
 import { useGameStore } from './game'
 
-/** 修行速率的下限乘数:修为/灵气增速从不归零(防负增益把成长钉死在地板上) */
+/** 修行速率下限乘数:负增益下修为/灵气增速也不归零 */
 const MIN_SPEED_MULT = 0.05
 
 export const usePlayerStore = defineStore(
@@ -75,49 +75,30 @@ export const usePlayerStore = defineStore(
     const petId = ref<string | null>(null)
     const dead = ref(false)
     /**
-     * 轮回(Phase 32.5 重构)。
-     *
-     * count 从此只是历史计数,不再承担成长职责;
-     * insight(宿慧)才是分阶依据,lives 是历世履历,vow 是这一世立下的题。
-     * 注意 insight 只存「过去发生过的事」(历世阅历 + 已达成的命题);
-     * 由认知折算的那一份是现量,每次从 lore store 实时算(见 core/samsaraService.ts)。
+     * 轮回。count 只是历史计数,不承担成长职责;insight(宿慧)是分阶依据,lives 是历世履历,vow 是这一世立下的题。
+     * insight 只存历世阅历 + 已达成的命题;认知折算的那份每次从 lore store 实时算(见 core/samsaraService.ts)。
      */
     const reincarnation = ref({
       count: 0,
       daoFruit: 0,
       talents: [] as string[],
-      /**
-       * 宿命传承:跨世永久的能力位,随神魂不灭、不清零
-       * (锻造生命周期见 core/heritageForge)
-       */
+      /** 宿命传承:跨世永久的能力位,不清零(锻造生命周期见 core/heritageForge) */
       heritage: [] as string[],
       /**
-       * 本世各传承效果已用掉几回(每世重置)。
-       *
-       * 「每世一回」类容错(渡劫跬步)与本世三炉(浴火丹心)的用量账:跨世不带,
-       * 故 rebirth() 里清空;落进存档是为了刷新页面不白嫖(见 sanitizeHeritageUses)。
+       * 本世各传承效果已用几回(渡劫跬步每世一回、浴火丹心本世三炉):rebirth() 清空;
+       * 须落档,否则刷新页面即重置用量(见 sanitizeHeritageUses)
        */
       heritageUses: {} as Record<string, number>,
       insight: 0,
       lives: [] as import('@/data/samsara').LifeRecord[],
       vow: null as import('@/data/samsara').LifeVow | null,
-      /** 这一世签下的逆旅契(道果的第一个非效率出口);转世时清空 */
+      /** 这一世签下的逆旅契;转世时清空 */
       trial: null as import('@/data/lifeTrials').LifeTrialState | null,
-      /**
-       * 历世的关系履历(Phase 33.8)。
-       *
-       * 跨轮回**只留历史,不留人**:下一世不会自动带回同一个道侣,
-       * 但「曾与谁走到哪一步」会记在这里,并成为宿缘重逢的依据
-       */
+      /** 历世的关系履历(曾与谁走到哪一步),宿缘重逢的依据;下一世不带回道侣 */
       bonds: [] as import('@/core/daoluService').BondRecord[]
     })
 
-    /**
-     * 这一世的关系(Phase 33.8)。
-     *
-     * 与 reincarnation.bonds 分开:那是历史,这是当下。
-     * 转世时清空 —— 人不跨世继承
-     */
+    /** 这一世的关系(历史在 reincarnation.bonds);转世时清空 */
     const bond = ref<import('@/core/daoluService').BondState | null>(null)
 
     // Phase 28 前期玩法状态
@@ -129,87 +110,54 @@ export const usePlayerStore = defineStore(
     const regionStats = ref<Record<string, import('@/core/suppress').RegionStats>>({})
     const suppressedRegions = ref<string[]>([])
     /**
-     * 镇压资格(**本世**取得即永久,转世随皮囊散去)。
-     *
-     * 「镇压过就镇压过」:一旦对某地区域取得过绝对优势,本世内随时可把它切回收益态,
-     * 不必再打满二十场重新证明一遍。收益是否正在收取是另一件事(见 suppressedRegions)。
-     *
-     * 为什么不是跨世永久:旧世压下的远境多为高阶,新世炼气若凭那枚令一键切回收益,
-     * 就会按旧阶位派发高阶装备与灵石 —— 数值当场爆炸(玩家实报)。故 rebirth() 连
-     * 资格一并清空;这里的「永久」只指「本世内不再失效」。
+     * 镇压资格:本世取得即永久,随时可切回收益态;是否正在收益见 suppressedRegions。
+     * rebirth() 清空:跨世保留会让新世按旧阶位派发高阶装备与灵石。
      */
     const suppressQualified = ref<string[]>([])
-    /** 镇压时间戳:区域 → 镇压开始的时刻(供复苏判定) */
+    /** 区域 → 镇压开始时间戳(供复苏判定) */
     const suppressedSince = ref<Record<string, number>>({})
     /**
-     * 镇压物产的**小数累积器**:区域 → 还没凑够一件的零头(<1)。
-     *
-     * 物产产出是 `perHour × 时长` 的小数(如林区 6/时,每秒约 0.00167),库存按整数记。
-     * 从前结算每 tick 直接 `Math.floor(perHour × hours)`:在线一秒一 tick,
-     * `6 × 1/3600` 恒小于 1,floor 之后**永远是 0** —— 在线压着林区挂一整天一件草也收不到,
-     * 而离线一次结算同样时长却能拿满,「在线收租」这条玩法在物产上等于不存在。
-     * 零头按区域攒起来,攒够一件即入账,在线长挂与离线一次折算等价。
+     * 镇压物产的小数累积器:区域 → 还没凑够一件的零头(<1),攒够一件即入账。
+     * 每 tick 直接 floor 会让在线所得恒为 0;累积后在线长挂与离线一次折算等价。
      */
     const suppressFrac = ref<Record<string, number>>({})
     /**
-     * 这一套镇压权益属于**第几世**(reincarnation.count)。
-     *
-     * 镇压是「我这一世打下来的地盘」,不是「我是谁」:转世该连地盘一起放下。
-     * 从前判「是不是这一世的」用的是境界代理 —— `minRealm > 当前境界` 就当成
-     * 旧世残留清掉,于是**本世真打下来的高境副本也会在下次读档时被没收**
-     * (进入只受解锁链管,不受 minRealm 管,所以「境界比副本低却已镇压」是能真的
-     * 玩出来的)。改记世号后判据是本体:世号与当前世不符才是残留。
-     *
-     * 老档没有这一栏,读档时按旧境界兜底清一次并把世号补盖成当前世(见 sanitize)。
-     *
-     * 默认 −1 是「老档哨兵」:真的第 0 世写的是 0,与「没有这一栏」分得开。
+     * 镇压权益所属世号(reincarnation.count):与当前世不符才是旧世残留。
+     * 用 minRealm > 当前境界 判残留会没收本世打下的高境镇压(进入只受解锁链管,不受 minRealm 管)。
+     * 默认 −1 是老档哨兵:读档时按旧境界兜底清一次并把世号补盖成当前世(见 sanitize)。
      */
     const suppressLife = ref(-1)
 
-    // Phase 31 师承:凡界修行者的额外成长思想(跨世保留)
+    // 师承:跨世保留
     const mentor = ref<import('@/data/mentors').MentorId | null>(null)
 
-    // Phase 31 A2 区域动态事件(单区域内一次一个,自动过期)
+    // 区域动态事件:单区域内一次一个,自动过期
     const regionEvent = ref<import('@/core/regionEvent').RegionEventState | null>(null)
 
-    // Phase 31 S3 短期秘境(一次性内容容器,进行中状态)
+    // 短期秘境(进行中状态)
     const secretRealm = ref<import('@/core/secretRealm').SecretRealmState | null>(null)
 
-    /** Phase 34.3 问卦所得之卦(一世一时之象,过期自散;转世不带) */
+    /** 问卦所得之卦:过期自散;转世不带 */
     const divination = ref<import('@/core/divination').DivinationState | null>(null)
 
-    /**
-     * 突破准备(静坐/聚气丹)—— **付费的一次性加成必须存进档**。
-     *
-     * 原先它是 earlyGameService 的模块态:聚气丹花掉 80 灵石换来 +5%,
-     * 玩家一刷新页面就没了 —— 顿悟/巡游丢状态无所谓(那是免费的提示),
-     * 花钱买的一次性加成丢了就是吞了玩家的资源。
-     */
+    /** 突破准备(静坐/聚气丹):付费的一次性加成,须存进档(放模块态刷新即丢) */
     const breakthroughPrep = ref<import('@/core/earlyGameService').BreakthroughPrepState | null>(null)
 
-    /**
-     * 上次顿悟的时刻 —— 这是**频次闸**,必须随档。
-     *
-     * 顿悟给悟道点(真货币),原先冷却挂在模块上:刷新一次页面冷却归零,
-     * 变成「重开页面刷顿悟」。闸门跨世保留(它不是本世进度,是速率限制)。
-     */
+    /** 上次顿悟的时刻:频次闸,须随档(挂在模块上刷新即冷却归零);跨世保留 */
     const enlightenmentAt = ref(0)
 
-    // Phase 31.1 机缘链:机缘选择记忆(取/弃),影响师承推荐与未来同类机缘
+    // 机缘选择记忆(取/弃):影响师承推荐与未来同类机缘
     const fortuneChoices = ref<Record<string, FortuneChoice>>({})
 
-    // Phase 30.9 世界记忆
+    // 世界记忆
     /** 宿敌列表(同一敌人败我 ≥3 次) */
     const nemeses = ref<import('@/types').NemesisRecord[]>([])
     /**
-     * 区域总胜场(供兴衰状态派生;regionStats 已有近似数据,但保持独立统计纯胜场)。
-     *
-     * 与 regionStats 同一条纪律:胜场可以跨世留作叙事,但**兴衰判据只认本世**。
-     * 否则新世只要重新镇压一次,旧世刷出的 80 胜立刻把这片地判成「繁盛」,
-     * 凭空多拿 10% 产出 —— 而新世一场都还没在这里打过。
+     * 区域总胜场,供兴衰状态派生;独立于 regionStats,只计纯胜场。
+     * 胜场跨世留作叙事,兴衰判据只认本世(否则旧世胜场让新世直接判「繁盛」)。
      */
     const regionWins = ref<Record<string, number>>({})
-    /** 区域胜场的世号:与 regionWins 同键同命,判据读它 */
+    /** 区域胜场的世号:与 regionWins 同键、须同步;兴衰判据读它 */
     const regionWinsLife = ref<Record<string, number>>({})
 
     // ---------- 境界 ----------
@@ -221,7 +169,7 @@ export const usePlayerStore = defineStore(
     const expReq = computed(() => expRequirement(major.value, sub.value))
     const expProgress = computed(() => progress(exp.value, expReq.value))
     const expFull = computed(() => gte(exp.value, expReq.value))
-    /** 修为积余:越过当前突破需求的部分(卡境期间继续累积,突破时随境界带走) */
+    /** 修为积余:越过当前突破需求的部分,卡境期间继续累积,突破时随境界带走 */
     const expOverflow = computed(() => subClamp(exp.value, expReq.value))
     const isMajorStep = computed(() => sub.value >= SUB_LEVELS - 1)
     const atMaxRealm = computed(() => major.value >= MAX_MAJOR && sub.value >= SUB_LEVELS - 1)
@@ -234,20 +182,12 @@ export const usePlayerStore = defineStore(
       return mentorDef(mentor.value)?.mods ?? {}
     })
 
-    /** 当天天时(Phase 31 A1)作为环境 mod 源并入最终属性:
-     * 灵雨修炼/灵气、赤阳伤害、月蚀福缘/掉落、雷鸣攻伐/渡劫抗性 ——
-     * 战斗/掉落/渡劫均读 finalStats.mods,故并入即可全链路生效,无需各自接线 */
+    /** 当天天时并入最终属性:战斗/掉落/渡劫均读 finalStats.mods,并入即全链路生效,无需各自接线 */
     const weatherMods = computed<StatMods>(() => todayWeather().mods)
 
-    /**
-     * 在身之卦:与天时同法并入最终属性。
-     * 卦是"此一时的时机",故走环境通道,不动根基数值;过期即散。
-     *
-     * 过期要随时间自散,故借修行时长(引擎每秒推进)作依赖 ——
-     * 否则 computed 只会记住第一次算出的结果,卦会一直留在身上。
-     */
+    /** 在身之卦:与天时同法并入最终属性,过期即散 */
     const activeDivination = computed(() => {
-      // 读一次心跳:过期判定要随引擎推进被重新计算(见 engine 的 addPlayTime)
+      // 读一次心跳作依赖:否则 computed 只记住第一次结果,卦过期不散(见 engine 的 addPlayTime)
       void useGameStore().totalPlaySec
       return divinationActiveAt(divination.value, gameNow())
     })
@@ -258,34 +198,22 @@ export const usePlayerStore = defineStore(
       return reading ? readingMods(reading) : {}
     })
 
-    /**
-     * 本世命格(紫微十二宫):由灵根与转世数确定性推出,不落状态、不耗时日。
-     * 一世不变,转世重算 —— 与"一时之卦"分工明确。
-     */
+    /** 本世命格(紫微十二宫):由灵根与转世数确定性推出,不落状态;转世重算 */
     const chart = computed(() => fateChart(fateSeed(linggen.value, reincarnation.value.count)))
     /**
-     * 命格点化主星(Phase A-1):选中的主星 id,或 null(未点化)。
-     *
-     * 是存档状态(不是随机)—— 同人同世同 focus 必同果,转世也不动它(它是"这一世怎么凸显",
-     * 不是命盘本身)。sanitize 里按白名单(十四主星)校验,认不出的清回 null。
+     * 命格点化主星 id,null 为未点化;存档状态,转世清空。
+     * sanitize 按白名单(十四主星)校验,认不出的清回 null。
      */
     const fateFocus = ref<string | null>(null)
     const fateModsValue = computed<StatMods>(() => fateFocusMods(chart.value, fateFocus.value))
 
     /**
-     * 星象值日定向(Phase A-2):玩家把今日所利界域定向到哪一界的覆盖。
-     *
-     * 「当日有效」:gameDay 不是今天就不生效(次日自动回落天数派生,无需清理)。
-     * 「限次」:count 记当日已定向几次,达 MANSION_REDIRECT_MAX 后当日回落到天数派生。
-     * 定向本身不改变二十八宿轮值,只改"今日利哪一界"(仍是只利一界 +10%)。
+     * 星象值日定向:今日所利界域的覆盖。gameDay 不是今天即不生效(无需清理);
+     * count 记当日已定向几次,上限 MANSION_REDIRECT_MAX。不改二十八宿轮值,仍只利一界 +10%。
      */
     const mansionRedirect = ref<MansionRedirect | null>(null)
 
-    /**
-     * 后期限量灵石→悟道兑换(Phase C-1):{gameDay, count} 记每游戏日已兑几次。
-     * 「当日计数」:gameDay 不是今天即从 0 重算(次日自动重置,无需清理)。
-     * 上限 WUDAO_EXCHANGE_PER_DAY,达上限当日无法再兑。
-     */
+    /** 灵石→悟道兑换的当日计数:gameDay 不是今天即从 0 重算(无需清理);每日上限 WUDAO_EXCHANGE_PER_DAY */
     const wudaoExchange = ref<{ gameDay: number; count: number }>({ gameDay: 0, count: 0 })
 
     /**
@@ -307,8 +235,8 @@ export const usePlayerStore = defineStore(
       ...talentMods.value
     ])
 
-    // 灵兽出战加成:基础词缀 × 灵兽园等级(beastMult) × 安抚灵兽增益(beastPct)
-    // —— 这是「真到账」那份;图鉴/兽苑卡片必须也按它渲染,给 base 会与角色面板来源明细对不上
+    // 灵兽出战实际加成:基础词缀 × 灵兽园等级(beastMult) × 安抚灵兽增益(beastPct)
+    // 图鉴/兽苑卡片须按它渲染,给 base 会与角色面板来源明细对不上
     function petModsFor(def: PetDef): StatMods {
       const beastPct = 1 + modOf(mergeMods(ownedModSources.value), 'beastPct')
       const scaled: StatMods = {}
@@ -330,7 +258,7 @@ export const usePlayerStore = defineStore(
       return Math.floor(qiCap(major.value, sub.value) * dongfu.qiCapMult * capPct)
     })
     const qiRich = computed(() => resources.qi >= qiCapValue.value * QI_RICH_RATIO)
-    /** 灵气积余上限(标称容量 × 积余倍数):卡境期间灵气可存到此处 */
+    /** 灵气积余上限:卡境期间灵气可存到此处 */
     const qiBankCapValue = computed(() => qiCapValue.value * QI_BANK_MULT)
 
     const finalStats = computed<FinalStats>(() =>
@@ -352,10 +280,8 @@ export const usePlayerStore = defineStore(
           fateModsValue.value,
           ...talentMods.value
         ],
-        // 名字与上面一一对应 —— 面板的「来源明细」直接读它们,不再另起一套说法。
-        // 天时的名号就是当天的具体气象:修炼页的修为来路里「天时 +12%」,
-        // 若只写渠道名,玩家看不清是仙雨还是混沌潮;名前带气象,一眼即知。
-        // (mods 与名字取自同一个 todayWeather(),同源;清和日无词条,该行自然不出现。)
+        // 须与上面一一对应,面板「来源明细」直接读它们
+        // 天时名带当天气象,与 mods 同取自 todayWeather();清和日无词条,该行不出现
         sourceNames: [
           '装备',
           '功法',
@@ -370,22 +296,13 @@ export const usePlayerStore = defineStore(
           '命格',
           ...reincarnation.value.talents.map(id => `天赋·${talentDef(id)?.name ?? id}`)
         ],
-        /** 凡界的平铺三维:**装备给的攻防血就是从这里进来的**(见 core/statsCalc) */
+        /** 凡界平铺三维:装备攻防血由此进入(见 core/statsCalc) */
         equipFlats: inventory.equipFlats,
         daoFruit: reincarnation.value.daoFruit,
         qiRich: qiRich.value
       })
     )
 
-    /**
-     * 天界口径属性(Phase 33.3)——凡器入天界,数值尽去,只余形意。
-     *
-     * 装配了器魂:装备词条完全不计,改用器魂词条(玩家主动凝炼、主动取舍的那三缕形意)。
-     * 一枚未凝:退化为 forgeSoul 兜底,把装备词条等比压到器魂容量——
-     * 不至于让没接触过器魂系统的玩家直接裸装进天界,但也拿不到凝炼者的方向红利。
-     *
-     * 功法、洞府、称号、师承、灵兽、天赋皆属修士自身之道,不受此约束
-     */
     const celestialStats = computed<FinalStats>(() => {
       const endgame = useEndgameStore()
       return computeFinalStats({
@@ -394,15 +311,8 @@ export const usePlayerStore = defineStore(
         linggenMult: linggen.value?.growthMult ?? 1,
         modSources: [
           /**
-           * 天界这一侧:**凡界装备照常作数**(词条与平铺三维都算),器魂是**叠加**上去的。
-           *
-           * 从前这里是二选一:凝了器魂就用器魂替换掉凡器,没凝就把凡器词条压到容量。
-           * 那套做法把玩家在天界的绝对强度抹平了 —— 一身神品与一身凡品打同一个守关者,
-           * 结果一模一样,基础属性在天界等于不存在。
-           *
-           * 现在改回来:攻防血到哪儿都是最核心的属性,一切额外判定都**建立在它之上**
-           * (天界的差别落在敌人一侧:道之理解会看破你的厚度,境界压制会对低境者增伤 ——
-           * 见 core/gauntlet.celestialJudgement)。
+           * 天界口径:凡界装备照常作数(词条与平铺三维都算),器魂叠加其上;用器魂替换凡器会抹平天界绝对强度。
+           * 天界的差别落在敌人一侧(道之理解、境界压制,见 core/gauntlet.celestialJudgement)。
            */
           inventory.equipMods,
           endgame.activeSouls.length > 0 ? endgame.soulMods : {},
@@ -433,14 +343,12 @@ export const usePlayerStore = defineStore(
           '命格',
           ...reincarnation.value.talents.map(id => `天赋·${talentDef(id)?.name ?? id}`)
         ],
-        /** 平铺三维也照常作数:它就是「基础属性」本身 */
         equipFlats: inventory.equipFlats,
         daoFruit: reincarnation.value.daoFruit,
         qiRich: qiRich.value
       })
     })
 
-    /** 修为增速(每秒) */
     const cultPerSec = computed(
       () => baseCultPerSec(major.value, sub.value) * Math.max(MIN_SPEED_MULT, 1 + modOf(finalStats.value.mods, 'cultivationSpeed'))
     )
@@ -465,13 +373,7 @@ export const usePlayerStore = defineStore(
       dead.value = false
     }
 
-    /**
-     * 增加修为 —— **不封顶**。
-     *
-     * 修为是可累积的:卡在某一境(等突破、等灵气、渡劫失败)时,修为仍继续增长,
-     * 越过当前需求的部分存为「积余」。突破成功时只扣去当时的那一份需求,
-     * 积余带入下一境 —— 等待因此不是浪费,而是把后面的指数级开销先垫上。
-     */
+    /** 增加修为,不封顶(越过需求的部分即积余) */
     function gainExp(v: GNum): void {
       exp.value = add(exp.value, v)
     }
@@ -481,7 +383,7 @@ export const usePlayerStore = defineStore(
     }
 
     function advanceRealm(): void {
-      // 先记下「刚走完的这一境」的需求:突破只该扣这一份,积余随境界带走
+      // 先记下刚走完这一境的需求:突破只扣这一份
       const spent = expReq.value
       if (isMajorStep.value) {
         if (major.value < MAX_MAJOR) {
@@ -528,10 +430,7 @@ export const usePlayerStore = defineStore(
       reincarnation.value = { ...reincarnation.value, daoFruit: reincarnation.value.daoFruit + amount }
     }
 
-    /**
-     * 宿命传承:永久持有,跨世不清零。重复锻造(旧档残留/重复触发)会被忽略。
-     * 锻造由 core/heritageForge.lifeForge 判定,在 confirmReincarnation 落账。
-     */
+    /** 宿命传承:锻造由 core/heritageForge.lifeForge 判定,在 confirmReincarnation 落账 */
     function addHeritage(id: string): void {
       if (!reincarnation.value.heritage.includes(id)) {
         reincarnation.value = {
@@ -541,13 +440,7 @@ export const usePlayerStore = defineStore(
       }
     }
 
-    /**
-     * 消耗一次「每世一回/每世 N 回」的传承效果(渡劫跬步 / 浴火丹心)。
-     *
-     * 只在**持有该传承、且本世还没用满**时返回 true 并记账 —— 调用方据此决定
-     * 「这一下要不要照常结算损失/照常开炉」;返回 false 就照旧。
-     * 用量跨世不带(rebirth 清空),只落在本世 —— 刷新页面不白嫖(sanitize 修形)。
-     */
+    /** 消耗一次「每世 N 回」传承效果(渡劫跬步 / 浴火丹心);用量只落在本世,rebirth 清空 */
     function consumeHeritageUse(id: string, max = 1): boolean {
       if (!reincarnation.value.heritage.includes(id)) return false
       const used = reincarnation.value.heritageUses[id] ?? 0
@@ -559,7 +452,6 @@ export const usePlayerStore = defineStore(
       return true
     }
 
-    /** 形状修复:传承用量只保留「认识的 id + 正整数次」 */
     function sanitizeHeritageUses(raw: unknown): Record<string, number> {
       const src = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {}
       const out: Record<string, number> = {}
@@ -571,10 +463,7 @@ export const usePlayerStore = defineStore(
       return out
     }
 
-    /**
-     * 逆旅契形状修复:坏档/改出来的 trial 若带未知契 id、缺字段或非有限数,
-     * 一律归 null。否则它会让 canSignLifeTrial 只见「已立契」而永远签不了(须等转世才解)。
-     */
+    /** 逆旅契形状修复:坏档 trial 一律归 null,否则 canSignLifeTrial 只见「已立契」,须等转世才解 */
     function sanitizeTrial(raw: unknown): LifeTrialState | null {
       if (typeof raw !== 'object' || raw === null) return null
       const t = raw as { trialId?: unknown; at?: unknown; paid?: unknown }
@@ -584,12 +473,8 @@ export const usePlayerStore = defineStore(
     }
 
     /**
-     * 历世履历修形:条目本身要是个对象,字段要能直接印到「第 N 世 · 化神 · 寿终 320 载」。
-     *
-     * 从前只做了 `Array.isArray` 就原样收下,一条 `null` 就能让轮回页 `l.index` 抛错白屏,
-     * 而 `NaN` 会印成「第 NaN 世」。认不出的命题/逆旅契 id 回落 null(与「本世未立题/未签约」
-     * 同一语义);认不出的结局同样回落 null,由界面按「未竟」兜底,不让一个野值把
-     * `RESULT_TEXTS[...]` 读成 undefined。
+     * 历世履历修形:字段直接印到轮回页,一条 `null` 会白屏,`NaN` 会印成「第 NaN 世」。
+     * 认不出的命题/逆旅契 id 回落 null(同「本世未立题/未签约」);认不出的结局回落 null,界面按「未竟」兜底。
      */
     function sanitizeLives(raw: unknown): import('@/data/samsara').LifeRecord[] {
       const out: import('@/data/samsara').LifeRecord[] = []
@@ -622,11 +507,8 @@ export const usePlayerStore = defineStore(
     }
 
     /**
-     * 历世同行修形:`CharacterView` 直接读 `r.name`,并把 `r.stage`/`r.ending` 当下标
-     * 去查 `STAGE_NAMES`/`ENDING_NAMES`。一条 `null` 就会白屏,野枚举会印出英文原文。
-     *
-     * 认不出的道侣 id 不丢:这段同行确实发生过,只是那个人已从名册里撤下 ——
-     * 名字仍在履历里,阶位与结局回落「素昧平生 / 缘悭一面」。
+     * 历世同行修形:道侣弹窗直接读 `r.name`,以 `r.stage`/`r.ending` 为下标查 `STAGE_NAMES`/`ENDING_NAMES`;
+     * 一条 `null` 渲染期抛错,野枚举印成空白;野阶位/结局回落「素昧平生 / 缘悭一面」,认不出的道侣 id 不丢。
      */
     function sanitizeBonds(raw: unknown): import('@/core/daoluService').BondRecord[] {
       const out: import('@/core/daoluService').BondRecord[] = []
@@ -645,11 +527,8 @@ export const usePlayerStore = defineStore(
     }
 
     /**
-     * 本世命题修形:野 `themeId` 会让 `vowProgress()` 恒返回 null(界面写着「在途」却
-     * 永不推进),而 `broken: 'yes'` 这类非字面真值会让「已破」判定失真。
-     *
-     * 认不出的命题整块作废 —— 等同于「这一世不曾立题」,下次兵解时可重新择题;
-     * 反过来若只清 id 保留外壳,玩家会卡在一个既无定义又不可再选的空题上。
+     * 本世命题修形:野 `themeId` 会让 `vowProgress()` 恒返回 null;`broken` 只认字面真值。
+     * 认不出的命题整块作废(同「这一世不曾立题」),只清 id 保留外壳会卡在不可再选的空题上。
      */
     function sanitizeVow(raw: unknown): import('@/data/samsara').LifeVow | null {
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
@@ -665,15 +544,7 @@ export const usePlayerStore = defineStore(
       }
     }
 
-    /**
-     * 花掉道果。
-     *
-     * 余额**真的减少** —— 不是记一笔「已花费」了事。
-     * 道果此前只进不出,任何固定定价终将被无上限的余额淹没(见 core/fruitOutlets.ts),
-     * 所以出口必须让余额下降,「积累 → 判断 → 花费」才成立
-     *
-     * @returns 余额不足时返回 false,不做任何改动
-     */
+    /** 花掉道果:余额真的减少,不是记一笔「已花费」(见 core/fruitOutlets.ts) */
     function spendDaoFruit(n: number): boolean {
       if (!(n > 0) || reincarnation.value.daoFruit < n) return false
       reincarnation.value = { ...reincarnation.value, daoFruit: reincarnation.value.daoFruit - n }
@@ -686,7 +557,7 @@ export const usePlayerStore = defineStore(
     }
 
     function setBond(b: import('@/core/daoluService').BondState | null): void {
-      // 老存档的 bond 可能缺 34.0 新增的机会点字段,补默认值
+      // 老存档的 bond 可能缺机会点字段
       bond.value = b
         ? {
             ...b,
@@ -699,7 +570,7 @@ export const usePlayerStore = defineStore(
         : null
     }
 
-    /** 把一世的关系结局记入履历(只记事,不给任何资源) */
+    /** 关系结局记入履历(只记事,不给资源) */
     function recordBond(r: import('@/core/daoluService').BondRecord): void {
       reincarnation.value = { ...reincarnation.value, bonds: [...reincarnation.value.bonds, r] }
     }
@@ -717,14 +588,13 @@ export const usePlayerStore = defineStore(
       reincarnation.value = { ...reincarnation.value, vow }
     }
 
-    /** 破题:犯了忌讳。不扣任何东西,只是这一世的话没说到底 */
+    /** 破题:犯了忌讳,不扣任何东西 */
     function breakVow(): void {
       const cur = reincarnation.value.vow
       if (!cur || cur.broken) return
       reincarnation.value = { ...reincarnation.value, vow: { ...cur, broken: true } }
     }
 
-    /** 归档一世履历 */
     function recordLife(rec: import('@/data/samsara').LifeRecord): void {
       reincarnation.value = { ...reincarnation.value, lives: [...reincarnation.value.lives, rec] }
     }
@@ -733,79 +603,54 @@ export const usePlayerStore = defineStore(
       dead.value = true
     }
 
-    /** 转世重置(保留天赋/道果/转世次数/宿命传承) */
+    /**
+     * 转世重置。保留:天赋/道果/宿慧/称号/转世次数/宿命传承、区域战绩与宿敌(见 DEC-003)、
+     * 机缘选择记忆(fortuneChoices)、奇缘(eventChains)
+     */
     function rebirth(newLinggen: LinggenProfile): void {
-      // 转世这一刻,账上所有战绩都成了「上一世」的 —— 逐条盖旧世号,不等下次战斗
       const previousLife = reincarnation.value.count
       reincarnation.value = {
         ...reincarnation.value,
         count: reincarnation.value.count + 1,
-        // 每世一回类容错/本世三炉的用量账跨世不带,新的一世从头算
         heritageUses: {}
       }
       linggen.value = newLinggen
-      // 新的一世从炼气起步;若已持有「元婴凝实」传承,保底从筑基起(见 heritageEffects.birthMajorFloor)
       major.value = birthMajorFloor(reincarnation.value.heritage)
       sub.value = 0
       exp.value = gnZero()
       age.value = START_AGE
       lifespanBonusYears.value = 0
       dead.value = false
-      // 新的一世:本世进程全部清零。
-      // 连胜/当日巡游属于「这一世」的当下进度;秘境是进行中的一次性内容
-      // (其门槛 minMajor≥3 本就是境界限制,新世 major=0 理应推倒重来)。
-      // 保留跨世:镇压/区域兴衰(「成长改变世界」的世界记忆,见 DEC-003)、
-      // 机缘选择记忆(fortuneChoices,「世界记得你的选择」)、奇缘(eventChains)
       winStreak.value = 0
       lastCaveEventDay.value = 0
       secretRealm.value = null
       regionEvent.value = null
-      // 卦是此一时的时机,不是"我是谁":转世即散
       divination.value = null
-      // 突破准备也随这一世散去(下一世要重新备)
       breakthroughPrep.value = null
-      // 命格点化主星是"这一世侧重哪一路"的选择:转世命盘重排,点化随之散去
       fateFocus.value = null
-      // 星象值日定向与悟道兑换都是「当日账」:gameDay 相合才计入当日、次日自动回落/重置,
-      // 转世**不**清它们 —— 否则同游戏日转世会重开当日兑换/改向配额(见 samsaraAudit
-      // wudaoExchange/mansionRedirect 行,「此生交割」也把它们列为随神魂带走)
+      // 星象值日定向与悟道兑换是「当日账」,转世不清,否则同游戏日转世会重开当日兑换/改向配额
+      // (见 samsaraAudit wudaoExchange/mansionRedirect 行)
 
-      // 镇压权益随皮囊散去:旧世压下的远境(多为高阶)若跨世,新世炼气仍在按旧阶位
-      // 派发高阶装备/灵石,数值当场爆炸 —— 妖气复聚、回到历练地。这属于「我拥有多少」
-      // 而非「我是谁」;宿敌记忆与区域战绩(regionStats)仍随神魂不灭(见 samsaraAudit
-      // 'suppress' 一行的 partial 口径,「世界记得你」的叙事不丢)。
-      // 资格(取得即永久那枚令)也是经济权柄:不随世走,否则新世炼气一键把高阶远境
-      // 切回收益态,爆炸就换了个入口回来(sanitize 的 suppressReachable 兜老档同款)
+      // 镇压权益与资格不随世走(见 samsaraAudit 'suppress' 一行的 partial 口径),否则新世炼气按旧阶位
+      // 派发高阶装备/灵石;老档由 sanitize 的 suppressReachable 兜
       suppressedRegions.value = []
       suppressedSince.value = {}
       suppressQualified.value = []
       suppressFrac.value = {}
-      /**
-       * 战绩本身跨世保留(兴衰/复聚钟/叙事),但必须**当场盖上旧世号**。
-       *
-       * 不盖的话,它们在下一次读档/下一次战斗前仍是「没有世号」的账,判据按
-       * 「未知即本世」放行 —— 新世炼气回去赢一场,三判据立刻全绿,自动重新镇压
-       * 旧世的高阶地界,数值爆炸原样回来。这一句是那条漏洞的正面堵法:
-       * 转世之后,旧账一律带着旧世号,判据只认新世写下的那一本。
-       */
-
+      // 战绩/胜场跨世保留,但须当场盖旧世号:否则判据按「未知即本世」放行,
+      // 新世炼气赢一场即自动重新镇压旧世高阶地界
       regionStats.value = Object.fromEntries(
         Object.entries(regionStats.value).map(([id, st]) => [id, { ...st, life: previousLife }])
       )
-      // 胜场同理:旧世那本原样留着(叙事),但兴衰判据只认本世,故逐条盖旧世号
       regionWinsLife.value = Object.fromEntries(
         Object.keys(regionWins.value).map(id => [id, previousLife])
       )
-      // 世号同步盖上:新世的地盘账从此刻起算(不等下一次 sanitize)
+      // 世号当场同步,不等下一次 sanitize
       suppressLife.value = reincarnation.value.count
-      // 外物随皮囊散去:灵兽、洞府建筑、灵脉投资都是「我拥有多少」,不是「我是谁」
       petId.value = null
       dongfu.resetForRebirth()
-      // 道童同为今生观中家业,随皮囊散去 —— 与洞府同处归零,新世 sync() 会补送一名入门道童
       apprentices.resetForRebirth()
-      // 新的皮囊,新的道号:神魂不灭带走的是所知所历(宿慧/道果/天赋/称号),不是这个名号。
-      // 每一世重掷一个道号(避免与上世撞名),亦是「N 世」在界面上一眼可辨的体现 ——
-      // 否则转世后顶栏仍是同一个道号,「这一世是全新的一世」无从感知(见 samsaraAudit 的姓名一行)。
+      // 每世重掷道号,不与上世撞名(见 samsaraAudit 的姓名一行)
       let fresh: string
       do {
         fresh = randomDaoName(rng)
@@ -816,37 +661,22 @@ export const usePlayerStore = defineStore(
     /** 存档修复 */
     function sanitize(): void {
       exp.value = gn(exp.value)
-      /**
-       * 灵根是**裸下标 + 裸方法**的两处渲染点:角色页写 `ELEMENTS[root.element].color`
-       * 与 `linggen.growthMult.toFixed(2)`,建号页同样如此。坏档里元素名认不出时
-       * 对 undefined 取属性、倍率写成 null 时对 null 调方法,渲染期直接抛错 ——
-       * 而 Vue 会不断重试,玩家看到的是「出现异常,已记录」的 toast 反复弹出。
-       * 故整份过一遍形状修复(见 core/linggenGen.sanitizeLinggen)。
-       */
+      // 角色页/建号页裸用 `ELEMENTS[root.element].color` 与 `linggen.growthMult.toFixed(2)`:坏档在渲染期抛错
       linggen.value = sanitizeLinggen(linggen.value)
       if (!Number.isFinite(age.value)) age.value = START_AGE
-      // 大阶是境界表下标、层数会直接进公式:坏档的小数/越界值必须取整并夹回可玩域
+      // 大阶是境界表下标、层数直接进公式
       major.value = Math.min(MAX_MAJOR, Math.max(0, Math.floor(asFiniteNumber(major.value, 0))))
       sub.value = Math.min(SUB_LEVELS - 1, Math.max(0, Math.floor(asFiniteNumber(sub.value, 0))))
-      /**
-       * 佩戴物按 id 认物:认不出的称号/灵兽既不产出词条,也不该继续占着位置。
-       * 灵兽尤其致命 —— 角色页取它的族类画图标,`petDef(...)!` 对野 id 当场抛错。
-       */
       if (titleId.value !== null && !titleDef(titleId.value)) titleId.value = null
       if (petId.value !== null && !petDef(petId.value)) petId.value = null
-      /**
-       * 师承同理,只是后果更隐蔽:一经拜定便「不再更改」,认不出的旧 id 会把
-       * mentor 占成非 null,此后每一次拜师都被挡回 —— 与天界认不出的道途 id
-       * 属同一类彻底锁死。认不得即回落「尚未拜师」。
-       */
+      // 师承一经拜定不再更改:认不出的 id 占住 mentor 会永久挡回拜师
       if (mentor.value !== null && !mentorDef(mentor.value)) mentor.value = null
-      // 寿元加算:lifespanMax = floor(base×(1+pct) + 此栏),写坏(字符串/NaN)会让它变 NaN,
-      // 而引擎死亡判据 `age < lifespanMax` 恒为 false → 下一拍即「油尽灯枯」。坏档必死,必须修回
+      // lifespanMax 加算项:NaN 使引擎死亡判据 `age < lifespanMax` 恒假,下一拍即「大限已至」
       lifespanBonusYears.value = asFiniteNumber(lifespanBonusYears.value, 0)
-      // Phase 32.5:旧存档没有宿慧/履历/命题三项,按转世次数折算补齐,不让老玩家凭空掉档
+      // 旧存档缺宿慧/履历/命题三项:按转世次数折算补齐
       const r = reincarnation.value
       const count = Number.isFinite(r?.count) ? Math.max(0, r.count) : 0
-      // 旧存档没有卦象一栏(Phase 34.3);形状不对的直接作废,不让坏数据进属性汇总
+      // 旧存档无卦象一栏
       if (divination.value) {
         const d = divination.value
         const ok =
@@ -857,26 +687,18 @@ export const usePlayerStore = defineStore(
           !!readingFromState(d)
         if (!ok) divination.value = null
       }
-      // 旧存档没有突破准备一栏(Phase 34.6);形状不对的直接作废
+      // 旧存档无突破准备一栏
       if (breakthroughPrep.value) {
         const p = breakthroughPrep.value
         const ok = Number.isFinite(p.bonus) && Number.isFinite(p.readyAt) && (p.kind === 'meditate' || p.kind === 'pill')
         if (!ok) breakthroughPrep.value = null
       }
-      // 旧存档没有顿悟冷却一栏(Phase 34.6):0 = 从未顿悟,合法
+      // 旧存档无顿悟冷却一栏;0 = 从未顿悟
       if (!Number.isFinite(enlightenmentAt.value) || enlightenmentAt.value < 0) enlightenmentAt.value = 0
-      /**
-       * 命格点化主星(Phase A-1):白名单校验。
-       * 认不出的 id(坏档/旧版)清回 null —— 别让坏 id 既得不到任何放大,
-       * 也别让一个重复 id 在实际放大时假性命中而把某通道翻倍。
-       */
       if (fateFocus.value !== null && !STARS.some(s => s.id === fateFocus.value)) {
         fateFocus.value = null
       }
-      /**
-       * 星象值日定向(Phase A-2):界域必须真实(WORLDS 里有这一界)、次数必须有限。
-       * 形状不对/界域认不出 → 整块清空(回落到天数派生,不残留坏覆盖);次数越界夹回上限。
-       */
+      // 整块清空即回落天数派生
       if (mansionRedirect.value) {
         const mr = mansionRedirect.value
         const worldOk = typeof mr.worldId === 'string' && WORLDS.some(w => w.id === mr.worldId)
@@ -895,10 +717,6 @@ export const usePlayerStore = defineStore(
           }
         }
       }
-      /**
-       * 悟道兑换(Phase C-1):每日计数夹回 [0, WUDAO_EXCHANGE_PER_DAY]。
-       * 坏档把 count 写成负数/NaN/越界,都会让当天要么白送、要么永不可兑 —— 夹回常态。
-       */
       const we = wudaoExchange.value
       if (!we || !Number.isFinite(we.gameDay) || !Number.isFinite(we.count)) {
         wudaoExchange.value = { gameDay: 0, count: 0 }
@@ -908,10 +726,7 @@ export const usePlayerStore = defineStore(
           count: Math.min(WUDAO_EXCHANGE_PER_DAY, Math.max(0, Math.floor(we.count)))
         }
       }
-      /**
-       * 秘境状态修形(Phase 34.9):它现在真的会进档(以前是进不去的骨架)。
-       * 层数越界会让「第 99 层」直接结算通关,携带气血越界会把战斗开局算成 NaN —— 故逐项夹回。
-       */
+      // 层数越界会直接结算通关;携带气血越界使战斗开局 NaN
       if (secretRealm.value) {
         const sr = secretRealm.value
         const known = SECRET_REALMS.some(r => r.id === sr.realmId)
@@ -931,10 +746,7 @@ export const usePlayerStore = defineStore(
           }
         }
       }
-      /**
-       * 道侣状态修形(Phase 34.10):三维是 0~100 的钳制量(advanceBond 里夹过),
-       * 但坏档能绕过写入口。若 trust 被改成 NaN,门槛判定(nextGateHint)与履历都会跟着算歪。
-       */
+      // 三维是 0~100 的钳制量(同 advanceBond)
       if (bond.value) {
         const b = bond.value
         const known = DAOLU.some(d => d.id === b.daoluId)
@@ -955,25 +767,16 @@ export const usePlayerStore = defineStore(
             doneEvents: asStringArray(b.doneEvents),
             opportunities: Math.floor(asFiniteNumber(b.opportunities, 0, 0)),
             nextEventAt: Math.floor(asFiniteNumber(b.nextEventAt, 0, 0)),
-            /**
-             * 待决事件按 id 认事:认不出的 id 弹窗永远打不开(角色页读 pendingBondEvent 得 undefined),
-             * 而 offerBondEvent 见到非空 pendingEventId 就不再出新事件 —— 整条道侣线会被一个
-             * 野 id 永久堵死。认不得即回落「无待决」,下一次历练机会照常来。
-             */
+            // offerBondEvent 见非空 pendingEventId 即不出新事件:认不出的 id 会永久堵死道侣线
             pendingEventId:
               typeof b.pendingEventId === 'string' && bondEventDef(b.pendingEventId) ? b.pendingEventId : null,
             intentPending: b.intentPending === true,
-            // 意图结构复杂且由经历催生:形状不对就整块作废,让她重新酝酿
+            // 意图由经历催生:作废后会重新酝酿
             intent: b.intent && Array.isArray(b.intent.sparks) && typeof b.intent.wish === 'string' ? b.intent : null
           }
         }
       }
-      /**
-       * 区域动态事件:它靠 endsAt 自己过期(currentRegionEvent 里比较)。
-       * 坏了就有两种结果 —— endsAt=NaN 永不失效,或者负值当场失效,故按「认不出就清掉」处理。
-       * 事件 id 同样要认:野 id 不产生任何倍率,却照样占住「本轮已有事件」这一个槽,
-       * 使真正的事件在它到期前一直掷不进来。
-       */
+      // endsAt 为 NaN 则永不过期;认不出的事件 id 不产倍率,却占住事件槽直到到期
       if (regionEvent.value) {
         const ev = regionEvent.value
         const regionOk = !!regionDef(ev.regionId) && !!regionEventDef(ev.eventId)
@@ -981,12 +784,7 @@ export const usePlayerStore = defineStore(
         if (!regionOk || endsAt <= 0) regionEvent.value = null
         else regionEvent.value = { ...ev, endsAt }
       }
-      /**
-       * 奇缘连锁进度(Phase 34 奇缘录):写入口 setEventChain 已夹(0 ≤ stage),但读档
-       * sanitize 此前没夹加载——越界/残链的 stage 会让 pendingChainStages 读到
-       * chain.stages[done] === undefined,那条奇缘被当成「已了」永不再现。故这里夹回
-       * [0, 链长],认不出的链整条清掉(跨世保留的设计不变,只是修形)。
-       */
+      // stage 夹在 [0, 链长](同 setEventChain):越界时 pendingChainStages 把该链当「已了」永不再现
       if (typeof eventChains.value !== 'object' || eventChains.value === null) {
         eventChains.value = {}
       } else {
@@ -998,54 +796,25 @@ export const usePlayerStore = defineStore(
         }
         eventChains.value = chainNext
       }
-      /**
-       * 数组类字段先补形,再谈内容 —— 存档可能被改坏、写坏或在旧版本里根本没有这一栏。
-       * 此前只挡了 suppressQualified,没挡 suppressedRegions,于是坏档会在
-       * `for...of` 上直接抛出,玩家看到的是白屏而不是「回到云隐山下」。
-       */
+      // 先补形再谈内容:非数组会在 `for...of` 上直接抛错
       if (!Array.isArray(suppressedRegions.value)) suppressedRegions.value = []
       if (!Array.isArray(suppressQualified.value)) suppressQualified.value = []
       if (typeof suppressedSince.value !== 'object' || suppressedSince.value === null) suppressedSince.value = {}
-      /**
-       * 镇压表按地界去重:结算逐条遍历它,同一位写两遍会让同一片地界
-       * 每拍产出两份灵石/物产/装备(离线一并放大);资格表同理会把「已镇压」判重。
-       */
+      // 结算逐条遍历镇压表:重复项使同一地界每拍双份产出
       suppressedRegions.value = [...new Set(asStringArray(suppressedRegions.value))]
       suppressQualified.value = [...new Set(asStringArray(suppressQualified.value))]
-      /**
-       * 镇压权益是「这一世」的东西 —— 判据是**世号本体**(suppressLife),不是境界。
-       *
-       * 从前这里拿境界当代理(`minRealm > 当前境界` 即当成旧世残留清掉),它有个
-       * 真实可达的反例:进入某地只受解锁链与本世路线管,**不受 minRealm 管** ——
-       * 于是在本世境界还低于副本标称时把那里打下来并镇压(解锁链允许),下一次
-       * 读档就会被当成残留**当场没收**。世号记下来后判据变成本体:与当前世不符的
-       * 才是残留。
-       *
-       * 老档(上线前没有这一栏,值是哨兵 −1)仍按旧境界代理保守清一次 —— 那批档里
-       * 分不出「旧世残留」与「本世真打下来的」,而高境副本的镇压收益正是数值爆炸的
-       * 源头,宁可少留。清完立刻补盖世号,此后一律走本体判据。suppressedSince 同步清,
-       * 免得一旧一新。
-       */
+      // 老档(−1)分不出旧世残留与本世所得:按旧境界保守清一次(高境镇压收益是数值爆炸源头)
       if (!Number.isFinite(suppressLife.value) || suppressLife.value < 0) {
         const suppressReachable = (id: string): boolean => (regionDef(id)?.minRealm ?? Infinity) <= major.value
         suppressedRegions.value = suppressedRegions.value.filter(suppressReachable)
         suppressQualified.value = suppressQualified.value.filter(suppressReachable)
       } else if (suppressLife.value !== count) {
-        // 上一世(或更早)留下的镇压:妖气复聚,回到它本来该在的地方
         suppressedRegions.value = []
         suppressQualified.value = []
       }
       suppressLife.value = count
-      /**
-       * 镇压起钟只认「认得的地界 + 正数时刻」:坏档里的 NaN 会被
-       * `now - NaN > 72h` 判成假,那片地界从此**永不复苏**(且界面写着
-       * 「妖气 NaN 后复聚」);负值/0 则当场绕过守时直接复聚。两种都是坏档,
-       * 不是「刚镇压」——按此刻重新起钟:收益照拿,72 小时后照常回到历练,
-       * 既不会永久白拿,也不会因为一个坏数把已镇压的地界一并没收。
-       * 不在镇压表里的起钟**不一律丢**:玩家主动停取收益时镇压表摘掉这一格,
-       * 起点照旧留着(见 unsuppressRegion),再切回时兴衰与复聚钟接着走。
-       * 故只保留「仍在镇压」或「仍持有资格」的地界 —— 两者都失了才是真残项。
-       */
+      // NaN 起钟永不复苏、≤0 当场复聚:均按此刻重起
+      // 仍在镇压或仍持有资格即保留:unsuppressRegion 摘镇压表时起点照留,切回时复聚钟接着走
       const rawSince = asNumberRecord(suppressedSince.value)
       const fixedSince: Record<string, number> = {}
       const keepsTenure = new Set([...suppressedRegions.value, ...suppressQualified.value])
@@ -1054,11 +823,7 @@ export const usePlayerStore = defineStore(
         fixedSince[id] = at !== undefined && at > 0 ? at : Date.now()
       }
       suppressedSince.value = fixedSince
-      /**
-       * 物产零头同样是「这一世的地盘账」:只认镇压表里的地界、只认 [0,1) 的内数。
-       * 坏档写进 5 会让下一拍凭空吐出一堆物产;写进 NaN 则永远凑不满一件(收益静默归零)。
-       * 不在镇压表里的残项一并丢掉 —— 松开镇压时已清,这里兜住坏档。
-       */
+      // 零头取值 [0,1),只认镇压表内地界(松开镇压时已清)
       const rawFrac = asNumberRecord(suppressFrac.value)
       const fixedFrac: Record<string, number> = {}
       for (const id of suppressedRegions.value) {
@@ -1069,47 +834,33 @@ export const usePlayerStore = defineStore(
       for (const id of suppressedRegions.value) {
         if (!suppressQualified.value.includes(id)) suppressQualified.value.push(id)
       }
-      /**
-       * 区域战绩是镇压判定与兴衰展示的共同底账:
-       * - `avgRounds` 写成 NaN 时 `avgRounds <= 3` 恒假,玩家打满二十场也永远压不住;
-       * - `lastUpdateAt` 写成 NaN 会让 `regionTouchedAt` 取 max 得 NaN,复聚钟停摆;
-       * - 界面还会直接报「均 NaN 回合」「均受伤 NaN%」。
-       * 逐项修平,认不出的区域整条丢掉(战绩只对真实地界有意义)。
-       */
+      // 镇压判定与兴衰展示的共同底账:NaN 会让 `avgRounds <= 3` 恒假、复聚钟停摆
       const fixedRegionStats: Record<string, import('@/core/suppress').RegionStats> = {}
-      // 世号必须在清洗**之前**定下来:下面要拿它给老档战绩盖章
+      // 世号须在清洗前定下(老档战绩盖章用)
       const statsLife = count
       for (const [id, raw] of Object.entries(asRecord<unknown>(regionStats.value))) {
         if (!regionDef(id) || !raw || typeof raw !== 'object' || Array.isArray(raw)) continue
         const st = raw as Partial<import('@/core/suppress').RegionStats>
-        /**
-         * 老档(没有 life)按当前世认,不追溯没收 —— 那时还没有跨世判据,
-         * 战绩就是本世打出来的。此后每次写战绩都盖新章。
-         */
         const rawLife = asFiniteNumber(st.life, Number.NaN, 0)
         fixedRegionStats[id] = {
           totalFights: Math.floor(asFiniteNumber(st.totalFights, 0, 0)),
           avgRounds: asFiniteNumber(st.avgRounds, 0, 0),
-          // 受伤占比是 0~1 的比率(界面乘 100),越界只可能来自坏档
+          // 受伤占比 0~1(界面乘 100)
           avgDamageTakenPct: Math.min(1, asFiniteNumber(st.avgDamageTakenPct, 0, 0)),
           consecutiveWins: Math.floor(asFiniteNumber(st.consecutiveWins, 0, 0)),
           lastUpdateAt: asFiniteNumber(st.lastUpdateAt, 0, 0),
-          // 有世号就原样留着(旧世那本不参与判据);没有(老档)才盖当前世
+          // 有世号原样留(旧世的不参与判据);老档无世号按当前世认,不追溯没收
           life: Number.isFinite(rawLife) ? Math.floor(rawLife) : statsLife
         }
       }
       regionStats.value = fixedRegionStats
-      // 连胜/巡游日期都直接进界面与「今日已抽」判定:NaN 会让连胜显示成 NaN、
-      // 巡游判定恒假(每 30 秒重掷一次)。按非负整数收口。
+      // 巡游日期为 NaN 时「今日已抽」恒假,每 30 秒重掷一次
       winStreak.value = Math.floor(asFiniteNumber(winStreak.value, 0, 0))
       lastCaveEventDay.value = Math.floor(asFiniteNumber(lastCaveEventDay.value, 0, 0))
       regionWins.value = Object.fromEntries(
         Object.entries(asNumberRecord(regionWins.value, 0)).map(([id, n]) => [id, Math.floor(n)])
       )
-      /**
-       * 胜场世号与胜场同键同命:只认真实地界与正整数世号;没有世号的老档
-       * 按当前世认(与 regionStats.life 同一口径,不追溯没收)。
-       */
+      // 老档无世号按当前世认,同 regionStats.life 口径
       const rawWinsLife = asNumberRecord(regionWinsLife.value, Number.NaN)
       const fixedWinsLife: Record<string, number> = {}
       for (const id of Object.keys(regionWins.value)) {
@@ -1118,24 +869,13 @@ export const usePlayerStore = defineStore(
         fixedWinsLife[id] = at !== undefined && Number.isFinite(at) && at >= 0 ? Math.floor(at) : count
       }
       regionWinsLife.value = fixedWinsLife
-      /**
-       * 机缘选择记忆是「取 / 弃」的二元账:`identityService` 对它调 `Object.entries`、
-       * 师承推荐与遗产回声按下标读 —— 坏档写成 `null` 时三处一起抛错(人物页的
-       * 「修行身份」正是渲染期算的)。只留 `take`/`leave` 两个字面值:别的写法
-       * 既不构成「取」(拿不到身份词条),也不构成「弃」(不会触发回声),留着只会
-       * 让「曾选过」的账目看着有、实际哪一头都不算。
-       */
+      // `identityService` 对它调 `Object.entries`、师承推荐与遗产回声按下标读:`null` 即抛错
       const fixedFortunes: Record<string, FortuneChoice> = {}
       for (const [id, choice] of Object.entries(asRecord<unknown>(fortuneChoices.value))) {
         if (choice === 'take' || choice === 'leave') fixedFortunes[id] = choice
       }
       fortuneChoices.value = fixedFortunes
-      /**
-       * 宿敌按 enemyId 认人:坏档里同一位写两条时,征战录会画出两行同 key、
-       * 「宿敌 N 位」多报;而 recordLoss / markAvenged / ghostOf 都只 find 第一条,
-       * 败绩与雪耻各记各的,第二条永远「尚为宿敌」。
-       * 合并回一条:败绩取较大、最后败北取较晚、首次雪耻取较早那次。
-       */
+      // 须按 enemyId 唯一:recordLoss / markAvenged / ghostOf 只 find 第一条
       const mergedNemeses = new Map<string, import('@/types').NemesisRecord>()
       for (const n of asArray<import('@/types').NemesisRecord>(
         nemeses.value,
@@ -1145,7 +885,6 @@ export const usePlayerStore = defineStore(
         const lossCount = Math.max(0, Math.floor(asFiniteNumber(n.lossCount, 0, 0)))
         const lastLossAt = asFiniteNumber(n.lastLossAt, 0, 0)
         const avengedAt = typeof n.avengedAt === 'number' && Number.isFinite(n.avengedAt) ? n.avengedAt : undefined
-        // 名字与地界都直接印在征战录上:坏值回落成可读文本,不让数字/null 露在「败我 N 次」前面
         const enemyName = typeof n.enemyName === 'string' && n.enemyName ? n.enemyName : n.enemyId
         const regionId = typeof n.regionId === 'string' ? n.regionId : ''
         const prev = mergedNemeses.get(n.enemyId)
@@ -1164,7 +903,6 @@ export const usePlayerStore = defineStore(
           prev.avengedAt === undefined ? avengedAt : avengedAt === undefined ? prev.avengedAt : Math.min(prev.avengedAt, avengedAt)
         mergedNemeses.set(n.enemyId, {
           ...prev,
-          // 同名宿敌合并时,先出现的那条若没有名字,后用后一条的
           enemyName: prev.enemyName || enemyName,
           regionId: prev.regionId || regionId,
           lossCount: Math.max(prev.lossCount, lossCount),
@@ -1173,25 +911,14 @@ export const usePlayerStore = defineStore(
         })
       }
       nemeses.value = [...mergedNemeses.values()]
-      /**
-       * 祭炼位按境界裁:超过当前境界的槽数(坏档/降境界的旧档)会让多出来的法宝
-       * 被动一起生效 —— 槽位上限在 toggleArtifact/applyLoadout 那里是硬闸,读档同一把尺。
-       * 截断而不是清空:保留先祭炼的那几件,与「槽满时替换最早」的顺序语义一致。
-       */
-      // sanitizeAll 里 player 先于 inventory,此处读到的是原始分片 —— 形状也要自己兜
+      // 槽数上限同 toggleArtifact/applyLoadout;截断保留先祭炼的,与「槽满时替换最早」顺序一致
+      // sanitizeAll 里 player 先于 inventory:此处读到原始分片,形状须自兜
       inventory.equippedArtifacts = asStringArray(inventory.equippedArtifacts).slice(0, artifactSlotsFor(major.value))
       reincarnation.value = {
         count,
         daoFruit: Number.isFinite(r?.daoFruit) ? Math.max(0, r.daoFruit) : 0,
-        /**
-         * 天赋/传承都是「有或没有」的集合(addTalent/addHeritage 只在没有时才加):
-         * 坏档里同一条写两遍,talentMods 会把同一份词条算两次(白送属性),
-         * 传承清单也会重复列出同一件。去重并只留认识的 id。
-         *
-         * 天赋不按数据表清未知 id:认不出的 id 本就不产生词条(talentDef 返回 undefined),
-         * 但可能来自改名/下线的旧档,留着只在履历里显示原名,丢掉则是无声的档案损失。
-         * 传承不同 —— 它参与「是否持有」判定,未知 id 必须清,否则会挡住发放路径。
-         */
+        // 集合须去重:重复天赋会被 talentMods 算两次
+        // 天赋保留认不出的 id(改名/下线的旧档);传承须清:参与「是否持有」判定,会挡住发放路径
         talents: [...new Set(asStringArray(r?.talents))],
         heritage: [...new Set(asStringArray(r?.heritage).filter(id => !!heritageDef(id)))],
         heritageUses: sanitizeHeritageUses(r?.heritageUses),
@@ -1203,11 +930,8 @@ export const usePlayerStore = defineStore(
       }
     }
 
-    // Phase 28 前期玩法动作
-    /**
-     * 奇缘进度 = 已走完的程数(0 未起,等于该链条长度即已了)。
-     * 推进与断绝都只是"把它设到哪一程",故只留这一个写入口。
-     */
+    // 前期玩法动作
+    /** 奇缘进度 = 已走完的程数(0 未起,等于链长即已了);唯一写入口 */
     function setEventChain(chainId: string, stage: number): void {
       const chain = CHAINS.find(c => c.id === chainId)
       if (!chain || !Number.isFinite(stage)) return
@@ -1227,7 +951,7 @@ export const usePlayerStore = defineStore(
       lastCaveEventDay.value = day
     }
 
-    // Phase 30 区域镇压操作
+    // 区域镇压操作
     function updateRegionStats(
       regionId: string,
       win: boolean,
@@ -1245,12 +969,8 @@ export const usePlayerStore = defineStore(
         lastUpdateAt: Date.now(),
       }
       /**
-       * 换世即重起一本判据账:旧世的 EMA 与胜场不再替新世作证。
-       * 战绩本身留着(叙事/兴衰/复聚钟照旧),只是判据只读本世这一本。
-       *
-       * 世号取**真实世号**,不是 suppressLife 的哨兵:新档尚未镇压过时
-       * suppressLife 是 −1,拿它盖章会让下一场战斗把本世刚写的账当成旧世重起。
-       * 没有世号的老账(新档/直塞数据)按本世认;只有明确盖了别的世号才重起。
+       * 换世即重起判据账:旧世 EMA 与胜场不替新世作证;无世号的老账按本世认。
+       * 不拿 suppressLife 的 −1 哨兵盖章:会让下一场把本世刚写的账当旧世重起。
        */
       const life = suppressLife.value >= 0 ? suppressLife.value : reincarnation.value.count
       const base = current.life === undefined || current.life < 0 || current.life === life
@@ -1270,11 +990,8 @@ export const usePlayerStore = defineStore(
     }
 
     /**
-     * 一次写入 N 场同质净胜(离线整段结算用)。
-     *
-     * 指数移动平均与逐场调用 `updateRegionStats` 等价:
-     * avg' = avg × 0.7^n + x × (1 - 0.7^n)。
-     * 同时累计区域兴衰的胜场 —— 离线与在线写同一本账。
+     * 一次写入 N 场同质净胜(离线整段结算用);指数移动平均与逐场调用 `updateRegionStats` 等价。
+     * 兴衰胜场同时累计:离线与在线写同一本账。
      */
     function applyRegionWinBatch(
       regionId: string,
@@ -1294,7 +1011,7 @@ export const usePlayerStore = defineStore(
         avgDamageTakenPct: 0,
         lastUpdateAt: Date.now(),
       }
-      // 同上:跨世的旧账不参与本世判据,重起一本
+      // 同上:跨世重起判据账
       const life = suppressLife.value >= 0 ? suppressLife.value : reincarnation.value.count
       const base = current.life === undefined || current.life < 0 || current.life === life
         ? current
@@ -1311,14 +1028,7 @@ export const usePlayerStore = defineStore(
           life,
         },
       }
-      /**
-       * 胜场同样按世起算:跨世的旧账不再往本世加,新世第一场从 1 起。
-       * (与 recordRegionWin 同一口径)
-       */
-      /**
-       * 没有世号(新档/直塞数据)按本世认;只有明确盖了别的世号才从 0 起。
-       * 与 regionWinsOfThisLife 的读法同一口径。
-       */
+      // 胜场按世起算,无世号按本世认;与 recordRegionWin、regionWinsOfThisLife 同一口径
       const taggedLife = regionWinsLife.value[regionId]
       const winsBase = taggedLife === undefined || taggedLife < 0 || taggedLife === life
         ? (regionWins.value[regionId] ?? 0)
@@ -1329,18 +1039,12 @@ export const usePlayerStore = defineStore(
 
     function suppressRegion(regionId: string): void {
       if (!regionDef(regionId)) return
-      // 落笔即盖世号:此后「这份镇压属于第几世」是本体的记号,不再靠境界反推
       suppressLife.value = reincarnation.value.count
       if (!suppressedRegions.value.includes(regionId)) {
         suppressedRegions.value = [...suppressedRegions.value, regionId]
         /**
-         * 起点只在**第一次**镇压时落笔。
-         *
-         * 停取收益只摘掉 `suppressedRegions` 那一格,`suppressedSince` 照旧留着
-         * (见 unsuppressRegion 的注释);再切回收益态时若在这里重写此刻,玩家
-         * 守了两天的地会当场回到「已守 0 时」:兴衰从繁盛掉回混乱、装备气运清零,
-         * 72 小时的复聚钟也从头再走一遍 —— 点一下开关就白赚两天免复聚。
-         * 没有起点(首次镇压,或坏档被清掉)时才补一个。
+         * 起点只在缺失时补(首次镇压 / 坏档被清掉)。
+         * 切回收益态时重写会让守时归零:兴衰掉回混乱、装备气运清零、72 小时复聚钟从头再走。
          */
         if (!(suppressedSince.value[regionId]! > 0)) {
           suppressedSince.value = { ...suppressedSince.value, [regionId]: Date.now() }
@@ -1348,7 +1052,7 @@ export const usePlayerStore = defineStore(
       }
     }
 
-    /** 记下镇压资格(幂等) —— 资格一旦取得便不再失,故与收益开关分开存 */
+    /** 记下镇压资格(幂等) */
     function markSuppressQualified(regionId: string): void {
       if (!regionDef(regionId)) return
       suppressLife.value = reincarnation.value.count
@@ -1357,13 +1061,7 @@ export const usePlayerStore = defineStore(
       }
     }
 
-    /**
-     * 把这一拍的物产零头并进累积器,返回「够整件的」那一部分(供结算入账)。
-     *
-     * 只有整数库存能入账,所以零头必须攒在**同一个地方**(按区域),否则每 tick
-     * 重新 floor 一次,零头每拍都被丢掉 —— 在线一秒一 tick 时永远收不到物产。
-     * 返回后余数留在累积器里,攒够下一件时再给。
-     */
+    /** 本拍物产并进零头累积器,返回够整件的部分(供结算入账) */
     function takeSuppressResource(regionId: string, amount: number): number {
       if (!regionDef(regionId) || !Number.isFinite(amount) || amount <= 0) return 0
       const acc = (suppressFrac.value[regionId] ?? 0) + amount
@@ -1376,21 +1074,13 @@ export const usePlayerStore = defineStore(
     function unsuppressRegion(regionId: string): void {
       if (!regionDef(regionId)) return
       suppressedRegions.value = suppressedRegions.value.filter(id => id !== regionId)
-      /**
-       * **不删 `suppressedSince`**:停取收益只是关掉产出,不是「没守过」。
-       *
-       * 从前这里把起点一并删掉,再切回收益态时 `suppressRegion` 重写此刻 ——
-       * 玩家守了两天的地会当场回到「已守 0 时」:兴衰从繁盛掉回混乱、装备气运
-       * 清零,72 小时的复聚钟也从头再走一遍。点一下开关就白赚两天免复聚。
-       * 起点随「资格」一起活着;真失去资格时(转世 / 坏档清洗)另有清除路径。
-       */
-      // 松开镇压即放下这一份零头:留着它,下一次再镇压会凭空多出半件
+      // 不删 suppressedSince:停取只关产出,起点随资格保留;转世 / 坏档清洗另有清除路径
+      // 零头一并清掉:留着会让下次镇压凭空多出半件
       if (regionId in suppressFrac.value) {
         const rest = { ...suppressFrac.value }
         delete rest[regionId]
         suppressFrac.value = rest
       }
-      // 重置连胜计数
       if (regionStats.value[regionId]) {
         regionStats.value = {
           ...regionStats.value,
@@ -1399,12 +1089,7 @@ export const usePlayerStore = defineStore(
       }
     }
 
-    /**
-     * 妖气复聚:镇压被世界收回 —— 与「玩家主动停取」是两件事。
-     *
-     * 主动停取保留守土起点(再切回时兴衰与复聚钟接着走);复聚则连同起点一起清掉,
-     * 因为那一片地已经回到旧主手里,下一次镇压是重新开始,不该继承上一轮的守时。
-     */
+    /** 妖气复聚:镇压被世界收回,守土起点一并清掉(主动停取则保留起点) */
     function loosenSuppression(regionId: string): void {
       unsuppressRegion(regionId)
       if (!(regionId in suppressedSince.value)) return
@@ -1413,49 +1098,46 @@ export const usePlayerStore = defineStore(
       suppressedSince.value = next
     }
 
-    // ---------- Phase 30.9 世界记忆 ----------
-    /** 记录一次净胜(用于区域兴衰的累计胜场) */
+    // ---------- 世界记忆 ----------
+    /** 记录一次净胜(区域兴衰的累计胜场) */
     function recordRegionWin(regionId: string): void {
       if (!regionDef(regionId)) return
       const life = suppressLife.value >= 0 ? suppressLife.value : reincarnation.value.count
-      /**
-       * 换世后的第一场胜利:胜场从 1 重新起算,旧世的 80 胜留作叙事但不参与兴衰。
-       * (与 updateRegionStats 的判据账同一口径,见 regionWinsLife 的注释)
-       */
+      // 换世后胜场从 1 重新起算;与 updateRegionStats 的判据账同一口径
       const tagged = regionWinsLife.value[regionId]
       const sameLife = tagged === undefined || tagged < 0 || tagged === life
       regionWins.value = { ...regionWins.value, [regionId]: sameLife ? (regionWins.value[regionId] ?? 0) + 1 : 1 }
       regionWinsLife.value = { ...regionWinsLife.value, [regionId]: life }
     }
 
-    /** 记录一条宿敌(由 worldMemory.recordLoss 提供) */
+    /** 宿敌列表由 worldMemory 提供 */
     function setNemeses(list: import('@/types').NemesisRecord[]): void {
       nemeses.value = list
     }
 
-    // ---------- Phase 31 师承 ----------
-    /** 拜入师门(一经确立,不再更改;转世保留) */
+    // ---------- 师承 ----------
+    /** 拜入师门,一经确立不再更改 */
     function adoptMentor(id: import('@/data/mentors').MentorId): void {
       if (mentor.value !== null) return
       mentor.value = id
     }
 
-    // ---------- Phase 31 A2 区域事件 ----------
+    // ---------- 区域事件 ----------
     function setRegionEvent(ev: import('@/core/regionEvent').RegionEventState | null): void {
       regionEvent.value = ev
     }
 
-    // ---------- Phase 31 S3 短期秘境 ----------
+    // ---------- 短期秘境 ----------
     function setSecretRealm(state: import('@/core/secretRealm').SecretRealmState | null): void {
       secretRealm.value = state
     }
 
-    // ---------- Phase 34.3 问卦 ----------
+    // ---------- 问卦 ----------
     function setDivination(state: import('@/core/divination').DivinationState | null): void {
       divination.value = state
     }
 
-    // ---------- Phase 28 突破准备 ----------
+    // ---------- 突破准备 ----------
     function setBreakthroughPrep(state: import('@/core/earlyGameService').BreakthroughPrepState | null): void {
       breakthroughPrep.value = state
     }
@@ -1464,14 +1146,10 @@ export const usePlayerStore = defineStore(
       enlightenmentAt.value = Number.isFinite(t) ? Math.max(0, t) : 0
     }
 
-    // ---------- Phase A-1 命格点化主星 ----------
+    // ---------- 命格点化主星 ----------
     /**
-     * 点化主星:花灵石把某位主星之力放大(STAR_FOCUS_COST_BASE)。
-     *
-     * 守则:
-     * - 只认十四主星(认不出的 id 直接拒,不产生新放大/不报错);
-     * - 已点化同一星不反复收钱(点化是"选",不是"每次掏钱刷取值");
-     * - 灵石不足原子拒绝(spendStone 契约):不扣、不改,返回 false。
+     * 点化主星:花灵石(STAR_FOCUS_COST_BASE)放大某位主星之力。
+     * 只认十四主星;已点化同一星不反复收钱;灵石不足原子拒绝(spendStone 契约)。
      */
     function focusFateStar(starId: string): boolean {
       const star = STARS.find(s => s.id === starId)
@@ -1482,15 +1160,10 @@ export const usePlayerStore = defineStore(
       return true
     }
 
-    // ---------- Phase A-2 星象值日定向 ----------
+    // ---------- 星象值日定向 ----------
     /**
-     * 把今日值日定向到某界:花灵石(MANSION_REDIRECT_COST)把今日所利界域改成所选。
-     *
-     * 守则:
-     * - 只认真实世界(WORLDS 里有这一界,认不出的直接拒);
-     * - 已定向到同一界 / 当日次数已耗尽:不再收钱重复定向;
-     * - 灵石不足原子拒绝(spendStone 契约):不扣、不改、返回 false。
-     * 每一成功定向让当日 count +1;count 达 MANSION_REDIRECT_MAX 当日即回落到天数派生(core/astronomy 判定)。
+     * 花灵石(MANSION_REDIRECT_COST)把今日所利界域改成所选。
+     * 只认 WORLDS 里的界;已定向到同一界 / 当日次数已耗尽不再收钱;灵石不足原子拒绝(spendStone 契约)。
      */
     function redirectFavoredWorld(worldId: WorldId): boolean {
       if (!WORLDS.some(w => w.id === worldId)) return false
@@ -1503,16 +1176,11 @@ export const usePlayerStore = defineStore(
       return true
     }
 
-    // ---------- Phase C-1 后期限量灵石→悟道兑换 ----------
+    // ---------- 后期限量灵石→悟道兑换 ----------
     /**
      * 后期限量「灵石 → 悟道点」兑换。
-     *
-     * 后期(realm≥18)灵石过剩,给一个可控出口换悟道点(功法进修/法宝炼化的真货币)。
-     * 守则:
-     * - 境界不到 WUDAO_EXCHANGE_MIN_MAJOR 不开(锁定,连灵石也不碰);
-     * - 当天已兑满 WUDAO_EXCHANGE_PER_DAY 拒兑(限额是"节奏",不是无限印钞机);
-     * - 灵石不足原子拒绝(spendStone 契约):不扣、不加、返回 false。
-     * 只动灵石→悟道这条**可选的限量**出口,不重建效率回路、不动熔炉(审计敏感点)。
+     * 境界不到 WUDAO_EXCHANGE_MIN_MAJOR / 当天已兑满 WUDAO_EXCHANGE_PER_DAY 拒兑;灵石不足原子拒绝(spendStone 契约)。
+     * 审计敏感:只动这条限量出口,不重建效率回路、不动熔炉。
      */
     function exchangeStoneForWudao(): boolean {
       if (!wudaoExchangeState.value.canExchange) return false
@@ -1524,7 +1192,7 @@ export const usePlayerStore = defineStore(
       wudaoExchange.value = { gameDay: day, count: today.count + 1 }
       return true
     }
-    /** 今天已兑了几次(次日自动归零的口径,界面展示用) */
+    /** 当天已兑次数(次日归零,界面展示用) */
     const wudaoExchangeToday = computed(() => {
       const day = gameDay(useGameStore().totalPlaySec)
       const cur = wudaoExchange.value
@@ -1534,22 +1202,16 @@ export const usePlayerStore = defineStore(
     const wudaoExchangeState = computed<WudaoExchangeState>(() =>
       evaluateWudaoExchange(major.value, wudaoExchangeToday.value, resources.spiritStone)
     )
-    /** 现在能不能再兑(境界到门 + 当日未兑满 + 灵石够) */
     const canExchangeWudao = computed(() => wudaoExchangeState.value.canExchange)
 
-    // ---------- Phase 31.1 机缘链 ----------
+    // ---------- 机缘链 ----------
     function setFortuneChoices(choices: Record<string, FortuneChoice>): void {
       fortuneChoices.value = choices
     }
 
     /**
-     * 暂停恢复:把按墙钟到期的状态顺延暂停时长。
-     *
-     * 暂停(重置 / 导入确认窗)期间心跳不结算,但这些时间戳仍按真实时钟走 ——
-     * 不顺延就会「确认窗背后自己散卦、区域事件自己过期、调息自己变就绪」。
-     * 与 `enginePause.gameNow()` 的冻结语义配套;持续时长的起点
-     * (suppressedSince / regionStats.lastUpdateAt)同样顺延,免得暂停吃掉
-     * 镇压复聚或世界记忆的计时。
+     * 暂停恢复:墙钟到期的时间戳与持续时长起点(suppressedSince / regionStats.lastUpdateAt)顺延暂停时长。
+     * 暂停(重置 / 导入确认窗)期间心跳不结算;与 `enginePause.gameNow()` 的冻结语义配套。
      */
     function shiftTimedState(pausedMs: number): void {
       if (!Number.isFinite(pausedMs) || pausedMs <= 0) return

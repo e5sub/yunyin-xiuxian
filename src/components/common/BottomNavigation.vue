@@ -27,7 +27,7 @@
   import GameIcon from './GameIcon.vue'
 
   const route = useRoute()
-  // 安卓三键导航的按钮高度(手势导航与非安卓平台为 0),与 env() 取大者垫在底下
+  // 安卓三键导航栏高度(手势导航与非安卓平台为 0),与 env() 取大者垫底
   const { bottom: navInset } = useNativeInsets()
 
   const TABS = [

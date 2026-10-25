@@ -40,7 +40,7 @@ describe('区域镇压系统', () => {
     const mult = prosperityYieldMult('flourish')
     const line = suppressRateLine(id, 'flourish')
     expect(line).toContain(`${formatGN(mulN(suppressRateFor(id)!.stonePerHour, mult))}灵石/时`)
-    // 灵草名带品阶前缀(「凡品灵草」),量词仍是「N/时」
+    // 灵草名带品阶前缀,量词「N/时」
     expect(line).toMatch(/ · \S*灵草\d+\/时$/)
   })
 
@@ -48,10 +48,6 @@ describe('区域镇压系统', () => {
     expect(suppressRateLine('not-a-region', 'chaos')).toBe('—')
   })
 
-  /**
-   * 地界物产:镇压收益不再只有灵石 —— 火域出矿、林区出草、天界以上出尘。
-   * 这样「镇守哪几片」才是一道取舍,而不是"挑层级最高的那几处"。
-   */
   describe('地界物产(灵石之外的次级产出)', () => {
     it('按地界气质给物产:林区出草、山地出矿、混沌之滨出尘', () => {
       expect(suppressYield('wanyao')?.id).toBe('herb') // 万妖林:forest
@@ -61,13 +57,13 @@ describe('区域镇压系统', () => {
     })
 
     it('层级越高,同一物产产出越丰(线性,不随灵石做指数)', () => {
-      // 同为林区(灵草):黑风林 tier 3 vs 迷雾沼泽 tier 9
+      // 同为林区:黑风林 tier 3 vs 迷雾沼泽 tier 9
       const low = suppressYield('heifeng')!
       const high = suppressYield('miwu')!
       expect(low.id).toBe('herb')
       expect(high.id).toBe('herb')
       expect(high.perHour).toBeGreaterThan(low.perHour)
-      // 线性口径:层级差 6,约多 6×15%
+      // 线性:层级差 6,约多 6×15%
       expect(high.perHour / low.perHour).toBeLessThan(1 + 0.15 * 8)
     })
 
@@ -83,7 +79,7 @@ describe('区域镇压系统', () => {
       expect(resources.herb, '林区镇压应产出灵草').toBeGreaterThan(before)
       const row = total!.resources.find(r => r.id === 'herb')
       expect(row, '产出清单应记下灵草').toBeDefined()
-      // 灵草已分品阶,清单必须写明品阶(否则压着神/道域也看不出囤的是哪一品)—— 品阶按该地界取
+      // 品阶按该地界取
       const grade = herbGradeOfMajor(regionDef('wanyao')!.minRealm)
       expect(row!.name, '产出清单的灵草要写明品阶,不能只写「灵草」').toBe(`${HERB_GRADE_SHORT[grade]}灵草`)
       expect(row!.grade, '行上应带着品阶').toBe(grade)
@@ -94,18 +90,13 @@ describe('区域镇压系统', () => {
       const y = suppressYield('wanyao')
       expect(y).not.toBeNull()
       if (y!.id === 'herb') {
-        // 品阶按该地界算;在线速率行与离线清单同一口径,都不能只有「灵草」二字
+        // 与离线清单同口径
         expect(y!.name, '产草率要带品阶').toContain('灵草')
         expect(y!.name, '产草率不能只写「灵草」').not.toBe('灵草')
         expect(y!.name).toContain(HERB_GRADE_SHORT[herbGradeOfMajor(regionDef('wanyao')!.minRealm)])
       }
     })
 
-    /**
-     * 比率体检:镇压产出对**时长**必须是线性的(层级线性上面已有用例)。
-     * 只看"有没有产出"看不出某处被 clamp 或按整点数取整 —— 六小时的产出
-     * 应当恰是两小时的三倍。
-     */
     it('时长线性:六小时产出恰是两小时的三倍(同一片地,不因取整走样)', () => {
       const player = usePlayerStore()
       player.suppressedRegions = ['wanyao']
@@ -116,7 +107,7 @@ describe('区域镇压系统', () => {
       const sixStone = toNum(six.stone)
       expect(twoStone).toBeGreaterThan(0)
       expect(sixStone / twoStone, `六小时 ${sixStone} vs 两小时 ${twoStone}`).toBeCloseTo(3, 6)
-      // 材料是整数取整,允许 ±1 的取整误差,但比值仍应在 3 附近
+      // 材料整数取整,允许 ±1 误差
       const twoHerb = two.resources.find(r => r.id === 'herb')?.amount ?? 0
       const sixHerb = six.resources.find(r => r.id === 'herb')?.amount ?? 0
       expect(twoHerb).toBeGreaterThan(0)
@@ -125,11 +116,7 @@ describe('区域镇压系统', () => {
     })
   })
 
-  /**
-   * 「镇压过就镇压过」(DEC-018):
-   * 取得资格是**一次性**的,此后收取收益只是一个开关 —— 停取不影响资格,
-   * 想切回来一键即可,不必重新打满二十场。收益可多处并存,历练一次只一处。
-   */
+  /** DEC-018:资格一次性取得,此后收益只是开关;收益可多处并存,历练一次只一处 */
   describe('镇压资格 · 收益自由开关', () => {
     it('停取收益不丢资格,可一键切回', () => {
       const player = usePlayerStore()
@@ -243,13 +230,8 @@ describe('区域镇压系统', () => {
 
   describe('settleSuppressedRegions', () => {
     /**
-     * 在线一秒一 tick 时,物产零头必须攒起来,不能每拍被取整吞掉。
-     *
-     * 病灶是纯算术:`perHour × (1/3600)` 恒小于 1,`Math.floor` 之后永远是 0 ——
-     * 在线压着林区挂一整天收不到一件草,离线一次结算同样时长却拿满,「在线收租」
-     * 这条玩法在物产上等于不存在。断言读的是**结算返回的物产**(不读库存),
-     * 免得响应的存档水合把读数抬起来、把旧病灶盖过去。故障注入:结算改回
-     * `Math.floor(yieldDef.perHour * hours * yieldMult)` → 本条红。
+     * 断言读结算返回值不读库存:存档水合会抬高库存读数,盖住问题。
+     * 故障注入:结算改成 `Math.floor(yieldDef.perHour * hours * yieldMult)`,本用例红。
      */
     it('在线每 tick 一秒:物产零头攒够就入账(不会被取整吞掉)', () => {
       const player = usePlayerStore()
@@ -257,7 +239,7 @@ describe('区域镇压系统', () => {
       player.suppressedRegions = ['wanyao'] // 万妖林:灵草 11/h
       player.suppressedSince = { wanyao: Date.now() }
 
-      // 逐 tick 一秒,把每次结算返回的灵草加总;零头攒在 store 里跨 tick 结转
+      // 零头存在 store 里跨 tick 结转
       let online = 0
       for (let i = 0; i < 3600; i++) {
         const tick = settleSuppressedRegions(1)
@@ -265,18 +247,10 @@ describe('区域镇压系统', () => {
       }
 
       expect(online, '在线长挂拿不到物产即是旧病灶').toBeGreaterThanOrEqual(10)
-      // 零头留在累积器里(0 ≤ 零头 < 1),不会凭空多算
       expect(player.suppressFrac['wanyao'] ?? 0).toBeGreaterThanOrEqual(0)
       expect(player.suppressFrac['wanyao'] ?? 0).toBeLessThan(1)
     })
 
-    /**
-     * 在线逐 tick 与离线一次折算必须落在**同一本账**上。
-     *
-     * 结算读的是同一份「每小时产出 × 时长 × 兴衰」,若在线逐 tick 每次都取整,
-     * 两者就会差出一整段的零头 —— 挂一小时在线与离线一次结算是同一件事,
-     * 分叉即说明有一边在丢零头。两条路各起一个干净的 pinia,只比结算产出。
-     */
     it('在线分段与离线一次折算等价:同样是 1 小时,入账株数一致', () => {
       const player = usePlayerStore()
       player.major = 5
@@ -316,10 +290,8 @@ describe('区域镇压系统', () => {
       const resources = useResourcesStore()
       const initialStone = { ...resources.spiritStone }
 
-      // 模拟 1 小时
       settleSuppressedRegions(3600)
 
-      // 应该有灵石增长
       expect(resources.spiritStone.m).toBeGreaterThan(initialStone.m)
     })
 
@@ -358,8 +330,7 @@ describe('区域镇压系统', () => {
       player.major = 5
       player.suppressedRegions = ['qingyun']
 
-      // 24h → equipChance = 0.4×24 = 9.6。旧实现 `random < 9.6` 恒真但只掉 1 件;
-      // 修复后 floor(9.6)=9 + 零头 60% 概率第 10 件。注入 0 → 零头必中,共 10 件
+      // 24h → equipChance 9.6:floor 9 件 + 零头 60% 概率第 10 件;注入 0 零头必中,共 10 件
       const total = settleSuppressedRegions(24 * 3600, new RandomService(() => 0))
 
       expect(total).not.toBeNull()
@@ -377,15 +348,11 @@ describe('区域镇压系统', () => {
 
       settleSuppressedRegions(3600)
 
-      // 灵石增长应该是两个区域的总和
       const gain = resources.spiritStone.m - initialStone.m
       expect(gain).toBeGreaterThan(0)
     })
 
-    /**
-     * 结算逐条遍历镇压表:同一位写两遍(坏档/重复导入)会产出两份灵石。
-     * 读档 sanitize 已去重,这里兜住内存里直接塞进来的重复,收益只该结一次。
-     */
+    /** 读档 sanitize 已去重;此处兜内存里的重复条目 */
     it('同一地界写两遍只结算一份收益', () => {
       const player = usePlayerStore()
       player.major = 3
@@ -400,14 +367,9 @@ describe('区域镇压系统', () => {
       p2.suppressedRegions = ['qingyun', 'qingyun']
       const dup = settleSuppressedRegions(3600)!
 
-      // 同一小时、同一地界:重复条目不该多出一份
       expect(dup.stone, '重复地界不该结算两份灵石').toEqual(singleStone)
     })
 
-    /**
-     * 镇守道韵:镇压不再只回灵石/物产/装备 —— 每镇压一区,一小时按挂机修速 +8%
-     * 折算修为(封顶 +40%,5 区满)。同源挂机曲线,故红利在任何境界都是挂机的固定加成。
-     */
     describe('镇守道韵(修为红利)与老区装备成长', () => {
       it('红利速率:每镇压一区 +8%,封顶 +40%', () => {
         expect(suppressionExpRate(0)).toBe(0)
@@ -448,10 +410,7 @@ describe('区域镇压系统', () => {
         expect(toNum(total!.expGain)).toBeCloseTo(cult * 0.16, 6)
       })
 
-      /**
-       * 故障注入:把结算里的 `suppressionEquipmentLuck(since, now)` 改回裸 ` luck: 0 }`,
-       * 长守区掉出的装备气运就不再随守时抬升 —— 本条按「生成器真的收到非零 luck」判。
-       */
+      /** 故障注入:把结算里的 `suppressionEquipmentLuck(since, now)` 改成 `luck: 0`,本用例红 */
       it('守满两天的镇压区,掉落装备带非零气运(与裸运气 0 分叉)', () => {
         vi.spyOn(equipGen, 'generateEquipment')
         const player = usePlayerStore()
@@ -467,15 +426,9 @@ describe('区域镇压系统', () => {
   })
 })
 
-/**
- * 镇压资格进度 —— 界面与判定共用一份阈值。
- *
- * 三判据(20 战 / 均≤3 回合 / 均受伤≤10%)从前只活在 checkSuppression 内部:
- * 玩家打够了场数却压不住时,界面给不出「你到底差在哪一项」。
- */
+/** 镇压资格进度:界面与判定共用一份阈值(20 战 / 均≤3 回合 / 均受伤≤10%) */
 describe('镇压资格进度', () => {
-  // 本文件顶层的 beforeEach 只覆盖上面那个 describe;新块必须自己起一份干净的 pinia,
-  // 否则会接着上一个用例的 store 跑(镇压表/战绩都还留着),断言能过也能假过
+  // 顶层 beforeEach 只覆盖上一个 describe,本块须自建 pinia,否则沿用上个用例的 store
   beforeEach(() => {
     setActivePinia(createPinia())
   })
@@ -525,18 +478,13 @@ describe('镇压资格进度', () => {
   })
 })
 
-/**
- * 镇压速率单一真相源 —— 界面显示的数就是真正入账的数。
- *
- * 历练页从前自己写死 stoneByTier(tier, 150) 并注释「= SUPPRESS_YIELD_PER_HOUR.stoneMultiplier」:
- * 只改 suppress.ts 的倍率时界面照旧显示旧值。此处锁死「界面速率 × 兴衰系数 = 一小时真实入账」。
- */
+/** 界面速率 × 兴衰系数 = 一小时真实入账 */
 describe('镇压速率:显示与结算同源', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
   })
 
-  /** 照 AdventureView.rateText 的算法算出界面上的每小时灵石 */
+  /** 照 AdventureView.rateText 的算法算界面每小时灵石 */
   function uiStonePerHour(regionId: string): number {
     const rate = suppressRateFor(regionId)!
     return toNum(rate.stonePerHour) * prosperityYieldMult(regionRecallFor(regionId).prosperity)
@@ -573,11 +521,8 @@ describe('镇压速率:显示与结算同源', () => {
   })
 
   /**
-   * 结算与界面必须读同一份胜场。
-   *
-   * 界面(`regionRecallFor`)已改读净胜场 `regionWins`,若结算仍读连败仗也算的
-   * `regionStats.totalFights`,同一地界会出现「界面上写着混乱、入账却按繁盛 110%」:
-   * 玩家按显示的速率算账,永远对不上。故障注入:把这里改回 totalFights → 红。
+   * 结算与界面(regionRecallFor)须读同一份胜场 regionWins,不读 regionStats.totalFights。
+   * 故障注入:结算改读 totalFights,本用例红。
    */
   it('连输五十场、刚镇压不到 6 小时:界面混乱,入账也按混乱,不白给繁盛', () => {
     const player = usePlayerStore()
@@ -598,19 +543,15 @@ describe('镇压速率:显示与结算同源', () => {
   })
 
   /**
-   * 倒计时与「已守多久」必须跟着秒走。
-   *
-   * 这两处读的都是墙钟,而所在 computed 只依赖 player 的少数字段 —— 停在历练页
-   * 不动时不会重算,倒计时会冻在进页那一刻。故障注入:把 now.value 改回
-   * `Date.now()` → 本条红(读数再次失去每秒推进的来源)。
+   * 直接读 Date.now() 时所在 computed 不重算,读数冻结。
+   * 故障注入:把 now.value 改成 `Date.now()`,本用例红。
    */
   it('历练页的镇压倒计时与已守时长读每秒推进的 now,不直接调 Date.now()', () => {
-    // 计时两列随地界卡迁走:判据随本体走,读卡片而不是页面
+    // 计时两列在地界卡里
     const card = readFileSync(resolve(__dirname, '../components/adventure/RegionCard.vue'), 'utf8')
     expect(card, '要有一枚每秒推进的读数').toContain('const now = useNow()')
     expect(card, '复聚倒计时读 now.value').toContain('now.value')
-    // 钉住实参:查「调了 hoursUntilRevive」的话,把读秒换回 Date.now() 也照样绿;
-    // 只查 now.value 又看不出喂进去的是哪一份钟 —— 两份都要钉
+    // 实参两份都钉:只查调用或只查 now.value 都会假绿
     expect(card, '复聚倒计时读同一份剩余小时').toContain(
       'hoursUntilRevive(regionReviveClock(props.row.def.id), now.value)'
     )
@@ -620,13 +561,7 @@ describe('镇压速率:显示与结算同源', () => {
     expect(card, '已守时长也读同一读数').toContain('(now.value - since) / 3_600_000')
   })
 
-  /**
-   * 兴衰章与产出速率也必须跟同一枚游戏钟走。
-   *
-   * 这两处此前读 `row.recall`(区域大表进页时算好的静态快照):停在历练页
-   * 守满 6 / 24 小时不会翻档。故障注入:把卡片改回 `props.row.recall` 或
-   * `regionRecallFor(props.row.def.id)`(无 now 实参) → 本条红。
-   */
+  /** 故障注入:卡片改读 `props.row.recall` 或 `regionRecallFor(props.row.def.id)`(无 now 实参),本用例红 */
   it('兴衰章与镇压速率按 now 就地重算,不读区域大表的静态快照', () => {
     const card = readFileSync(resolve(__dirname, '../components/adventure/RegionCard.vue'), 'utf8')
     expect(card, '兴衰要由卡片就地派生').toContain('const recall = computed(() => regionRecallFor(props.row.def.id, now.value))')
@@ -639,13 +574,8 @@ describe('镇压速率:显示与结算同源', () => {
   })
 
   /**
-   * 每秒一跳的读数不该拖着整张区域表重算。
-   *
-   * `regionRows` 为每处地界跑 `regionEcology` / `detectionAdaptation` /
-   * `suppressionProgress`,只依赖「构筑 × 区域」。复聚倒计时一旦写在这个
-   * computed 里,`now` 每秒一跳就让它整表重算四十余遍 —— 页面停着不动也在
-   * 白烧 CPU。判据:大表里不出现 `now`;倒计时改由 `reviveNow` 就地读秒。
-   * 故障注入:把 `reviveInHours` 放回 regionRows → 本条红。
+   * regionRows 只依赖「构筑 × 区域」,读 now 会每秒整表重算。
+   * 故障注入:把 `reviveInHours` 放回 regionRows,本用例红。
    */
   it('复聚倒计时不写进 regionRows 大表,只让那一格跟秒走', () => {
     const rows = readFileSync(resolve(__dirname, '../composables/useRegionRows.ts'), 'utf8')
@@ -662,13 +592,8 @@ describe('镇压速率:显示与结算同源', () => {
   })
 
   /**
-   * 「妖气复聚」是落盘的世界状态,不是镇压到点的临时读数。
-   *
-   * `adventure.revived` 由 core/regionRevival 写入并存档;界面若拿
-   * `isReviving(suppressedSince)` 现算,两件事就被混成一件 —— 复聚只在结算
-   * 那一瞬的 toast 里露过面,之后再进历练页,地界既没有「妖气复聚」章、
-   * 也不说「再历一程即可复靖」,玩家看不出旧主已经回来了。
-   * 故障注入:把 `adventure.revived.includes` 改回 `isReviving(...)` → 本条红。
+   * `adventure.revived` 由 core/regionRevival 写入并存档。
+   * 故障注入:把 `adventure.revived.includes` 改成 `isReviving(...)`,本用例红。
    */
   it('历练页的「妖气复聚」读落盘状态 adventure.revived,不拿镇压到期现算', () => {
     const rows = readFileSync(resolve(__dirname, '../composables/useRegionRows.ts'), 'utf8')
@@ -693,10 +618,8 @@ describe('镇压复苏 · settle 级(72h 复生当拍不产石)', () => {
     player.suppressedSince = { qingyun: Date.now() - 73 * HOUR }
     const before = { ...resources.spiritStone }
     const total = settleSuppressedRegions(3600, new RandomService(() => 0.1))
-    // 复生:移出镇压表、since 清掉
     expect(player.suppressedRegions).not.toContain('qingyun')
     expect(player.suppressedSince['qingyun'], '复生后 since 应被删').toBeUndefined()
-    // 复生当拍不产一石:镇压早在 72 小时前就到期,这一小时的租一分不该收
     expect(resources.spiritStone).toEqual(before)
     expect(toNum(total?.stone ?? gnZero()), '越界那一拍没收着租').toBe(0)
     expect(toNum(total?.expGain ?? gnZero()), '道韵也不该为已复聚的地界结算').toBe(0)
@@ -726,15 +649,7 @@ describe('镇压复苏 · settle 级(72h 复生当拍不产石)', () => {
     expect(player.suppressedRegions).toContain('cangwu')
   })
 
-  /**
-   * 离线整段跨越复聚线:前 72 小时照收,72 小时起回到历练地。
-   *
-   * 回归点:复聚从前排在收益之前、且与收益共用一个墙钟。离线 80 小时、洞府
-   * 满级(cap 72h)时,复聚在**开头**就被判真,镇压当场松开,本该拿到的 72 小时
-   * 镇压收益一分不剩 —— 归来卷轴上连「镇压诸域仍有余韵」那一行都不出现。
-   *
-   * 现在收益按 dt 结、复聚按 worldAt 判,且收益逐区只结到复聚那一刻为止。
-   */
+  /** 收益按 dt 结、复聚按 worldAt 判,收益逐区只结到复聚那一刻;复聚若先判会吞掉整段收益 */
   it('离线 80 小时跨过复聚线:仍结满 72 小时的租,镇压随之松开', () => {
     const T0 = Date.now() - 80 * HOUR
     const player = usePlayerStore()
@@ -742,7 +657,7 @@ describe('镇压复苏 · settle 级(72h 复生当拍不产石)', () => {
     player.suppressedRegions = ['qingyun']
     player.suppressedSince = { qingyun: T0 }
 
-    // dt = 72h(洞府满级的离线上限),worldAt = 真实的此刻(80 小时后)
+    // dt = 72h(洞府满级的离线上限),worldAt = 80 小时后
     const total = settleSuppressedRegions(72 * 3600, new RandomService(() => 0.1), T0 + 80 * HOUR)
     expect(toNum(total?.stone ?? gnZero()), '72 小时的租要一分不少').toBeGreaterThan(0)
     expect(player.suppressedRegions, '跨过复聚线就该松开').not.toContain('qingyun')
@@ -760,8 +675,7 @@ describe('镇压复苏 · settle 级(72h 复生当拍不产石)', () => {
   })
 
   it('一段正好跨在复聚线上:只结到复聚那一刻,不收越界的那一截', () => {
-    // 镇压起于 T0,第 72 小时复聚。本段从第 71 小时跑到第 74 小时(3 小时),
-    // 于是只该收 1 小时(71→72),后 2 小时已回到历练地。
+    // 本段为第 71→74 小时,第 72 小时复聚:只收 71→72 那 1 小时
     const T0 = Date.now() - 74 * HOUR
     const player = usePlayerStore()
     player.major = 5
@@ -770,7 +684,7 @@ describe('镇压复苏 · settle 级(72h 复生当拍不产石)', () => {
     const full = settleSuppressedRegions(3 * 3600, new RandomService(() => 0.1), T0 + 74 * HOUR)
     const fullStone = toNum(full?.stone ?? gnZero())
 
-    // 正对照:同样 3 小时但整段都在镇压期内(起于第 10 小时)
+    // 正对照:同样 3 小时,整段在镇压期内
     setActivePinia(createPinia())
     const T1 = Date.now() - 13 * HOUR
     const player2 = usePlayerStore()
@@ -780,7 +694,6 @@ describe('镇压复苏 · settle 级(72h 复生当拍不产石)', () => {
     const whole = settleSuppressedRegions(3 * 3600, new RandomService(() => 0.1), T1 + 13 * HOUR)
     const wholeStone = toNum(whole?.stone ?? gnZero())
 
-    // 1 小时的租约为 3 小时的三分之一;越界的那两小时一分不多收
     expect(fullStone, '跨线那一段只结到复聚时刻').toBeGreaterThan(0)
     expect(fullStone, '不收越界的那一截').toBeLessThan(wholeStone)
     expect(fullStone).toBeCloseTo(wholeStone / 3, -3)

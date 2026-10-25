@@ -27,7 +27,6 @@
         <p class="mt-1 text-[10px] text-ink-faint tabular">{{ note.date }}</p>
 
         <div v-show="openVersions[note.version]">
-          <!-- 实改点:一、二、三…逐条点账;细则未展开时连开篇一并收起 -->
           <div class="mt-2 space-y-2">
             <p v-for="(line, i) in note.intro" :key="i" class="text-ink-soft">{{ line }}</p>
           </div>
@@ -69,7 +68,7 @@
     close: []
   }>()
 
-  /** 各版本细则是展开还是收起:默认只摊开最近一版(RELEASE_NOTES 新在前),远的收起,想看再点开 */
+  /** 细则展开态:默认只展开最近一版(RELEASE_NOTES 新在前) */
   const openVersions = ref<Record<string, boolean>>(
     Object.fromEntries(RELEASE_NOTES.map((n, i) => [n.version, i === 0]))
   )

@@ -1,7 +1,5 @@
 <template>
-  <!-- Phase 28 闭关:5 分钟 +150% 修炼,期间禁止历练(数值唯一来源 = buffs.ts retreat + earlyGameService) -->
   <div class="card-ink flex items-start gap-3 px-4 py-3" :class="retreating ? 'bg-amber-ink/6' : ''">
-    <!-- 静修印:与全页印章同一块语言;闭关中转为琥珀并在原地呼吸,静而有觉 -->
     <span
       class="grid h-9 w-9 shrink-0 place-items-center rounded-md font-kai text-[15px]"
       :class="retreating ? 'animate-breathe bg-amber-ink/15 text-amber-ink' : 'bg-jade/15 text-jade'"
@@ -37,10 +35,8 @@
   import { useNow } from '@/composables/useNow'
 
   /**
-   * 闭关卡 —— 自 CultivationView 迁入(沿用 xian 的同名拆法)。
-   *
-   * 状态与倒计时接 earlyGameService(buff 为真相源,重载后依旧可信);
-   * 时长与加成取自 buffs.ts 的 retreat 本体,文案里的数字不在视图手抄。
+   * 状态与倒计时接 earlyGameService(buff 为真相源)。
+   * 时长与加成取自 buffs.ts 的 retreat 本体,文案数字不手抄。
    */
   const ui = useUiStore()
   const now = useNow()
@@ -56,9 +52,8 @@
    * 「将近一刻(5 分钟)」,既守数据又仍给玩家一个现代读数。
    */
   const retreatSpan = classicalDuration(retreatDef?.durationSec ?? 0)
-  /** 闭关「约多得」修为预览 —— 由 progress.retreatGainText 与 buff 本体同源算出;境界涨了跟着重算 */
   const retreatGain = computed(() => retreatGainText())
-  /** 闭关中的「已多得」活数 —— 已走时长由 retreatRemaining 反推,速率与预览同一份 */
+  /** 「已多得」:速率与预览同一份 */
   const retreatSoFarGain = computed(() => {
     if (!retreating.value) return ''
     const dur = retreatDef?.durationSec ?? 0

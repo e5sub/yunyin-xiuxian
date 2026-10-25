@@ -128,12 +128,12 @@ describe('辅修槽位预算 · 成路于(和 gongfaMods 同一把尺)', () => {
     dongfu.setLevel('library', 0)
     expect(dongfu.subGongfaSlots).toBe(1)
     cultivation.learned = { s_budong: 1, s_xianguang: 1 }
-    // 两个都带罡盾核心词条的辅修;第二个超出预算 —— gongfaMods 只 slice 到第一个
+    // 两个辅修都带罡盾核心词条;gongfaMods 只 slice 到第一个
     cultivation.subGongfa = ['s_budong', 's_xianguang']
     const gangdun = BUILD_STYLES.find(s => s.id === 'gangdun')!
     const names = buildSources(gangdun)
-    expect(names).toContain('《不动如山章》') // 预算内的真算成路
-    expect(names).not.toContain('《仙光护体诀》') // 超预算的不算,别把没在账上词条当来路
+    expect(names).toContain('《不动如山章》')
+    expect(names).not.toContain('《仙光护体诀》')
   })
 
   it('分支选择保留但未满级/未装配时,不把满级分支算成来路', () => {

@@ -20,9 +20,7 @@ const STAT_PERSONALITY_KEYS = ['atkMult', 'defMult', 'hpMult'] as const
 describe('Boss 机制家族 · 数据结构', () => {
   it('键与类型联合一一对应:无缺无余、无重复(round-trip)', () => {
     const keys = Object.keys(ARCHETYPES) as BossArchetype[]
-    // 不重复
     expect(new Set(keys).size).toBe(keys.length)
-    // 恰好覆盖全部 8 个(多一个指出 type 没合并进来,少一个指出数据漏了)
     expect([...keys].sort()).toEqual([...EXPECTED_ARCHETYPES].sort())
   })
 

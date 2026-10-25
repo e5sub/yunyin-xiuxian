@@ -1,13 +1,6 @@
 name: 历史线性校验
 
-# 线性历史护栏(可见层)。真正的权威闸门是分支保护/规则集里的
-# 「Require a linear history」(合并那一刻在远端拦下 merge 节点),
-# 此 Action 无法完全替代它 —— 合并前检查看不到合并时生成的节点。
-# 本文件只做两件能在 PR 期就发现的事:
-#   1) PR 自身提交范围内不许出现 merge 提交(拒绝「Merge main into …」式同步);
-#   2) base 必须是 head 的祖先(即分支没落后/分叉于主干,可 fast-forward 合并)。
-# 政策收紧说明:此前 commit-lint 以 --no-merges 容忍分支内 merge 提交,
-# 本检查从此将「Merge main」同步提交判为失败,请一律用 rebase 同步主干。
+# 线性历史护栏(可见层)。权威闸门是规则集的「Require a linear history」:合并前检查看不到合并时生成的节点
 on:
   pull_request:
     branches: [main]
@@ -17,14 +10,14 @@ permissions:
 
 jobs:
   history-linear:
-    # 以作业名展示的状态检查名
+    # 作业名即状态检查名
     name: 历史线性校验
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
-          # 需要拉全量历史才能算 base..head 的 merge 提交与祖先关系
+          # base..head 的 merge 提交与祖先关系需全量历史
           fetch-depth: 0
       - name: 校验 PR 内无 merge 提交
         run: |

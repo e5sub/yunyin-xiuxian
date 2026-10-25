@@ -1,4 +1,4 @@
-/* eslint-disable no-console -- 模拟器体检报告的正式输出(bun run test:report 依赖) */
+/* eslint-disable no-console -- 体检报告输出(test:report 依赖) */
 import { describe, expect, it } from 'vitest'
 import { BUILD_PROFILES, ENEMY_ARCHETYPES, fullMatrix, tribulationSurvives, tribulationSolvableKinds, type MatrixRow } from './buildSim'
 
@@ -46,7 +46,7 @@ describe('流派对战审计(Phase 16)', () => {
   })
 
   it('克制关系成立:破盾斩杀墙前,高防之盾仍优于纯奶', () => {
-    // 高爆发墙携带真伤后,护盾被无视——罡盾靠高防仍优于沐泽的纯回复
+    // 高爆发墙携带真伤,护盾被无视,罡盾靠高防
     expect(cell(rows, 'gangdun', 'burst')).toBeGreaterThan(cell(rows, 'muze', 'burst') + 0.05)
   })
 
@@ -74,31 +74,26 @@ describe('流派对战审计(Phase 16)', () => {
   })
 
   it('真伤是护盾体系的天敌', () => {
-    // 罡盾对真伤的表现应显著差于其自身最擅长的场景
     const gangdun = rows.find(r => r.build.id === 'gangdun')!
     const best = Math.max(...ENEMY_ARCHETYPES.map(a => gangdun.cells[a.id]!.winRate))
     expect(best - cell(rows, 'gangdun', 'pierce')).toBeGreaterThan(0.12)
   })
 
   it('天劫存活分化:护持路数天时窗口更宽,纯攻流须择时而渡', () => {
-    // Phase 32.1:天劫已类型化,分化不再是"能不能渡",而是"能渡哪几种劫"。
-    // 纯攻流不是被堵死,而是要挑劫型——"今天渡不渡"由此成为真实决策。
     const kinds = (id: string, m: number): string[] => tribulationSolvableKinds(BUILD_PROFILES.find(b => b.id === id)!, m)
 
-    // 首劫:任何流派都得有至少一个窗口,否则天劫成了硬墙
     for (const b of BUILD_PROFILES) {
       const ks = tribulationSolvableKinds(b, 1)
       console.log(`  ${b.name}:首劫可渡 ${ks.length}/5 [${ks.join('、')}]`)
       expect(ks.length, `${b.name}:首劫无劫可渡,天劫成了硬墙而非决策`).toBeGreaterThan(0)
     }
-    // 护持路数的窗口应宽于纯攻流
     expect(kinds('gangdun', 1).length).toBeGreaterThan(kinds('fengmang', 1).length)
 
-    // 金丹劫开始收窄:罡盾仍有多个窗口,纯攻流则须借丹药外力
+    // 金丹劫:纯攻流须借丹药外力
     expect(kinds('gangdun', 2).length).toBeGreaterThanOrEqual(3)
     expect(kinds('lianji', 2).length).toBe(0)
     expect(kinds('fengmang', 2).length).toBe(0)
-    // 严格口径(不挑天时也稳过)只有护持路数在首劫做得到
+    // 严格口径(不挑天时也稳过):首劫只有护持路数做得到
     expect(tribulationSurvives(BUILD_PROFILES.find(b => b.id === 'gangdun')!, 1)).toBe(true)
     expect(tribulationSurvives(BUILD_PROFILES.find(b => b.id === 'fengmang')!, 1)).toBe(false)
   })

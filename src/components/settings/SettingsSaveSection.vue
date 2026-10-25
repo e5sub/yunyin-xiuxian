@@ -1,5 +1,4 @@
 <template>
-  <!-- 存档:版本 / 备份 / 写盘失败 / 坏档 / 导出导入 / 重置 -->
   <div class="card-ink space-y-2 px-4 py-3">
     <p class="text-[11px] text-ink-faint tabular">
       存档版本 v{{ SAVE_VERSION }} · 修行时长 {{ formatDuration(game.totalPlaySec) }}
@@ -35,7 +34,7 @@
     <div class="grid grid-cols-2 gap-2">
       <button class="btn-ghost !text-[12px]" @click="onExport">导出存档</button>
       <button class="btn-ghost !text-[12px]" @click="triggerImport">导入存档</button>
-      <!-- 安卓 MIME 表通常不认 .save;放行通用文件类型与扩展名,安全边界仍由 importSaveText 校验 -->
+      <!-- 安卓 MIME 表通常不认 .save:须放行通用文件类型与扩展名,安全边界由 importSaveText 校验 -->
       <input ref="fileInput" type="file" accept="application/octet-stream,.save" class="hidden" @change="onFilePicked" />
     </div>
     <button class="btn-ghost w-full !border-cinnabar/40 !text-[12px] !text-cinnabar" @click="openReset">
@@ -110,37 +109,33 @@
   const game = useGameStore()
   const ui = useUiStore()
 
-  /** 写盘失败状态:进页面先读一次,之后随订阅翻转 */
   const saveFailed = ref(saveWriteFailure() !== null)
-  /** 被隔离的分片(启动时 preflightScan 记下的那份) */
+  /** 被隔离的分片(启动时 preflightScan 记下) */
   const corruptedNotice = computed<string[]>(() => ui.corruptedNotice)
 
-  /**
-   * 备份那一行用的「现在」。进页面取一次即可 —— 这一页不是秒表,而每渲染一次就算一次
-   * Date.now() 反而会让 computed 不稳定。跨天挂着不动属于可接受的误差(重进页面即刷新)。
-   */
+  /** 进页面取一次:computed 里读 Date.now() 不稳定;跨天误差可接受(重进即刷新) */
   const now = ref(Date.now())
   const lastExportText = computed(() => formatLastExport(settings.lastExportAt, now.value))
-  /** 该不该说出「建议导出一份」(备份旧了 + 这一档攒够了天数,见 core/saveBackup.ts) */
+  /** 备份旧了且本档攒够天数时标琥珀(见 core/saveBackup.ts) */
   const backupPrompt = computed(() => shouldPromptBackup(settings.lastExportAt, game.createdAt, now.value))
 
   const resetConfirm = ref(false)
-  /** 导入二步确认:选完文件只读进内存,等玩家点头才真正覆盖(与「散尽修为」同级破坏) */
+  /** 导入二步确认:选完文件只读进内存,确认后才覆盖(与「清空存档」同级破坏) */
   const importConfirm = ref(false)
   const importText = ref<string | null>(null)
   const importName = ref('')
-  /** 这份待导入备份的身份与版本(确认前摊开):是谁的档、什么版本、何时导出、是否高于当前 */
+  /** 待导入备份的身份与版本,确认前摊开 */
   const importInspect = ref<ReturnType<typeof inspectImportText> | null>(null)
   const fileInput = ref<HTMLInputElement | null>(null)
   let saveRead: SaveFileReadHandle | null = null
-  /** 离页后文件读取可能才完成;不能再暂停引擎,也不能写已销毁组件的状态 */
+  /** 离页后读取可能才完成:不得再暂停引擎或写已销毁组件的状态 */
   let unmounted = false
 
   const unsubscribeSaveFailure = subscribeSaveWriteFailure(failure => {
     saveFailed.value = failure !== null
   })
 
-  // 弹窗开着就离开页面时兜底恢复
+  // 弹窗开着就离页时兜底恢复引擎
   onUnmounted(() => {
     unmounted = true
     unsubscribeSaveFailure()
@@ -149,11 +144,9 @@
     if (resetConfirm.value || importConfirm.value) engine.resume()
   })
 
-  /** 导出存档:Web/Electron 走浏览器下载,Android 走系统保存面板(见 savePlatform) */
+  /** Web/Electron 走浏览器下载,Android 走系统保存面板(见 savePlatform) */
   function onExport(): void {
-    // 两个平台各自会 toast 结果;这里再兜一层,免得异常冒成未捕获的 Promise。
-    // 只有真的落盘了才记账(返回 null 即成功)—— 没导出成功却把时间戳往前推,
-    // 等于用一行「今天」把玩家骗过去,那比不提醒更糟。
+    // 平台各自 toast 结果,此处只兜未捕获异常;返回 null 即已落盘,落盘才记时间戳
     void exportSaveToDevice()
       .then(err => {
         if (!err) settings.lastExportAt = Date.now()
@@ -221,7 +214,7 @@
     importText.value = null
     importName.value = ''
     if (text === null) return
-    // 先暂停引擎,防止 Pinia persist 插件在导入后覆盖数据
+    // 须先暂停引擎:防 persist 插件在导入后覆盖数据
     engine.pause()
     const err = importSaveText(text)
     if (err) {

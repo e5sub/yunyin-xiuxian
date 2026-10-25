@@ -16,25 +16,25 @@ export const useGameStore = defineStore(
     const lastActiveAt = ref(0)
     const totalPlaySec = ref(0)
 
-    // ---- 建号草稿(持久化:否则刷新页面就是一次免费重掷) ----
+    // ---- 建号草稿(持久化,刷新不重掷) ----
     /**
-     * 剩余「逆天改命」次数;null = 不限次(当前建号政策,见 CREATE_REROLL_QUOTA)。
-     * 保留数字形态是为了将来收紧次数时不必再动存档结构。
+     * 剩余「逆天改命」次数;null = 不限次(见 CREATE_REROLL_QUOTA)。
+     * 保留数字形态:收紧次数时不改存档结构。
      */
     const createRerolls = ref<number | null>(CREATE_REROLL_QUOTA)
-    /** 当前摆在建号页上的那副牌;null 表示尚未开掷 */
+    /** 建号页当前灵根;null = 尚未开掷 */
     const createProfile = ref<LinggenProfile | null>(null)
-    /** 建号草稿 · 道号:刷新页面不丢手打的字(与灵根草稿同一条「别丢我输入」的承诺) */
+    /** 建号草稿 · 道号 */
     const createName = ref('')
 
     /** 存档修复:时间戳/时长被写坏会让离线结算与展示算出 NaN */
     function sanitize(): void {
-      // 只认严格布尔真:坏档里的字符串 "false"/"yes" 会绕过开局守卫并触发离线结算
+      // 只认严格 true:字符串 "false" 会绕过开局守卫并触发离线结算
       started.value = started.value === true
       createdAt.value = asFiniteNumber(createdAt.value, 0, 0)
       lastActiveAt.value = asFiniteNumber(lastActiveAt.value, 0, 0)
       totalPlaySec.value = asFiniteNumber(totalPlaySec.value, 0, 0)
-      // 不限次时,旧存档里遗留的数字额度(如 8→0)一律归位;有限次数则取整并夹在 [0, 上限]
+      // 不限次时旧档遗留的数字额度一律归位
       createRerolls.value =
         CREATE_REROLL_QUOTA === null
           ? null
@@ -42,20 +42,19 @@ export const useGameStore = defineStore(
               CREATE_REROLL_QUOTA,
               Math.max(0, Math.floor(asFiniteNumber(createRerolls.value, CREATE_REROLL_QUOTA, 0)))
             )
-      // 建号草稿同样会被建号页裸下标读取(ELEMENTS[root.element] / growthMult.toFixed):
-      // 认不出的元素或坏倍率会让建号页白屏,故整份过形状修复,一根灵根都不剩即作废重掷
+      // 建号页裸下标读 ELEMENTS[root.element] / growthMult.toFixed,坏草稿会白屏;一根灵根不剩即作废
       createProfile.value = sanitizeLinggen(createProfile.value)
       createName.value = typeof createName.value === 'string' ? createName.value.slice(0, 8) : ''
     }
 
-    /** 记下当前掷出的灵根(不扣次数,扣次数由 spendCreateReroll 负责) */
+    /** 记下当前掷出的灵根(不扣次数,见 spendCreateReroll) */
     function setCreateProfile(profile: LinggenProfile): void {
-      // 建号页会裸下标读取元素与倍率:写入口和读档修形必须是同一把尺
+      // 与读档修形同尺
       const fixed = sanitizeLinggen(profile)
       if (fixed) createProfile.value = fixed
     }
 
-    /** 花掉一次重掷额度;不限次(null)或还有余量时返回 true,额度耗尽返回 false */
+    /** 花掉一次重掷额度;耗尽返回 false */
     function spendCreateReroll(): boolean {
       if (createRerolls.value === null) return true
       if (createRerolls.value <= 0) return false
@@ -63,14 +62,13 @@ export const useGameStore = defineStore(
       return true
     }
 
-    /** 新的一世:上一世的建号草稿作废,重掷额度归满 */
+    /** 新的一世:建号草稿作废,额度归满 */
     function resetCreateDraft(): void {
       createRerolls.value = CREATE_REROLL_QUOTA
       createProfile.value = null
       createName.value = ''
     }
 
-    /** 记下当前手打的道号(随草稿持久化,刷新不丢) */
     function setCreateName(name: string): void {
       if (typeof name !== 'string') return
       createName.value = name.slice(0, 8)
@@ -83,7 +81,7 @@ export const useGameStore = defineStore(
     }
 
     function stampActive(now: number): void {
-      // 最后活跃时刻参与离线结算:坏时钟会让收益算成 NaN,坏调用直接丢弃
+      // 参与离线结算:坏时钟丢弃,否则收益算成 NaN
       if (!Number.isFinite(now) || now < 0) return
       lastActiveAt.value = now
     }

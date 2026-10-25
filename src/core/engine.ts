@@ -1,7 +1,4 @@
-/**
- * GameEngine —— 游戏心跳
- * 所有推进均基于时间戳差值,切后台/休眠/关闭均不丢进度
- */
+/** GameEngine 游戏心跳:推进均基于时间戳差值,切后台/休眠/关闭不丢进度 */
 import { gn, mulN } from '@/utils/gnum'
 import { ACTIVE_STAMP_MS, AGE_YEARS_PER_HOUR, OFFLINE_MIN_SECONDS, TICK_MS } from '@/data/constants'
 import { buffDef } from '@/data/buffs'
@@ -36,26 +33,23 @@ class GameEngine {
     const game = useGameStore()
     try {
       sanitizeOfflineInputs()
-      // 旧存档补种:把过去凭丹炉等级"能炼"的方子折算成掌握度(幂等)
+      // 旧存档补种:丹炉等级"能炼"的方子折算成掌握度(幂等)
       if (game.started) seedLoreIfNeeded()
-      // 先翻日再结算离线:跨午夜归来时,离线收益记入"归来之日"的日课,
-      // 而不是先攒进昨日 delta(可能顺手领走昨日未领奖励)再被 rollover 重置
+      // 先翻日再结算离线:跨午夜的离线收益记入"归来之日"的日课
       rolloverDailyIfNeeded()
       if (game.started && game.lastActiveAt > 0) {
         settleOffline(now)
       }
-      // 离线结算只加寿元、不判生死:这里补一道死亡判定 —— 跨离线寿元耗尽当场拉闸,
-      // 角色从此进入死亡态,不再推进
+      // 离线结算只加寿元、不判生死,死亡判定在此补
       if (game.started) {
         this.checkDeath()
-        // 读档若是已死之身(大限处停机 / 离线跨寿元),必须重新亮出轮回入口:
-        // ui.deathDialog 非持久化,不重开则低境界(无法手动转世)被软锁在原地
+        // 已死存档须重开轮回入口:ui.deathDialog 不持久化,不重开则低境界软锁
         if (usePlayerStore().dead) {
           this.deathAnnounced = true
           useUiStore().deathDialog = true
         }
       }
-      // 加载即补扫成就:老档/导入档纵使从未 track 过,已满足的成就当场解锁
+      // 补扫成就:老档/导入档未 track 过的已满足成就当场解锁
       if (game.started) checkStateAchievements()
     } catch (err) {
       console.error('[引擎] 离线结算异常', err)
@@ -84,8 +78,7 @@ class GameEngine {
     const game = useGameStore()
     if (document.visibilityState === 'hidden') {
       if (!enginePaused.value) game.stampActive(Date.now())
-      // 盖完时间戳再刷盘。storage 模块也监听了 visibilitychange,但它注册得更早,
-      // 先跑完就轮到这里盖章,那一次盖章会留在待刷队列里没人写
+      // 盖章后须自行刷盘:storage 的 visibilitychange 监听注册更早、先于此处跑完,这次盖章会留在待刷队列
       flushSaveWrites()
     } else {
       this.tickSafe()
@@ -109,7 +102,6 @@ class GameEngine {
     const game = useGameStore()
     const now = Date.now()
     if (enginePaused.value) {
-      // 暂停期间只推平时间基准,不结算、不写档
       this.lastTickAt = now
       return
     }
@@ -121,11 +113,9 @@ class GameEngine {
     if (dt <= 0) return
 
     if (dt > OFFLINE_MIN_SECONDS) {
-      // 长时间停摆(休眠/后台冻结):走离线结算。与 start 同理,先翻日再结算,
-      // 冻结跨午夜恢复时离线收益归"归来之日"
+      // 长时间停摆(休眠/后台冻结)走离线结算;先翻日再结算,同 start
       rolloverDailyIfNeeded()
       settleOffline(now)
-      // 与 start 同:离线结算只加寿元、不判生死,这里补死亡判定
       this.checkDeath()
     } else {
       this.advance(dt, now)
@@ -146,16 +136,11 @@ class GameEngine {
     const cultivation = useCultivationStore()
 
     if (!player.dead) {
-      // 天时已并入 finalStats.mods(player store),修炼/灵气/战斗/掉落/渡劫全链路生效,
-      // 这里不再手动乘 weatherCult/weatherQi,否则与 mods 中的天时重复叠加
-      // 修为增长
+      // 天时已并入 finalStats.mods,此处再乘 weatherCult/weatherQi 会重复叠加
       player.gainExp(mulN(gn(player.cultPerSec), dt))
-      // 灵气恢复
       resources.setQi(resources.qi + player.qiRegenPerSec * dt, player.qiCapValue)
-      // 建筑产出
       dongfu.produce(dt)
-      // Buff 过期:先记下本次要过期的(否则 prune 后无从得知),到期即一次性提示,
-      // 免得玩家人在别页(主页/历练/坊市)时修速无声回落、还找不到原因
+      // 到期 Buff 须在 prune 前记下,prune 后无从得知
       const expiring = cultivation.buffs.filter(b => b.endsAt <= now)
       if (expiring.length > 0) {
         cultivation.pruneBuffs(now)
@@ -164,15 +149,10 @@ class GameEngine {
       } else {
         cultivation.pruneBuffs(now)
       }
-      // 历练推进
       tickExploration(now)
-      // Phase 28: 悟道顿悟触发(修炼时随机)
       mayTriggerEnlightenment()
-      // Phase 30: 镇压区域被动收益
       settleSuppressedRegions(dt)
-      // Phase 32.3: 藏经阁日夜翻检,学问自己在长
       studyTick(dt)
-      // 寿元流逝
       player.addAge((dt / 3600) * AGE_YEARS_PER_HOUR)
       this.checkDeath()
     }
@@ -182,7 +162,7 @@ class GameEngine {
       this.periodicAccum = 0
       rolloverDailyIfNeeded()
       checkStateAchievements()
-      // Phase 28/29: 洞府巡游触发(每日一次)
+      // 洞府巡游(每日一次)
       mayTriggerCaveEvent()
     }
   }
@@ -208,20 +188,14 @@ class GameEngine {
     this.deathAnnounced = false
   }
 
-  /** 暂停心跳(如重置确认弹窗期间):不结算、不写档;入停前记录一次活跃时刻 */
+  /** 暂停心跳(如重置确认弹窗期间):不结算、不写档 */
   pause(): void {
     if (enginePaused.value) return
     useGameStore().stampActive(Date.now())
     setEnginePaused(true)
   }
 
-  /**
-   * 恢复心跳,并把暂停这段时长补回所有按墙钟到期的状态。
-   *
-   * 只停心跳不够:Buff、卦、区域事件、突破准备、历练窗口都拿 `Date.now()`
-   * 判到期,暂停五分钟就会「在确认窗背后」自己过期。补回后与 `gameNow()`
-   * 的冻结语义一致 —— 暂停的那段时间不算进游戏时间。
-   */
+  /** 恢复心跳;暂停时长补回所有按墙钟到期的状态(Buff、卦、区域事件、突破准备、历练窗口),与 gameNow() 冻结语义一致 */
   resume(): void {
     if (!enginePaused.value) return
     const now = Date.now()

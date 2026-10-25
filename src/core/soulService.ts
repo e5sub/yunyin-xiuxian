@@ -1,9 +1,4 @@
-/**
- * 器魂服务 —— 凝炼与装配的编排
- *
- * 凝炼要销毁原器且耗道源:两重代价让「凝哪件」成为真决策。
- * 天界只认器魂,人间只认法器——同一件东西不可能两头都占。
- */
+/** 器魂服务:凝炼(销毁原器 + 耗道源)与装配的编排 */
 import { refineSoul, previewSoul, canRefine } from './soulForge'
 import { soulName, SOUL_SLOTS } from '@/data/souls'
 import { equipmentTemplate } from '@/data/equipment'
@@ -16,10 +11,7 @@ import { daoSourceShortfall } from './daoSource'
 /** 凝炼一枚器魂需耗的道源 */
 export const SOUL_REFINE_COST = 20
 
-/**
- * 凝炼:销毁装备,得一枚器魂。
- * 已装备的、锁定的一律不可凝——避免手滑毁掉正在用的法器
- */
+/** 凝炼:销毁装备,得一枚器魂;已装备、已锁定的不可凝 */
 export function refineEquipment(uid: string): boolean {
   const inventory = useInventoryStore()
   const endgame = useEndgameStore()
@@ -47,7 +39,7 @@ export function refineEquipment(uid: string): boolean {
 
   const soul = refineSoul(inst)
   if (!soul) {
-    // 理论上 canRefine 已挡住,退款以防万一
+    // canRefine 已挡住,退款兜底
     endgame.addDaoSource(SOUL_REFINE_COST)
     return false
   }
@@ -76,7 +68,7 @@ export function removeSoul(uid: string): void {
   useEndgameStore().unequipSoul(uid)
 }
 
-/** 散去器魂:不可逆,原器早已毁去 */
+/** 散去器魂(不可逆) */
 export function dissolveSoul(uid: string): void {
   const endgame = useEndgameStore()
   const ui = useUiStore()

@@ -1,25 +1,10 @@
 /**
- * 凡界世界生成 —— 最小可行性审计
+ * 凡界世界生成:现有素材重组(生态位、Boss 机制家族、世界规则),不新造内容。
  *
- * ## 要证明的命题
- *
- * **用现有素材(20 区域 / 60 敌人 / 8 种 Boss 机制 / 51 事件),
- * 在不新造任何内容的前提下,能否稳定生成「玩家第二次遇到时仍存在未知」的凡界?**
- *
- * 这是纯审计层。不碰道果价格、不碰奖励、不碰购买次数、不碰轮回规则 ——
- * 一旦证明成立,才值得考虑接到道果出口上。
- *
- * ## 三条硬检查(承袭天界 worldGen 的判据)
- *
- *   一、不是换顺序就叫新世界   必须有结构变化,故设「纯洗牌」对照组
- *   二、不是随机就叫新世界     沿用 NOVELTY_MIN = 0.25 硬门槛
- *   三、新颖度不能牺牲可玩性   仍须 ≥3 可行构筑、无接近必胜、Boss 有对应生态
- *
- * ## 为什么是「重组」而不是「新造」
- *
- * 新颖不来自素材本身没见过,而来自**因果关系没这样组合过**:
- * 同一头妖物换个生态位、换个 Boss 机制家族、配一条不同的世界规则,
- * 玩家面对的就是一组新的解法空间。
+ * 三条硬检查(承袭天界 worldGen):
+ *   一、换顺序不算新世界   「纯洗牌」对照组
+ *   二、随机不算新世界     NOVELTY_MIN 硬门槛
+ *   三、不牺牲可玩性       ≥3 可行构筑、无接近必胜、Boss 有对应生态
  */
 import type { CombatRules, CombatantSnap, EnemyDef, StatMods } from '@/types'
 import { mulberry32, RandomService } from '@/utils/random'
@@ -38,12 +23,7 @@ import { NOVELTY_MIN } from './worldGen'
 
 /** 重组后的一处地界 */
 export interface MortalPlace {
-  /**
-   * 路线节点 id —— 本世可达性的唯一凭据。
-   *
-   * 解锁对象从 regionId 提升到这里:同一处「落霞谷」这一世在第三段、
-   * 下一世在第五段,都不会再与旧解锁链冲突
-   */
+  /** 路线节点 id:本世可达性的唯一凭据,不与旧解锁链冲突 */
   nodeId: string
   /** 素材取自哪个原区域 */
   fromId: string
@@ -55,7 +35,6 @@ export interface MortalPlace {
   boss: string
   /** 首领机制家族 */
   archetype: string
-  /** 事件标签 */
   eventTags: string[]
 }
 
@@ -75,12 +54,7 @@ export interface MortalWorld {
   rules: CombatRules
   /** 资源偏向 */
   bias: string
-  /**
-   * 首领去重回退的段序。
-   *
-   * 候选不足时允许复用已占用的首领,但必须记下来 ——
-   * 否则「回退」会悄悄退化成「重复」而无人察觉
-   */
+  /** 首领去重回退(复用已占用首领)的段序;须记录,否则回退悄悄退化成重复 */
   bossFallbackAt: number[]
 }
 
@@ -88,13 +62,8 @@ const FOES_PER_PLACE = 3
 const BIASES = ['草木丰饶', '矿脉深厚', '典籍散佚', '灵石充盈', '药气氤氲'] as const
 
 /**
- * 路线骨架模板。
- *
- * 上一轮的审计钉出:层级递进曾硬编码为 `2 + i * 3`,六世的推进节奏
- * 一模一样 —— 玩家的重复感主要来自这里,而不是敌人换没换。
- *
- * 但**不能改成纯随机**:`2 → 19 → 3 → 17` 虽然「新」,玩家却无法
- * 形成合理的空间认知。故取「有限模板 + 参数扰动 + 历史去重」。
+ * 路线骨架模板:有限模板 + 参数扰动 + 历史去重。
+ * 固定递进会让每世推进节奏雷同;纯随机层级玩家无法形成空间认知。
  */
 export interface RouteShape {
   id: string
@@ -113,12 +82,7 @@ export const ROUTE_SHAPES: readonly RouteShape[] = [
   { id: 'short_weave', name: '短程交错', tiers: [3, 9, 6, 15, 12] }
 ]
 
-/**
- * 事件节奏原型。
- *
- * `222222` 不是「事件少」,是**没有节奏设计**。这些原型让玩家能感觉到
- * 「这一世前面平静,后面突然密集」,而不是「又六段,每段两个」。
- */
+/** 事件节奏原型 */
 export interface RhythmArchetype {
   id: string
   name: string
@@ -147,11 +111,7 @@ function resampleRhythm(curve: readonly number[], n: number): number[] {
 
 /**
  * 骨架扰动:每点 ±1,保持首尾与相邻关系的大势。
- *
- * 上界取 `MORTAL_TIER_MAX`(凡界路线只含人间界层级),不写裸 20 ——
- * 同一个文件里 BOSSES / MOBS 的候选池上限已经引了那枚常量,扰动再写一份数字
- * 就等于「上限」这件事有两处真相源:常量一改(扩凡界层数),候选池跟着放,
- * 扰动出来的层级却仍被旧数封在上面,又成一处调一处漏一处。
+ * 上界读 MORTAL_TIER_MAX,不写裸 20:须与 BOSSES / MOBS 候选池上限同源。
  */
 function jitterTiers(tiers: readonly number[], rng: RandomService): number[] {
   return tiers.map((t, i) => {
@@ -163,53 +123,38 @@ function jitterTiers(tiers: readonly number[], rng: RandomService): number[] {
 /** 玩家在某层级上的基准属性(与 buildSim 的 BASE 同量级,再按 powerScale 缩放) */
 const PLAYER_TIER_BASE = { attack: 96, defense: 54, maxHp: 1400 }
 
-/** 首领的难度系数:随地界推进递增,前松后紧 */
+/** 首领难度系数,随地界推进递增 */
 function bossDanger(index: number): number {
   return 1 + index * 0.05
 }
 
-/**
- * 凡界路线的敌人池只取人间界层级 —— 仙界/神界/混沌海的敌手不该出现在本世凡界路线里。
- * 层级上限用 MORTAL_TIER_MAX(20),与 MORTAL_REGIONS 同源。
- */
+/** 敌人池只取人间界层级(≤ MORTAL_TIER_MAX,与 MORTAL_REGIONS 同源) */
 const BOSSES: EnemyDef[] = ENEMIES.filter(e => e.archetype !== undefined && e.tier <= MORTAL_TIER_MAX)
 const MOBS: EnemyDef[] = ENEMIES.filter(e => e.archetype === undefined && e.tier <= MORTAL_TIER_MAX)
 const ALL_EVENT_TAGS: string[] = [...new Set(EVENTS.flatMap(e => e.tags))]
 
-/**
- * 挑一个尚未被本世占用的首领。
- *
- * 实测缺陷:同一世界里「幽冥海皇」曾同时镇守第二、三段 ——
- * nearTier 逐段独立取样,段与段之间互不知情。
- *
- * 约束是**唯一性**,不是「候选池够大」:先按层级取一批候选,
- * 滤掉已占用的;若确实无可用(池子小或层级极端),
- * 回退到允许复用并记下段序,而不是让生成失败
- */
+/** 挑一个本世未占用的首领;全池用尽才复用(记下段序),不让生成失败 */
 export function pickBoss(
   tier: number,
   rng: RandomService,
   used: Set<string>,
   pool: readonly EnemyDef[] = BOSSES
 ): { boss: EnemyDef; fellBack: boolean } {
-  // 候选窗口开大一些,给去重留余地
+  // 候选窗口放大,给去重留余地
   const cands = nearTier([...pool], tier, rng, Math.min(pool.length, 6))
   const fresh = cands.filter(b => !used.has(b.id))
   if (fresh.length > 0) return { boss: fresh[0]!, fellBack: false }
-  // 窗口内全被占用:在全池里再找一个没用过的
   const anyFresh = pool.filter(b => !used.has(b.id))
   if (anyFresh.length > 0) {
     const sorted = [...anyFresh].sort((a, b) => Math.abs(a.tier - tier) - Math.abs(b.tier - tier))
     return { boss: sorted[0]!, fellBack: false }
   }
-  // 全池用尽(段数多于首领总数)才复用
   return { boss: cands[0]!, fellBack: true }
 }
 
-/** 取与目标层级相近的素材,避免把一阶妖物丢进末段 */
+/** 取与目标层级相近的素材 */
 function nearTier<T extends { tier: number }>(pool: T[], tier: number, rng: RandomService, n: number): T[] {
   const sorted = [...pool].sort((a, b) => Math.abs(a.tier - tier) - Math.abs(b.tier - tier))
-  // 在最接近的一批里随机取,保留层级合理性的同时留出重组空间
   const window = sorted.slice(0, Math.max(n * 3, 8))
   const out: T[] = []
   const used = new Set<number>()
@@ -223,28 +168,19 @@ function nearTier<T extends { tier: number }>(pool: T[], tier: number, rng: Rand
 }
 
 /**
- * 生成一个凡界。
- *
- * 七个维度全部参与重组:地界组合、地界顺序、敌人生态、首领机制、
- * 事件分布、资源偏向、世界规则
- */
-/**
- * 生成一个凡界。
- *
- * 首段不再需要锚点:可达性已迁到 mortalWorld.route,
- * 第一段天然可进入,与旧 REGIONS 解锁链无关
+ * 生成一个凡界:地界组合、地界顺序、敌人生态、首领机制、事件分布、资源偏向、世界规则全部重组。
+ * 首段不设锚点:第一段天然可进入,与旧 REGIONS 解锁链无关。
  */
 export function generateMortalWorld(seed: number): MortalWorld {
   const rng = new RandomService(mulberry32(seed))
-  // 先定骨架与节奏 —— 它们决定段数,也决定玩家感受到的推进形状
+  // 先定骨架与节奏(决定段数)
   const shape = ROUTE_SHAPES[rng.int(0, ROUTE_SHAPES.length - 1)]!
   const rhythm = RHYTHM_ARCHETYPES[rng.int(0, RHYTHM_ARCHETYPES.length - 1)]!
   const tiers = jitterTiers(shape.tiers, rng)
   const density = resampleRhythm(rhythm.curve, tiers.length)
-  // 资源偏向提前抽取,避免被后续 rng 消耗挤到同一取值(上一轮记下的弱点)
+  // 资源偏向须提前抽:放到后面会被 rng 消耗挤到同一取值
   const bias = BIASES[rng.int(0, BIASES.length - 1)]!
 
-  // 地界组合:从人间界 20 处里选 tiers.length 处
   const picked: typeof MORTAL_REGIONS = []
   const usedRegion = new Set<string>()
   while (picked.length < tiers.length) {
@@ -264,7 +200,6 @@ export function generateMortalWorld(seed: number): MortalWorld {
     const boss = picked2.boss
     usedBossIds.add(boss.id)
     if (picked2.fellBack) bossFallbackAt.push(i)
-    // 事件标签数量由节奏曲线决定
     const want = density[i]!
     const tags = nearTier(
       ALL_EVENT_TAGS.map(t => ({ t, tier })),
@@ -300,12 +235,7 @@ export function generateMortalWorld(seed: number): MortalWorld {
   }
 }
 
-/**
- * 对照组:只打乱地界顺序,不动生态、首领、规则。
- *
- * 用来验证「换顺序不等于新世界」—— 若它也能过新颖度门,
- * 说明判据太松
- */
+/** 对照组:只打乱地界顺序,不动生态、首领、规则;它若能过新颖度门即判据太松 */
 export function shuffleOnlyWorld(base: MortalWorld, seed: number): MortalWorld {
   const rng = new RandomService(mulberry32(seed))
   const chain = [...base.chain]
@@ -313,15 +243,13 @@ export function shuffleOnlyWorld(base: MortalWorld, seed: number): MortalWorld {
     const j = rng.int(0, i)
     ;[chain[i], chain[j]] = [chain[j]!, chain[i]!]
   }
-  // 骨架与节奏都锚在**位置**上,只有素材跟着走 ——
-  // 这才是「换顺序不算新」的准确定义:层级曲线与事件密度分毫未动,
-  // 换的只是这一段叫什么名字、住着哪头妖物
+  // 层级与事件密度锚在位置上,只有素材跟着走
   const relevelled = chain.map((p, i) => {
     const anchor = base.chain[i]!
     return {
       ...p,
       tier: anchor.tier,
-      // 事件密度锚在位置上;素材不足时 slice 会改变密度,故直接沿用锚点
+      // 直接沿用锚点:素材不足时 slice 会改变密度
       eventTags: anchor.eventTags
     }
   })
@@ -330,7 +258,7 @@ export function shuffleOnlyWorld(base: MortalWorld, seed: number): MortalWorld {
 
 // ============ 二、新颖度 ============
 
-/** 世界的结构特征集合 —— 首领机制、敌人、事件标签 */
+/** 结构特征集合:首领机制、敌人、事件标签 */
 function featureSets(w: MortalWorld): { arch: Set<string>; foes: Set<string>; tags: Set<string> } {
   return {
     arch: new Set(w.chain.map(p => p.archetype)),
@@ -339,7 +267,7 @@ function featureSets(w: MortalWorld): { arch: Set<string>; foes: Set<string>; ta
   }
 }
 
-/** 生态位差异:同一头妖物出现在第几段,算不算换了位置 */
+/** 生态位差异:同一头妖物是否换了段序 */
 function nicheDistance(a: MortalWorld, b: MortalWorld): number {
   const posOf = (w: MortalWorld): Map<string, number> => {
     const m = new Map<string, number>()
@@ -359,12 +287,7 @@ function nicheDistance(a: MortalWorld, b: MortalWorld): number {
   return shared === 0 ? 1 : moved / shared
 }
 
-/**
- * 新颖度 = 与历史最近邻的加权差异(0~1)。
- *
- * 四维加权,与天界同构但换成凡界的可重组维度:
- * 首领机制、敌人构成、事件分布、生态位
- */
+/** 新颖度 = 与历史最近邻的加权差异(0~1),与天界同构 */
 export function mortalNovelty(w: MortalWorld, history: MortalWorld[]): number {
   if (history.length === 0) return 1
   const fa = featureSets(w)
@@ -408,13 +331,7 @@ function snapOf(id: string, tier: number, danger: number): CombatantSnap | null 
   return def ? makeEnemySnap(def, tier, danger) : null
 }
 
-/**
- * 把构筑放到某个层级上。
- *
- * BUILD_PROFILES 是固定强度的「中期典型成型度」,直接拿去打 tier 17
- * 必然全灭。审计要问的是**同等成长度下各构筑的相对表现**,
- * 故玩家与敌人同步按 powerScale 缩放 —— 词条与流派特性保持不变
- */
+/** 把构筑放到某个层级:玩家与敌人同步按 powerScale 缩放,词条与流派特性不变 */
 function scaledBuildSnap(profileIdx: number, tier: number): CombatantSnap {
   const base = buildSnap(BUILD_PROFILES[profileIdx]!)
   const scale = powerScale(tier)
@@ -426,12 +343,7 @@ function scaledBuildSnap(profileIdx: number, tier: number): CombatantSnap {
   }
 }
 
-/**
- * 一个构筑在整条地界链上的平均单场胜率。
- *
- * 用平均而非「全链连胜」:连胜是单场胜率的六次方,
- * 八成的单场胜率会被压成两成六,判据会失去分辨力
- */
+/** 构筑在整条地界链上的平均单场胜率;不用全链连胜(单场胜率的六次方,判据失去分辨力) */
 function runChain(profileIdx: number, w: MortalWorld, n: number, seed: number): number {
   const rng = new RandomService(mulberry32(seed))
   let wins = 0
@@ -484,11 +396,7 @@ export interface ApprovedMortalWorld {
   rejected: number
 }
 
-/**
- * 生成一个过审的凡界:候选 → 可玩性审计 → 新颖度门 → 不合格换种子重来。
- *
- * 与天界 generateApprovedWorld 同一套流程,证明这套判据可以脱离天界复用
- */
+/** 生成一个过审的凡界:候选 → 可玩性审计 → 新颖度门 → 不合格换种子重来(同天界 generateApprovedWorld) */
 export function generateApprovedMortal(
   baseSeed: number,
   history: MortalWorld[] = [],
@@ -548,7 +456,7 @@ export function materialCapacity(): MaterialCapacity {
   }
 }
 
-/** 资源偏向的取值集合 —— 供审计检查分布 */
+/** 资源偏向的取值集合,供审计检查分布 */
 export const BIAS_POOL: readonly string[] = BIASES
 
 export { NOVELTY_MIN }

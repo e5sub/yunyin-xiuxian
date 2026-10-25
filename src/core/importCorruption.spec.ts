@@ -1,18 +1,6 @@
 /**
- * 半损坏档不许把玩家挡在门外
- *
- * 存档会被手改、会在旧版本里缺字段、会只坏一片。各 store 自己那层已有 sanitize
- * (见 storeResilience),但**导入这条路**此前没有端到端验证:导入 → 落盘 →
- * 重新水合 → sanitize,四个环节串起来跑一遍,才叫「这份档进得了游戏」。
- *
- * 判据只有两条,却把「不许炸」与「不许撒谎」都覆盖了:
- *
- *   一 要么明确拒绝(返回错误信息),要么接受 —— 接受之后**水合不许抛**,
- *      且读出来的状态是能用的(数字字段是数字、数组字段是数组);
- *   二 明确拒绝时,本机现有存档必须原样留着(不能一半写进去)。
- *
- * 实测的七种坏法:分片为 null / 数组 / 空对象、字段全垃圾,一律被修成形进得去;
- * 分片为字符串或数字、game 缺失,一律被导入前校验挡下 —— 两条路都不炸。
+ * 半损坏档导入端到端:导入 → 落盘 → 重新水合 → sanitize(store 层 sanitize 见 storeResilience)。
+ * 判据:要么明确拒绝,要么接受且水合不抛、字段类型可用;拒绝时本机现有存档原样留着。
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { createApp } from 'vue'
@@ -38,7 +26,7 @@ function installStorage(): void {
   })
 }
 
-/** 真 pinia + 真持久化插件:让「落盘 → 水合」这条路完整跑起来 */
+/** 真 pinia + 真持久化插件,跑通落盘 → 水合 */
 function bootStores(): void {
   const pinia = createPinia()
   pinia.use(piniaPluginPersistedstate)
@@ -102,17 +90,16 @@ describe('半损坏档 · 进得了游戏,或者被明确拒绝', () => {
         if (variant.name === '字段全是垃圾') {
           expect(game.started, '字符串 started 不得被当成已开局').toBe(false)
         }
-        // 读一遍计算属性:白屏往往发生在渲染期,而不是 setState 那一刻
+        // 读一遍计算属性:白屏多发生在渲染期
         void player.finalStats
         void player.expReq
         expect(Array.isArray(inventory.items), '背包该被修成数组').toBe(true)
         expect(typeof player.expReq, '修为需求该是能算的数').not.toBe('string')
       }, '水合/修形不该抛').not.toThrow()
-      // 「能用的数」= 整数字段、落在境界表范围内(字符串 '3' 这种垃圾该被修掉而不是带进来)
+      // 整数且落在境界表范围内(字符串 '3' 该被修掉)
       expect(Number.isInteger(playerMajor), `境界被修成了 ${String(playerMajor)},不是整数`).toBe(true)
       expect(playerMajor!, '境界越界').toBeGreaterThanOrEqual(0)
       expect(playerMajor!, '境界越界').toBeLessThanOrEqual(MAX_MAJOR)
-      // 坏档扫描也不该被这几种坏法绊倒
       expect(() => preflightScan()).not.toThrow()
     })
   }
@@ -149,7 +136,7 @@ describe('半损坏档 · 进得了游戏,或者被明确拒绝', () => {
         key: () => null,
         length: 0
       })
-      // 一份 30 天前导出的旧备份(lastActiveAt 还是那时的时刻)
+      // 30 天前导出的旧备份
       const err = importSaveText(
         envelope({
           game: { started: true, lastActiveAt: 1_000_000 - 2_592_000_000, totalPlaySec: 0 },
@@ -157,7 +144,6 @@ describe('半损坏档 · 进得了游戏,或者被明确拒绝', () => {
         })
       )
       expect(err).toBeNull()
-      // 重新水合后,lastActiveAt 应是「现在」,而不是快照里吞下去的旧时刻
       bootStores()
       expect(useGameStore().lastActiveAt).toBe(1_000_000)
     } finally {
@@ -167,7 +153,7 @@ describe('半损坏档 · 进得了游戏,或者被明确拒绝', () => {
   })
 
   it('导入写盘中途失败:回滚,旧档原样保留(不清成半档)', () => {
-    // 配额不足的存储:resources 分片写不进,其余照常
+    // 配额不足:resources 分片写不进,其余照常
     const writes = new Map<string, string>()
     vi.stubGlobal('localStorage', {
       getItem: (k: string) => writes.get(k) ?? null,
@@ -180,13 +166,11 @@ describe('半损坏档 · 进得了游戏,或者被明确拒绝', () => {
       key: () => null,
       length: 0
     })
-    // 先有份旧档(直接铺两张分片)
     writes.set(storageKey('game'), 'OLD_GAME')
     writes.set(storageKey('player'), 'OLD_PLAYER')
     const err = importSaveText(
       envelope({ game: { started: true }, player: { major: 3 }, resources: { spiritStone: { m: 1, e: 4 } } })
     )
-    // 失败(写不进去),而且旧档被原样救回 —— 不能被清到一半
     expect(err, '写盘失败应当报错').not.toBeNull()
     expect(writes.get(storageKey('game')), '回滚后旧 game 分片原样保留').toBe('OLD_GAME')
     expect(writes.get(storageKey('player')), '回滚后旧 player 分片原样保留').toBe('OLD_PLAYER')

@@ -1,14 +1,5 @@
 /* eslint-disable no-console */
-/**
- * 诸界总览「出发」的必要性审计
- *
- * 路线自带解锁之后,历练页上存在两条出发路径。只回答一个问题:
- *
- *   **在已有本世路线的前提下,总览出发是否仍提供不可替代的功能?**
- *
- * 判据不靠感觉:比较两条路径在同一个区域上能拿到什么。
- * 若总览拿到的一切路线都能给,且不含路线给不了的东西,它就是重复入口。
- */
+/** 诸界总览「出发」的必要性审计 */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import {
@@ -49,7 +40,6 @@ describe('总览必要性 · 三种情形', () => {
     expect(b.viaRoute).toBe(true)
     expect(b.viaOverview).toBe(true)
     expect(b.overviewAdds).toBe(false)
-    // 战斗数据同源是「重复」的硬证据
     const caps = capabilities(WORLD, REGIONS.length)
     expect(sameCombatSource(caps)).toBe(true)
     console.log('\n两条路径的战斗数据都取自 REGIONS —— 差别只在准入条件,不在内容')
@@ -58,7 +48,6 @@ describe('总览必要性 · 三种情形', () => {
   it('A 情形的「增量」是绕过,不是退路', () => {
     const a = caseFacts().find(c => c.case === 'routeLocked')!
     expect(a.overviewAdds).toBe(true)
-    // 但它增的是「跳过本世路线的推进顺序」
     expect(a.note).toContain('绕过')
     console.log(
       '\n总览确实能进入路线尚未开放的区域 —— 但这是绕过推进顺序。' +
@@ -70,10 +59,8 @@ describe('总览必要性 · 三种情形', () => {
     const adventure = useAdventureStore()
     adventure.unlocked = REGIONS.map(r => r.id)
     adventure.setMortalWorld(WORLD)
-    // 路线上除首段外全部未开放
     const routeLocked = WORLD.chain.slice(1).filter(p => !canEnterNode(p.nodeId))
     expect(routeLocked.length).toBe(WORLD.chain.length - 1)
-    // 但这些地界在总览里全部可出发
     const overviewOpen = routeLocked.filter(p => adventure.unlocked.includes(p.fromId))
     expect(overviewOpen.length).toBe(routeLocked.length)
     console.log(
@@ -117,7 +104,6 @@ describe('总览必要性 · 退路的前提是否成立', () => {
   })
 
   it('唯一残留情形是首段打不过,但那是难度问题', () => {
-    // 用旧区域刷等级再回来,等于绕过世界的难度设计
     console.log(
       '\n首段太难 → 去旧区域刷等级 → 回来打首段。' +
         '\n这条路径存在,但它绕过的是**世界的难度曲线**,' +
@@ -170,8 +156,6 @@ describe('总览必要性 · 结论', () => {
   })
 
   it('这一结论依赖「首段永远可进入」,该前提若变则结论失效', () => {
-    // 把判据本身的依赖写明:若将来首段也需要条件解锁,
-    // 退路问题会重新成立,总览出发可能需要恢复
     const adventure = useAdventureStore()
     adventure.setMortalWorld(WORLD)
     expect(canEnterNode(WORLD.chain[0]!.nodeId)).toBe(true)

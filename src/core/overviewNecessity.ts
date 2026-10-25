@@ -1,26 +1,15 @@
 /**
- * 诸界总览「出发」的必要性审计
- *
- * 路线自带解锁之后,历练页上存在两条出发路径:
+ * 诸界总览「出发」的必要性审计:已有本世路线时,总览出发是否仍不可替代。
  *
  *   本世路线 → 出发     准入看 canEnterNode(route index)
  *   诸界总览 → 出发     准入看 adventure.unlocked(旧解锁链)
  *
- * 只回答一个问题:**在已有本世路线的前提下,总览出发是否仍提供
- * 不可替代的功能?**
- *
- * 三种情形分别看:
- *   A 路线未开放该区域   总览是否有合理用途(退路?还是绕过?)
- *   B 路线已覆盖该区域   总览是否只是重复入口
- *   C 路线不含该区域     玩家是否真的需要回去
- *
- * 判据不靠感觉:比较两条路径在**同一个区域**上能拿到什么。
- * 若总览拿到的一切路线都能给,且不含路线给不了的东西,它就是重复入口。
+ * 判据:比较两条路径在同一区域上能拿到什么;总览所得路线都能给、且无路线给不了的东西,即重复入口。
  */
 import { REGIONS } from '@/data/regions'
 import type { MortalWorld } from './mortalWorldGen'
 
-/** 玩家想去某个区域时,面对的三种情形 */
+/** 进入某区域时的三种情形 */
 export type AccessCase =
   /** A 在本世路线里,但前一段未通 */
   | 'routeLocked'
@@ -40,11 +29,7 @@ export interface CaseFacts {
   note: string
 }
 
-/**
- * 逐情形的事实表。
- *
- * 关键在最后一列:只有 `overviewAdds` 为真,总览出发才不可替代
- */
+/** 逐情形的事实表;只有 `overviewAdds` 为真,总览出发才不可替代 */
 export function caseFacts(): CaseFacts[] {
   return [
     {
@@ -78,7 +63,6 @@ export interface PathCapability {
   path: string
   /** 能进入的区域数(以某世为例) */
   reach: number
-  /** 战斗数据来源 */
   combatSource: string
   /** 准入依据 */
   gate: string
@@ -105,12 +89,7 @@ export function capabilities(w: MortalWorld, unlockedCount: number): PathCapabil
   ]
 }
 
-/**
- * 两条路径的战斗数据是否同源。
- *
- * 这是判定「重复入口」的核心:若同源,总览出发给不了任何
- * 路线给不了的**内容**,差别只在准入条件
- */
+/** 两条路径的战斗数据是否同源;同源则差别只在准入条件 */
 export function sameCombatSource(caps: PathCapability[]): boolean {
   return new Set(caps.map(c => c.combatSource.replace(/\[.*\]/, ''))).size === 1
 }
@@ -121,7 +100,7 @@ export function sameCombatSource(caps: PathCapability[]): boolean {
 export interface OverviewRole {
   id: string
   name: string
-  /** 需要「出发」按钮才能实现吗 */
+  /** 是否需要「出发」按钮 */
   needsDepart: boolean
   evidence: string
 }
@@ -158,17 +137,8 @@ export function rolesNeedingDepart(): OverviewRole[] {
   return OVERVIEW_ROLES.filter(r => r.needsDepart)
 }
 
-/**
- * 「脱困退路」这一条是否成立。
- *
- * 前提:本世路线首段天然可进入(canEnterNode 的 i===0 分支)。
- * 故不存在「路线一段都进不去」的状态 —— 退路的前提不成立。
- *
- * 唯一残留的情形是首段太难打不过。但那是难度问题,
- * 用旧区域刷等级等于绕过世界,与「本世路线决定本世可玩什么」冲突
- */
+/** 「脱困退路」是否成立;前提:本世路线首段天然可进入(canEnterNode 的 i===0 分支) */
 export function escapeRouteNeeded(w: MortalWorld): boolean {
-  // 首段永远可进入,故不需要退路
   return w.chain.length === 0
 }
 
@@ -182,12 +152,7 @@ export interface Recommendation {
   keptRoles: string[]
 }
 
-/**
- * 结论由事实推出,不预设。
- *
- * 若总览出发的全部「不可替代」情形都是「绕过路线」,
- * 而它承载的其余职责都不需要出发按钮,则应降级为只读
- */
+/** 总览出发的不可替代情形全是绕过路线、其余职责都不需出发按钮时,降级为只读 */
 export function recommend(w: MortalWorld): Recommendation {
   const adds = caseFacts().filter(c => c.overviewAdds)
   const bypassOnly = adds.every(c => c.case !== 'routeOpen')

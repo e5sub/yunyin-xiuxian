@@ -1,11 +1,6 @@
 /**
- * 可炼程度(Phase 32.3)—— 取代「炼丹等级 ≥ 丹药等级」的二元门槛
- *
- * 旧口径:够级 → 必定成功;不够级 → 连方子都看不见。
- * 新口径:知识 × 技艺 × 材料 × 承受 → 成功率 / 产量 / 阻碍。
- *
- * 唯一的硬门槛是「你根本不知道有这张方子」。除此之外一律软化:
- * 高出承受四阶的方子照样能开炉,只是成功率个位数——赌不赌是玩家的事。
+ * 可炼程度:知识 × 技艺 × 材料 × 承受 → 成功率 / 产量 / 阻碍。
+ * 唯一的硬门槛是不知道有这张方子;高出承受四阶照样能开炉,只是成功率个位数。
  */
 import type { PillDef } from '@/types'
 import { LORE_MAX, materialDef } from '@/data/materials'
@@ -16,7 +11,7 @@ import { modOf } from './statsCalc'
 import { useLoreStore } from '@/stores/lore'
 import { usePlayerStore } from '@/stores/player'
 
-/** 各项皆满且同阶时的成功率上限 —— 余下的是天意 */
+/** 各项皆满且同阶时的成功率上限 */
 export const CRAFT_BASE_RATE = 0.95
 
 export interface Craftability {
@@ -36,24 +31,21 @@ export interface Craftability {
   successRate: number
   /** 成功时多得一枚的概率 */
   bonusChance: number
-  /** 含炼丹产出(炉/丹心/称号等 alchemyYield)后的真实多得概率 —— 与结算同一口径(封 0.8) */
+  /** 含 alchemyYield(炉/丹心/称号等)的真实多得概率,与结算同一口径(封 0.8) */
   bonusChanceWithYield: number
   /** 开不了炉的硬阻碍 */
   blockers: string[]
-  /** 压低成功率的软因素,人话 */
+  /** 压低成功率的软因素(短标签,开炉弹窗逐条列出) */
   weakness: string[]
   materials: readonly string[]
 }
 
-/** 修为可承受的丹方阶位:练气可稳承一阶,每高一境多一阶 */
+/** 修为可承受的丹方阶位 */
 export function bearableRank(major: number): number {
   return major + 1
 }
 
-/**
- * 超规格惩罚。不是禁止,是陡峭——
- * 高一阶还有六成把握,高四阶就只剩一线生机了。
- */
+/** 超规格惩罚:不禁止,只陡峭 */
 export function overReachFactor(over: number): number {
   if (over <= 0) return 1
   const TABLE = [1, 0.6, 0.35, 0.18]
@@ -79,10 +71,7 @@ export function weightedSkill(craft: RecipeCraft, levelOf: (id: SkillId) => numb
   return weight > 0 ? total / weight : 0
 }
 
-/**
- * 合成成功率。四个乘区各有下限——
- * 任何一项都不会把成功率直接归零,但四项全弱时结果自然低到不该开炉。
- */
+/** 合成成功率:四个乘区各有下限,任何一项都不会把成功率直接归零 */
 export function composeSuccessRate(mastery: number, matLore: number, skill: number, over: number): number {
   const masteryFactor = 0.22 + 0.78 * Math.max(0, Math.min(1, mastery))
   const loreFactor = 0.42 + 0.58 * Math.max(0, Math.min(1, matLore))
@@ -114,7 +103,7 @@ function weaknessLines(c: {
     }
   }
 
-  // 找这张方子最吃重、而你最弱的那项技艺,用它自己的话说
+  // 方子最吃重、又最弱的那项技艺
   let worst: { id: SkillId; score: number } | null = null
   for (const [k, w] of Object.entries(c.craft.skills)) {
     if (w === undefined) continue
@@ -131,15 +120,14 @@ function weaknessLines(c: {
   return out
 }
 
-/** 双丹(一炉得二)的概率:由掌握度与技艺共同决定,封顶 0.5。单一事实源,实机与审计共用 */
+/** 双丹(一炉得二)的概率,封顶 0.5。单一事实源,实机与审计共用 */
 export function bonusChanceOf(mastery: number, skill: number): number {
   return Math.min(0.5, mastery * 0.18 + skill / 500)
 }
 
 /**
- * 计算一张丹方当前的可炼程度;非可炼丹方返回 null。
- * `omitWeakness` 用于 quiet 批量炼丹:weakness(失败话术)是最重的一块,
- * 每个可炼度里都要重排材料+遍历技艺,而批量静默路径从不读它 —— 跳过以省重复。
+ * 一张丹方当前的可炼程度;非可炼丹方返回 null。
+ * `omitWeakness`:开炉结算从不读 weakness,跳过这块最重的计算。
  */
 export function craftability(id: string, opts?: { omitWeakness?: boolean }): Craftability | null {
   const def = pillDef(id)
@@ -171,9 +159,7 @@ export function craftability(id: string, opts?: { omitWeakness?: boolean }): Cra
     overReach: over,
     successRate: composeSuccessRate(mastery, matLore, skill, over),
     bonusChance: bonusChanceOf(mastery, skill),
-    // 结算 real: min(PILL_SECOND_CAP, bonusChance + alchemyYield) —— 展示给这个真实值,
-    // 别只给基础通道(否则 bonusChance=0 而丹心有 20% 时,双丹标签直接消失,误导)。
-    // 结算侧(pillService.craftPill)直接读这里的数,不再自算一遍 —— 封顶只此一处。
+    // 只给 bonusChance 时,它为 0 而丹心有加成,双丹标签会消失;pillService.craftPill 直接读这里,封顶只此一处
     bonusChanceWithYield: Math.min(PILL_SECOND_CAP, bonusChanceOf(mastery, skill) + modOf(player.finalStats.mods, 'alchemyYield')),
     blockers,
     weakness:
@@ -182,7 +168,7 @@ export function craftability(id: string, opts?: { omitWeakness?: boolean }): Cra
   }
 }
 
-/** 已知的丹方(掌握度 >0)。这是"你听说过什么",不是"你够不够级" */
+/** 已知的丹方(掌握度 >0),不论够不够级 */
 export function knownRecipes(): PillDef[] {
   const lore = useLoreStore()
   return PILLS.filter(p => p.recipe && lore.recipeMastery(p.id) > 0)

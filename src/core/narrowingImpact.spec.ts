@@ -1,16 +1,5 @@
 /* eslint-disable no-console */
-/**
- * 收窄后果审计
- *
- * 问题已钉死:不是「轮回奖励太多」,而是浅轮回同时推进了太多彼此独立的
- * 永久成长轴——金丹一世七项齐涨,没有一样非深修不可。
- *
- * 本套用例度量收窄方案的后果。审计对象不是「某项是否强」,而是:
- * **移除后,金丹轮回是否从「全能成长循环」变成「有明确取舍的循环」。**
- *
- * 两个主指标:覆盖比例(浅轮回能推进多少)与互斥度(深修独有占比)。
- * 只有互斥度足够大,玩家才会真正面对「这一世刷得快,还是活得深」。
- */
+/** 收窄后果审计:覆盖比例(浅轮回能推进多少)与互斥度(深修独有占比) */
 import { describe, expect, it } from 'vitest'
 import { ASSETS, coverageAfter, coverageInsightVeinsOnly, coverageNow, deepExclusive, movedOut } from './narrowingImpact'
 
@@ -34,13 +23,12 @@ describe('收窄后果 · 覆盖比例', () => {
   it('现状确认:金丹循环覆盖近八成永久资产', () => {
     const now = coverageNow()
     expect(now.ratio).toBeGreaterThan(0.75)
-    // 深修独有只剩两项(高阶认知、道源道痕)
+    // 深修独有:高阶认知、道源道痕
     expect(now.deepOnly).toBe(2)
   })
 
   it('只移宿慧与灵脉停在五成半,进不了目标区间', () => {
-    // 设计意图是让覆盖降到 3/8~4/8(约 38%~50%)。
-    // 中间方案得到 5/9 = 56%,仍偏高——这是数据给出的结论,不是预设阈值
+    // 目标区间 38%~50%;中间方案 5/9 = 56%
     const mid = coverageInsightVeinsOnly()
     expect(mid.ratio).toBeGreaterThan(0.5)
     console.log(`\n只移两项 ${(mid.ratio * 100).toFixed(0)}%,尚未进入 38%~50% 的目标区间`)
@@ -51,7 +39,6 @@ describe('收窄后果 · 覆盖比例', () => {
     const after = coverageAfter()
     expect(after.ratio).toBeLessThan(0.5)
     expect(after.ratio).toBeGreaterThan(0.38)
-    // 互斥度翻倍不止
     expect(after.exclusivity).toBeGreaterThan(now.exclusivity * 1.9)
     console.log(
       `\n覆盖 ${(now.ratio * 100).toFixed(0)}% → ${(after.ratio * 100).toFixed(0)}%,` +
@@ -92,18 +79,12 @@ describe('收窄后果 · 互斥收益面', () => {
   it('移出的三项都符合「无界或短周期却影响长期」的特征', () => {
     const out = movedOut()
     expect(out.map(a => a.name)).toEqual(['宿慧', '先天之姿', '灵脉'])
-    // 宿慧:无界 + 按境界发放 + 影响其他成长效率
-    // 先天之姿:本应体现「活得多深」,却能被次数堆满
-    // 灵脉:第二世即吃满却影响长期效率,最易形成「前几世必做」的固定路线
     for (const a of out) expect(a.action).toBe('move')
   })
 })
 
 describe('收窄后果 · 一个容易搞错的前提', () => {
   it('深修路过金丹,故浅能拿的深也能拿——互斥不在「能否」而在「效率」', () => {
-    // 表里每一项 shallowAfter=true 的资产,deep 也必为 true。
-    // 这意味着收窄并不产生「深修拿不到的东西」,
-    // 真正的取舍是:深修要放弃多少道果效率去换那四项独有资产
     for (const a of ASSETS) {
       if (a.shallowAfter) expect(a.deep).toBe(true)
     }
@@ -114,14 +95,10 @@ describe('收窄后果 · 一个容易搞错的前提', () => {
     expect(mentor.action).toBe('onetime')
     expect(mentor.shallowNow).toBe(false)
     expect(mentor.deep).toBe(false)
-    // 它证明「一次性永久选择」可以成为轮回历史而无须每世发奖,
-    // 是收窄浅轮回收益面时可以照抄的样板
   })
 
   it('高阶认知的边界现状即已存在,收窄只是把它写明', () => {
     const deepLore = ASSETS.find(a => a.id === 'loreDeep')!
-    // minRealm 硬过滤本就挡住了高阶丹方/功法,shallowNow 已是 false。
-    // 所谓「拆认知」不是新增限制,而是承认这条边界并让它显式化
     expect(deepLore.shallowNow).toBe(false)
     expect(deepLore.shallowAfter).toBe(false)
     expect(deepLore.action).toBe('split')

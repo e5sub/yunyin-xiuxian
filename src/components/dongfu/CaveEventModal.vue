@@ -7,11 +7,7 @@ import { caveOptionText } from '@/ui/caveText'
 import type { CaveEvent } from '@/types'
 import BaseModal from '@/components/common/BaseModal.vue'
 
-/*
- * 洞府巡游 —— 与顿悟同一个毛病(自己铺 fixed inset-0):没有 dialog 语义、
- * 没有焦点管理、样式也自成一套。改用 BaseModal,行为一字不改:
- * 秒数照刷、到点由引擎收场、「离开」= 关掉即散(背板/Esc/关闭键同义)。
- */
+/* 到点由引擎收场;「离开」= 关掉即散(背板/Esc/关闭键同义) */
 const event = ref<CaveEvent | null>(null)
 const remaining = ref(0)
 
@@ -36,7 +32,7 @@ function handleChoose(index: number) {
 }
 
 function handleIgnore() {
-  dismissCaveEvent() // 清模块级事件,轮询才不会把它弹回来
+  dismissCaveEvent() // 须清模块级事件,否则轮询会弹回
   event.value = null
 }
 
@@ -44,7 +40,7 @@ onMounted(() => {
   refresh()
 })
 
-// 轮询随心跳冻结:确认窗背后不该再叠一扇巡游窗(与 useNow 同一条口径)
+// 轮询随心跳冻结,确认窗背后不叠巡游窗(与 useNow 同口径)
 useGameClock(refresh, 1000)
 
 const show = computed(() => event.value !== null)

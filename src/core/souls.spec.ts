@@ -1,12 +1,4 @@
 /* eslint-disable no-console */
-/**
- * 器魂系统 —— 凝炼判定与容量约束
- *
- * 器魂是凡器在天界的存在形式:天道抹平数值,只余形意。
- * 这套用例守两件事——
- *   1. 凝炼判定只看「路数」,不看「数值大小」(否则又变成堆装备)
- *   2. 装配槽位与品阶差距都受控,天界比的是方向而不是厚度
- */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useEndgameStore } from '@/stores/endgame'
@@ -27,7 +19,6 @@ import { canRefine, previewSoul, refineSoul } from './soulForge'
 import { modDepth } from './statsCalc'
 import { CELESTIAL_BASE_DEPTH } from './gauntlet'
 
-/** 造一件带指定词条的装备实例 */
 function equipWith(affixes: { id: string; roll: number }[], quality: EquipmentInstance['quality'] = 'spirit'): EquipmentInstance {
   return { uid: 'test', templateId: 'w_zhuqing', quality, tier: 10, level: 0, affixes }
 }
@@ -60,7 +51,7 @@ describe('器魂 · 类型判定看路数不看数值', () => {
   })
 
   it('反震词条的装备凝出棘魂,暴击词条的凝出锋魂', () => {
-    // atk 系与 crit 系走锋芒,counter 系走反震——判定按词条方向落位
+    // atk/crit 系走锋芒,counter 系走反震
     const counter = equipWith([{ id: 'cnt1', roll: 0.5 }])
     const crit = equipWith([{ id: 'crit1', roll: 0.5 }])
     const counterType = previewSoul(counter).type
@@ -85,7 +76,6 @@ describe('器魂 · 品阶只拉开有限差距', () => {
     const highest = SOUL_GRADES[SOUL_GRADES.length - 1]!.mult
     const spread = highest / lowest
     console.log(`\n器魂品阶倍率跨度 ${spread.toFixed(2)}x(装备品质跨度 9.5x)`)
-    // 好装备仍值得刷,但刷到顶也换不来碾压——天界比的是方向
     expect(spread).toBeLessThan(3)
     expect(spread).toBeGreaterThan(1.5)
   })
@@ -100,9 +90,7 @@ describe('器魂 · 品阶只拉开有限差距', () => {
 
 describe('器魂 · 满配有界', () => {
   it('装满槽位的最强组合,总深度是一条有上限的线', () => {
-    // 器魂现在是**叠加**的一层(见 soulForge.spec 与 stores/player.celestialStats),
-    // 故这里守的不再是"压到容量",而是"这一笔投入本身有界":
-    // 三枚化真加起来也不该越过基准深度(2.6)太多,否则凝魂就成了新的堆叠出口。
+    // 器魂是叠加层(见 soulForge.spec 与 stores/player.celestialStats),这笔投入须有界
     const best = SOUL_TYPES.slice(0, SOUL_SLOTS).map<SoulInstance>((t, i) => ({
       uid: `s${i}`,
       type: t.id,
@@ -143,8 +131,7 @@ describe('器魂 · 存档健壮性', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
   it('器魂字段非数组时不抛错(旧存档/外部迁移/手工改坏)', () => {
-    // 曾经的崩溃模式:activeSouls 直接对 undefined 调 .map,
-    // 在渲染期抛 TypeError,Vue 不断重试渲染 → 「出现异常,已记录」toast 反复弹出
+    // activeSouls 对 undefined 调 .map → 渲染期抛 TypeError,全局异常 toast 反复弹出
     const endgame = useEndgameStore()
     endgame.$patch({ souls: undefined, equippedSouls: undefined } as never)
     expect(() => endgame.activeSouls).not.toThrow()
@@ -178,7 +165,7 @@ describe('器魂 · 存档健壮性', () => {
 
 describe('器魂 · 凝炼必须优于不凝', () => {
   it('满配器魂强于兜底压缩,否则没人会去凝', () => {
-    // 器魂是叠加层:凝了只会更多,不存在"不凝反而更强"那条岔路
+    // 叠加层:凝了只增不减
     const best = SOUL_TYPES.slice(0, SOUL_SLOTS).map<SoulInstance>((t, i) => ({
       uid: `s${i}`,
       type: t.id,

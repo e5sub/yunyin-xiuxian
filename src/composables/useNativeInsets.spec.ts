@@ -1,14 +1,5 @@
 /* eslint-disable no-console -- 契约说明需要打印 */
-/**
- * 原生系统栏占位桥 —— readNativeInsets 的契约
- *
- * 玩家反馈:安卓三键导航的老机型上,底部导航条整排被系统按钮盖住。
- * 根因:边到边模式下 WebView 不把导航栏高度告诉页面,env(safe-area-inset-bottom)
- * 在安卓恒为 0。修法是原生量好占位经 window.NativeApp 桥交给页面。
- *
- * 这里钉的是桥的**失效安全**:桥来自原生、值来自原生,页面无法约束它 ——
- * 任何一种坏输入都必须归零,而不是把布局撑爆或抛错白屏。
- */
+/** readNativeInsets 契约:桥与值都来自原生,任何坏输入一律归零,不抛错 */
 import { describe, expect, it } from 'vitest'
 import { readNativeInsets } from './useNativeInsets'
 
@@ -51,7 +42,6 @@ describe('readNativeInsets · 失效安全', () => {
   })
 
   it('故障注入:若不做归零,负数会直接穿出去', () => {
-    // 证明上面那条判据是活的:绕过 readNativeInsets 直接读桥,坏值就原样出来
     const raw = { insetBottom: () => -10 }
     expect(raw.insetBottom()).toBe(-10)
     expect(readNativeInsets(raw).bottom).toBe(0)

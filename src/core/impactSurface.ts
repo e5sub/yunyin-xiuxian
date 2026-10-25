@@ -1,20 +1,6 @@
 /**
- * 收窄方案影响面审计
- *
- * 收窄决议已定:宿慧、灵脉、先天之姿移出浅轮回,只留道果、灵兽、成就图鉴、
- * 基础认知。设计规则是「浅轮回可以积累经历,深修才能积累质量」。
- *
- * 但在动任何参数之前必须先问一句:**这三样东西现在究竟连着什么?**
- * 上一轮审计证明了模型稳定,这一轮要保证结构性修改不会把另一套
- * 已经稳定的系统打穿。
- *
- * 本模块只做度量,不改数值。三条主线:
- *   1. 宿慧的**来源**有两条而非一条,消费者链上「开局状态」与「持续能力」
- *      性质不同——只有后者才算永久继承资产
- *   2. 灵脉的**存量**在真实存档里已经吃满,决定该按历史遗产处理还是本世建设
- *   3. 先天之姿与灵脉同构,可照抄同一套存量处理
- *
- * 所有断言都跑在真实存档探针上,不用假设的玩家行为。
+ * 收窄方案影响面审计(只度量,不改数值)。收窄决议:宿慧、灵脉、先天之姿移出浅轮回,只留道果、灵兽、成就图鉴、基础认知。
+ * 三条主线:宿慧的来源与消费者性质;灵脉存量按历史遗产还是本世建设;先天之姿与灵脉同构。断言跑在真实存档探针上。
  */
 import {
   INSIGHT_PER_APTITUDE,
@@ -29,14 +15,7 @@ import { MANUAL_REBIRTH_MIN_MAJOR } from './reincarnation'
 
 // ============ 一、宿慧的来源 ============
 
-/**
- * 宿慧有两本账,收窄时最容易只看见一本。
- *
- * - `stock` 存量:落进存档的「过去发生过的事」,由 addInsight 累加
- * - `live`  现量:由当下认知实时折算,不存盘 —— 认知跨世保留,随时可算
- *
- * 「把宿慧移出浅轮回」这句话,对两条通道意味着完全不同的改动。
- */
+/** 宿慧两本账:`stock` 存量落存档,由 addInsight 累加;`live` 现量由当下认知实时折算,不存盘 */
 export type InsightSource = 'stock' | 'live'
 
 export interface InsightChannel {
@@ -45,9 +24,8 @@ export interface InsightChannel {
   source: InsightSource
   /** 金丹一世的产出(现量按认知规模计,不适用则为 null) */
   perGoldLife: number | null
-  /** 是否落进存档 */
   persisted: boolean
-  /** 高阶部分是否天然受境界硬挡 */
+  /** 高阶部分是否受境界硬挡 */
   realmGated: boolean
   evidence: string
 }
@@ -84,14 +62,7 @@ export const INSIGHT_CHANNELS: InsightChannel[] = [
 
 // ============ 二、宿慧的消费者 ============
 
-/**
- * 消费者的两种性质 —— 这是本次审计要分清的核心。
- *
- * - `opening` 开局状态:只影响转世睁眼那一刻的起点,之后可被本世行为追平
- * - `standing` 持续能力:只要阶位在,这一世全程有效,追不平
- *
- * 只有 standing 才配叫「永久继承资产」。opening 更像是省去重复劳动。
- */
+/** 消费者性质:`opening` 只影响转世起点,本世可追平;`standing` 阶位在即全程有效、追不平,只有它算永久继承资产 */
 export type ConsumerKind = 'opening' | 'standing'
 
 export interface InsightConsumer {
@@ -156,24 +127,17 @@ export const INSIGHT_CONSUMERS: InsightConsumer[] = [
   }
 ]
 
-/** 真正算永久继承资产的消费者 */
 export function standingConsumers(): InsightConsumer[] {
   return INSIGHT_CONSUMERS.filter(c => c.kind === 'standing')
 }
 
-/** 只是省去重复劳动的消费者 */
 export function openingConsumers(): InsightConsumer[] {
   return INSIGHT_CONSUMERS.filter(c => c.kind === 'opening')
 }
 
 // ============ 三、真实存档探针 ============
 
-/**
- * 两份真实存档的实测值(只取统计量,不含任何个人数据)。
- *
- * 这是本次审计的地基:所有关于「移出宿慧会怎样」的判断都跑在这两个点上,
- * 而不是跑在假设的玩家行为上。
- */
+/** 两份真实存档的实测值(只取统计量,不含任何个人数据) */
 export interface SaveProbe {
   name: string
   rebirths: number
@@ -222,10 +186,7 @@ export function stockShare(p: SaveProbe): number {
 
 /**
  * 迁移欠账:老存档应折算却没折上的宿慧。
- *
- * sanitize 的判据是 `Number.isFinite(r?.insight) ? max(0, r.insight) : legacyInsightOf(count)`。
- * 字段缺失走折算,字段存在则原样采信 —— 于是「字段已建但转世发生在该体系之前」
- * 的存档会拿到 0,历世阅历一分不记
+ * sanitize 字段缺失才走 legacyInsightOf 折算、存在则原样采信,「字段已建但转世发生在该体系之前」的存档拿到 0。
  */
 export function migrationGap(p: SaveProbe): number {
   if (p.insightField === undefined) return 0
@@ -270,7 +231,7 @@ export function veinTotalOf(p: SaveProbe): number {
   return Object.values(p.veins).reduce((a, b) => a + b, 0)
 }
 
-/** 单条脉的最高投点 —— 用来看主脉机制有没有被真正使用 */
+/** 单条脉的最高投点(看主脉机制是否被用过) */
 export function veinPeakOf(p: SaveProbe): number {
   return Math.max(...Object.values(p.veins))
 }
@@ -310,12 +271,7 @@ export const LEGACY_ASSETS: LegacyAsset[] = [
   }
 ]
 
-/**
- * 存量处理的判据。
- *
- * 饱和度高 + 有沉没成本 + 轮回本就不动它 → 历史遗产。
- * 三条里只要「轮回本就不动它」成立,清零就是新增惩罚而非恢复原设计
- */
+/** 存量处理判据:轮回本就不动它即为历史遗产,清零是新增惩罚而非恢复原设计 */
 export function verdictOf(a: LegacyAsset): LegacyVerdict {
   return a.touchedByRebirth ? 'thisLife' : 'heritage'
 }

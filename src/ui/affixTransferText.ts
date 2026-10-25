@@ -1,8 +1,6 @@
 /**
- * 词条转移(议题 #22)的界面文案 —— 只报状态、结果、代价,不解释、不劝导。
- *
- * 长度守在 affixTransferText.spec:状态 ≤8 字、按钮 2~6 字、提示 ≤12 字。
- * 缺料写「未足」,与重铸、封存的提示同一个说法。
+ * 词条转移(议题 #22)界面文案:只报状态、结果、代价。
+ * 长度 spec 钉:affixTransferText.spec(状态 ≤8 字、按钮 2~6 字、提示 ≤12 字)。缺料写「不足」,与重铸、封存同词。
  */
 import type { AffixRoll, AnyStatKey, GNum, StatMods } from '@/types'
 import { affixDef, affixValue } from '@/data/affixes'
@@ -89,7 +87,7 @@ export function transferCountText(before: number, after: number, cap: number): s
   return `${before} → ${after} / ${cap} 条`
 }
 
-/** 一条词条的整句:「名」+ 效果(数值已代入)—— 重名的「破妄」靠效果句分得开 */
+/** 词条整句:「名」+ 效果(数值已代入);重名词条靠效果句分开 */
 export function transferAffixText(roll: AffixRoll): string {
   const def = affixDef(roll.id)
   if (!def) return roll.id

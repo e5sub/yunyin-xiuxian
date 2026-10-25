@@ -1,22 +1,12 @@
 <template>
-  <!-- 开炉炼丹 -->
   <BaseModal :open="open" title="开炉炼丹" wide @close="emit('close')">
     <p class="mb-2 text-[11px] text-ink-faint tabular">灵草 {{ herbStash }} · 灵石 {{ formatGN(resources.spiritStone) }}</p>
-    <!--
-      被动翻检全程无进度条:玩家只知道某天突然翻出一张方子,不知道它快到了。
-      这一行把「下一件事」报成时间 —— 读数与 studyTick 同序,见 core/loreService.studyEta
-    -->
+    <!-- 翻检读数与 studyTick 同序(见 core/loreService.studyEta) -->
     <p v-if="studyLine" class="mb-2 text-[10px] leading-relaxed text-ink-faint tabular">{{ studyLine }}</p>
-    <!--
-      方子列表不再自带滚动框:弹窗正文本身就是滚动容器,两层滚动叠在一起时,
-      内层底边会把下一张卡片切得只剩一条圆角,玩家看不出还能滚(议题 #21)。
-    -->
+    <!-- 列表不可自带滚动框:弹窗正文已是滚动容器,两层滚动会切掉下一张卡(议题 #21) -->
     <div v-if="recipes.length" class="space-y-2">
       <div v-for="r in recipes" :key="r.def.id" class="card-ink px-3.5 py-2.5">
-        <!--
-          信息在上、操作在下。从前「把握」与两枚按钮并排挂在右侧、宽度写死,
-          加了「连炼 ×5」之后右列更宽,窄屏上左列只剩两个字宽,丹名被压成竖排(议题 #21)。
-        -->
+        <!-- 信息在上、操作在下:操作列并排在右时,窄屏丹名会被压成竖排(议题 #21) -->
         <div class="flex items-start gap-2.5">
           <GameIcon :name="r.def.icon" :size="18" class="mt-px shrink-0" :style="{ color: pillQualityColor(r.def) }" />
           <div class="min-w-0 grow">
@@ -30,10 +20,7 @@
             <!-- 炼出来是什么:方子清单此前只报代价与把握,不报成品 -->
             <p class="text-[10px] leading-relaxed text-azure">{{ pillFuncText(r.def) }}</p>
             <p v-for="w in r.able.weakness" :key="w" class="mt-0.5 text-[10px] text-ink-faint">· {{ w }}</p>
-            <!--
-              炉前存货账:只摊代价与把握时,玩家不知道行囊里已存几枚,容易重复炼制。
-              存货读 inventory.pills(与丹匣同一份账),不另数一遍。
-            -->
+            <!-- 存货读 inventory.pills,与丹匣同一份账 -->
             <p class="mt-0.5 text-[10px] tabular">
               <span :class="r.stock > 0 ? 'text-ink-soft' : 'text-ink-faint'">存 {{ r.stock }}</span>
               <span v-if="r.overflow === 'full'" class="ml-1 text-cinnabar">已顶</span>
@@ -49,11 +36,10 @@
             <span v-if="r.able.bonusChanceWithYield > 0" class="ml-1 tabular text-jade">· 双丹 {{ formatPercent(r.able.bonusChanceWithYield) }}</span>
           </p>
           <div class="ml-auto flex shrink-0 gap-1.5">
-            <!-- 玩家反馈「批量炼丹」:材料够几炉就连开几炉,结果与连点一致。
-                 !py-1.5 盒高 27px 低于 28px 阈值(layout-check 弹窗巡逻实测),
-                 抬到 !py-2 到 35px,批量炼制是高频操作。
-                 料足(plan>5)时多一枚「炼满」:按当前料保底算清能开几炉,
-                 一次开完,预览与执行共用 craftBatchPlan -->
+            <!--
+              !py-2 不可降回 !py-1.5:盒高 27px,低于 28px 可点阈值(layout-check 实测)。
+              连炼结果与连点一致;「炼满」预览与执行共用 craftBatchPlan。
+            -->
             <template v-if="r.plan.rounds > 0">
               <template v-if="pillFullId !== r.def.id">
                 <button class="btn-ghost !px-3 !py-2 !text-[11px]" @click="craftPillBatch(r.def.id, 5)">连炼 ×5</button>
@@ -67,19 +53,14 @@
                 <button class="btn-seal !px-3 !py-2 !text-[12px]" @click="craftPill(r.def.id)">炼制</button>
               </template>
               <template v-else>
-                <!-- 开的是累计总账,按一下不该就此了结:二步确认与分解/散去同款 -->
+                <!-- 二步确认与分解/散去同款 -->
                 <button class="btn-ghost !px-2.5 !py-2 !text-[11px]" @click="pillFullId = null">再想想</button>
                 <button class="btn-seal !px-2.5 !py-2 !text-[11px]" @click="runCraftFull(r.def.id, r.plan.rounds)">
                   开 炉 ×{{ r.plan.rounds }}
                 </button>
               </template>
             </template>
-            <!--
-              缺料/掌握不足:不摆注定点不动的按钮,把真实阻拦摊在眼前。
-              缺料时另给一条去路 —— 只说「未足」而不给去处,玩家只能自己翻页
-              找坊市或历练(议题 #130)。草石都缺先指坊市:买回草之后这句会
-              变成「只缺灵石」,那时再给历练那条,一次只摆一条,窄屏也不挤。
-            -->
+            <!-- 缺料给一条去路(议题 #130):草石都缺先指坊市,一次只摆一条 -->
             <span v-else class="flex items-center gap-2">
               <span class="whitespace-nowrap text-[10px] text-cinnabar">{{ r.plan.blocked }}</span>
               <RouterLink
@@ -89,7 +70,7 @@
               >
                 去坊市续草 →
               </RouterLink>
-              <!-- 灵石只从历练/悬赏来,坊市是花灵石的地方 —— 指去坊市等于指反方向 -->
+              <!-- 只缺灵石指历练:灵石只从历练/悬赏来 -->
               <RouterLink
                 v-else-if="r.plan.reason === 'stone'"
                 :to="{ name: 'adventure' }"
@@ -149,13 +130,7 @@
   import BaseModal from '@/components/common/BaseModal.vue'
   import GameIcon from '@/components/common/GameIcon.vue'
 
-  /**
-   * 开炉炼丹弹窗 —— 自 InventoryView 迁入。
-   *
-   * 方子行、把握配色、技艺与翻检读数全走 composables/useBrewing.ts,与页面入口卡
-   * 同源(入口卡要报「已知丹方 N 种」);这里只留弹窗自己的「炼满」确认态,
-   * 也就是 useBrewing 里的 pillFullId —— 它本就只服务这一扇浮层。
-   */
+  /** 方子行、把握配色、技艺与翻检读数全走 useBrewing,与页面入口卡同源 */
   const props = defineProps<{ open: boolean }>()
   const emit = defineEmits<{ close: [] }>()
 
@@ -163,10 +138,7 @@
   const { recipes, craftGuarantee, skillRows, studyLine, rateClass, pillFullId, runCraftFull } = useBrewing()
   const herbStash = computed(() => herbStashText(g => resources.herbOf(g), formatNum))
 
-  /**
-   * 「炼满」确认态只服务本次开炉。弹窗在行囊页常驻,只切 open:
-   * 关闭时若不撤销,下次开炉会直接停在上次的「开炉 ×N」上,一步误触就炼掉整包料。
-   */
+  /** 弹窗常驻只切 open:关闭时须撤销「炼满」确认态,否则下次开炉停在「开炉 ×N」上 */
   watch(
     () => props.open,
     open => {

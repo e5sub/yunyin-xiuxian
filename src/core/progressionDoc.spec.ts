@@ -1,9 +1,4 @@
-/**
- * 数值体系说明与真实公式同源(防「文案说谎」)
- *
- * 界面里的「每境 ×N」必须就是公式里的 N。这条不看文档写了什么,
- * 而是拿公式真算一遍比值,再与文档字段对照 —— 改常数忘了改文案,这里立刻红。
- */
+/** 数值体系说明与真实公式同源:界面「每境 ×N」= 公式真算的比值;改常数未改文案即红 */
 import { describe, expect, it } from 'vitest'
 import { cnNumber } from '@/utils/format'
 import {
@@ -58,7 +53,7 @@ describe('数值体系说明 · 与公式同源', () => {
     const speed = baseCultPerSec(MAX_MAJOR, 0) / baseCultPerSec(MAX_MAJOR - 1, 0)
     expect(OUTER_TIME_PER_MAJOR).toBeCloseTo(outer / speed, 5)
     expect(MORTAL_TIME_PER_MAJOR).toBeGreaterThan(1)
-    // 界外的「数值」按指数堆叠,「耗时」明显更缓 —— 这正是设计的分工
+    // 界外数值按指数堆叠,耗时明显更缓
     expect(axis('exp').outer).toBeGreaterThan(OUTER_TIME_PER_MAJOR * 2)
   })
 
@@ -68,7 +63,7 @@ describe('数值体系说明 · 与公式同源', () => {
     expect(PROGRESSION_NOTES.banking.length).toBeGreaterThanOrEqual(3)
     expect(PROGRESSION_NOTES.basis.length).toBe(4)
     expect(PROGRESSION_NOTES.breakthrough.length).toBeGreaterThanOrEqual(3)
-    // 天劫口径里点名的封顶境界,必须就是 constants 里那一个
+    // 天劫口径点名的封顶境界 = constants 里那一个
     expect(PROGRESSION_NOTES.breakthrough[1]).toContain(REALMS[PROGRESSION_NOTES.tribulationCapMajor]!.name)
   })
 
@@ -79,11 +74,11 @@ describe('数值体系说明 · 与公式同源', () => {
     const b = toNum(buildingCost(100, 5)) / toNum(buildingCost(100, 4))
     expect(b).toBeCloseTo(curve('building').growth, 5)
 
-    // 功法参悟:每层悟道点 ×GONGFA_UP_GROWTH(取整,故给 2% 相对容差)
+    // 功法参悟:每层悟道点 ×GONGFA_UP_GROWTH(取整,2% 相对容差)
     const g = gongfaUpCost(4, 5) / gongfaUpCost(4, 4)
     expect(Math.abs(g - curve('gongfa').growth) / curve('gongfa').growth).toBeLessThan(0.02)
 
-    // 装备强化:每级器灵尘 ×UPGRADE_DUST_GROWTH(品质系数同级相消;取整,给 2% 容差)
+    // 装备强化:每级器灵尘 ×UPGRADE_DUST_GROWTH(品质系数同级相消;取整,2% 容差)
     const u = upgradeCost(5, 10, 3, 0).dust / upgradeCost(4, 10, 3, 0).dust
     expect(Math.abs(u - curve('equipLevel').growth) / curve('equipLevel').growth).toBeLessThan(0.02)
 
@@ -93,7 +88,6 @@ describe('数值体系说明 · 与公式同源', () => {
   })
 
   it('寿元曲线与 realms 数据同源,且每境至少翻倍', () => {
-    // 说明里的每条曲线都对应真实界域配置
     expect(LIFESPAN_CURVES.length).toBe(4)
     for (const c of LIFESPAN_CURVES) {
       const w = Object.values(LIFESPAN_WORLDS).find(x => x.growth === c.growth && x.base === c.base)
@@ -150,27 +144,17 @@ describe('数值体系说明 · 术数四门不撒谎', () => {
   })
 
   /**
-   * 总纲把每一层各占一层说清楚(不是一锅加成),且**层数与表对得上**。
-   *
-   * 从前这条判据照着那句写死的文案断言 `['天时','星象','问卦','命格','择门']`
-   * 五个词都在 —— 而表里只有四层。多出来的「天时」是天气(`core/weather`),
-   * 它并入 `finalStats.mods`,根本不走术数这套「各占一层、互不顶替」的时机分层。
-   * 判据与文案一起说过谎:玩家在说明页上看到第五种要操心的节奏,而它不存在。
-   *
-   * 现在判据改问本体:**总纲点到的每一层,都必须是表里真有的那一层**,
-   * 且层数从 `SORCERY_LAYERS` 现算。加一层、减一层,两边一起动。
-   *
-   * 故障注入:把 SORCERY_SUMMARY 改回写死「五层」→ 本条红。
+   * 总纲点到的每一层须是表里真有的,层数从 `SORCERY_LAYERS` 现算。
+   * 故障注入:把 SORCERY_SUMMARY 改成写死「五层」,本用例红。
    */
   it('总纲点到的每一层都是表里真有的,且层数与表长一致', () => {
-    // 每层名字的后半截(问卦 / 命格 / 值日 / 择门)都该被总纲点到
+    // 层名后半截(问卦 / 命格 / 值日 / 择门)
     for (const l of SORCERY_LAYERS) {
       const key = l.name.split(' · ')[1]!
       expect(SORCERY_SUMMARY, `总纲漏了${key}这一层`).toContain(key)
     }
-    // 层数现算,不写死
     expect(SORCERY_SUMMARY).toContain(`${cnNumber(SORCERY_LAYERS.length)}层各占一层`)
-    // 天气不在这套分层里:它并入 finalStats.mods,不是第五种时机
+    // 天时(天气,`core/weather`)并入 finalStats.mods,不属术数分层
     expect(SORCERY_SUMMARY, '天时(天气)不属术数分层,摆进来就是第五种假节奏').not.toContain('天时')
   })
 })

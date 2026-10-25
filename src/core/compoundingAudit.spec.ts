@@ -1,14 +1,5 @@
 /* eslint-disable no-console */
-/**
- * 跨世复利审计
- *
- * 指标换了:不再问「浅轮回能推进多少永久资产」,而问
- * **一次金丹轮回留下多少「可影响下一世效率」的永久增益**。
- *
- * 判据是硬链路:该资产是否自动汇入下一世的 cultivationSpeed 或战力。
- * `灵兽 +1` 是永久资产却不加速轮回;`资质地板 +5` 只是个数字,
- * 却持续作用于整个生命周期 —— 这两者不该记在同一张表上。
- */
+/** 跨世复利审计:一次金丹轮回留下多少「可影响下一世效率」的永久增益 */
 import { describe, expect, it } from 'vitest'
 import {
   COMPOUND_ASSETS,
@@ -44,7 +35,6 @@ describe('复利链 · 谁真的会让下一世更快', () => {
   it('只有两项是真正的自动复利,其余是收藏或需操作', () => {
     const auto = autoCompounding()
     const unbounded = auto.filter(a => a.kind === 'auto-unbounded')
-    // 无上限的只有道果一项
     expect(unbounded).toHaveLength(1)
     expect(unbounded[0]!.name).toBe('道果')
     console.log(
@@ -83,7 +73,6 @@ describe('复利链 · 资质地板', () => {
           `${expectedAptitude(f).toFixed(1).padStart(9)} ${expectedGrowthMult(f).toFixed(3).padStart(13)}`
       )
     }
-    // 地板 ≥60 后任何 roll 都顶到 100,再轮回不再改善资质
     expect(sat).toBeGreaterThan(1)
     expect(sat).toBeLessThan(20)
     console.log(`\n第 ${sat} 世地板达 ${floorAtLife(sat)},此后任何 roll 都顶满 100 —— 资质地板到此为止`)
@@ -94,7 +83,6 @@ describe('复利链 · 资质地板', () => {
     const lo = expectedGrowthMult(floorAtLife(1))
     const hi = expectedGrowthMult(floorAtLife(sat))
     const span = hi / lo
-    // 全程只涨三成上下,远不是主导项
     expect(span).toBeGreaterThan(1.2)
     expect(span).toBeLessThan(1.5)
     console.log(
@@ -141,7 +129,6 @@ describe('复利链 · 逐世曲线', () => {
     }
     const early = attributionAt(3)
     const late = attributionAt(30)
-    // 份额随世代单调让位给道果,但即便最早期它也不过半
     expect(early.linggenShare).toBeLessThan(0.5)
     expect(late.linggenShare).toBeLessThan(early.linggenShare)
     console.log(
@@ -152,15 +139,13 @@ describe('复利链 · 逐世曲线', () => {
   })
 
   it('修正一个直觉:资质地板性质危险,量级却不危险', () => {
-    // 直觉上「每轮回一次,下一世永久更容易」比一次性收藏更危险。
-    // 性质判断没错——它确实自动、确实永久、确实作用于整个生命周期。
-    // 但实测量级不支持这个担忧:份额峰值不到两成,且十二世即封顶
+    // 实测:份额峰值不到两成,且十二世即封顶
     const shares = [2, 3, 6, 9, 12, 17, 20, 30].map(l => attributionAt(l).linggenShare)
     const peak = Math.max(...shares)
     expect(peak).toBeLessThan(0.25)
     const sat = saturationLife()
     const lg = attributionAt(30).linggenOnly
-    // 单独看资质地板,三十世总共只提速一成四
+    // 单独看资质地板,三十世只提速一成四
     expect(lg).toBeLessThan(1.2)
     console.log(
       `\n资质地板份额峰值 ${(peak * 100).toFixed(0)}%,单独作用三十世也只提速 ${((lg - 1) * 100).toFixed(1)}%,` +
@@ -189,12 +174,11 @@ describe('复利链 · 正反馈会不会失控', () => {
   })
 
   it('结论:复利面比资产数量表显示的更宽,但强度可控', () => {
-    // 浅轮回名义上只剩四项资产,实际自动复利通道有四条
-    // (道果、资质地板、称号、灵兽),其中两条不在那张表里
+    // 自动复利通道四条(道果、资质地板、称号、灵兽),其中两条不在那张表里
     const auto = autoCompounding()
     expect(auto.length).toBeGreaterThanOrEqual(4)
     const s30 = speedupAt(30)
-    // 30 世累计提速在两倍上下,不是数量级失控
+    // 30 世累计提速两倍上下
     expect(s30).toBeGreaterThan(1.5)
     expect(s30).toBeLessThan(4)
     console.log(

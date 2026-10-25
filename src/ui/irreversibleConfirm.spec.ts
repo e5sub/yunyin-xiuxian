@@ -28,15 +28,12 @@ describe('不可逆确认要看见真正规则', () => {
 describe('不可逆确认的两次点击各写什么', () => {
   /**
    * 同一族两步确认,确认词须是「确认+动词」、取消词须是「再想想」。
-   * 此前本仓这四处各写各的:确 散 / 凝 炼 / 分解? / 确信删除,取消词散成
-   * 取 消 / 算了 / 取消 —— 玩家在同一个游戏里要认四套反悔的说法。
-   * 故障注入:把任一取消词改回「取消」→ 红。
+   * 故障注入:把任一取消词改成「取消」,本用例红。
    */
   const FAMILY: Array<[string, string[]]> = [
     ['views/BuildView.vue', ['确认删除']],
     ['components/equipment/EquipmentDetailDialog.vue', ['确认分解']],
     ['views/SoulsView.vue', ['确认散去', '确认凝炼']],
-    // 远征册拆出后判据随本体走:中道而返的确认态在 ExpeditionPanel
     ['components/celestial/ExpeditionPanel.vue', ['确认返还']],
     // 道痕册拆出后判据随本体走:重写确认态在 MarksPanel
     ['components/celestial/MarksPanel.vue', ['确认重写']],
@@ -59,32 +56,22 @@ describe('不可逆确认的两次点击各写什么', () => {
     expect(TRANSFER_LABELS.cancel).toBe('再想想')
   })
 
-  /**
-   * 「炼满」开的是按当前料算出的整本总账 —— 一次点掉几十炉,与「分解/散去」同族,
-   * 得先摆清总耗再让玩家按第二下。故障注入:把第一步直接接回 runCraftFull → 红。
-   */
+  /** 「炼满」一次点掉几十炉,与「分解/散去」同族。故障注入:把第一步改成直接 runCraftFull,本用例红。 */
   it('开炉的「炼满」先摆总账,第二步才真开炉', () => {
-    // 开炉弹窗拆出后判据随本体走(components/inventory/BrewingDialog.vue)
     const src = read('components/inventory/BrewingDialog.vue')
     expect(src, '第一步只立起确认态').toContain('@click="pillFullId = r.def.id"')
     expect(src, '第二步才走 runCraftFull').toContain('runCraftFull(r.def.id, r.plan.rounds)')
     expect(src, '取消词与同族一致').toContain('再想想')
   })
 
-  /**
-   * 弹窗在行囊页常驻,只切 open;确认态若跨关闭残留,下次开炉会直接停在上次的
-   * 「开炉 ×N」上。故障注入:删掉 watch 里的复位 → 红。
-   */
+  /** 弹窗在行囊页常驻、只切 open,确认态须随关闭复位。故障注入:删掉 watch 里的复位,本用例红。 */
   it('开炉弹窗关闭即撤销「炼满」确认态', () => {
     const src = read('components/inventory/BrewingDialog.vue')
     expect(src, '须监听弹窗开关').toContain('() => props.open')
     expect(src, '关闭时撤销确认态').toContain('if (!open) pillFullId.value = null')
   })
 
-  /**
-   * 依规则清理行囊是整包报废,第一下只该摆出名单与收益。
-   * 故障注入:把第一步的 cleanConfirm = true 改回直接 smartClean() → 红。
-   */
+  /** 故障注入:把第一步的 cleanConfirm = true 改成直接 smartClean(),本用例红。 */
   it('收纳的整包清理先列名单,第二步才化尘', () => {
     const src = read('components/inventory/DismantleDialog.vue')
     expect(src, '第一步只立起确认态').toContain('@click="cleanConfirm = true"')
@@ -93,10 +80,7 @@ describe('不可逆确认的两次点击各写什么', () => {
     expect(src, '取消词与同族一致').toContain('再想想')
   })
 
-  /**
-   * 连升一级级扣到底,第一下只该摆出总账。故障注入:把第一步改回直接 runBatchUpgrade
-   * → 红。判据随面板走(components/equipment/UpgradePanel.vue)。
-   */
+  /** 故障注入:把第一步改成直接 runBatchUpgrade,本用例红。 */
   it('装备连升先摆总账,第二步才动手', () => {
     const src = read('components/equipment/UpgradePanel.vue')
     expect(src, '第一步只立起确认态').toContain('@click="batchConfirm = inst.uid"')
@@ -104,11 +88,7 @@ describe('不可逆确认的两次点击各写什么', () => {
     expect(src, '取消词与同族一致').toContain('再想想')
   })
 
-  /**
-   * 重铸一次重掷全部未封存词条、成本不低,同样两步。判据随页脚块走
-   * (components/equipment/EquipReforgeFooter.vue)。
-   * 故障注入:把第一步改回直接 doReforge → 红。
-   */
+  /** 故障注入:把第一步改成直接 doReforge,本用例红。 */
   it('重铸先摆价签,第二步才重掷', () => {
     const src = read('components/equipment/EquipReforgeFooter.vue')
     expect(src, '第一步只立起确认态').toContain('@click="reforgeArm = inst?.uid ?? null"')
@@ -117,14 +97,10 @@ describe('不可逆确认的两次点击各写什么', () => {
   })
 
   /**
-   * 确认态必须钉在「那一条」上,不能钉在它的行号上。
-   *
-   * 道痕表新痕插头部,而重写一次就会补一条新痕:按行号记的话,重写第一行后
-   * 第二行的确认态会挪到刚写进来的那一行 —— 玩家再点确认,花掉的是另一条的道源。
-   * 故障注入:把 rewriteConfirm === mark 改回 === i → 红。
+   * 道痕表新痕插头部、重写一次就会补一条新痕:按行号记的确认态会挪到另一条。
+   * 故障注入:把 rewriteConfirm === mark 改成 === i,本用例红。
    */
   it('忆战重写的确认态按道痕身份记,不按行号', () => {
-    // 道痕册拆出后判据随本体走(components/celestial/MarksPanel.vue)
     const src = read('components/celestial/MarksPanel.vue')
     expect(src, '确认态须按那条痕本身比对').toContain('rewriteConfirm === mark')
     expect(src, '武装须写入那条痕本身').toContain('rewriteConfirm = mark')
@@ -135,11 +111,8 @@ describe('不可逆确认的两次点击各写什么', () => {
   })
 
   /**
-   * 构筑对照的选中态同理:不能拿落痕时刻当身份。
-   *
-   * 同一毫秒可以落两条痕(远征/试炼批量结算、读档夹具):按 `at` 认痕时两枚
-   * chip 一起高亮,而 `find(m => m.at === at)` 只取第一条 —— 玩家看见高亮的是
-   * 这条,读到的却是那条的构筑。故障注入:把 pickCompare 改回按 at 找 → 红。
+   * 同一毫秒可以落两条痕(远征/试炼批量结算、读档夹具),落痕时刻 `at` 不能当身份。
+   * 故障注入:把 pickCompare 改成按 at 找,本用例红。
    */
   it('构筑对照的选中态按道痕本身记,不按落痕时刻', () => {
     const src = read('views/BuildView.vue')

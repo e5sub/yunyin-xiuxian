@@ -24,7 +24,7 @@ describe('已达成成就展示实发奖励', () => {
 
   it('奖励折算骑真实区域层级(playerTier=maxTierForMajor),不退回境界大阶封顶', () => {
     const player = usePlayerStore()
-    player.major = 12 // 金仙:旧尺在此被封到 20,真实阶梯 24(×13)
+    player.major = 12 // 金仙:真实阶梯 24
     const t = playerTier()
     expect(t, '应等于真实层级').toBe(maxTierForMajor(12))
     expect(t, '旧公式在 12 大阶被封 20 —— 退回旧的 min(20, 2m+…) 这里会红').toBeGreaterThan(20)
@@ -36,11 +36,7 @@ describe('已达成成就展示实发奖励', () => {
     expect(src).toContain('done && a.reward')
   })
 
-  /**
-   * 收集进度要能「扫一眼」:只有 N/M 数字时,玩家得自己算走到哪了。
-   * 页级条与组内细条都读同一份计数,粗细分层次 —— 故障注入:把组头数字
-   * 改成另算一遍,或删掉细条,本条即红。
-   */
+  /** 页级条与组内细条读同一份计数。故障注入:把组头数字改成另算一遍,或删掉细条,本条红 */
   it('成就页与名号/灵兽册的收集进度都接了同一枚 ProgressBar', () => {
     const ach = readFileSync(resolve(__dirname, '../views/CollectionView.vue'), 'utf8')
     expect(ach, '页级总条').toContain(':value="ACHIEVEMENTS.length > 0 ? quests.achieved.length / ACHIEVEMENTS.length : 0"')

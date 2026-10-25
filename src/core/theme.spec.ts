@@ -1,6 +1,3 @@
-/**
- * 主题服务单测 —— 日间/夜间/跟随系统
- */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { applyTheme, initTheme } from './theme'
 
@@ -17,7 +14,6 @@ const docEl = {
   }
 }
 
-/** 捕获的 theme-color meta:querySelector 返回既有元素(无则走 createElement 新建同一元素) */
 const metaEl = { name: '', content: '' }
 const docStub = {
   documentElement: docEl,
@@ -28,7 +24,7 @@ const docStub = {
 
 type Listener = () => void
 
-/** 模拟 matchMedia:listeners 保存,set() 触达系统切换 */
+/** 模拟 matchMedia;set() 触发系统切换 */
 const mockMatchMedia = (initialDark: boolean) => {
   let dark = initialDark
   const listeners: Listener[] = []
@@ -94,17 +90,17 @@ describe('theme', () => {
     const dispose = initTheme(() => mode)
     expect(docEl.dataset.theme).toBe('dark')
 
-    // 系统切日间,auto 跟随
+    // 系统切日间
     mq.set(false)
     expect(docEl.dataset.theme).toBe('light')
 
-    // 用户显式选夜间:系统再切不应改主题
+    // 显式夜间:系统再切不改主题
     mode = 'dark'
     applyTheme('dark')
     mq.set(true)
     expect(docEl.dataset.theme).toBe('dark')
 
-    // 回到 auto:跟随当前系统(日间)
+    // 回到 auto:跟随系统(日间)
     mode = 'auto'
     mq.set(false)
     expect(docEl.dataset.theme).toBe('light')

@@ -1,25 +1,12 @@
 /**
- * 跨世复利审计
- *
- * 指标换了。前几轮问的是「浅轮回能推进多少永久资产」,答案 44%/56% 已经
- * 验证了路线分离。但那张表把不同性质的东西混在一起数了 ——
- * `灵兽 +1` 是永久资产却不会让轮回越来越快,`资质地板 +5` 只是一个数字
- * 却持续作用于整个生命周期。
- *
- * 本轮问的是:**一次金丹轮回到底留下多少「可影响下一世效率」的永久增益?**
- *
- * 判据是一条硬链路:该资产是否最终汇入下一世的 `cultivationSpeed` 或战力,
- * 且**无需玩家额外操作**。汇入的才叫复利,否则只是收藏。
- *
- * 追出来的链路:
+ * 跨世复利审计:一次金丹轮回留下多少「可影响下一世效率」的永久增益。
+ * 判据:该资产无需玩家额外操作即汇入下一世的 `cultivationSpeed` 或战力;汇入的才叫复利,否则只是收藏。
+ * 链路:
  *   轮回次数 → aptitudeFloorNow → rollLinggen 的 aptitude → growthMult
  *            → linggenMult → computeFinalStats 的 cultExtra
  *   道果     → effectiveDaoFruit → 同一个 cultExtra(另加战力乘区)
- *
- * 两者是**加法叠加进同一个口子**,所以可以放在同一把尺子上比。
- *
- * 口径承袭 rebirthRoi:绝对小时数不可信(见 saveCalibration),
- * 但全部读数都是同一把尺子下的比值,偏差在相除时抵消。
+ * 两者加法叠进同一个口子,可放在同一把尺子上比。
+ * 口径承袭 rebirthRoi:绝对小时数不可信(见 saveCalibration),只读比值。
  */
 import { daoFruitGain } from './formulas'
 import { effectiveDaoFruit } from './statsCalc'
@@ -27,17 +14,15 @@ import { fullHoursToReach } from './rebirthRoi'
 import { MANUAL_REBIRTH_MIN_MAJOR } from './reincarnation'
 import { DAO_FRUIT_CULT_BONUS, REINCARNATE_APTITUDE_FLOOR } from '@/data/constants'
 
-// ============ 一、复利的判定 ============
-
 /** 一项永久资产的跨世复利性质 */
 export type CompoundKind =
-  /** 自动生效、无上限 —— 每轮回一次,下一世永远更快一点 */
+  /** 自动生效、无上限 */
   | 'auto-unbounded'
-  /** 自动生效、会饱和 —— 涨到头就不再产生新的加速 */
+  /** 自动生效、会饱和 */
   | 'auto-saturating'
-  /** 要玩家额外操作才兑现 —— 不构成自动正反馈 */
+  /** 要玩家额外操作才兑现 */
   | 'manual'
-  /** 不进效率链 —— 是收藏或历史,不是复利 */
+  /** 不进效率链(收藏或历史) */
   | 'inert'
 
 export interface CompoundAsset {
@@ -54,11 +39,8 @@ export interface CompoundAsset {
 }
 
 /**
- * 金丹轮回一世留下的东西,按「会不会让下一世更快」重新归类。
- *
- * 注意最后两项:资质地板与称号**都不在此前的永久资产表里**,
- * 但两者都自动汇入 cultivationSpeed。漏掉它们,
- * 「浅轮回只剩四项」这个结论就把复利面低估了
+ * 金丹轮回一世留下的东西,按「会不会让下一世更快」归类。
+ * 资质地板与称号不在此前的永久资产表里,但都自动汇入 cultivationSpeed。
  */
 export const COMPOUND_ASSETS: CompoundAsset[] = [
   {
@@ -117,7 +99,7 @@ export const COMPOUND_ASSETS: CompoundAsset[] = [
   }
 ]
 
-/** 自动生效的复利项 —— 只有这些构成正反馈 */
+/** 自动生效的复利项:只有这些构成正反馈 */
 export function autoCompounding(): CompoundAsset[] {
   return COMPOUND_ASSETS.filter(a => a.kind === 'auto-unbounded' || a.kind === 'auto-saturating')
 }
@@ -126,8 +108,6 @@ export function autoCompounding(): CompoundAsset[] {
 export function missedByAssetTable(): CompoundAsset[] {
   return autoCompounding().filter(a => !a.inAssetTable)
 }
-
-// ============ 二、资质地板的期望值 ============
 
 /** 灵根条数权重(rollLinggen 的 COUNT_WEIGHTS) */
 const COUNT_W: readonly { n: number; w: number; f: number }[] = [
@@ -144,21 +124,16 @@ const SPECIAL_F = 1.2
 const APT_LO = 40
 const APT_HI = 100
 
-/**
- * 给定资质地板,单根资质的期望。
- *
- * aptitude = min(100, U(40,100) + floor) —— 截断使它在 floor≥60 时完全饱和
- */
+/** 给定资质地板的单根资质期望:aptitude = min(100, U(40,100) + floor),floor≥60 时完全饱和 */
 export function expectedAptitude(floor: number): number {
   const f = Math.max(0, floor)
   if (f >= APT_HI - APT_LO) return APT_HI
   const span = APT_HI - APT_LO
-  // 未被截断的那一段:U(40+f, 100),占比 (span-f)/span,均值 (40+f+100)/2
   const pUnder = (span - f) / span
   return pUnder * ((APT_LO + f + APT_HI) / 2) + (1 - pUnder) * APT_HI
 }
 
-/** 条数因子与特殊灵根的期望(与资质地板无关,可提出来) */
+/** 条数因子与特殊灵根的期望(与资质地板无关) */
 const EXPECTED_FACTOR =
   (COUNT_W.reduce((s, c) => s + c.w * c.f, 0) / COUNT_W.reduce((s, c) => s + c.w, 0)) *
   (SPECIAL_P * SPECIAL_F + (1 - SPECIAL_P))
@@ -168,7 +143,7 @@ export function expectedGrowthMult(floor: number): number {
   return (expectedAptitude(floor) / 60) * EXPECTED_FACTOR
 }
 
-/** 第 life 世开局的资质地板(life 从 1 起;第一世尚未轮回,count=0) */
+/** 第 life 世开局的资质地板(life 从 1 起,第一世 count=0) */
 export function floorAtLife(life: number): number {
   return REINCARNATE_APTITUDE_FLOOR * Math.max(1, life)
 }
@@ -180,8 +155,6 @@ export function saturationLife(): number {
   }
   return -1
 }
-
-// ============ 三、复利曲线 ============
 
 /** 金丹圆满转世一次凝的道果 */
 export const FRUIT_PER_GOLD_LIFE = daoFruitGain(MANUAL_REBIRTH_MIN_MAJOR, 9)
@@ -207,9 +180,7 @@ export interface LifeRow {
 }
 
 /**
- * 逐世的复利表。
- *
- * `only` 用于拆分归因:
+ * 逐世复利表。`only` 拆分归因:
  *   'both'    两条通道都开
  *   'linggen' 只让资质地板增长,道果固定为零
  *   'fruit'   只让道果增长,灵根固定为第一世的水平
@@ -222,7 +193,7 @@ export function lifeTable(lives: number, only: 'both' | 'linggen' | 'fruit' = 'b
     const floor = floorAtLife(life)
     const linggenMult = only === 'fruit' ? base : expectedGrowthMult(floor)
     const fruit = only === 'linggen' ? 0 : fruitAtLife(life)
-    // 目标境界 = 金丹圆满,故修满 major 0..MANUAL_REBIRTH_MIN_MAJOR
+    // 目标金丹圆满:修满 major 0..MANUAL_REBIRTH_MIN_MAJOR
     const hours = fullHoursToReach(MANUAL_REBIRTH_MIN_MAJOR + 1, fruit, { linggenMult, talentCultBonus: 0 })
     if (life === 1) first = hours
     out.push({
@@ -262,18 +233,13 @@ export function attributionAt(life: number): Attribution {
   const both = speedupAt(life, 'both')
   const linggenOnly = speedupAt(life, 'linggen')
   const fruitOnly = speedupAt(life, 'fruit')
-  // 以「超出 1 倍的部分」计份额,避免把基准也算进贡献
+  // 以「超出 1 倍的部分」计份额,基准不算贡献
   const lg = linggenOnly - 1
   const fr = fruitOnly - 1
   return { life, both, linggenOnly, fruitOnly, linggenShare: lg + fr > 0 ? lg / (lg + fr) : 0 }
 }
 
-/**
- * 边际提速:第 life 世相对第 life-1 世又快了多少。
- *
- * 这才是玩家真正感受到的「再轮回一次值不值」。
- * 若它长期不趋零,浅轮回就存在持续的正反馈
- */
+/** 边际提速:第 life 世相对第 life-1 世又快了多少;长期不趋零即浅轮回存在持续的正反馈 */
 export function marginalSpeedup(lives: number): { life: number; gain: number }[] {
   const t = lifeTable(lives)
   const out: { life: number; gain: number }[] = []

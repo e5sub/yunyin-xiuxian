@@ -1,9 +1,4 @@
-/**
- * 存档价格 / 非负整数守卫 —— 坊市与悬赏共用的那两条。
- *
- * 这两条判据此前在坊市、悬赏各写一份:改一处便漂一处,坏档里半个 GNum
- * 或负数索引会让算价/上货一路算出 NaN。收拢到 saveShape 后在这里钉住契约。
- */
+/** 存档价格 / 非负整数守卫,坊市与悬赏共用 */
 import { describe, expect, it } from 'vitest'
 import { SKILL_MULT_CAP } from '@/data/constants'
 import { asCombatSkill, asCombatSkills, asNonNegInt, asPrice } from './saveShape'

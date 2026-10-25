@@ -1,20 +1,5 @@
 /* eslint-disable no-console */
-/**
- * Phase 32.6:丹药价值审计
- *
- * 这一组测试守的不是某个数值,而是**定价法则本身**。
- *
- * 玩家的原话是「灵乳回得太多」,但真问题在他没说出口的那半句:凭什么白捡的比炼的强?
- * 于是这里立七条法则,让每一味丹各安其位 —— 不是把某个数按下去了事,
- * 而是让往后每一味新丹都得先过这七关。
- *
- * 其中最要紧的一条(法则 A)不是我定的,是**从游戏自己的数据里读出来的**:
- * 凤髓膏对千年延寿丹、蟠桃对万寿金丹,两处掉落品都恰是同规格可炼品的五成。
- * 寿元线一直做对了,只是其余四条线没跟上。
- *
- * 另有若干失衡不在本 Phase 处置(改它们等于重做丹药结构),只在报告里点名存档,
- * 见文末「未处置的账」。
- */
+/** 丹药价值审计:守定价法则,每一味新丹须过全部法则。已知未处置的失衡见文末「未处置的账」。 */
 import { describe, it, expect } from 'vitest'
 import {
   PILLS,
@@ -84,7 +69,7 @@ function num(v: number, digits = 2): string {
   return v.toFixed(digits)
 }
 
-/** 跨丹比较必须统一境界,否则比出来的是境界差不是丹药差 */
+/** 跨丹比较须统一境界 */
 function unifiedRealm(pills: readonly { minRealm: number }[]): number {
   return pills.reduce((m, p) => Math.max(m, p.minRealm), 0)
 }
@@ -174,15 +159,11 @@ describe('丹药价值审计报告', () => {
 // ============ 定价法则(断言) ============
 
 describe('定价法则', () => {
-  /**
-   * 【法则 A】掉落品的药力 ≤ 同族、规格不低于它的最近可炼对照 × 0.6。
-   *
-   * 白捡的东西不该比炼的强,这是整套价值预算的地基。比例取自寿元线现成的做法。
-   */
+  /** 【法则 A】掉落品药力 ≤ 同族、规格不低于它的最近可炼对照 × 0.6;比例取自寿元线 */
   it('A —— 掉落品不越过同规格可炼对照的六成', () => {
     for (const def of PILLS.filter(p => !p.recipe)) {
       const peer = craftPeerOf(def)
-      if (!peer) continue // 该族顶端无可炼品,是内容缺口,不是定价违规
+      if (!peer) continue // 内容缺口,不算定价违规
       const at = Math.max(def.minRealm, peer.minRealm)
       const theirs = pillGainSecAt(peer, at)
       if (theirs <= 0) continue
@@ -193,11 +174,7 @@ describe('定价法则', () => {
     }
   })
 
-  /**
-   * 【法则 B】同族同线内,药力序与品质序一致。
-   *
-   * 只在同一条线内要求 —— 跨线由法则 A 管,把两条线混在一起排会自相矛盾。
-   */
+  /** 【法则 B】只在同线内比;跨线由法则 A 管 */
   it('B —— 同族同线内,品质越高药力不越低', () => {
     for (const fam of TIMED_FAMILIES) {
       for (const line of ['craft', 'drop'] as const) {
@@ -218,12 +195,7 @@ describe('定价法则', () => {
     }
   })
 
-  /**
-   * 【法则 C】一个 buff 只许一味丹产出。
-   *
-   * 两味丹指向同一个增益,等于其中一味零成本复制了另一味的产出,
-   * 品质与配方的差别当场作废。
-   */
+  /** 【法则 C】一个 buff 只许一味丹产出 */
   it('C —— 没有两味丹指向同一个增益', () => {
     const owner = new Map<string, string>()
     for (const p of PILLS) {
@@ -234,7 +206,6 @@ describe('定价法则', () => {
     }
   })
 
-  /** 每一味 buff 丹都得真有那个 buff,否则是个吃下去什么也不发生的空壳 */
   it('C2 —— buff 丹指向的增益确实存在,即时丹确实有效果', () => {
     for (const p of PILLS) {
       if (p.kind === 'buff') {
@@ -248,12 +219,7 @@ describe('定价法则', () => {
     }
   })
 
-  /**
-   * 【法则 D】固定点数的修为丹只配给准入境界 0。
-   *
-   * expFixed 每上一个大境界贬值 5.2 倍。入门丹如此是设计意图(它本就该被淘汰),
-   * 但一味准入金丹期的丹若还用固定点数,它在自己首次现身的那一刻就已经过期了。
-   */
+  /** 【法则 D】expFixed 每大境界贬值 5.2 倍 */
   it('D —— 固定点数修为丹只用于入门(准入境界 0)', () => {
     for (const p of PILLS) {
       if (!(p.instant?.expFixed ?? 0)) continue
@@ -261,19 +227,13 @@ describe('定价法则', () => {
     }
   })
 
-  /** 【法则 E】每个大境界都得掉得出东西来 */
   it('E —— 每个大境界的掉落池非空', () => {
     for (let m = 0; m <= MAX_MAJOR; m += 1) {
       expect(dropPoolAt(m).length, `境界 ${m} 掉不出任何丹药`).toBeGreaterThan(0)
     }
   })
 
-  /**
-   * 【法则 E2】仙界以上的掉落池里得有该境界用得上的丹。
-   *
-   * 「非空」是字面满足:如果高境界只能捡到炼气期的妖血丹,池子不空却毫无内容。
-   * 这条要求仙界及其上每一境的掉落池里,至少有一味是高界(准入境界 ≥ 仙界门槛)的丹。
-   */
+  /** 【法则 E2】仙界及其上每一境的掉落池,至少一味准入境界 ≥ 仙界门槛 */
   it('E2 —— 仙界以上的掉落池不是入门丹的堆砌', () => {
     for (let m = WORLD_BREAK_MAJOR; m <= MAX_MAJOR; m += 1) {
       const pool = dropPoolAt(m)
@@ -284,13 +244,7 @@ describe('定价法则', () => {
     }
   })
 
-  /**
-   * 【法则 F】满额资源重置类必须是可炼品。
-   *
-   * 灵气是突破的门槛资源(突破耗去上限的四成),一枚回满即抵两次半突破。
-   * 战术上最强的即时效果必须付出制备代价 —— 它可以贵、可以稀有、可以难炼,
-   * 但不能是白捡的。这条是本次校准里唯一动结构的地方。
-   */
+  /** 【法则 F】满额资源重置类必须是可炼品 */
   it('F —— 满额资源重置(灵气 ≥80%)必须炼得出来', () => {
     for (const p of PILLS) {
       if ((p.instant?.qiPct ?? 0) < 0.8) continue
@@ -299,13 +253,8 @@ describe('定价法则', () => {
   })
 
   /**
-   * 【法则 G】修为丹按「等效闭关时长」结算,药力不随境界膨胀(Phase 39)。
-   *
-   * 旧口径是"当前一层需求的百分比":同一枚金丹期的丹留到混沌海服用,
-   * 药力跟着需求一路涨到天文数字,而成本还冻结在金丹期 ——
-   * 于是"囤低阶丹、到高境界嗑"成了最优解,破界那道关卡也能被买通。
-   * 这条守住新口径的三个性质:药力就是写死的那一段时长、相对药力随境界只减不增、
-   * 单枚丹永不满一层(低境界一层只要几十秒,那是最容易被整层跳过的窗口)。
+   * 【法则 G】三性质:药力不超过写死的时长;相对药力随境界只减不增;单枚永不满一层。
+   * 按「当前一层需求的百分比」结算会让「囤低阶丹、到高境界嗑」成为最优解。
    */
   it('G —— 修为丹按等效闭关时长结算,囤到高境界只会更弱', () => {
     const expPills = PILLS.filter(p => pillFamily(p) === 'exp' && p.instant?.expSecs)
@@ -320,7 +269,7 @@ describe('定价法则', () => {
       expect(topShare, `${p.name} 越到高境界越值钱 —— 百分比口径又回来了`).toBeLessThanOrEqual(ownShare + 1e-12)
       expect(ownShare, `${p.name} 在自己那一境就该满了一层`).toBeLessThanOrEqual(INSTANT_EXP_LAYER_CAP + 1e-9)
     }
-    // 数据里不许再留旧字段(类型上已删,这里再钉一道数据侧的钉子)
+    // 数据侧也不许留旧字段(类型上已删)
     for (const p of PILLS) {
       expect(
         (p.instant as Record<string, unknown> | undefined)?.expReqPct,
@@ -330,18 +279,14 @@ describe('定价法则', () => {
   })
 
   /**
-   * 【法则 G2】修为丹的时长与「它值多少场遭遇」同阶(Phase 39 续)。
-   *
-   * 一张丹方的灵草成本本身就是"要打多少场"—— 一枚丹若远贵于它的材料,
-   * 丹药就变成了一条绕过所有境界壁垒的通路;若远便宜于材料,则没人炼。
-   * 这条把两件事绑在一起:一枚修为丹 ≈ 其灵草成本折算的场次 × 2~5 倍
-   * (溢价来自技艺、灵石与炸炉风险)。drops 无成本,由法则 A 对着可炼对照管。
+   * 【法则 G2】可炼修为丹 ≈ 灵草成本折算场次 × 2~5(溢价来自技艺、灵石与炸炉风险)。
+   * 远贵于材料即成绕过境界壁垒的通路,远便宜则没人炼;掉落品由法则 A 管。
    */
   it('G2 —— 可炼修为丹的时长与其灵草成本同阶(2~5 倍于"多少场遭遇")', () => {
     const expCraft = PILLS.filter(p => pillFamily(p) === 'exp' && p.recipe && p.instant?.expSecs)
     expect(expCraft.length, '可炼修为丹一味都没有?').toBeGreaterThanOrEqual(6)
     for (const p of expCraft) {
-      // 一场遭遇平均掉 1 味灵草(见 loot.afterWin 的掉率),故场次 ≈ herb
+      // 一场遭遇平均掉 1 味灵草(loot.afterWin),场次 ≈ herb
       const battlesWorth = (p.instant!.expSecs! * 1) / BATTLE_EXP_SECS
       const ratio = battlesWorth / p.recipe!.herb
       expect(ratio, `${p.name}:${p.instant!.expSecs} 秒 ≈ ${battlesWorth.toFixed(0)} 场,而它只要 ${p.recipe!.herb} 味灵草`).toBeGreaterThan(2)
@@ -349,12 +294,7 @@ describe('定价法则', () => {
     }
   })
 
-  /**
-   * 【法则 H】掉落品不得碾压该族可炼线的顶端。
-   *
-   * 法则 A 管的是同规格对位,这条管的是全局天花板:哪怕某味掉落丹规格高到
-   * 没有对照,它也不该成为该族最强。否则炼丹这条线在终局直接失去意义。
-   */
+  /** 【法则 H】全局天花板:规格高到没有对照的掉落丹也不得成为该族最强(同规格对位由法则 A 管) */
   it('H —— 掉落线顶端不越过可炼线顶端', () => {
     for (const fam of TIMED_FAMILIES) {
       const inFam = PILLS.filter(p => pillFamily(p) === fam)
@@ -375,17 +315,9 @@ describe('定价法则', () => {
 })
 
 /**
- * 带内 exp 线无每-成本倒挂(issue #84)。
- *
- * 同品草带的草同价,玩家真正在这几味之间做取舍;若高一味的每-成本反超低一味,
- * 就是「高一味却更不划算」的陷阱 —— 低一味反而成为最优解,高一味是死内容。
- * 这条守卫把修为可炼线按品草带拆开,断言 perKsec 随境界单调不涨。
- *
- * perKsec = (炼成一枚的期望战斗场次 × 每场 12 秒) ÷ 该丹准入境界的药力(等效秒),
- * 即「花一场战斗的代价能买到多少修炼秒数」里的成本侧 —— 越高越不划算。
- *
- * 相对容差 1e-3(0.1%):吸收同一带内「相持」线上的模型取整噪声 —— 例如道源丹与
- * 混元丹本就设计在贴身相持(见数据校准),二者 perKsec 差不足千分之一,不该被算成倒挂。
+ * 同品草带内,修为可炼丹的每-成本 perKsec 随境界单调不涨;倒挂则高一味成死内容。
+ * perKsec = 炼成一枚的期望战斗场次 × 每场 12 秒 ÷ 准入境界药力(等效秒),越高越不划算。
+ * 相对容差 1e-3:道源丹与混元丹设计上贴身相持,差不足千分之一。
  */
 describe('带内 exp 线无每-成本倒挂', () => {
   it('同品草带内,修为可炼丹的每-成本随境界单调不涨', () => {
@@ -425,16 +357,9 @@ describe('本次校准的落点', () => {
     expect(p.instant?.qiPct, '回满灵气这一效果本身没有错,错的是它不要钱').toBe(1)
     expect(p.recipe, '必须付出制备代价').toBeDefined()
     expect(p.minRealm, '规格要求须与其战术价值相称').toBeGreaterThanOrEqual(2)
-    // 炉火要求远高于入门期的回灵丹,丹方也须另行习得
     expect(p.alchemyLevel).toBeGreaterThanOrEqual(4)
   })
 
-  /**
-   * 给灵乳定价的那条线:贵得起,但不能贵到没人炼。
-   *
-   * 回灵丹是开局就会的方子,两枚即抵一枚灵乳。灵乳的单位灵气成本一旦超过它太多,
-   * 这味丹就成了图鉴里的一行字 —— 把异常从"过强"搬到"死内容",不算修好。
-   */
   it('灵乳的单位灵气成本落在回灵丹的一到三倍之间 —— 是溢价,不是天价', () => {
     const lingru = pillDef('p_lingru')!
     const huichun = pillDef('p_huichun')!
@@ -450,7 +375,6 @@ describe('本次校准的落点', () => {
     expect(p.minRealm, '固定点数的丹只在入门期才不算过期').toBe(0)
     expect(pillFamily(p)).toBe('exp')
     expect(pillLine(p)).toBe('drop')
-    // 它接手灵乳腾出的位置:炼气期唯一掉得出的丹
     expect(dropPoolAt(0).map(x => x.id)).toContain('p_yaoxue')
   })
 
@@ -472,35 +396,22 @@ describe('本次校准的落点', () => {
   })
 
   /**
-   * 未处置的账 —— 本 Phase 明确不动,记在这里免得下次重新发现一遍。
-   *
-   * 1. **可炼修为丹的性价比跨百万倍**(聚气散 → 道源丹):药力按需求百分比走,
-   *    成本按材料线性走,两条曲线量纲不同。修它等于重设全部材料成本曲线。
-   * 2. **跨族性价比相差数百倍**:藏经阁 1.5 悟道/时太慢、寿元按绝对年数不贬值。
-   *    所以本文件的性价比只在族内比较。
-   * 3. ~~悟道族与修速族的可炼线止于玄品/精品,其上由掉落品独占 —— 内容缺口~~
-   *    **已结清**(扩界补丹方):悟道线今有仙品的道音丹、修速线有神品的本源丹,
-   *    灵气线有仙品的仙泉玉液 —— 各族可炼顶端都已越过掉落顶端。见「各族可炼线已至仙品以上」一条。
-   * 4. **造化丹(天品)比聚灵丹(精品)还弱**:高规格低内容。它与奇遇系统共用
-   *    「道韵加身」,改增益会波及 events.ts 十余处,本 Phase 不动。
-   * 5. **品质(quality)不参与任何效果计算**,只影响掉落权重与图鉴配色。
-   *    本文件的法则 B 正是在替品质标签兜底 —— 让它至少与药力序对得上。
-   * 6. **炼制成本按丹药的准入境界计价,而非按玩家当下的境界**(见 pillService
-   *    的 pillCraftCost:tier 取自 def.minRealm)。于是回灵丹这类入门方子的灵石
-   *    开销永远冻结在一层,效果(按上限百分比回灵气)却随境界一路长 ——
-   *    这是「低成本高即时价值」的结构性来源,但改它等于重做整条计价链,不在本 Phase。
+   * 未处置的账(已知,不动):
+   * 1. 跨族性价比相差数百倍(藏经阁 1.5 悟道/时太慢、寿元按绝对年数不贬值),性价比只在族内比。
+   * 2. 造化丹(天品)弱于聚灵丹(精品):与奇遇共用「道韵加身」,改增益波及 events.ts 十余处。
+   * 3. 品质(quality)不参与效果计算,只影响掉落权重与图鉴配色;法则 B 替品质标签兜底。
+   * 4. 炼制成本按丹药准入境界计价,不按玩家当下境界(pillCraftCost):入门方子石耗冻结在一层,
+   *    效果却随境界长;改它须重做整条计价链。
    */
   it('存档:造化丹仍与奇遇共用道韵,本 Phase 不动它', () => {
     const p = pillDef('p_zaohua')!
     expect(p.buffId).toBe('bless_daoyun')
-    // 它虽是天品却弱于精品的聚灵丹 —— 记录在案,不在本 Phase 处置
     const juling = pillDef('p_juling')!
     expect(pillGainSecAt(p, 5)).toBeLessThan(pillGainSecAt(juling, 5))
   })
 
   it('各族可炼线已至仙品以上 —— 曾经的「内容缺口」已由丹方补上', () => {
-    // 曾经的账:悟道/修速/灵气的可炼线止于玄品/精品,其上只有掉落品。
-    // 扩界补了一批高界丹方后,五族可炼顶端都应越过掉落顶端(法则 H 的另一面)。
+    // 法则 H 的另一面
     for (const fam of TIMED_FAMILIES) {
       const inFam = PILLS.filter(p => pillFamily(p) === fam)
       if (inFam.length === 0) continue
@@ -515,15 +426,9 @@ describe('本次校准的落点', () => {
 })
 
 /**
- * 道品顶档的解析守卫(Phase 33.6 补)。
- *
- * 共享品质表 QUALITIES 只到神品(rank 8);「道品」是丹药专属顶档,只存在于
- * data/pills.ts。凡要读丹药品阶的 rank/名/色,一律走 pillRank / pillQualityName /
- * pillQualityColor —— 绝不直接 qualityDef(pill.quality):共享表查无 'dao',
- * qualityDef 会回落 QUALITIES[0] 凡品,登峰一品在图上静默降格成凡品,CI 还不报警。
- *
- * 本组测试替这条「口头禁令」兜底:道品丹的解析必须走对,且与 qualityDef 的凡品
- * 回落在口径上分道扬镳。
+ * 道品顶档的解析守卫。共享品质表 QUALITIES 只到神品(rank 8),「道品」只存在于 data/pills.ts;
+ * 读丹药品阶的 rank/名/色须走 pillRank / pillQualityName / pillQualityColor,
+ * 直接 qualityDef(pill.quality) 查无 'dao' 会静默回落凡品。
  */
 describe('道品顶档的解析守卫', () => {
   const daoPills = PILLS.filter(p => p.quality === 'dao')
@@ -537,7 +442,7 @@ describe('道品顶档的解析守卫', () => {
       expect(pillRank(p), `${p.name} 的 rank 没落到道品档`).toBe(DAO_QUALITY_RANK)
       expect(pillQualityName(p), `${p.name} 的名字应记「道品」`).toBe(DAO_QUALITY_NAME)
       expect(pillQualityColor(p), `${p.name} 的配色应记登峰金芒`).toBe(DAO_QUALITY_COLOR)
-      // 反向坐实:直接 qualityDef 会把道品箍回凡品,两个口径必须分叉,否则就是没走对
+      // 直接 qualityDef 会回落凡品,两口径须分叉
       expect(qualityDef(p.quality as never).name, `${p.name} 竟以凡品口径解析`).not.toBe(DAO_QUALITY_NAME)
       expect(pillRank(p)).not.toBe(qualityDef(p.quality as never).rank)
     }
@@ -547,23 +452,12 @@ describe('道品顶档的解析守卫', () => {
     expect(DAO_QUALITY_RANK).toBe(9)
     expect(DAO_QUALITY_NAME).toBe('道品')
     expect(DAO_QUALITY_COLOR).toBe('#E9B949')
-    // 'dao' 不在 QUALITIES —— 这正是文件尾注释警告的坑:命中了就不该当 道品 用
     expect(qualityDef('dao' as never).name).toBe('凡品')
     expect(qualityDef('dao' as never).rank).toBe(0)
   })
 })
 
-/**
- * 道品顶档的**成员不变式**(Phase 33.6 补二)。
- *
- * 「道品」不是随便哪一味混沌海丹都能叫的量产物 —— 它是**各族各线可炼顶阶**的
- * 专属名号:一族一炉的巅峰才配登道品,次席(如悟道线的道祖丹 150,逊于天道金丹 200)
- * 只给神品。守卫共三条:
- *  1. 道品只在混沌海(准入境界 ≥18)出现,不入前中后期 —— 一张低境方子叫「道品」即失真;
- *  2. 没有任何一味道品可炼丹,在自家族内被「更晚、更强」的后辈压过(否则名号空心化);
- *  3. 每族的混沌海可炼顶阶(境界最高、药力最足的那一味)必须是道品;
- *     而顶阶落在混沌海之外的族,其顶阶不得叫道品(道品是混沌海专属)。
- */
+/** 道品顶档的成员不变式:道品是各族可炼顶阶的专属名号,次席只给神品 */
 describe('道品顶档的成员不变式', () => {
   const daoPills = PILLS.filter(p => p.quality === 'dao')
 
@@ -575,7 +469,7 @@ describe('道品顶档的成员不变式', () => {
   })
 
   it('任何一味道品可炼丹,都不被自家族内更晚更强的后辈压过', () => {
-    // 比较口径与 contentDensity「丹方越晚越强」一致:以较高门槛处统一取值
+    // 口径同 contentDensity「丹方越晚越强」:在较高门槛处统一取值
     for (const d of daoPills) {
       if (!d.recipe) continue
       for (const c of PILLS) {
@@ -593,7 +487,6 @@ describe('道品顶档的成员不变式', () => {
   it('每族混沌海可炼顶阶(境界最高、药力最足)必须是道品;混沌海外的族不得叫道品', () => {
     const families: PillFamily[] = ['exp', 'qi', 'lifespan', 'wudao', 'tempo', 'state']
     for (const fam of families) {
-      // 顶阶 = 界最高(降序)同界再比药力(降序)的那一味
       const apex = PILLS.filter(p => pillFamily(p) === fam && p.recipe).sort((a, b) => {
         const byRealm = b.minRealm - a.minRealm
         return byRealm !== 0 ? byRealm : pillGainSecAt(b, b.minRealm) - pillGainSecAt(a, a.minRealm)

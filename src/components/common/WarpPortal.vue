@@ -2,22 +2,18 @@
   <Teleport to="body">
     <Transition name="warp">
       <div v-if="visible" class="warp-overlay">
-        <!-- 星辰:朱砂金粒子自中心散射 -->
         <div class="warp-star-field">
           <span v-for="(style, i) in starStyles" :key="i" class="warp-star" :style="style" />
         </div>
-        <!-- 速度线:放射状金色光线 -->
         <div class="warp-speed-lines">
           <span v-for="(style, i) in lineStyles" :key="i" class="warp-speed-line" :style="style" />
         </div>
-        <!-- 中心光圈:三层同心圆 + 光核 -->
         <div class="warp-center">
           <div class="warp-ring warp-ring-1" />
           <div class="warp-ring warp-ring-2" />
           <div class="warp-ring warp-ring-3" />
           <div class="warp-core" />
         </div>
-        <!-- 文字 -->
         <div class="warp-text">
           <p class="warp-title">{{ title }}</p>
           <p class="warp-subtitle">{{ subtitle }}</p>
@@ -51,7 +47,7 @@
     lineStyles.value = particles.lines
     visible.value = true
     if (hideTimer !== undefined) clearTimeout(hideTimer)
-    // 路由跳转失败时也要把遮罩收掉,不能把人永久困在黑场里
+    // 路由跳转失败时也须收起遮罩
     hideTimer = setTimeout(hide, 2600)
   }
 
@@ -71,8 +67,7 @@
 </script>
 
 <style>
-  /* 全屏穿梭效果
-     注意:Teleport 到 body 层级,scoped 会失效,故全局作用域 */
+  /* 全屏穿梭效果:Teleport 到 body,scoped 失效,故用全局作用域 */
   .warp-overlay {
     position: fixed;
     inset: 0;
@@ -290,10 +285,7 @@
     }
   }
 
-  /* 过渡动画
-     遮罩层只淡入,绝不加 transform:它是 position:fixed + inset:0 的全屏底板,
-     一旦 scale 就会先缩成视口的一小块、四周露出底下的页面,再撑满——
-     看起来是「黑底放大」而不是「直接显示」。缩放挪到内部的中心光圈上 */
+  /* 过渡:遮罩层只淡入,不加 transform(全屏底板一缩放就露出底下页面);缩放放在中心光圈上 */
   .warp-enter-active {
     animation: warp-in 0.4s ease-out;
   }

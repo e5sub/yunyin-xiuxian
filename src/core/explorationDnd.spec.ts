@@ -1,8 +1,6 @@
 /**
- * 「遇事勿扰」· 历练际遇不再弹窗(玩家反馈:「手动关闭际遇事件触发」)。
- *
- * 开启后历练撞见际遇/机缘/奇缘:按超时同一条路(默认好愿)当场结清 ——
- * 不置 pending 弹窗、事件照计、下一场战斗照排;关掉则恢复弹窗。
+ * 「遇事勿扰」:开启后撞见际遇/机缘/奇缘按超时同一条路(默认好愿)当场结清,
+ * 不置 pending、事件照计、下一场战斗照排;关闭则弹窗。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -10,7 +8,7 @@ import { tickExploration } from './exploration'
 import { useAdventureStore } from '@/stores/adventure'
 import { useSettingsStore } from '@/stores/settings'
 
-/** 让事件判定可控:on = 必触发,off = 必不触发 */
+/** 事件判定:on 必触发,off 必不触发 */
 const trigger = vi.hoisted(() => ({ value: false }))
 vi.mock('@/utils/random', async importOriginal => {
   const mod = await importOriginal<typeof import('@/utils/random')>()
@@ -27,7 +25,7 @@ vi.mock('@/utils/random', async importOriginal => {
   }
 })
 
-// 战斗恒判负即可:不测战斗,只测「事件走没走弹窗」
+// 战斗恒负;只测事件是否弹窗
 vi.mock('./combat', async importOriginal => {
   const mod = await importOriginal<typeof import('./combat')>()
   return {
@@ -83,10 +81,10 @@ describe('遇事勿扰', () => {
 
   it('勿扰只关弹窗,不吞事件:没撞见时 events 不动', () => {
     const now = Date.now()
-    // battle 窗口推到将来:只测「事件判定」这一格,不触发战斗(败北会清会话)
+    // 下一战推到将来:败北会清会话
     forgeSession(now, now + 999_999)
     useSettingsStore().dndEvents = true
-    trigger.value = false // 事件判定为否:无事发生
+    trigger.value = false
     tickExploration(now)
     const adventure = useAdventureStore()
     expect(adventure.session?.events).toBe(0)

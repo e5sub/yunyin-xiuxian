@@ -1,14 +1,4 @@
-/**
- * 炼丹与服丹 —— 端到端判据(材料 → 开炉 → 入包 / 赔料 → 服下 → 生效)
- *
- * 这是核心功能里此前唯一**没有任何判据**的一条:craftPill / usePill 只在别的 spec 里
- * 被间接带到过,而它们各自管着两件玩家必然经历的事:
- *   · 开炉:报价即实收(灵石与灵草照扣)、失手要赔料但长本事、成功才入包;
- *   · 服丹:丹从包里出去,药力必须真的落到修为/灵气/状态上。
- *
- * 随机源用固定返回钉住(0 → 概率判定都成;0.999 → 都不成),成败不掷运气 ——
- * 这样「报的数」与「真的扣的数」才能逐位对账。
- */
+/** 炼丹与服丹 —— 端到端判据(材料 → 开炉 → 入包 / 赔料 → 服下 → 生效) */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { readFileSync } from 'node:fs'
@@ -43,22 +33,16 @@ import { mulN, toNum } from '@/utils/gnum'
 import { ACHIEVEMENTS } from '@/data/achievements'
 import { MAIN_QUESTS } from '@/data/quests'
 
-/** 一炉回灵丹:最低阶、有方、材料便宜 —— 端到端要跑的就是这种最普通的路径 */
+/** 最低阶、有方、材料便宜的最普通路径 */
 const ID = 'p_huichun'
 
-/**
- * 把成就与主线的一次性赏钱结清。
- *
- * 不结清的话,新档的第一次 track() 会顺手发掉「初窥仙途」那 24 灵石 ——
- * 混进差额里就分不清「开炉扣了多少」与「成就赏了多少」。赏钱本身有别的判据管,
- * 这里只要一条干净的账。
- */
+/** 结清成就与主线的一次性赏钱:否则新档首次 track() 发「初窥仙途」24 灵石,混进开炉差额 */
 function settleRewards(): void {
   const quests = useQuestsStore()
   quests.$patch({ achieved: ACHIEVEMENTS.map(a => a.id), mainIdx: MAIN_QUESTS.length - 1 })
 }
 
-/** 把玩家的阅历拉到「知道这张方子、方中灵材也认得」的一档 */
+/** 阅历拉到知此方、识方中灵材 */
 function knowRecipe(mastery = 0.8): void {
   const lore = useLoreStore()
   lore.addRecipeMastery(ID, mastery)
@@ -110,14 +94,13 @@ describe('炼丹 · 开炉前的两道门', () => {
     const cost = pillCraftCost(ID)!
     const stoneBefore = toNum(resources.spiritStone)
     const herbBefore = resources.herb
-    // 灵石走 spy 对账:成丹会顺带触发成就/任务,那笔赏钱是另一回事,
-    // 混进差额里就分不清「扣了多少」与「赏了多少」
+    // 灵石走 spy 对账:成丹会顺带触发成就/任务赏钱
     const spend = vi.spyOn(resources, 'spendStone')
     craftPill(ID)
     expect(spend, '开炉没有按报价扣灵石').toHaveBeenCalledWith(cost.stone)
     expect(stoneBefore - toNum(resources.spiritStone), '灵石扣少了或扣多了').toBeCloseTo(toNum(cost.stone), 3)
     expect(herbBefore - resources.herb).toBe(cost.herb)
-    // 成本口径本身:灵草按方子,灵石按**这张方子准入境界能到的最高层级**折价
+    // 成本口径:灵草按方子,灵石按方子准入境界能到的最高层级折价
     expect(cost.herb).toBe(pillDef(ID)!.recipe!.herb)
     expect(toNum(cost.stone)).toBeCloseTo(
       toNum(stoneByTier(maxTierForMajor(pillDef(ID)!.minRealm), pillDef(ID)!.recipe!.stoneBase / 10)),
@@ -125,18 +108,14 @@ describe('炼丹 · 开炉前的两道门', () => {
     )
   })
 
-  /**
-   * 层级只有一个事实源(ISS-211):丹方灵石价从前自写 `minRealm × 2 + 1`,
-   * 界外就飞出区域表了 —— 第 18 境的方子算层级 37,而玩家在混沌海最高只能到 32,
-   * 一张方子凭空贵 322 倍,炼丹被自己的报价挡在门外。现在按区域表取。
-   */
+  /** 层级单一事实源为区域表;自写 `minRealm × 2 + 1` 会越出区域表 */
   it('丹方灵石价按区域表取层级 —— 不超过玩家能到的最高层级', () => {
     const recipes = PILLS.filter(p => p.recipe)
     expect(recipes.length).toBeGreaterThan(0)
     for (const p of recipes) {
       const tier = maxTierForMajor(p.minRealm)
       expect(tier, `${p.name} 的计价层级超过了它准入境界的上限`).toBeLessThanOrEqual(maxTierForMajor(MAX_MAJOR))
-      // 与 pillCraftCost 的实际报价一致(报价即实收那条判据的另一面)
+      // 与 pillCraftCost 实际报价一致
       const cost = pillCraftCost(p.id)!
       expect(toNum(cost.stone)).toBeCloseTo(toNum(stoneByTier(tier, p.recipe!.stoneBase / 10)), 6)
     }
@@ -160,7 +139,7 @@ describe('炼丹 · 成与败各自的账', () => {
 
     const out = craftPill(ID)
     expect(out.ok).toBe(true)
-    // mockRand=0 时连「多得一枚」也必成 —— 出丹数就是 2
+    // mockRand=0 时「多得一枚」也必成
     expect(out.count).toBe(2)
     expect(inventory.pills[ID]).toBe(2)
     expect(useQuestsStore().counter('pillsCrafted')).toBe(2)
@@ -168,7 +147,7 @@ describe('炼丹 · 成与败各自的账', () => {
     for (let i = 0; i < skills.length; i += 1) {
       expect(after[i], `技艺 ${skills[i]} 没长`).toBeGreaterThan(before[i]!)
     }
-    // 开炉过手,方中灵材就算「见过」——这是认知线的起点
+    // 开炉过手,方中灵材即算「见过」
     for (const mid of recipeCraft(pillDef(ID)!)!.materials) {
       expect(lore.seenOf(mid), '用过的灵材该留下见过的记录').toBeGreaterThan(0)
     }
@@ -193,14 +172,13 @@ describe('炼丹 · 成与败各自的账', () => {
     expect(out.ok).toBe(false)
     expect(out.count).toBe(0)
     expect(inventory.pills[ID] ?? 0, '炸炉了还入包').toBe(0)
-    // 灵石一分不退(开了炉就是要烧的)—— 按报价扣,顺带的成就赏钱另算
+    // 灵石按报价扣、一分不退;顺带的成就赏钱另算
     expect(spend, '炸炉也该按报价扣灵石').toHaveBeenCalledWith(cost.stone)
-    // 灵石一分不退(开了炉就是要烧的)
     expect(stoneBefore - toNum(resources.spiritStone), '炸炉了灵石反倒没少').toBeCloseTo(toNum(cost.stone), 3)
-    // 灵草按技艺保下一部分 —— 保下的比例是公开口径(salvageRatio),两处同源
+    // 灵草保下比例走公开口径 salvageRatio,两处同源
     const kept = Math.floor(cost.herb * salvageRatio(craftability(ID)!.skill))
     expect(herbBefore - resources.herb).toBe(cost.herb - kept)
-    // 炸炉也长本事(比成功慢),而且这张方子反而更熟了一点
+    // 炸炉也长本事(比成功慢),方子更熟
     for (let i = 0; i < skills.length; i += 1) {
       expect(lore.expOf(skills[i] as never), `失手也该长技艺 ${skills[i]}`).toBeGreaterThan(skillBefore[i]!)
     }
@@ -218,7 +196,7 @@ describe('炼丹 · 成与败各自的账', () => {
     const herb0 = resources.herb
     craftPill(ID)
     const lostByNovice = herb0 - resources.herb
-    // 把方中技艺拉满,再开一炉同样的料
+    // 技艺拉满,再开一炉同样的料
     for (const s of Object.keys(recipeCraft(pillDef(ID)!)!.skills)) lore.addSkillExp(s as never, 600)
     resources.addSmall('herb', 400)
     const herb1 = resources.herb
@@ -284,14 +262,8 @@ describe('服丹 · 丹从包里出去,药力真的落下', () => {
   })
 
   /**
-   * Phase 39:修为丹从「当前需求的百分比」改成「一段等效闭关时长」。
-   *
-   * 这条守的正是那次改动的两个后果,缺一不可:
-   *   ① 单枚丹**永远填不满一层** —— 低境界一层只要刻把钟,不封顶的话
-   *      一枚写在纸上的"闭关一个半时辰"能连跳好几层;
-   *   ② 药力不随境界暴涨 —— 一枚金丹期的丹在混沌海只该是一点药力,
-   *      旧口径下它按"当前一层需求的百分比"结算,在任何境界都同样能顶掉一块墙,
-   *      于是囤低阶丹成了破界的最优解。
+   * 修为丹按等效闭关时长结算,不按当前需求的百分比:
+   *   ① 单枚丹永远填不满一层;② 药力不随境界暴涨(按百分比则囤低阶丹成破界最优解)。
    */
   it('修为丹按等效闭关时长结算:单枚不满一层,且不随境界暴涨', () => {
     const gainAt = (major: number, sub: number): { gain: number; req: number } => {
@@ -308,7 +280,7 @@ describe('服丹 · 丹从包里出去,药力真的落下', () => {
     const high = gainAt(8, 5)
     expect(low.gain / low.req).toBeLessThanOrEqual(INSTANT_EXP_LAYER_CAP + 1e-9)
     expect(low.gain, '单枚丹把整层填满了 —— 低境界那一层只要几十秒,这条一破就是连跳几层').toBeLessThan(low.req)
-    // 高境界:同一枚丹只占那一层千分之几(旧口径下它在任何境界都占同样的百分比)
+    // 高境界:同一枚丹只占那一层千分之几
     expect(high.gain / high.req).toBeLessThan(0.002)
     expect(high.gain / high.req, '在高境界反而更值钱 —— 按需求百分比的旧口径又回来了').toBeLessThanOrEqual(
       low.gain / low.req
@@ -316,7 +288,7 @@ describe('服丹 · 丹从包里出去,药力真的落下', () => {
   })
 
   it('expFixed 入门丹同样封顶不满一层(与 expSecs 同一把尺)', () => {
-    // 聚气丹 expFixed=80,炼气一层需求只几十 —— 不封就一枚连跳多层
+    // 聚气丹 expFixed=80,炼气一层需求只几十
     const player = usePlayerStore()
     const inventory = useInventoryStore()
     player.$patch({ major: 0, sub: 0, exp: { m: 0, e: 0 } })
@@ -342,18 +314,17 @@ describe('服丹 · 丹从包里出去,药力真的落下', () => {
   })
 
   it('修为丹到顶 clamp:等效闭关远超一层时,药力封顶在「不满一层」,不按 cultPerSec×secs 白给', () => {
-    // 低境界一层只要刻把钟,配 10800s 的大修为丹(太初丹)必然溢出 —— 走真实 usePill 路径
+    // 太初丹 10800s 在低境界必然溢出;走真实 usePill 路径
     const player = usePlayerStore()
     const inventory = useInventoryStore()
     const cultivation = useCultivationStore()
     player.$patch({ major: 2, sub: 5, exp: { m: 0, e: 0 } })
-    cultivation.addBuff('buff_juling', Date.now()) // 修速 +50%,把 cultPerSec 顶到必然溢出
+    cultivation.addBuff('buff_juling', Date.now()) // 修速 +50%
     inventory.addPill('p_taichu', 1)
     const req = toNum(expRequirement(2, 5))
     const before = toNum(player.exp)
     expect(usePill('p_taichu')).toBe(true)
     const gain = toNum(player.exp) - before
-    // 封顶在「不满一层」= expReq × INSTANT_EXP_LAYER_CAP,而非 cultPerSec×10800
     expect(gain).toBeCloseTo(req * INSTANT_EXP_LAYER_CAP, 3)
     expect(gain, '整层填满 —— clamp 失效').toBeLessThan(req)
     expect(Number.isFinite(gain)).toBe(true)
@@ -395,7 +366,7 @@ describe('炼丹连开计划 craftBatchPlan —— 纯算不动炉,按料保底�
     knowRecipe()
     const cost = pillCraftCost(ID)!
     const resources = useResourcesStore()
-    // 灵草足开 7 炉,灵石只够 3 炉 → 计划停在 3
+    // 草够 7 炉、石够 3 炉
     resources.addSmall('herb', cost.herb * 7)
     resources.addStone(mulN(cost.stone, 3))
     const plan = craftBatchPlan(ID)
@@ -421,15 +392,11 @@ describe('炼丹连开计划 craftBatchPlan —— 纯算不动炉,按料保底�
     expect(plan.rounds).toBe(0)
     expect(plan.blocked).toContain('灵草尚差')
     expect(plan.blocked).toContain('灵石尚差')
-    // 草与石同时见底:reason=both,界面才知道两头都得补
     expect(plan.reason).toBe('both')
     expect(plan.shortHerb).toBeGreaterThan(0)
   })
 
-  /**
-   * 议题 #130 的根:一句「灵草或灵石未足」分不出该去坊市买草、还是去历练攒石。
-   * 判据按两头分开给 —— 只缺草就得报出还差几株,只缺石就不该出现草的去路。
-   */
+  /** 缺草与缺石分开报:只缺草报还差几株,只缺石不出现草的去路 */
   it('只缺草:reason=herb 且报出还差几株(界面靠它决定给不给采购入口)', () => {
     knowRecipe()
     const cost = pillCraftCost(ID)!
@@ -507,7 +474,7 @@ describe('炸炉保残料比 · salvageRatio 自身边界(去自证)', () => {
 
   it('技艺 200(超满):被夹回 0.5,不上浮(否则保料比该门手艺失控)', () => {
     expect(salvageRatio(200)).toBe(0.5)
-    expect(salvageRatio(1000)).toBe(0.5) // 大幅超限同样不越 0.5
+    expect(salvageRatio(1000)).toBe(0.5)
   })
 
   it('技艺 50:线性中段 0.35(基准 + 半档 0.15)', () => {
@@ -516,12 +483,8 @@ describe('炸炉保残料比 · salvageRatio 自身边界(去自证)', () => {
 })
 
 /**
- * 炼丹计划有限性(craftBatchPlan 不产 Infinity/NaN)。
- *
- * craftBatchPlan 里 stoneRounds 用 ratio(spiritStone, cost.stone) 求商;若某张方的灵石价
- * 为 0/异常(导入坏档/未来内容),ratio 会回 Infinity/NaN。产品侧已把非有限的「石炉数」
- * 显式收束为「更不构成限制」(rounds 由草维度唯一决定)。这里把「每张可炼方都得出有限
- * rounds/stone」钉成不变量,防止未来重构漏掉收束又让 Infinity/NaN 漏回计划。
+ * stoneRounds 由 ratio(spiritStone, cost.stone) 求商;灵石价为 0/异常时 ratio 可回 Infinity/NaN,
+ * 非有限的石炉数收束为不构成限制(rounds 由草维度决定)。
  */
 describe('炼丹计划有限性(craftBatchPlan 不产 Infinity/NaN)', () => {
   beforeEach(() => {
@@ -536,14 +499,14 @@ describe('炼丹计划有限性(craftBatchPlan 不产 Infinity/NaN)', () => {
     for (const p of PILLS) {
       const cost = pillCraftCost(p.id)
       if (!cost) continue
-      // 逐张点亮：方子掌握 + 灵材认知,让「能炼」为真(只看计划是否有限,不是成败)
+      // 点亮方子掌握与灵材认知,只看计划是否有限
       lore.addRecipeMastery(p.id, 1)
       for (const mid of recipeCraft(pillDef(p.id)!)?.materials ?? []) {
         lore.advanceLore(mid, 3)
       }
-      res.herbByGrade[cost.grade] = 10_000 // 该品给足草
+      res.herbByGrade[cost.grade] = 10_000
       const able = craftability(p.id)
-      if ((able?.blockers?.length ?? 0) > 0) continue // 点亮后仍挡(如境界准入)的跳过
+      if ((able?.blockers?.length ?? 0) > 0) continue // 仍挡(如境界准入)则跳过
       const plan = craftBatchPlan(p.id)
       expect(Number.isFinite(plan.rounds), `${p.id} rounds 非有限`).toBe(true)
       expect(plan.rounds).toBeGreaterThanOrEqual(0)
@@ -566,12 +529,12 @@ describe('双丹概率 · 展示与结算同一个数(封顶单源)', () => {
   it('结算掷的就是 craftability 印出的 bonusChanceWithYield,不是自算的 0.8', () => {
     knowRecipe(0.8)
     giveMaterials()
-    useDongfuStore().setLevel('alchemy', 6) // 丹炉:alchemyYield 0.3,把双丹概率推过 0.4
+    useDongfuStore().setLevel('alchemy', 6) // 丹炉:alchemyYield 0.3
     const able = craftability(ID)!
     const pSecond = able.bonusChanceWithYield
     expect(pSecond, '丹炉+手艺该把双丹概率推起来').toBeGreaterThan(0.3)
 
-    // 恰落在 pSecond 之内:成丹且多得一枚;同时抓住结算真正掷的那个概率
+    // 掷点落在 pSecond 之内;spy 抓结算真正掷的概率
     mockRand = pSecond / 2
     const chance = vi.spyOn(rng, 'chance')
     const out = craftPill(ID)
@@ -589,7 +552,6 @@ describe('双丹概率 · 展示与结算同一个数(封顶单源)', () => {
     const service = readFileSync(resolve(__dirname, './pillService.ts'), 'utf8')
     expect(service).toContain('able.bonusChanceWithYield')
     expect(service, '结算不得再各写一遍 0.8 封顶').not.toContain('Math.min(0.8')
-    // 更硬的一条:结算不得自己再读 alchemyYield 重算一遍 —— 那条支路正是分叉的来源
     expect(service, '结算须经 craftability 取含封顶的真实概率,不得自读 alchemyYield').not.toContain(
       "'alchemyYield'"
     )

@@ -1,20 +1,12 @@
 <template>
   <!--
-    战斗情报面板 —— 战后统计行 / 本战所得 / 此物所知 / 战斗分析。
-
-    这四块只在这一处消费:战报统计、逐件拾获、敌人路数与败因归因。
-    自取 store(与 cultivation/RetreatCard 同族先例),宿主 CombatPanel 留回放引擎
-    (逐行投入 / 血条 / 浮伤 / 因果环)与敌我半卡 —— 那些与「这一战怎么打的」绑定,
-    搬走只会让回放和情报各自读一份状态。
+    战斗情报面板:战后统计行 / 本战所得 / 此物所知 / 战斗分析,只此一处消费,自取 store。
+    回放引擎与敌我半卡留在宿主 CombatPanel:搬来会让回放与情报各读一份状态。
   -->
-  <!-- 战斗后统计 + 分析入口 -->
+  <!-- 战斗后统计 + 情报入口 -->
   <p v-if="battleSummary" class="mt-2 flex items-center justify-center gap-2 text-center text-[10px] text-ink-faint tabular">
     {{ battleSummary }}
-    <!--
-      行内文字的按钮也得有 28px 触达区(见 layout-check 的判据):
-      它们此前只有一个字高(实测 15px),拇指点不着 —— 用 min-h 撑起来,
-      再用负外边距把这多出来的高度抵掉,视觉密度不变。
-    -->
+    <!-- 触达区 ≥28px(layout-check 判据):min-h 撑高,负外边距抵消,视觉密度不变 -->
     <button
       v-if="lore"
       class="-my-2 inline-flex min-h-[28px] items-center px-1 text-violet-ink active:opacity-60"
@@ -170,7 +162,6 @@
     const b = battle.value
     if (!b) return null
     const r = b.result
-    // 结语只多四个字,却是每个玩家每场都会读到的一行:抢先 / 被抢先
     const first = r.firstMove ? (r.firstMove.playerFirst ? ' · 抢先' : ' · 被抢先') : ''
     return `此战 ${r.rounds} 回合 · 战后气血 ${Math.round(r.playerHpPct * 100)}% · ${r.win ? '胜' : '负'}${first}`
   })
@@ -202,7 +193,7 @@
     }
   })
 
-  // 战败时自动展开分析;并按胜负配一声战果音
+  // 按胜负播战果音
   watch(
     () => battle.value?.at,
     () => {

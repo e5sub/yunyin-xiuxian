@@ -1,5 +1,4 @@
 <template>
-  <!-- 关于:入口 + 四扇说明浮层 -->
   <div class="card-ink divide-y divide-ink/6 px-4">
     <button class="flex w-full items-center justify-between py-3 active:opacity-60" @click="aboutOpen = true">
       <span class="text-[13px] text-ink-soft">关于我们</span>
@@ -29,7 +28,6 @@
   <AboutDialog :open="aboutOpen" @close="aboutOpen = false" />
   <ReleaseNotesDialog :open="releaseOpen" @close="releaseOpen = false" />
   <PrivacyDialog :open="privacyOpen" @close="privacyOpen = false" />
-  <!-- 数值体系(可解释性:各数值轴的复利倍率 / 净耗时 / 积余 / 命名出处) -->
   <ProgressionDialog :open="progressionOpen" @close="progressionOpen = false" />
 </template>
 
@@ -48,7 +46,6 @@
   const privacyOpen = ref(false)
   const progressionOpen = ref(false)
 
-  /** 打开发布说明即视为已阅:把「已看到的最新版」记下,新标记随之熄灭 */
   function openRelease(): void {
     settings.markReleaseSeen()
     releaseOpen.value = true

@@ -1,4 +1,4 @@
-/* eslint-disable no-console -- 模拟器体检报告的正式输出(bun run test:report 依赖) */
+/* eslint-disable no-console -- 模拟器体检报告(bun run test:report 依赖) */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -7,7 +7,7 @@ import { searchBuilds, searchBuildsAsync } from './buildSearch'
 import { fingerprintOf, FINGERPRINT_NAMES } from './fingerprints'
 
 describe('随机构筑搜索与异常检测(Phase 19)', () => {
-  // 1000 构筑(属性预算守恒) × 7 原型 × 20 场 = 140,000 场真实战斗
+  // 1000 构筑 × 7 原型 × 20 场 = 140,000 场
   const report = searchBuilds(1000, 20)
 
   it('输出涌现构筑榜与体检报告', () => {
@@ -35,10 +35,9 @@ describe('随机构筑搜索与异常检测(Phase 19)', () => {
       )
     }
     console.log(`  [指纹分布] ${[...sigCount.entries()].map(([s, n]) => `${FINGERPRINT_NAMES[s] ?? s}×${n}`).join(' · ')}`)
-    // Phase 19 发现:盾系厚血混合在中期预算下偏强(~1.2%);P19.5 证实为减伤×续航的横向协同;
-    // 此红线防止其恶化——一旦超过 1.5% 说明改动加剧了问题
+    // 盾系厚血混合在中期预算下偏强(~1.2%,减伤×续航协同);超 1.5% 即恶化
     expect(report.universals.length / report.results.length).toBeLessThanOrEqual(0.015)
-    // 指纹注册表覆盖:破墙结构必须是已命名的已知风险家族;冒出 ≥3 个未名结构 = 出现了新的风险类型
+    // 破墙结构须在指纹注册表里有名;≥3 个未名结构即新风险类型
     expect(unknown, '出现未命名的破墙机制结构,请在 FINGERPRINT_NAMES 中登记并评估').toBeLessThanOrEqual(2)
   })
 
@@ -79,11 +78,8 @@ describe('searchBuildsAsync · 分块异步与同源', () => {
   })
 
   /**
-   * 离页取消要真的收手,而不只是别再回写。
-   *
-   * 组件卸载后长任务若仍跑满全部模拟,后台会继续烧 CPU;重新进页再检索还会
-   * 与旧任务叠加。故障注入:删掉 shouldStop 检查 → 本用例拿到完整报告、
-   * 进度继续到 100,必红。
+   * 离页取消须停下模拟,不只是不回写。
+   * 故障注入:删掉 shouldStop 检查,本用例红(拿到完整报告、进度到 100)。
    */
   it('shouldStop 命中后停止评分并返回 null,不再报满进度', async () => {
     const seen: number[] = []

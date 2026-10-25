@@ -1,6 +1,4 @@
 <template>
-  <!-- 法宝 -->
-  <!-- 随身法宝槽:装着谁、空着哪一格,一眼即知 —— 不再只是一个 "x/2" 数字 -->
   <div class="mt-3 flex items-center gap-2 px-1">
     <span class="shrink-0 text-[11px] text-ink-soft">随身</span>
     <template v-for="(row, k) in artifactSlotRows" :key="k">
@@ -41,15 +39,14 @@
       <span v-if="row.rare" class="absolute right-2 top-2 leading-none">
         <QualitySeal :quality="row.def.quality" :size="16" />
       </span>
-      <!-- 角章占住右上 16px + 右边距,重数往左让 12px,避免两枚字叠在一起 -->
+      <!-- pr-3:给右上 16px 角章让位,否则与重数叠字 -->
       <div class="flex items-center gap-2" :class="{ 'pr-3': row.rare }">
         <GameIcon :name="row.def.icon" :size="18" :style="{ color: qualityDef(row.def.quality).color }" />
         <span class="font-kai text-[14px]" :style="{ color: qualityDef(row.def.quality).color }">{{ row.def.name }}</span>
         <QualityTag :quality="row.def.quality" />
-        <!-- 「重」而不是「阶」:阶是地界与装备层级的词,法宝这一头说的是祭炼了几重 -->
+        <!-- 法宝等级称「重」不称「阶」:阶指地界与装备层级 -->
         <span class="ml-auto tabular text-[11px] text-gold-ink">{{ artifactLevelLabel(row.owned.level) }}</span>
       </div>
-      <!-- 祭炼进度:九段横条,练几重亮几格;满九整条转金 —— 进度不再只是一枚数字标签 -->
       <div class="mt-1.5 flex items-center gap-1.5">
         <span class="shrink-0 text-[10px] text-ink-faint">祭炼</span>
         <span
@@ -64,19 +61,11 @@
         <span class="shrink-0 rounded bg-azure/10 px-1.5 py-0.5 text-[10px] leading-relaxed text-azure">被动</span>
         <span class="text-azure">{{ passiveLines(row.def.id, row.owned.level).join(' · ') }}</span>
       </p>
-      <!--
-        神通说明按品阶与祭炼等级现算:效果随「品阶 × (1+0.08×重数)」走,
-        文案不能停在基线那一句
-        (见 data/artifacts.artifactActiveText —— 战斗与这句话读的是同一个函数)
-      -->
+      <!-- 神通说明按祭炼现算,与战斗同读 artifactActiveText -->
       <p class="mt-1 flex items-baseline gap-1.5 text-[11px]">
         <span class="shrink-0 rounded bg-violet-ink/10 px-1.5 py-0.5 text-[10px] leading-relaxed text-violet-ink">神通</span>
         <span class="text-violet-ink">「{{ row.def.active.name }}」:{{ artifactActiveText(row.def, row.owned.level) }}</span>
       </p>
-      <!--
-        下一重给多少:按钮只报代价,玩家得自己按 ×1.08 心算 —— 而「值不值」
-        正是按下之前要想清楚的事(数值由 artifactNextLevelGain 算,含封顶提示)。
-      -->
       <p v-if="nextGainText(row.def.id, row.owned.level)" class="mt-1 text-[10px] leading-relaxed text-ink-faint tabular">
         下一重:{{ nextGainText(row.def.id, row.owned.level) }}
       </p>
@@ -99,22 +88,17 @@
           :disabled="row.short?.short != null"
           @click="upgradeArtifact(row.def.id)"
         >
-          <!--
-            两种代价都要写出来:炼化既扣悟道点、也扣灵石(见 forge.artifactUpCost),
-            而按钮此前只报悟道 —— 玩家按标签算账,回头发现灵石也少了一大截。
-          -->
+          <!-- 两种代价都须写出:炼化扣悟道点与灵石(见 forge.artifactUpCost) -->
           炼化(悟道 {{ row.upCost.wudao }} · 灵石 {{ formatGN(row.upCost.stone) }})
         </button>
       </div>
-      <!-- 缺料就地报缺口,不靠 hover 才看得见:悟道点与灵石的来路不同 -->
+      <!-- 缺料就地报缺口,不靠 hover -->
       <p v-if="row.upCost && row.short?.short" class="mt-1 text-right text-[10px] leading-relaxed text-cinnabar tabular">
         {{ artifactShortText(row.short) }}
       </p>
       <!--
-        祭炼连炼:一重一重点太累,与强化连升同一套二步确认 ——
-        行只在一口气能连炼 ≥2 重时出现(只够一重时,单炼按钮就是那一重)。
-        flex-wrap + 文本保底宽:窄屏放不下说明与双钮同排时,说明独占整行、钮换行 ——
-        与强化连升/洞府连升同一处外伤(320 下说明被 shrink-0 钮压成 0 宽竖排)。
+        连炼:二步确认与强化连升同一套。
+        flex-wrap + 文本保底宽不可去:否则 320 下说明被 shrink-0 钮压成 0 宽竖排。
       -->
       <div v-if="row.artPlan.levels >= 2" class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md border border-ink/10 bg-paper-deep/50 px-2.5 py-2">
         <template v-if="batchArtConfirm !== row.def.id">
@@ -174,29 +158,16 @@ import GameIcon from '@/components/common/GameIcon.vue'
 import QualityTag from '@/components/common/QualityTag.vue'
 import QualitySeal from '@/components/common/QualitySeal.vue'
 
-/**
- * 法宝面板 —— 随身槽、祭炼读数与炼化动作。
- *
- * 自 InventoryView 拆出:这一册只读法宝自身的定义与库存,与丹药/材料/装备三册
- * 不共享状态;确认态 batchArtConfirm 随本体走,宿主不再代管。
- */
 const inventory = useInventoryStore()
 const player = usePlayerStore()
 const ui = useUiStore()
 
 const artifactSlots = computed(() => artifactSlotsFor(player.major))
-/**
- * 逐槽视图:**按佩带顺序**,不是按品质排序。
- *
- * 顺序本身就是信息 —— 第一格是最早祭炼的那件,槽满时正是它先让位。
- * 从前这里拿「品质降序的法宝行」再过滤出已佩带者:高品阶的件永远画在第一格,
- * 而实际先被替下的可能是另一件 —— 玩家照着槽位做决定,做的却是另一件事。
- * 替下判据(store 的 slice(1))与这份画法现在读同一个顺序。
- */
+/** 逐槽视图按佩带顺序,不按品质:第一格最先让位,须与替下判据(store 的 slice(1))同序 */
 const artifactSlotRows = computed(() =>
   artifactSlotViews(inventory.equippedArtifacts, inventory.artifacts, artifactSlots.value)
 )
-/** 开第二法宝位的那一境的名字 —— 门槛挪动时文案跟着走,不手写「元婴」 */
+/** 开第二法宝位之境名,随门槛常数走 */
 const artifactUnlockRealm = computed(() => REALMS[ARTIFACT_SLOT_UNLOCK_MAJOR]?.name ?? '')
 
 const artifactRows = computed(() =>
@@ -213,17 +184,14 @@ const artifactRows = computed(() =>
         artPlan: artifactBatchPlan(a.defId),
         equipped: inventory.equippedArtifacts.includes(a.defId),
         rare: isRareQuality(def.quality),
-        /**
-         * 这一件按下去会替下哪几件(槽未满、或本来就带着它时为空)。
-         * 替下判据与槽位画法同源 —— 玩家在按钮上读到的那些,就是真的让位的那些。
-         */
+        /** 按下会替下哪几件;判据与槽位画法同源 */
         evicts: (() => {
           const ids = artifactEvictedBy(inventory.equippedArtifacts, artifactSlots.value)
           return ids.map(id => artifactDef(id)?.name ?? id)
         })()
       }
     })
-    // 与行囊同一套排法:品质降序 → 祭炼高的在前(此前按入手先后排,越捡越乱)
+    // 与行囊同一套排法:品质降序 → 祭炼高者在前
     .sort(
       (a, b) =>
         qualityDef(b.def.quality).rank - qualityDef(a.def.quality).rank ||
@@ -233,27 +201,18 @@ const artifactRows = computed(() =>
 )
 
 function toggleArtifact(defId: string): void {
-  /**
-   * 让位名单必须在**动手之前**取。
-   *
-   * `artifactRows` 里的 `evicts` 是从 `inventory.equippedArtifacts` 现算的,而
-   * toggle 一按下去这个列表就被改写了 —— 事后再去 `artifactRows.value` 里找这一行,
-   * 读到的是「新佩上来的这一件,按当前列表会让谁让位」,于是 toast 念的是**刚戴上**
-   * 的那一件的名字(实测 1 位之下换件:「替下玄天镜」,而真正让位的墨玉葫芦只字未提)。
-   * 玩家照 toast 去行囊核对,永远对不上账。
-   */
+  /** 让位名单须在换件之前取:换件会改写 equippedArtifacts,事后再取会念成刚戴上的那一件 */
   const evicted = artifactEvictedBy(inventory.equippedArtifacts, artifactSlots.value).map(
     id => artifactDef(id)?.name ?? id
   )
   const result = inventory.toggleArtifact(defId, artifactSlots.value)
   if (result === 'replaced') {
-    // 让位的哪几件照实全念出来:按钮上点名了哪些,归来卸下的就得是哪些
-    // (列表本来就超编时让位的不止一件,只报一件就对不上账。见 artifactEvictedBy)
+    // 让位件全念出来,须与按钮点名一致
     ui.toast(artifactSlotReplacedToast(evicted), 'info')
   }
 }
 
-/** 祭炼连炼的二步确认态;换件/换重自动重算,行与确认自会随之进退 */
+/** 连炼二步确认态 */
 const batchArtConfirm = ref<string | null>(null)
 function runArtifactBatch(defId: string): void {
   batchArtConfirm.value = null
@@ -274,11 +233,11 @@ function artifactShortText(short: NonNullable<(typeof artifactRows.value)[number
 function passiveLines(defId: string, level: number): string[] {
   const def = artifactDef(defId)
   if (!def) return []
-  // 与属性汇总(store/inventory)同源:卡片上写多少,身上加的就是多少
+  // 与属性汇总(store/inventory)同源
   return Object.entries(artifactValue(def, level).passive).map(([k, v]) => statModPhrase(k, v as number))
 }
 
-/** 神通主体那个数说的是什么(用药名之外的话:威力 / 护盾 / 破解…) */
+/** 神通主体数值的称谓 */
 const ACTIVE_NOUNS: Record<string, string> = {
   damage: '威力',
   drain: '威力',
@@ -289,10 +248,7 @@ const ACTIVE_NOUNS: Record<string, string> = {
   purge: '挣脱'
 }
 
-/**
- * 祭炼下一重的账:被动逐项 + 神通主体 + 吸命回补,到顶的标「已至上限」。
- * 已达满重(artifactNextLevelGain 返回 null)时不显示这一行。
- */
+/** 下一重的账:被动逐项 + 神通主体 + 吸命回补;满重时为空 */
 function nextGainText(defId: string, level: number): string {
   const def = artifactDef(defId)
   const gain = def ? artifactNextLevelGain(def, level) : null
@@ -304,10 +260,7 @@ function nextGainText(defId: string, level: number): string {
   })
   if (gain.active) {
     const noun = ACTIVE_NOUNS[def!.active.effect.type] ?? '效果'
-    /**
-     * 零重就顶到封顶的那几件(神鞭的破甲、神魔镜的回补…)再炼也不会更高,
-     * 写「50% → 50%(已至上限)」等于让人自己看出来 —— 直接说清只涨被动。
-     */
+    /** 零重即封顶的件直接报「已至上限」与封顶值 */
     const alreadyCapped = gain.active.capped && Math.abs(gain.active.to - gain.active.from) < 1e-9
     parts.push(
       alreadyCapped

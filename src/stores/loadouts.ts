@@ -29,19 +29,13 @@ export const useLoadoutsStore = defineStore(
 
     /** 存档修复:配装列表被写坏时,配装页会在渲染期抛错 */
     function sanitize(): void {
-      // 条目 id 认不得就整条丢;认得的重建,逐个嵌套字段修平 ——
-      // applyLoadout 会对 equipment 走 Object.keys、对 subGongfa/artifactIds 走 .filter,
-      // 嵌套字段若被写坏(null / 非数组)一样会在切换时抛错,不能只保顶层 array。
+      // 嵌套字段也须修平:applyLoadout 对 equipment 走 Object.keys、对 subGongfa/artifactIds 走 .filter
       list.value = asArray<Loadout>(list.value)
         .filter(l => l !== null && typeof l === 'object' && typeof l.id === 'string')
         .map(l => {
           const equipment: Partial<Record<EquipSlot, string>> = {}
           for (const [slot, itemUid] of Object.entries(asRecord<string>(l.equipment))) {
-            /**
-             * 槽名必须是九个真部位之一。坏档写进 `artifact` 之类不存在的槽时,
-             * `applyLoadout` 会照字面 `equip(u, 'artifact')`:该件随即被排除出行囊,
-             * 却没有任何槽卡画它 —— 整套快照一切换,装备就凭空消失。
-             */
+            // 槽名须是九个真部位之一:野槽名会被 applyLoadout 照字面 equip,该件从行囊消失且无槽卡显示
             if (typeof itemUid === 'string' && itemUid && (EQUIP_SLOTS as string[]).includes(slot)) {
               equipment[slot as EquipSlot] = itemUid
             }
@@ -51,19 +45,14 @@ export const useLoadoutsStore = defineStore(
             name: typeof l.name === 'string' ? l.name : '',
             seal: typeof l.seal === 'string' ? l.seal : '',
             mainGongfa: typeof l.mainGongfa === 'string' ? l.mainGongfa : null,
-            // 快照里的辅修/法宝同样是集合:重复项被 applyLoadout 原样写回当前状态,
-            // 同一门功法或同一件法宝就会被算两次(槽位也被白占)。
+            // 辅修/法宝是集合:重复项会被 applyLoadout 原样写回,算两次
             subGongfa: [...new Set(asStringArray(l.subGongfa))],
             artifactIds: [...new Set(asStringArray(l.artifactIds))],
             equipment,
             savedAt: asFiniteNumber(l.savedAt, 0, 0)
           }
         })
-      /**
-       * 构筑 id 是 apply/rename/remove 的唯一凭据:坏档两套同号时,
-       * `find` 只会切到第一套、`remove` 却把两套一起删、`rename` 把两套一起改名。
-       * 构筑是玩家亲手存的不同快照,不能丢 —— 从第二套起换一个新 id。
-       */
+      // id 是 apply/rename/remove 的唯一凭据:同号时从第二套起换新 id,不丢弃
       const seen = new Set<string>()
       for (const l of list.value) {
         while (seen.has(l.id)) l.id = uid()

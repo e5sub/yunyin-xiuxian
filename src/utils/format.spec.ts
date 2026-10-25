@@ -24,7 +24,6 @@ describe('数值格式化', () => {
   })
 
   it('科学计数 mantissa 四舍五入到 10 时进位(9.99…eN→1.00eN+1,不产 10.00eN)', () => {
-    // bug:9.999e52 四舍五入 m.toFixed(2)='10.00' 直接拼成 10.00e52;应归一化 1.00e53
     expect(formatGN({ m: 9.999, e: 52 })).toBe('1.00e53')
     expect(formatGN({ m: 9.494, e: 52 })).toBe('9.49e52')
   })
@@ -41,14 +40,9 @@ describe('数值格式化', () => {
     expect(formatDuration(90000)).toBe('1天1小时')
   })
 
-  /**
-   * 倒计时的存在理由只有一个:**每一秒的文本宽度必须一样**。
-   * 状态胶囊是 nowrap 的,倒数文本一涨一缩,整排胶囊就会被推来推去
-   * (玩家原话:「状态信息总在抖」)。故这里按「宽度」断言,不按字符串花样。
-   */
   it('倒计时定宽:同一量级内每秒宽度不变', () => {
     const w = (s: string): number => s.length
-    // 同一分钟量级内逐秒走一遍,宽度必须恒定(9→10 秒、59→60 秒这些跳档点在内)
+    // 分秒量级逐秒走一遍(含 9→10 秒、59→60 秒跳档点)
     const widths = new Set<number>()
     for (let s = 1; s <= 59 * 60; s += 1) widths.add(w(formatCountdown(s)))
     expect([...widths].length, `分秒量级内的宽度有 ${[...widths].join('/')} 种`).toBe(1)
@@ -67,7 +61,7 @@ describe('数值格式化', () => {
     expect(formatCountdown(65)).toBe('01分05秒')
     expect(formatCountdown(3660)).toBe('01时01分')
     expect(formatCountdown(90000)).toBe('1天01时')
-    // 非法值与 formatDuration 一致地给占位
+    // 非法值占位与 formatDuration 一致
     expect(formatCountdown(NaN)).toBe('--')
     expect(formatCountdown(-5)).toBe('00分00秒')
   })
@@ -81,7 +75,7 @@ describe('数值格式化', () => {
     expect(formatPercent(NaN)).toBe('--')
     expect(formatPercent(Infinity)).toBe('--')
     expect(formatPercent(-Infinity)).toBe('--')
-    // x 有限但 x*100 上溢成 Infinity 时同样要给占位,不能吐 "Infinity%"(见 format.ts)
+    // x 有限但 x*100 上溢成 Infinity
     expect(formatPercent(1e307)).toBe('--')
   })
 
@@ -106,7 +100,7 @@ describe('数值格式化', () => {
   it('[100,1000) 档与 <100 档一致四舍五入', () => {
     expect(formatGN(999.9)).toBe('1000')
     expect(formatGN(999.4)).toBe('999')
-    // 千位档与 <1000 档同口径取整:9999.6 该读 10,000,不向下取成 9,999
+    // 千位档与 <1000 档同口径取整
     expect(formatGN(9999.6)).toBe('10,000')
     expect(formatGN(9999.4)).toBe('9,999')
     expect(formatGN(150)).toBe('150')

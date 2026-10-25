@@ -8,10 +8,7 @@ import { baseCultPerSec } from './formulas'
 import { retreatGainText, retreatGainedText, checkStateAchievements, retreatMarginalSpeed } from './progress'
 import { useQuestsStore } from '@/stores/quests'
 
-/**
- * 闭关预览 —— 按钮那句「此行约多得修为 X」,与修炼行读同一份
- * baseCultPerSec,时长与加成则取自 buffs.ts 的 retreat 本体(不手抄)。
- */
+/** 闭关预览「约多得修为 X」:与修炼行同读 baseCultPerSec,时长与加成取自 buffs.ts 的 retreat 本体 */
 describe('retreatGainText 闭关约多得预览', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -29,7 +26,6 @@ describe('retreatGainText 闭关约多得预览', () => {
     const player = usePlayerStore()
     const baseline = baseCultPerSec(player.major, player.sub)
 
-    // 直接把 retreat buff 的加成按同构口径算一遍:base × 加成 × 时长
     const def = buffDef('retreat')!
     const boost = def.mods.cultivationSpeed ?? 0
     const expected = baseline * boost * def.durationSec
@@ -64,13 +60,8 @@ describe('retreatGainText 闭关约多得预览', () => {
 })
 
 /**
- * 成就周期补扫 —— 修复「早已越境、低境界成就却仍锁着」。
- *
- * 真相口径:realm/counter 成就在 evalCond 处用 `major >= N` 判定,逻辑本身没写错;
- * 但它只在 track()/trackRealm() 这两个行为触发点被求值。若一份老存档/导入档在
- * 「成就功能上线后未再走突破、也一直没发生任何计数行为」的情况下加载,引擎只跑
- * checkStateAchievements(周期补扫),而它此前不补 realm —— 于是玩家明明已高好几境,
- * 低境界成就却永远锁着。补扫必须在周期里重放一次 checkAchievements。
+ * 成就周期补扫:realm/counter 成就只在 track()/trackRealm() 时求值;
+ * checkStateAchievements 须重放 checkAchievements,老档/导入档越境后低境界成就才会解锁。
  */
 describe('成就周期补扫应治愈「越境未解锁」', () => {
   beforeEach(() => setActivePinia(createPinia()))
@@ -108,10 +99,9 @@ describe('retreatMarginalSpeed 闭关边际(修炼速度软上限)', () => {
   })
 
   it('越阈:越出部分按 CULT_SPEED_SOFT_CAP_DIMINISH 折算,不再全按 1.5 报', () => {
-    // cappedTotal=5.9(单世满配 ~4.4 + 闭关 1.5 被折算后的总况):
-    // 反解无封顶=5+(5.9−5)/0.5=6.8;+1.5=8.3;再封=5+(8.3−5)×0.5=6.65;净增量=6.65−5.9=0.75
+    // 5.9 反解无封顶 = 6.8;+1.5 = 8.3;再封 = 6.65;净增量 = 0.75
     expect(retreatMarginalSpeed(5.9, 1.5)).toBeCloseTo(0.75, 6)
-    // 恰在阈上:越出的 1.5 全按半价 → 净增量 0.75
+    // 恰在阈上:1.5 全按半价
     expect(retreatMarginalSpeed(CULT_SPEED_SOFT_CAP_T, 1.5)).toBeCloseTo(0.75, 6)
   })
 })

@@ -1,6 +1,4 @@
-/**
- * Win-streak payout line. Numbers come from the reward row that was just granted.
- */
+/** Win-streak payout line. Numbers come from the reward row that was just granted. */
 import { formatNum } from '@/utils/format'
 
 export function streakRewardText(streak: number, stone: number, wudao: number): string {

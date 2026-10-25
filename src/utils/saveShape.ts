@@ -1,24 +1,10 @@
-/**
- * 存档形状修复 —— 读档时把"形状不对"的字段修回可用的样子。
- *
- * 起因:saveResilience 的红线逐个字段灌 undefined,一次就抓出 7 处会抛错的
- * sanitize 路径(player 的 suppressedRegions、lore 的四张表……)。
- * 这些字段的共同点是**读的时候假设了形状**:`for...of` 假设数组、
- * `Object.entries` 假设对象、算术假设数字。存档一旦被写坏、从旧版本补回来、
- * 或被人手工改过,这些假设就变成白屏。
- *
- * 故这里提供四个最小判据,让各 store 的 sanitize 一行写完:
- * 形状不对就用兜底值,而不是抛错。
- */
+/** 存档形状修复(各 store 的 sanitize 用):形状不对就用兜底值,不抛错。 */
 import type { CombatSkill, GNum } from '@/types'
 import { COMBAT_SKILL_EFFECTS, SKILL_MULT_CAP } from '@/data/constants'
 import { gn, gnZero } from './gnum'
 
 /**
- * 是数组就用它,否则兜底。
- *
- * 元素也要过一遍:存档里出现 `[null]` 这种"数组形状对、元素是垃圾"的情形时,
- * 后面的 `.filter(it => it.uid)` / `.defId` 会在渲染期抛错(实测三处)。
+ * 是数组就用它,否则兜底。元素也要过一遍:`[null]` 会在渲染期抛错。
  * isValid 省略时只丢掉 null/undefined。
  */
 export function asArray<T>(v: unknown, fallback: T[] = [], isValid?: (x: unknown) => boolean): T[] {
@@ -27,7 +13,7 @@ export function asArray<T>(v: unknown, fallback: T[] = [], isValid?: (x: unknown
   return (v as T[]).filter(keep)
 }
 
-/** 字符串数组:顺带滤掉混进去的非字符串 */
+/** 字符串数组:滤掉非字符串 */
 export function asStringArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
 }
@@ -37,10 +23,7 @@ export function asRecord<T>(v: unknown, fallback: Record<string, T> = {}): Recor
   return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, T>) : fallback
 }
 
-/**
- * 记录里只留下"值还像样"的条目。
- * 键对、值烂(如 `{ a: null }`)同样会在渲染期炸 —— 例如 trialRecords.a.clears。
- */
+/** 记录里只留值像样的条目:`{ a: null }` 同样会在渲染期抛错 */
 export function asRecordOf<T>(v: unknown, isValid: (x: unknown) => boolean): Record<string, T> {
   const out: Record<string, T> = {}
   for (const [k, raw] of Object.entries(asRecord<T>(v))) {
@@ -55,18 +38,14 @@ export function asFiniteNumber(v: unknown, fallback: number, min?: number): numb
   return min === undefined ? n : Math.max(min, n)
 }
 
-/** 残余生命占比:有限数字取之并夹到 [0.05, 1],否则兜底 1(天界/凡界远征共用同一口径) */
+/** 残余生命占比:夹到 [0.05, 1],非有限数兜底 1;天界/凡界远征共用 */
 export function asCarriedHpPct(v: unknown): number {
   return Math.min(1, asFiniteNumber(v, 1, 0.05))
 }
 
 /**
- * 战斗技能修形 —— 忆战快照与虚界敌形共用这一份。
- *
- * `rate` 超过 1 会让技能必定触发、负数会让它永不触发;`mult` 为负或极大有限数
- * 会直接进入伤害公式。坏档里这两项都必须夹回可玩值域;名字与倍率/概率本身
- * 缺失或非有限的条目则没有可执行语义,整条丢弃。认不出的 effect 只去掉附加效果,
- * 不影响这一击本身。
+ * 战斗技能修形 —— 忆战快照与虚界敌形共用。
+ * `rate`/`mult` 夹回可玩值域;名字与倍率/概率缺失或非有限整条丢弃;认不出的 effect 只去掉附加效果。
  */
 export function asCombatSkill(v: unknown): CombatSkill | null {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return null
@@ -84,14 +63,14 @@ export function asCombatSkill(v: unknown): CombatSkill | null {
   }
 }
 
-/** 技能表修形:非数组回落空表,逐条走 asCombatSkill */
+/** 技能表修形:非数组回落空表 */
 export function asCombatSkills(v: unknown): CombatSkill[] {
   return asArray<unknown>(v)
     .map(asCombatSkill)
     .filter((s): s is CombatSkill => s !== null)
 }
 
-/** 记录里每一项都取有限数字(非数字的键直接丢掉) */
+/** 记录里每项取有限数字,非数字的键丢掉 */
 export function asNumberRecord(v: unknown, min?: number): Record<string, number> {
   const out: Record<string, number> = {}
   for (const [k, raw] of Object.entries(asRecord<number>(v))) {
@@ -100,17 +79,14 @@ export function asNumberRecord(v: unknown, min?: number): Record<string, number>
   return out
 }
 
-/** 对象或 null(用于"可以为空"的状态,如进行中的会话) */
+/** 对象或 null:可为空的状态(如进行中的会话) */
 export function asObjectOrNull<T extends object>(v: unknown): T | null {
   return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as T) : null
 }
 
 /**
- * 存档里的价格(GNum):形状不对就归零。
- *
- * 归零意味着「买得起」,但货架/悬赏会重新上货、重填价格,不会真以零成交;
- * 相反,一个 NaN 或半个对象会让算价一路算出 NaN。坊市与悬赏共用这一份,
- * 别各写一份 —— 前者写坏了后者照样漏。
+ * 存档里的价格(GNum):形状不对就归零。货架/悬赏会重新上货、重填价格,不会以零成交。
+ * 坊市与悬赏共用这一份。
  */
 export function asPrice(v: unknown): GNum {
   if (!v || typeof v !== 'object' || !('m' in v) || !('e' in v)) return gnZero()

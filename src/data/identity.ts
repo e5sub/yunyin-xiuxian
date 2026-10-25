@@ -1,9 +1,6 @@
 /**
- * 玩家身份与传奇的静态目录(修行节点 / 极限纪录)。
- *
- * 原在 core/identity.ts。挪到 data/ 是为了让 endgame store 读档时能按 id 认节点与纪录,
- * 而不必反向 import core —— identity 那支模块 import 了 endgame store,一引就成环。
- * core/identity 仍原样再导出这里的表,调用方无需改 import。
+ * 玩家身份与传奇的静态目录(修行节点 / 极限纪录);core/identity 原样再导出。
+ * 放在 data/ 供 endgame store 读档按 id 校验:core/identity 引 endgame store,store 反引 core 即成环。
  */
 
 export interface MilestoneDef {

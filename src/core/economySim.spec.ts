@@ -1,4 +1,4 @@
-/* eslint-disable no-console -- 模拟器体检报告的正式输出(bun run test:report 依赖) */
+/* eslint-disable no-console -- 体检报告输出,bun run test:report 依赖 */
 import { describe, expect, it } from 'vitest'
 import { auditEra, avgQualityRank, fullEconomyAudit, qiFillSeconds } from './economySim'
 import { BT_QI_COST_RATIO } from '@/data/constants'
@@ -6,16 +6,7 @@ import { MAX_MAJOR, worldOf } from '@/data/realms'
 import { maxTierForMajor } from '@/data/regions'
 import { layerSeconds } from './pillValue'
 
-/**
- * 审计的判据分两段,理由写在 economySim 的文件头:
- *
- * - **人间界(0~8)**:模型在此校准(建筑还在长、掉落按人间界层级),健康不变量按原样守 ——
- *   灵石不窒息也不失意义、灵草买得起丹、器灵尘自给、无死资源。
- * - **界外十二境(9~20)**:出口是**天道熔炉**(材料/灵石 → 道源 → 道果),现已入模型(ISS-210 结清)。
- *   这一段守「结构」:每样材料都有非零出口、道源流存在且只在界外、层级跟随区域表、修为比值不漂移;
- *   并把「材料换道源的速率远超终局节奏」这条**已知失衡**当成断言钉住(ISS-214)——
- *   它是一处真实的定价问题,不是读数噪声,故不假装健康、也不藏起来。
- */
+/** 判据分两段:人间界(0~8)为模型校准段,守健康不变量;界外(9~20)出口在天道熔炉,守结构与道果代价。 */
 describe('经济闭环审计(Phase 19 · Phase 40 补界外与修为)', () => {
   const eras = fullEconomyAudit()
   const mortal = eras.filter(e => worldOf(e.major).id === 'mortal')
@@ -35,7 +26,6 @@ describe('经济闭环审计(Phase 19 · Phase 40 补界外与修为)', () => {
     for (const era of eras) {
       expect(era.flows.length, `第${era.major}境缺流`).toBe(era.major >= 9 ? 8 : 7)
     }
-    // 道源流只在界外出现 —— 人间界还没有熔炉可开
     for (const era of mortal) expect(era.flows.some(f => f.resource === 'daoSource')).toBe(false)
     for (const era of outer) expect(era.flows.some(f => f.resource === 'daoSource')).toBe(true)
   })
@@ -47,12 +37,10 @@ describe('经济闭环审计(Phase 19 · Phase 40 补界外与修为)', () => {
       return exp!.ratio
     })
     for (const [i, ratio] of ratios.entries()) {
-      // 收入 = 挂机(底)+ 历练(两条线都随修速缩放),消耗 = 通关本境的修为需求。
-      // 两侧同尺,故「历练在任何境界都是同一个倍率」——
-      // 反过来说:这个数一旦随境界漂移,就是有一侧又按境界另算了一遍(ISS-208 的旧病)。
       expect(ratio, `第${i}境修为收支比`).toBeGreaterThan(1)
       expect(ratio, `第${i}境修为收支比`).toBeLessThan(10)
     }
+    // 比值漂移即有一侧按境界另算(ISS-208)
     expect(Math.max(...ratios) - Math.min(...ratios), '修为收支比随境界漂移了').toBeLessThan(0.01)
   })
 
@@ -106,16 +94,14 @@ describe('经济闭环审计(Phase 19 · Phase 40 补界外与修为)', () => {
   })
 
   it('人间界玄铁/残页/悟道点有下限:允许早期瓶颈(流派摩擦),但不许砸成死资源', () => {
-    // stone/herb/dust 已有 ratio 守卫,补齐审计追踪的其余三种人间界材料。
-    // ore/page/wudao 早期偏低是设计摩擦(建建筑 / 藏经阁 gate),故不设瓶颈级(0.7)
-    // 上限——那会锁死流派——只守「不死资源」下限,专捉 loot.ts 掉率级联崩塌
-    // (例如 ORE_DROP_CHANCE 腰斩会让 ore 从 ~0.27 跌到 ~0.13,本守卫即断)。
+    // ore/page/wudao 早期偏低属设计摩擦,不设瓶颈级(0.7)门槛,只守不死资源下限;
+    // ORE_DROP_CHANCE 腰斩会让 ore 从 ~0.27 跌到 ~0.13,本守卫即断
     for (const era of mortal) {
       const ore = era.flows.find(f => f.resource === 'ore')!
       expect(ore.ratio, `第${era.major}境玄铁`).toBeGreaterThan(0.15)
       const page = era.flows.find(f => f.resource === 'page')!
       expect(page.ratio, `第${era.major}境残页`).toBeGreaterThan(0.5)
-      // 悟道点靠藏经阁(筑基才堪建),凡人境(m0)本就无产出,守 m1 起即可
+      // 藏经阁筑基起建,m0 无悟道产出
       if (era.major >= 1) {
         const wudao = era.flows.find(f => f.resource === 'wudao')!
         expect(wudao.ratio, `第${era.major}境悟道点`).toBeGreaterThan(0.02)
@@ -146,25 +132,13 @@ describe('经济闭环审计(Phase 19 · Phase 40 补界外与修为)', () => {
       for (const f of era.flows) {
         expect(f.sinkPerHour, `第${era.major}境 ${f.resource} 没有出口`).toBeGreaterThan(0)
       }
-      // 悟道点是唯一例外 —— 它的真出口(功法进修 / 法宝炼化)没进模型,故必须自报口径
+      // 悟道点真出口未入模型,须自报口径
       const wudao = era.flows.find(f => f.resource === 'wudao')!
       expect(wudao.note, `第${era.major}境悟道流的出口没进模型,却不自报口径`).toContain('待补')
     }
   })
 
-  /**
-   * 终局的进度杠杆:**凝一枚道果要多少小时的材料产出**。
-   *
-   * ISS-214 的旧病是"价格冻死":灵石收入按 1.9^层级 涨,而熔炉的灵石价写死在真仙那一层
-   * (tier 20),于是到混沌海(tier 32)道果相对收入便宜了 1.9^12 ≈ 293 倍 ——
-   * 一战的灵石就够换一枚以上道果。定价改随层级之后,这个代价落在 **1 小时上下**,
-   * 而且整条长尾上只差一个量级以内。
-   *
-   * 守两条:① 绝对量级(几分钟一枚太贱、一天一枚太贵);② 量级不漂移。
-   * 允许的残余梯度来自器灵尘 —— 高品质装备分解出的尘随层级变多,而熔炉的尘价是绝对数,
-   * 故深处略便宜(1.68h → 0.90h,约 1.9 倍);那是品质窗口的副作用,不是价格冻死。
-   * 「每境凝几枚道果」是玩法节奏,不是审计能替玩家定的。
-   */
+  /** 残余梯度来自器灵尘(分解尘随层级变多、熔炉尘价是绝对数),深处略便宜约 1.9 倍,不属价格冻死 */
   it('界外:凝一枚道果的材料代价不随层级漂移(ISS-214 的旧病)', () => {
     const rows = outer.map(era => ({ major: era.major, hours: era.daoCostHours ?? 0 }))
     console.log('\n  [界外道果价] 凝一枚道果 ≈ 多少小时的材料产出:')
@@ -174,22 +148,12 @@ describe('经济闭环审计(Phase 19 · Phase 40 补界外与修为)', () => {
     expect(min, '凝一枚道果便宜到几分钟一枚 —— 终局数值出口会失去意义').toBeGreaterThan(0.1)
     expect(max, '凝一枚道果贵到一天以上 —— 终局会变成摆设').toBeLessThan(24)
     expect(max / min, `道果价随层级漂移了:${min.toFixed(2)}h → ${max.toFixed(2)}h`).toBeLessThan(2)
-    // 量级锚:DAO_SOURCE_PER_FRUIT=200 后,全境落 ~1.8~3.4h。钉住「2~3h 节奏」这一产品口径,
-    // 别让它被哪一次的调参悄悄拉回 ~1h(太快)或翻到 6h+(太慢)。
+    // 量级锚:DAO_SOURCE_PER_FRUIT=200 时全境 ~1.8~3.4h,产品口径「2~3h 节奏」
     expect(min, '道果节奏不该比 1 小时还快').toBeGreaterThan(1)
     expect(max, '道果节奏不该超过 6 小时').toBeLessThan(6)
   })
 
-  /**
-   * 灵气是突破的门槛资源(一次耗上限的四成),所以它的体检问题只有一个:
-   **它会不会成为卡关的那一环**。判据按界域分段,因为"多久算久"在这里本就不同:
-   · 人间界(0~8):突破节奏以分钟计,回满要是拖到半小时以上,玩家就真的在等灵气 ——
-     故沿用 30 分钟这条绝对线(Phase 19 定的口径)。
-   · 界外(9~20):一层修为以**天**计(真仙一层 124 天),而回满只有小时级,
-     灵气不可能成为瓶颈 —— 故这一段守的是**相对**口径:回满 ≤ 本境一层耗时的 1%。
-     绝对线在这一段没有意义(第 16 境回满 78 分钟,而那一层要修 700 年)。
-   (ISS-212 原本报的是"30 分钟这条线只覆盖 0~9 境"这个覆盖缺口,现按上口径补全。)
-   */
+  /** 界外一层以天计,30 分钟绝对线无意义,改守相对口径 */
   it('灵气结构健康:人间界回满 ≤30 分钟;界外回满 ≪ 本境一层耗时(永不成为瓶颈)', () => {
     expect(BT_QI_COST_RATIO).toBeLessThan(1)
     const rows: string[] = []
@@ -204,16 +168,15 @@ describe('经济闭环审计(Phase 19 · Phase 40 补界外与修为)', () => {
   })
 
   it('藏经阁没到建制境界不算产出:大境界 0(炼气)的悟道收入为 0(筑基才堪建)', () => {
-    // 故障注入:把 auditEra 里 libLv 的 buildingLevel 去掉 unlock 门槛(改回 2+2×major),
-    // 大境界 0 就会出现 2×LIBRARY_WUDAO_PER_HOUR 的悟道收入 → 红。
+    // 故障注入:把 auditEra 里 libLv 的 buildingLevel 去掉 unlock 门槛(改回 2+2×major),本用例红
     const w = auditEra(0).flows.find(f => f.resource === 'wudao')
     expect(w, '炼气期应有悟道流').toBeDefined()
     expect(w!.incomePerHour, '炼气期没有藏经阁,不应计入悟道产出').toBe(0)
   })
 
   it('强化耗尘按真实掉落品质估(非固定玄品):凡间低阶平均品阶 < 玄品 rank 3', () => {
-    // 故障注入:把 auditEra 的强化 upgradeCost 品阶改回写死的 3,低阶器灵尘两把不同的
-    // 尺会重新出现 —— 这里只锁住「真实取样品阶低于玄品」这一事实,防止回到固 3。
+    // 故障注入:把 auditEra 的强化 upgradeCost 品阶改回写死的 3,耗尘与分解收入重新分成两把尺;
+    // 本用例只锁「真实取样品阶低于玄品」
     const r2 = avgQualityRank(2)
     expect(r2, '炼气层级(2)掉落平均品阶应低于玄品').toBeLessThan(3)
     expect(avgQualityRank(maxTierForMajor(MAX_MAJOR)), '终局层级平均品阶应不低于凡品').toBeGreaterThanOrEqual(1)

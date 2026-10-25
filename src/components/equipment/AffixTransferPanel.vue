@@ -1,6 +1,5 @@
 <template>
   <div class="space-y-3">
-    <!-- 一 转出:源件的词条。选中后收成一行,点「更换」重选 -->
     <section ref="outRef" class="scroll-mt-6">
       <p class="flex min-h-[28px] items-center justify-between">
         <span class="font-kai text-[12px] tracking-[0.3em] text-ink-faint">{{ TRANSFER_LABELS.out }}</span>
@@ -36,7 +35,6 @@
       </div>
     </section>
 
-    <!-- 二 转入:接得了这一条的件。部位、品质不合的不列;已有这条且不更低的置灰 -->
     <section v-if="flow.affixId" ref="intoRef" class="scroll-mt-6">
       <p class="flex min-h-[28px] items-center justify-between">
         <span class="font-kai text-[12px] tracking-[0.3em] text-ink-faint">{{ TRANSFER_LABELS.into }}</span>
@@ -83,7 +81,6 @@
       </button>
     </section>
 
-    <!-- 三 位置:新增,或顶替一条。每一项单独标价;被挡的写原因 -->
     <section v-if="flow.affixId && flow.target" ref="slotRef" class="scroll-mt-6">
       <p class="flex min-h-[28px] items-center">
         <span class="font-kai text-[12px] tracking-[0.3em] text-ink-faint">{{ TRANSFER_LABELS.slot }}</span>
@@ -119,7 +116,6 @@
       </div>
     </section>
 
-    <!-- 四 结果:落地后的词条表、封存、目标件的属性变化、源件失去什么 -->
     <section v-if="flow.plan && flow.target" ref="resultRef" class="scroll-mt-6">
       <p class="flex min-h-[28px] items-center justify-between">
         <span class="font-kai text-[12px] tracking-[0.3em] text-ink-faint">{{ TRANSFER_LABELS.result }}</span>
@@ -182,11 +178,9 @@
   const props = defineProps<{ flow: AffixTransferFlow }>()
   const emit = defineEmits<{ view: [uid: string] }>()
 
-  /** 选中词条后只留那一行;未选时列全部 */
   const shownSourceLines = computed(() =>
     props.flow.affixId ? props.flow.sourceLines.filter(l => l.id === props.flow.affixId) : props.flow.sourceLines
   )
-  /** 选中目标后只留那一件 */
   const shownCandidates = computed(() =>
     props.flow.targetUid ? props.flow.candidates.filter(c => c.item.uid === props.flow.targetUid) : props.flow.shownCandidates
   )
@@ -196,7 +190,7 @@
     return equipmentTemplate(templateId)?.name ?? ''
   }
 
-  /** 候选可以跨部位(戒指的词条能去项链),行里写明是哪个部位 */
+  /** 候选可跨部位,行里须写明部位 */
   function slotName(templateId: string): string {
     const slot = equipmentTemplate(templateId)?.slot
     return slot ? EQUIP_SLOT_NAMES[slot] : ''
@@ -211,8 +205,8 @@
     return def ? AFFIX_RARITY_META[def.rarity].color : 'inherit'
   }
 
-  // 每走完一步,把新展开的那一段滚到正文顶上(正文是唯一的滚动容器)。
-  // 新段落是 v-if 出来的,渲染前拿不到元素 —— 先记下要去哪一段,nextTick 之后再取
+  // 每走完一步,把新展开的段滚到正文顶(正文是唯一滚动容器)。
+  // 新段由 v-if 渲染,须 nextTick 后再取元素
   const outRef = ref<HTMLElement | null>(null)
   const intoRef = ref<HTMLElement | null>(null)
   const slotRef = ref<HTMLElement | null>(null)

@@ -1,15 +1,8 @@
 /**
  * 坊市 / 悬赏 / 收徒 三模块的经济校验(C2·C1)
- *
- * 不入 economySim.auditEra 的原因(见其文件头纪律「不许把没模型的地方算成健康
- * 或事故」):弟子的差事分配、等级曲线都是行为假设,硬折进那条
- * 调校过的 11 条不变式模型,会把「未建模」稀释成「已验证」。故另立本审计,只锁
- * 结构不变量,全部取自真实定价/生成函数:
- *
- *  ① 大一统无套利:全境界 购 > 悬赏 > 售 恒成立,且比值不随境界漂移(经济锚 1.9^tier
- *     两边抵消)——这是三模块共同的经济纪律,锁死它即锁死「买→交」空转灵石。
- *  ② 弟子材料不衰减(C1):悬赏把弟子固定产的灵草按 4.5/单位收走,价随境界等比放大,
- *     故「弟子材料 → 悬赏」的价值 ÷ 战斗灵石 恒为常数(不随境界衰减)。
+ * 不入 economySim.auditEra:弟子差事分配、等级曲线是行为假设。只锁结构不变量,取自真实定价/生成函数:
+ *  ① 无套利:全境界 购 > 悬赏 > 售,比值不随境界漂移。
+ *  ② 弟子材料不衰减(C1):「弟子材料 → 悬赏」价值 ÷ 战斗灵石 恒为常数。
  */
 import { describe, expect, it } from 'vitest'
 import { stoneByTier } from './formulas'
@@ -41,7 +34,7 @@ import { HERB_GRADES } from '@/data/herbGrades'
 import { MARKET_MAT_COUNT, MARKET_SELL_PILL_FACTOR } from '@/data/market'
 import { PILLS } from '@/data/pills'
 
-/** 该境界的代表层级(与 economySim 同:maxTierForMajor) */
+/** 境界代表层级,与 economySim 同 */
 const tierOf = (major: number): number => maxTierForMajor(major)
 
 function toN(g: { m: number; e: number }): number {
@@ -55,10 +48,7 @@ function rng(seed = 0x5eed): RandomService {
 /** 全部 major 0..最大境界 */
 const MAJORS = Array.from({ length: 21 }, (_, i) => i)
 
-/**
- * 灵草三价守卫的代表境界 —— 比值与境界无关(三价都随同一层级的 stoneByTier 缩放),
- * 故任取一境即可;逐境界恒等这一性质由 herbGrades.spec 的「草比石贵恒常」补守。
- */
+/** 灵草三价守卫的代表境界;比值与境界无关,逐境界恒等由 herbGrades.spec「草比石贵恒常」守 */
 const HERB_MAJOR = 10
 
 describe('三模块经济审计 · 无套利与弟子不衰减', () => {
@@ -69,7 +59,6 @@ describe('三模块经济审计 · 无套利与弟子不衰减', () => {
       const sellUnit = MARKET_SELL_MAT_STONE_UNITS
       expect(bountyUnit, `境 ${major} 悬赏必在购销之间`).toBeGreaterThan(sellUnit)
       expect(buyUnit).toBeGreaterThan(bountyUnit)
-      // 比值与境界无关(3 / 4.5 / 6 是纯常数,不随 1.9^tier 变)
     }
     expect(BOUNTY_MAT_UNIT_AMOUNT / MARKET_SELL_MAT_STONE_UNITS).toBeCloseTo(1.5, 5)
     expect(MARKET_MAT_STONE_UNITS / BOUNTY_MAT_UNIT_AMOUNT).toBeCloseTo(4 / 3, 5)
@@ -78,12 +67,11 @@ describe('三模块经济审计 · 无套利与弟子不衰减', () => {
   it('① 丹药:购(×2.5) > 悬赏(×1.8+悟道) > 售(×1.2)', () => {
     for (const major of MAJORS) {
       for (const p of PILLS.filter(x => x.recipe?.stoneBase != null && x.minRealm <= major)) {
-        // 同一把尺:每枚丹药的「实际炼制石耗」pillStoneCost(层级曲线,不是写死 stoneBase)。
-        // 顶层丹自炼 ~1.7e11;若拿 stoneBase×2.5 当购价(4250),坊市就 4 千万倍白送丹房。
+        // 用实际炼制石耗 pillStoneCost(层级曲线),不用写死 stoneBase;顶层丹自炼 ~1.7e11
         const craft = toN(pillStoneCost(p))
-        const buy = MARKET_PILL_MARKUP * craft // 购单价 = 2.5×石耗
-        const bountyPer = BOUNTY_PILL_REWARD_FACTOR * craft // 募丹每枚 = 1.8×石耗(总赏另乘枚数)
-        const sell = toN(pillSellPrice(p.id)) // 售单价 = 1.2×石耗
+        const buy = MARKET_PILL_MARKUP * craft
+        const bountyPer = BOUNTY_PILL_REWARD_FACTOR * craft // 总赏另乘枚数
+        const sell = toN(pillSellPrice(p.id))
         expect(bountyPer, `${p.id} 悬赏>售`).toBeGreaterThan(sell)
         expect(buy, `${p.id} 购>悬赏`).toBeGreaterThan(bountyPer)
         expect(sell / craft, `${p.id} 售=×1.2`).toBeCloseTo(1.2, 4)
@@ -98,7 +86,6 @@ describe('三模块经济审计 · 无套利与弟子不衰减', () => {
         const buy = stoneByTier(tier, MARKET_EQUIP_STONE_BASE + rank * MARKET_EQUIP_STONE_PER_RANK)
         const bounty = stoneByTier(tier, BOUNTY_EQUIP_STONE_BASE + rank * BOUNTY_EQUIP_STONE_PER_RANK)
         const consign = consignPrice(tier, rank)
-        // 悬赏 > 摆摊(贡器是装备溢价的出口);购 > 悬赏(买→交亏本,不成套利)
         expect(toN(bounty) > toN(consign)).toBe(true)
         expect(toN(buy) > toN(bounty)).toBe(true)
       }
@@ -106,7 +93,7 @@ describe('三模块经济审计 · 无套利与弟子不衰减', () => {
   })
 
   it('② 弟子材料不衰减(C1):悬赏把弟子固定产的草按 4.5/单位收走,价值÷战斗恒常', () => {
-    // 一整单募草(30 单位 × 4.5)的灵石 ÷ 一场战斗,应逐境界恒等于 13.5
+    // 整单募草(30 单位 × 4.5)÷ 一场战斗 = 13.5
     for (const major of MAJORS) {
       const tier = tierOf(major)
       const bountyFull = toN(stoneByTier(tier, BOUNTY_MAT_TARGET * BOUNTY_MAT_UNIT_AMOUNT))
@@ -117,8 +104,7 @@ describe('三模块经济审计 · 无套利与弟子不衰减', () => {
   })
 
   it('② 弟子石类差事不贬值:历练恒为战斗的固定份额(真调 apprenticeSpoils)', () => {
-    // 直接调 apprenticeSpoils(基础档,非历练天赋)对 stoneByTier(maxTierForMajor,10) 求比,
-    // 而不是用 stoneByTier(tier,4) 自算 —— 否则实现传错尺(把 major 当 tier)时守卫照样绿
+    // 真调 apprenticeSpoils(基础档),不自算 stoneByTier(tier,4):实现把 major 当 tier 时自算照样绿
     for (const major of MAJORS) {
       const tier = tierOf(major)
       const adventure = toN(apprenticeSpoils('ap_luanniao', 'adventure', major, 1).stone!)
@@ -134,19 +120,16 @@ describe('灵草三价无套利守卫(购/悬赏/售)', () => {
       const buy = herbBuyPrice(g, HERB_MAJOR)
       const sell = herbSellPrice(g, HERB_MAJOR)
       const bountyPer = toN(herbBountyReward(g, HERB_MAJOR, 1))
-      // 对购价直比固定倍率 —— 常数一旦改回 0.8/0.9(搬砖复活)此处即红
+      // 常数改回 0.8/0.9(搬砖复活)即红
       expect(sell, `第 ${g} 品售出应=购价×1/2`).toBe(buy / 2)
-      // 悬赏每株 = 购价×3/4(购价是 4 的倍数 → 恒整数)。GNum 大数 toNum 往返有 ±1e-8 相对漂移,
-      // 故 3/4 比用「4×悬赏 ≈ 3×购价」的相对容差比对,并单独断言取整后恰为「购价×3/4」(整数性)。
+      // 购价是 4 的倍数 → 购价×3/4 恒整数。GNum toNum 往返有 ±1e-8 相对漂移,须容差比对
       expect(4 * bountyPer).toBeGreaterThan(3 * buy - 0.5)
       expect(4 * bountyPer).toBeLessThan(3 * buy + 0.5)
       expect(Math.round(bountyPer)).toBe(
         Math.floor(buy * (BOUNTY_MAT_UNIT_AMOUNT / MARKET_MAT_STONE_UNITS) + 0.5)
       )
-      // 无套利顺序:购 > 悬赏 > 售
       expect(buy, `第 ${g} 品购价应高于悬赏`).toBeGreaterThan(bountyPer)
       expect(bountyPer, `第 ${g} 品悬赏应高于售出`).toBeGreaterThan(sell)
-      // 均为整数(无分石漂移):售 = 购价/2 精确整数;悬赏每株逐株取整,相对漂移远小于 1 石
       expect(Number.isInteger(sell), `第 ${g} 品售出应为整数`).toBe(true)
       expect(Math.abs(bountyPer - Math.round(bountyPer)), `第 ${g} 品悬赏每株应为整数(±<1石)`).toBeLessThan(1e-3)
     }
@@ -156,7 +139,6 @@ describe('灵草三价无套利守卫(购/悬赏/售)', () => {
     for (const g of HERB_GRADES) {
       const buy = herbBuyPrice(g, HERB_MAJOR)
       expect(herbSellPrice(g, HERB_MAJOR)).toBe(buy * (MARKET_SELL_MAT_STONE_UNITS / MARKET_MAT_STONE_UNITS))
-      // 同样:真值=购价×3/4(整数),比对抹掉 GNum toNum 的大数往返±尾差
       expect(Math.round(toN(herbBountyReward(g, HERB_MAJOR, 1)))).toBe(
         Math.floor(buy * (BOUNTY_MAT_UNIT_AMOUNT / MARKET_MAT_STONE_UNITS) + 0.5)
       )
@@ -190,8 +172,7 @@ describe('坊市定价单调性 + 有限(高阶/珍稀必卖更贵)', () => {
 
   it('材料即售价随境界单调递增,且有限为正', () => {
     let prev = 0
-    // 价格骑在区域层级上(maxTierForMajor),真实境界域 1..MAX_MAJOR 内层级严格递增;
-    // 20 之后全部封顶混沌海第 32 层,无更高层级可走,故只测真实境界域。
+    // 价随 maxTierForMajor;1..MAX_MAJOR 内层级严格递增,其后封顶混沌海第 32 层
     for (let major = 1; major <= MAX_MAJOR; major += 1) {
       const p = toN(materialSellPrice(major))
       expect(p, `material major=${major}`).toBeGreaterThan(prev)
@@ -217,13 +198,7 @@ describe('坊市定价单调性 + 有限(高阶/珍稀必卖更贵)', () => {
   })
 })
 
-/**
- * 坊市 · 定价健壮性(边)。
- *
- * 已知值的比例(售价/底价、购售不成环)与随阶/品质单调已在上面的 describe 断言;
- * 这里只补**边上的地板**:未知丹、0 阶、负参。生意里任何一处 NaN/负/无限都会在界面
- * 挂着「NaN 灵石」或倒贴,而这些输入在别处从没直接喂过。
- */
+/** 只补边界(未知丹、0 阶、负参);比例与单调见上方 describe */
 describe('坊市 · 定价健壮性(未知丹 0 元·0 阶负参非负有限)', () => {
   it('未知丹:售价 0 且有限(不 NaN/不∞/不为负)', () => {
     const v = toN(pillSellPrice('not_a_pill'))
@@ -234,8 +209,7 @@ describe('坊市 · 定价健壮性(未知丹 0 元·0 阶负参非负有限)', 
   it('已知丹:售价恰为炼制石耗 × 1.2(层级曲线,不是写死 stoneBase)', () => {
     const withBase = PILLS.find(p => p.recipe?.stoneBase != null)
     if (!withBase?.recipe?.stoneBase) throw new Error('测试需要一张有灵材底的丹方')
-    // 与买价同源:即时售 = pillStoneCost(实际炼制石耗)×1.2 —— 顶层丹自炼 ~1.7e11,
-    // 若写死 stoneBase×1.2(2040),炼丹→灵石的灵石回环在后期就名存实亡了。
+    // 与买价同源
     expect(pillSellPrice(withBase.id)).toEqual(mulN(pillStoneCost(withBase), MARKET_SELL_PILL_FACTOR))
   })
 
@@ -251,21 +225,15 @@ describe('坊市 · 定价健壮性(未知丹 0 元·0 阶负参非负有限)', 
 })
 
 /**
- * 一把尺(单标尺)守卫:灵草/匹材/装备/悬赏全骑同一根 1.9^区域层级 曲线。
- *
- * 旧实现把匹材/装备价钉在「境界大阶 major」上,而草价已随 maxTierForMajor
- * 缩放 —— 同一架货里两把尺一分叉,major9 的矿石格只有草的 ~1/17000,
- * 「坊市是灵石主销处」塌掉。这里在非零大阶上直接对比材价与草价底子:
- * 材:草 = 6:64 且与层级无关;谁把材退回大阶,比值立刻差两个数量级,本测试即红。
+ * 单标尺守卫:灵草/匹材/装备/悬赏全骑 1.9^区域层级,不以境界大阶 major 当层级。
+ * 材:草 = 6:64 与层级无关;把材退回大阶,比值差两个数量级,本测试即红。
  */
 describe('坊市/悬赏 · 材与草骑同一区域层级之尺', () => {
   it('玄铁/募铁与灵草共用 maxTierForMajor(major),不以境界大阶当层级', () => {
-    // 选 maxTierForMajor(major) > major 的境 —— 两把尺在此显著分叉(矿石格才不会塌成死位)
     const major = 9
     const tier = maxTierForMajor(major)
     expect(tier, '前提:此境两把尺确实分叉').toBeGreaterThan(major)
 
-    // 玄铁货架格(每单位 amount 6)与草一品购价底子(amount 64)骑同一条曲线
     let oreSlot: { price: { m: number; e: number } } | undefined
     for (let s = 0; s < 24 && !oreSlot; s += 1) {
       oreSlot = generateMarketStock(major, rng(s + 1), 1_700_000_000_000).goods.find(
@@ -274,14 +242,12 @@ describe('坊市/悬赏 · 材与草骑同一区域层级之尺', () => {
     }
     expect(oreSlot, '若干次生成总该开得出玄铁格').toBeDefined()
     const oreUnit = toN(oreSlot!.price) / MARKET_MAT_COUNT
-    const herbUnitRaw = toN(stoneByTier(tier, 64)) // 草一品购价的未取整底子(amount 64)
-    // 材:草 = amount 6:64,与层级无关 —— 若矿石退回大阶(major=9),比值掉 ~2200 倍
+    const herbUnitRaw = toN(stoneByTier(tier, 64)) // 草一品购价未取整底子
     expect(oreUnit / herbUnitRaw).toBeCloseTo(MARKET_MAT_STONE_UNITS / 64, 5)
-    // 敛重证:退回「大阶当层级」的量级不在同一曲线上,确保本断言真抓得住回退
+    // 确保断言抓得住「大阶当层级」的回退
     const revertedOreUnit = toN(stoneByTier(major, MARKET_MAT_STONE_UNITS))
     expect(revertedOreUnit / herbUnitRaw).toBeLessThan((oreUnit / herbUnitRaw) * 0.01)
 
-    // 募铁悬赏(amount 4.5/单位 × target)同骑真实层级
     const oreBounty = generateBounty(major, 1_700_000_000_000).find(s => s.kind === 'ore')!.reward
     expect(toN(oreBounty)).toBeCloseTo(toN(stoneByTier(tier, BOUNTY_MAT_TARGET * BOUNTY_MAT_UNIT_AMOUNT)), 5)
   })

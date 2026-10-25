@@ -1,6 +1,4 @@
-/**
- * 流派识别 —— 从最终属性推断玩家当前构筑,供 Build 面板展示
- */
+/** 流派识别:从最终属性推断当前构筑,供 Build 面板展示 */
 import type { AnyStatKey, StatMods } from '@/types'
 import { artifactDef } from '@/data/artifacts'
 import { buffDef } from '@/data/buffs'
@@ -62,7 +60,7 @@ export interface BuildDetection {
   stageName: string
   /** 核心词条当前数值 */
   coreValues: { key: AnyStatKey; value: number }[]
-  /** 副体系(混合流派;修行无职业,道路可以不纯) */
+  /** 副体系(混合流派) */
   secondary?: { style: BuildStyleDef; affinity: number }
   /** 展示名:纯派为「罡盾流」,混合为「罡盾·反震」 */
   displayName: string
@@ -71,7 +69,7 @@ export interface BuildDetection {
 /** 副体系判定门槛 */
 const SECONDARY_MIN_AFFINITY = 0.3
 
-/** 流派「成形 / 大成」的契合度门槛 —— 文案里的「契合 ≥60%」也读这一枚,别另处抄 */
+/** 流派「成形 / 大成」的契合度门槛;文案「契合 ≥60%」须读此常量 */
 export const STYLE_MATURE_AFFINITY = 0.6
 export const STYLE_MASTER_AFFINITY = 0.9
 
@@ -107,13 +105,7 @@ export function detectBuild(mods: StatMods): BuildDetection | null {
   }
 }
 
-/**
- * 列出当前构筑里真正带着核心词条的来路。
- *
- * 识别读的是 finalStats.mods,来路却曾只扫功法/法宝/天赋——
- * 一身护符堆出来的罡盾,面板上「成路于」是空的。
- * 装备按实算词条(固有 + 随机),与 detectBuild 吃到的是同一份。
- */
+/** 列出当前构筑里真正带着核心词条的来路(「成路于」);装备按实算词条(固有 + 随机),与 detectBuild 同一份 */
 export function buildSources(style: BuildStyleDef): string[] {
   const cultivation = useCultivationStore()
   const inventory = useInventoryStore()
@@ -132,14 +124,13 @@ export function buildSources(style: BuildStyleDef): string[] {
     names.push(equipmentTemplate(it.templateId)?.name ?? '法器')
   }
 
-  // 只认「真在账上」的辅修:超洞府槽位预算的不计成路(与 cultivation.gongfaMods 的 slice 同口径)
+  // 超洞府槽位预算的辅修不计,与 cultivation.gongfaMods 的 slice 同口径
   const equippedGongfa = [cultivation.mainGongfa, ...cultivation.subGongfa.slice(0, dongfu.subGongfaSlots)].filter((x): x is string => !!x)
   for (const id of equippedGongfa) {
     const def = gongfaDef(id)
     if (def && (hasCore(def.baseMods) || hasCore(def.perLevelMods))) names.push(`《${def.name}》`)
   }
-  // 悟道分支并进 gongfaMods,但只在「仍满级且仍在装配席」时生效(与 store 同一把尺):
-  // 转世把层数折回、或换下主/辅修后,分支只是永久记忆,不再算作当前来路。
+  // 悟道分支只在仍满级且仍在装配席时算来路,与 store 的 gongfaMods 同口径
   const activeSubs = cultivation.subGongfa.slice(0, dongfu.subGongfaSlots)
   for (const [gid, bid] of Object.entries(cultivation.gongfaBranch)) {
     const def = gongfaBranchDef(bid)

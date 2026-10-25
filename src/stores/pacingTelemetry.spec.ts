@@ -1,9 +1,4 @@
-/**
- * 节奏遥测的公共写入与报告边界。
- *
- * 这条链路每次互动都会走,但它不是游戏进度:坏调用或坏档不该让互动本身抛错,
- * 也不该把密度报告写成一份看似有效、其实混着垃圾的读数。
- */
+/** 节奏遥测的公共写入与报告边界:坏调用或坏档不许让互动抛错,也不许混进密度报告 */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { usePacingTelemetry, type InteractionEvent } from './pacingTelemetry'

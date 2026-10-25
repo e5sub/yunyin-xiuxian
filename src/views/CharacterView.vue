@@ -54,7 +54,7 @@
             >
               {{ ELEMENTS[root.element].char }}
             </span>
-            <!-- 资质直接亮在圆环下,不再只藏 hover —— 手机上看得到才谈得上权衡 -->
+            <!-- 资质亮在圆环下,不只藏 hover:手机上要看得到 -->
             <span class="mt-0.5 text-[9px] leading-none tabular" :style="{ color: ELEMENTS[root.element].color }">
               {{ root.aptitude }}
             </span>
@@ -64,7 +64,6 @@
           ×{{ player.linggen?.growthMult.toFixed(2) }}
         </span>
       </div>
-      <!-- 天然牌面(Phase 32.2):转世发下的这张牌决定路好不好走,而非走得多快 -->
       <div v-if="tendencies.length" class="mt-2 space-y-1">
         <p v-for="t in tendencies" :key="t.element" class="flex gap-1.5 text-[11px] leading-relaxed text-ink-faint">
           <span class="shrink-0 font-kai" :style="{ color: ELEMENTS[t.element].color }">{{ ELEMENTS[t.element].char }}</span>
@@ -93,7 +92,6 @@
         </div>
         <div v-if="modRows.length" class="ink-divider my-2.5" />
         <div class="grid grid-cols-2 gap-x-4 gap-y-1">
-          <!-- 每行可点:玩家问的从来不只是「多少」,还有「从哪来」 -->
           <button
             v-for="row in modRows"
             :key="row.label"
@@ -156,7 +154,7 @@
           <span class="text-[11px] text-cinnabar">参详 →</span>
         </RouterLink>
 
-        <!-- 修行画像(Phase 31.2:历史行为归纳,纯描述无数值) -->
+        <!-- 修行画像:历史行为归纳,纯描述无数值 -->
         <button class="card-ink flex w-full items-center gap-3 px-4 py-3 text-left active:scale-98" @click="identityOpen = true">
           <GameIcon name="circle-user" :size="16" class="shrink-0 text-ink-soft" />
           <span class="min-w-0 grow">
@@ -168,10 +166,6 @@
         </button>
 
         <RouterLink to="/titles" class="card-ink flex items-center gap-3 px-4 py-3 active:scale-98">
-          <!--
-            相伴灵兽的「脸」:有伴亮本命灵兽的形,未伴用名号的冠 ——
-            与其它入口一样是一枚题头图,文字起点与同组其它卡对齐。
-          -->
           <GameIcon :name="currentPetIcon ?? 'crown'" :size="16" class="shrink-0 text-jade" />
           <span class="min-w-0 grow">
             <span class="block font-kai text-[14px] tracking-[0.25em] text-ink">名号与灵兽</span>
@@ -200,15 +194,12 @@
           <span class="shrink-0 text-[11px] text-azure">{{ mentorVer ? '求教 →' : '拜师 →' }}</span>
         </button>
 
-        <!-- 道侣(Phase 33.8):这一世遇见的人。只记关系与经历,不给任何属性 -->
+        <!-- 道侣:只记关系与经历,不给任何属性 -->
         <button class="card-ink flex w-full items-center gap-3 px-4 py-3 text-left active:scale-98" @click="bondDialog = true">
           <GameIcon name="user" :size="16" class="shrink-0 text-azure" />
           <span class="min-w-0 grow">
             <span class="block font-kai text-[14px] tracking-[0.25em] text-ink">道 侣</span>
-            <!--
-              她开口 / 世界递事,还等你一句 —— 缘法入口就得报出来,不该开了弹窗才发现。
-              与 herIntent/pendingEvent 同判定,intentPending/pendingEventId 只在没回时才置位。
-            -->
+            <!-- 与 herIntent/pendingEvent 同判定,intentPending/pendingEventId 只在没回时才置位 -->
             <span class="block truncate text-[10px] text-ink-faint">
               <span v-if="hasBondWord" class="chip-ink mr-1 align-middle border-cinnabar/50 text-[9px] text-cinnabar">有话说</span>
               {{
@@ -249,7 +240,6 @@
           <span class="text-[11px] text-ink-soft">展卷 →</span>
         </RouterLink>
 
-        <!-- 界域志:与修仙录同级 —— 一部写你,一部写这条路从哪来 -->
         <RouterLink to="/codex" class="card-ink flex items-center gap-3 px-4 py-3 active:scale-98">
           <GameIcon name="mountain" :size="16" class="shrink-0 text-ink-soft" />
           <span class="min-w-0 grow">
@@ -275,7 +265,6 @@
 
     <IdentityDialog :open="identityOpen" @close="identityOpen = false" />
 
-    <!-- 轮回弹窗 -->
     <RebirthDialog :open="rebirthOpen" @close="rebirthOpen = false" />
 
     <BondDialog :open="bondDialog" @close="bondDialog = false" />
@@ -330,10 +319,10 @@
 
   const stats = computed(() => player.finalStats)
 
-  /** 战力拆解的展开态与构成行 —— 读同一批属性,逐行相加即战力行那个数 */
+  /** 战力拆解:与 powerScore 同一批属性同一份权重,逐行相加即总战力 */
   const powerOpen = ref(false)
   const powerRows = computed(() => powerBreakdownRows(stats.value))
-  /** 战力算式是纯常量文案(powerExplainText 无依赖),只在 setup 算一次,模板不再每帧重算 */
+  /** 战力算式是纯常量文案(powerExplainText 无依赖),只在 setup 算一次 */
   const powerExplain = powerExplainText()
 
   const modRows = computed(() =>
@@ -348,7 +337,7 @@
   /** 灵根的天然牌面(倾向文案,不含任何数值) */
   const tendencies = computed(() => tendencyLines(rootElements(player.linggen?.roots)))
 
-  /** 面板上只提示当前真有的词条边界,没有这项的玩家不需要看见空话 */
+  /** 只提示当前真有的词条边界 */
   const panelCaveats = computed(() =>
     modRows.value.flatMap(row => {
       const caveat = statCaveat(row.key)
@@ -386,7 +375,7 @@
 
   const currentTitleName = computed(() => (player.titleId ? titleDef(player.titleId)?.name : undefined))
   const currentPetName = computed(() => (player.petId ? petDef(player.petId)?.name : undefined))
-  // 灵兽 id 认不出时宁可不出图,也不要在渲染期对 undefined 取 family
+  // 灵兽 id 认不出时不出图,免得渲染期对 undefined 取 family
   const currentPetIcon = computed(() => {
     const def = player.petId ? petDef(player.petId) : undefined
     return def ? beastIcon(def.family) : undefined
@@ -403,7 +392,7 @@
       codexOwnedCount(quests.collections.pet, PETS) +
       codexOwnedCount(quests.collections.event, EVENTS) +
       codexOwnedCount(quests.collections.talent, TALENTS) +
-      // 图鉴页还有灵材谱与悟道录两类(派生视图,见 ui/codex.ts),计数要带上,否则两页对不上
+      // 含灵材谱与悟道录(派生视图,见 ui/codex.ts),须与图鉴页计数一致
       branchCodex().entries.filter(e => e.stage > 0).length +
       materialCodex().entries.filter(e => e.stage > 0).length
   )
@@ -418,15 +407,12 @@
     branchCodex().entries.length +
     materialCodex().entries.length
 
-  // ---- 轮回 ----
   const rebirthOpen = ref(false)
   const bondDialog = ref(false)
-  // 关系状态与道侣弹窗共用同一份投影(composable 单源)
+  // 与道侣弹窗共用同一份投影(composable 单源)
   const { bond, bondDef, pastBonds, hasBondWord } = useBondOverview()
-  // Phase 31 S1 师承
   const mentorDialog = ref(false)
   const mentorVer = computed(() => mentorVerdict(player.mentor))
-  // Phase 31.2 修行画像
   const identityOpen = ref(false)
   const identity = computed(() => buildIdentity())
 

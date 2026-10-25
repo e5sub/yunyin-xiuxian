@@ -1,29 +1,22 @@
 <template>
-  <!-- 修炼法球:三层反向旋转环 + 外圈能量粒子 + 八卦符文 + SVG 进度环 + 内圈轨道粒子 配色改为水墨朱砂金 -->
   <div class="orb-root" :style="sizeStyle" :class="{ cultivating: active, breakthrough: full }">
-    <!-- 背景能量粒子(外圈,12 颗,随相位散布) -->
     <div class="particle-ring">
       <div v-for="i in 12" :key="i" class="orb-particle" :style="particleStyle(i)" />
     </div>
 
-    <!-- 三层反向旋转光环 -->
     <div class="ring-layer">
       <div class="rot-ring ring-a" :class="{ bright: active }" />
       <div class="rot-ring ring-b" :class="{ bright: active }" />
       <div class="rot-ring ring-c" :class="{ bright: full }" />
     </div>
 
-    <!-- 球体本体 -->
     <div class="orb-body" :class="{ pulsing: active }">
-      <!-- 内部六颗轨道粒子 -->
       <div class="inner-orbit-ring">
         <span v-for="i in 6" :key="i" class="orbit-dot" :style="{ '--i': i }" />
       </div>
-      <!-- 中心图标 -->
       <span class="orb-icon"><slot>◎</slot></span>
     </div>
 
-    <!-- SVG 修为进度环 -->
     <svg class="progress-svg" viewBox="0 0 120 120">
       <defs>
         <linearGradient id="orbGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -36,7 +29,6 @@
       <circle class="prog-bar" :class="{ full }" cx="60" cy="60" r="54" :style="{ strokeDashoffset: dashOffset }" />
     </svg>
 
-    <!-- 八卦符文 -->
     <div class="bagua-wrap spinning">
       <span v-for="(sym, i) in BAGUA" :key="i" class="bagua-sym" :style="{ '--ang': i * 45 + 'deg' }">{{ sym }}</span>
     </div>
@@ -54,16 +46,16 @@
       full: boolean
       /** 进度 0~1(控制 SVG 环) */
       progress: number
-      /** 法球直径(px)。窄屏并排布局用更小的法球,免得挤到旁边的文本 */
+      /** 法球直径,单位 px;窄屏并排布局用更小值 */
       size?: number
     }>(),
     { size: 140 }
   )
 
-  /** 法球整体尺寸:直径 + 内部各绝对定位距离都按比例缩放,不能只改外框(粒子的散布、八卦环的半径都是绝对 px) */
+  /** 直径与内部各绝对 px 距离同比缩放,不能只改外框 */
   const sizeStyle = computed(() => {
     const s = props.size
-    const k = s / 140 // 缩放系数 —— 一圈代码里的绝对 px 都乘它,法球才不会缩小后粒子散到圈外
+    const k = s / 140
     return {
       '--orb-size': `${s}px`,
       '--orb-k': String(k)
@@ -84,7 +76,7 @@
       '--ang': `${angle}deg`,
       '--delay': `${delay}s`,
       '--dur': `${duration}s`,
-      // 粒子散布半径跟着法球缩放:基线 60~90px 乘 --orb-k,避免小法球的粒子散到圈外
+      // 散布半径基线 60~90px,乘 --orb-k 随法球缩放
       '--dist': `calc((${distance}px) * var(--orb-k, 1))`
     }
   }

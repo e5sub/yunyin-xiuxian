@@ -1,10 +1,6 @@
 /**
- * 灵兽性格 · 掉落倾向(dropLuck 接入 afterWin)
- *
- * 贪宝型灵兽应「更易发现稀有之物」,谨慎型「掉落稍稍寻常」—— 这是
- * petPersonality 与图鉴性格说明向玩家做出的承诺。此前 dropLuck 从未接入
- * 掉落结算:afterWin 的品质 luck 只来自装备/天赋等 mods,与性格无关。
- * 本测试用 mock 的 equipGen 捕获传入的品质 luck,证明接线已生效。
+ * 灵兽性格 dropLuck 须接入 afterWin(petPersonality 与图鉴性格说明的承诺)。
+ * 用 mock 的 equipGen 捕获传入的品质 luck。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -42,7 +38,7 @@ describe('灵兽性格 · 掉落倾向(dropLuck 接入 afterWin)', () => {
     if (petId) player.setPet(petId)
   }
 
-  /** 品质 luck 里还叠着命格等常驻底色 —— 这里钉的是「性格贡献了多少」 */
+  /** 品质 luck 里叠着命格等常驻底色,扣掉后只剩性格贡献 */
   function luckExceptFate(): number {
     const call = vi.mocked(generateEquipment).mock.calls.at(-1)!
     const kwargs = call[2] as { luck: number; minQualityRank: number } | undefined

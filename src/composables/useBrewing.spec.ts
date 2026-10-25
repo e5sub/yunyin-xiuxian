@@ -8,14 +8,7 @@ import { useLoreStore } from '@/stores/lore'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-/**
- * 炉前存货账 —— 方子行报「存 N」。
- *
- * 缺口:开炉弹窗此前只摊把握、代价与短差,不摊行囊里已存几枚。玩家看着
- * 九成把握按下炼制,行囊里可能已躺着八枚,容易重复炼制。
- *
- * 判据同源:存货读 inventory.pills(与丹匣同一份账),不另数一遍。
- */
+/** 炉前存货账:方子行报「存 N」,读 inventory.pills(与丹匣同一份账) */
 
 import { useBrewing } from './useBrewing'
 

@@ -1,18 +1,7 @@
 /**
- * 门禁接线守卫 —— 「本地能过 = CI 能过」这句话,得有一条会自己跑的判据。
- *
- * 移植自参考仓(玄枢录 src/core/gateWiring.spec.ts)。云隐的 CI 形态与 xian 不同:
- *   xian 的 CI 直接在 workflow 里 `bun scripts/*.mjs`,所以它守「CI 里跑的自检 → 本地有对等入口」;
- *   云隐的 CI 只 `bun run check / test:report / build`(全走 package.json 别名),直接跑
- *   `bun scripts/x.mjs` 的写法一处都没有 —— 所以判据变成两条:
- *
- *   ① CI 里出现的每个命令都能本地解析:
- *        `bun run X` → package.json 里真有这个脚本;
- *        `bun|node scripts/*`(若哪天有人这么写) → 文件真实存在。
- *   ② 反向:每个 `scripts/*.mjs` 都必须声明在 package.json 里(有可发现的本地入口),
- *        否则它要么是没人跑得到的死脚本,要么是「只在 CI 里、本地跑不了」的暗门。
- *
- * 两条一起,那句「本地绿 = CI 绿」才算不是注释。
+ * 门禁接线守卫:本地能过 = CI 能过。
+ *   ① CI 里每个命令都能本地解析:`bun run X` → package.json 有此脚本;`bun|node scripts/*` → 文件存在。
+ *   ② 每个 `scripts/*.mjs` 都在 package.json 里有本地入口。
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -29,7 +18,7 @@ const SCRIPTS: Record<string, string> = JSON.parse(
 
 /** CI 里点名别名的写法:`bun run X` / `bun run X --args` */
 const RUN_NAME = /(?:\bbun|\bnpm)\s+run\s+([\w:-]+)/g;
-/** CI 里直接跑脚本的写法:`bun scripts/x.mjs` / `node scripts/x.mjs`(云隐目前没有,守未来) */
+/** CI 里直接跑脚本的写法:`bun scripts/x.mjs` / `node scripts/x.mjs` */
 const CI_SCRIPT = /(?:\bbun\s+(?:run\s+)?|\bnode\s+)["']?(?:\.\/)?(scripts\/[\w./-]+\.(?:mjs|ts))/g;
 
 /** 全部 workflow 拼一份 CI 正文 */
@@ -42,10 +31,10 @@ const ciText = readdirSync(WORKFLOWS)
 const citedScriptNames = [...new Set([...ciText.matchAll(RUN_NAME)].map((m) => m[1] as string))];
 /** CI 里直接点名的 `scripts/*.(mjs|ts)`(去重) */
 const citedScriptPaths = [...new Set([...ciText.matchAll(CI_SCRIPT)].map((m) => m[1] as string))];
-/** 仓库里真实的 `scripts/*.mjs` 入口文件(smoke-classify.ts 是被 import 的模块,不算入口) */
+/** 仓库里的 `scripts/*.mjs` 入口(smoke-classify.ts 是被 import 的模块,不算) */
 const repoScripts = readdirSync(join(ROOT, "scripts")).filter((f) => f.endsWith(".mjs")).sort();
 
-/** 递归收集 src 下的 spec:分类必须覆盖每一个真实测试文件 */
+/** 递归收集 src 下的 spec;分类须覆盖每个测试文件 */
 function specFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);

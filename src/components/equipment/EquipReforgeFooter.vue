@@ -1,14 +1,11 @@
 <template>
   <!--
-    空皮先交代去向:一件凡品掷出零条、或全封存的装备,重铸与封存整块会一起消失 ——
-    玩家找不到「自动重铸」,只会觉得它没生效。这里把「为什么没有」说破。
-    正常玩法封不完整(每件至少留一个可重掷位),词条全封的那一格是给
-    旧档/异常数据兜底,别把「一颗词条也无」错安到它有词条的头上。
+    无价签时(零词条或全封存)也写状态词。
+    正常玩法每件至少留一个可重掷位,「无可重铸词条」只给旧档/异常数据兜底。
   -->
   <template v-if="reforgeCostVal || sealCostVal">
     <div class="flex gap-2 text-[11px]">
-      <!-- 重铸是装备培养高频动作:!py-1 盒高仅 27px,低于 28px 可点阈值(弹窗内控件,巡页判据按「恰好打开的弹窗」才量得到它)。
-           !py-2 抬到 35px;封存格是静态展示,但同排按钮提高后也跟着对齐,视觉仍是一整行 -->
+      <!-- !py-2 不可降回 !py-1:盒高 27px,低于 28px 可点阈值(巡页判据会量弹窗内控件) -->
       <template v-if="reforgeArm !== inst?.uid">
         <button
           v-if="reforgeCostVal"
@@ -60,7 +57,7 @@
     <p v-if="inst" class="text-center text-[10px] text-ink-faint tabular">
       已重铸 {{ inst.reforgeCount ?? 0 }} 次 · 已封存 {{ (inst.sealedAffixIds ?? []).length }}/{{ sealCapacity(inst) }}
     </p>
-    <!-- 自动重铸与词条转移并成一行:页脚不加高(320×568 下正文本就只剩一小截) -->
+    <!-- 并成一行:页脚不可加高(320×568 下正文本就只剩一小截) -->
     <div class="flex gap-2">
       <button v-if="reforgeCostVal" class="btn-ghost flex-1 !py-2 !text-[11px]" @click="emit('update:autoOpen', !autoOpen)">
         {{ autoOpen ? '收起自动重铸' : '自动重铸' }}
@@ -90,11 +87,9 @@
   import { TRANSFER_LABELS } from '@/ui/affixTransferText'
 
   /**
-   * 重铸与封存的页脚块 —— 自 EquipmentDetailDialog 迁入。
-   *
-   * 价签与动作全读 core/reforge(reforgeCost / sealCost / sealShortfall / sealCapacity),
-   * 条数上限读品质表,不在界面另写一份。重铸二步确认态按件 uid 记,换件自然失效。
-   * 「自动重铸」的开关留在宿主:展开后的面板在正文里,与页脚不是同一个位置。
+   * 价签与动作全读 core/reforge,不在界面另写。
+   * 重铸二步确认态按件 uid 记,换件即失效。
+   * 自动重铸开关状态在宿主:面板在正文,不在页脚。
    */
   defineProps<{ autoOpen: boolean; canTransferOut: boolean }>()
   const emit = defineEmits<{ 'update:autoOpen': [value: boolean]; transfer: [] }>()
@@ -104,8 +99,9 @@
 
   const inst = computed(() => (ui.equipDetailUid ? inventory.findItem(ui.equipDetailUid) : undefined))
   const reforgeCostVal = computed(() => (inst.value ? reforgeCost(inst.value) : null))
-  /** 这一炉两样各差多少 —— 置灰与提示同读一份,不各自再算一遍 */
+  /** 置灰与提示同读这一份缺口 */
   const reforgeShortVal = computed(() => (reforgeCostVal.value ? reforgeShortfall(reforgeCostVal.value) : null))
+  /** 分项列差额,不拼 toast 那一句(同一笔差额会写两遍) */
   const reforgeShortText = computed(() => {
     const s = reforgeShortVal.value
     if (!s) return ''

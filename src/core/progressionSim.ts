@@ -1,7 +1,6 @@
 /**
- * 进度模拟器(Phase 14 数值曲线审计)
- * 纯函数:基于真实公式估算各境界耗时与多周目加速曲线
- * 注意:未计入突破失败/灵气等待/历练时间,真实耗时约为估算的 1.5~3 倍
+ * 进度模拟器(纯函数):基于真实公式估算各境界耗时与多周目加速曲线。
+ * 未计入突破失败/灵气等待/历练时间,真实耗时约为估算的 1.5~3 倍。
  */
 import { toNum } from '@/utils/gnum'
 import { DAO_FRUIT_CULT_BONUS, SUB_LEVELS } from '@/data/constants'
@@ -9,14 +8,7 @@ import { baseCultPerSec, daoFruitGain, expRequirement } from './formulas'
 import { effectiveDaoFruit } from './statsCalc'
 import { BUILDINGS } from '@/data/buildings'
 
-/**
- * 洞府建筑能给多少修炼速度 —— **从建筑表算,不手写**。
- *
- * 这里原本写死 Math.min(1.2, 0.1 + 0.09 * major):模型以为高界建筑能提供 120%,
- * 而建筑表满级合计只有 76%(洞府 4 级 ×4% + 聚灵阵 20 级 ×3%)。于是模型在高界
- * 高估了修速、低估了耗时 —— 方向与「真实约为估算的 1.5~3 倍」一致,故一直没人发现;
- * 但一个能算出「玩家凑不出的加成」的模型,不该继续当基准。
- */
+/** 洞府建筑满级修速加成合计,从建筑表算,不手写(76% = 洞府 4 级 ×4% + 聚灵阵 20 级 ×3%) */
 export const BUILDING_CULT_CAP = BUILDINGS.reduce(
   (sum, b) => sum + (typeof b.mods === 'function' ? (b.mods(b.maxLevel).cultivationSpeed ?? 0) : 0),
   0
@@ -31,15 +23,12 @@ export interface SimAssumptions {
 
 export const DEFAULT_ASSUMPTIONS: SimAssumptions = { linggenMult: 1.6, talentCultBonus: 0 }
 
-/**
- * 某大境界阶段的稳态修速总倍率估计
- * 功法换代 / 辅修 / 装备词条 / 洞府建筑均随境界水涨船高
- */
+/** 某大境界阶段的稳态修速总倍率估计 */
 export function estimateCultMult(major: number, daoFruit: number, a: SimAssumptions = DEFAULT_ASSUMPTIONS): number {
   return 1 + cultMultParts(major, daoFruit, a).reduce((s, p) => s + p.value, 0)
 }
 
-/** 模型假设的修速加成,拆成一条条 —— 每一项都要能被真实内容覆盖 */
+/** 模型假设的修速加成分项,每一项都须能被真实内容覆盖 */
 export interface CultPart {
   name: string
   value: number
@@ -85,10 +74,7 @@ export interface LifeRow {
   toYuanying: number
 }
 
-/**
- * 多周目对照表:假设每世修至元婴后转世
- * (每世另按 +6% 修速估算天赋积累,封顶 40%)
- */
+/** 多周目对照表:每世修至元婴后转世;天赋每世 +6% 修速,封顶 40% */
 export function multiLifeTable(lives: number[]): LifeRow[] {
   const perLifeFruit = daoFruitGain(3, 0)
   return lives.map(life => {

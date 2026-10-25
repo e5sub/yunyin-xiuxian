@@ -35,7 +35,7 @@ import {
 
 interface TrialRecord {
   clears: number
-  /** 最少总回合(越少越好) */
+  /** 最少总回合 */
   bestRounds: number
 }
 
@@ -61,11 +61,8 @@ export interface WorldRunState {
 const MAX_MARKS = 60
 
 /**
- * 词条表修形:只留属性目录里的键,且值必须是有限非零数。
- *
- * 野键会被 `modDepth` 一并算进「构筑厚度」(天界判定据此加厚敌人),坏值则会
- * 顺着 `stackedMods` 把整身攻防染成 NaN。一条可用词条都没有时返回 null,
- * 与「这一层没有加成」同一语义。
+ * 词条表修形:只留属性目录里的键与有限非零值;一条不剩返回 null(= 无加成)。
+ * 野键会被 `modDepth` 算进构筑厚度,坏值经 `stackedMods` 把攻防染成 NaN。
  */
 function sanitizeMods(raw: unknown): StatMods | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
@@ -78,9 +75,8 @@ function sanitizeMods(raw: unknown): StatMods | null {
 }
 
 /**
- * 虚界的敌方形态修形:远征每一战都拿 `shape.skills.map` 与 `atkR/hpR` 现算三维,
- * 缺一样就是「一点启程就白屏」。比例必须是正有限数 —— 0 或负数会把敌人算成
- * 负血/秒杀,比报错更难察觉。
+ * 虚界敌方形态修形:远征每战都读 `shape.skills.map` 与 `atkR/hpR`,缺一样即白屏。
+ * 比例须为正有限数,0 或负数会算出负血/秒杀。
  */
 function sanitizeFoeShape(raw: unknown): import('@/types').WorldFoeShape | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
@@ -105,12 +101,9 @@ function sanitizeFoeShape(raw: unknown): import('@/types').WorldFoeShape | null 
 }
 
 /**
- * 虚界是**程序化生成的临时世界**,与手工四界不同:它没有目录可以逐字段对照,
- * 形状坏掉只能整座作废(界面回到「窥探虚界」,玩家可再窥一座)。
- *
- * 不修局部的原因:CelestialView 直接读 `foes.map(f => f.name)` / `ruleText.map`,
- * 远征读 `routes[layer][choice]` 与 `guardian`;缺一节就会在真打或渲染时抛错。
- * 而半份世界即使勉强不抛,「入场费/赏格/规则」之间也已不对应 —— 那不是同一座虚界。
+ * 虚界程序化生成,无目录可逐字段对照:形状坏即整座作废(界面回到「窥探虚界」)。
+ * 不修局部:CelestialView 读 `foes`/`ruleText`,远征读 `routes[layer][choice]` 与 `guardian`;
+ * 半份世界的入场费/赏格/规则也已不对应。
  */
 function sanitizeVoidWorld(raw: unknown): CelestialWorldDef | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
@@ -162,39 +155,25 @@ function sanitizeVoidWorld(raw: unknown): CelestialWorldDef | null {
 }
 
 /**
- * 忆战快照的修形 —— 快照就是「当年那一局」本身,少一样就不再是那一局。
- *
- * `snapFromReplay` 直接把 `skills`/`artifacts` 拿去 `.map`,坏档里写成非数组时
- * 玩家一点「忆」就抛错;三维经 `gn()` 归一,归零则这一战根本打不起来。
- * 故此处只保留「三维成数、技能与法宝都还是表」的快照;认不出的技能/法宝条目
- * 逐条剔掉(它们在战斗里本就查不到定义),认不出的契约/组合技回落空。
- * 快照不成立就整块作废 —— 界面按「此痕年代久远,战况已不可考」处理,
- * 比拿一份缺胳膊的快照重打、再把结果写回道痕要诚实。
+ * 忆战快照修形:`snapFromReplay` 直接 `.map` 技能/法宝,三维经 `gn()` 归一后不能为零。
+ * 认不出的技能/法宝逐条剔掉;快照不成立整块作废,界面按「战况不可考」处理。
  */
 function sanitizeMarkReplay(raw: unknown): DaoMark['replay'] | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
   const r = raw as Partial<NonNullable<DaoMark['replay']>>
   if (!Array.isArray(r.skills) || !Array.isArray(r.artifacts)) return undefined
-  // 存档里的三维是 unknown(可能缺栏、可能是裸数字或半截对象):gn() 运行时都能归一
+  // 三维可能缺栏、是裸数字或半截对象:gn() 运行时都能归一
   const gnumOf = (v: unknown): import('@/types').GNum => gn(v as number | import('@/types').GNum)
   const attack = gnumOf(r.attack)
   const defense = gnumOf(r.defense)
   const maxHp = gnumOf(r.maxHp)
   const speed = asFiniteNumber(r.speed, 0, 0)
   if (attack.m === 0 || defense.m === 0 || maxHp.m === 0 || speed <= 0) return undefined
-  // 词条只认目录里的键与有限数:野键会被 modDepth 一并计入「构筑厚度」,
-  // 进而让忆战里的天道判定与当年对不上
   const mods = sanitizeMods(r.mods) ?? {}
   const skills = asCombatSkills(r.skills)
   /**
-   * 快照里的法宝也要按「真实佩带规则」收口:
-   *   - 重数坏成 999 时,artifactValue 会在读档后给出远超上限的神通数值;
-   *   - 同一 defId 写两遍,战斗循环会每回合替它触发两次 —— 实际一局里
-   *     inventory.sanitize 早就不允许同件法宝并存。
-   *   - 条数超过法宝位上限(坏档写 5 件)时,五件的被动与神通会一起生效 ——
-   *     而 toggleArtifact / applyLoadout / player.sanitize 都按同一把尺裁。
-   * 故认不出的 defId 剔掉、同 id 只留首件、条数裁到 ARTIFACT_MAX_SLOTS,
-   * 重数夹回 0..ARTIFACT_MAX_LEVEL。
+   * 快照法宝按真实佩带规则收口,须与 inventory.sanitize / toggleArtifact / applyLoadout / player.sanitize 同尺。
+   * 同 id 重复会每回合触发两次;重数越界会让 artifactValue 超上限。
    */
   const seenArtifact = new Set<string>()
   const artifacts = r.artifacts
@@ -209,7 +188,6 @@ function sanitizeMarkReplay(raw: unknown): DaoMark['replay'] | undefined {
       defId: a.defId,
       level: Math.min(ARTIFACT_MAX_LEVEL, Math.max(0, Math.floor(asFiniteNumber(a.level, 0, 0))))
     }))
-    // 忆战也是「当年那一身」:超过法宝位的件不该凭空多出被动与神通
     .slice(0, ARTIFACT_MAX_SLOTS)
   return {
     mods,
@@ -225,18 +203,9 @@ function sanitizeMarkReplay(raw: unknown): DaoMark['replay'] | undefined {
 }
 
 /**
- * 道痕逐条修形 —— 天界「道痕」栏与轮回页「修行画像」的共同底账。
- *
- * 此前只挡了「条目是不是对象、targetId 是不是字符串」,字段原样进界面:
- *   - `buildName` 不是字符串时,`cultivatorProfile` 的 `m.buildName.includes('·')`
- *     当场抛错 —— 道痕满五则,轮回页整页白屏;
- *   - `life`/`rounds` 是 NaN 时写出「第 NaN 世」「NaN 回合」,`at` 是 NaN 时
- *     「今昔之比」按坏时刻排序,早晚两世会颠倒;
- *   - `cleared` 写成 `'yes'` 这类真值会被当成破界,败绩被记成功;
- *   - `daoPathId` 认不出时道途名留空,`markRules` 也取不到当年的道途规则。
- *
- * 认不出的 `targetId` 不丢:挑战书(custom)与天道变数(mutation)本就不是
- * 天界/试炼目录里的 id,但它们同样是真道痕。只剔掉完全没有 id 的残骸。
+ * 道痕逐条修形:天界「道痕」栏与轮回页「修行画像」共用底账。
+ * `buildName` 非字符串会让 `cultivatorProfile` 抛错(轮回页白屏);`cleared` 只认 true。
+ * 认不出的 `targetId` 保留:挑战书(custom)与天道变数(mutation)不在天界/试炼目录里。
  */
 function sanitizeMarks(raw: unknown): DaoMark[] {
   const out: DaoMark[] = []
@@ -274,7 +243,7 @@ function sanitizeMarks(raw: unknown): DaoMark[] {
       ...(replay ? { replay } : {})
     })
   }
-  // 写入侧 addMark 只留最近 MAX_MARKS 则:坏档塞进上千条会把道痕栏与画像统计一并撑爆
+  // 与 addMark 同上限 MAX_MARKS
   return out.slice(0, MAX_MARKS)
 }
 
@@ -283,7 +252,7 @@ export const useEndgameStore = defineStore(
   () => {
     /** 本世道途(转世后重选) */
     const daoPath = ref<DaoPathId | null>(null)
-    /** 道源:跨世永存的终局资粮 */
+    /** 道源(跨世保留) */
     const daoSource = ref(0)
     const worldClears = ref<Record<string, number>>({})
     const trialRecords = ref<Record<string, TrialRecord>>({})
@@ -292,56 +261,42 @@ export const useEndgameStore = defineStore(
     const worldRun = ref<WorldRunState | null>(null)
     /** 历练在途的只读投影:终局核心与入口共用同一份在途判据 */
     const adventureSession = computed(() => useAdventureStore().session)
-    /** 当前虚界(程序化生成、裁判过审的世界;id 恒为 'void') */
+    /** 当前虚界(程序化生成并过审;id 恒为 'void') */
     const voidWorld = ref<CelestialWorldDef | null>(null)
     /** 今日天道完成日(day number;跨世保留) */
     const dailyDoneDay = ref<number | null>(null)
-    /** 修行节点(Phase 28):跨世不灭的「首次」历史 */
+    /** 修行节点:跨世保留的「首次」历史 */
     const milestones = ref<{ id: string; life: number; at: number }[]>([])
-    /** 极限纪录(Phase 28):只与过去的自己比 */
+    /** 极限纪录:只与过去的自己比 */
     const records = ref<Record<string, { value: number; life: number; note: string }>>({})
 
-    // Phase 30.9 道源/道果认知:一次性教学标记(终局导览 / 道果解释 / 资源说明已阅)
+    // 一次性教学标记:终局导览 / 道果解释 / 资源说明已阅
     const endgameTutorialSeen = ref(false)
     const daoFruitTutorialSeen = ref(false)
     const resourceDialogSeen = ref(false)
-    /** 器魂:凡器在天界的形意。持有池 + 已装配(至多 SOUL_SLOTS 枚) */
+    /** 器魂:持有池 + 已装配(至多 SOUL_SLOTS 枚) */
     const souls = ref<SoulInstance[]>([])
     const equippedSouls = ref<string[]>([])
     const soulTutorialSeen = ref(false)
 
-    /**
-     * 存档修复:道痕/器魂/纪录表被写坏会让天界页在渲染期抛错。
-     * (activeSouls 已有一层防御读取,但那是补丁;这里把形状一次修平)
-     */
+    /** 存档修复:道痕/器魂/纪录表坏形会让天界页渲染期抛错。 */
     function sanitize(): void {
-      /**
-       * 道途按 id 认道:认不出的 string 会被 `chooseDao` 当成「此生道途已定」,
-       * 之后每一次选道都被「来世方可另择」挡回去 —— 天界此后再也走不进去。
-       * 认不得就回落 null(等同于本世尚未择道),与「转世归还天地」同一状态。
-       */
+      // 认不出的道途回落 null(同转世后未择道);否则选道被「此生道途已定」挡回
       daoPath.value = typeof daoPath.value === 'string' && daoPathDef(daoPath.value) ? (daoPath.value as DaoPathId) : null
       daoSource.value = asFiniteNumber(daoSource.value, 0, 0)
-      // 一次性引导标记:损坏档里混入真值(1/"true")会永久压掉引导,混入假值(0/"")又可能重播。
-      // 一律 ===true 归一,与 settings 的布尔开关同一套清洗纪律。
+      // 一次性引导标记:与 settings 的布尔开关同一套清洗纪律
       endgameTutorialSeen.value = endgameTutorialSeen.value === true
       daoFruitTutorialSeen.value = daoFruitTutorialSeen.value === true
       resourceDialogSeen.value = resourceDialogSeen.value === true
       soulTutorialSeen.value = soulTutorialSeen.value === true
-      /**
-       * 「已破 ×N」按世界 id 认界:认不出的键只会占一行读数,而其值若是 NaN/负数
-       * 还会把「已破」写成负数。只留认得的天界/虚界,次数按非负整数收口。
-       */
+      // 「已破 ×N」只留认得的天界/虚界,次数收口为非负整数
       const fixedClears: Record<string, number> = {}
       for (const [id, n] of Object.entries(asNumberRecord(worldClears.value, 0))) {
         if (id !== 'void' && !celestialWorldDef(id)) continue
         fixedClears[id] = Math.floor(n)
       }
       worldClears.value = fixedClears
-      /**
-       * 试炼纪录同理:键认不出就没有卡会读它;bestRounds 写成 NaN 会让
-       * 「最佳 NaN 回合」挂在那张试炼卡上,且 `Math.min(NaN, x)` 之后再也好不了。
-       */
+      // 试炼纪录同理;bestRounds 的 NaN 经 `Math.min(NaN, x)` 再也好不了
       const fixedTrials: Record<string, TrialRecord> = {}
       for (const [id, raw] of Object.entries(asRecordOf<TrialRecord>(trialRecords.value, r => !!r && typeof r === 'object'))) {
         if (!trialDef(id)) continue
@@ -353,19 +308,13 @@ export const useEndgameStore = defineStore(
       trialRecords.value = fixedTrials
       marks.value = sanitizeMarks(marks.value)
       worldRun.value = asObjectOrNull<WorldRunState>(worldRun.value)
-      /**
-       * 远征进行时同样是活状态(每一场都读 layer/carriedHpPct/winStacks):
-       * layer 越界会跳到不存在的层,carriedHpPct 越界会把开局算成 NaN 或无敌。
-       * 认不得的世界直接作废 —— 让它重新起程,比带着坏状态打下去安全。
-       */
+      // 远征进行时每场都读 layer/carriedHpPct/winStacks,须夹回合法值;认不得的世界整趟作废
       if (worldRun.value) {
         const run = worldRun.value
         const worldOk = !!celestialWorldDef(run.worldId) || run.worldId === 'void'
         if (!worldOk) {
           worldRun.value = null
         } else {
-          // 每一行都是战报读数:坏行留着会写出「NaN回合 · 余血 NaN%」,
-          // 故按行逐项修平;认不出名字的行直接丢掉(没有可报的对象)
           const rows = asArray<WorldRunState['rows'][number]>(
             run.rows,
             [],
@@ -378,44 +327,28 @@ export const useEndgameStore = defineStore(
           }))
           worldRun.value = {
             ...run,
-            /**
-             * 契约与门都按 id 认:认不出的 id 在 `pactDef`/`gateDef` 里查不到,
-             * 于是「契约束缚」与「门之规则」双双静默失效 —— 玩家签了一份血契、
-             * 走的是死门,打的却是无契无门的白板局,而界面上还挂着那个名字。
-             * 认不得即回落「未立契约 / 未择门」,与启程时同一语义。
-             */
+            // 认不出的契约/门回落未立契约/未择门:否则规则静默失效,界面仍挂着名字
             pactId: typeof run.pactId === 'string' && pactDef(run.pactId) ? run.pactId : null,
             gateId: typeof run.gateId === 'string' && gateDef(run.gateId) ? run.gateId : null,
             layer: Math.min(EXPEDITION_GUARDIAN_LAYER, Math.max(0, Math.floor(asFiniteNumber(run.layer, 0, 0)))),
             bonus: Math.floor(asFiniteNumber(run.bonus, 0, 0)),
             rows,
             carriedHpPct: asCarriedHpPct(run.carriedHpPct),
-            // 总回合与逐行战报必须同账:二者不一致时,结算的杀伐速战赏与道痕
-            // 会按「没有发生过的快仗」多给。逐行战报是这一趟唯一可复核的记录,
-            // 故以其回合和为准;旧档没有 rows 时仍保留原字段。
+            // 总回合以逐行战报回合和为准,不一致会让杀伐速战赏与道痕多给;无 rows 的旧档保留原值
             totalRounds:
               rows.length > 0
                 ? rows.reduce((sum, row) => sum + row.rounds, 0)
                 : Math.floor(asFiniteNumber(run.totalRounds, 0, 0)),
             winStacks: Math.floor(asFiniteNumber(run.winStacks, 0, 0)),
-            /**
-             * 逆命契封印的是「主流派核心词条」的负值快照,每一场都并入玩家属性:
-             * 坏档里的 NaN 会顺着 `stackedMods` 把整身攻防染成 NaN(玩家打不动任何东西),
-             * 野键则会被 `modDepth` 算进构筑厚度,让天道判定凭空加厚。
-             * 词条只留目录里的键与有限数;整份不可用就当作「没有封印」。
-             */
+            // 逆命契封印每场并入玩家属性;整份不可用视为无封印
             sealedMods: sanitizeMods(run.sealedMods) ?? undefined
           }
         }
       }
       voidWorld.value = sanitizeVoidWorld(voidWorld.value)
       /**
-       * 跨字段一致性:虚界远征必须有同一座可解析的虚界。
-       *
-       * 前面按 worldId 先保留了 void 在途,但 voidWorld 可能在下一行才被判坏。
-       * 若此时仍留着 worldRun,resolveWorld('void') 会返回 undefined,界面把
-       * 在途面板与「中道而返」一起藏掉,而新远征又因已有 worldRun 被拒 ——
-       * 玩家只剩一个看不见、也退不出的幽灵远征。没有世界就没有这一程。
+       * 虚界远征须有可解析的虚界,且须在 voidWorld 修形之后判。
+       * 否则 resolveWorld('void') 返回 undefined:在途面板与「中道而返」隐藏,新远征又被拒。
        */
       if (worldRun.value?.worldId === 'void' && !voidWorld.value) {
         worldRun.value = null
@@ -424,11 +357,7 @@ export const useEndgameStore = defineStore(
         typeof dailyDoneDay.value === 'number' && Number.isFinite(dailyDoneDay.value) && dailyDoneDay.value >= 0
           ? Math.floor(dailyDoneDay.value)
           : null
-      /**
-       * 修行节点的 life/at 是直接报给玩家的读数,坏数会写出「第 NaN 世」;
-       * 按非负整数修平。认不出的 id 则清掉:节点页只按 MILESTONE_DEFS 取名,
-       * 野 id 会把「修行节点 N/13」顶过总数,时间线上还只剩一行原始 id。
-       */
+      // 修行节点只认 MILESTONE_DEFS 里的 id:野 id 会把「修行节点 N/总数」顶破
       milestones.value = asArray<{ id: string; life: number; at: number }>(
         milestones.value,
         [],
@@ -438,27 +367,21 @@ export const useEndgameStore = defineStore(
         life: Math.floor(asFiniteNumber(m.life, 0, 0)),
         at: Math.floor(asFiniteNumber(m.at, 0, 0))
       }))
-      // 修行节点是「首次」语义(addMilestone 只在没有时才记):坏档同一条写两遍会让
-      // 「修行节点 N/总数」多报、时间线上同一件事出现两次。只留先出现的那条。
+      // 「首次」语义(同 addMilestone):同 id 只留先出现的那条
       const seenMilestone = new Set<string>()
       milestones.value = milestones.value.filter(m => {
         if (seenMilestone.has(m.id)) return false
         seenMilestone.add(m.id)
         return true
       })
-      /**
-       * 极限纪录的 value/life 是被直接读出来的数,坏值会让「最快破界」显示成 NaN。
-       * 键同样按 RECORD_DEFS 认:纪录页只遍历这四条,野键永远不会被画出来。
-       */
       const fixedRecords: Record<string, { value: number; life: number; note: string }> = {}
-      // 条目本身先要是个对象:records = { a: null } 这类坏档不能直接读 .value
       for (const [id, raw] of Object.entries(
         asRecordOf<{ value: number; life: number; note: string }>(records.value, r => !!r && typeof r === 'object' && !Array.isArray(r))
       )) {
         if (!recordDef(id)) continue
         const r = raw as Partial<{ value: number; life: number; note: string }>
         const value = asFiniteNumber(r.value, 0)
-        // 极限纪录的四种「最好成绩」都以正数为语义:0 回合的破界、0 道源的赏格不是一场真成绩。
+        // 纪录值以正数为语义:0 回合的破界、0 道源的赏格不算成绩
         if (value <= 0) continue
         fixedRecords[id] = {
           value,
@@ -468,15 +391,9 @@ export const useEndgameStore = defineStore(
       }
       records.value = fixedRecords
       /**
-       * 器魂 uid 必须唯一:装配表按 uid 映射回魂仓,两条同号会让 `activeSouls`
-       * 把同一枚的主动与词条各算两次(实际只有一枚)。
-       *
-       * 同时逐枚修形:品阶是 `SOUL_GRADES[rank]!` 的裸下标 —— 坏档写成 `NaN`
-       * 时取到 `undefined`,器魂页渲染 `soulGradeDef(grade).color` 当场抛错,
-       * 而 Vue 会不断重试渲染,表现成「出现异常,已记录」的 toast 反复弹出。
-       * 类型同理:野 type 在 `soulTypeDef` 里查不到,器魂名与词条都成空壳。
-       * 品阶夹回 [0, 顶阶] 而不是丢弃这一枚 —— 器魂是玩家烧掉一件法器换来的,
-       * 坏数修平即可,没理由连带没收。
+       * 器魂 uid 须唯一:同号会让 `activeSouls` 把同一枚算两次。
+       * 品阶是 `SOUL_GRADES[rank]!` 的裸下标,坏值会让器魂页渲染抛错。
+       * 坏品阶夹回 [0, 顶阶] 而不丢弃:器魂是烧掉法器换来的。
        */
       const seenSoul = new Set<string>()
       const maxSoulGrade = SOUL_GRADES.length - 1
@@ -500,31 +417,23 @@ export const useEndgameStore = defineStore(
           grade: Math.min(maxSoulGrade, Math.floor(asFiniteNumber(s.grade, 0, 0))),
           fromName: typeof s.fromName === 'string' ? s.fromName : ''
         }))
-      // 装配位亦然:同一个 uid 写两遍只会让同一枚占两个槽、算两遍词条
       equippedSouls.value = [...new Set(asStringArray(equippedSouls.value))]
-      // 装配表清掉已不存在的 uid(ghost):否则原始槽位与 activeSouls(过滤读数)分叉 ——
-      // 幽灵占着槽、栏里看着有空位,再装配却静默失败
+      // 清掉已不存在的 uid:否则幽灵占槽,再装配静默失败
       const soulUids = new Set(souls.value.map(s => s.uid))
-      /**
-       * 装到第 SOUL_SLOTS 缕为止,与 equipSoul 的硬闸同一把尺:
-       * 坏档写进五缕会让五缕词条一起生效(写入侧根本装不上第三缕以外的),
-       * 「已凝 5/3」还会把读数顶破上限。截断保留先装的那几缕,与「槽满即拒」同序。
-       */
+      // 截到 SOUL_SLOTS,与 equipSoul 的硬闸同尺;保留先装的,与「槽满即拒」同序
       equippedSouls.value = equippedSouls.value.filter(id => soulUids.has(id)).slice(0, SOUL_SLOTS)
     }
 
     /** 已装配器魂(过滤掉已不存在的 uid) */
     const activeSouls = computed<SoulInstance[]>(() => {
-      // 防御两个数组字段:器魂是后加的 state,若存档来自旧版本、经过外部迁移或被手工改坏,
-      // 恢复后这里可能不是数组。直接 .map 会在**渲染期**抛 TypeError,
-      // 而 Vue 会不断重试渲染 —— 表现就是「出现异常,已记录」的 toast 反复弹出
+      // 旧档/坏档里两字段可能不是数组,渲染期抛错会让 Vue 反复重试
       const equipped = equippedSouls.value
       const pool = souls.value
       if (!Array.isArray(equipped) || !Array.isArray(pool)) return []
       return equipped.map(id => pool.find(s => s.uid === id)).filter((s): s is SoulInstance => s !== undefined)
     })
 
-    /** 持有的器魂(同上,保证调用方永远拿到数组) */
+    /** 持有的器魂(恒为数组) */
     const soulList = computed<SoulInstance[]>(() => (Array.isArray(souls.value) ? souls.value : []))
 
     /** 已装配器魂提供的词条合计(天界生效) */
@@ -557,7 +466,7 @@ export const useEndgameStore = defineStore(
     function equipSoul(uid: string): boolean {
       const equipped = Array.isArray(equippedSouls.value) ? equippedSouls.value : []
       if (equipped.includes(uid)) return false
-      // 槽位按「有效装配」算(activeSouls 已滤幽灵):幽灵占原始槽只会让装配静默失败
+      // 槽位按 activeSouls 计(已滤幽灵)
       if (activeSouls.value.length >= SOUL_SLOTS) return false
       if (!soulList.value.some(s => s.uid === uid)) return false
       equippedSouls.value = [...equipped, uid]
@@ -568,7 +477,7 @@ export const useEndgameStore = defineStore(
       equippedSouls.value = (Array.isArray(equippedSouls.value) ? equippedSouls.value : []).filter(id => id !== uid)
     }
 
-    /** 散去器魂(不可逆:原器早已毁去,散了就没了) */
+    /** 散去器魂(不可逆) */
     function dissolveSoul(uid: string): void {
       souls.value = soulList.value.filter(s => s.uid !== uid)
       equippedSouls.value = (Array.isArray(equippedSouls.value) ? equippedSouls.value : []).filter(id => id !== uid)
@@ -657,7 +566,7 @@ export const useEndgameStore = defineStore(
       return true
     }
 
-    /** 转世:道途归还天地,道源与道痕随神魂不灭;进行中的远征就此中断 */
+    /** 转世:道途与进行中的远征清空,道源与道痕保留 */
     function onRebirth(): void {
       daoPath.value = null
       worldRun.value = null

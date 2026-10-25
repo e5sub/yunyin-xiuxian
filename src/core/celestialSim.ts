@@ -1,7 +1,4 @@
-/**
- * 终局世界模拟器(Phase 20)
- * 每个特殊世界发布前必须通过六项守恒条件 —— buildSim 成为终局的自动裁判
- */
+/** 终局世界模拟器:每个特殊世界发布前须通过六项守恒条件 */
 import type { CelestialWorldDef, CombatantSnap } from '@/types'
 import { gn } from '@/utils/gnum'
 import { mulberry32, RandomService } from '@/utils/random'
@@ -11,7 +8,7 @@ import { BUILD_PROFILES, buildSnap, type BuildProfile } from './buildSim'
 import { randomBuild } from './buildSearch'
 import { celestialJudgement, runGauntlet, worldFoeSnap, type ReferenceStats } from './gauntlet'
 
-/** 模拟参照属性(与 buildSim 基准一致) */
+/** 模拟参照属性,须与 buildSim 基准一致 */
 export const SIM_REFERENCE: ReferenceStats = {
   attack: gn(100),
   defense: gn(55),
@@ -19,12 +16,8 @@ export const SIM_REFERENCE: ReferenceStats = {
 }
 
 export function worldFoes(world: CelestialWorldDef, snap: CombatantSnap): CombatantSnap[] {
-  /**
-   * 模拟器比的是**构筑形状**(它在同一份参照三维下横向比较不同流派),
-   * 故参照仍取 SIM_REFERENCE,不走天界锚点;但判定照实战口径算:
-   * 厚构筑会被道之理解加厚,这一点若不体现,厚构筑的胜率会被高估。
-   * 境界压制不适用(模拟里的"人"没有境界),故传 MAX_MAJOR 让它恒不触发。
-   */
+  // 参照取 SIM_REFERENCE 不走天界锚点(比的是构筑形状);判定照实战口径算,否则厚构筑胜率被高估。
+  // 传 MAX_MAJOR:模拟里没有境界,境界压制恒不触发。
   const judgement = celestialJudgement(snap.mods, MAX_MAJOR, world.anchorTier)
   const foes: CombatantSnap[] = []
   for (let i = 0; i < world.fights - 1; i += 1) {
@@ -34,7 +27,6 @@ export function worldFoes(world: CelestialWorldDef, snap: CombatantSnap): Combat
   return foes
 }
 
-/** 某构筑在某世界的通关率 */
 export function worldClearRate(world: CelestialWorldDef, snap: CombatantSnap, runs: number, seed: number): number {
   const rng = new RandomService(mulberry32(seed))
   const foes = worldFoes(world, snap)
@@ -62,7 +54,7 @@ export function auditWorld(world: CelestialWorldDef, randomN = 120): WorldAuditR
     clearRate: worldClearRate(world, buildSnap(profile), 25, 5000 + i * 37)
   }))
   const sorted = [...byStyle].sort((a, b) => b.clearRate - a.clearRate)
-  // 随机扫描:8 次粗筛 → 前五名 30 次精测,消除小样本全胜噪声
+  // 8 次粗筛 → 前五名 30 次精测,消除小样本全胜噪声
   const rng = new RandomService(mulberry32(world.id.length * 7919))
   const coarse: { snap: CombatantSnap; rate: number }[] = []
   for (let i = 0; i < randomN; i += 1) {
@@ -89,10 +81,7 @@ export function auditAllWorlds(): WorldAuditRow[] {
   return CELESTIAL_WORLDS.map(w => auditWorld(w))
 }
 
-/**
- * 跨界通吃检测:同一随机构筑对全部四天的通关率下限
- * 单天存在高通率答案是终局 farm 的正反馈;要防的是四天皆 ≥90% 的万金油
- */
+/** 跨界通吃检测:同一随机构筑对全部四天的通关率下限;防四天皆 ≥90% 的万金油 */
 export function crossWorldUniversals(n = 120): { count: number; worstCaseBest: number } {
   const rng = new RandomService(mulberry32(424242))
   const candidates: { snap: CombatantSnap; minRate: number }[] = []
@@ -107,7 +96,6 @@ export function crossWorldUniversals(n = 120): { count: number; worstCaseBest: n
     candidates.push({ snap: rb.snap, minRate })
   }
   candidates.sort((a, b) => b.minRate - a.minRate)
-  // 粗筛前十精测
   let count = 0
   let worstCaseBest = 0
   for (let i = 0; i < Math.min(10, candidates.length); i += 1) {

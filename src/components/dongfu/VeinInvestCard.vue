@@ -36,11 +36,10 @@
               <span v-else-if="dongfu.veinMain === null" class="shrink-0 text-[10px] text-ink-faint">首投成主</span>
             </p>
             <p class="mt-0.5 text-[10px] leading-relaxed text-ink-faint">{{ v.desc }}</p>
-            <!-- 每条脉都要自陈作用:此前只显示名字与价格,玩家无从判断该投哪条 -->
+            <!-- 每条脉须自陈作用 -->
             <p class="mt-0.5 text-[10px] leading-relaxed text-azure">
               {{ currentLevel(v.id) > 0 ? veinEffectText(v, currentLevel(v.id)) : `每点 ${veinEffectText(v, 1)}` }}
             </p>
-            <!-- 单脉进度:已投/该脉上限,着脉色;超额时条列满、数字转金 -->
             <div class="mt-1.5 flex items-center gap-2">
               <div class="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-ink/6">
                 <div class="h-full rounded-full transition-all" :class="TONES[v.id].bar" :style="{ width: capPct(v.id) + '%' }"></div>
@@ -86,9 +85,10 @@
           </div>
         </div>
 
-        <!-- 连投批量行:一口气能注 ≥2 点才出现,总账先报清(与群批同一条式子,所见即所得)。
-             flex-wrap + 文本保底宽:窄屏放不下说明与双钮同排时,说明独占整行、钮换行自成一行 ——
-             不然 flex-1 文本会被 shrink-0 双钮压到 0 宽逐字竖排(与建筑连升同一处外伤)。 -->
+        <!--
+          连投行:总账与群批同一条式子。
+          flex-wrap + 文本保底宽不可去:否则 flex-1 文本被 shrink-0 双钮压成 0 宽竖排(同建筑连升)。
+        -->
         <div v-if="plans[v.id].points >= 2" class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md border border-ink/10 bg-paper-deep/50 px-2.5 py-2">
           <template v-if="batchArm !== v.id">
             <p class="min-w-[5rem] flex-1 text-[10px] leading-snug text-ink-soft">
@@ -165,9 +165,8 @@
   const resources = useResourcesStore()
 
   /**
-   * 四脉各配一色系。字面量类串,不许拼 —— Tailwind 的 JIT 只认源码里写全的类;
-   * 章、行描边、进度条、列账圆点全部从这里取,同一脉只一个色相,全书不乱。
-   * dot/bar 由进度条与列账用,seal/row 行内即刻生效。
+   * 四脉色系,章/行描边/进度条/列账圆点全从这里取。
+   * 类串须写全字面量,不许拼:Tailwind JIT 只认源码里写全的类。
    */
   const TONES: Record<VeinId, { seal: string; row: string; dot: string; bar: string }> = {
     gather: { seal: 'bg-jade/10 text-jade', row: 'border-jade/35 bg-jade/5', dot: 'bg-jade', bar: 'bg-jade' },
@@ -177,42 +176,36 @@
   }
 
   const investCost = computed(() => veinPointCost())
-  /** 单点投脉还差多少灵石:按钮与服务拒因同源 */
+  /** 单点投脉石差:按钮与服务拒因同源 */
   const investGap = computed(() => veinPointShortfall())
   const switchCost = computed(() => veinSwitchCost())
-  /** 改立还差多少灵石:付得起为 0,与入口、确认钮和服务拒因同源 */
+  /** 改立石差(付得起为 0):入口、确认钮与服务拒因同源 */
   const switchGap = computed(() => veinSwitchShortfall())
   const switchShort = computed(() => switchGap.value.m > 0)
   const veinsUnlocked = computed(() => player.major >= VEIN_UNLOCK_MAJOR)
   const veinTotal = computed(() => dongfu.veinTotal)
 
   /**
-   * 列账文字 —— 必须把不走 StatMods 的那一条也算进来。
-   *
-   * 寒冥灵脉的 perPoint 是空对象:它的效果是「参悟省耗」,
-   * 走 dongfu.insightDiscount,不进 veinMods。此前加成只有一坨拼出来的
-   * StatMods 文字,寒冥脉投了满脉也一个字不显示 —— 玩家因此不知道它有没有用。
-   * 列账后四条脉各占一行,谁在出力、出力几许,一眼可辨。
-   * veinEffectText 内部已把参悟省耗并入,此处不必再单独凑。
+   * 列账须含不走 StatMods 的脉:寒冥灵脉 perPoint 为空,效果走 dongfu.insightDiscount,不进 veinMods。
+   * veinEffectText 已并入参悟省耗,此处不再单独凑。
    */
   function ledgerText(veinId: VeinId): string {
     const lv = currentLevel(veinId)
     return lv > 0 ? `${lv} 点 · ${veinEffectText(veinDef(veinId), lv)}` : '未投'
   }
 
-  /** 总容量已用之百分比(卡头分度条) */
   const totalPct = computed(() => Math.round((veinTotal.value / VEIN_TOTAL_CAPACITY) * 100))
 
   function isMain(veinId: VeinId): boolean {
     return dongfu.veinMain === veinId
   }
 
-  /** 该脉实际可投上限:主脉 70,副脉 30;未定主脉时每条都按主脉档 —— 与 veinService.veinCap 同一口径,不再在视图抄第二份 */
+  /** 该脉实际可投上限;未定主脉时每条按主脉档 */
   function cap(veinId: VeinId): number {
     return veinCap(veinId)
   }
 
-  /** 单脉已投 / 该脉上限;迁出的超额部分封顶百分百,条列满但数字照实报 */
+  /** 超额封顶百分百,数字照实报 */
   function capPct(veinId: VeinId): number {
     const c = cap(veinId)
     return c <= 0 ? 0 : Math.min(100, Math.round((currentLevel(veinId) / c) * 100))
@@ -222,7 +215,7 @@
     return dongfu.veinPoints[veinId] ?? 0
   }
 
-  /** 原主脉迁出后超出副脉上限的部分 */
+  /** 原主脉迁出后超出副脉上限的部分(效果保留,不可再投) */
   function surplusPoints(veinId: VeinId): number {
     if (isMain(veinId)) return 0
     return Math.max(0, currentLevel(veinId) - VEIN_SIDE_CAP)
@@ -246,7 +239,7 @@
 
   function canSwitchTo(veinId: VeinId): boolean {
     if (!veinsUnlocked.value || isMain(veinId)) return false
-    // 尚无主脉时首投即成主脉,不必单独给"立主脉"入口
+    // 尚无主脉时首投即成主脉
     return dongfu.veinMain !== null
   }
 
@@ -255,7 +248,7 @@
     return switchShort.value ? `${base},灵石尚差 ${formatGN(switchGap.value)}` : base
   }
 
-  /** 四条脉的连投计划:一口气能注几点、花多少,行只用量,不算价 */
+  /** 四脉连投计划;行只读量,不另算价 */
   const plans = computed<Record<VeinId, VeinInvestPlan>>(() => ({
     gather: veinInvestPlan('gather'),
     craft: veinInvestPlan('craft'),
@@ -263,7 +256,7 @@
     insight: veinInvestPlan('insight')
   }))
 
-  /** 连投的二步确认态:条脉一个坑位,行自随计划进退 */
+  /** 连投二步确认态 */
   const batchArm = ref<VeinId | null>(null)
   function runBatch(veinId: VeinId): void {
     batchArm.value = null

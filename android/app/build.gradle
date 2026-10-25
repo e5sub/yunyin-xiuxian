@@ -1,22 +1,15 @@
 apply plugin: 'com.android.application'
 
-// 从 package.json 读取版本号
 def packageJsonFile = file('../../package.json')
 def packageJsonText = packageJsonFile.text
-// 使用正则提取版本号
 def versionMatcher = packageJsonText =~ /"version"\s*:\s*"([^"]+)"/
 def appVersionName = versionMatcher ? versionMatcher[0][1] : "1.0.0"
-// 版本号转 versionCode:主*10000 + 次*100 + 补丁。
-// 项目约定版本号只有两段(如 "1.32"),缺失的段按 0 补,不能直接取下标 —— 否则越界。
+// 两段版本号(如 "1.32")缺段按 0 补,直接取下标会越界
 def versionParts = appVersionName.split('\\.')
 def versionPart = { int i -> i < versionParts.length ? versionParts[i].toInteger() : 0 }
 def appVersionCode = versionPart(0) * 10000 + versionPart(1) * 100 + versionPart(2)
 
-// 签名按仓库内的 key 文件走:keystore.properties(storeFile / keyAlias / 口令)+ release.keystore
-// 随仓库分发,clone 下来直接就能出可安装的签名包,CI 不需要任何 Secret。
-// 这是仓库所有者的既定选择(2026-09-02 起)。
-// 环境变量(KEYSTORE_STORE_PASSWORD / KEYSTORE_KEY_PASSWORD)与不入库的 keystore.local.properties
-// 仍可覆盖文件里的口令 —— 想换一把不进仓库的密钥时用得上,平时不需要。
+// 签名读仓库内 keystore.properties(storeFile / keyAlias / 口令)+ release.keystore:随仓库分发是仓库所有者的既定选择,CI 无 Secret
 def keystorePropsFile = rootProject.file('keystore.properties')
 def keystoreProps = new Properties()
 if (keystorePropsFile.exists()) {
@@ -27,8 +20,8 @@ def localProps = new Properties()
 if (localPropsFile.exists()) {
     localPropsFile.withInputStream { localProps.load(it) }
 }
-// 口令优先级:环境变量 > 本地覆盖文件 > 仓库内的 keystore.properties。
-// 空串按未设处理:CI 把没配的 Secret 注入成 "" 时,不能让它盖掉文件里的口令。
+// 口令优先级:环境变量 > keystore.local.properties(不入库) > keystore.properties
+// 空串按未设处理:CI 把没配的 Secret 注入成 "" 时,不能盖掉文件里的口令
 def pick = { String key, String envName, props, local ->
     def v = System.getenv(envName)
     if (v != null && v.length() > 0) return v
@@ -38,8 +31,7 @@ def pick = { String key, String envName, props, local ->
 }
 def signStorePassword = pick('storePassword', 'KEYSTORE_STORE_PASSWORD', keystoreProps, localProps)
 def signKeyPassword = pick('keyPassword', 'KEYSTORE_KEY_PASSWORD', keystoreProps, localProps)
-// 口令齐备才配签名。凑不齐就直接失败,而不是悄悄产出「未签名 APK」——
-// 那种包手机装不上,却能一路绿到发布页。key 文件就在仓库里,凑不齐只能是文件坏了。
+// 口令不齐直接失败:未签名 APK 手机装不上,却能一路绿到发布页
 def signingAvailable = signStorePassword != null && signStorePassword.length() > 0 && signKeyPassword != null && signKeyPassword.length() > 0 && keystorePropsFile.exists()
 if (!signingAvailable) {
     throw new GradleException("签名口令缺失:检查 android/keystore.properties 的 storePassword / keyPassword(或环境变量 KEYSTORE_STORE_PASSWORD / KEYSTORE_KEY_PASSWORD)")
@@ -70,8 +62,7 @@ android {
         versionName appVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
-             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
-             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+             // 在默认值上改过以适配现代 web 应用;默认值:https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }

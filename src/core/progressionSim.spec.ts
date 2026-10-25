@@ -1,4 +1,4 @@
-/* eslint-disable no-console -- 模拟器体检报告的正式输出(bun run test:report 依赖) */
+/* eslint-disable no-console -- 模拟器报告输出(bun run test:report 依赖) */
 import { describe, expect, it } from 'vitest'
 import { REALMS, WORLD_BREAK_MAJOR, MAX_MAJOR } from '@/data/realms'
 import {
@@ -23,7 +23,6 @@ const fmt = (h: number): string => (h < 1 ? `${(h * 60).toFixed(1)}分` : h < 48
 describe('数值曲线审计(Phase 14)', () => {
   it('第一世里程碑落在目标区间内', () => {
     const rows = firstLifeMilestones()
-    // 输出审计表
     console.log('\n—— 第一世抵达各大境界(在线等效,真实约 ×1.5~3) ——')
     for (const r of rows) {
       console.log(`  ${REALMS[r.major]!.name.padEnd(4, ' ')} ${fmt(r.hours)}`)
@@ -34,17 +33,8 @@ describe('数值曲线审计(Phase 14)', () => {
     expect(h(2)).toBeLessThan(12) // 金丹一两日
     expect(h(3)).toBeLessThan(48) // 元婴首周内
     expect(h(9)).toBeGreaterThan(300) // 真仙不可速通(>12天)
-    /**
-     * 上限 3500h(146 天)→ 4200h(175 天)。
-     *
-     * Phase 39 按玩家口径「每一境都太快、快到境界不像槛」把需求抬一档
-     * (EXP_MAJOR_GROWTH 18 → 19)、基础修速压一档(1.6 → 1.3),
-     * 再加上界末圆满那道修为墙(WORLD_STEP_EXP_MULT 2),
-     * 至真仙由 72.9 天变成 156.4 天(模型口径,真实约 ×1.5~3)。
-     * 这不是漂移,是这一版明确要的更长的坡 —— 但仍要「有界」:
-     * 首世终点不该是数学上够不着的东西。
-     */
-    expect(h(9)).toBeLessThan(4200) // 也不至于遥遥无期(<175天)
+    // 至真仙模型约 156.4 天(EXP_MAJOR_GROWTH 19、基础修速 1.3、WORLD_STEP_EXP_MULT 2)
+    expect(h(9)).toBeLessThan(4200) // 有界(<175天)
   })
 
   it('每个大境界耗时增幅在 2~6 倍之间(平滑放置曲线)', () => {
@@ -55,12 +45,7 @@ describe('数值曲线审计(Phase 14)', () => {
     }
   })
 
-  /**
-   * 界外节奏(仙界/神界/混沌海):0-9 号境界沿用旧曲线,不在此约束内。
-   * 跨界后改用 LATE_* 平坦曲线,这里守住两件事:
-   *   1. 每个新大境界仍比上一境更慢(是攀登,不是白送),但增幅被压到 2 倍以内
-   *   2. 整条界外长尾有界——不至于让最后一个境界成为数学上不可达
-   */
+  /** 界外(仙界/神界/混沌海)用 LATE_* 曲线:每境比上一境慢,增幅 <2 倍;0-9 号境界不在此约束内 */
   it('界外每境耗时增幅收敛在 (1, 2) 之间', () => {
     for (let m = WORLD_BREAK_MAJOR + 1; m <= MAX_MAJOR; m += 1) {
       const ratio = secondsForMajor(m, 0) / secondsForMajor(m - 1, 0)
@@ -76,28 +61,11 @@ describe('数值曲线审计(Phase 14)', () => {
       `\n界外长尾:至真仙 ${fmt(toZhenxian)} → 至${REALMS[MAX_MAJOR]!.name} ${fmt(toPeak)}` +
         `(×${(toPeak / toZhenxian).toFixed(1)})`
     )
-    expect(toPeak / toZhenxian).toBeGreaterThan(2) // 四界确实是长线,不是几步就到
-    /**
-     * 上限原为 100 倍。Phase 38 把界外每境的修为需求抬了一档
-     * (LATE_EXP_GROWTH 4.0 → 4.4,每境净耗时 1.25 → 1.375 倍),
-     * 理由是**这里才是"很快就到顶"的那一段**:人界九境的节奏(真仙 73 天)
-     * 动一下就会掀翻首世体验与轮回 ROI 的结论,而界外本来就是长线目标 ——
-     * 混沌道祖该是传说,不该是第一世顺手就到的终点。
-     * 实测长尾 160 倍,故上限抬到 200:仍要"有界"(每境增幅另有一条 <2 倍的判据守着),
-     * 但允许它是一条更长的坡。
-     *
-     * Phase 39:4.4 → 4.6,且界末三处(渡劫/大罗/神帝的圆满)各加一道修为墙,
-     * 实测长尾 218 倍 —— 上限随之抬到 260。这一版是玩家明确要的「上界更难、跨界更陡」,
-     * 故允许更长的坡,但仍是**有界**的坡:每境增幅 <2 倍那条判据没有放松。
-     */
-    expect(toPeak / toZhenxian).toBeLessThan(260) // 但有界,不至于数学上不可达
+    expect(toPeak / toZhenxian).toBeGreaterThan(2) // 四界是长线
+    // 实测长尾 218 倍(LATE_EXP_GROWTH 4.6,渡劫/大罗/神帝圆满各一道修为墙);每境增幅另由 <2 倍判据守
+    expect(toPeak / toZhenxian).toBeLessThan(260) // 有界
   })
 
-  /**
-   * 「指数级」不能只是口头承诺。界外每一境,修为需求与灵气容量的环比都必须 ≥3 倍 ——
-   * 这是实打实的复利;而净耗时只按 ~1.25 倍增长(见上一条),两者分工明确:
-   * 数值按指数堆叠,阶梯仍可达。
-   */
   it('界外需求与灵气都是指数复利(每境环比 ≥3 倍)', () => {
     for (let m = WORLD_BREAK_MAJOR + 1; m <= MAX_MAJOR; m += 1) {
       const expRatio = toNum(expRequirement(m, 0)) / toNum(expRequirement(m - 1, 0))
@@ -119,12 +87,11 @@ describe('数值曲线审计(Phase 14)', () => {
     const l1 = table[0]!
     const l2 = table[1]!
     const l20 = table[5]!
-    // 第二世应更快,但保留至少两成耗时
+    // 第二世更快,但保留至少两成耗时
     expect(l2.toZhuji / l1.toZhuji).toBeGreaterThan(0.2)
     expect(l2.toZhuji / l1.toZhuji).toBeLessThan(0.9)
-    // 第二十世依旧不能瞬间到元婴(软上限生效)
+    // 第二十世不能瞬间到元婴(软上限)
     expect(l20.toYuanying).toBeGreaterThan(0.15)
-    // 单调递减
     for (let i = 1; i < table.length; i += 1) {
       expect(table[i]!.toYuanying).toBeLessThan(table[i - 1]!.toYuanying)
     }
@@ -134,7 +101,7 @@ describe('数值曲线审计(Phase 14)', () => {
     const table = multiLifeTable([1, 20])
     const accel = table[0]!.toYuanying / table[1]!.toYuanying
     expect(accel).toBeGreaterThan(2) // 多周目要有获得感
-    expect(accel).toBeLessThan(10) // 但不是无限加速器
+    expect(accel).toBeLessThan(10)
   })
 
   it('百世压测:加速持续放缓,不存在隐性指数膨胀(Phase 19)', () => {
@@ -149,27 +116,19 @@ describe('数值曲线审计(Phase 14)', () => {
     const accel20 = base / table[1]!.toYuanying
     const accel50 = base / table[2]!.toYuanying
     const accel100 = base / table[3]!.toYuanying
-    // 百世加速有上界(软上限有效)
+    // 软上限有效
     expect(accel100).toBeLessThan(25)
     expect(accel100).toBeGreaterThan(accel50)
-    // 边际递减:50→100 世的增益小于 20→50 世
+    // 边际递减
     expect(accel100 / accel50).toBeLessThan(accel50 / accel20)
-    // 第 100 世到元婴依旧不能是瞬间(> 3 分钟)
+    // 第 100 世至元婴 > 3 分钟
     expect(table[3]!.toYuanying).toBeGreaterThan(0.05)
   })
 })
 
 /**
- * 模型假设 · 每一分都得真实凑得出
- *
- * 模拟器给的是「节奏基准」,故它假设的 kit 不能是玩家拼不出来的东西 ——
- * 否则它算出的耗时是纸上数字,拿它当设计基准就会一路偏下去。
- *
- * 这件事是在核对时真发现的:模型把洞府建筑按 Math.min(1.2, 0.1+0.09m) 估,
- * 而建筑表满级合计只有 76%(洞府 4 级 ×4% + 聚灵阵 20 级 ×3%)—— 高界凭空多了
- * 44 个百分点。方向与「真实约为估算的 1.5~3 倍」一致,所以一直没被看出来。
- *
- * 故障注入:把 estimateCultMult 里那一项改回写死的 1.2,本条立刻红。
+ * 模型假设的 kit 须是玩家凑得出的:每一项不超过真实内容上限。
+ * 故障注入:把 estimateCultMult 里洞府那一项改成写死 1.2,本用例红。
  */
 describe('模型假设 · 每一分都得真实凑得出', () => {
   /** 某功法满级时的修炼速度加成 */
@@ -177,7 +136,7 @@ describe('模型假设 · 每一分都得真实凑得出', () => {
     const def = GONGFA.find(g => g.id === id)!
     return gongfaModsAt(id, def.maxLevel).cultivationSpeed ?? 0
   }
-  /** 满级 + 选一条最利于修速的悟道分支(分支各功法只能选一条) */
+  /** 满级 + 最利于修速的一条悟道分支(每功法只能选一条) */
   const cultWithBranch = (id: string): number => {
     const branches = GONGFA_BRANCHES.filter(b => b.gongfaId === id).map(b => b.mods.cultivationSpeed ?? 0)
     return cultOf(id) + Math.max(0, ...branches)
@@ -208,7 +167,7 @@ describe('模型假设 · 每一分都得真实凑得出', () => {
         .toBeLessThanOrEqual(bestMain + bestSubs + 1e-9)
       expect(part('装备'), `境界 ${m}:模型假设装备给 ${part('装备').toFixed(2)},六部位各一条顶级修速词条只有 ${(6 * bestAffix).toFixed(2)}`)
         .toBeLessThanOrEqual(6 * bestAffix + 1e-9)
-      // 灵根那一项是「典型值」而非顶配:生成器的顶配远高于它
+      // 灵根取典型值,非顶配
       expect(part('灵根'), '典型灵根不该按顶配算').toBeLessThan(3)
     }
   })
@@ -218,7 +177,7 @@ describe('模型假设 · 每一分都得真实凑得出', () => {
     for (let m = WORLD_BREAK_MAJOR; m <= MAX_MAJOR; m++) {
       const usable = GONGFA.filter(g => g.minRealm <= m)
       const bestMain = Math.max(0, ...usable.filter(g => g.type === 'main').map(g => cultWithBranch(g.id)))
-      // 辅修栏不挑类型(秘术也能占,见 cultivation.toggleSub),故候选是「除主修之外的全部」
+      // 辅修栏不挑类型(秘术也能占,见 cultivation.toggleSub)
       const bestSubs = usable
         .filter(g => g.type !== 'main')
         .map(g => cultWithBranch(g.id))

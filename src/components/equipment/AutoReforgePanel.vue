@@ -18,7 +18,7 @@
           {{ AFFIX_RARITY_META[group.rarity].name }} · {{ group.items.length }} 条
         </p>
         <div class="mt-1 grid grid-cols-3 gap-1">
-          <!-- 点词条名即弹框看它的效果与区间;设为目标改在弹框里做(玩家反馈:不要词条表,点哪条看哪条) -->
+          <!-- 点名弹框;设为目标在弹框里做 -->
           <button
             v-for="af in group.items"
             :key="af.id"
@@ -36,9 +36,7 @@
       </div>
     </div>
     <div v-if="autoTargets.length" class="mt-1.5 space-y-0.5">
-      <!-- 已选目标回声品质色:它从哪一档领出来,这里就还它本来的颜色 -->
       <p v-for="t in autoTargets" :key="t.affixId" class="flex items-center gap-2 text-[10px]">
-        <!-- 点已选词条名:钉开那张词条图,回来看清效果与区间再决定要不要留着这条目标 -->
         <button
           type="button"
           class="flex min-h-[28px] w-10 shrink-0 items-center truncate text-left font-kai"
@@ -89,7 +87,6 @@
     </div>
   </div>
 
-  <!-- 词条信息:点哪条弹哪条 —— 名/效果/数值区间/部位/门槛;设目标也在这扇框(顶层弹框盖在详情之上) -->
   <AffixInfoSheet
     :open="codexOpen"
     :affix-id="codexAffixId ?? ''"
@@ -111,11 +108,8 @@
   import AffixInfoSheet from './AffixInfoSheet.vue'
 
   /**
-   * 自动重铸面板 —— 自 EquipmentDetailDialog 迁入。
-   *
-   * 目标勾选、预算、至多花销与开洗结账都读宿主传下来的同一份账(useAutoReforge),
-   * 面板只补自己那扇「词条图」的开合(点哪条看哪条,设目标也在这里)。
-   * 面板同时渲染顶层词条弹框:它必须盖在详情之上,故不能塞进正文滚动盒。
+   * 目标、预算、至多花销与开洗结账读宿主传下的同一份账(useAutoReforge)。
+   * 词条弹框须盖在详情之上,不能塞进正文滚动盒。
    */
   const props = defineProps<{ flow: ReturnType<typeof useAutoReforge> }>()
   const {
@@ -132,7 +126,7 @@
     runAutoReforge
   } = props.flow
 
-  /** 词条信息弹框:点哪条就钉哪条(词条表已按反馈移除,这是看词条信息的唯一入口) */
+  /** 词条信息弹框:看词条信息的唯一入口 */
   const codexOpen = ref(false)
   const codexAffixId = ref<string | null>(null)
   function openCodex(affixId: string): void {
@@ -140,7 +134,6 @@
     codexOpen.value = true
   }
 
-  /** 弹框里这条当前是不是自动重铸目标;目标未满三才有「再设」(满的位子只留给取消) */
   const codexSelected = computed(() => codexAffixId.value !== null && isAutoTarget(codexAffixId.value))
   const codexCanSelect = computed(() => autoTargets.value.length < AUTO_REFORGE_MAX_TARGETS)
 

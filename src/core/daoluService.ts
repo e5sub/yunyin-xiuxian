@@ -1,24 +1,10 @@
 /**
- * 道侣服务(Phase 33.8)
- *
- * ## 本模块刻意不做的事 —— 这是判据,不是遗漏
- *
- * 道侣的关系值只转化为**事件概率与选项资格**,不转化为任何数值。
- * 故本文件不得出现:
- *
- *   - StatMods / 任何属性键         直接落在效率链上
- *   - addDaoFruit / addInsight      道果与宿慧都是永久资源
- *   - 资源发放(灵石/丹药/材料)      三跳之后仍回到战力与速度
- *   - cultivationSpeed 相关         最短的一条回路
- *
- * `daoluService.spec.ts` 扫描本文件源码强制这四条。
- * 前面的审计已经证明 45 个属性键**全部**可达 cultivationSpeed,
- * 所以这里不是「少给一点」,而是一个都不给。
- *
- * ## 跨轮回:历史留下,人不留下
- *
- * 转世时清空当前关系,只把结局写进履历。下一世可能遇见完全不同的人,
- * 也可能因宿缘再遇同一个人 —— 但那是概率,不是保证。
+ * 道侣服务。关系值只转化为事件概率与选项资格,不转化为任何数值;本文件不得出现:
+ *   - StatMods / 任何属性键(45 个属性键全部可达 cultivationSpeed)
+ *   - addDaoFruit / addInsight
+ *   - 资源发放(灵石/丹药/材料)
+ *   - cultivationSpeed 相关
+ * spec 钉:daoluService.spec.ts 扫描本文件源码。
  */
 import {
   DAOLU,
@@ -55,7 +41,7 @@ import { useQuestsStore } from '@/stores/quests'
 import { useUiStore } from '@/stores/ui'
 import { rng, type RandomService } from '@/utils/random'
 
-/** 本世与某人的关系(存档结构) */
+/** 本世关系(存档结构) */
 export interface BondState {
   daoluId: string
   stage: BondStage
@@ -69,27 +55,26 @@ export interface BondState {
   shared: number
   /** 初遇时刻 */
   metAt: number
-  /** 她是否已陨落 */
   fallen: boolean
   /** 本世已经历的共同事件 */
   doneEvents: string[]
-  /** 当下待决的事件;由历练情境写入,不由打开界面触发 */
+  /** 待决事件;由历练情境写入,不由打开界面触发 */
   pendingEventId?: string | null
   /** 已累积的机会点(每次历练情境 +1) */
   opportunities: number
-  /** 下一次可提供事件的机会点门槛 —— 防止刷成 farming loop */
+  /** 下一次可提供事件的机会点门槛 */
   nextEventAt: number
-  /** 上一次冲突的类型,用于避免连续同类 */
+  /** 上一次冲突的类型,避免连续同类 */
   lastKind?: string | null
-  /** 她是否已离开(关系冻结,履历仍记) */
+  /** 已离开:关系冻结,履历仍记 */
   departed?: boolean
-  /** 她自己的意图(Phase 34.1);由经历催生,与世界情境无关 */
+  /** 道侣自己的意图;由经历催生,与世界情境无关 */
   intent?: BondIntent | null
-  /** 她已开口,正等你的回应 */
+  /** 已开口,待回应 */
   intentPending?: boolean
 }
 
-/** 一世结束后留在履历里的那一笔 */
+/** 一世结束后的履历记录 */
 export interface BondRecord {
   daoluId: string
   name: string
@@ -99,11 +84,7 @@ export interface BondRecord {
 }
 
 const CAP = 100
-/**
- * 两件共同事件之间至少相隔多少个机会点。
- *
- * 用「机会点」而非时间:走得多才有更多机会,挂机久不会自动刷出一堆关系事件
- */
+/** 两件共同事件之间至少相隔的机会点数。按机会点而非时间计,挂机不刷事件 */
 const EVENT_GAP = 6
 
 function clamp(n: number): number {
@@ -122,36 +103,24 @@ export function currentDaolu(): DaoluDef | null {
 
 // ============ 相遇 ============
 
-/**
- * 这一世可能遇见谁。
- *
- * 与本世之界挂钩:她偏好的地貌若在这一世的路线上,才更可能出现 ——
- * 世界不同 → 路径不同 → 遇见谁不同,轮回与世界生成由此连上
- */
+/** 这一世可能遇见谁:按道侣偏好的地貌是否在本世路线上筛选 */
 export function candidatesFor(terrains: readonly string[]): DaoluDef[] {
   const seen = new Set(terrains)
   return DAOLU.filter(d => d.terrains.length === 0 || d.terrains.some(t => seen.has(t)))
 }
 
-/**
- * 宿缘:上一世走得深的人,这一世**有可能**再遇。
- *
- * 是概率不是按钮 —— 若能保证重逢,轮回就失去了分别的重量
- */
+/** 宿缘:上一世走得深的人,这一世有概率再遇;不保证重逢 */
 export function destinedCandidate(history: readonly BondRecord[], terrains: readonly string[]): DaoluDef | null {
   const deep = history.filter(r => stageIndex(r.stage) >= stageIndex('pledged'))
   if (deep.length === 0) return null
-  // 走得越深,重逢的可能越大,但永远不满
   const chance = Math.min(0.35, 0.08 * deep.length)
   if (!rng.chance(chance)) return null
   const pick = deep[rng.int(0, deep.length - 1)]!
   const def = daoluDef(pick.daoluId)
   if (!def) return null
-  // 仍要她愿意出现在这一世的地界上
   return candidatesFor(terrains).some(c => c.id === def.id) ? def : null
 }
 
-/** 初遇:记住这个人 */
 export function meet(daoluId: string, now = Date.now()): boolean {
   const player = usePlayerStore()
   if (player.bond) return false
@@ -169,7 +138,6 @@ export function meet(daoluId: string, now = Date.now()): boolean {
     doneEvents: [],
     pendingEventId: null,
     opportunities: 0,
-    // 初遇之后要走一段路才会有第一件事
     nextEventAt: EVENT_GAP,
     lastKind: null
   })
@@ -188,12 +156,7 @@ export interface BondDelta {
   shared?: boolean
 }
 
-/**
- * 推进关系。
- *
- * 三维各自独立变化 —— 一次并肩作战可以让缘分与信任大涨而契合不动,
- * 一次道途分歧可以在缘分很深时让契合骤降
- */
+/** 推进关系;三维各自独立变化 */
 export function advanceBond(delta: BondDelta): BondState | null {
   const player = usePlayerStore()
   const b = player.bond
@@ -223,7 +186,7 @@ export function highestReachable(b: BondState): BondStage {
   return out
 }
 
-/** 距离下一阶还差什么(供界面提示,不给数值奖励) */
+/** 距离下一阶还差什么;仅供界面提示 */
 export function nextGateHint(): { stage: BondStage; lacking: string[] } | null {
   const b = currentBond()
   if (!b) return null
@@ -240,7 +203,7 @@ export function nextGateHint(): { stage: BondStage; lacking: string[] } | null {
 
 // ============ 分离与结局 ============
 
-/** 她陨落于这一世 */
+/** 道侣于本世陨落 */
 export function fall(): BondRecord | null {
   const player = usePlayerStore()
   const b = player.bond
@@ -261,11 +224,7 @@ export function part(): BondRecord | null {
   return { daoluId: b.daoluId, name: def?.name ?? b.daoluId, stage: b.stage, ending: 'parted', shared: b.shared }
 }
 
-/**
- * 一世走完,把关系归档。
- *
- * 由 confirmReincarnation 调用。**只产出一条记录,不产出任何资源**
- */
+/** 转世归档:由 confirmReincarnation 调用;清空当前关系,只产出一条履历记录,不产出任何资源 */
 export function archiveBond(): BondRecord | null {
   const player = usePlayerStore()
   const b = player.bond
@@ -283,21 +242,15 @@ export function archiveBond(): BondRecord | null {
 }
 
 
-// ============ 共同事件(Phase 33.9) ============
+// ============ 共同事件 ============
 
-/**
- * 玩家实际在走的道 —— 由行为计数推断,不是设定项。
- *
- * 这是 33.8 遗留缺口的正解:此前 accordShift 需要调用方把玩家道途
- * 传进来,而那个字段根本不存在,等于开发者在喂数据。
- * 现在契合终于是**行为的结果**
- */
+/** 玩家实际在走的道:由行为计数推断,不是设定项 */
 export function playerLean(): DaoLean | null {
   const quests = useQuestsStore()
   return leanFromCounters(k => quests.counter(k))
 }
 
-/** 这一世还没经历过的共同事件 */
+/** 本世尚未经历的共同事件 */
 export function availableBondEvents(): BondEventDef[] {
   const player = usePlayerStore()
   const b = player.bond
@@ -307,39 +260,26 @@ export function availableBondEvents(): BondEventDef[] {
   return BOND_EVENTS.filter(e => !done.has(e.id) && si >= e.minStageIndex)
 }
 
-/**
- * 关系缺什么,世界就更容易递上哪一类考验。
- *
- * 这不是给玩家发任务 —— 是关系本身有状态,故对应的问题更容易浮现。
- * 缘分浅时多来共历,信任低时多来风险与承担,契合低时多来道途与价值观
- */
+/** 事件权重:关系缺哪一维,对应类的考验更易出现 */
 function weightFor(ev: BondEventDef, b: BondState): number {
   let w = 1
   if (b.fate < 45 && (ev.kind === 'risk' || ev.kind === 'resource')) w += 1.2
   if (b.trust < 45 && (ev.kind === 'risk' || ev.kind === 'sacrifice')) w += 1.5
   if (b.accord < 45 && (ev.kind === 'path' || ev.kind === 'value')) w += 1.5
-  // 同类冲突刚发生过则降权,避免连续两次同一种考验
   if (b.lastKind === ev.kind) w *= 0.35
   return w
 }
 
 /**
- * 在某个历练情境下,是否有一件共同事件该发生。
- *
- * **不是随机抽取,而是情境筛选** —— 事件必须声明它属于哪一刻,
- * 声明为空的事件永远不会被提供(见 bondEvents.spec 的故障注入)
- *
- * 随机源可注入:生产用全局 rng,自检用带种子的 RandomService ——
- * 「哪条路真的够得着」必须能被确定性地钉住,不然又会退化成
- * 「功能写了但没人见过」(道侣陨落曾经就是这个病,见 RIL TASK-049)。
+ * 某个历练情境下是否发生一件共同事件。
+ * 情境筛选而非随机抽取:未声明所属情境的事件永不提供(见 bondEvents.spec 的故障注入)。
+ * 随机源可注入:自检须能确定性钉住哪条路够得着(见 RIL TASK-049)。
  */
 export function offerBondEvent(trigger: BondTrigger, rand: RandomService = rng): BondEventDef | null {
   const player = usePlayerStore()
   const b = player.bond
   if (!b || b.fallen || b.departed) return null
-  // 已有待决事件时不再叠加 —— 一次只面对一个问题
   if (b.pendingEventId) return null
-  // 机会点冷却:走得多才有更多机会,但不能连着来
   if (b.opportunities < b.nextEventAt) {
     player.setBond({ ...b, opportunities: b.opportunities + 1 })
     return null
@@ -377,7 +317,7 @@ export function gainBondOpportunities(n: number): void {
   player.setBond({ ...b, opportunities: b.opportunities + add })
 }
 
-/** 她此刻是否会先自己表态 */
+/** 道侣此刻是否会先自己表态 */
 export function herStance(ev: BondEventDef): string | null {
   const b = currentBond()
   const def = currentDaolu()
@@ -387,29 +327,22 @@ export function herStance(ev: BondEventDef): string | null {
 
 export interface ChoiceResult {
   text: string
-  /** 她是否因此离开 */
+  /** 道侣是否因此离开 */
   left: boolean
-  /** 她是否因此殒落(只有「共命之险」那条路会走到这里) */
+  /** 是否因此殒落(仅「共命之险」) */
   perished?: boolean
-  /** 三维实际变化,供界面显示「她的反应」而非裸数字 */
+  /** 三维变化的定性反应;界面不显示裸数字 */
   reaction: 'closer' | 'neutral' | 'strained' | 'broken'
 }
 
 /**
- * 共命之险的门槛:信任与契合都够深,才谈得上「一起蹚过去」。
- *
- * 这不是随机判定 —— 死不死取决于你俩此前攒下了什么,而且玩家看得见:
- * 选项 label 里已写明「她未必撑得住」,另有两条不会死人的路可选。
- * 这是本项目对「不可逆后果」的一贯口径:可以重,但必须是你选的、且事先说清。
+ * 共命之险的门槛:信任与契合都够才同生,非随机判定。
+ * 不可逆后果须由玩家自选且事先说清:选项 label 已写明「未必撑得住」,另有两条不会死人的路。
  */
 export const PERIL_SAFE_TRUST = 55
 export const PERIL_SAFE_ACCORD = 45
 
-/**
- * 玩家做出选择。
- *
- * **不产出任何 StatMods / 资源 / 道果 / 宿慧** —— 只改关系与叙事
- */
+/** 玩家做出选择;只改关系与叙事 */
 export function chooseBondEvent(eventId: string, choiceId: string): ChoiceResult | null {
   const player = usePlayerStore()
   const b = player.bond
@@ -418,17 +351,13 @@ export function chooseBondEvent(eventId: string, choiceId: string): ChoiceResult
   const ev = bondEventDef(eventId)
   const ch = ev?.choices.find(x => x.id === choiceId)
   if (!ev || !ch) return null
-  // 一世一事:同一段经历不重复发生
   if (b.doneEvents.includes(ev.id)) return null
 
-  // 「此前攒下」的信任/契合 —— 共命之险的生死判据见下,必须用事前的深度,
-  // 不能被这次选择自己的 +trust/+accord 事后救回来(设计文档:「死不死取决于此前攒下了什么」)
+  // 共命之险按选择前的信任/契合判生死,不能被本次选择的 +trust/+accord 救回
   const beforeTrust = b.trust
   const beforeAccord = b.accord
 
   const out = resolveChoice(def, ch, playerLean())
-  // 记事件已历、清待决、记本次冲突类型,并把下一次机会点推远
-  // —— 事件是人生节点,不是每日任务
   player.setBond({
     ...b,
     doneEvents: [...b.doneEvents, ev.id],
@@ -443,9 +372,6 @@ export function chooseBondEvent(eventId: string, choiceId: string): ChoiceResult
   if (ch.crossesTaboo) sparkIntent('crossed')
 
   const after = player.bond!
-  // 共命之险:关系够深则同生,不够则她殒落(唯一会死人的一条路,且玩家事先被 warning 过)
-  // 生死看「此前攒下的深度」,不看这次选择自己加成后的事后值 —— 否则刚够线的情侣
-  // 用一次 +trust 的挺身把自己「事后救活」,与「死不死取决于此前攒下了什么」的文案相悖
   if (ch.peril && !(beforeTrust >= PERIL_SAFE_TRUST && beforeAccord >= PERIL_SAFE_ACCORD)) {
     fall()
     return {
@@ -456,7 +382,6 @@ export function chooseBondEvent(eventId: string, choiceId: string): ChoiceResult
     }
   }
   let left = false
-  // 她离开:选项直接导致,或信任与契合双双崩塌
   if (out.leaves || (after.trust < 15 && after.accord < 20)) {
     left = true
   }
@@ -477,12 +402,7 @@ export function chooseBondEvent(eventId: string, choiceId: string): ChoiceResult
 
 // ============ 她自己的意图(Phase 34.1) ============
 
-/**
- * 一次经历推动她的意图。
- *
- * 由具体发生的事调用,不看当前关系值 —— 这是「意图由经历催生」的落点。
- * 意图在关系够近之后自行形成,不需要世界安排
- */
+/** 一次经历推动道侣的意图;由具体发生的事调用,不看当前关系值 */
 export function sparkIntent(spark: IntentSpark): BondIntent | null {
   const player = usePlayerStore()
   const b = player.bond
@@ -509,34 +429,18 @@ export function sparkIntent(spark: IntentSpark): BondIntent | null {
   return next
 }
 
-/**
- * 意图表只记「**发生过哪些类型**」:sparks 在界面里按去重后人名展示,
- * 存一长串重复的 'shared'(历练每 6% 一战就推一次)纯属徒增存档膨胀 —— 去重后
- * 类型至多 4 种、天然有界,显示不漏任何一类,存档不再越攒越肥
- */
+/** sparks 只记发生过哪些类型(去重,至多 4 种),防存档膨胀 */
 function uniqueSparks(existing: IntentSpark[], spark: IntentSpark): IntentSpark[] {
   return existing.includes(spark) ? existing : [...existing, spark]
 }
 
-/**
- * 她此刻是否开口。
- *
- * **不接受任何情境参数** —— 她想说就说。这正是与 34.0 的
- * offerBondEvent(trigger) 的分野:那是世界安排,这是她自己
- */
+/** 道侣此刻是否开口。不接受任何情境参数(区别于 offerBondEvent(trigger)) */
 export function speakIntent(): BondIntent | null {
   const player = usePlayerStore()
   const b = player.bond
   const def = currentDaolu()
   if (!b || !def || !b.intent) return null
-  /**
-   * 她已经在等你回应了 —— 不重复开口。
-   *
-   * 少了这一问的后果实测过:willSpeak 只看酝酿度,而 speakIntent 由
-   * maybeEncounter 在**每一场战斗**里调用(历练战斗间隔 12 秒),于是酝酿度一旦过线,
-   * 同一句话会每十几秒 toast 一次、「已开口」次数一路涨到几十 —— 玩家体感是
-   * 「这句话触发概率怎么这么高」,其实是一次都没被回应。
-   */
+  // 待回应时不重复开口:maybeEncounter 每场战斗都调用 speakIntent,缺此判断会反复 toast
   if (b.intentPending) return null
   if (!willSpeak(b.intent, def.temper)) return null
   const next: BondIntent = { ...b.intent, raised: b.intent.raised + 1 }
@@ -545,18 +449,13 @@ export function speakIntent(): BondIntent | null {
   return next
 }
 
-/** 她是否正在等你的回应 */
+/** 道侣是否正在等你的回应 */
 export function pendingIntent(): BondIntent | null {
   const b = currentBond()
   return b?.intentPending ? (b.intent ?? null) : null
 }
 
-/**
- * 回应她的提议。
- *
- * 三种回应各有不同后果,**忽略不等于回绝** ——
- * 再三不作声,她会自己去,然后不再指望你
- */
+/** 回应道侣的提议。忽略不等于回绝:再三不作声,道侣会自己去 */
 export function respondIntent(response: IntentResponse): IntentAftermath | null {
   const player = usePlayerStore()
   const b = player.bond
@@ -567,7 +466,7 @@ export function respondIntent(response: IntentResponse): IntentAftermath | null 
     ...b.intent,
     responses: [...b.intent.responses, response],
     settled: after.settled,
-    // 回应过后重新酝酿:未了结的意图会再次浮上来
+    // 未了结的意图会再次浮上来
     ripeness: after.settled ? 0 : b.intent.ripeness * 0.4
   }
   player.setBond({ ...b, intent: next, intentPending: false })

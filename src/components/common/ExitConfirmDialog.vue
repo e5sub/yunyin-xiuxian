@@ -14,10 +14,7 @@
 </template>
 
 <script setup lang="ts">
-  /**
-   * 安卓实体返回键的归处 —— 打包成 APK 后,返回键是唯一一个能一按就把人踢出游戏的入口。
-   * 浏览器里没有这个键,于是整套逻辑只在原生外壳内生效,Web 与 Electron 一概不接。
-   */
+  /** 安卓实体返回键的退出确认;只在原生外壳内生效,Web 与 Electron 不接 */
   import { nextTick, onMounted, onUnmounted, ref } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
   import { Capacitor, type PluginListenerHandle } from '@capacitor/core'
@@ -30,11 +27,11 @@
   const route = useRoute()
   const router = useRouter()
 
-  /** 已注册的返回键监听;组件在 await 期间就被卸载时,靠 disposed 兜底撤销 */
+  /** 返回键监听;await 期间已卸载时靠 disposed 撤销 */
   let listener: PluginListenerHandle | null = null
   let disposed = false
 
-  /** 退无可退的那一页:有存档是主页,无存档是欢迎页 —— 与路由守卫同一套判断 */
+  /** 根页:有存档是主页,无存档是欢迎页,与路由守卫同一套判断 */
   function rootName(): 'home' | 'welcome' {
     return game.started ? 'home' : 'welcome'
   }
@@ -64,10 +61,9 @@
 
   async function confirm(): Promise<void> {
     open.value = false
-    // 补一记活跃时间戳:心跳每 ACTIVE_STAMP_MS(5 秒)才落一次档,
-    // 不补的话最后这几秒会被下次离线结算当成挂机重算一遍
+    // 补活跃时间戳:心跳每 ACTIVE_STAMP_MS(5 秒)才落一次档,不补则最后几秒会被下次离线结算重算
     game.stampActive(Date.now())
-    // persist 插件的写盘排在微任务里,等它落完再走
+    // 等 persist 插件排在微任务里的写盘落完
     await nextTick()
     await CapacitorApp.exitApp()
   }

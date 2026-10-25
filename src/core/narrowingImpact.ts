@@ -1,21 +1,4 @@
-/**
- * 收窄后果审计
- *
- * 上一轮定性:问题不是「轮回奖励太多」,而是**浅轮回同时推进了太多彼此独立
- * 的永久成长轴**——金丹一世七项齐涨,没有一样非深修不可。
- *
- * 本模块度量一个收窄方案的后果,不改任何数值。审计对象不是「某项是否强」,
- * 而是:**移除后,金丹轮回是否从「全能成长循环」变成「有明确取舍的循环」。**
- *
- * 两个主指标:
- *   1. 覆盖比例——金丹循环能推进多少比例的永久资产
- *   2. 互斥收益面——深修独有的资产占比;只有它足够大,
- *      玩家才会真正面对「这一世刷得快,还是活得深」
- *
- * 注意一个容易搞错的前提:**深修路上必然经过金丹**,
- * 所以深修玩家也能拿到浅轮回的一切。真正的互斥不在「能不能拿到」,
- * 而在「哪条路拿得更划算」以及「哪些东西浅修根本够不着」。
- */
+/** 收窄后果审计:金丹浅轮回收窄前后的覆盖比例与互斥度,只做度量 */
 /** 收窄动作 */
 export type NarrowAction =
   /** 留在浅轮回 */
@@ -34,23 +17,13 @@ export interface PermanentAsset {
   shallowNow: boolean
   /** 收窄方案下:金丹循环能否推进 */
   shallowAfter: boolean
-  /** 深修能否推进(深修路过金丹,故浅能拿的深也能拿) */
+  /** 深修能否推进;深修路过金丹,浅能拿的深也能拿 */
   deep: boolean
   action: NarrowAction
   note: string
 }
 
-/**
- * 收窄方案(取自设计决议)。
- *   保留浅轮回:道果、灵兽、成就图鉴、基础认知
- *   移出浅轮回:宿慧、灵脉、先天之姿、高阶认知
- *   一次性历史:师承
- *
- * 设计规则:**浅轮回可以积累「经历」,深修才能积累「质量」**。
- * 先天之姿最初列为待观察,后按同一条规则一并移出 ——
- * 它与宿慧属于同类问题:本应体现「这一世活得有多深」,
- * 却能被金丹浅轮回用次数堆满
- */
+/** 收窄方案(取自设计决议):浅轮回积累「经历」,深修积累「质量」 */
 export const ASSETS: PermanentAsset[] = [
   {
     id: 'daoFruit',
@@ -158,7 +131,6 @@ export interface CoverageStat {
 }
 
 function coverage(pick: (a: PermanentAsset) => boolean): CoverageStat {
-  // 一次性历史不参与「推进」统计——它既非浅也非深的持续收益
   const pool = ASSETS.filter(a => a.action !== 'onetime')
   const shallow = pool.filter(pick).length
   const deepOnly = pool.filter(a => a.deep && !pick(a)).length
@@ -181,11 +153,7 @@ export function coverageAfter(): CoverageStat {
   return coverage(a => a.shallowAfter)
 }
 
-/**
- * 中间方案的覆盖:只移出宿慧与灵脉,先天之姿仍留在浅轮回。
- * 保留此函数是为了说明**为什么必须追加移出先天之姿** ——
- * 只移两项停在 56%,进不了 38%~50% 的目标区间
- */
+/** 中间方案:只移出宿慧与灵脉(56%,未进 38%~50% 目标区间) */
 export function coverageInsightVeinsOnly(): CoverageStat {
   return coverage(a => a.shallowAfter || a.id === 'talents')
 }

@@ -1,32 +1,18 @@
 /* eslint-disable no-console */
 /**
- * 世界身份的语义完整度审计
- *
- * 命名置信度修好之后,`scattered` 占三成,且只有八种可能的名字
- * (八个规则主题 × 一个固定模式)。但**名字重复不等于世界重复** ——
- * 世界身份的作用是「准确分类」,不是「唯一命名」,这两项职责不该
- * 压在同一个字段上。
- *
- * 于是要问的不是「名字撞了没有」,而是:
- *
- *   **玩家看到的整套身份(名字 + 摘要 + 路线 + 地貌顺序 + 事件节奏 + 生态),
- *   能否把两个同名世界区分开?**
- *
- * 若能,名字重复无害;若连摘要也高度相似,才需要增加身份维度。
- * 本轮只度量,不改命名算法。
+ * 世界身份的语义完整度审计:同名世界能否靠整套可见身份(摘要、路线、地貌顺序、事件节奏、生态)区分。
+ * 只度量,不改命名算法。
  */
 import { describe, expect, it } from 'vitest'
 import { skeletonDistance, terrainOf, visibleFeatures, worldIdentity } from './mortalIdentity'
 import { generateMortalWorld, type MortalWorld } from './mortalWorldGen'
 
-/** 采样一批世界 */
 const POOL: MortalWorld[] = Array.from({ length: 240 }, (_, i) => generateMortalWorld((i + 1) * 7919))
 
 function terrainSeq(w: MortalWorld): string[] {
   return w.chain.map(p => terrainOf(p.fromId))
 }
 
-/** 按世界名分组 */
 function groupByName(pool: MortalWorld[]): Map<string, MortalWorld[]> {
   const m = new Map<string, MortalWorld[]>()
   for (const w of pool) {
@@ -69,7 +55,6 @@ describe('语义完整度 · 同名世界能否被区分', () => {
   it('同名世界在其余要素上的差异', () => {
     const groups = groupByName(POOL)
     const dup = [...groups.entries()].filter(([, ws]) => ws.length > 1)
-    // 取复用最多的那个名字,逐要素看两世是否相同
     const [name, ws] = dup.sort((a, b) => b[1].length - a[1].length)[0]!
     const a = identityFacets(ws[0]!)
     const b = identityFacets(ws[1]!)
@@ -106,7 +91,7 @@ describe('语义完整度 · 同名世界能否被区分', () => {
       const rate = v / pairs
       console.log(`  ${k.padEnd(10)} ${(rate * 100).toFixed(0).padStart(3)}%  ${'█'.repeat(Math.round(rate * 20))}`)
     }
-    // 名字按定义相同,故其区分率必为 0
+    // 同名分组,名字区分率必为 0
     expect(diffCount['名字'] ?? 0).toBe(0)
   })
 })
@@ -125,8 +110,6 @@ describe('语义完整度 · 摘要是否携带地貌信息', () => {
   })
 
   it('发现:分散档的摘要不含实际地貌构成', () => {
-    // single/dual 的摘要里有地貌词;scattered 只有「山川无序、诸相杂陈」,
-    // 玩家读不出这一世究竟由哪些地貌组成
     const scattered = POOL.filter(w => worldIdentity(w).form === 'scattered')
     expect(scattered.length).toBeGreaterThan(0)
     const withTerrain = scattered.filter(w => {
@@ -150,21 +133,17 @@ describe('语义完整度 · 摘要是否携带地貌信息', () => {
       `\n分散档 ${scattered.length} 世:${names.size} 种名字、${summaries.size} 种摘要` +
         '\n名字与摘要都只由「资源偏向 × 规则主题」决定,与地貌、路线、生态无关'
     )
-    // 摘要种类远少于世界数 —— 名字之外的第一道区分并没起作用
     expect(summaries.size).toBeLessThan(scattered.length / 2)
   })
 })
 
 describe('语义完整度 · 四层职责已确立', () => {
   it('摘要不重复地界列表已给出的构成 —— 这是规则,不是缺陷', () => {
-    // 实际页面验证的结论:地貌已逐段写在地界列表右侧,
-    // 再写进摘要会变成「世界名说一次 → 摘要再说一次 → 列表第三次说一次」。
-    // 故这条断言守的是**信息不冗余**,方向与「补全信息」相反
+    // 守的是信息不冗余:地貌已逐段写在地界列表,摘要不再列一遍
     const scattered = POOL.filter(w => worldIdentity(w).form === 'scattered')
     for (const w of scattered.slice(0, 20)) {
       const s = worldIdentity(w).summary
       const ts = [...new Set(terrainSeq(w))]
-      // 分散档的摘要不该把整套地貌构成再列一遍
       const listed = ts.filter(t => s.includes(t)).length
       expect(listed).toBeLessThan(ts.length)
     }
@@ -179,12 +158,7 @@ describe('语义完整度 · 四层职责已确立', () => {
   })
 
   it('已知问题:资源偏向是纯装饰,不影响任何游戏数值', () => {
-    // bias 的全部消费点只有三处摘要文案与新颖度计算(审计用)。
-    // 它不影响掉落、不影响资源产出、不影响任何数值 ——
-    // 玩家读到「典籍散佚之地」会期待某种资源倾向,实际什么都不会发生。
-    //
-    // 这比「玩家不知道它意味着什么」更严重:**它根本不意味着什么**。
-    // 本轮不改(收尾),但把事实钉在这里,免得日后当成已生效的机制
+    // bias 只进摘要文案与新颖度计算(审计用),不影响掉落、产出或任何数值
     const biases = new Set(POOL.map(w => w.bias))
     expect(biases.size).toBeGreaterThan(1)
     console.log(
@@ -209,10 +183,7 @@ describe('语义完整度 · 结论', () => {
   })
 
   it('判定:名字重复无害,但分散档的摘要没有接住区分职责', () => {
-    // 用户的设计意图:名字负责「这大概是什么类型的世界」,
-    // 摘要与路线负责「这一世具体有什么不同」。
-    // 前半成立(结构确实不同),后半在分散档上不成立 ——
-    // 摘要与名字同源,没有引入任何新信息
+    // 设计意图:名字定类型,摘要与路线定差异
     const scattered = POOL.filter(w => worldIdentity(w).form === 'scattered')
     const pairKeys = new Set(scattered.map(w => `${worldIdentity(w).name}|${worldIdentity(w).summary}`))
     console.log(

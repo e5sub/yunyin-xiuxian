@@ -1,15 +1,5 @@
 /* eslint-disable no-console */
-/**
- * 道果消费的动机类型审计
- *
- * 逆旅契已证明规则型消费能改变构筑。但要问的下一个问题不是
- * 「还能设计什么限制」,而是:
- *
- *   **什么样的道果消费,会让玩家产生「我想看看这一世会发生什么」的欲望?**
- *
- * 挑战型(我想挑战自己)与探索型(我想看看会怎样)看着只差一点,
- * 动机却完全不同。区别可以量化 —— 核心是「第二次买还有没有未知」。
- */
+/** 道果消费的动机类型审计:挑战型 / 探索型,核心判据是第二次买还有没有未知 */
 import { describe, expect, it } from 'vitest'
 import {
   CONDITIONS,
@@ -88,11 +78,8 @@ describe('动机类型 · 探索型长什么样', () => {
   })
 
   it('关键不在「随机」,而在新颖度有下限保证', () => {
-    // 随机换皮也能做到「每次不同」,但玩家很快会发现是同一批东西重排。
-    // worldGen 的做法是设硬门槛:不够新就换种子重来
     expect(NOVELTY_MIN).toBeGreaterThan(0)
     expect(classify(0, NOVELTY_MIN)).toBe('discovery')
-    // 而随机但无门槛的情形仍可能退化 —— 判据要求 replayDelta > 0 是**保证**
     expect(classify(0, 0)).toBe('challenge')
     console.log(
       `\n「每次不同」不等于探索型。若不同只是概率,玩家迟早看穿是同一批素材重排。` +
@@ -125,8 +112,6 @@ describe('动机类型 · 探索型消费的三个结构条件', () => {
   })
 
   it('最要紧的发现:这三条项目里已经实现过一遍了', () => {
-    // worldGen 完整实现了生成式 + 新颖度门 + 内容级改变,
-    // 但它只服务天界(真仙之后),凡界轮回一条都用不上
     const ready = hostReadyCount()
     expect(ready).toBeGreaterThan(0)
     expect(ready).toBeLessThan(CONDITIONS.length)
@@ -138,8 +123,6 @@ describe('动机类型 · 探索型消费的三个结构条件', () => {
   })
 
   it('结论:动机类型的转换需要内容生成能力,不是再设计几份契', () => {
-    // 沿着「还能设计什么限制」走下去,得到的仍然是挑战型:
-    // 禁丹、独器、异途都是已知的限制,签之前就知道会发生什么
     const trials = trialProfiles()
     expect(trials.every(t => t.type === 'challenge')).toBe(true)
     expect(voidWorldProfile().type).toBe('discovery')
@@ -158,7 +141,7 @@ describe('动机类型 · 判据自身的可靠性', () => {
     expect(ruleDistance(PLAIN_LIFE, PLAIN_LIFE)).toBe(0)
     for (const t of LIFE_TRIALS) {
       expect(ruleDistance(t.rules, PLAIN_LIFE)).toBeGreaterThan(0)
-      // 自己与自己距离为零 —— 这正是 replayDelta = 0 的算式依据
+      // replayDelta = 0 的算式依据
       expect(ruleDistance(t.rules, t.rules)).toBe(0)
     }
     console.log('\n同一份契签两次,规则距离为 0 —— 重玩增量为零由此得出,不是主观判断')

@@ -1,6 +1,4 @@
 <template>
-  <!-- 师承弹窗:拜师 / 师尊评价
-      (Phase 31 S1:四种师承理念,拜后不改,转世保留,纯叙事反馈) -->
   <BaseModal :open="open" :title="mentorVer ? `师承 · ${mentorVer.mentor?.name ?? ''}` : '拜师'" @close="emit('close')">
     <div v-if="mentorVer" class="space-y-3">
       <p class="font-kai text-[14px] text-ink">{{ mentorVer.mentor?.master }}</p>
@@ -34,10 +32,6 @@
         </p>
         <p class="mt-0.5 text-[11px] text-ink-faint">{{ m!.desc }}</p>
         <p class="mt-0.5 text-[11px] text-azure tabular">{{ modsText(m!.mods) }}</p>
-        <!--
-          拜师前就该看见与这位师尊当下的契合(同一份 mentorVerdict 读数,不必等拜完):
-          师承给的是增益,选谁合谁,先让玩家做得了知情的一笔
-        -->
         <p class="mt-0.5 text-[10px] tabular" :class="mentorAffinityChip(m!.id)">
           当下契合 {{ mentorAffinityText(m!.id) }}
         </p>
@@ -59,25 +53,20 @@
   import BaseModal from '@/components/common/BaseModal.vue'
 
   /**
-   * 师承弹窗 —— 拜师 / 师尊评价(Phase 31 S1:四种师承理念,拜后不改,转世保留,纯叙事反馈)。
-   *
-   * 自 CharacterView 迁入:mentorVer 在宿主与本组件各算一份(宿主入口卡的
-   * 「求教/拜师」与副行要读它,弹窗正文也要读),调用同一个 core 函数,无逻辑漂移面。
-   * 拜师前的契合度预读(mentorAffinityMap)只有弹窗用,随迁。
+   * 师承弹窗:拜师 / 师尊评价。四种师承理念,拜后不改,转世保留,评价纯叙事反馈。
+   * mentorVer 与宿主各算一份(同一个 core 函数)。
    */
   defineProps<{ open: boolean }>()
   const emit = defineEmits<{ close: [] }>()
 
   const player = usePlayerStore()
   const mentorVer = computed(() => mentorVerdict(player.mentor))
-  /** 可选师承列表是纯静态数据,setup 只算一次;弹窗 v-for 不再每帧重取 */
+  /** 纯静态数据,setup 只算一次 */
   const mentorChoicesList = mentorChoices()
   /**
-   * 拜师前预读契合度(与拜后的 verdict 同一函数,只是人还没拜 —— 选谁合谁有数可见)。
-   * 契合是 -1~1 的实数(见 mentorService),与同为百分比的构筑契合不同 —— 这里把标尺
-   * 也带出来(…/ 1.0),不然裸一个 0.42 读者分不清是 42% 还是 0.42/1.0。
-   *
-   * 备选师尊的契合度一次算齐进 Map:模板里同一人只读一份,不再逐人两处各算一遍 mentorVerdict。
+   * 拜师前预读契合度,与拜后 verdict 同一函数。
+   * 契合取值 -1~1(见 mentorService),非百分比,显示带标尺「/ 1.0」。
+   * 备选师尊一次算齐进 Map,模板同一人只读一份。
    */
   const mentorAffinityMap = computed(() => {
     const map = new Map<MentorId, number>()
@@ -97,6 +86,6 @@
     if (a < -0.2) return 'text-cinnabar'
     return 'text-ink-faint'
   }
-  // Phase 31.1 机缘链:机缘取/弃记忆 → 师承推荐
+  // 机缘链:机缘取/弃记忆 → 师承推荐
   const hintMentor = computed(() => mentorHint())
 </script>

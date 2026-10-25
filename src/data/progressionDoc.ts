@@ -1,14 +1,10 @@
 /**
- * 数值体系说明 —— 单一事实源
- *
- * 界面里要给玩家一个「这游戏怎么长」的可解释说明,但文案最容易与代码脱节:
- * 手写「每境 ×3.46」,回头把常数一改就成了谎话。故此处不写死数字,
- * 一律从 constants 里取真值,由 progressionDoc.spec 对着公式复核(改常数即同步)。
+ * 数值体系说明 —— 单一事实源:数字一律取自 constants,不手写;spec 钉:progressionDoc.spec。
  *
  * 三条口径:
- *   1. 每个大境界的**数值**按复利增长(修为需求 / 灵气容量 / 灵气回复 / 战力)
- *   2. 每个大境界的**净耗时**增长慢于数值 —— 阶梯因此可达
- *   3. 修为与灵气可**积余**:卡在某一境时仍继续累积,越过需求的部分带走
+ *   1. 每个大境界的数值按复利增长(修为需求 / 灵气容量 / 灵气回复 / 战力)
+ *   2. 每个大境界的净耗时增长慢于数值
+ *   3. 修为与灵气可积余:卡境时继续累积,越过需求的部分带走
  */
 import {
   BUILDING_COST_GROWTH,
@@ -47,7 +43,7 @@ export interface ProgressionAxis {
   note: string
 }
 
-/** 各数值轴的真实复利倍率(直接取常数,不在文档里手写) */
+/** 各数值轴的每境复利倍率 */
 export const PROGRESSION_AXES: ProgressionAxis[] = [
   {
     id: 'exp',
@@ -79,7 +75,7 @@ export const PROGRESSION_AXES: ProgressionAxis[] = [
   }
 ]
 
-/** 净耗时倍率 = 修为需求 / 修炼速度:这才是玩家真正感受到的「难度」 */
+/** 每大境净耗时倍率 */
 export const MORTAL_TIME_PER_MAJOR = EXP_MAJOR_GROWTH / CULT_MAJOR_SPEED_GROWTH
 export const OUTER_TIME_PER_MAJOR = LATE_EXP_GROWTH / LATE_CULT_SPEED_GROWTH
 
@@ -88,7 +84,6 @@ export interface CostCurve {
   name: string
   /** 每单位(级 / 层)倍率 */
   growth: number
-  /** 计量单位 */
   unit: '等级' | '层级'
   note: string
 }
@@ -103,20 +98,20 @@ export const COST_CURVES: CostCurve[] = [
 
 export interface LifespanCurve {
   world: string
-  /** 该界域起点的寿元(跨界即一次大跃) */
+  /** 该界域起点的寿元 */
   base: number
   /** 界域内每境倍率 */
   growth: number
 }
 
-/** 寿元曲线:界域内复利,跨界为大跃(取自 LIFESPAN_WORLDS,不另写数字) */
+/** 寿元曲线:界域内复利,跨界为大跃 */
 export const LIFESPAN_CURVES: LifespanCurve[] = WORLDS.map(w => ({
   world: w.name,
   base: LIFESPAN_WORLDS[w.id].base,
   growth: LIFESPAN_WORLDS[w.id].growth
 }))
 
-/** 供界面展示的固定说明(不含可变数字) */
+/** 供界面展示的固定说明 */
 export const PROGRESSION_NOTES = {
   worldBreakMajor: WORLD_BREAK_MAJOR,
   tribulationCapMajor: TRIBULATION_DIFFICULTY_CAP_MAJOR,
@@ -141,19 +136,12 @@ export const PROGRESSION_NOTES = {
   ]
 }
 
-/**
- * 术数四门 —— 四层「时机」各占一层,不是四份加成叠着发。
- *
- * 说明页最容易被忽略的一段:玩家会问"这些是干什么的、会不会互相顶替"。
- * 故这里把四门的**节奏**与**代价**摆出来,数字一律取自各自模块
- * (问卦耗多少悟道点、卦管多久、星象加成几成、奇门几门),不手写。
- */
+/** 术数四门:四层时机各占一层,不是四份叠加的加成;节奏与代价的数字取自各自模块 */
 export interface SorceryLayer {
   id: 'gong' | 'ming' | 'xiang' | 'men'
   name: string
   /** 节奏:多快轮换一次 */
   cadence: string
-  /** 代价 */
   cost: string
   /** 管什么 */
   note: string

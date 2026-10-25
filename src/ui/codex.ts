@@ -1,24 +1,9 @@
 /**
- * 图鉴的呈现(Phase 32.7)—— 灵材谱与悟道录
+ * 图鉴的呈现。
  *
- * 收藏图鉴原有七类走的是 quests.collect() 那条路:见过即记一笔,二态而已。
- * 这里补的两类不同 —— 它们的"收录深度"本来就存在别处,而且不止两态:
- *
- * - **灵材谱**:认知层记在 lore.materialLore,四层(未识 / 已辨识 / 已知性 / 已通用)。
- * - **悟道录**:分支记在 cultivation.gongfaBranch,三态(未见 / 已见 / 已择)。
- *
- * 所以这两类做成**派生视图**,不再往 quests.collections 里存一份 ——
- * 同一件事记两处,迟早分叉。好处是旧存档立刻就能看,不需要任何迁移。
- *
- * ## 为什么是"渐进披露"而不是"给或不给"
- *
- * 这两个系统的层级本就带着信息量:辨识只知其名,知性才见药性数值,通用才懂它在方子里
- * 的门道。图鉴若一收录就把三句话全端出来,四层认知在界面上就退化成了一个布尔值。
- * 因此正文按层揭示,并附一句「还差什么」—— 尤其是灵材第三层必须真正入方开炉才能推进
- * (见 core/loreService.ts:noteMaterialUsed),这件事玩家自己摸不出来,得明说。
- *
- * 本文件只做映射与文案,不改任何状态(与 ui/enemyLore.ts 同规)。
- * describeXxx 是纯函数(可独立测试),xxxCodex 才是读 store 的那层薄封装。
+ * 灵材谱、悟道录为派生视图:深度取自 lore.materialLore(四层)与 cultivation.gongfaBranch(三态),
+ * 不往 quests.collections 存一份(记两处会分叉)。
+ * 只做映射与文案,不改任何状态(与 ui/enemyLore.ts 同规);describeXxx 为纯函数,xxxCodex 读 store。
  */
 import { ELEMENTS } from '@/data/linggen'
 import { LORE_MAX, LORE_STAGE_NAMES, MATERIALS, type MaterialDef } from '@/data/materials'
@@ -43,52 +28,41 @@ import type { CollectionCategory } from '@/stores/quests'
 import { modsText } from '@/data/statNames'
 import { artifactFuncText, artifactMetaText, equipFuncText, equipMetaText, pillFuncText, pillMetaText } from './itemText'
 
-/** 图鉴条目 —— 收藏图鉴九类共用的呈现形状 */
+/** 图鉴条目(收藏图鉴九类共用) */
 export interface CodexEntry {
   id: string
   name: string
-  /** 按收录深度逐层揭示的正文;未收录时为空。多段以换行分隔 */
+  /** 按收录深度逐层揭示的正文,多段以换行分隔 */
   desc: string
   /** 一行补充信息(阶位 / 所属功法等) */
   meta: string
-  /** 章形图标(灵兽册/法宝谱改用图标章,不再是一串干文字) */
+  /** 章形图标(灵兽册 / 法宝谱) */
   icon?: string
   color?: string
   /** 收录深度:0 未收录,≥1 已收录 */
   stage: number
-  /** 该深度的名目 */
   stageName: string
-  /** 满深度的一字标记(「通」「择」);未满为空 */
+  /** 满深度的一字标记,未满为空,两态图鉴恒空;悟道录「已见」为「可择」 */
   badge: string
-  /** 还差什么才看得更清楚;已到顶为空 */
+  /** 下一层的条件(装备「曾上手」档为该阶成色目标,法宝谱为祭炼收益);到顶或无可补充为空,无方之丹到顶为 PILL_NO_RECIPE_HINT */
   hint: string
-  /** 详情页脚注 —— 各类口径不同,故随条目一起给出 */
+  /** 详情页脚注(各类口径不同,随条目给) */
   foot: { label: string; value: string }
 }
 
 export interface CodexCat {
   key: string
   name: string
-  /** 标题右侧的计数。各类层级口径不同,在此写死成人话而非 have/total */
+  /** 标题右侧的计数文案(各类口径不同,不用 have/total) */
   hint: string
-  /**
-   * 这一册的东西**从哪来**。
-   *
-   * 未收录的条目在界面上只是一片「???」—— 玩家看得出还差多少,却不知道去哪儿找。
-   * 故每册带一句来源说明,由 codexSource.spec 对着真实的 collect 调用点核:
-   * 说「历练掉落」,就得真有一处在历练里 collect('equip')。
-   */
+  /** 本册来源说明 */
   source: string
   entries: CodexEntry[]
 }
 
 /**
- * 「已收 N」的**统一口径** —— 收藏页与角色页共用,不许两处各算各自的。
- *
- * 收藏 ids 可能含重复 / 已被移出图鉴的旧 id(normal 存档的 collect 只追加真实 id,
- * 但被损坏 / 旧版迁移的档会残留)。照 `ownedIds.length` 会多报 ——
- * 只数「实际落进 defs 的那几枚」,才和界面上渲染出的彩签数对得上。
- * CollectionView.makeCat 与 CharacterView 的图鉴计数都走这一个函数。
+ * 「已收 N」统一口径,CollectionView.makeCat 与 CharacterView 共用。
+ * ownedIds 可能含重复 / 已移出图鉴的旧 id(损坏或旧版迁移的档),ownedIds.length 会多报;只数落进 defs 的。
  */
 export function codexOwnedCount(ownedIds: string[], defs: { id: string }[]): number {
   const owned = new Set(ownedIds)
@@ -132,17 +106,12 @@ function toxinWord(v: number): string {
   return '剧毒'
 }
 
-/**
- * 按认知层揭示一味灵材。
- *
- * @param stage 认知层 0~3
- * @param seen 照面次数 —— 认知推进的底料,见得多才可能认出来
- */
+/** 按认知层揭示一味灵材(stage:0~3;seen:照面次数) */
 export function describeMaterial(def: MaterialDef, stage: number, seen: number): CodexEntry {
   const lv = Math.max(0, Math.min(LORE_MAX, Math.floor(stage)))
   const el = ELEMENTS[def.element]
   const lines: string[] = def.lore.slice(0, lv)
-  // 「已知性」的字面意思就是知道它的性子:到这一层才把数值摊开
+  // 「已知性」层起摊开数值
   if (lv >= 2) {
     lines.push(
       `药性:药力 ${def.medicinal.potency} · ${thermalWord(def.medicinal.thermal)} · ${toxinWord(def.medicinal.toxin)}`,
@@ -163,10 +132,9 @@ export function describeMaterial(def: MaterialDef, stage: number, seen: number):
   }
 }
 
-/** 读当下所知,给出整本灵材谱 */
 export function materialCodex(): CodexCat {
   const lore = useLoreStore()
-  // sort 稳定,同层内保持 MATERIALS 原序(灵草在前、按阶位升序)
+  // sort 稳定:同层内保持 MATERIALS 原序(灵草在前、阶位升序)
   const entries = MATERIALS.map(def => describeMaterial(def, lore.loreOf(def.id), lore.seenOf(def.id))).sort(
     (a, b) => b.stage - a.stage
   )
@@ -191,12 +159,7 @@ const BRANCH_HINTS = ['此功尚未修至圆满,歧路未现。', '此道尚可�
 /** 已择的那条道用金色标出:它比品质更该被一眼看见,那是你自己走的路 */
 const PICKED_COLOR = 'var(--color-gold-ink)'
 
-/**
- * 一条分支此刻处在哪一态。
- *
- * 择了 A 之后 B 仍停在「已见」而非退回「未见」—— 没走的那条路也该留在录上,
- * 那正是悟道录的意思。
- */
+/** 一条分支此刻处在哪一态:择了 A 之后 B 仍停在「已见」,不退回「未见」 */
 export function branchStage(
   def: GongfaBranchDef,
   learned: Readonly<Record<string, number>>,
@@ -218,20 +181,14 @@ export function describeBranch(def: GongfaBranchDef, stage: number): CodexEntry 
     color: lv >= BRANCH_STAGE_MAX ? PICKED_COLOR : g ? qualityDef(g.quality).color : undefined,
     stage: lv,
     stageName: BRANCH_STAGE_NAMES[lv]!,
-    // 已择处印「择」;已见且正可择的印「可择」—— 那正是当前唯一能推进的路,别埋进一屏未见
     badge: lv >= BRANCH_STAGE_MAX ? '择' : lv >= 1 ? '可择' : '',
     hint: lv < BRANCH_STAGE_MAX ? BRANCH_HINTS[lv]! : '',
-    // 分支名有重复(如两部功法各有一条「归一」),所属功法是唯一的辨认依据
+    // 分支名有重复(如两部功法各有一条「归一」),靠所属功法辨认
     foot: { label: '所属功法', value: g?.name ?? '—' }
   }
 }
 
-/**
- * 读当下所修,给出整本悟道录。
- *
- * 刻意不按收录深度排序 —— 保持 GONGFA_BRANCHES 原序,同一功法的几条分支才会挨在一起,
- * 「这部功法有哪几条路」一眼可辨。打散了排,七十七条就成了一堆无从索引的词。
- */
+/** 不按收录深度排序:保持 GONGFA_BRANCHES 原序,同一功法的几条分支挨在一起 */
 export function branchCodex(): CodexCat {
   const cultivation = useCultivationStore()
   const entries = GONGFA_BRANCHES.map(def =>
@@ -250,27 +207,13 @@ export function branchCodex(): CodexCat {
 
 // ============ 用具三类:收录深度 ============
 //
-// 装备图鉴 / 法宝谱 / 丹方录此前只有「收没收录」两态:一个 id 进过表,格子就亮着,
-// 从此再没有下文。可这三样东西的深度本来就存在别处 —— 装备见过的成色、法宝祭炼到
-// 几重、丹方读到几分熟 —— 那些数一直在参与结算,只是没在图鉴里露面。
-//
-// 与灵材谱同一套做法:**不回写一份新状态去记「第几层」**,而是按已有的状态分层揭示,
-// 并各附一句「还差什么」。这样旧存档立刻就有得看,也不会出现两处记录互相分叉。
-//
-// 三处深度取自:装备见闻(lore.equipLore)、法宝祭炼重数(inventory.artifacts)、
-// 丹方掌握度(lore.recipeLore)。
+// 装备图鉴 / 法宝谱 / 丹方录:同灵材谱,不回写新状态记「第几层」,按已有状态分层揭示。
+// 深度取自:装备见闻(lore.equipLore)、法宝祭炼重数(inventory.artifacts)、丹方掌握度(lore.recipeLore)。
 
-/**
- * 装备收录深度:0 未录 / 1 已入目 / 2 曾上手 / 3 见过天品
- *
- * 「曾上手」这一档是拿**玩家自己能决定的事**换来的(强化一件、或把它装上身),
- * 而第三档仍是运气(撞见天品以上的成色)。原先的第二档是「见过精品」——
- * 对低阶模板要等运气,玩家在图鉴里干看着,推不动它。
- */
+/** 装备收录深度;「曾上手」一档须是玩家自己能决定的事(强化或装备),不靠运气 */
 export const EQUIP_STAGE_NAMES = ['未录', '已入目', '曾上手', '见过天品'] as const
 export const EQUIP_STAGE_MAX = 3
 
-/** 分档的品质由此而来 —— 不写魔数,改品质表时这里跟着走 */
 const EQUIP_STAGE3_RANK = qualityDef('heaven').rank
 
 const EQUIP_HINTS = [
@@ -282,8 +225,7 @@ const EQUIP_HINTS = [
 
 /**
  * 该阶模板在掉落窗口内能见到的最好品质档(fromTier ≤ 该阶)。
- * 天品 fromTier 16 —— 十几阶的铁剑按 0.1^6 的越窗衰减永远够不着天品,
- * 提示不再拿「见天品」去吊玩家;写死 EQUIP_STAGE3 会把它吊成收不回的杆。
+ * 天品 fromTier 16,十几阶的模板按 0.1^6 越窗衰减够不着;提示不写死 EQUIP_STAGE3。
  */
 function maxReachableRankAtTier(tier: number): number {
   let best = 0
@@ -291,13 +233,7 @@ function maxReachableRankAtTier(tier: number): number {
   return best
 }
 
-/**
- * 「用过了」的下一步提示:按该阶真实上限说人话,不吊一件到不了的天品。
- *
- * 上限就是**全表最高那一档**时(24 阶起的神品件,实测 81 件),「见一件神品**以上**
- * 的成色」是一句空话 —— 神品已是全表顶,它上面什么也没有。玩家照这句话去刷,
- * 刷的是一个不存在的成色。故顶格那一档改说「再往上就是它自己」,把话落在那一档上。
- */
+/** 「曾上手」之后的提示:按该阶真实上限给;上限为全表最高档(24 阶起的神品件)时不带「以上」 */
 function equipStage2Hint(tier: number, seenQ: number): string {
   const ceilingRank = maxReachableRankAtTier(tier)
   const ceiling = qualityOfRank(ceilingRank).name
@@ -317,7 +253,6 @@ export interface EquipSeen {
   u?: number
 }
 
-/** 某件装备在「见过什么成色」上走到哪一层 */
 export function equipStage(seen: EquipSeen | undefined, collected: boolean): number {
   if (!seen) return collected ? 1 : 0
   if (seen.q >= EQUIP_STAGE3_RANK) return 3
@@ -325,18 +260,12 @@ export function equipStage(seen: EquipSeen | undefined, collected: boolean): num
   return 1
 }
 
-/**
- * 装备图鉴条目:风味 + 功用 + 亲眼见过的最好成色。
- *
- * 平铺数值随掉落层级折算,所以「见过什么成色」是这个模板唯一说得清的深度 ——
- * 它同时回答了「这东西上限在哪」与「我刷的地界够不够高」。
- */
+/** 装备图鉴条目:风味 + 功用 + 亲眼见过的最好成色 */
 export function describeEquipment(def: EquipmentTemplate, seen: EquipSeen | undefined, collected: boolean): CodexEntry {
   const stage = equipStage(seen, collected)
   const lines = [def.desc, equipFuncText(def)].filter(Boolean)
   if (stage >= 1 && seen) {
-    // 成色与阶别各自独立取高(两次掉落可能分别抬升 q 与 t),故分开陈述:
-    // 「天品 · 最高 18 阶」不误导成「一件既是天品又到 18 阶」的幻影
+    // q 与 t 各自独立取高(可能来自不同掉落),分开陈述
     lines.push(`见过最好成色:${qualityOfRank(seen.q).name} · 最高 ${seen.t} 阶`)
   }
   return {
@@ -352,38 +281,20 @@ export function describeEquipment(def: EquipmentTemplate, seen: EquipSeen | unde
   }
 }
 
-/** 品质 rank → 品质定义(见闻只存了 rank;回头要查名字) */
 function qualityOfRank(rank: number) {
   const r = Math.max(0, Math.min(8, Math.floor(rank || 0)))
   return QUALITIES.find(q => q.rank === r) ?? QUALITIES[0]!
 }
 
-/** 法宝收录深度:0 未录 / 1 已录 / 2 曾祭炼 / 3 祭炼圆满 */
 export const ARTIFACT_STAGE_NAMES = ['未录', '已录', '曾祭炼', '祭炼圆满'] as const
 export const ARTIFACT_STAGE_MAX = 3
 
 /**
- * 收录深度的提示语。
+ * 收录深度的提示语:祭炼在这一件上买到什么。
  *
- * 「祭炼过后,被动与神通各强八分」这句在**零重就封顶**的那几件上是假话 ——
- * 神鞭(破甲)、无相念珠(净念)、神魔镜(回补)、以及全部护盾法宝,祭炼只涨被动。
- * 故按件给话:`artifactNextLevelGain` 说神通已至上限时,提示改成「只涨被动」;
- * 重数上限也从 ARTIFACT_MAX_LEVEL 现算,不再把「九」写死在句子里。
- *
- * 封顶判据要看的是**会不会长大**,不是 `capped` 这一个布尔 —— 且要同时看两个数:
- * 神通主体(`active.amount`)与吸命的回补(`heal`)。只看主体的那条漏了神魔镜:它的
- * 回补零重就吃满十成(基线 0.6 × 神品 3.08),而主体伤害零重还在 8.01、远没到顶,
- * 于是「被动与神通各强八分」照念不误 —— 玩家按它去炼,炼到九重回补仍是 100%
- * (实测 0/3/9 重三个等级全是 100%),白花的悟道点一分也没买到那句话承诺的东西。
- *
- * 同一条谎话在**深度 2**那一行还有一份:「炼到九重,才算把它用透」对零重就封顶的
- * 那几件同样是假话 —— 神魔镜炼到九重,神通与炼第一重时逐字相同,「用透」的是被动,
- * 不是这一句让人以为的那件法宝的全部。故那一行也按件给话。
- *
- * 但「冻结」要分侧说,不能一律说成「只涨被动」。神魔镜的回补零重就满十成,而神通
- * **主体**仍在涨(8.01 → 8.65 → …):把它也说成「只涨被动」,玩家会以为祭炼对这件
- * 的伤害毫无用处,白白跳过。故按「哪一侧冻住了」分别给话:主体冻结才说只涨被动,
- * 只有回补冻结则说「主体照涨、回补已满」。
+ * 封顶判据看会不会长大,不看 `capped` 布尔;神通主体(`active.amount`)与回补(`heal`)分侧判:
+ * 主体零重封顶(神鞭、无相念珠、全部护盾法宝)才说只涨被动;只有回补已满(神魔镜)时说主体照涨。
+ * 增幅从 ARTIFACT_LEVEL_BONUS 现算,不写死。深度 1、2 共用同一句(往后每一重买到的不变)。
  */
 function artifactHints(def: ArtifactDef): readonly string[] {
   const gain0 = artifactNextLevelGain(def, 0)
@@ -435,7 +346,6 @@ export function describeArtifact(def: ArtifactDef, level: number, collected: boo
   }
 }
 
-/** 丹方录收录深度:0 未录 / 1 已录 / 2 已得方 / 3 通晓 */
 export const PILL_STAGE_NAMES = ['未录', '已录', '已得方', '通晓'] as const
 export const PILL_STAGE_MAX = 3
 

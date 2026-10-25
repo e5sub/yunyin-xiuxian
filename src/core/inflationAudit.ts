@@ -1,19 +1,12 @@
 /**
- * 战力膨胀审计(Phase 33.1「天道膨胀审计」)
- *
- * 起因是玩家反馈:金丹后升级过快、炼虚即可推完全图、真仙入天界仍是一脚踹死。
- * 这三条症状指向同一件事——成长曲线与内容曲线脱节,而不是数值绝对值偏高。
- * 因此本模块只做度量,不改任何数值:先把膨胀来源量化出来,调整才有依据。
- *
- * 四项检测:
+ * 战力膨胀审计:只做度量,不改数值。
  *   1. realmLeapAudit       境界跨越倍率 vs 同期内容跨度
  *   2. contentCoverageAudit 各境界对全部区域的压制程度,定位内容死亡点
  *   3. powerSourceAudit     最终战力按乘区来源归因
  *   4. celestialCarryAudit  入天界时携带的构筑深度 vs 天界敌人
  *
- * 口径说明:装备与功法走真实生成/真实数据,故结论可直接对应线上体感;
- * 丹药、灵脉、建筑、称号、灵兽合并为「其他来源」参数化档位(见 otherSourceMods),
- * 这部分是估算,读数时按量级看而不是按小数点看。
+ * 装备与功法走真实生成/真实数据;丹药、灵脉、建筑、称号、灵兽合并为「其他来源」
+ * 参数化档位(见 otherSourceMods),是估算,按量级读。
  */
 import type { EquipmentInstance, FinalStats, StatMods } from '@/types'
 import { toNum } from '@/utils/gnum'
@@ -30,20 +23,14 @@ import { generateEquipment, qualityWeightAt, resolveEquipStats } from './equipGe
 import { celestialDepthScale } from './gauntlet'
 import { computeFinalStats, mergeMods, modDepth } from './statsCalc'
 
-// ---------------- 玩家成型度档位 ----------------
-
 export interface GearProfile {
   id: string
   name: string
   /** 装备品质 rank 随大境界的斜率 */
   qualityPerMajor: number
   /**
-   * 装备品质的**分位**:在这一层级的真实掉落池里,这位玩家站在第几分位。
-   *
-   * Phase 37 起品质窗口决定「什么内容掉什么品质」(神品只在 24 阶以后、
-   * 混沌道祖一层约 1%),玩家身上是什么品质从此与**他打的什么内容**绑在一起。
-   * 旧的「品质 rank = 境界 × 斜率」等于假设一个真仙穿着满身神品 ——
-   * 那是拿一件传说去代表全服,审计会据此算出谁都不曾拥有的战力。
+   * 装备品质分位:这一层级真实掉落池里玩家所在的分位。
+   * 按「品质 rank = 境界 × 斜率」取会假设真仙满身神品,算出无人拥有的战力。
    */
   qualityQuantile: number
   /** 强化等级随大境界的斜率 */
@@ -58,10 +45,7 @@ export const GEAR_PROFILES: GearProfile[] = [
   { id: 'optimized', name: '极限', qualityPerMajor: 0, levelPerMajor: 1.5, otherPctPerMajor: 0.15, qualityQuantile: 0.85 }
 ]
 
-/**
- * 某层级的掉落池按权重排开,第 p 分位落在哪一档品质。
- * 与 rollQuality 共用 qualityWeightAt —— 掉落口径一改,这里跟着改。
- */
+/** 某层级掉落池按权重排开,第 p 分位落在哪一档品质;与 rollQuality 共用 qualityWeightAt */
 export function qualityQuantileAt(tier: number, p: number): number {
   const weights = QUALITIES.map(q => qualityWeightAt(q, tier))
   const total = weights.reduce((s, w) => s + w, 0)
@@ -78,11 +62,6 @@ export function gearProfile(id: string): GearProfile {
   return GEAR_PROFILES.find(p => p.id === id) ?? GEAR_PROFILES[1]!
 }
 
-/**
- * 该大境界能进入的最高区域层级(即装备来源上限)。
- * 口径落在数据层(regions.ts)—— 秘境入口代价与经济审计读的是同一个函数。
- */
-
 /** 该大境界可进入的全部区域层级 */
 export function reachableTiers(major: number): number[] {
   return REGIONS.filter(r => r.minRealm <= major)
@@ -90,11 +69,7 @@ export function reachableTiers(major: number): number[] {
     .sort((a, b) => a - b)
 }
 
-/**
- * 「其他来源」的战斗百分比档位。
- * 丹药、灵脉、洞府建筑、称号、灵兽各自都有独立成长线,逐个建模成本过高且易失真,
- * 这里按大境界线性合并成一个档位——审计要看的是它占总战力的比重,不是它的精确值
- */
+/** 「其他来源」(丹药/灵脉/建筑/称号/灵兽)按大境界线性合并的战斗百分比档位;只看占比,不求精确 */
 export function otherSourceMods(major: number, profile: GearProfile): StatMods {
   const pct = major * profile.otherPctPerMajor
   return { attackPct: pct, defensePct: pct * 0.8, maxHpPct: pct * 0.9 }
@@ -105,7 +80,6 @@ export function gongfaModsAt(major: number): StatMods {
   const pick = (type: 'main' | 'sub'): StatMods => {
     const usable = GONGFA.filter(g => g.type === type && g.minRealm <= major)
     if (usable.length === 0) return {}
-    // 取该境界可用的最高门槛功法,并按满级折算
     const best = usable.reduce((a, b) => (b.minRealm >= a.minRealm ? b : a))
     const out: StatMods = { ...best.baseMods }
     for (const k in best.perLevelMods) {
@@ -130,10 +104,7 @@ export interface ModeledPlayer {
   }
 }
 
-/**
- * 构建某境界的典型玩家。
- * 装备走真实 generateEquipment + resolveEquipStats,固定种子保证审计可复现
- */
+/** 构建某境界的典型玩家;固定种子保证可复现 */
 export function modelPlayer(major: number, sub: number, profile: GearProfile, seed = 20260904): ModeledPlayer {
   const tier = maxTierForMajor(major)
   const qualityRank = qualityQuantileAt(tier, profile.qualityQuantile)
@@ -180,8 +151,6 @@ export function enemyPowerAt(tier: number, danger = 1): number {
   )
 }
 
-// ---------------- 1. 境界跨越检测 ----------------
-
 export interface RealmLeapRow {
   fromMajor: number
   toMajor: number
@@ -197,10 +166,7 @@ export interface RealmLeapRow {
   detach: number
 }
 
-/**
- * @param seed 装备掷点种子。默认那一个沿用至今,便于与新读数对照;
- *   判据若要用「多样本的均值」说话,就把种子换几个再取平均(见 inflationAudit.spec)。
- */
+/** @param seed 装备掷点种子;默认值沿用,便于与新读数对照;多样本均值见 inflationAudit.spec */
 export function realmLeapAudit(profile: GearProfile, seed = 20260904): RealmLeapRow[] {
   const rows: RealmLeapRow[] = []
   for (let m = 0; m < MAX_MAJOR; m += 1) {
@@ -223,8 +189,6 @@ export function realmLeapAudit(profile: GearProfile, seed = 20260904): RealmLeap
   return rows
 }
 
-// ---------------- 2. 内容覆盖检测 ----------------
-
 export interface CoverageRow {
   major: number
   /** 可进入区域数 */
@@ -238,17 +202,15 @@ export interface CoverageRow {
 }
 
 /**
- * 压制判据取战力比而非胜率。
- * winChanceFromRatio 的返回值被 clamp 在 0.95,用「胜率≥95%」当判据会恒真——
- * 战力比 2 倍和 200 倍读数一样,分辨不出膨胀程度。
- * 战力比 3.0 对应裸胜率上限(0.95)且留有余量,超过即可视为内容失去威胁
+ * 压制判据:战力比 ≥ 此值即内容失去威胁;3.0 对应裸胜率上限 0.95 并留余量。
+ * 不用胜率:winChanceFromRatio 钳在 0.95,「胜率≥95%」会恒真。
  */
 export const CRUSH_RATIO = 3.0
 
 export function contentCoverageAudit(profile: GearProfile, seed = 20260904): CoverageRow[] {
   const rows: CoverageRow[] = []
   for (let m = 0; m <= MAX_MAJOR; m += 1) {
-    // 站在该境界圆满口径:玩家在此境界停留的终局战力
+    // 境界圆满口径
     const power = toNum(modelPlayer(m, 9, profile, seed).stats.power)
     const tiers = reachableTiers(m)
     let crushed = 0
@@ -271,11 +233,8 @@ export function contentCoverageAudit(profile: GearProfile, seed = 20260904): Cov
 }
 
 /**
- * 内容死亡点:自此境界起、直到真仙都再未回到有威胁状态的最早境界;未出现返回 -1。
- *
- * 不能只找「首次全压制」——炼气只有 2 个区域,装备 tier 又与境界错配,
- * 早期偶发的 100% 压制会立刻触发,那是采样噪声不是内容死亡。
- * 真正的死亡点要求「此后再未恢复」:压制一旦不可逆,后续内容才是真的失去意义
+ * 内容死亡点:此后再未回到有威胁状态的最早境界;未出现返回 -1。
+ * 不取「首次全压制」:早期区域少、tier 与境界错配,偶发 100% 压制是采样噪声。
  */
 export function contentDeathMajor(rows: CoverageRow[]): number {
   for (let i = 0; i < rows.length; i += 1) {
@@ -286,8 +245,6 @@ export function contentDeathMajor(rows: CoverageRow[]): number {
   return -1
 }
 
-// ---------------- 3. 乘区来源审计 ----------------
-
 export interface SourceRow {
   id: string
   name: string
@@ -295,11 +252,7 @@ export interface SourceRow {
   share: number
 }
 
-/**
- * 战力按乘区来源归因。
- * 做法是逐个来源置零重算,取跌幅后归一化——乘区之间存在交叉项,
- * 故这是近似归因(Shapley 的一阶简化),用于找「谁一家独大」而非精确分账
- */
+/** 战力按乘区来源归因:逐个置零取跌幅再归一化;乘区有交叉项,只是近似 */
 export function powerSourceAudit(major: number, profile: GearProfile, seed = 20260904): SourceRow[] {
   const full = modelPlayer(major, 9, profile, seed)
   const fullPower = toNum(full.stats.power)
@@ -310,7 +263,7 @@ export function powerSourceAudit(major: number, profile: GearProfile, seed = 202
     if (opts.equipMod !== false) sources.push(full.parts.equipMods)
     if (opts.gongfa !== false) sources.push(full.parts.gongfaMods)
     if (opts.other !== false) sources.push(full.parts.otherMods)
-    // 境界基础无法真正置零,以炼气一层为地板衡量其贡献
+    // 境界基础以炼气一层为地板
     const stats = computeFinalStats({
       major: opts.realm === false ? 0 : major,
       sub: opts.realm === false ? 0 : 9,
@@ -334,8 +287,6 @@ export function powerSourceAudit(major: number, profile: GearProfile, seed = 202
   return drops.map(d => ({ id: d.id, name: d.name, share: total > 0 ? d.drop / total : 0 }))
 }
 
-// ---------------- 4. 天界携带审计 ----------------
-
 /** 词条深度:所有正向构筑词条的数值总和(实现在 statsCalc,与生产同源) */
 export { modDepth }
 
@@ -347,17 +298,13 @@ export interface CelestialCarryRow {
   foeDepth: number
   /** 对称前的不对称倍数 */
   asymmetry: number
-  /** Phase 33.2 守关者加厚系数 */
+  /** 守关者加厚系数 */
   depthScale: number
   /** 对称后实际生效的不对称倍数 */
   effectiveAsymmetry: number
 }
 
-/**
- * 天界的基础三维按玩家等比缩放(worldFoeSnap),数值本身已互相抵消——
- * Phase 33.2 起词条也纳入抵消(celestialDepthScale),这里量化对称前后的差距:
- * playerDepth/foeDepth 是原始携带量,effectiveAsymmetry 才是实际生效的不对称
- */
+/** 天界基础三维由 worldFoeSnap 等比抵消,词条由 celestialDepthScale 抵消;量化对称前后的差距 */
 export function celestialCarryAudit(profile: GearProfile): CelestialCarryRow[] {
   const foeDepths: number[] = []
   for (const world of CELESTIAL_WORLDS) {
@@ -383,8 +330,6 @@ export function celestialCarryAudit(profile: GearProfile): CelestialCarryRow[] {
   return rows
 }
 
-// ---------------- 结构性不对称(常量层面的直接度量) ----------------
-
 export interface GearAsymmetry {
   /** 玩家装备乘区从最低到最高的增长倍数 */
   playerGearGrowth: number
@@ -395,20 +340,9 @@ export interface GearAsymmetry {
 }
 
 /**
- * 玩家与敌人「装备乘区」的增长速度对比。
- * 玩家:品质倍率 × (1 + 强化等级 × 每级加成);敌人:enemyGearFactor(tier)
- * 这两条线本应同速,一旦分叉,后期必然出现数值碾压
- *
- * 口径:这场对账定义在**人间界层级**(tier 1→20)上——Phase 33.2 的治理结论
- * 就是在这一段得出的。仙界以上的层级走 LATE_COMBAT_GROWTH 的平坦曲线,
- * 其玩家/内容对齐由 contentCoverageAudit 全程守;若仍按 32 层算总跨度,
- * 会把「敌人补偿在 20 层之上的自然增量」误读成乘区失衡。
- *
- *
- * 注意:这里的品质跨度是**结构上的**极端值(凡品零级 → 神品满强化),
- * 它衡量的是「这条乘区最陡能陡到什么程度」,不是某个玩家的实际穿着。
- * 品质窗口(data/qualities 的 fromTier/toTier)决定玩家真正拿得到什么,
- * 那条线由 lootSim / contentCoverageAudit 全程看着。
+ * 玩家与敌人「装备乘区」的增长速度对比(玩家:品质倍率 × 强化加成;敌人:enemyGearFactor)。
+ * 只在人间界层级(tier 1→20)上对账:仙界以上走 LATE_COMBAT_GROWTH 平坦曲线,由
+ * contentCoverageAudit 守;按全程跨度算会把 20 层之上的敌人补偿误读成乘区失衡。
  */
 export function gearAsymmetry(): GearAsymmetry {
   const low = QUALITIES[qualityQuantileAt(1, 0.5)]!

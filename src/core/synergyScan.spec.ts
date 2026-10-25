@@ -1,9 +1,7 @@
-/* eslint-disable no-console -- 模拟器体检报告的正式输出(bun run test:report 依赖) */
+/* eslint-disable no-console -- 体检报告输出(bun run test:report 依赖) */
 /**
- * Phase 23 组合协同爆炸检测
- * 危险的不是某个词条太强,而是两个各自合理的机制组合出非线性收益。
- * 度量:对校准敌的胜率转对数赔率(logit),独立预期 = logit(A)+logit(B)-logit(基线),
- * synergy = 实际组合 logit - 独立预期。>0 即正协同,超过红线即爆炸警报
+ * 词条组合协同爆炸检测。
+ * 度量:胜率转 logit;独立预期 = logit(A)+logit(B)-logit(基线);synergy = 组合 logit - 独立预期,>0 为正协同。
  */
 import { describe, expect, it } from 'vitest'
 import type { AnyStatKey, CombatantSnap, StatMods } from '@/types'
@@ -74,7 +72,7 @@ const logit = (w: number): number => {
 
 describe('词条 × 词条 协同爆炸扫描', () => {
   it('全 231 对组合的协同不超过红线;已知协同家族被检出(检测器自证有效)', () => {
-    // 校准:扫描敌人强度档,取裸构筑胜率最接近 45% 的一档(logit 灵敏区)
+    // 校准:取裸构筑胜率最接近 45% 的敌人强度档(logit 灵敏区)
     let foe = worldFoeSnap(TRIAL_FOES[0]!, SIM_REFERENCE, 2)
     let baseW = 1
     for (const esc of [1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8]) {
@@ -114,11 +112,9 @@ describe('词条 × 词条 协同爆炸扫描', () => {
         `  ${r.pair}: 单独 ${Math.round(r.wA * 100)}%/${Math.round(r.wB * 100)}% → 组合 ${Math.round(r.wAB * 100)}% · synergy ${r.synergy.toFixed(2)}`
       )
     }
-    // 红线:任何词条对的单场协同 logit ≤ 2.0(首扫最高 1.14,榜首为设计内的率×倍率机制对)
+    // 红线:单场协同 logit ≤ 2.0(首扫最高 1.14,榜首为率×倍率机制对)
     expect(rows[0]!.synergy, `协同爆炸:${rows[0]!.pair}`).toBeLessThanOrEqual(2.0)
-    // 覆盖自证:已知的「减伤×续航」破墙家族在扫描范围内。
-    // 注:它在单场呈负协同(续航在速检定中无从发挥),其爆炸只在连战+超时判负语境显形
-    // (由 buildSearch 破墙红线值守)——这正是该家族长期难被人肉发现的原因,两套场景互补
+    // 覆盖自证:「减伤×续航」家族在扫描范围内。它单场呈负协同,爆炸只在连战+超时判负语境显形(buildSearch 破墙红线值守)
     const known = rows.find(r => r.pair.includes('damageReduction') && (r.pair.includes('regenPerRound') || r.pair.includes('lifesteal')))
     expect(known, '检测器未覆盖已知协同家族').toBeDefined()
     console.log(`  [对照] 减伤×续航 单场 synergy ${known!.synergy.toFixed(2)}(连战语境才成墙,见 buildSearch)`)
@@ -127,7 +123,7 @@ describe('词条 × 词条 协同爆炸扫描', () => {
 
 describe('三阶涌现扫描(A+B 正常、A+C 正常、B+C 正常,A+B+C 突然起飞?)', () => {
   it('二阶 Top8 × 第三机制的纯三阶交互不超红线;附连战语境对照', () => {
-    // 校准(与二阶同法;记录选中档位,供连战语境派生弱敌)
+    // 校准同二阶;记下选中档位,供连战派生弱敌
     let foe = worldFoeSnap(TRIAL_FOES[0]!, SIM_REFERENCE, 2)
     let baseW = 1
     let bestEsc = 2
@@ -143,7 +139,7 @@ describe('三阶涌现扫描(A+B 正常、A+C 正常、B+C 正常,A+B+C 突然�
     const b0 = logit(baseW)
     const RUNS = 60
 
-    // 单项与全部二元(粗扫 40 场,给容斥用)
+    // 单项与全部二元(粗扫 40 场,供容斥)
     const single = new Map<AnyStatKey, number>()
     for (const [i, [key, v]] of KEY_LEVELS.entries()) {
       single.set(key, winRate(snapWith({ [key]: v }), foe, RUNS, 600 + i))
@@ -190,8 +186,7 @@ describe('三阶涌现扫描(A+B 正常、A+C 正常、B+C 正常,A+B+C 突然�
       console.log(`  ${t.names}: 组合 ${Math.round(t.wABC * 100)}% · I3 ${t.i3.toFixed(2)}`)
     }
 
-    // 连战语境对照:同一批 Top5 三元,3 连战粗协同(协同是机制×场景的函数,单场结论不可外推)
-    // 连战强度天然更高,敌降一档让基线回到灵敏区
+    // 连战对照:Top5 三元的 3 连战粗协同;敌降一档,让基线回到灵敏区
     const gFoe = worldFoeSnap(TRIAL_FOES[0]!, SIM_REFERENCE, bestEsc * 0.78)
     const gRuns = 40
     const gWin = (mods: StatMods, seed: number): number => {
@@ -220,7 +215,7 @@ describe('三阶涌现扫描(A+B 正常、A+C 正常、B+C 正常,A+B+C 突然�
       console.log(`  ${t.names}: 单场 I3 ${t.i3.toFixed(2)} | 连战粗协同 ${gSyn.toFixed(2)}`)
     }
 
-    // 红线:纯三阶交互 ≤2.5(容斥法下 I3 应远小于二阶总协同;超线=出现开发者未预料的三体涌现)
+    // 红线:纯三阶交互 I3 ≤ 2.5
     expect(tri[0]!.i3, `三阶涌现:${tri[0]!.names}`).toBeLessThanOrEqual(2.5)
   })
 })

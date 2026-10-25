@@ -37,8 +37,7 @@ describe('signedPercent', () => {
     expect(modsText({ alchemyYield: 0.1 })).toBe('双枚成丹 +10%(再得一枚之机;与手艺合计不过八成)')
     expect(modsText({ alchemyYield: 0.1 })).not.toContain('炼丹产出')
     const craft = readFileSync(resolve(__dirname, '../core/pillService.ts'), 'utf8')
-    // 结算直接读 craftability 算好的真实概率(含 alchemyYield、已按 PILL_SECOND_CAP 封顶)——
-    // 展示页写的那个数与这里掷的就是同一个,不再自算一遍 0.8 封顶
+    // 结算读 craftability 算好的概率(含 alchemyYield、已按 PILL_SECOND_CAP 封顶),与展示同一个数
     expect(craft).toContain('able.bonusChanceWithYield')
     expect(craft, '封顶只在 craftability 一处,结算不得再内联 0.8').not.toContain('Math.min(0.8')
     const able = readFileSync(resolve(__dirname, '../core/craftability.ts'), 'utf8')
@@ -174,14 +173,13 @@ describe('signedPercent', () => {
   it('功法、装备详情和法宝被动都走同源词条句,不再手写加号', () => {
     const gongfa = readFileSync(resolve(__dirname, '../components/cultivation/GongfaDialog.vue'), 'utf8')
     const equip = readFileSync(resolve(__dirname, '../components/equipment/EquipmentDetailDialog.vue'), 'utf8')
-    // 法宝被动行随法宝册迁入 components/inventory/ArtifactPanel.vue
     const bag = readFileSync(resolve(__dirname, '../components/inventory/ArtifactPanel.vue'), 'utf8')
     expect(gongfa).toContain('statValueText(k, v as number)')
     expect(gongfa).not.toContain('+${formatPercent')
     expect(equip).toContain('statValueText(k, v as number)')
     expect(bag).toContain('statModPhrase(k, v as number)')
     const vein = readFileSync(resolve(__dirname, '../components/dongfu/VeinInvestCard.vue'), 'utf8')
-    // 灵脉卡的效果行原产自 veinEffectText —— 卡片不手写加号,内部走 modsText 同源句
+    // 灵脉卡效果行出自 veinEffectText,内部走 modsText 同源句
     expect(vein).toContain('veinEffectText(')
     const buff = readFileSync(resolve(__dirname, '../components/cultivation/BuffDialog.vue'), 'utf8')
     expect(buff).toContain('statValueText(key, v)')

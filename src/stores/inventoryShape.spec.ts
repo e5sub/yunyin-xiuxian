@@ -1,12 +1,8 @@
 /**
- * 行囊坏件的逐字段修形 —— 全仓伤害面最大的一处坏档。
- *
- * 装备的 `tier` / `level` / 词条 `roll` 只要有一个是 `NaN`,`resolveEquipStats` 就把它
- * 一路带进 `finalStats`:攻防血整份变成 0 —— 玩家看着装备还穿在身上,人却打不动任何东西,
- * 界面上也不会报错,只会「怎么突然这么弱」。而 `affixes` 不是数组时,背包格、详情页与
- * 重铸面板读 `.length` 当场抛错,白屏。
- *
- * 这里把「修形之后属性还是能算出来的数」钉成判据,而不是只断言不抛。
+ * 行囊坏件逐字段修形。
+ * tier/level/词条 roll 的 NaN 经 `resolveEquipStats` 让 `finalStats` 攻防血归零,界面不报错;
+ * affixes 非数组会让背包格/详情页/重铸面板读 `.length` 抛错。
+ * 判据:修形后属性仍算得出数,不只断言不抛。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -16,7 +12,7 @@ import { resolveEquipStats } from '@/core/equipGen'
 import { MAX_EQUIP_TIER } from '@/data/equipment'
 import type { EquipmentInstance } from '@/types'
 
-/** 一件能真出数值的底子(青竹剑 · 武器) */
+/** 能出数值的底件(青竹剑 · 武器) */
 function blade(overrides: Partial<EquipmentInstance> = {}): EquipmentInstance {
   return {
     uid: 'a',
@@ -29,10 +25,10 @@ function blade(overrides: Partial<EquipmentInstance> = {}): EquipmentInstance {
   }
 }
 
-/** 界面上读这件装备的那几处(背包格/详情/重铸),逐个跑一遍 */
+/** 逐个跑界面读装备的几处(背包格/详情/重铸) */
 function renderBits(inv: ReturnType<typeof useInventoryStore>, item: EquipmentInstance): void {
   expect(Array.isArray(item.affixes), 'affixes 必须是数组,否则三处读 .length 全抛').toBe(true)
-  // 模板可以认不出(版本回退留下的旧物),界面早有「旧物」兜底名 —— 这里只要求它是个字符串
+  // 模板可以认不出(界面有「旧物」兜底名),只要求是字符串
   expect(typeof item.templateId, '模板 id 至少要是字符串').toBe('string')
   expect(() => resolveEquipStats(item), '详情页与属性汇总读的就是它').not.toThrow()
   expect(() => inv.equipFlats, '行囊页的属性合计').not.toThrow()

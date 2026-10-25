@@ -1,13 +1,4 @@
-/**
- * 道源/道果认知服务(Phase 30.9)
- *
- * 目标:让玩家在第一次看到道源/道果时,就知道
- *   道源 = 「此世消耗」的终局行动资源
- *   道果 = 「永久积累」的跨世成长资源
- *
- * 原则:不改经济,只改认知——名称语义/用途说明/即时因果解释/
- *       首次教学/软上限白话。全部为展示层与一次性标记。
- */
+/** 道源/道果认知服务:展示层文案与一次性教学标记,不改经济 */
 import { useEndgameStore } from '@/stores/endgame'
 import { WORLD_BREAK_MAJOR } from '@/data/realms'
 import { usePlayerStore } from '@/stores/player'
@@ -64,14 +55,14 @@ export function daoFruitDialog(): ResourceDialogData {
   }
 }
 
-/** 有效道果不四舍五入成整数。7.9 枚与 8 枚乘出来的修行不是同一笔。 */
+/** 有效道果不四舍五入成整数 */
 export function fruitCountLabel(n: number): string {
   const rounded = Math.round(n * 10) / 10
   const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
   return `${text} 枚`
 }
 
-/** 本次凝聚一枚道果后,当前有效道果收益变化(白话:边际收益) */
+/** 凝聚一枚道果后有效道果的边际收益 */
 export function fruitMarginalInfo(): { total: number; effective: number; nextEffective: number; deltaPct: string } {
   const player = usePlayerStore()
   const fruit = player.reincarnation.daoFruit
@@ -105,7 +96,6 @@ export function fruitSoftCapText(total: number): string {
 export function shouldShowEndgameTutorial(): boolean {
   const endgame = useEndgameStore()
   if (endgame.endgameTutorialSeen) return false
-  // 触发条件:未见过教学,且已登真仙(随天界解锁)
   return usePlayerStore().major >= WORLD_BREAK_MAJOR
 }
 
@@ -113,7 +103,7 @@ export function markEndgameTutorialSeen(): void {
   useEndgameStore().endgameTutorialSeen = true
 }
 
-/** 首次凝道果(condenseDaoFruit 成功后调用),返回是否是首次 */
+/** 已见只在玩家关掉说明时置(dismissFruitTutorial);凝果、开窗都不置,否则说明显示中刷新或按返回即永久丢失 */
 export function shouldShowFruitTutorial(): boolean {
   const endgame = useEndgameStore()
   if (endgame.daoFruitTutorialSeen) return false
@@ -129,11 +119,10 @@ export function markFruitTutorialSeen(): void {
 export interface ResourceCognitionStats {
   /** 道源总数 */
   daoSource: number
-  /** 道果总数 */
   daoFruit: number
   /** 是否见过终局教学 */
   tutorialSeen: boolean
-  /** 是否见过道果教学 */
+  /** 是否关掉过道果说明;凝果不算 */
   fruitSeen: boolean
   /** 是否打开过资源说明 */
   dialogSeen: boolean

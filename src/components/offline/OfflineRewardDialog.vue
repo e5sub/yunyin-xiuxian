@@ -6,7 +6,6 @@
         {{ awayLine }}
       </p>
       <div class="ink-divider my-3" />
-      <!-- 离线三类事分而叙之:修行在长、家业在产、路上在走 —— 修为是主,置顶金标 -->
       <div v-for="group in groups" :key="group.label" class="stagger-in">
         <p class="mt-1 text-center text-[9px] tracking-[0.35em] text-ink-faint">{{ group.label }}</p>
         <ul class="mt-1 space-y-2 text-left">
@@ -24,7 +23,6 @@
         </ul>
       </div>
 
-      <!-- 拾得装备:每件都是可从清单里点开的活件 —— 点名字看词条,不打一锤子买卖 -->
       <div v-if="savedEquipment.length" class="mt-2 rounded-md bg-paper-deep/70 px-3 py-2">
         <p class="flex items-center gap-2 text-[13px] text-ink-soft">
           <GameIcon name="backpack" :size="15" class="text-ink-faint" />
@@ -76,16 +74,10 @@
     )
   })
 
-  // 归来一声钟磬,与收益清点同起
   watch(summary, (nv, ov) => {
     if (nv && !ov) playSfx('success')
   })
 
-  /**
-   * 离线三类事分而叙之,别让修为和末节资源挤在同一档里头:
-   *  修行所得(修炼在长) / 家业收成(洞府在产) / 途中际遇(路在走)。
-   * 修为是这一程的主,置顶并金标。
-   */
   const groups = computed(() => {
     const s = summary.value
     if (!s) return []
@@ -107,9 +99,9 @@
     const road: GRow[] = []
     if (s.battles > 0) road.push({ icon: 'swords', label: '历练战斗', value: `${s.wins} 胜 / ${s.battles} 战` })
     if (s.events > 0) road.push({ icon: 'star', label: '途中际遇', value: `${s.events} 次` })
-    // 自动回收的产出不入行囊、只化器灵尘,单独在「路上」成行,免得玩家以为掉了没捡到
+    // 自动回收件不入行囊、只化器灵尘,单独成行
     if (s.recycledDust > 0) {
-      // 件数含腾位化掉的旧件:尘是它们一起化出来的,件数少算就对不上
+      // 件数须含腾位化掉的旧件,否则与尘数对不上
       const recycled = s.equipment.filter(e => e.recycled).length + s.evicted
       road.push({ icon: 'sparkles', label: '回收化尘', value: `${recycled} 件 · 器灵尘+${s.recycledDust}` })
     }
@@ -118,18 +110,13 @@
     return out
   })
 
-  /**
-   * 真正可点开的入包件(回收件已并入"回收化尘"行,不在此重复列出)。
-   * 智能收纳 + 行囊满时,新件会把本结算先入包的件挤出包 —— 那件已化尘,
-   * 不能渲染成「点得开」的活件;按 uid 回查背包,在包里的才列、才计数。
-   */
+  /** 仍在包里的拾得件:先入包的件可能已被挤出化尘,按 uid 回查背包才列 */
   const savedEquipment = computed(() =>
     (summary.value?.equipment ?? []).filter(e => !e.recycled && (e.uid ? inventory.findItem(e.uid) !== undefined : false))
   )
 
-  /** 点一件离线拾得 → 打开它的装备详情(全局弹窗按 ui.equipDetailUid 找实例) */
   function openEquip(uid: string): void {
-    // 双保险:渲染时已按存在性过滤,点击仍守卫一遍,免得设了个找不到实例的 uid 让弹窗静默不开
+    // 点击时再查一遍:找不到实例的 uid 会让弹窗静默不开
     if (inventory.findItem(uid)) ui.equipDetailUid = uid
   }
 

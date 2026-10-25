@@ -1,13 +1,7 @@
 /**
- * Phase 32.7:灵材谱与悟道录的呈现
- *
- * 这两类图鉴不是"收没收录"的二态,而是把已有的认知层原样搬到界面上。
- * 所以这里守的是**渐进披露本身** —— 每一层该多说哪一句、少说哪一句。
- * 若哪天有人图省事把三句话一次性端出来,四层认知在界面上就退化成了布尔值,
- * 下面第一组测试会先叫起来。
- *
- * 只测纯函数(describeXxx / branchStage),不挂 Pinia —— materialCodex 与
- * branchCodex 只是读 store 再转调这几个函数的薄封装,没有独立逻辑可测。
+ * 灵材谱与悟道录的呈现:守渐进披露本身,每一层多说哪一句、少说哪一句。
+ * 故障注入:把三句话一次性端出来,第一组用例红。
+ * 只测纯函数(describeXxx / branchStage),不挂 Pinia:materialCodex 与 branchCodex 只是读 store 再转调的薄封装。
  */
 import { describe, it, expect } from 'vitest'
 import { LORE_MAX, LORE_STAGE_NAMES, MATERIALS, materialDef } from '@/data/materials'
@@ -65,7 +59,7 @@ describe('灵材谱:按认知层渐进披露', () => {
   it('每高一层多揭一句,不多不少', () => {
     for (let lv = 0; lv <= LORE_MAX; lv += 1) {
       const lines = describeMaterial(qingzhi, lv, 0).desc.split('\n').filter(Boolean)
-      // 前 lv 句 lore,外加"已知性"起附上的两行数值
+      // 前 lv 句 lore,「已知性」起另附两行数值
       expect(lines.length, `第 ${lv} 层揭示的行数不对`).toBe(lv + (lv >= 2 ? 2 : 0))
       for (let i = 0; i < lv; i += 1) expect(lines[i]).toBe(qingzhi.lore[i])
     }
@@ -79,7 +73,7 @@ describe('灵材谱:按认知层渐进披露', () => {
   })
 
   it('性味评语与数值同向', () => {
-    // 赤炎灵芝 thermal 34 / 玄阴藤 thermal -30 —— 两端各取一个
+    // 赤炎灵芝 thermal 34 / 玄阴藤 thermal -30
     expect(describeMaterial(chiyan, LORE_MAX, 0).desc).toContain('大热')
     expect(describeMaterial(materialDef('mat_xuanyin')!, LORE_MAX, 0).desc).toContain('至寒')
     expect(describeMaterial(youming, LORE_MAX, 0).desc, '幽冥花毒性 46,不该轻描淡写').toContain('剧毒')
@@ -173,21 +167,18 @@ describe('悟道录:未见 / 已见 / 已择', () => {
 })
 
 /**
- * 用具三类的收录深度 —— 与灵材谱同规:不回写一份「第几层」,而是按已有状态分层揭示。
- *
- * 装备看「见过的成色」(lore.equipLore,记最好的一件),法宝看祭炼重数(背包),
- * 丹方看掌握度(lore.recipeLore)。三条梯子各自的顶都要给得出下一步该做什么,
- * 到顶则闭嘴;而无方之丹要明说自己没有方子 —— 那是玩家一辈子也推不动的那一档。
+ * 用具三类的收录深度:不回写「第几层」,按已有状态分层揭示。
+ * 装备看见过的最好成色(lore.equipLore),法宝看祭炼重数(背包),丹方看掌握度(lore.recipeLore)。
  */
 describe('图鉴 · 用具三类的收录深度', () => {
   it('装备:没见过就没收录;见过一件即入门;上手一档由玩家推进;天品看运气', () => {
     const t = equipmentTemplate('w_xuantie')!
     expect(equipStage(undefined, false)).toBe(0)
-    // 旧档:收录过但没有成色记录 —— 仍算入目,只是记不下最好的一件
+    // 旧档:收录过但无成色记录,仍算入目
     expect(equipStage(undefined, true)).toBe(1)
     const seen = (quality: QualityId, tier: number): EquipSeen => ({ q: qualityDef(quality).rank, t: tier })
     expect(equipStage(seen('mortal', 30), true)).toBe(1)
-    // 第二档不看成色,看「你有没有亲手用过它」——强化或装备过即算
+    // 第二档不看成色,看是否用过(强化或装备过即算)
     expect(equipStage({ ...seen('mortal', 30), u: 1 }, true)).toBe(2)
     expect(equipStage({ ...seen('excellent', 12), u: 1 }, true)).toBe(2)
     expect(equipStage(seen('heaven', 12), true)).toBe(3)
@@ -214,26 +205,21 @@ describe('图鉴 · 用具三类的收录深度', () => {
   })
 
   it('装备:低阶模板的「用过了」提示按该阶上限说人话,不拿永远够不着的天品吊玩家', () => {
-    // 玄铁重剑只属 2 阶 —— 天品 fromTier 16,它的掉落窗口到不了天品,别承诺它
+    // 玄铁重剑 2 阶,掉落窗口到不了天品(fromTier 16)
     const low = equipmentTemplate('w_xuantie')!
     expect(low.tier).toBeLessThan(qualityDef('heaven').fromTier!)
     const lowSeen = { q: qualityDef('excellent').rank, t: 2, u: 1 } // 用了,见过精品(该阶上限)
     const lowHint = describeEquipment(low, lowSeen, true).hint
     expect(lowHint, '低阶模板不该承诺天品').not.toContain('天品')
-    // 星云长兵 17 阶(≥ 天品 fromTier 16)—— 才该导向天品
+    // 星云长兵 17 阶(≥ 天品 fromTier 16),才导向天品
     const high = equipmentTemplate('w_xingyun')!
     const highHint = describeEquipment(high, { q: qualityDef('fine').rank, t: 17, u: 1 }, true).hint
     expect(highHint, '够得着天品的模板仍指引天品').toContain('天品')
   })
 
   /**
-   * 上限就是全表最高那一档时,「见一件神品以上的成色」是一句空话。
-   *
-   * 神品(divine, rank 8)是全表顶,它上面什么也没有。而 24 阶起的模板(fromTier ≤ 24
-   * 即含神品)只要还没见过神品,提示就照着模板句式念「以上」—— 实测 81 件(24~32 阶
-   * 的全部装备)都落在这里:玩家照这句话去刷,刷的是一个不存在的成色。
-   *
-   * 故障注入:把 equipStage2Hint 的顶格分支删掉,本条必红。
+   * 神品(divine, rank 8)是全表顶,24 阶起的模板提示不许说「神品以上」。
+   * 故障注入:把 equipStage2Hint 的顶格分支删掉,本条红。
    */
   it('顶格模板的提示不拿「神品以上」这种不存在的成色吊玩家', () => {
     const topRank = Math.max(...QUALITIES.map(q => q.rank))
@@ -247,7 +233,7 @@ describe('图鉴 · 用具三类的收录深度', () => {
       .filter(h => h.includes('以上'))
     expect(said, `这些模板的提示在指一个不存在的成色:${[...new Set(said)].slice(0, 3).join(' / ')}`).toEqual([])
 
-    // 阳性对照:没到顶的那一档照旧说「以上」(星云长兵 17 阶的上限是天品,不是神品)
+    // 阳性对照:星云长兵 17 阶上限是天品,照旧说「以上」
     const mid = equipmentTemplate('w_xingyun')!
     expect(describeEquipment(mid, { q: 0, t: 17, u: 1 }, true).hint).toContain('天品以上')
   })
@@ -260,10 +246,7 @@ describe('图鉴 · 用具三类的收录深度', () => {
     expect(artifactStage(ARTIFACT_MAX_LEVEL, true)).toBe(ARTIFACT_STAGE_MAX)
     const mid = describeArtifact(fuchen, 3, true)
     expect(mid.foot.value).toBe(`3/${ARTIFACT_MAX_LEVEL} 重`)
-    /**
-     * 吸命伤害的基线是 230%,乘上它自己的品阶(玄虚拂尘是灵品),再按祭炼三重
-     * ×(1+0.08×3)—— 图鉴给的必须是这一份,不是表里那行基线数字。
-     */
+    /** 吸命基线 230% × 品阶倍率(玄虚拂尘灵品)× 祭炼三重 (1+0.08×3);图鉴给这一份,不是基线 */
     const scaled = 2.3 * artifactQualityMult(fuchen.quality) * (1 + 3 * ARTIFACT_LEVEL_BONUS)
     expect(mid.desc, '图鉴里的数得按玩家自己的品阶与祭炼重数算').toContain(formatPercent(scaled))
     expect(describeArtifact(fuchen, ARTIFACT_MAX_LEVEL, true).badge).toBe('满')
@@ -271,11 +254,8 @@ describe('图鉴 · 用具三类的收录深度', () => {
   })
 
   /**
-   * 「祭炼过后,被动与神通各强八分」对零重就在顶的那几件是假话 ——
-   * 神鞭(破甲)、无相念珠(净念)、神魔镜(回补)、以及全部护盾法宝,祭炼只涨被动。
-   * 图鉴对所有已录法宝都印同一句,等于劝人花钱买不存在的收益。
-   *
-   * 故障注入:把提示语改回固定那一句,本条必红。
+   * 零重就在顶的法宝(神鞭、无相念珠、全部护盾法宝)祭炼只涨被动,提示不许承诺「神通各强」。
+   * 故障注入:把提示语改回固定那一句,本条红。
    */
   it('法宝谱的提示按件给话:零重封顶的只说涨被动,不承诺神通也涨', () => {
     const capped = describeArtifact(artifactDef('af_shenbian')!, 0, true) // 破甲零重就在 50% 的顶
@@ -287,31 +267,23 @@ describe('图鉴 · 用具三类的收录深度', () => {
   })
 
   /**
-   * 封顶判据漏看吸命的回补那一侧 —— 神魔镜(神品)的回补基线 0.6 乘上 3.08 的品阶
-   * 倍率,零重就吃满十成;而它的主体伤害零重才 8.01,离任何顶都远。
-   * 只看主体的判据于是判它「还能涨」,那句「被动与神通各强八分」照念不误 ——
-   * 实测炼到九重,回补仍是 100%(0/3/9 三个等级逐字相同),白花的悟道点一分也没
-   * 买到那句话承诺的东西。
-   *
-   * 故障注入:把 `cappedAtZero` 改回只看 `active.capped`,本条必红。
+   * 封顶判据须看吸命回补侧:神魔镜回补基线 0.6 × 品阶倍率 3.08,零重即满十成;主体零重 8.01,仍在涨。
+   * 故障注入:把 `cappedAtZero` 改回只看 `active.capped`,本条红。
    */
   it('封顶判据也看吸命的回补:神魔镜的回补零重就到顶,不许承诺它也会涨', () => {
     const mirror = describeArtifact(artifactDef('af_shenmojing')!, 0, true)
-    /**
-     * 回补满了,但**主体还在涨**(实测 0/1/9 重:8.01 / 8.65 / 13.78)。
-     * 故这里不许承诺「神通各强」,也不许反过来说「只涨被动」—— 那是另一半谎话。
-     */
+    /** 回补已满、主体仍涨(0/1/9 重:8.01 / 8.65 / 13.78):不许「神通各强」,也不许「只涨被动」 */
     expect(mirror.hint, '神魔镜的回补零重即十成,不该承诺「神通各强」').not.toContain('神通各强')
     expect(mirror.hint, '主体仍在涨,不能说成只涨被动').not.toContain('只涨被动')
     expect(mirror.hint, '要说清哪一侧满了、哪一侧还涨').toContain('回补零重已满')
     expect(mirror.hint).toContain('神通主体')
 
-    // 阳性对照:回补还没到顶的那一件(玄虚拂尘零重 86.9%)照旧承诺都涨
+    // 阳性对照:玄虚拂尘回补零重 86.9%,照旧承诺都涨
     const fuchen = describeArtifact(artifactDef('af_xuanxu')!, 0, true)
     expect(fuchen.hint).toContain('神通各强')
     expect(artifactValue(artifactDef('af_xuanxu')!, 0).active.heal).toBeLessThan(1)
 
-    // 阳性对照:主体真的冻住的那几件(神鞭/无相念珠)照旧说「只涨被动」
+    // 阳性对照:主体零重封顶的神鞭/无相念珠照旧说「只涨被动」
     for (const id of ['af_shenbian', 'af_wuxiangzhu']) {
       expect(describeArtifact(artifactDef(id)!, 0, true).hint, `${id} 主体零重封顶`).toContain('只涨被动')
     }
@@ -400,7 +372,7 @@ describe('codexOwnedCount(「已收 N」统一口径)', () => {
   const defs = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
 
   it('只数实际落进 defs 的那几枚,重复与已被移出的旧 id 不多报', () => {
-    // 收藏 ids 可能混入旧 id('z')与重复('b'×3)—— 损坏 / 旧版迁移的档会残留
+    // 损坏 / 旧版迁移的档:收藏 ids 混入旧 id('z')与重复('b'×3)
     expect(codexOwnedCount(['a', 'b', 'b', 'b', 'z'], defs)).toBe(2)
     expect(codexOwnedCount([], defs), '空集计 0').toBe(0)
     expect(codexOwnedCount(['a', 'b', 'c'], defs), '健康档全落进 defs,如数计入').toBe(3)

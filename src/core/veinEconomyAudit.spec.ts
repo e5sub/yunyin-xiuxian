@@ -1,4 +1,5 @@
-/* eslint-disable no-console -- Phase 30.5 灵脉与重铸经济审计 */
+/* eslint-disable no-console -- 灵脉与重铸经济审计 */
+/** 灵脉投资与重铸成本经济审计:灵脉不退化为延迟点满,重铸不允许无限洗完美装 */
 import { describe, expect, it } from 'vitest'
 import {
   REFORGE_SEAL_LOAD,
@@ -14,20 +15,6 @@ import { reforgeCost } from './reforge'
 import { stoneByTier } from './formulas'
 import type { EquipmentInstance } from '@/types'
 
-/**
- * Phase 30.5:灵脉投资与重铸成本经济审计
- *
- * 核心问题:
- * 1. 灵脉投资是否退化为"延迟点满"(最终全部120点都能投满→无长期决策)
- * 2. 重铸成本是否允许"无限洗完美装"(封存核心词条→无限重铸其他→装备随机性消失)
- *
- * 审计维度:
- * - 灵脉容量设计:总100点,主脉70,副脉各30,是否形成真正的取舍
- * - 投点成本曲线:按层级递增,中后期资源压力测算
- * - 重铸成本递增:是否足以阻止"暴力洗完美"
- * - 资源Sink效能:灵脉+重铸能否消化后期灵石过剩
- */
-
 describe('Phase 30.5:灵脉投资终局审计', () => {
   it('灵脉容量设计:总量100点形成主副脉取舍', () => {
     console.log('\n—— Phase 30.5 灵脉投资容量设计 ——')
@@ -35,12 +22,10 @@ describe('Phase 30.5:灵脉投资终局审计', () => {
     console.log(`  主脉上限: ${VEIN_MAIN_CAPACITY} 点`)
     console.log(`  副脉上限: 各 ${VEIN_SIDE_CAP} 点`)
 
-    // 设计意图验证:4条脉如果都想投满副脉上限(4×30=120点)会超出总容量
     const veinCount = VEINS.length
     const fullSideCap = veinCount * VEIN_SIDE_CAP
     console.log(`  若4脉均投满副脉上限: ${fullSideCap} 点(超出总容量 ${fullSideCap - VEIN_TOTAL_CAPACITY} 点)`)
 
-    // 主脉投满后剩余容量
     const remainAfterMain = VEIN_TOTAL_CAPACITY - VEIN_MAIN_CAPACITY
     console.log(`  主脉投满后剩余: ${remainAfterMain} 点(可投满1副脉,另2脉无法投满)`)
 
@@ -55,7 +40,6 @@ describe('Phase 30.5:灵脉投资终局审计', () => {
       console.log(`      满级增益: ${veinEffectText(def, VEIN_MAIN_CAPACITY)}`)
     }
 
-    // 验证四脉增益互不相同(perPoint 不同)
     for (let i = 0; i < VEINS.length; i++) {
       for (let j = i + 1; j < VEINS.length; j++) {
         const a = VEINS[i]!
@@ -83,7 +67,6 @@ describe('Phase 30.5:灵脉投资终局审计', () => {
       console.log(`    ${name}(T${tier}): ${cost.m.toFixed(2)}e${cost.e} 灵石/点`)
     }
 
-    // 验证成本递增
     for (let i = 1; i < costs.length; i++) {
       const prev = costs[i - 1]!
       const curr = costs[i]!
@@ -92,7 +75,7 @@ describe('Phase 30.5:灵脉投资终局审计', () => {
       expect(currVal, `T${curr.tier} 成本应大于 T${prev.tier}`).toBeGreaterThan(prevVal)
     }
 
-    // 计算投满一条主脉的总成本(以金丹为例,灵脉解锁层级)
+    // 以金丹(灵脉解锁层级)计
     const jindan = costs.find(c => c.tier === 3)!
     const fullMainCost = {
       m: jindan.cost.m * VEIN_MAIN_CAPACITY,
@@ -101,7 +84,6 @@ describe('Phase 30.5:灵脉投资终局审计', () => {
     console.log(`\n  投满一条主脉总成本(金丹): ${fullMainCost.m.toFixed(2)}e${fullMainCost.e} 灵石`)
     console.log(`    (${VEIN_MAIN_CAPACITY} 点 × ${jindan.cost.m.toFixed(2)}e${jindan.cost.e}/点)`)
 
-    // 验证成本递增机制存在(投满主脉应是显著投资)
     expect(fullMainCost.m, '投满主脉总成本应显著').toBeGreaterThan(50)
   })
 
@@ -142,11 +124,7 @@ describe('Phase 30.5:装备重铸成本审计(机制已实现,行为验证)', ()
   }
   const stoneOf = (c: { m: number; e: number }): number => c.m * Math.pow(10, c.e)
 
-  /**
-   * 重铸成本在 36 轮改过一次口径:旧版是「品质倍率 × 1.5^次数,上限 10 次」,
-   * 现在只与**阶数**与**封存数**挂钩、且不限次数(见 data/constants 的注释)。
-   * 于是这里的判据也跟着换:不再验"越洗越贵",而是验"成本只看那两件事、且洗不封顶"。
-   */
+  /** 重铸成本只看阶数与封存数,不限次数(见 data/constants) */
   it('品质与重铸成本无关:同一件洗到第几次、什么品质,都是同一个价', () => {
     const c0 = reforgeCost({ ...base, reforgeCount: 0, quality: 'mortal' })!
     const c99 = reforgeCost({ ...base, reforgeCount: 99, quality: 'divine' })!
@@ -171,8 +149,6 @@ describe('Phase 30.5:装备重铸成本审计(机制已实现,行为验证)', ()
   })
 
   it('「暴力洗完美」的刹车换到了别处:高阶层 + 封存溢价,而不是次数', () => {
-    // 同一件封了三条的 20 阶装备,单次重铸要比 3 阶未封存的贵出几个数量级 ——
-    // 玩家想一直洗下去,付的是"这件有多高阶、我保住了几条"的钱
     const cheap = stoneOf(reforgeCost({ ...base, tier: 3 })!.stone)
     const dear = stoneOf(
       reforgeCost({

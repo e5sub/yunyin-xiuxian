@@ -1,9 +1,6 @@
 /**
  * 读取用户选择的存档文件。
- *
- * FileReader 是异步的:玩家选完文件就切走页面时,回调仍可能在组件卸载后到达。
- * 这里把「是否已取消」收在读取句柄内,abort 后不再调用任何回调;调用方只需在
- * 卸载时撤销句柄,不必各自记一份 FileReader 状态。
+ * 回调可能在组件卸载后到达;调用方卸载时 abort 句柄,之后不再回调。
  */
 export interface SaveFileReadHandle {
   abort(): void
@@ -37,7 +34,7 @@ export function readSaveFile(
       try {
         reader.abort()
       } catch {
-        // 已进入完成态的读取无法中止;settled 已挡住后续回调
+        // 已完成的读取无法中止;settled 已挡住后续回调
       }
     }
   }

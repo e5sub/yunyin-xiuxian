@@ -1,9 +1,4 @@
-/**
- * 程序化终局世界生成器(Phase 23)—— 规则空间自动产生内容
- * 随机规则 × 随机敌池 × 随机路线 × 随机界主 → 模拟裁判过审 → 正式虚界
- * 裁判条件继承 P20/P22:≥3 可行流派、无近必胜、能被打穿、分布不塌缩;
- * 奖励由裁判实测难度定价,「奖励异常」被结构性排除
- */
+/** 程序化终局世界生成器:随机规则 × 敌池 × 路线 × 界主 → 模拟裁判过审 → 正式虚界 */
 import type { CelestialWorldDef, WorldFoeShape, WorldRouteNode } from '@/types'
 import { mulberry32, RandomService } from '@/utils/random'
 import { jaccardDistance } from '@/utils/setMath'
@@ -20,7 +15,6 @@ const NAME_HEADS = ['玄冥', '赤霄', '雷狱', '幽荒', '碧落', '鎏金', 
 const NAME_TAILS = ['天', '渊', '墟', '穹', '泽', '狱']
 const SEALS = ['虚', '幻', '玄', '冥', '溟', '荒']
 
-/** 生成敌池:四天全部敌人 + 试炼傀影 */
 const SHAPE_POOL: WorldFoeShape[] = [...CELESTIAL_WORLDS.flatMap(w => w.foes), ...TRIAL_FOES]
 
 function shapeRisk(s: WorldFoeShape): string {
@@ -48,7 +42,7 @@ export interface VoidWorldAudit {
   second: number
 }
 
-/** 裁判:一次生成是否配得上成为世界 */
+/** 平衡裁判:各流派模拟通关率 */
 export function auditVoidWorld(world: CelestialWorldDef, runs = 10): VoidWorldAudit {
   const rates = BUILD_PROFILES.map((p, i) => ({
     name: p.name,
@@ -63,18 +57,18 @@ export function auditVoidWorld(world: CelestialWorldDef, runs = 10): VoidWorldAu
 }
 
 function passes(a: VoidWorldAudit): boolean {
-  // ≥3 可行 · 无近必胜 · 能被打穿 · 分布不塌缩(P22 门)
+  // ≥3 可行 · 无近必胜 · 能被打穿 · 分布不塌缩
   return a.viable >= 3 && a.best <= 0.97 && a.best >= 0.5 && a.second >= a.best * 0.5
 }
 
-// ---------- 新颖度(Phase 24):程序化生成不许随机换皮 ----------
+// ---------- 新颖度 ----------
 
 /** 新世界与历史最近邻的差异下限 */
 export const NOVELTY_MIN = 0.25
 
 export interface HistoryEntry {
   world: CelestialWorldDef
-  /** 该世界最优两流派(可选;虚界历史无审计缓存时不参与此维) */
+  /** 该世界最优两流派(可选) */
   topStyles?: string[]
 }
 
@@ -102,7 +96,6 @@ function ruleDistance(a: CelestialWorldDef, b: CelestialWorldDef): number {
   return Math.min(1, Math.sqrt(sum / va.length) * 2.2)
 }
 
-/** 敌机制集合:技能效果 + 高闪避 + 重击标记 */
 function foeMechSet(w: CelestialWorldDef): Set<string> {
   const out = new Set<string>()
   for (const f of [...w.foes, w.guardian]) {
@@ -115,14 +108,14 @@ function foeMechSet(w: CelestialWorldDef): Set<string> {
   return out
 }
 
-/** 最优流派差异:top2 完全相同=0,半同=0.5,全异=1;历史无审计时取中性 0.5 */
+/** 最优两流派差异;历史无审计时取中性 0.5 */
 function styleDistance(auditTop: string[], entry: HistoryEntry): number {
   if (!entry.topStyles) return 0.5
   const overlap = auditTop.filter(s => entry.topStyles!.includes(s)).length
   return 1 - overlap / 2
 }
 
-/** 新颖度 = 与历史最近邻世界的加权差异(0~1,越高越新) */
+/** 新颖度:与历史最近邻世界的加权差异(0~1,越高越新) */
 export function noveltyScore(world: CelestialWorldDef, audit: VoidWorldAudit, history: HistoryEntry[]): number {
   if (history.length === 0) return 1
   const mech = foeMechSet(world)
@@ -138,7 +131,7 @@ export function noveltyScore(world: CelestialWorldDef, audit: VoidWorldAudit, hi
   return nearest
 }
 
-/** 手工四天的审计缓存(最优两流派),首次使用时计算 */
+/** 手工四天的审计缓存,首次使用时计算 */
 let manualHistory: HistoryEntry[] | null = null
 
 export function defaultHistory(): HistoryEntry[] {
@@ -157,14 +150,12 @@ export function defaultHistory(): HistoryEntry[] {
 function generateCandidate(seed: number): CelestialWorldDef | null {
   const rng = new RandomService(mulberry32(seed))
   const name = `${pick(rng, NAME_HEADS)}${pick(rng, NAME_TAILS)}`
-  // 规则:变数池抽 2~3 条(规则来源与天道变数同宗)
   const mutPool = [...MUTATORS]
   const mutCount = rng.int(2, 3)
   const picked = []
   for (let i = 0; i < mutCount && mutPool.length; i += 1) {
     picked.push(mutPool.splice(rng.int(0, mutPool.length - 1), 1)[0]!)
   }
-  // 语义完整性(Phase 25):主题至多两轴,须讲得通,不许大杂烩
   const themes = picked.map(m => MUTATOR_THEMES[m.id]).filter((t): t is MutatorTheme => t !== undefined)
   const themeSet = new Set(themes)
   if (themeSet.size > 2) return null
@@ -197,7 +188,6 @@ function generateCandidate(seed: number): CelestialWorldDef | null {
     return out
   }, {})
 
-  // 敌池与界主
   const foeA = pick(rng, SHAPE_POOL)
   let foeB = pick(rng, SHAPE_POOL)
   if (foeB === foeA) foeB = SHAPE_POOL[(SHAPE_POOL.indexOf(foeA) + 1) % SHAPE_POOL.length]!
@@ -210,7 +200,6 @@ function generateCandidate(seed: number): CelestialWorldDef | null {
     skills: guardianBase.skills.map(s => ({ ...s }))
   }
 
-  // 路线:3 层 × 2 节点
   const routes: [WorldRouteNode, WorldRouteNode][] = []
   for (let layer = 0; layer < 3; layer += 1) {
     const nodes: WorldRouteNode[] = []
@@ -230,14 +219,12 @@ function generateCandidate(seed: number): CelestialWorldDef | null {
     routes.push([nodes[0]!, nodes[1]!])
   }
 
-  // 规则预算(Phase 25):世界复杂度同账管理,超支流产
   if (budgetOfRules(rules) > WORLD_BUDGET_CAP) return null
 
   return {
     id: 'void',
     name,
     seal: pick(rng, SEALS),
-    // 变数织成的天界站在阶梯最深处:比无相天更深一档(玩家自己改规则,敌人也就照着最深的一界定标)
     anchorTier: VOID_ANCHOR_TIER,
     desc: `此乃「${identity}」之界,天道以变数织成。`,
     ruleText: picked.map(m => `${m.name}:${m.text}`),
@@ -257,12 +244,12 @@ export interface GeneratedWorld {
   audit: VoidWorldAudit
   /** 与历史最近邻世界的差异(0~1) */
   novelty: number
-  /** 淘汰了多少个不合格候选 */
+  /** 淘汰的不合格候选数 */
   rejected: number
 }
 
 /**
- * 生成一个过审虚界:候选 → 平衡裁判 → 新颖度门 → 不合格换种子重来。
+ * 生成过审虚界:候选 → 平衡裁判 → 新颖度门,不合格换种子重来。
  * 奖励按实测难度定价:最优流派通率越低,道源越高
  */
 export function generateApprovedWorld(baseSeed: number, maxTries = 200, history?: HistoryEntry[]): GeneratedWorld | null {

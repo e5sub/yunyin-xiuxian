@@ -1,20 +1,6 @@
 /**
- * 逆旅契动机审计
- *
- * 逆旅契已经完成技术验证:道果第一次真的会下降,且回路没被接回来。
- * 但它同时暴露出一个更深的问题 —— **不可复利 ≠ 有吸引力**。
- *
- * 四份契本质上是「玩家主动购买一个困难」。理性玩家只在
- * 「已经不缺道果 + 想挑战自己」时才会签。这本身没问题,
- * 但要先弄清一件事:
- *
- *   **它们到底创造了玩法变化,还是只是让数字变差?**
- *
- * 判据很硬:若签契后**最优构筑不变、排序不变**,只是全体胜率等比下降,
- * 那就是纯粹变难,没有新决策。这时该改的是契的玩法改变程度,
- * 而不是给它补奖励 —— 补奖励只会把刚刚切断的回路again接回来。
- *
- * 本模块只做度量,不改数值、不加任何奖励。
+ * 逆旅契动机审计:签契后是改变构筑排序,还是只让胜率等比下降。只度量,不改数值、不加奖励。
+ * 契动机不足时改玩法改变程度,不补奖励:补奖励会把已切断的回路接回来。
  */
 import type { CombatRules } from '@/types'
 import { mulberry32, RandomService } from '@/utils/random'
@@ -24,12 +10,7 @@ import { LIFE_TRIALS, type LifeTrialDef } from '@/data/lifeTrials'
 
 // ============ 一、在给定规则下评估构筑 ============
 
-/**
- * 带规则的对战。
- *
- * buildSim.runMatchup 不接受 CombatRules,故在此复刻一份 ——
- * 唯一的差别就是把契约规则传进 resolveCombat
- */
+/** buildSim.runMatchup 的复刻,唯一差别是把契约规则传进 resolveCombat(runMatchup 不接受 CombatRules) */
 function winRateUnder(profile: BuildProfile, archIdx: number, rules: CombatRules | undefined, n: number, seed: number): number {
   const arch = ENEMY_ARCHETYPES[archIdx]!
   const rng = new RandomService(mulberry32(seed))
@@ -53,7 +34,7 @@ export interface BuildStanding {
   id: string
   name: string
   winRate: number
-  /** 在该规则下的排名(0 为最强) */
+  /** 排名,0 为最强 */
   rank: number
 }
 
@@ -82,18 +63,11 @@ export interface TrialImpact {
   topChanged: boolean
   /** 受影响最大与最小的构筑(胜率变化差) */
   spread: number
-  /** 相对基线,各构筑胜率变化的差异度;接近 0 表示等比变难 */
+  /** 各构筑胜率变化的差异度;接近 0 即等比变难 */
   differential: number
 }
 
-/**
- * 度量一份契创造的差异。
- *
- * 两个关键量分开看:
- *   drop         变难了多少 —— 高 drop 只说明惩罚重
- *   rankShifts   决策变了没有 —— 这才是玩法价值的来源
- * 若 drop 高而 rankShifts 为 0,则契约只是罚款,不是玩法
- */
+/** 度量一份契创造的差异;drop 高而 rankShifts 为 0 即只是罚款 */
 export function trialImpact(trial: LifeTrialDef, n = 60): TrialImpact {
   const base = standings(undefined, n)
   const after = standings(trial.rules, n)
@@ -132,19 +106,13 @@ export function allImpacts(n = 60): TrialImpact[] {
   return LIFE_TRIALS.map(t => trialImpact(t, n))
 }
 
-/**
- * 契约的玩法价值判定。
- *
- * `differential` 是核心:它衡量「各构筑受影响是否不均」。
- * 等比变难 → differential ≈ 0 → 玩家不需要改变任何选择,只是更难
- * 不均影响 → differential 大 → 某些构筑被针对,某些被抬起,产生真实取舍
- */
+/** 契约的玩法价值档 */
 export type PlayValue =
-  /** 改变了构筑排序,创造真实决策 */
+  /** 改变构筑排序 */
   | 'reshapes'
-  /** 影响不均但未改排序,有倾向性 */
+  /** 影响不均但未改排序 */
   | 'tilts'
-  /** 等比变难,纯罚款 */
+  /** 等比变难 */
   | 'flat'
 
 export function playValueOf(im: TrialImpact, tiltThreshold = 0.02): PlayValue {
@@ -154,12 +122,7 @@ export function playValueOf(im: TrialImpact, tiltThreshold = 0.02): PlayValue {
 
 // ============ 三、决策维度覆盖 ============
 
-/**
- * 玩家在一世里会做的决策。
- *
- * 契约若只落在「战斗数值」一格,它就只能靠自我挑战支撑动机;
- * 落在越多格,越有可能让这一世真的**不一样**
- */
+/** 玩家一世里的决策维度 */
 export type DecisionAxis =
   | 'build'
   | 'region'
@@ -186,23 +149,13 @@ export interface AxisCoverage {
 }
 
 /**
- * 逐契的决策维度覆盖。
- *
- * `build` 一格原本预期是空的 —— 直觉认为「全局乘区等比变难,构筑排序不动」。
- * 实测推翻了它:四份契**全部改变构筑排行**,最不均的一份让首尾构筑
- * 拉开 63.8pp。故契约不是纯罚款,它确实在战斗内部创造了取舍。
- *
- * 但 region/order/encounter/goal 四格确实一个都碰不到 ——
- * 四份契都只挂在 CombatRules 上,不改变历练路线、解锁顺序、
- * 遭遇构成与本世目标。
- *
- * 注意:这里的 `build` 是静态标注,由 spec 用实测结果校验一致性;
- * 若将来契约改到不再影响排序,标注与实测脱节会立刻变红
+ * 逐契的决策维度覆盖(静态标注)。
+ * build 由 spec 用实测校验:四份契全部改变构筑排行(首尾最大拉开 63.8pp)。
+ * 契只挂在 CombatRules 上,碰不到 region/order/encounter/goal。
  */
 export const AXIS_COVERAGE: AxisCoverage[] = LIFE_TRIALS.map(t => ({
   trialId: t.id,
-  // record 与 node 是逆旅契本身带来的:履历一笔 + 立契这个决策点
-  // build 由实测证实(见 spec 的一致性校验)
+  // record、node 来自立契本身:履历一笔 + 立契决策点
   axes: ['build', 'record', 'node'] as DecisionAxis[],
   evidence: `rules = ${JSON.stringify(t.rules)};改变构筑排序,但只作用于 resolveCombat,不触碰历练、解锁、目标`
 }))
@@ -214,7 +167,7 @@ export function coveredAxes(): DecisionAxis[] {
   return [...set]
 }
 
-/** 一个决策维度都没碰到的那些 */
+/** 未被任何契触及的决策维度 */
 export function untouchedAxes(): DecisionAxis[] {
   const covered = new Set(coveredAxes())
   return (Object.keys(AXIS_NAMES) as DecisionAxis[]).filter(a => !covered.has(a))
@@ -222,16 +175,7 @@ export function untouchedAxes(): DecisionAxis[] {
 
 // ============ 四、架构边界 ============
 
-/**
- * 道果消费系统的核心约束(本次确立,供未来所有出口沿用)。
- *
- *   Rule Space                        可动
- *   StatMods / Economy / DaoFruit / Insight   不可动
- *
- * 这条边界允许相当大胆的内容 —— 「本世不得使用某类丹药」
- * 「本世只能带一件法宝」「本世历练路线受限」都改变玩法,
- * 却都不制造新的跨世成长闭环
- */
+/** 道果消费出口的边界:Rule Space 可动;StatMods / Economy / DaoFruit / Insight 不可动 */
 export const MUTABLE_SPACE = ['CombatRules', '历练路线', '可用物品', '解锁顺序', '本世目标'] as const
 export const IMMUTABLE_SPACE = ['StatMods', 'Economy(资源)', 'DaoFruit', 'Insight(宿慧)'] as const
 

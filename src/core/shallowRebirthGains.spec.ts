@@ -1,14 +1,5 @@
 /* eslint-disable no-console */
-/**
- * 浅轮回收益面审计
- *
- * 要回答的问题:**金丹轮回一世,到底能永久推进哪些东西?**
- *
- * 判据:
- *   若只有道果 → 健康,玩家在「刷资源」与「历练内容」之间做选择
- *   若还能大量推进其他永久资产 → 收益面过宽,这才是
- *     「反复轮回却觉得没意义」的真正来源:什么都在涨,却没一样非深修不可
- */
+/** 浅轮回收益面审计。判据:只有道果 → 健康;还能大量推进其他永久资产 → 收益面过宽 */
 import { describe, expect, it } from 'vitest'
 import { SHALLOW_GAINS, summarizeShallow } from './shallowRebirthGains'
 import { qualifiedRewards } from './contentGateAudit'
@@ -33,7 +24,7 @@ describe('浅轮回收益 · 金丹一世能推进什么', () => {
       `\n可推进 ${s.progressable} 项(无上限 ${s.unbounded.length} + 有上限 ${s.capped.length})、` +
         `一次性 ${s.onetime.length} 项、够不着 ${s.gated.length} 项`
     )
-    // 判据里的「健康」情形是只有道果;实测远不止
+    // 「健康」= 只有道果
     expect(s.progressable).toBeGreaterThan(1)
     expect(s.unbounded.map(g => g.name)).toContain('道果')
   })
@@ -63,7 +54,7 @@ describe('浅轮回收益 · 与深修的对照', () => {
   it('深修独有的只剩「高阶知识 + 天界」,其余全在浅轮回覆盖范围内', () => {
     // contentGateAudit 认定的四类合格回报
     const deep = qualifiedRewards().map(g => g.name)
-    // 而浅轮回能推进的清单里已包含「认知」——两者在低阶部分重叠
+    // 浅轮回清单已含「认知」,两者低阶部分重叠
     const shallowLore = SHALLOW_GAINS.find(g => g.id === 'lore')!
     expect(shallowLore.kind).toBe('capped')
     console.log(
@@ -75,9 +66,7 @@ describe('浅轮回收益 · 与深修的对照', () => {
 
   it('诊断:什么都在涨,才是「反复轮回没意义」的来源', () => {
     const s = summarizeShallow()
-    // 玩家金丹刷一世,道果、宿慧、天赋、灵脉、灵兽、认知、成就同时前进。
-    // 没有任何一样是「非深修不可」,于是深修在体感上从未成为必需——
-    // 而所有东西又都在缓慢前进,于是每一世都不特别
+    // 道果、宿慧、天赋、灵脉、灵兽、认知、成就同时前进
     expect(s.progressable).toBeGreaterThanOrEqual(7)
     console.log(
       `\n金丹一世同时推进 ${s.progressable} 项永久资产。没有一样非深修不可,` +
@@ -96,18 +85,14 @@ describe('浅轮回收益 · 与深修的对照', () => {
 
 describe('浅轮回收益 · 可动的地方', () => {
   it('宿慧是意外发现的第二个无界项', () => {
-    // 此前 samsaraAudit 只把道果列为无界。宿慧同样每世线性入账且无上限,
-    // 虽不直接给战力(它决定阶位),但决定功法保留档与认知补齐量,
-    // 因此同样是「浅轮回永远有正收益」的来源之一
+    // 宿慧每世线性入账、无上限;不直接给战力(决定阶位),但决定功法保留档与认知补齐量
     const insight = SHALLOW_GAINS.find(g => g.id === 'insight')!
     expect(insight.kind).toBe('unbounded')
     expect(insight.perLife).toContain('+6')
   })
 
   it('师承是唯一真正的一次性资产——可作为设计参照', () => {
-    // adoptMentor 的 `if (mentor.value !== null) return` 是全项目唯一
-    // 「拿一次就锁死」的写法。若要给深修配可重复回报,这是反例;
-    // 若要给浅轮回收窄收益面,这是正例
+    // adoptMentor 的 `if (mentor.value !== null) return` 是全项目唯一「拿一次就锁死」的写法
     const mentor = SHALLOW_GAINS.find(g => g.id === 'mentor')!
     expect(mentor.kind).toBe('onetime')
     const others = SHALLOW_GAINS.filter(g => g.kind === 'onetime')

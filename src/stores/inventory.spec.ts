@@ -1,11 +1,6 @@
 /**
- * 装备槽属性汇总(equipMods)守卫。
- *
- * inventory.equipMods 是「已装备件 + 法宝被动」合计的唯一权威,喂进 finalStats。
- * 此前零直接规格(statBreakdown 只测比例折算,不测原始按槽汇总)——一个把未装备件
- * 掺进来、或叠加错、或卸下不撤的回归,会静默腐蚀玩家总属性。
- * 这里用 mergeMods 对「恰好已装备的那批 resolveEquipStats.mods」作真值,断言
- * equipMods 深等(能抓住幻影来源/叠加错/漏撤三类回归)。
+ * 装备槽属性汇总(equipMods)守卫:equipMods 是「已装备件 + 法宝被动」合计的唯一权威,喂进 finalStats。
+ * 真值取 mergeMods(已装备件的 resolveEquipStats.mods) 深等,抓幻影来源/叠加错/漏撤三类回归。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -45,14 +40,13 @@ describe('装备槽属性汇总(equipMods)守卫', () => {
     inv.equip('a', 'body')
     inv.equip('b', 'head')
     const both = mergeMods([resolveEquipStats(a).mods, resolveEquipStats(b).mods])
-    // 深等即证明两件都在(若 b 被忽略/覆盖,equipMods 只会等于单件合并,不会等于 both)
     expect(inv.equipMods).toEqual(both)
   })
 
   it('未装备件不掺:多摆一件未装备的,equipMods 深等只含已装件', () => {
     const inv = useInventoryStore()
     const a = mk('a', [{ id: 'atk1', roll: 0.5 }])
-    const c = mk('c', [{ id: 'hp1', roll: 0.9 }]) // 不装备
+    const c = mk('c', [{ id: 'hp1', roll: 0.9 }])
     inv.items = [a, c]
     inv.equip('a', 'body')
     expect(inv.equipMods).toEqual(mergeMods([resolveEquipStats(a).mods]))
@@ -74,11 +68,6 @@ describe('装备槽属性汇总(equipMods)守卫', () => {
     expect(useInventoryStore().equipMods).toEqual({})
   })
 
-  /**
-   * 坏档/导入档里两件同 uid:`equippedUids` 是 uid 集合,装备一次会让两件同时
-   * 计入属性(翻倍),而两件又都从行囊里消失 —— 既看不见,也没拿到该得的那份。
-   * 修形只留先出现的一件。
-   */
   it('sanitize:重复 uid 只留先出现的一件,属性不翻倍、另一件仍可行囊', () => {
     const inv = useInventoryStore()
     const first = mk('dup', [{ id: 'atk1', roll: 0.5 }])
@@ -106,15 +95,9 @@ describe('装备槽属性汇总(equipMods)守卫', () => {
     expect(inv.artifacts, '库里同一件法宝只留一条').toHaveLength(1)
     expect(inv.equippedArtifacts, '祭炼位同一件只占一个').toEqual(['af_muyu'])
     const value = artifactValue(artifactDef('af_muyu')!, 0)
-    // 只算一次:与单件祭炼的值深等(算两次会把 maxHpPct 叠加成两倍)
     expect(inv.equipMods).toEqual(mergeMods([value.passive]))
   })
 
-  /**
-   * 装备栏里的坏映射会让一件装备从行囊消失、却不出现在任何槽卡上:
-   * 槽名认不得(旧版/手改)、uid 对不上任何一件、件与槽不符、一件占两槽。
-   * 只保留「槽名合法 + 件存在 + 件属该槽 + 未被占用」的映射。
-   */
   it('sanitize:坏槽位映射被清掉,装备回到行囊而不是凭空消失', () => {
     const inv = useInventoryStore()
     const weapon = mk('w1', [], 'w_qingshuang')
@@ -124,11 +107,11 @@ describe('装备槽属性汇总(equipMods)守卫', () => {
     inv.$patch({
       equipped: {
         weapon: 'w1',
-        // 同一件占两个槽:第二个槽不该成立
+        // 同一件占两槽
         head: 'w1',
-        // uid 对不上任何一件(ghost)
+        // uid 对不上任何一件
         body: 'ghost',
-        // 件与槽不符:这其实是头冠
+        // 件与槽不符:实为头冠
         boots: 'h1',
         // 槽名认不得
         unknownSlot: 'b1'
@@ -164,13 +147,7 @@ describe('装备槽属性汇总(equipMods)守卫', () => {
     expect(inv.equippedArtifacts, '野 id 不会在祭炼位上白占一格').toEqual(['af_muyu'])
   })
 
-  /**
-   * 法宝重数写成字符串/NaN 时,`level >= ARTIFACT_MAX_LEVEL` 为假,祭炼价
-   * `Math.pow(1.6, level)` 变成 NaN;服务又把 NaN 当成「不缺料」,照扣灵石、
-   * 报成功,并把悟道点写成 NaN。sanitize 必须把重数也修成有限整数。
-   *
-   * 故障注入:去掉 level 归一化 → 本条第一个断言即红,后续会以 NaN 价/库存失败。
-   */
+  /** 故障注入:去掉 level 归一化,本用例第一个断言即红。 */
   it('sanitize:法宝坏重数归一后,祭炼不会把悟道点写成 NaN', () => {
     const inv = useInventoryStore()
     const res = useResourcesStore()
@@ -291,15 +268,7 @@ describe('法宝公共写入边界 · 目录、拥有、满重与祭炼槽', () 
     expect(inv.equippedArtifacts).toEqual(['af_lihuo', 'af_xuantian'])
   })
 
-  /**
-   * 替换分支不能替「已经超编」的列表打圆场。
-   *
-   * 境界跌落(元婴位没了)、未经 sanitize 的内存直塞,都能让佩带列表**本来就超编**。
-   * 旧的 `slice(1)` 只摘掉一件、余下的照旧生效 —— 于是从这条路进去,
-   * 「法宝位上限」形同虚设,超编的每一件被动都还在身上。
-   *
-   * 故障注入:把 `kept` 改回 `equippedArtifacts.value.slice(1)`,本条必红(长度 2)。
-   */
+  /** 故障注入:把 `kept` 改成 `equippedArtifacts.value.slice(1)`,本用例红(长度 2)。 */
   it('槽位降到 1 位后替换法宝,结果必须只剩 1 件', () => {
     const inv = useInventoryStore()
     inv.$patch({
@@ -308,23 +277,14 @@ describe('法宝公共写入边界 · 目录、拥有、满重与祭炼槽', () 
         { defId: 'af_lihuo', level: 0 },
         { defId: 'af_xuantian', level: 0 }
       ],
-      // 超编:两件在身,而当前境界只开一位
+      // 超编:两件在身,只开一位
       equippedArtifacts: ['af_muyu', 'af_lihuo']
     })
     expect(inv.toggleArtifact('af_xuantian', 1)).toBe('replaced')
     expect(inv.equippedArtifacts, '替换后仍超编 —— 槽位上限在这条路上失效').toEqual(['af_xuantian'])
   })
 
-  /**
-   * 按钮点名的那件，得真的让位。
-   *
-   * 替换分支的剩余规则是 `留最近的 slots-1 件`，而提示上只点名了第一件。
-   * 两条规则分开写时就分异了:按钮上读到的与真正被替下的对不上号 ——
-   * 玩家照着提示去行囊找那件,发现它还在,而另一件正好不见了。
-   *
-   * 故障注入: 把 `artifactEvictedBy` 改回只返回 `equipped[0]`
-   * (单件), 本条必红。
-   */
+  /** 故障注入:把 `artifactEvictedBy` 改成只返回 `equipped[0]`(单件),本用例红。 */
   it('提示名单与真正让位的那件对得上（含超编列表）', () => {
     const inv = useInventoryStore()
     inv.$patch({
@@ -337,7 +297,6 @@ describe('法宝公共写入边界 · 目录、拥有、满重与祭炼槽', () 
     })
     const before = [...inv.equippedArtifacts]
     expect(inv.toggleArtifact('af_xuantian', 1)).toBe('replaced')
-    // 显示的让位名单必须等于真正被替下的那些
     const named = artifactEvictedBy(before, 1)
     expect(named.length, '超编时不只有一件让位').toBeGreaterThan(1)
     const kept = before.filter(id => !named.includes(id))
@@ -345,19 +304,8 @@ describe('法宝公共写入边界 · 目录、拥有、满重与祭炼槽', () 
   })
 
   /**
-   * 让位名单必须在**动手之前**取,不然后取到的是新佩上来的那一件。
-   *
-   * `artifactEvictedBy` 吃的是 `equippedArtifacts` 现列表,而 toggle 一按下去
-   * 这个列表就被改写了。事后再算一遍,读到的是「刚戴上来的这一件,按新列表会让
-   * 谁让位」—— 实测 1 位之下换件:事前取是 `['墨玉葫芦']`(真正让位的那件),
-   * 事后取是 `['玄天镜']`(刚戴上来的那件)。toast 于是念着新法宝的名字,
-   * 玩家照它去行囊核对,永远对不上账。
-   *
-   * 这条把「取名单 → 换件」的顺序钉成判据:两次取值必须不同,且事前那一次
-   * 才等于真正被替下的那些。
-   *
-   * 故障注入:把 ArtifactPanel.toggleArtifact 里的 `artifactEvictedBy(...)` 调用
-   * 挪到 `inventory.toggleArtifact(...)` 之后,本条必红。
+   * 让位名单须在换件之前取:`artifactEvictedBy` 读现列表,换件后再取会指向新佩上的那件。
+   * 故障注入:把 ArtifactPanel.toggleArtifact 里的 `artifactEvictedBy(...)` 挪到 `inventory.toggleArtifact(...)` 之后,本用例红。
    */
   it('让位名单取早了才作数:换件之后同一份判据会改指刚戴上来的那一件', () => {
     const inv = useInventoryStore()
@@ -377,21 +325,13 @@ describe('法宝公共写入边界 · 目录、拥有、满重与祭炼槽', () 
     const post = artifactEvictedBy(inv.equippedArtifacts, 1)
     expect(post, '换完之后列表只剩新件,再算就改指它自己了').toEqual(['af_xuantian'])
     expect(post, '事后取的名单指的不是真正让位的那一件').not.toEqual(pre)
-    // 真正被替下的那一件,与事前取到的那一份一致
+    // 真正被替下的与事前取的一致
     expect(inv.equippedArtifacts).not.toContain('af_muyu')
   })
 
   /**
-   * 超编的祭炼位列表不许把第三件的被动一起算进属性。
-   *
-   * 槽位上限从前有四道裁剪(读档 sanitize / toggleArtifact 替换 / applyLoadout
-   * 切换 / 忆战快照),而 `currentArtifacts` —— equipMods、buildPlayerSnap、
-   * buildDetect 共同的读入口 —— 偏偏没裁:坏档或内存直塞写进三件时,第三件的
-   * 被动与神通一起进面板、一起进战斗。实测三件 maxHp 法宝(5% + 21.6% + 18%)
-   * 在两位之下给出 51.9% 而非 44.6%,玩家却从未点过那个按钮。
-   *
-   * 故障注入:把 `currentArtifacts` 的 `.slice(0, ARTIFACT_MAX_SLOTS)` 删掉,
-   * 这一条与下面那条同时红。
+   * `currentArtifacts` 是 equipMods、buildPlayerSnap、buildDetect 共同的读入口。
+   * 故障注入:删掉 `currentArtifacts` 的 `.slice(0, ARTIFACT_MAX_SLOTS)`,本用例红。
    */
   it('currentArtifacts 不超法宝位上限:超编件不进属性汇总', () => {
     const inv = useInventoryStore()
@@ -404,13 +344,12 @@ describe('法宝公共写入边界 · 目录、拥有、满重与祭炼槽', () 
       equippedArtifacts: ['af_muyu', 'af_bishui', 'af_xianding']
     })
     expect(inv.currentArtifacts, '生效的只该是前 ARTIFACT_MAX_SLOTS 件').toHaveLength(ARTIFACT_MAX_SLOTS)
-    // 真值独立复算:前两件的 maxHp 被动合并(凡品零重,倍率 1)
+    // 真值独立复算:前两件的被动合并
     const expected = mergeMods([
       artifactValue(artifactDef('af_muyu')!, 0).passive,
       artifactValue(artifactDef('af_bishui')!, 0).passive
     ])
     expect(inv.equipMods, '超编那件的被动不该混进汇总').toEqual(expected)
-    // 品阶倍率照常生效(af_bishui 是良品),这里只钉「第三件没进来」这件事
     const withoutThird = expected.maxHpPct ?? 0
     const withThird = withoutThird + artifactValue(artifactDef('af_xianding')!, 0).passive.maxHpPct!
     expect(inv.equipMods.maxHpPct, '第三件的 maxHp 不该进来').toBeCloseTo(withoutThird, 9)

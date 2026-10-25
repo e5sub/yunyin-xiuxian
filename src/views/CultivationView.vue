@@ -1,8 +1,6 @@
 <template>
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
-    <!-- 境界与突破(修为圆满时整卡蓄势充能) -->
     <div class="card-ink px-4 py-4" :class="player.expFull ? 'card-charged' : ''">
-      <!-- 法球主视觉:修为环随修行转动,闭关时点亮、圆满时蓄势 —— 第一眼就是"这一页在干什么" -->
       <div class="flex flex-col items-center gap-3">
         <CultivationOrb :active="retreating" :full="player.expFull" :progress="player.expProgress">
           <span class="font-kai text-[18px]">道</span>
@@ -12,7 +10,7 @@
           <p class="font-kai text-[30px] tracking-[0.3em] text-ink">{{ player.realm.name }}</p>
           <p class="mt-0.5 font-kai text-[14px] tracking-[0.4em] text-cinnabar">{{ player.subName }}</p>
           <p class="mt-1 text-[11px] text-ink-faint">{{ player.realm.desc }}</p>
-          <!-- 可解释性:这一境取自何处、因何承接(典籍 / 网文常用 / 道家本源) -->
+          <!-- 这一境的出处(典籍 / 网文常用 / 道家本源) -->
           <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
             「{{ player.realm.basis }}」{{ player.realm.lore }}
           </p>
@@ -138,7 +136,6 @@
       <BreakthroughCard />
     </div>
 
-    <!-- 仙路旅途:从凡到仙的 21 境全景 —— 局部有「下一步」,这张是纵向视野:已至几境、距尽头还有多远 -->
     <section>
       <SectionTitle title="仙路" :hint="`已至 ${player.major + 1}/${REALMS.length} 境`" />
       <div class="card-ink mt-2 px-4 py-3">
@@ -149,15 +146,10 @@
     <RetreatCard />
 
 
-    <!-- 状态:无增益时给出空态,不再整段消失(会让玩家以为这功能不存在) -->
     <section>
       <SectionTitle title="状态" />
       <div v-if="activeBuffs.length" class="mt-2 flex flex-wrap gap-2">
-        <!--
-          状态胶囊每秒刷新一次,倒数文本必须定宽:formatCountdown 逐位补零,
-          再给它一个固定宽度的槽位(文字右对齐)—— 否则「10分0秒 → 10分1秒」
-          这一位的增减会把整排胶囊推来推去,看起来就是「状态一直在抖」。
-        -->
+        <!-- 倒数文本必须定宽(formatCountdown 逐位补零 + 固定宽度槽位),否则每秒刷新时整排胶囊会抖 -->
         <button
           v-for="b in activeBuffs"
           :key="b.def!.id"
@@ -178,7 +170,6 @@
       </div>
     </section>
 
-    <!-- 丹药速服 -->
     <section v-if="quickPills.length">
       <SectionTitle title="以药辅道" />
       <div class="mt-2 grid grid-cols-2 gap-2">
@@ -248,11 +239,7 @@
   const resources = useResourcesStore()
   const dongfu = useDongfuStore()
 
-  /**
-   * 修炼速度的来路 —— 玩家最常盯的就是这一行,故就地摊开:
-   *   基础(境界/层) × (1 + 各来源之和)
-   * 来源取自 finalStats.breakdown,与人物页属性明细同源,不在界面里另算一遍。
-   */
+  /** 修炼速度来路:基础(境界/层) × (1 + 各来源之和);来源取自 finalStats.breakdown,与人物页属性明细同源 */
   const showCultBreakdown = ref(false)
   const cultBase = computed(() => baseCultPerSec(player.major, player.sub))
   const cultSources = computed(() =>
@@ -271,7 +258,7 @@
     const sec = qiEtaSec()
     return sec > 0 ? formatDuration(sec) : ''
   })
-  /** 是否仍差一点才到「灵气充盈」—— 到了就不报,因为修为已在享那档加成 */
+  /** 距「灵气充盈」的估算时长文案;已到则不报 */
   const qiRichEtaText = computed(() => {
     const sec = qiRichEtaSec()
     return sec > 0 ? formatDuration(sec) : ''
@@ -281,14 +268,13 @@
     const sec = qiBankEtaSec()
     return sec > 0 ? formatDuration(sec) : ''
   })
-  /** 灵气充盈的修为加成(取自常数,不在界面手抄) */
+  /** 灵气充盈的修为加成,取自常数 */
   const qiRichBonusPct = computed(() => formatPercent(QI_RICH_BONUS))
 
   /**
-   * 灵气上限/恢复速度的来路 —— 与灵气条读同一份数,不在界面另算:
-   *   上限 = qiCap(境界,层) × dongfu.qiCapMult × (1 + finalStats 词条),floor 后入面板;
-   *   回复 = baseQiRegen(境界) × (1 + 词条)。
-   * 聚灵阵未建(<1)或词条为空时,对应因子为 0、行内不渲染,乘积不变。
+   * 灵气上限/恢复来路,与灵气条读同一份数:
+   * 上限 = qiCap(境界,层) × dongfu.qiCapMult × (1 + finalStats 词条),floor 后入面板;回复 = baseQiRegen(境界) × (1 + 词条)。
+   * 聚灵阵未建或词条为空时对应因子不渲染,乘积不变。
    */
   const showQiBreakdown = ref(false)
   const qiBase = computed(() => qiCap(player.major, player.sub))
@@ -305,10 +291,10 @@
 
   const now = useNow()
 
-  // Phase 28 闭关:只留「是否闭关中」给法球点亮;闭关卡本体在 components/cultivation/RetreatCard.vue
+  // 是否闭关中:只给法球点亮(闭关卡本体在 components/cultivation/RetreatCard.vue)
   const retreating = computed(() => isRetreating())
 
-  /** 灵气疗伤(修复)状态:负伤时才出现入口,代价随灵气容量指数增长 */
+  /** 灵气疗伤(修复)状态:负伤时才出现入口 */
   const repair = computed(() => qiRepairView())
 
   const activeBuffs = computed(() =>
@@ -318,9 +304,8 @@
   )
 
   /**
-   * 修行相关丹药快捷栏:按品质降序,越珍稀的越靠前(原为插入序,先拿到什么显什么)。
-   * 增益丹顶满时置灰并写「已顶」—— 与丹药详情、usePill 的 buffOverflowOf 同源,
-   * 别让快捷栏成了唯一一个「点了才白吃」的入口。判据读 useNow,与结算同钟。
+   * 修行丹药快捷栏,按品质降序。增益丹顶满时置灰并写「已顶」,与丹药详情、usePill 的 buffOverflowOf 同源;
+   * 判据读 useNow,与结算同钟。
    */
   const quickPills = computed(() =>
     Object.entries(inventory.pills)

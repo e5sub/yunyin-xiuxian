@@ -1,18 +1,8 @@
 /**
- * 数据完整性 —— 「写下的键」与「写下的门槛」都要成立
- *
- * 两类缺陷:
- *
- *   一 **属性键有人声明、没人写**:类型里留着一个属性键,却没有任何内容给它 ——
- *      等于一条永不生效的通道(反向也要查:vocabularyCoverage 管"没人读",这里管"没人写")。
- *      注:**属性键拼错**这一类不在此处 —— 类型系统已经拦住了:
- *      往 StatMods 写 `{ alchemyYieldX: 0.2 }` 时 vue-tsc 直接报
- *      「did not exist in type Partial<Record<AnyStatKey, number>>. Did you mean 'alchemyYield'?」
- *      (实测)。故不要再加一份正则启发式,那只会漏且吵。
- *   二 **门槛超出可达范围**:命题写着 minStage 9 而阶位只到 4 —— 那条命题永远不出现;
- *      同理 minRealm 超过最高境界、rank 超过最高品质,都是"看得见拿不到"。
- *
- * 判据都从真实来源倒推:属性键对着 types 的声明表,门槛对着各自的上界。
+ * 数据完整性
+ *   一 每个声明的属性键都有数据在写("没人读"由 vocabularyCoverage 管)。
+ *      属性键拼错由类型系统拦(vue-tsc 实测),不另加正则。
+ *   二 内容门槛不超出可达上界(minStage / minRealm / rank)。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'

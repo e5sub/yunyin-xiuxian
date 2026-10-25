@@ -1,11 +1,6 @@
 /**
- * 状态(buff)时长叠加 —— 同一状态重复施加时,新时长加到已有剩余时长上。
- *
- * 旧实现 `Math.max(旧 endsAt, now + dur)` 实为「刷新」:聚灵还剩 20 分钟时再服一颗同类丹,
- * 那 20 分钟直接作废,玩家连服丹药等于白丢药力。本文件锁住叠加语义与三条边界:
- *  1. 尚在生效 → 剩余时长相加(**丹药增益封顶在四个时辰**,见 core/buffCap;非丹药状态不限);
- *  2. 已过期实例 → 以 now 为基准,不把历史负剩余叠进来;
- *  3. 不同状态各自计时、未注册 id 静默忽略(不因叠加改动变成脏数据源)。
+ * 状态(buff)时长叠加:同一状态重复施加时剩余时长相加(丹药增益封顶四个时辰,见 core/buffCap;非丹药状态不限)。
+ * 边界:已过期实例以 now 为基准;不同状态各自计时;未注册 id 静默忽略。
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -18,7 +13,7 @@ import { gongfaDef, gongfaMaxLevel } from '@/data/gongfa'
 import { CONSUMABLE_BUFF_CAP_SEC } from '@/core/buffCap'
 
 const SEC = 1000
-// 用 `!` 断言会掩盖写错 id(addBuff 对未注册 id 静默 return,测试会以「buffs 为空」失败而非说明原因)
+// 此处不加 `!`:写错 id 时 addBuff 静默 return,叠加断言只会以「buffs 为空」失败
 const juling = buffDef('buff_juling')
 const ningshen = buffDef('buff_ningshen')
 
@@ -47,11 +42,11 @@ describe('状态时长叠加(addBuff)', () => {
     const cultivation = useCultivationStore()
     const t0 = 1_000_000
     cultivation.addBuff('buff_juling', t0)
-    // 过期前 600 秒(10 分钟)再服一颗:旧行为会把它压回 now+1800,白丢这 600 秒
+    // 过期前 600 秒再服一颗
     const t1 = t0 + (juling!.durationSec - 600) * SEC
     cultivation.addBuff('buff_juling', t1)
 
-    expect(cultivation.buffs).toHaveLength(1) // 同一状态仍是一条实例,不重复挂
+    expect(cultivation.buffs).toHaveLength(1)
     const remainSec = (cultivation.buffs[0]!.endsAt - t1) / SEC
     expect(remainSec).toBe(600 + juling!.durationSec)
   })
@@ -59,12 +54,11 @@ describe('状态时长叠加(addBuff)', () => {
   it('连服 N 次 → 攒不过上限:丹药增益封顶在四个时辰,到顶即停', () => {
     const cultivation = useCultivationStore()
     const t0 = 5_000_000
-    // 单颗一炷香(30 分),连服 20 颗 = 10 小时,越过四个时辰即停
+    // 单颗 30 分 × 20 = 10 小时,超过四个时辰
     for (let i = 0; i < 20; i++) cultivation.addBuff('buff_juling', t0)
 
     expect(cultivation.buffs).toHaveLength(1)
     const remainSec = (cultivation.buffs[0]!.endsAt - t0) / SEC
-    // 封顶(见 core/buffCap):最长 = 四个时辰,连服再多也攒不上去了
     expect(remainSec).toBe(CONSUMABLE_BUFF_CAP_SEC)
   })
 
@@ -73,7 +67,7 @@ describe('状态时长叠加(addBuff)', () => {
     const t0 = 5_000_000
     cultivation.addBuff('buff_juling', t0)
     expect(cultivation.buffs[0]!.added).toBe(juling!.durationSec * 1000)
-    // mid-effective 再加,added 在原值上累加,不随 now 归零
+    // 生效中再施加:added 累加,不随 now 归零
     cultivation.addBuff('buff_juling', t0 + 60_000)
     expect(cultivation.buffs[0]!.added).toBe(juling!.durationSec * 1000 * 2)
   })
@@ -82,7 +76,7 @@ describe('状态时长叠加(addBuff)', () => {
     const cultivation = useCultivationStore()
     const t0 = 1_000_000
     cultivation.addBuff('buff_juling', t0)
-    // 早已过期的实例(离线/坏档可能残留,pruneBuffs 未跑)
+    // 已过期但 pruneBuffs 未跑的实例
     const stale = t0 + (juling!.durationSec + 9999) * SEC
     cultivation.addBuff('buff_juling', stale)
 
@@ -133,13 +127,8 @@ describe('状态时长叠加(addBuff)', () => {
 })
 
 /**
- * 修炼速度 buff 叠加与单方到期撤除。
- *
- * buff_juling(聚灵, +50% 修速,丹药有 2× 上限)与 retreat(闭关, +150% 修速,无上限)
- * 是**两种不同状态但共用一个 cultivationSpeed 键**。时长叠加(cultivation/addBuff 与
- * buffCap)管的是同一状态多久,这里管的是**不同状态按合并求和**(不是覆盖):
- * 0.5 + 1.5 = 2.0(cultivationSpeed 不在递减/软阈值集里,天然线性),且一方到期
- * 只撤它自己的那一份、不殃及另一份。
+ * 不同状态共用 cultivationSpeed 键时按合并求和:聚灵 0.5 + 闭关 1.5 = 2.0(该键不在递减 / 软阈值集);
+ * 一方到期只撤自己那份。
  */
 describe('修炼速度 buff 叠加与单方到期撤除(buffMods)', () => {
   beforeEach(() => {
@@ -163,9 +152,9 @@ describe('修炼速度 buff 叠加与单方到期撤除(buffMods)', () => {
     const retreatEnd = t0 + buffDef('retreat')!.durationSec * SEC
     const afterRetreat = retreatEnd + 1
     expect(cul.buffMods.cultivationSpeed).toBe(2.0)
-    expect(cul.pruneBuffs(afterRetreat)).toBe(true) // 撤掉了什么
+    expect(cul.pruneBuffs(afterRetreat)).toBe(true)
     expect(cul.buffs.map(b => b.defId)).toEqual(['buff_juling'])
-    expect(cul.buffMods.cultivationSpeed).toBe(0.5) // 聚灵那份还留着
+    expect(cul.buffMods.cultivationSpeed).toBe(0.5)
   })
 
   it('各方全到期后:该键归零(键消失)', () => {
@@ -203,28 +192,27 @@ describe('sanitize:功法等级与悟道分支加固', () => {
       gongfaBranch: { m_taixuan: 'b_not_real', x_other: 'b_some' }
     } as never)
     c.sanitize()
-    // level 99 钳到 m_taixuan 满级(9),否则 perLevel 无限放大修速且无降级路径
+    // 99 钳到满级(9)
     expect(c.learned['m_taixuan']).toBe(gongfaMaxLevel(gongfaDef('m_taixuan')!))
-    // 分支 id 认不出 / 不是该功法已满级的条目 —— 一律清空(白送词条的注入洞)
+    // 认不出 / 不属于该功法的分支一律清空
     expect(Object.keys(c.gongfaBranch)).toHaveLength(0)
   })
 
   it('转世落回 1 层,分支仍按契约保留(不因「未满级」被读档/离线抹掉)', () => {
     const c = useCultivationStore()
     c.$patch({
-      // 转世把功法落回 1 层(reincarnation.carryGongfa 只留一部满级),但分支是「转世不失」的永久被动
       learned: { m_taixuan: 1 },
       gongfaBranch: { m_taixuan: 'b_taixuan_sha' }
     } as never)
     c.sanitize()
-    // 归属正确的分支在已习得功法上保留 —— 满级才选分支是「可悟道」闸,不是读档判据
+    // 满级是择分支的闸,不是读档判据
     expect(c.gongfaBranch['m_taixuan']).toBe('b_taixuan_sha')
   })
 
   it('仍拦注入:未习得功法上的分支被清(不白送词条)', () => {
     const c = useCultivationStore()
     c.$patch({
-      learned: {}, // m_taixuan 根本没学到
+      learned: {},
       gongfaBranch: { m_taixuan: 'b_taixuan_sha' }
     } as never)
     c.sanitize()
@@ -244,18 +232,12 @@ describe('sanitize:功法等级与悟道分支加固', () => {
       ]
     } as never)
     c.sanitize()
-    // 野功法升不了级、练不出效果,却会被转世原样带走,不能留
     expect(Object.keys(c.learned), '只留目录里认得的功法').toEqual(['m_taixuan', 's_tuna'])
     expect(c.mainGongfa, '野功法不能继续占主修位').toBeNull()
     expect(c.subGongfa, '野功法从辅修列表清掉,真辅修保留').toEqual(['s_tuna'])
-    // 野状态在面板上永远画不出来,只会白占到期检查
     expect(c.buffs.map(b => b.defId), '只留认得的状态').toEqual(['buff_juling'])
   })
 
-  /**
-   * 坏档里同一门辅修写两遍:槽位预算按数组条数算,重复项会白占一格,
-   * 把真正想上的后一门挤出去(装配页显示已选两门,实际只有一门在生效)。
-   */
   it('sanitize:辅修同一门写两遍只占一格,后面的辅修不被挤掉', () => {
     const c = useCultivationStore()
     c.$patch({
@@ -270,7 +252,6 @@ describe('sanitize:功法等级与悟道分支加固', () => {
     const c = useCultivationStore()
     c.$patch({
       learned: { m_taixuan: 1, s_tuna: 1, s_lianti: 1 },
-      // 主修位被写成辅修,辅修席又同时塞了主修与主修位上的同一门
       mainGongfa: 's_tuna',
       subGongfa: ['m_taixuan', 's_tuna', 's_lianti']
     } as never)
@@ -291,11 +272,6 @@ describe('sanitize:功法等级与悟道分支加固', () => {
     expect(c.subGongfa, '同一门不得主/辅各算一遍').toEqual(['s_tuna'])
   })
 
-  /**
-   * 同一状态写两条,`buffMods` 会把词条叠两次(聚灵 +50% 变 +100%)。
-   * 写入口 addBuff 只会有一条,故重复行是坏档复制 —— 只留剩余最久的那一行,
-   * 到期与本命时长都取该行,详情页报的份数与剩余时间才对得上。
-   */
   it('sanitize:同一状态两条只留剩余最久的一条,词条不再翻倍', () => {
     const c = useCultivationStore()
     const now = Date.now()
@@ -372,7 +348,6 @@ describe('辅修槽位约束:超出预算的伴生功法不白给(gongfaMods 与
     dongfu.setLevel('library', 3)
     expect(dongfu.subGongfaSlots).toBe(2)
 
-    // 学两门词条不同的辅修,按加装顺序占满 2 槽
     cul.learn('s_tuna') // cultivationSpeed
     cul.learn('s_lianti') // maxHpPct
     expect(cul.toggleSub('s_tuna', 2)).toBe(true)
@@ -385,12 +360,11 @@ describe('辅修槽位约束:超出预算的伴生功法不白给(gongfaMods 与
     expect(speedFull, '满槽时两门都该生效').toBeGreaterThan(0)
     expect(hpFull, '满槽时两门都该生效').toBeGreaterThan(hpBeforeLianti)
 
-    // 藏书楼跌回 0 级(转世后 levels 重算)→ 槽位 1,玩家选中的数组原样保留
+    // 藏书楼 0 级 → 槽位 1
     dongfu.setLevel('library', 0)
     expect(dongfu.subGongfaSlots).toBe(1)
     expect(cul.subGongfa, '槽位缩水不抹掉玩家的选择').toHaveLength(2)
 
-    // 只有先装的 s_tuna 生效;s_lianti 的 maxHpPct 掉回基准 —— 不再免费白给
     expect(modOf(player.finalStats.mods, 'cultivationSpeed'), '槽内首门仍生效').toBeGreaterThan(0)
     expect(modOf(player.finalStats.mods, 'maxHpPct'), '超槽辅修不得再白给词条').toBeCloseTo(hpBeforeLianti, 6)
   })
@@ -407,7 +381,6 @@ describe('悟道分支:选择随转世保留,加成只随满级且装配生效',
     expect(c.chooseBranch('m_taixuan', 'b_taixuan_sha')).toBe(true)
     expect(c.gongfaMods.attackPct, '满级装配时应吃到分支').toBeCloseTo(0.1, 6)
 
-    // 转世折损只保留「记得哪些功法/选过哪条路」,层数回到一层
     c.learned = { m_taixuan: 1 }
     expect(c.gongfaBranch.m_taixuan, '分支选择是永久记忆').toBe('b_taixuan_sha')
     expect(c.gongfaMods.attackPct, '未重新修满前不兑现满级分支').toBeUndefined()
@@ -439,8 +412,8 @@ describe('悟道分支:选择随转世保留,加成只随满级且装配生效',
     c.toggleSub('s_lianti', 2)
     expect(c.gongfaMods.qiRegen, '槽内满级辅修应吃分支').toBeCloseTo(0.06, 6)
 
-    dongfu.setLevel('library', 0) // 只剩 1 个辅修槽,s_tuna 超席
-    // 换一门不带 qiRegen 的辅修占住唯一席位,让「分支残留」与「槽内本体」分开可判
+    dongfu.setLevel('library', 0) // 1 个辅修槽,s_tuna 超席
+    // 不带 qiRegen 的辅修占住唯一席位,分支残留才可判
     c.toggleSub('s_lianti', 1)
     c.subGongfa = ['s_lianti', 's_tuna']
     expect(c.gongfaMods.qiRegen, '超席后分支词条不得残留').toBeUndefined()

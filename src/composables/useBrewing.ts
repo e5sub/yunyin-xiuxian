@@ -16,20 +16,14 @@ import { studyEta } from '@/core/loreService'
 import { formatDuration } from '@/utils/format'
 import type { GNum, PillDef } from '@/types'
 
-/**
- * 开炉炼丹的共用账本 —— 页面入口卡与开炉弹窗(BrewingDialog)同源调用。
- *
- * 入口卡要报「已知丹方 N 种 · 当前品灵草×M」,弹窗要逐方列出代价、把握、可炼炉数,
- * 两处若各算一份 recipes,迟早一条改了一处没改(项目「不做两本账」纪律)。
- * 内部读 store 照视图层原样:pinia 单例,与各调用方拿到的是同一个账。
- */
+/** 开炉炼丹的共用账本:页面入口卡与开炉弹窗(BrewingDialog)同读,recipes 只算这一份 */
 export function useBrewing() {
   const resources = useResourcesStore()
   const player = usePlayerStore()
   const inventory = useInventoryStore()
   const lore = useLoreStore()
   const cultivation = useCultivationStore()
-  // 药力状态随游戏钟走:药效到期后「已顶」要自己亮回来,暂停时又与结算一起冻住。
+  // 药力状态读游戏钟:到期自行复位,暂停时与结算一起冻住
   const now = useNow()
 
   const herbGrade = computed<HerbGrade>(() => herbGradeOfMajor(player.major))
@@ -42,7 +36,7 @@ export function useBrewing() {
         const able = craftability(id)
         const plan = craftBatchPlan(id)
         if (!def || !cost || !able) return null
-        // 增益丹顶满时再炼只会白占一格;判据与丹匣、修行速服同一把尺和同一把钟。
+        // 判据与丹匣、修行速服同尺同钟
         const overflow =
           def.kind === 'buff' && def.buffId
             ? buffOverflowOf(cultivation.buffs, def.buffId, now.value)
@@ -52,7 +46,7 @@ export function useBrewing() {
           cost,
           able,
           plan,
-          /** 行囊里已存几枚 —— 与丹匣同一份账(inventory.pills),不另数一遍 */
+          /** 行囊里已存几枚;与丹匣同读 inventory.pills */
           stock: inventory.pills[id] ?? 0,
           overflow
         }
@@ -70,7 +64,7 @@ export function useBrewing() {
         } =>
           x !== null
       )
-      // 现在能开炉的置顶,其余再按阶位 —— 进弹窗一眼看见此刻哪味立刻可炼
+      // 能开炉的置顶,其余按阶位
       .sort((a, b) => {
         const ca = a.plan.rounds > 0 ? 1 : 0
         const cb = b.plan.rounds > 0 ? 1 : 0
@@ -78,12 +72,11 @@ export function useBrewing() {
       })
   )
 
-  /** 浴火丹心(宿命传承):本世前几炉必成 —— 把握栏须如实反映(craftPill 真开炉强成 100%) */
+  /** 浴火丹心(宿命传承):本世前几炉必成(craftPill 强成 100%),把握栏须如实反映 */
   const craftGuarantee = computed(() =>
     craftGuaranteeRemaining(player.reincarnation.heritage, player.reincarnation.heritageUses)
   )
 
-  /** 技艺一览:名(DAO_NAMES 的道名 + 技艺名)、境地(skillStageName)、这项技艺管什么 */
   const skillRows = computed(() =>
     SKILLS.map(s => {
       const lv = lore.skillLevel(s.id)
@@ -91,10 +84,7 @@ export function useBrewing() {
     })
   )
 
-  /**
-   * 藏经阁翻检的当刻概况(开炉页顶部一行)。
-   * 读数在 core/loreService.studyEta —— 与 studyTick 同一优先序,界面不另算。
-   */
+  /** 藏经阁翻检概况(开炉页顶部一行);读 core/loreService.studyEta,与 studyTick 同一优先序 */
   const studyLine = computed(() => {
     const eta = studyEta()
     if (!eta) return ''
@@ -118,7 +108,7 @@ export function useBrewing() {
     return 'text-cinnabar'
   }
 
-  /** 「炼满」二步确认态:谁不按常量的炉数,一眼先交代总账 */
+  /** 「炼满」二步确认态 */
   const pillFullId = ref<string | null>(null)
   function runCraftFull(id: string, rounds: number): void {
     pillFullId.value = null

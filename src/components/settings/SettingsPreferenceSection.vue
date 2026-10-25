@@ -1,5 +1,4 @@
 <template>
-  <!-- 偏好:音频 / 动效 / 遇事勿扰 / 主题 / 战报速度 -->
   <div class="card-ink divide-y divide-ink/6 px-4">
     <div class="py-3">
       <label class="flex items-center justify-between">

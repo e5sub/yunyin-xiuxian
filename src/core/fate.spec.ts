@@ -1,14 +1,5 @@
 /* eslint-disable no-console -- 命盘是过程性验收,打印命宫落星 */
-/**
- * 命格验收(Phase 34.4)
- *
- * 紫微这一门的诚实之处写在数据注释里:没有生辰就不排真盘,只取十二宫与十四主星的象义。
- * 那么它必须守住的三条是:
- *
- *   一 十四主星各有其位 —— 不多不少,不重不漏(布不满就是假盘);
- *   二 同一个人同一世算多少次都是同一张盘(确定性),转世才重算;
- *   三 命格之力真的并入 finalStats —— 又是一门"看得见拿不到"的反面教材预防。
- */
+/** 命格验收:十四主星不重不漏;同人同世同盘,转世重算;命格之力并入 finalStats */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { readFileSync } from 'node:fs'
@@ -103,7 +94,7 @@ describe('紫微 · 命格之力真的进属性', () => {
     const chart = fateChart(fateSeed(linggen(50, 50), 0))
     const mods = fateMods(chart)
     expect(Object.keys(mods).length).toBeGreaterThan(0)
-    // 与卦不同:命格是底色,单通道不得压过问卦那种一时之盛
+    // 单通道不得压过问卦
     for (const v of Object.values(mods)) expect(Math.abs(v as number)).toBeLessThan(0.2)
   })
 
@@ -124,7 +115,7 @@ describe('紫微 · 命格之力真的进属性', () => {
       .replace(/<!--[\s\S]*?-->/g, '')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/.*$/gm, '')
-    // 只认"用过"的形态(列表渲染与派生调用),不认 import 那一行
+    // 只认用过的形态(列表渲染与派生调用),不认 import
     for (const token of ['in fateRows', 'fateLordLine(', 'in STARS', 'player.fateMods']) {
       expect(src, `界域志没有接上 ${token}`).toContain(token)
     }
@@ -151,7 +142,7 @@ describe('紫微 · 点化主星(fateFocus)', () => {
   it('未点化(null)与点化一致地保底色:focus 只抬升选定主星所在通道', () => {
     const chart = chartOf()
     const base = fateMods(chart)
-    // 与 null 同果:null 焦点 = 未点化 = 常数底色
+    // null = 未点化 = 常数底色
     expect(JSON.stringify(fateFocusMods(chart, null))).toBe(JSON.stringify(base))
     const star = starsOf(chart)[0]!
     const focused = fateFocusMods(chart, star.id)
@@ -181,7 +172,7 @@ describe('紫微 · 点化主星(fateFocus)', () => {
   it('不同 focus 产出不同 mods(选择真的有效,不是一场空)', () => {
     const chart = chartOf()
     const variants = new Set(starsOf(chart).map(s => JSON.stringify(fateFocusMods(chart, s.id))))
-    // 十四主星 mods 各不相同,至少得给出一种以上的聚焦结果
+    // 十四主星 mods 各不相同
     expect(variants.size).toBeGreaterThan(1)
   })
 
@@ -207,7 +198,6 @@ describe('紫微 · 点化主星落档(sanitize)', () => {
     player.fateFocus = 'zz_nonexistent'
     player.sanitize()
     expect(player.fateFocus).toBeNull()
-    // 清回 null 后=未点化,命格之力与 fateMods 常数完全一致
     expect(JSON.stringify(player.fateMods)).toBe(JSON.stringify(fateMods(player.fateChart)))
   })
 })

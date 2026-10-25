@@ -12,7 +12,6 @@ describe('herbText · 逐品灵草存量口径', () => {
     }
     const held = heldHerbGrades(herbOf)
     expect(held.map(h => `${h.name}:${h.count}`)).toEqual(['凡品:40', '仙品:8', '道品:1'])
-    // 五品要被询问过(不只看前几格) —— 别漏了后几品
     expect([...viewed].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5])
   })
 
@@ -24,14 +23,12 @@ describe('herbText · 逐品灵草存量口径', () => {
 })
 
 describe('开炉炼丹面不再报跨品之和', () => {
-  // 用户反馈的正是「炼丹页顶部显示一个跨品总和的灵草数,对不上逐品库存」。
-  // 这两处从此只逐品陈列(herbStash / 当前品),一旦被拉回 resources.herb(五品之和)立即红。
-  // 开炉弹窗已迁 components/inventory/BrewingDialog.vue;入口卡仍在宿主 —— 两处合扫,防拆分后只查一边假绿
+  // resources.herb 是五品之和;入口卡(宿主)与开炉弹窗(BrewingDialog.vue)两处合扫,防只查一边假绿
   const view =
     readFileSync(resolve(__dirname, '../views/InventoryView.vue'), 'utf8') +
     readFileSync(resolve(__dirname, '../components/inventory/BrewingDialog.vue'), 'utf8')
   const pillCraftingSurfaces = () => {
-    // 入口卡与弹窗头两处 —— 只取「灵草 xx」字眼所在的那几行,别把方子成本行(本就带品名)算进来
+    // 只取含「灵草」的行,不算方子成本行
     return view
       .split('\n')
       .filter(l => /灵草/.test(l))

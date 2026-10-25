@@ -1,8 +1,6 @@
 /**
- * 墙钟时钟的契约:暂停引擎时也必须照常走。
- *
- * 与 useGameClock 的冻结语义相反,这不是疏漏,而是坊市寄卖 / 悬赏换单
- * 按墙钟结算的硬要求。这里直接钉命令式 wallClock;组合式只是生命周期薄壳。
+ * 墙钟契约:暂停引擎时照常走,与 useGameClock 相反。
+ * 组合式只是生命周期薄壳,本文件只钉 wallClock。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { wallClock } from './useWallClock'

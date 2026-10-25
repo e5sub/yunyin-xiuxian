@@ -8,11 +8,7 @@ import { expEtaSec, qiBankEtaSec, qiEtaSec, qiRichEtaSec } from './progress'
 import { useCultivationStore } from '@/stores/cultivation'
 import { baseCultPerSec } from './formulas'
 
-/**
- * 「还得多久」的估算 —— 修为圆满与灵气回满同收在此册。
- * 判据是「缺口 ÷ 现速」这道同源除法:与修炼页两条进度条读同一份数,
- * 界面上那句「按现速,修为圆满约……」/「灵气回满约……」就在报这个值。
- */
+/** 「还得多久」估算:缺口 ÷ 现速,与修炼页进度条读同一份数 */
 describe('expEtaSec 修为圆满估算(与面板同源)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -20,7 +16,7 @@ describe('expEtaSec 修为圆满估算(与面板同源)', () => {
 
   it('未圆满:值 = 缺口 ÷ 现速,不另造口径', () => {
     const player = usePlayerStore()
-    const rate = player.cultPerSec // 本就是普通数,不套 toNum
+    const rate = player.cultPerSec
     const gap = toNum(sub(player.expReq, player.exp))
     expect(expEtaSec()).toBeCloseTo(gap / rate, 4)
   })
@@ -49,7 +45,6 @@ describe('expEtaSec 修为圆满估算(与面板同源)', () => {
     const player = usePlayerStore()
     player.exp = gn(0)
     const before = expEtaSec()
-    // 等价地:现速翻倍后,同一缺口的时间应折半 —— 若有人把式子写成 gap×rate 就废了
     const rate = player.cultPerSec
     const atDouble = toNum(player.expReq) / (rate * 2)
     expect(before).toBeGreaterThan(0)
@@ -57,10 +52,6 @@ describe('expEtaSec 修为圆满估算(与面板同源)', () => {
   })
 })
 
-/**
- * 灵气回满的估算 —— 与 expEtaSec 同一道「缺口 ÷ 现速」除法,
- * 灵气条读 qiCapValue / qi / qiRegenPerSec 三份数,这里也读这三份。
- */
 describe('qiEtaSec 灵气回满估算(与灵气条同源)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -90,10 +81,7 @@ describe('qiEtaSec 灵气回满估算(与灵气条同源)', () => {
   })
 })
 
-/**
- * 灵气积余段(越过标称容量)的蓄满估算 —— 上限与 resources.setQi 同一道
- * (标称容量 × QI_BANK_MULT),值 = 缺口 ÷ 现速;非积余段不报。
- */
+/** 积余上限与 resources.setQi 同源(标称容量 × QI_BANK_MULT) */
 describe('qiBankEtaSec 灵气积余蓄满估算', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -104,7 +92,6 @@ describe('qiBankEtaSec 灵气积余蓄满估算', () => {
     const resources = useResourcesStore()
     const cap = player.qiCapValue
     const rate = player.qiRegenPerSec
-    // 越过标称容量 1.5 倍,落进积余段(≤ 10 倍上限)
     resources.setQi(cap * 1.5, cap)
     const gap = cap * QI_BANK_MULT - cap * 1.5
     expect(qiBankEtaSec()).toBeCloseTo(gap / rate, 4)
@@ -125,10 +112,7 @@ describe('qiBankEtaSec 灵气积余蓄满估算', () => {
   })
 })
 
-/**
- * 距「灵气充盈」的估算 —— 界线与 player store 的 qiRich 同一道
- * (qi ≥ 容量 × QI_RICH_RATIO),值 = 缺口 ÷ 现速。
- */
+/** 界线与 player store 的 qiRich 同源(qi ≥ 容量 × QI_RICH_RATIO) */
 describe('qiRichEtaSec 灵气充盈估算(修为跳档时刻)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -160,16 +144,7 @@ describe('qiRichEtaSec 灵气充盈估算(修为跳档时刻)', () => {
 })
 
 
-/**
- * 修为速率折算(cultivationSpeed -> cultPerSec)。
- *
- * r314 守了 buffMods 的合并求和;这里往下守「折进速率」这一段:cultPerSec 把
- * finalStats 里的 cultivationSpeed 模按 ×(1 + mod) 折进实时修速(player.ts:361)。
- * engine.spec 只 spy gainExp(断言「被调」不「调了多少」),离线是聚合值 —— 无人直接
- * 断言关上一颗聚灵后在线速率正好多出 base×0.5。
- * 折叠是线性的:base×(1+mod0+Δ) - base×(1+mod0) = base×Δ —— 以「基准前后差」断言,
- * 不依赖全新存档里那笔 0.15 的背景修速(灵根/功法等)。
- */
+/** cultPerSec 按 ×(1 + cultivationSpeed) 折算;以「基准前后差」断言,不依赖存档里的背景修速 */
 describe('修为速率折算(cultivationSpeed -> cultPerSec)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -199,7 +174,7 @@ describe('修为速率折算(cultivationSpeed -> cultPerSec)', () => {
     const cul = useCultivationStore()
     cul.addBuff('buff_juling', 1_000_000) // ends 1000 + 1800s
     cul.addBuff('retreat', 1_000_000) // ends 1000 + 300s
-    cul.pruneBuffs(1_000_000 + 1_900_000) // 都过期
+    cul.pruneBuffs(1_000_000 + 1_900_000)
     expect(player.cultPerSec).toBeCloseTo(before, 6)
   })
 

@@ -1,33 +1,20 @@
 name: 构建多平台程序 (Electron & Android)
 
-# 只在推 tag(v1.2.3)时触发。
-#
-# 原先是挂在 main 的每次 push 上:提交一次就跑一遍两平台构建,并且把同一版本的
-# Release 资产「先删后传」—— 于是每个提交都会留下一个 release,谁也没法从发布页
-# 看出哪一次才是真正的发版。改成 tag 触发后,发版成了一个显式动作
-# (`git push origin v1.2.3`);main 上的每次提交仍由 deploy.yml 过同一道闸
-# (类型检查 + ESLint + 单测),闸门没丢,只是不再顺手发版。
+# 只由 tag 触发:挂 main push 会让每个提交都留下一个 release
+# main 的闸门(类型检查 + ESLint + 单测)在 deploy.yml
 on:
   push:
     tags:
       - 'v*.*.*'
 
-# 同一个 tag 只留一条流水线。两个 run 同时进 release job,会在同一个 tag 下
-# 「先删旧资产、再传新资产」,互相删掉对方刚传的文件,Release 里就会缺东西。
-# 用 cancel-in-progress: false 而不是 true —— 取消进行中的 run,有可能正好
-# 砍在「已删完、还没传完」的窗口里,留下一个资产不全的 Release。
-# (失败后重跑用 Actions 页面的 Re-run:同一个 tag 的 run 串行,不会互相踩。)
+# 同一 tag 串行:并发 run 会在 release job 互删对方刚传的资产
+# cancel-in-progress 须为 false:取消可能落在「已删完、还没传完」的窗口,留下资产不全的 Release
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  # 0. 版本闸门:tag 必须与 package.json 是同一个版本
-  #
-  # 两处版本号各有各的用处 —— tag 决定 Release 挂在哪个名下,package.json 决定
-  # APK 的 versionName/versionCode(android/app/build.gradle 从它读)。两者对不上,
-  # 就会出现「Release 页写着 v1.34.0、装到手机上却是 1.33.0」,玩家的升级提示与
-  # 实际版本对不起来。宁可在这里红掉,也不要发出一个自相矛盾的版本。
+  # 版本闸门:tag 须与 package.json 一致(APK 的 versionName/versionCode 由 android/app/build.gradle 从 package.json 读)
   guard:
     name: 版本闸门
     runs-on: ubuntu-latest
@@ -43,7 +30,6 @@ jobs:
             exit 1
           fi
 
-  # 1. 构建 Electron 客户端
   build-electron:
     name: 构建 Electron (${{ matrix.os }})
     needs: [guard]
@@ -61,7 +47,6 @@ jobs:
         with:
           bun-version: latest
 
-      # 过闸才继续:lint/类型检查/单测任意一条红,构建与发布都停在这
       - name: 静态检查 + 单元测试
         run: |
           bun install --frozen-lockfile
@@ -83,14 +68,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 两个附加产物,都从这一次构建里取,不另开作业:
-      # · 增量包 yunyin-<ver>-win-update.zip:只含 resources/app(dist / dist-electron / public /
-      #   package.json),约 4MB。已装过完整包的玩家解压到安装目录(与 云隐修仙录.exe 同级)覆盖
-      #   即可,不必再下 130MB 的运行时。前提是 Electron 运行时版本没变 —— 升 electron 依赖的
-      #   那一版,发布说明里要提醒玩家下完整包。
-      # · Web 包 yunyin-<ver>-web.zip:dist/ 的内容,解压即站点根,给自建站的人。
-      # bsdtar 是 Windows 自带的(System32\tar.exe),-a 按 .zip 后缀选格式。用 bash 是为了
-      # 与本地验证用的命令逐字相同。
+      # 增量包 yunyin-<ver>-win-update.zip:只含 resources/app,解压到安装目录(与 云隐修仙录.exe 同级)覆盖;
+      #   前提是 Electron 运行时版本没变,升 electron 依赖的那一版发布说明须提醒下完整包
+      # Web 包 yunyin-<ver>-web.zip:dist/ 的内容,解压即站点根
+      # tar 是 Windows 自带的 bsdtar(System32\tar.exe),-a 按 .zip 后缀选格式
       - name: 打增量包与 Web 包
         shell: bash
         run: |
@@ -100,7 +81,7 @@ jobs:
           "$TAR" -a -cf "pkg/yunyin-$VER-web.zip" -C dist $(cd dist && ls -A)
           ls -la pkg/*.zip
 
-      # 【关键点】上传 zip 产物(完整包 + 增量包 + Web 包)
+      # 完整包 + 增量包 + Web 包
       - name: 上传 Electron 安装包
         uses: actions/upload-artifact@v7
         with:
@@ -108,14 +89,11 @@ jobs:
           path: |
             pkg/*.zip
 
-  # 2. 构建 Android APK
   build-android:
     name: 构建 Android APK
     needs: [guard]
     runs-on: ubuntu-latest
-    # 签名按仓库内的 key 文件走:android/keystore.properties(含口令)+ release.keystore,
-    # 由 build.gradle 直接读取,CI 不需要任何 Secret。
-    # 这是仓库所有者的既定选择(2026-09-02 起随仓库分发,以便任何人 clone 即可出可安装的包)。
+    # 签名读仓库内 android/keystore.properties(含口令)+ release.keystore,CI 无 Secret —— 仓库所有者的既定选择
     steps:
       - uses: actions/checkout@v7
       - name: 安装 Bun
@@ -137,7 +115,6 @@ jobs:
       - name: 配置 Android SDK
         uses: android-actions/setup-android@v4
 
-      # 使用官方 Gradle Action（内置智能缓存）
       - name: 配置 Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
@@ -161,7 +138,6 @@ jobs:
           name: android-apk
           path: android/app/build/outputs/apk/release/*.apk
 
-  # 3. 发布 Release
   release:
     needs: [guard, build-electron, build-android]
     runs-on: ubuntu-latest
@@ -176,36 +152,29 @@ jobs:
 
       - name: 获取版本号
         id: get_version
-        # tag 即版本(闸门已确认它与 package.json 一致),不再从 package.json 反推 ——
-        # 触发这次运行的就是某个 tag,Release 理应挂在那个 tag 上
+        # tag 即版本(闸门已校验与 package.json 一致)
         run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
 
-      # 1. 下载时，不使用 merge-multiple，防止覆盖冲突
+      # 不用 merge-multiple,防止覆盖冲突
       - name: 下载构建产物
         uses: actions/download-artifact@v8
         with:
           path: ./raw-assets
 
-      # 2. 核心步骤：手动移动文件到一个扁平目录，并强制重命名
       - name: 整理并重命名产物
         run: |
           mkdir -p ./final-release
 
-          # 移动 Electron zip 包
           find ./raw-assets/electron-* -type f -name "*.zip" -exec cp {} ./final-release/ \;
 
-          # 移动 Android APK
           find ./raw-assets/android-apk -type f -name "*.apk" -exec cp {} ./final-release/ \; || true
 
-          # 检查结果
           echo "Final assets to upload:"
           ls -R ./final-release
 
-      # 3. 删除已有 Release 的文件（如果存在）
       - name: 删除已有 Release 资产
         run: |
           VERSION=${{ steps.get_version.outputs.VERSION }}
-          # 获取 release 的所有资产并删除
           gh release view "$VERSION" --json assets -q '.assets[].name' 2>/dev/null | while read -r asset; do
             echo "Deleting asset: $asset"
             gh release delete-asset "$VERSION" "$asset" -y || true
@@ -214,8 +183,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
-      # 4. Release 说明取 CHANGELOG 该版本小节(如 `## [1.41.0] …`),
-      #    与发版源保持一致,不再手动填。
+      # 小节标题形如 `## [1.41.0] …`
       - name: 生成 Release 说明(取 CHANGELOG 该版本小节)
         run: |
           VER="${GITHUB_REF_NAME#v}"
@@ -226,7 +194,6 @@ jobs:
             echo "已从 CHANGELOG 提取 [$VER] 小节,共 $(wc -l < "$GITHUB_WORKSPACE/.release-body.md") 行"
           fi
 
-      # 5. 创建 GitHub Release
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v3
         with:

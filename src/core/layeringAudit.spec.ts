@@ -1,29 +1,14 @@
 /* eslint-disable no-console -- 分层审计的产出是给人看的清单 */
 /**
- * 分层审计 —— core 对 store 的依赖**只许收拢,不许扩散**
+ * 分层审计:core 对 store 的依赖只许收拢,不许扩散。
+ *   一 `STATEFUL_CORE` 与当前 import store 的 core 模块逐一相等,新增或遗留都红。
+ *      基线用名单不用计数:计数能被搬位置绕过。
+ *   二 引用处数不超过基线。
+ *   三 `utils` 不许 import core / stores。
+ *   四 `data` 不许反向 import core / stores / ui。
  *
- * 本仓的不变式是「core 是逻辑、stores 是状态、views 只做薄接线」。但 core 里
- * 仍有一批模块直接 import store,于是「测一个数值函数」要先建一整套 Pinia,
- * 「把这段逻辑搬去别处复用」也搬不动。
- *
- * **为什么不用「文件数 / 处数」当唯一判据**:那两个数能被搬位置绕过 —— 把读 store
- * 从叶子挪进一个本来就 import store 的 core 模块,数字就掉,而依赖还在同一层。
- * 真正要守的是**有哪几个 core 模块碰 store**,不是一个计数。故基线是**名单**:
- *
- *   一 `STATEFUL_CORE` = 允许 import store 的 core 模块点名清单。当前集合必须与它
- *      逐一相等 —— 新增一个(把纯模块拖下水)或遗留一个(迁走了却忘了从名单删)都红。
- *      搬位置救不了:把依赖挪进一个不在名单里的模块,当场就多一个名字。
- *   二 引用**处数**不超过基线(名单没变时,防止某个模块内部越挂越多)。
- *   三 `utils` 更底,不许 import core / stores。
- *   四 `data` 是唯一事实源,不许反向 import core / stores / ui —— 数据一旦开始
- *      读状态或读文案,就不再是「纯静态声明式」,也没法脱离游戏单独校验。
- *
- * 迁移方向:让 core 只有纯逻辑 —— 「读 state → 调纯函数 → 写 state」的编排收进
- * store 的 action,或收进调用方边缘。迁走一个模块,就把它从名单里删一个。
- *
- * 故障注入:在任一 core 模块加 `import { usePlayerStore } from "@/stores/player"`
- * 且该模块不在名单里 —— 第一条红;在 src/utils 夹一句对 core/store 的 import ——
- * 最后一条红。
+ * 故障注入:在名单外的 core 模块加 `import { usePlayerStore } from "@/stores/player"`,
+ * 第一条红;在 src/utils 夹一句对 core/store 的 import,第三条红。
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
@@ -33,15 +18,10 @@ const CORE = resolve(__dirname);
 const UTILS = resolve(__dirname, "../utils");
 const DATA = resolve(__dirname, "../data");
 
-/** core 里「import 了某个 store」的一句话。单双引号都认,与全仓写法一致。 */
+/** core 里 import store 的语句;单双引号都认 */
 const STORE_IMPORT = /from\s+["']@\/stores\/[A-Za-z]+["']/g;
 
-/**
- * 允许 import store 的 core 模块点名清单(只许减)。
- *
- * 目标是把这份名单收到 0;每把一摊编排收进 store / 挪到边缘,就删掉那一个名字。
- * 名字是**文件名**(含 `.ts`),与目录逐字对得上。
- */
+/** 允许 import store 的 core 模块点名清单(只许减);名字是含 `.ts` 的文件名 */
 const STATEFUL_CORE = new Set<string>([
   "affixTransfer.ts",
   "astronomy.ts",
@@ -102,7 +82,7 @@ const STATEFUL_CORE = new Set<string>([
 
 /** core → store 的引用处数基线(只许减;名单没变时防止单个模块越挂越多) */
 const CORE_STORE_SITES = 192;
-/** core 用例里需要 Pinia 的文件数基线(只许减)—— 「core 逻辑绑在 Pinia 上」的硬读数 */
+/** core 用例里需要 Pinia 的文件数基线(只许减) */
 const CORE_PINIA_SPECS = 119;
 
 function sources(dir: string): { name: string; text: string }[] {
@@ -176,7 +156,7 @@ describe("分层 · core 对 store 的依赖只许收拢", () => {
   });
 
   it("data 不反向依赖 core / stores / ui —— 唯一事实源只许静态声明", () => {
-    // 用例子文件里 import core 来对账是允许的(那是校验数据),这里只看运行时代码。
+    // 只看运行时代码;spec 里 import core 对账允许
     const bad = sources(DATA).filter((f) =>
       /from\s+["']@\/(core|stores|ui)\//.test(f.text),
     );

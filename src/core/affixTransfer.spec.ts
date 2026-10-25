@@ -1,15 +1,5 @@
 /* eslint-disable no-console -- 遍历规模与价位样例给人看 */
-/**
- * 词条转移(议题 #22)—— 规则、合法件不变量、界面与服务同判
- *
- * 三类判据:
- *   一 规则逐条:部位、品质、同一件、同 id、满条、递减属性、封存的三种走法、残留封存清理;
- *   二 合法件不变量:用种子生成一批件,遍历「源 × 词条 × 目标 × 落位 × 封存」,
- *      凡计划成立的,落地后的目标件都得是一件**掉落里可能出现**的合法件。
- *      条件在这里独立写出,不调 affixFitBlock —— 判据若借被测函数自证,就成了同源推演;
- *   三 界面说行 ⇔ 服务做成:planTransfer 成立且付得起,transferAffix 就必须做成,反之亦然。
- *      (本项目反复出过「按钮亮着却进不去」:两边各写一份判据,迟早分叉。)
- */
+/** 词条转移(议题 #22):规则逐条、合法件不变量、界面说行 ⇔ 服务做成 */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import {
@@ -67,7 +57,7 @@ describe('词条转移 · 规则逐条', () => {
     expect(targetBlock(src, src, 'pen3')).toBe('same')
     expect(targetBlock(src, mk('t', W, 'heaven', []), 'atk1')).toBe('noAffix')
     expect(targetBlock(src, mk('t', 'no_such_template', 'heaven', []), 'pen3')).toBe('noTemplate')
-    // 陈旧的落位(那条已经不在目标上)不许当成「新增」静默执行
+    // 陈旧落位(那条已不在目标上)不许当「新增」静默执行
     expect(planTransfer(src, mk('t', W, 'heaven', [['def1', 0.5]]), 'pen3', 'ghost', false)).toEqual({ ok: false, block: 'noLanding' })
   })
 
@@ -128,7 +118,7 @@ describe('词条转移 · 规则逐条', () => {
     const pair = mk('t2', W, 'heaven', [['crit1', 0.5], ['crit2', 0.5], ['def1', 0.5]])
     expect(planTransfer(src, pair, 'crit3', 'crit1', false).ok).toBe(true)
     expect(planTransfer(src, pair, 'crit3', null, false)).toEqual({ ok: false, block: 'stack' })
-    // 攻击不是递减属性:atk1 在身,再新增 atk3 照样成立
+    // 攻击非递减属性:atk1 在身仍可新增 atk3
     expect(DIMINISH_KEYS).not.toContain(affixDef('atk3')!.key)
     expect(planTransfer(src, tgt, 'atk3', null, false).ok).toBe(true)
   })
@@ -157,7 +147,7 @@ describe('词条转移 · 规则逐条', () => {
     expect(toNum(paid.plan.cost.stone)).toBeCloseTo(toNum(none.plan.cost.stone) + toNum(paid.plan.cost.sealStone!), 0)
     expect(paid.plan.target.sealedAffixIds).toEqual(['atk3'])
     expect(none.plan.target.sealedAffixIds).toEqual([])
-    // 两条、已封一条(封满):顶替未封那条后仍是两条一封,不能再封
+    // 两条封一条(封满):顶替未封那条后仍两条一封,不能再封
     const capped = mk('t2', W, 'heaven', [['def1', 0.5], ['hp1', 0.5]], { sealedAffixIds: ['def1'] })
     expect(planTransfer(src, capped, 'atk3', 'hp1', true)).toEqual({ ok: false, block: 'sealFull' })
     const plain = planTransfer(src, capped, 'atk3', 'hp1', false)
@@ -194,9 +184,8 @@ describe('词条转移 · 规则逐条', () => {
     if (!r.ok) return
     const husk = r.plan.source
     expect(husk.affixes.map(a => a.id)).toEqual(['atk3'])
-    // 还能把封着的那条转出去
     expect(planTransfer(husk, tgt, 'atk3', null, false).ok).toBe(true)
-    // 也还能往里转一条(转入的不封 → 又有可重掷位)
+    // 转入的不封 → 又有可重掷位
     expect(planTransfer(tgt, husk, 'hp1', null, false).ok).toBe(true)
   })
 
@@ -206,7 +195,6 @@ describe('词条转移 · 规则逐条', () => {
     const r = planTransfer(src, tgt, 'atk3', null, false)
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    // 除这几项之外,其余字段原样不动
     const rest = (x: EquipmentInstance): Record<string, unknown> =>
       Object.fromEntries(Object.entries(x).filter(([k]) => !['affixes', 'sealedAffixIds', 'transferCount'].includes(k)))
     expect(rest(r.plan.target)).toEqual(rest(tgt))
@@ -226,7 +214,7 @@ describe('词条转移 · 规则逐条', () => {
     if (!lo.ok || !hi.ok) return
     expect(hi.plan.cost.dust).toBe(lo.plan.cost.dust)
     expect(toNum(hi.plan.cost.stone)).toBe(toNum(lo.plan.cost.stone))
-    // 灵石与尘折的是同一个「次数」:灵石 ÷ 一次无封重铸的灵石 ≈ 尘 ÷ 30
+    // 灵石与尘折同一个「次数」:灵石 ÷ 一次无封重铸的灵石 ≈ 尘 ÷ 30
     const once = toNum(reforgeCost({ ...tgt, sealedAffixIds: [] })!.stone)
     expect(toNum(lo.plan.cost.stone) / once).toBeCloseTo(lo.plan.cost.dust / REFORGE_DUST_BASE, 1)
     const swap = planTransfer(mk('s', W, 'heaven', [['atk2', 0.5]]), tgt, 'atk2', 'def1', false)
@@ -252,7 +240,7 @@ describe('词条转移 · 规则逐条', () => {
   })
 })
 
-/** 一批确定的件:各部位、各品质,部分随机封存 —— 不变量遍历与同判扫面共用 */
+/** 种子件:各部位、各品质,部分随机封存;不变量遍历与同判扫面共用 */
 function seededItems(seed: number, n: number): EquipmentInstance[] {
   const r = new RandomService(mulberry32(seed))
   const out: EquipmentInstance[] = []
@@ -266,7 +254,7 @@ function seededItems(seed: number, n: number): EquipmentInstance[] {
   return out
 }
 
-/** 掉落里可能出现的合法件 —— 条件独立写出,不借被测的 affixFitBlock */
+/** 掉落里可能出现的合法件;条件独立写出,不借被测的 affixFitBlock */
 function legalProblems(item: EquipmentInstance): string[] {
   const out: string[] = []
   const tpl = equipmentTemplate(item.templateId)
@@ -308,7 +296,7 @@ describe('词条转移 · 合法件不变量', () => {
               expect(r.plan.source.affixes.some(a => a.id === moved.id)).toBe(false)
               expect(r.plan.target.affixes).toHaveLength(tgt.affixes.length + (replaceId === null ? 1 : 0))
               expect(r.plan.target.affixes.find(a => a.id === moved.id)?.roll).toBe(moved.roll)
-              // 递减属性的条数只降不升(新增那一条不算超出原有的一条)
+              // 递减属性条数只降不升(新增那条不算超出原有一条)
               const key = affixDef(moved.id)!.key
               if ((DIMINISH_KEYS as readonly string[]).includes(key)) {
                 const count = (x: EquipmentInstance): number => x.affixes.filter(a => affixDef(a.id)?.key === key).length
@@ -351,7 +339,7 @@ describe('词条转移 · 界面说行 ⇔ 服务做成', () => {
       const replaceId = pool[r.int(0, pool.length - 1)]!
       const seal = r.chance(0.5)
       setActivePinia(createPinia())
-      // 资源分四档:都够 / 灵石差一截 / 尘差 1 / 都不够 —— 够与不够、缺哪样都覆盖
+      // 资源四档:都够 / 灵石差一截 / 尘差 1 / 都不够
       const quote = planTransfer(src, tgt, moved.id, replaceId, seal)
       const tierPick = r.int(0, 3)
       const stone = !quote.ok ? gn(1e30) : tierPick === 1 || tierPick === 3 ? mulN(quote.plan.cost.stone, 0.5) : mulN(quote.plan.cost.stone, 2)
@@ -384,7 +372,7 @@ describe('词条转移 · 服务记账', () => {
     const quote = planTransfer(src, tgt, 'atk3', null, true)
     expect(quote.ok).toBe(true)
     if (!quote.ok) return
-    // 余额只比价签多几倍:大额余额减去小额价签会被大数精度吞掉,对不出账
+    // 余额只取价签几倍:大额减小额会被大数精度吞掉
     resources.spiritStone = mulN(quote.plan.cost.stone, 3)
     resources.dust = quote.plan.cost.dust * 3
     const before = { stone: toNum(resources.spiritStone), dust: resources.dust }
@@ -459,14 +447,14 @@ describe('词条转移 · 服务记账', () => {
       mk('lowRing', R, 'mortal', [])
     ]
     const c = transferCandidates(src, 'atk2')
-    // 「破军」要精品:同部位的凡品武器列出置灰,别的部位品质不够的不列
+    // 「破军」要精品:同部位凡品置灰列出,别部位品质不够的不列
     expect(c.map(x => `${x.item.uid}:${x.block}`)).toEqual(['ok:null', 'ring:null', 'dup:dup', 'low:rank'])
     expect(transferBlockText('rank', 'atk2')).toBe(`需${qualityDef('excellent').name}`)
     const landings = transferLandings(src, inventory.findItem('ok')!, 'atk2')
     expect(landings.map(l => l.replaceId)).toEqual([null, 'def1'])
     expect(landings.every(l => l.check.ok)).toBe(true)
     expect(affixValue(affixDef('atk2')!, 0.9)).toBeGreaterThan(affixValue(affixDef('atk2')!, 0.5))
-    // 武器专属的「洞虚」:戒指、护甲因部位被挡,连置灰都不列
+    // 武器专属「洞虚」:戒指、护甲因部位被挡,不列
     const s2 = mk('s2', W, 'heaven', [['pen3', 0.5]])
     inventory.items = [s2, mk('w2', W, 'heaven', []), mk('ring2', R, 'heaven', []), mk('armor2', 'b_mabu', 'heaven', [])]
     expect(targetBlock(s2, inventory.findItem('ring2')!, 'pen3')).toBe('slot')

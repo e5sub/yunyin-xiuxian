@@ -1,12 +1,9 @@
 <template>
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
-    <!-- 页签 -->
     <InkTabs v-model="tab" :tabs="TABS" />
 
-    <!-- 名号:成就式列表,全量陈列 -->
     <template v-if="tab === 'title'">
       <SectionTitle title="名号" :hint="`${ownedCount}/${TITLES.length} · 佩一枚`" />
-      <!-- 收集进度:数字要读,条是扫一眼 —— 与全库 ProgressBar 同一把尺 -->
       <ProgressBar class="mt-2" :value="TITLES.length > 0 ? ownedCount / TITLES.length : 0" :height="3" />
       <div class="card-ink divide-y divide-ink/6 px-4">
         <div v-for="row in titleRows" :key="row.def.id" class="flex items-center gap-3 py-2.5">
@@ -31,10 +28,8 @@
       </div>
     </template>
 
-    <!-- 灵兽:同样的列表式 -->
     <template v-else>
       <SectionTitle title="灵兽" :hint="`${petRows.length}/${PETS.length} · 伴一只`" />
-      <!-- 「还差多少」是这一册此刻最有用的读数,给一根条 -->
       <ProgressBar class="mt-2" :value="PETS.length > 0 ? petRows.length / PETS.length : 0" :height="3" />
       <div v-if="petRows.length" class="space-y-2">
         <div
@@ -55,11 +50,9 @@
             </p>
             <p class="truncate text-[10px] text-ink-faint">{{ row.def.desc }}</p>
             <p v-if="row.modText" class="text-[10px] text-azure tabular">{{ row.modText }}</p>
-            <!-- 性格是灵兽的"人味":它在历练里怎么表现,得让玩家看得见,而不是只看数值 -->
             <p class="text-[10px] text-violet-ink">
               {{ row.personalityName }} · <span class="text-ink-faint">{{ row.personalityDesc }}</span>
             </p>
-            <!-- 定性的话之外还要给数:换不换这只伙伴,靠「更容易」三个字算不出来 -->
             <p v-if="row.traitText" class="text-[10px] text-azure tabular">{{ row.traitText }}</p>
           </div>
           <button class="btn-ghost shrink-0 !px-2.5 !py-2 !text-[11px]" @click="togglePet(row.def.id)">
@@ -110,16 +103,14 @@
     { id: 'pet', label: '灵兽' }
   ]
 
-  // ---- 名号 ----
   const ownedCount = computed(() => quests.titlesOwned.length)
 
-  /** 名号由成就解锁:为未获得的称号补一句「从哪来」,方向自动随条件走,不剧透成就名 */
+  /** 未获得名号的来历:随成就条件走,不剧透成就名 */
   const TITLE_SOURCE: Record<string, string> = {}
   for (const a of ACHIEVEMENTS) {
     if (a.reward?.titleId) TITLE_SOURCE[a.reward.titleId] = achievementDirection(a.cond)
   }
 
-  /** 全量陈列:佩戴中 > 已拥有 > 未获得 */
   const titleRows = computed(() => {
     const ownedSet = new Set(quests.titlesOwned)
     return TITLES.map(def => ({
@@ -147,7 +138,7 @@
       .map(def => ({
         def: def!,
         active: player.petId === def!.id,
-        // 出战加成按「真到账」那份渲染(× 灵兽园等级 × 安抚增益),与角色面板来源明细一致,不能给 base
+        // 出战加成按真到账那份渲染(× 灵兽园等级 × 安抚增益),与角色面板来源明细一致,不用 base
         modText: modsText(player.petModsFor(def!)),
         personalityName: PERSONALITY_NAMES[def!.personality],
         personalityDesc: personalityDesc(def!.personality),

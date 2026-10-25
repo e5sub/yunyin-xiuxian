@@ -1,8 +1,5 @@
 <template>
-  <!--
-    topmost:装备详情自己就是 top(z-60)。叠在它之上看词条信息,少这一档会沉到详情下面。
-    玩家反馈「层级不对、弹在下面」—— 详情盖过列表用 z-60,弹框盖详情就得 z-70。
-  -->
+  <!-- 盖在装备详情(top)之上 -->
   <BaseModal
     :open="open"
     :title="def?.name ?? '词条'"
@@ -68,13 +65,12 @@
 
   const props = defineProps<{
     open: boolean
-    /** 要看哪条就传哪条的 id —— 词条信息只以「点哪条弹哪条」的方式出现 */
     affixId: string
-    /** 只在自动重铸语境传:页脚多一个「设为目标 / 取消」 */
+    /** 只在自动重铸语境传:页脚多「设为目标 / 取消目标」 */
     targetable?: boolean
-    /** 这条当前是不是已设为自动重铸目标(决定按钮文案与可否再设) */
+    /** 已设为自动重铸目标 */
     selected?: boolean
-    /** 目标还没满 AUTO_REFORGE_MAX_TARGETS 时才能再设(满的位子给「取消」留着) */
+    /** 目标未满 AUTO_REFORGE_MAX_TARGETS */
     canSelect?: boolean
   }>()
   const emit = defineEmits<{ close: []; 'toggle-target': [id: string] }>()

@@ -1,20 +1,5 @@
 /* eslint-disable no-console */
-/**
- * 道侣共同事件验收(Phase 33.9)
- *
- * 33.8 留下三个缺口,它们其实是同一件事:**道侣还没有自己的意志。**
- *   accordShift 有接口没来源 · 诉求与底线只是展示文本 · 玩家做不了选择
- *
- * 本轮验收的核心不是「事件能触发」,而是:
- *
- *   一 契合是**行为结果**,不是 API 参数 —— 玩家道途由行为计数推断
- *   二 同一道侣在不同玩家选择下得到不同关系结果
- *   三 三维吃不同类型的行为,不被平均修改
- *   四 她可以自己做决定,也可以离开
- *   五 共同事件不产出任何 StatMods / 资源 / 道果 / 宿慧
- *
- * 故障注入(用户指定):把 accordShift 从事件选择链断掉,测试必须失败。
- */
+/** 故障注入:把 accordShift 从事件选择链断掉,本用例红。 */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { readdirSync, readFileSync } from 'node:fs'
@@ -68,9 +53,7 @@ function bondTo(id: string, target: 'known' | 'together' | 'confidant'): number 
 describe('共同事件 · 一:契合是行为结果,不是参数', () => {
   it('玩家道途由行为计数推断,不是设定项', () => {
     const quests = useQuestsStore()
-    // 没有任何行为时不判定道途
     expect(playerLean()).toBeNull()
-    // 大量斩杀 → 杀伐
     quests.inc('kills', 400)
     expect(playerLean()).toBe('slaughter')
     console.log('\n斩敌 400 → 玩家道途判为「杀伐」,无需任何设定按钮')
@@ -81,7 +64,6 @@ describe('共同事件 · 一:契合是行为结果,不是参数', () => {
     for (const [lean, keys] of Object.entries(LEAN_COUNTERS)) {
       console.log(`${lean.padEnd(10)} ${keys.join(' / ')}`)
     }
-    // 每条道途至少绑定一个计数器,否则它永远无法被推断出来
     for (const keys of Object.values(LEAN_COUNTERS)) expect(keys.length).toBeGreaterThan(0)
   })
 
@@ -104,9 +86,8 @@ describe('共同事件 · 一:契合是行为结果,不是参数', () => {
     const def = daoluDef('dl_qingli')!
     const ev = BOND_EVENTS.find(e => e.id === 'be_spare')!
     const kill = ev.choices.find(c => c.id === 'kill')!
-    // 正常:两种道途给出不同契合
     expect(resolveChoice(def, kill, 'slaughter').accord).not.toBe(resolveChoice(def, kill, 'alchemy').accord)
-    // 断链模拟:playerLean 恒为 null(即 33.8 的状态——没有来源)
+    // 断链模拟:playerLean 恒为 null
     const broken = resolveChoice(def, kill, null)
     const broken2 = resolveChoice(def, kill, null)
     expect(broken.accord).toBe(broken2.accord)
@@ -117,7 +98,6 @@ describe('共同事件 · 一:契合是行为结果,不是参数', () => {
   })
 
   it('chooseBondEvent 确实读取了玩家道途', () => {
-    // 源码层面:选择结算必须调用 playerLean(),否则又退回喂参数
     expect(CODE).toMatch(/resolveChoice\([^)]*playerLean\(\)/)
     console.log('\nchooseBondEvent → resolveChoice(def, ch, playerLean()) —— 链路接通')
   })
@@ -130,7 +110,6 @@ describe('共同事件 · 二:同一道侣,不同选择不同结果', () => {
       console.log(`${e.title.padEnd(8)} ${e.kind.padEnd(10)} ${e.herWish}`)
     }
     const kinds = new Set(BOND_EVENTS.map(e => e.kind))
-    // 类型齐比数量多重要
     expect(kinds.size).toBe(BOND_EVENTS.length)
   })
 
@@ -171,27 +150,22 @@ describe('共同事件 · 二:同一道侣,不同选择不同结果', () => {
 describe('共同事件 · 三:三维吃不同来源', () => {
   it('缘分来自共历,信任来自支持与兑现,契合来自道途', () => {
     const def = daoluDef('dl_qingli')!
-    // 陪她冒险:缘分与信任大涨,契合几乎不动
     const lead = BOND_EVENTS.find(e => e.id === 'be_lead')!
     const accompany = resolveChoice(def, lead.choices.find(c => c.id === 'accompany')!, null)
-    // 价值观选择:契合大动
     const price = BOND_EVENTS.find(e => e.id === 'be_price')!
     const forgo = resolveChoice(def, price.choices.find(c => c.id === 'forgo')!, null)
     console.log(
       `\n陪她冒险    缘分 +${accompany.fate}  信任 +${accompany.trust}  契合 +${accompany.accord}` +
         `\n为她作罢    缘分 +${forgo.fate}  信任 +${forgo.trust}  契合 +${forgo.accord}`
     )
-    // 风险事件的信任增幅明显高于契合;价值观事件反之
     expect(accompany.trust).toBeGreaterThan(accompany.accord)
     expect(forgo.accord).toBeGreaterThan(forgo.trust)
   })
 
   it('三维可以背离 —— 这次是选择走出来的,不是手动传参', () => {
     const quests = useQuestsStore()
-    // 玩家一贯杀伐
     quests.inc('kills', 400)
     bondTo('dl_qingli', 'confidant')
-    // 陪她冒险(缘分信任涨),但在关键处按自己的道走
     chooseBondEvent('be_lead', 'accompany')
     chooseBondEvent('be_spare', 'kill')
     const b = currentBond()!
@@ -208,7 +182,6 @@ describe('共同事件 · 四:她有自己的意志', () => {
   it('信任不足时她自己先做决定', () => {
     bondTo('dl_yunshu', 'confidant')
     const b = currentBond()!
-    // 压低信任
     advanceBond({ trust: -(b.trust - 10) })
     const ev = BOND_EVENTS.find(e => e.id === 'be_rescue')!
     const stance = herStance(ev)
@@ -230,11 +203,9 @@ describe('共同事件 · 四:她有自己的意志', () => {
     expect(r.left).toBe(true)
     expect(currentBond()?.departed).toBe(true)
     console.log(`\n「${r.text}」`)
-    // 冻结:此后推进无效
     const before = currentBond()!
     advanceBond({ fate: 50, trust: 50 })
     expect(currentBond()!.fate).toBe(before.fate)
-    // 但归档仍留下这一段
     const rec = archiveBond()!
     expect(rec.ending).toBe('parted')
     console.log(`归档结局:${rec.ending} —— 留下的不是数字,是这一世发生过什么`)
@@ -244,7 +215,6 @@ describe('共同事件 · 四:她有自己的意志', () => {
     const quests = useQuestsStore()
     quests.inc('kills', 400)
     bondTo('dl_baiwei', 'confidant')
-    // 连续违背她
     chooseBondEvent('be_relic', 'take_artifact')
     chooseBondEvent('be_spare', 'kill')
     const r = chooseBondEvent('be_price', 'take')
@@ -287,7 +257,6 @@ describe('共同事件 · 边界', () => {
   })
 
   it('阶段不足时高阶事件不会出现', () => {
-    // 只推到「相识」——低于三个高阶事件的门槛
     const idx = bondTo('dl_qingli', 'known')
     const pool = new Set<string>()
     for (const trig of ['enterPlace', 'firstVictory', 'bossDefeated', 'nearDeath'] as const) {
@@ -295,7 +264,7 @@ describe('共同事件 · 边界', () => {
         const e = offerBondEvent(trig)
         if (e) {
           pool.add(e.id)
-          // 清掉待决与冷却,继续探测其余可能
+          // 清掉待决与冷却,继续探测
           const b = currentBond()!
           usePlayerStore().setBond({ ...b, pendingEventId: null, nextEventAt: 0 })
         }
@@ -328,12 +297,7 @@ describe('共同事件 · 边界', () => {
   })
 })
 
-/**
- * 共命之险(Phase 34.11)—— 唯一会死人的一条路
- *
- * 口径:不可逆的后果必须(一)由玩家选择、(二)事先写明、(三)另有活路。
- * 故这条测试同时钉三件事:低关系会真的殒落;高关系同生;其余两条路永不致死。
- */
+/** 共命之险(唯一会死人的一条路):不可逆的后果须由玩家选择、事先写明、另有活路 */
 describe('共同事件 · 共命之险', () => {
   const PERIL_EVENT = 'be_jie'
   const PERIL_CHOICE = 'share'
@@ -342,7 +306,7 @@ describe('共同事件 · 共命之险', () => {
     setActivePinia(createPinia())
     const player = usePlayerStore()
     meet('dl_qingli')
-    // 直接摆好关系(事件门槛要 stage ≥ 4,即 confidant)
+    // 事件门槛要 stage ≥ 4,即 confidant
     player.setBond({
       ...player.bond!,
       stage: 'confidant',
@@ -362,7 +326,6 @@ describe('共同事件 · 共命之险', () => {
     expect(peril.peril).toBe(true)
     expect(peril.label, '不可逆选项必须在标签上写明代价').toContain('未必撑得住')
     expect(ev.choices.filter(c => !c.peril).length, '必须另有不必拼命的选项').toBeGreaterThanOrEqual(2)
-    // 只有这一条路带 peril —— 别的共同事件不许偷偷要命
     for (const other of BOND_EVENTS) {
       if (other.id === PERIL_EVENT) continue
       expect(other.choices.some(c => c.peril), `${other.id} 不该有致命选项`).toBe(false)
@@ -375,7 +338,6 @@ describe('共同事件 · 共命之险', () => {
     expect(r.perished).toBe(true)
     const player = usePlayerStore()
     expect(player.bond?.fallen).toBe(true)
-    // 殒落之后:不再有事件、不再有意图
     expect(pendingBondEvent()).toBeNull()
     expect(pendingIntent()).toBeNull()
   })
@@ -399,22 +361,9 @@ describe('共同事件 · 共命之险', () => {
   })
 })
 
-/**
- * 共命之险 · 在真实路径上够得着(Phase 34.11 补)
- *
- * 这一段是给「功能写了但没人见过」上的锁。道侣陨落曾长期挂在 SPEC_ONLY_ALLOWLIST 里:
- * fall() 在、ending 在、界面「已殁」在,可没有任何一条路能把玩家送到它面前。
- * 上面那段测试是**手摆状态**直接选的 —— 它证明逻辑对,证明不了够得着。
- *
- * 故这里钉两件事,都不用掷运气:
- *   一 事件声明的每个「触发情境」,都必须真的在玩法代码里被调用
- *      —— 声明了 nearDeath 却没人 offer,事件就永远不出现;
- *   二 靠行为推到「知交」之后,「濒死」这一掷的池子里必须真的躺着「共劫」
- *      —— 用带种子的随机源,同一颗种子每次结果相同,不是碰运气。
- */
 describe('共命之险 · 在真实路径上够得着', () => {
   it('每个声明的触发情境都真的被玩法调用(不是只写在类型里)', () => {
-    // 玩法源码(排除本文件与 daoluService 自身):谁真的在那一刻 offer,这里就找谁
+    // 玩法源码(排除本文件与 daoluService 自身)
     const coreDir = resolve(__dirname)
     const callers = readdirSync(coreDir)
       .filter(f => f.endsWith('.ts') && !f.endsWith('.spec.ts') && f !== 'daoluService.ts')
@@ -437,7 +386,7 @@ describe('共命之险 · 在真实路径上够得着', () => {
     const peril = BOND_EVENTS.find(e => e.id === 'be_jie')!
     expect(stageIdxOf(currentBond()!.stage)).toBeGreaterThanOrEqual(peril.minStageIndex)
 
-    // 带种子的随机源:池子是 [重伤, 共劫],足够多次抽样必然都见过
+    // 带种子的随机源;池子是 [重伤, 共劫]
     const rand = new RandomService(mulberry32(20260912))
     const seen = new Set<string>()
     for (let i = 0; i < 400 && !seen.has('be_jie'); i += 1) {

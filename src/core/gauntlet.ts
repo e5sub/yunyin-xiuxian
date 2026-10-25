@@ -1,6 +1,4 @@
-/**
- * 连战解算(纯函数)—— 特殊世界与天道试炼共用,亦被终局模拟器直接验证
- */
+/** 连战解算(纯函数):特殊世界与天道试炼共用,终局模拟器直接验证 */
 import type { CombatantSnap, CombatLogEntry, CombatRules, FoeOrigin, FoeOriginPart, GNum, StatMods, WorldFoeShape } from '@/types'
 import type { RandomService } from '@/utils/random'
 import { mulN } from '@/utils/gnum'
@@ -16,17 +14,8 @@ export interface ReferenceStats {
 }
 
 /**
- * 天界锚点 —— 这一界「该有」的三维。
- *
- * 与凡界敌人同一条纪律:**敌人按层级曲线定标,不按玩家此刻的三维定标**
- * (凡界走 `enemyPowerAt(tier)`,这里走 powerScale(锚点层级) × 三围基数)。
- * 于是攻防血这些**基础属性到哪儿都作数**:境界更高、装备更好、构筑更厚,
- * 就是实打实的优势 —— 而不是被「敌人跟着你一起长」悄悄抹掉。
- *
- * 从前那一版是把参照取成玩家自己的 celestialStats(数值成长互相抵消),
- * 好处是「堆厚度不占便宜」,代价是玩家的基础三维在天界毫无意义:
- * 一身神品与一身凡品打同一个守关者,结果一模一样。差别的表达权被收走了。
- * 现在把这份表达权还给玩家,改由**敌人一侧的判定**去管堆叠(见 celestialJudgement)。
+ * 天界锚点三维:powerScale(锚点层级) × 三围基数。
+ * 敌人按层级曲线定标,不按玩家此刻三维定标(同凡界 `enemyPowerAt(tier)`);堆叠由敌人侧判定处理(见 celestialJudgement)。
  */
 export function celestialAnchor(anchorTier: number): ReferenceStats {
   const scale = powerScale(anchorTier)
@@ -37,15 +26,7 @@ export function celestialAnchor(anchorTier: number): ReferenceStats {
   }
 }
 
-/**
- * 天界判定层 —— 基础三维之外,敌人依据**你是什么样的人**额外做的事。
- *
- * 三样,都建立在攻防血之上,而不是取代它们:
- *   一 **道之理解**:你的构筑越厚(超过基准深度),守关者越有备 —— 三维按比例加厚;
- *   二 **增伤**:看破你的路数,打得更重;
- *   三 **减伤**:挡得住你的路数,吃得下你的招式。
- * 加厚与增伤减伤都设上限:判定是「让它更难缠」,不是「把你打回原点」。
- */
+/** 天界判定:基础三维之外,守关者按玩家构筑额外加厚、增伤、减伤;均设上限 */
 export interface CelestialJudgement {
   /** 三维加厚(≥1) */
   thicken: number
@@ -53,56 +34,33 @@ export interface CelestialJudgement {
   damageBonus: number
   /** 守关者减伤 */
   damageReduction: number
-  /** 境界压制是否生效(未及本界锚点境界)—— 报账时要能与「道之理解」分开说 */
+  /** 境界压制是否生效(未及本界锚点境界);报账时与「道之理解」分开 */
   suppressed: boolean
 }
 
 export const NO_JUDGEMENT: CelestialJudgement = { thicken: 1, damageBonus: 0, damageReduction: 0, suppressed: false }
 
 /**
- * 天界词条对称基准(Phase 33.2)。
- *
- * 取值依据:六大标准流派(buildSim)的构筑深度为 1.02~2.43,天界平衡门本就是
- * 照着它们校准的,这个区间内不能被判为膨胀——否则标准构筑反被加厚,
- * 世界生成的「可行流派≥3」门会被误伤。基准设在流派上沿之上,
- * 只吸收人间进程带来的超额堆叠(实测真仙常规档深度 4.76)。
- *
- * 原本 worldFoeSnap 只对基础三维做等比抵消,词条乘区被玩家整份带进天界,
- * 实测不对称达 29~57 倍(见 inflationAudit),于是「一脚踹死」。
- * 补上词条这一半后,「数值成长在天界互相抵消」才真正成立:
- * 堆得再厚也换不来碾压,胜负重新回到构筑形状本身
- */
-/**
- * 道之理解的基准深度。
- *
- * 六大标准流派(buildSim)的构筑深度为 1.02~2.43 —— 这一段里的堆叠属于**正常构筑**,
- * 不触发任何判定;越过基准才叫「堆得太厚」,守关者才据此加厚与增减伤。
- * (数值与 33.2 那一轮相同,只是它的角色从「抵消玩家三维」变成「敌人加厚」。)
+ * 道之理解的基准深度。六大标准流派(buildSim)深度 1.02~2.43,须落在基准之下、不触发判定,
+ * 否则世界生成「可行流派≥3」门被误伤;只阻尼超额堆叠(实测真仙常规档 4.76)。
  */
 export const CELESTIAL_BASE_DEPTH = 2.6
-/** 每超出基准一倍,守关者增伤/减伤各加这么多 */
+/** 每超出基准一倍,守关者增伤/减伤各加此值 */
 export const CELESTIAL_JUDGE_RATE = 0.15
-/** 增伤与减伤各自的封顶 —— 判定是让它难缠,不是把你打回原点 */
+/** 增伤与减伤各自的封顶 */
 export const CELESTIAL_JUDGE_CAP = 0.35
-/** 境界压制:未及这一界锚点境界者,守关者额外增伤 */
+/** 境界压制:未及本界锚点境界时守关者额外增伤 */
 export const CELESTIAL_SUPPRESS_BONUS = 0.25
 
-/** 构筑深度对应的加厚系数(不低于 1,浅构筑不会反被削)—— 判定的第一样 */
+/** 构筑深度对应的三维加厚系数(≥1) */
 export function celestialDepthScale(playerMods: StatMods): number {
   const depth = modDepth(playerMods)
   return depth <= CELESTIAL_BASE_DEPTH ? 1 : depth / CELESTIAL_BASE_DEPTH
 }
 
 /**
- * 这一界的判定:玩家的构筑厚度与境界,决定守关者额外做什么。
- *
- * 反极端(minmax)是**有意的**:基准 CELESTIAL_BASE_DEPTH 之上,堆得越厚守关者
- * 越有备 —— 加厚(≈depth/基准)+ 增伤/减伤(JUDGE_RATE 递增、JUDGE_CAP 封顶)。
- * 但六大标准流派(buildSim)的构筑深度只有 1.02~2.43,全部低于基准,因此**标准构筑
- * 不被罚**:thicken=1、增伤/减伤≈0。真正被阻尼的是越过基准的超额堆叠(实测真仙
- * 常规档 ~4.76)。这条「标准不罚、极端阻尼」的不变式由 celestialJudgementInvariant.spec
- * 锁死 —— 改判定的任何数值必须先过它,别让「反 minmax」静默变成「连标准都被罚」。
- *
+ * 本界判定:玩家构筑厚度与境界决定守关者的加厚、增伤/减伤与境界压制。
+ * 不变式「标准构筑不罚(thicken=1、增减伤≈0),超基准堆叠才阻尼」;spec 钉:celestialJudgementInvariant.spec,改判定数值须先过它。
  * @param playerMajor 玩家此刻的大境界(用于境界压制)
  * @param anchorTier  本界锚点层级(它的境界即本界「该有的境界」)
  */
@@ -110,7 +68,6 @@ export function celestialJudgement(playerMods: StatMods, playerMajor: number, an
   const thicken = celestialDepthScale(playerMods)
   const over = thicken - 1
   const judge = Math.min(CELESTIAL_JUDGE_CAP, over * CELESTIAL_JUDGE_RATE)
-  // 境界压制:还没走到这一界该有的境界,守关者额外增伤(规则文案里会写明)
   const suppressed = playerMajor < tierMajor(anchorTier)
   const suppress = suppressed ? CELESTIAL_SUPPRESS_BONUS : 0
   return { thicken, damageBonus: judge + suppress, damageReduction: judge, suppressed }
@@ -141,13 +98,7 @@ export function celestialFoeOrigin(j: CelestialJudgement): FoeOrigin {
   }
 }
 
-/**
- * 把判定讲成人话 —— 战前要看得见,战后要说得清。
- *
- * 「敌人为什么比看起来更强」若是只能靠猜,玩家调不动它:他既不知道该削哪个属性,
- * 也不知道该往哪一境走。故判定只在此处成文,战前预估与战后战报读同一份文案。
- * 中性的判定(浅构筑且境界已到)返回空数组 —— 没有判定就不该占字数。
- */
+/** 判定文案单一出处:战前预估与战后战报共用;中性判定(浅构筑且境界已到)返回空数组 */
 export function celestialJudgementLines(
   playerMods: StatMods,
   playerMajor: number,
@@ -173,11 +124,8 @@ export function celestialJudgementLines(
 }
 
 /**
- * 天界敌人的**唯一参照口径** —— 远征 / 挑战 / 试炼 / 重写一律走它。
- *
- * 两件事一起给:敌人按**本界锚点**定标(与玩家此刻有多强无关),
- * 判定按**玩家是什么样的人**算(厚度 → 加厚与增减伤;境界 → 压制)。
- * 收成一处,是为了不让某一条造敌路径漏掉判定 —— 这正是 celestialCaliber.spec 盯的。
+ * 天界敌人唯一参照口径:远征 / 挑战 / 试炼 / 重写一律走它,敌人按本界锚点定标,判定按玩家厚度与境界算。
+ * spec 钉:celestialCaliber.spec(造敌路径不得漏判定)。
  */
 export function celestialFoeCaliber(
   playerMajor: number,
@@ -190,13 +138,7 @@ export function celestialFoeCaliber(
   }
 }
 
-/**
- * 按参照属性生成天界敌人。
- *
- * `judgement` 是敌人一侧的判定(道之理解 + 境界压制):三维按它加厚,
- * 增伤减伤并入敌人词条 —— 玩家在战后分析里看得到「被看破/被挡住」那两项,
- * 而不是莫名其妙地打不动。
- */
+/** 按参照属性生成天界敌人;`judgement` 的加厚乘到三维,增伤减伤并入敌人词条 */
 export function worldFoeSnap(
   shape: WorldFoeShape,
   ref: ReferenceStats,
@@ -207,13 +149,12 @@ export function worldFoeSnap(
   if (judgement.damageBonus > 0) mods.damageBonus = (mods.damageBonus ?? 0) + judgement.damageBonus
   if (judgement.damageReduction > 0) mods.damageReduction = (mods.damageReduction ?? 0) + judgement.damageReduction
   const thicken = escalation * judgement.thicken
-  // 加成来源随快照带走:expedition 把战果交给战后分析时,不必回头重建这一份判定
+  // 加成来源随快照带走:expedition 战后分析不重建判定
   const origin = celestialFoeOrigin(judgement)
   return {
     name: shape.name,
     icon: shape.icon,
     isPlayer: false,
-    // 连战的逐场加码(escalation)也如实写进来源,不然「第三场怎么突然更凶」又成了谜
     origin: escalation === 1 ? origin : { ...origin, ratio: origin.ratio * escalation, parts: [...origin.parts, { label: '连战加码', ratio: escalation }] },
     attack: mulN(ref.attack, shape.atkR * thicken),
     defense: mulN(ref.defense, shape.defR * thicken),
@@ -259,11 +200,7 @@ export interface GauntletFightRow {
   win: boolean
   rounds: number
   hpLeftPct: number
-  /**
-   * 该场的逐回合战报。
-   * 仅供即时播放,**不可写入道痕等持久化结构**——道痕存的是构筑快照(replay),
-   * 每场几十条日志乘上 60 条道痕会把存档撑爆
-   */
+  /** 该场逐回合战报,仅供即时播放;不可写入道痕等持久化结构(每场几十条 × 60 条道痕会撑爆存档) */
   logs?: CombatLogEntry[]
   /** 该场敌人快照(播放时显示血条与名号) */
   foe?: CombatantSnap
@@ -287,7 +224,6 @@ export interface GauntletOpts {
   buildLog?: boolean
 }
 
-/** 词条叠加 n 层 */
 function stackMods(base: StatMods, extra: StatMods, n: number): StatMods {
   if (n <= 0) return base
   const out: StatMods = { ...base }
@@ -298,10 +234,7 @@ function stackMods(base: StatMods, extra: StatMods, n: number): StatMods {
   return out
 }
 
-/**
- * 连战:携带血量进入下一场,场间按比例恢复
- * @param startHpCap 每场开局血量上限(试炼规则,如一线试炼 0.35)
- */
+/** 连战:携带血量进入下一场,场间按比例恢复;每场开局血量上限取试炼规则(如一线试炼 0.35) */
 export function runGauntlet(
   player: CombatantSnap,
   foes: CombatantSnap[],
@@ -327,8 +260,7 @@ export function runGauntlet(
       return { cleared: false, fightsWon, totalRounds, rows }
     }
     fightsWon += 1
-    // 违契终止时这一胜也算(已胜该场):否则「止步第 N 战」会跟 rows 里这一行
-    // win=true 互相矛盾 —— 明明赢了却报失败
+    // 违契终止时这一胜也算(已胜该场),否则与 rows 该行 win=true 矛盾
     if (opts.minHpAfterFight !== undefined && result.playerHpPct < opts.minHpAfterFight) {
       return { cleared: false, fightsWon, totalRounds, rows, pactBroken: true }
     }

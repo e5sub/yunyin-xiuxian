@@ -1,13 +1,7 @@
 /**
- * 平台探测验收 —— 「该不该劝装到主屏幕」这件事,判据比文案更要紧
- *
- * 这条判据管的是**说错话的代价**:在不该出现的平台(iOS 之外)弹一句「iOS 会清掉你的
- * 存档」,玩家会当成游戏在胡说;在已经装好的应用里还劝人安装,更像 bug。故两种误判
- * 各钉一条:
- *   一 安卓 APK / Windows 桌面 / 桌面浏览器:**一律不许出现**(它们用应用自己的存储)
- *   二 已经是主屏幕应用(navigator.standalone 或 display-mode: standalone):不许再劝
- * 而该出现的必须出现:iOS 上未安装 —— 包括 Chrome/Edge 这些壳(共用 WebKit 策略),
- * 以及 iPadOS 13+ 那套把自己伪装成 Mac 的 UA。
+ * 平台探测:要不要劝「添加到主屏幕」。
+ *   不劝:安卓 APK / Windows 桌面 / 桌面浏览器;已是主屏幕应用(navigator.standalone 或 display-mode: standalone)。
+ *   要劝:iOS 上未安装,含 Chrome/Edge 壳(共用 WebKit 策略)与伪装成 Mac 的 iPadOS 13+ UA。
  */
 import { describe, expect, it } from 'vitest'
 import { isIos, isInstalledApp, shouldSuggestInstall, type EnvProbe } from './platform'
@@ -32,7 +26,7 @@ describe('平台探测 · 要不要劝「添加到主屏幕」', () => {
   it('iOS 上未安装:该劝 —— Safari 与 Chrome 壳一视同仁,风险相同', () => {
     expect(shouldSuggestInstall(env(UA.iosSafari))).toBe(true)
     expect(shouldSuggestInstall(env(UA.iosChrome))).toBe(true)
-    // iPadOS 13+ 伪装成 Mac,只能靠触点数认出来;真 Mac 没有触点,不该被劝
+    // iPadOS 13+ 伪装成 Mac,靠触点数区分
     expect(shouldSuggestInstall(env(UA.ipadOsAsMac, { maxTouchPoints: 5 }))).toBe(true)
     expect(shouldSuggestInstall(env(UA.macSafari, { maxTouchPoints: 0 }))).toBe(false)
   })
@@ -50,7 +44,7 @@ describe('平台探测 · 要不要劝「添加到主屏幕」', () => {
   })
 
   it('「是不是 iOS」与「是不是装好了」是两件事,别混成一条', () => {
-    // 装好的 iOS 仍算 iOS:哪天要按平台换文案,这条分界还得留着
+    // 装好的 iOS 仍算 iOS
     const installedIos = env(UA.iosSafari, { standalone: true })
     expect(isIos(installedIos)).toBe(true)
     expect(isInstalledApp(installedIos)).toBe(true)

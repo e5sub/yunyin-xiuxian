@@ -102,7 +102,7 @@ describe('藏经阁钻研(挂机推演)', () => {
   it('金丹期挂机终能翻出灵乳的方子', () => {
     const hours = hoursUntil('p_lingru', 6, 2, 400)
     expect(hours).not.toBeNull()
-    // 拿得到只是及格线;还得在放置游戏说得过去的时长内拿到,否则与死内容无异
+    // 超时即与死内容无异
     expect(hours!).toBeLessThanOrEqual(80)
     console.log(`  灵乳丹方:六级藏经阁 · 金丹期,约 ${hours} 个时辰到手`)
   })
@@ -138,13 +138,11 @@ describe('藏经阁钻研(挂机推演)', () => {
     player.major = 1
     useDongfuStore().setLevel('library', 4)
     const lore = useLoreStore()
-    // 唯一一张未通方子只剩 0.001 缺口,锅中蓄了 0.5 —— 修复前整袋倒进 clamp 到 1,
-    // studyFrac 归零,0.499 的钻研蒸发;修复后只消费缺口,盈余留给下一拍继续
+    // 唯一未通方子只剩 0.001 缺口,锅中蓄 0.5:只应消费缺口,盈余留给下一拍
     lore.recipeLore = { p_jvqidan: 0.999 }
     lore.studyFrac = 0.5
     studyTick(0.001) // dt 极小,累计增量可忽略
     expect(lore.recipeMastery('p_jvqidan')).toBeCloseTo(1, 6)
-    // 盈余保留(δ=本拍 dt 累计的微小增量),而不是整段清零
     expect(lore.studyFrac).toBeGreaterThan(0.49)
   })
 
@@ -169,7 +167,6 @@ describe('藏经阁钻研(挂机推演)', () => {
     useDongfuStore().setLevel('library', 3)
     seedLoreIfNeeded()
     const lore = useLoreStore()
-    // 炼气期够得着的方子拢共就那几张,翻通之后再攒也无处可用
     const total = studiableRecipes(0, id => lore.recipeMastery(id)).length + lore.knownRecipeCount
     for (let h = 0; h < 300; h += 1) studyTick(3600)
     expect(lore.knownRecipeCount).toBe(total)
@@ -188,10 +185,7 @@ describe('藏经阁钻研(挂机推演)', () => {
   })
 })
 
-/**
- * 藏经阁「下一件事」的读数 —— 判据是与 studyTick 同一优先序:
- * 先补熟最生的一张、都读通了才求索新方,数值只做「缺口 ÷ 现速」。
- */
+/** studyEta 须与 studyTick 同一优先序:先补熟最生的一张、都读通了才求索新方;数值只做「缺口 ÷ 现速」。 */
 describe('藏经阁翻检概况(studyEta)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -221,7 +215,7 @@ describe('藏经阁翻检概况(studyEta)', () => {
     player.major = 2
     useDongfuStore().setLevel('library', 5)
     const lore = useLoreStore()
-    // 把够得着的都补到通晓,独留灵乳一张未启 —— 于是架上还有书
+    // 够得着的都补到通晓,独留灵乳一张未启
     for (const p of PILLS) {
       if (!p.recipe || p.id === 'p_lingru') continue
       const rank = recipeCraft(p)?.rank ?? Number.MAX_SAFE_INTEGER

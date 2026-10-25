@@ -1,18 +1,14 @@
 <template>
   <div class="stagger-in flex min-h-full flex-col items-center justify-center px-8 py-10">
-    <!-- 游戏图标 -->
     <div class="grid h-24 w-24 place-items-center rounded-2xl bg-cinnabar shadow-lg shadow-cinnabar/30">
       <span class="font-kai text-[56px] leading-none text-paper">道</span>
     </div>
 
-    <!-- 游戏名 -->
     <h1 class="mt-6 font-kai text-[40px] leading-tight tracking-[0.3em] text-ink">云隐修仙录</h1>
     <p class="mt-2 text-[12px] tracking-[0.5em] text-ink-faint">一念修行 · 云深不知处</p>
 
-    <!-- 开始按钮 -->
     <button class="btn-seal mt-10 w-full max-w-72 !py-3.5 text-[17px] tracking-[0.3em]" @click="onStart">开 始 游 戏</button>
 
-    <!-- 底部:隐私政策 / 导出导入恢复 / 关于 -->
     <div class="mt-6 flex items-center gap-3 text-[11px] text-ink-faint">
       <button class="inline-flex min-h-[28px] items-center active:text-ink-soft" @click="privacyOpen = true">隐私政策</button>
       <span class="text-ink-faint">·</span>
@@ -20,7 +16,7 @@
       <span class="text-ink-faint">·</span>
       <button class="inline-flex min-h-[28px] items-center active:text-ink-soft" @click="aboutOpen = true">关于我们</button>
     </div>
-    <!-- 安卓 MIME 表通常不认 .save;放行通用文件类型与扩展名,安全边界仍由 importSaveText 校验 -->
+    <!-- 安卓 MIME 表通常不认 .save;安全边界由 importSaveText 校验 -->
     <input ref="fileInput" type="file" accept="application/octet-stream,.save" class="hidden" @change="onFilePicked" />
 
     <!-- 导入存档:确认文案 -->
@@ -34,7 +30,6 @@
       </template>
     </BaseModal>
 
-    <!-- 关于我们 -->
     <AboutDialog :open="aboutOpen" @close="aboutOpen = false" />
 
     <!-- 隐私政策全文 -->
@@ -49,7 +44,7 @@
         <input v-model="agreed" type="checkbox" class="h-4 w-4 accent-cinnabar" />
         <span class="text-[12px] text-ink-soft">
           我已阅读并同意
-          <!-- 行内按钮的命中区只有 17px;补成内联块给拇指一个 30px 的靶面 -->
+          <!-- 行内按钮命中区只有 17px;内联块给拇指 30px 靶面 -->
           <button class="inline-block py-1.5 text-azure" @click.prevent="privacyOpen = true">《隐私政策》</button>
         </span>
       </label>
@@ -61,7 +56,6 @@
       </template>
     </BaseModal>
 
-    <!-- 开始前穿梭传送门特效(同意并开始后播放,播完进建号页) -->
     <WarpPortal ref="warpRef" />
   </div>
 </template>
@@ -92,7 +86,7 @@
   const warpRef = ref<InstanceType<typeof WarpPortal> | null>(null)
   let enterTimer: ReturnType<typeof setTimeout> | undefined
   let saveRead: SaveFileReadHandle | null = null
-  /** 离页后文件读取可能才完成;不能再暂停引擎,也不能写已销毁组件的状态 */
+  /** 离页后读取可能才完成:不得再暂停引擎或写已销毁组件的状态 */
   let unmounted = false
 
   function onStart(): void {
@@ -113,7 +107,7 @@
     }, 2500)
   }
 
-  // ---- 导入存档(与设置页同流程:先停引擎,导完重载) ----
+  // 导入存档:与设置页同流程(先停引擎,导完重载)
   function triggerImport(): void {
     fileInput.value?.click()
   }

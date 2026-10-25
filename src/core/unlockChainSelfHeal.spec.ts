@@ -1,27 +1,11 @@
 /* eslint-disable no-console */
 /**
- * 解锁链补票 —— 扩界之后,旧档的「已靖」不再等于「下游已开」
- *
- * 现象:玩家反馈「鸿蒙裂隙之主始终刷不到」。
- *
- * 根因:解锁一直是**一次性事件** —— 击败某地之主的那一刻,才把
- * `requireCleared === 此地` 的下游 unlock 进列表(exploration.clearRegionAndUnlockNext)。
- * 于是「下游」如果在击败之后才被加进数据表,那一刻就永远过去了:
- * 首领不会复现(bossDue 认 adventure.cleared),unlock() 没有第二次机会。
- *
- * v1.34.0 的境界扩界正是这个形状:人间界 20 处是老内容,仙界 21 起的 24 处
- * 是新增的,云海仙门 requireCleared = 鸿蒙裂隙。凡是在扩界之前就把鸿蒙裂隙
- * 靖了的老档(即当时通关全部内容的玩家),进入新版本后:
- *
- *   - 鸿蒙裂隙显示「已靖」,首领 e_hmdemon 再也不会出现;
- *   - 云海仙门显示「需先击败鸿蒙裂隙之主,方可踏足此地」,而这句要求永远无法满足;
- *   - 仙界 / 神界 / 混沌海 24 处地界、12 大境界对这份存档整体不可达。
- *
- * 判据不是「解锁表里有没有 yunhai」,而是**行为**:这份旧档在新版本里
- * 到底能不能踏进仙界。
+ * 解锁链补票:解锁只在击败首领那一刻发生(exploration.clearRegionAndUnlockNext),已靖之地首领
+ * 不再出现(bossDue 认 adventure.cleared);数据表后加的下游,读档时须按 unlockClosure 补开。
+ * 判据是行为:扩界前的通关档(鸿蒙裂隙已靖)能否踏进仙界。
  *
  * 故障注入:把 unlockClosure 的调用从 adventure.sanitize 里摘掉,
- * 「读档补票 / 只补该补的 / 不吞开荒」三条即转红(实测)。
+ * 「读档补票 / 只补该补的 / 不吞开荒」三条即转红。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -32,7 +16,7 @@ import { canEnterRegion } from './mortalWorldService'
 import { startExploration } from './exploration'
 import { sanitizeOfflineInputs } from './offline'
 
-/** 扩界之前的一份「通关档」:人间界 20 处全部靖了,解锁表也就到鸿蒙裂隙为止 */
+/** 扩界前的通关档:人间界全部已靖,解锁表止于鸿蒙裂隙 */
 function forgeOldEndgameSave(): void {
   const adventure = useAdventureStore()
   const ids = MORTAL_REGIONS.map(r => r.id)
@@ -62,12 +46,11 @@ describe('解锁链补票 · 旧档的仙界入口', () => {
     forgeOldEndgameSave()
     expect(canEnterRegion('yunhai'), '补票前:仙界进不去').toBe(false)
 
-    // 走真实的读档口(engine.start → sanitizeOfflineInputs),不是直接调 store 方法
+    // 走真实读档口(engine.start → sanitizeOfflineInputs)
     sanitizeOfflineInputs()
 
     expect(adventure.unlocked, '补票后:云海仙门在解锁表里').toContain('yunhai')
     expect(canEnterRegion('yunhai'), '补票后:准入谓词放行').toBe(true)
-    // 行为验收:不是列表里有就算数,真开一程才算接上
     expect(startExploration('yunhai', 'normal'), '补票后:仙界真的能出发').toBe(true)
     adventure.setSession(null)
     console.log(`\n补票后:云海仙门 ${regionDef('yunhai')!.name} 可出发`)
@@ -75,7 +58,6 @@ describe('解锁链补票 · 旧档的仙界入口', () => {
 
   it('补票不会把整张表全开 —— 只开前置确实靖了的那些', () => {
     const adventure = useAdventureStore()
-    // 只靖到鸿蒙裂隙:下游到云海仙门为止,金阙玉京(前置谪仙古渡)仍上锁
     forgeOldEndgameSave()
     adventure.sanitize()
 
@@ -104,7 +86,6 @@ describe('解锁链补票 · 旧档的仙界入口', () => {
     adventure.sanitize()
     expect(adventure.unlocked, '已靖为空时不该凭空开地界').toEqual(['qingyun'])
 
-    // 正常击败青云之主:下游照常开放,且只开 requireCleared 指向青云的那一处
     adventure.markCleared('qingyun')
     adventure.sanitize()
     expect(adventure.unlocked).toEqual(['qingyun', 'luoxia'])

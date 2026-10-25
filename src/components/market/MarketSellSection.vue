@@ -1,5 +1,4 @@
 <template>
-  <!-- 售出:装备寄卖 / 材料丹药即时售 -->
   <section class="space-y-4">
     <!-- 寄卖装备 -->
     <div>
@@ -42,7 +41,6 @@
       </div>
     </div>
 
-    <!-- 材料即时售 -->
     <div>
       <SectionTitle title="售材料" />
       <div class="mt-2 space-y-2">
@@ -60,7 +58,6 @@
       </div>
     </div>
 
-    <!-- 丹药即时售 -->
     <div>
       <SectionTitle title="售丹药" :hint="`${sellablePills.length} 味`" />
       <div class="card-ink mt-2 max-h-56 divide-y divide-ink/6 overflow-y-auto px-1">
@@ -109,21 +106,19 @@
   const inventory = useInventoryStore()
   const player = usePlayerStore()
   const ui = useUiStore()
-  // 寄卖按墙钟到点入账,引擎暂停(重置 / 导入确认)时读数也必须照走。
+  // 寄卖按墙钟入账,引擎暂停(重置 / 导入确认)时读数须照走
   const now = useWallNow()
 
   const consignSlots = MARKET_CONSIGN_SLOTS
-  /** 寄卖工期短语 —— 从 `MARKET_CONSIGN_SECONDS` 现算,不手打古语(2400s → 两刻有余(40 分钟)) */
+  /** 寄卖工期:从 MARKET_CONSIGN_SECONDS 现算,不手打古语 */
   const consignSpan = classicalDuration(MARKET_CONSIGN_SECONDS)
   /**
-   * 铺格子按「上限与实际条数取大」,但**封顶**在 MARKET_CONSIGN_RENDER_MAX:
-   * 坏档可能塞进成千上万条寄卖,全铺出来会把这一页卡死。多出来的并成一行
-   * 「还有 N 件」—— 它们照样在存档里、到点照样入账,只是不各占一格。
+   * 格数封顶 MARKET_CONSIGN_RENDER_MAX:坏档可能塞进成千上万条寄卖。
+   * 超出者并成「另有 N 件」,照样在档、到点入账。
    */
   const consignSlotsArr = computed(() =>
     Array.from({ length: Math.min(MARKET_CONSIGN_RENDER_MAX, Math.max(consignSlots, market.consign.length)) }, (_, i) => i)
   )
-  /** 超出渲染上限、没铺成格子的寄卖条数 */
   const consignHidden = computed(() => Math.max(0, market.consign.length - MARKET_CONSIGN_RENDER_MAX))
   const consignSlotsFull = computed(() => market.consign.length >= consignSlots)
   /** 坏档能塞进多于上限的寄卖:照实报条数,别让「3/2」这种读数看起来像坏了 */
@@ -133,7 +128,6 @@
       : `${market.consign.length}/${consignSlots}`
   )
 
-  /** 寄卖格里每格 → 剩余秒数 / 价 */
   const consignBySlot = computed<Record<number, { name: string; price: GNum; remainingSec: number }>>(() => {
     const out: Record<number, { name: string; price: GNum; remainingSec: number }> = {}
     for (const p of market.consign) {
@@ -155,7 +149,6 @@
       }))
   )
 
-  /** 摆摊逐品可售:玄铁一行 + 每品灵草(仅列持有>0 的品),旧草也有出口 */
   const materialRows = computed(() => [
     { id: 'ore', grade: null as HerbGrade | null, icon: 'mountain', name: '玄铁', count: resources.ore, price: materialSellPrice(player.major) },
     ...HERB_GRADES.filter(g => resources.herbOf(g) > 0).map(g => ({

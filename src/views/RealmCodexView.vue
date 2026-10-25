@@ -10,7 +10,6 @@
     <InkTabs v-model="codexTab" :tabs="CODEX_TABS" />
 
     <template v-if="codexTab === 'realm'">
-    <!-- 界域与境界:逐境写明出处与承接 -->
     <section v-for="row in worldRows" :key="row.world.id" class="card-ink px-4 py-3">
       <div class="flex items-baseline gap-2">
         <span class="font-kai text-[15px] tracking-[0.25em] text-ink">{{ row.world.name }}</span>
@@ -36,7 +35,6 @@
           </p>
           <p class="mt-0.5 text-[11px] leading-relaxed text-ink-soft">{{ cell.def.desc }}</p>
           <p class="mt-1 text-[11px] leading-relaxed text-ink-faint">{{ cell.def.lore }}</p>
-          <!-- 此境所据何典:把「境界 → 原典」这条来路直接摆在该境底下 -->
           <p v-if="classicsOf(cell.def.id).length" class="mt-1 text-[10px] text-ink-faint">
             所据:{{ classicsOf(cell.def.id).map(c => `《${c.title}》`).join(' ') }}
           </p>
@@ -107,7 +105,6 @@
       </div>
     </section>
 
-    <!-- 八卦 -->
     <section class="card-ink divide-y divide-ink/6 px-4">
       <div v-for="t in TRIGRAMS" :key="t.id" class="flex items-start gap-2 py-2.5">
         <span class="w-[52px] shrink-0 font-kai text-[15px] text-ink">{{ t.symbol }} {{ t.name }}</span>
@@ -118,7 +115,6 @@
       </div>
     </section>
 
-    <!-- 六十四卦:全表可查,但不必时时铺开 -->
     <section class="card-ink px-4 py-3">
       <button class="flex w-full items-center justify-between text-left" @click="showAllHex = !showAllHex">
         <span class="font-kai text-[13px] tracking-wider text-ink">{{ cnNumber(HEXAGRAMS.length) }}卦</span>
@@ -239,7 +235,7 @@
           <span class="w-20 shrink-0 text-[10px] text-ink-faint tabular">{{ g.gua }}{{ g.direction }} · {{ g.palace }}宫 · {{ g.kind }}</span>
           <span class="min-w-0 text-[11px] leading-relaxed text-ink-soft">
             {{ g.gist }}
-            <!-- 数值与结算同源:gist 讲门义,这一行是真正进 resolveCombat 的数 -->
+            <!-- 与结算同源:这一行是进 resolveCombat 的数 -->
             <span class="mt-0.5 block tabular text-[10px] text-ink-faint">{{ gateRuleSummary(g.rules) }}</span>
           </span>
         </div>
@@ -303,7 +299,6 @@
   const resources = useResourcesStore()
   const now = useNow()
 
-  /** 分册:六门各占一册 —— 页越长越该分,免得一路拉到底找不着北 */
   type CodexTab = 'realm' | 'classics' | 'yi' | 'ziwei' | 'xiang' | 'qimen' | 'todo'
   const CODEX_TABS: { id: CodexTab; label: string }[] = [
     { id: 'realm', label: '界域' },
@@ -317,7 +312,7 @@
 
   const showAllHex = ref(false)
 
-  /** 在身之卦:按 1 秒游戏钟判断,与服务端共用 divinationActiveAt 这一条判据 */
+  /** 在身之卦:读 1 秒游戏钟,与服务端同一判据 divinationActiveAt */
   const currentState = computed(() => divinationActiveAt(player.divination, now.value))
   const currentReading = computed(() => {
     const state = currentState.value
@@ -331,7 +326,7 @@
     return state ? formatCountdown(Math.max(0, Math.ceil((state.expiresAt - now.value) / 1000))) : ''
   })
 
-  /** 问卦付不起就置灰并列差:判据与 askDivination 的 hasSmall 同一本账 */
+  /** 判据与 askDivination 的 hasSmall 同一本账 */
   const askShort = computed(() => Math.max(0, DIVINATION_COST - resources.wudao))
   const askDisabled = computed(() => !!currentState.value || askShort.value > 0)
   const askLabel = computed(() => {
@@ -350,14 +345,14 @@
     ui.toast(`得「${r.hexagram.name}」卦${r.changed ? `,之${r.changed.name}` : ''}`, 'info')
   }
 
-  // 命格:一世不变的一张盘(转世重算),故不必计时,直接读 player 的派生值
+  // 命格一世不变(转世重算),不必计时
   const fateLordLineText = computed(() => fateLordLine(player.fateChart))
   const fateModsText = computed(() => modsText(player.fateMods))
 
-  /** 点化主星的灵石单价(一处出,文案与扣费同源) */
+  /** 点化主星的灵石单价,文案与扣费同源 */
   const focusCost = gn(STAR_FOCUS_COST_BASE)
   const focusCostText = formatGN(focusCost)
-  /** 点化尚差灵石:付得起为 0;指数感知减法,跨数量级不会报错差额 */
+  /** 点化尚差灵石,付得起为 0;指数感知减法,跨数量级不会报错差额 */
   const focusShortGN = computed(() => (resources.hasStone(focusCost) ? gnZero() : subClamp(focusCost, resources.spiritStone)))
   const focusShort = computed(() => focusShortGN.value.m)
   function focusStar(id: string): void {
@@ -381,7 +376,7 @@
     }))
   )
 
-  // 星象:值日之宿与所利界域(由游戏日派生,随心跳刷新)
+  // 值日之宿与所利界域由游戏日派生,随心跳刷新
   const showAllMansions = ref(false)
   const mansionLine = computed(() => todayMansionLine())
   const favoredWorldName = computed(() => worldDef(effectiveFavoredWorld()).name)
@@ -392,13 +387,7 @@
     return MANSIONS.filter(m => m.image === image)
   }
 
-  /**
-   * 洛书九宫的排布句 —— **从 GATES 表推出来,不手写**。
-   *
-   * 这句话本质是一张地图(哪一门坐哪一宫、朝哪一方),手写一份就等于把
-   * 八门的方向抄了第二遍:改门的位置或加一门,句子会开始说假话。
-   * 中五无门是九宫的固有事实(不是一张门),故由循环补出。
-   */
+  /** 洛书九宫排布句:从 GATES 表推出,不手写;中五无门由循环补出 */
   const luoshuGatesText = computed(() =>
     Array.from({ length: 9 }, (_, i) => {
       const palace = i + 1
@@ -407,7 +396,6 @@
     }).join('、')
   )
 
-  /** 四象各配哪一界 —— 游戏约定写在 IMAGES 表里,这句只是把它读出来 */
   const imageWorldMap = computed(() => IMAGES.map(i => `${i.direction}配${worldName(i.world)}`).join('、'))
 
   const worldRows = computed(() =>
@@ -422,7 +410,6 @@
     return idx >= 0 ? realmDef(idx).name : id
   }
 
-  /** 此境所据的原典(来自典籍表,不在视图里手写) */
   function classicsOf(realmId: string) {
     return classicsForRealm(realmId)
   }

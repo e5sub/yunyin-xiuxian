@@ -1,12 +1,7 @@
 <template>
-  <!-- 稀有天降:全屏金光一闪 -->
+  <!-- 稀有品全屏金光 -->
   <div v-if="flashId !== null" :key="flashId" class="rare-flash" />
-  <!--
-    外框不吃事件(留出底下页面的点击),但**提示条本身要吃** ——
-    它挂着 @click 关掉自己,也写着 cursor-pointer 与按下反馈。
-    此前只有外框写了 pointer-events-none,按钮继承成 none:
-    dismissToast 从来没有被触发过,提示条只能等超时自己消失。
-  -->
+  <!-- 外框 pointer-events-none 不吃事件;提示条本身须吃事件(点击关闭),否则继承成 none -->
   <div class="pointer-events-none fixed inset-x-0 top-12 z-70 flex flex-col items-center gap-1.5 px-6">
     <TransitionGroup name="toast-slide" :duration="TOAST_ANIM_MS">
       <button
@@ -33,12 +28,8 @@
   const ui = useUiStore()
 
   /**
-   * 离场动画时长 —— 必须与 style.css 里 .toast-slide-* 的 0.25s 对齐。
-   *
-   * 之所以要显式写死:稀有提示带着 animate-glow-pulse(2.4s **无限**动画),
-   * 过渡的自动探测会把那 2.4 秒当成离场时长,而无限动画的 animationend 永远不来,
-   * 于是它只能等满这个超时 —— 玩家点掉一条提示后,它还得在原地杵两秒才消失,
-   * 手感就是「点了没反应」。写死时长让 Vue 到点就摘,不必等 anim.
+   * 离场动画时长,须与 style.css 里 .toast-slide-* 的 0.25s 对齐。
+   * 须显式写死:稀有提示的 animate-glow-pulse 是 2.4s 无限动画,自动探测会把它当成离场时长。
    */
   const TOAST_ANIM_MS = 250
 
@@ -59,7 +50,7 @@
     id => flashTimer.flash(id)
   )
 
-  // 新 toast 落地时按类型配一声提示音;稀有品级另加全屏金光
+  // 新 toast 按类型配提示音;稀有另加全屏金光
   watch(
     () => ui.toasts.map(t => t.id),
     () => announcer.announce(ui.toasts)

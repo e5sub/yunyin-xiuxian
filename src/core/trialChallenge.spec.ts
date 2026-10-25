@@ -1,14 +1,7 @@
 /**
- * 天道试炼(TRIALS:qisha/yixian/wuhui)—— challengeTrial run-state 守卫。
- *
- * 此前 challengeTrial(自 endgameService)与 recordTrial 全零覆盖:整条 TRIALS 运行路径
- * 不被任何 spec 触碰。这里钉三件事:
- *   一 recordTrial 的 bestRounds 取最小(更好成绩守谱),更差的回合不清掉纪录;
- *   二 顶配清 trial:扣入界费、赏 rewardDaoSource、记谱(clears/best),里程碑;
- *   三 裸装败 trial:不赏、不记谱,入界费照扣(败战也烧入场钱,不白吃)。
- *
- * 注意:此文件刻意**不** mock 战斗/渡劫(不像 endgameService.spec 的 tribulationDecision
- * 档)——该 mock 会把 celestialStats 压弱,顶配也不再清试炼。这里走真实 combat。
+ * 天道试炼(TRIALS:qisha/yixian/wuhui)challengeTrial 守卫。
+ * 钉:顶配清试炼扣入界费、赏 rewardDaoSource、记谱(clears/best);裸装败试炼不赏、不记谱,入界费照扣。
+ * 不 mock 战斗/渡劫:endgameService.spec 的 tribulationDecision mock 会压弱 celestialStats,顶配清不了试炼。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -55,7 +48,7 @@ describe('天道试炼 · challengeTrial 清/败原子', () => {
     const t = trialDef('qisha')!
     const out = challengeTrial('qisha')!
     expect(out.report.cleared, 'qisha cleared=false, fw='+out.report.fightsWon).toBe(true)
-    expect(out.report.fightsWon).toBe(t.fights) // 清即全捷
+    expect(out.report.fightsWon).toBe(t.fights)
     expect(out.rewardDaoSource).toBe(t.rewardDaoSource)
     expect(before - e.daoSource).toBe(t.entryCost - t.rewardDaoSource)
     expect(e.trialRecords['qisha']?.clears).toBe(1)
@@ -92,7 +85,7 @@ describe('天道试炼 · challengeTrial 清/败原子', () => {
       targetId: 'chiyan',
       targetName: world.name,
       cleared: true,
-      rounds: 9999, // 今日之速必快过,走「胜于旧我」也不碍断言
+      rounds: 9999, // 今日必更快;走「胜于旧我」不碍断言
       buildName: '天道自检',
       powerText: '1e100',
       at: Date.now(),
@@ -101,17 +94,12 @@ describe('天道试炼 · challengeTrial 清/败原子', () => {
     const before = e.daoSource
     const marksBefore = e.marks.length
     const out = rewriteMark(e.marks[0]!)
-    // 回归:此前世界道痕在扣 10 道源后被 `if (!trial) return null` 拦死,零结果却照样烧钱。
     expect(out, '世界道痕重写不应白回 null').not.toBeNull()
     expect(before - e.daoSource).toBe(REWRITE_ENTRY_COST)
     expect(e.marks.length).toBe(marksBefore + 1)
   })
 
-  /**
-   * 忆战/重写卖的是「重打当年那一场(同界同契同变数)」。
-   * 共享 rng 下,别的动作推进全局随机流,同一痕连打两次战报就不同 —— 付了道源
-   * 买的确定性承诺落空。这里连打两次,逐回合战报必须逐字相同。
-   */
+  /** 忆战/重写须同变数:共享 rng 会让同一痕连打两次战报不同 */
   it('忆战/重写是「同变数」:同一道痕连打两次,逐回合战报相同', () => {
     seedTrialPlayer(true)
     const e = useEndgameStore()

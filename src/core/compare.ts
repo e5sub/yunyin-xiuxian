@@ -1,6 +1,6 @@
 /**
- * 构筑对照(Phase 27)—— 双 Build 研究与道痕今昔之比的共享底座
- * 不宣布谁胜:分环境给档位,附可解释的过程指标(回合/承伤/反击)
+ * 构筑对照:双 Build 研究与道痕今昔之比的共享底座。
+ * 不宣布谁胜:分环境给档位,附过程指标(回合/承伤/反击)。
  */
 import type { CelestialWorldDef, CombatantSnap, DaoMark } from '@/types'
 import { add, gnZero, ratio } from '@/utils/gnum'
@@ -15,16 +15,11 @@ export interface MeasureResult {
   avgRounds: number
   /** 场均承伤(占最大生命比) */
   avgTakenPct: number
-  /** 场均反击次数 */
   avgCounters: number
-  /** 场均会心次数 */
   avgCrits: number
 }
 
-/**
- * 测量:某快照在某世界的线性连战表现(敌人与该快照等比)。
- * 收集引擎遥测,过程指标可解释「为什么」
- */
+/** 测量某快照在某世界的线性连战表现(敌人与该快照等比) */
 export function measureOnWorld(
   snap: CombatantSnap,
   world: CelestialWorldDef,
@@ -98,7 +93,7 @@ export interface CompareReport {
   diffLines: string[]
 }
 
-/** 双构筑四天对照:分环境档位 + 可解释的过程差异 */
+/** 双构筑四天对照:分环境档位 + 过程差异 */
 export function compareSnaps(a: CombatantSnap, b: CombatantSnap, runs = 8): CompareReport {
   const rows: CompareRow[] = []
   let sumA: MeasureResult | null = null
@@ -142,8 +137,6 @@ export function compareSnaps(a: CombatantSnap, b: CombatantSnap, runs = 8): Comp
   return { rows, diffLines }
 }
 
-// ---------- 道痕今昔之比(Phase 27):我比以前更会玩了吗 ----------
-
 export interface LegacyComparison {
   targetName: string
   earlyLife: number
@@ -157,15 +150,9 @@ export interface LegacyComparison {
 }
 
 /**
- * 自动配对:同一目标、皆有忆战快照的最早与最新道痕,用各自当年的构筑重打当年之界。
- * 返回至多 limit 组——不是排行榜,是与过去的自己对话
- *
- * **只跨世配对**:早者与晚者必须分属两世。这一栏叫「今昔之比」、注释写的是
- * 「与过去的自己对话」,而同一世里的两道痕是**同一个自己**在同一个世里留下的
- * 两笔(一世内打两次天道变数、或重写道痕补的那条 `重写·` 前缀痕)—— 把它们说成
- * 「过去的自己」当场名不副实,界面上于是印出「第 3 世(剑)X → 第 3 世(刀)Y」
- * 这种自己比自己。守卫只看 `life`:`at` 相同是它的一条子集(同世同刻写进两条痕),
- * 无需再并列一个字段。
+ * 道痕今昔之比:同一目标、皆有忆战快照的最早与最新道痕,用各自当年的构筑重打当年之界;返回至多 limit 组。
+ * 只跨世配对:同世两道痕(一世内打两次天道变数、重写道痕的 `重写·` 前缀痕)不配对。
+ * 守卫只看 `life`:`at` 相同是它的子集。
  */
 export function legacyComparisons(marks: DaoMark[], limit = 2): LegacyComparison[] {
   const byTarget = new Map<string, DaoMark[]>()
@@ -181,7 +168,6 @@ export function legacyComparisons(marks: DaoMark[], limit = 2): LegacyComparison
     const sorted = [...list].sort((a, b) => a.at - b.at)
     const early = sorted[0]!
     const late = sorted[sorted.length - 1]!
-    // 同世不配对:这一栏比的是「这一世的我与上一世的我」,不是一世之内的两次出手
     if (early.life === late.life) continue
     const world = celestialWorldDef(targetId)!
     const snapEarly = snapFromReplay('往世之你', early.replay!)

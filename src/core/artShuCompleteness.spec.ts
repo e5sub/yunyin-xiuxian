@@ -1,16 +1,6 @@
 /**
- * 术数四门「描述即承诺」接线完整性 —— 卦力/命格/值日/择门 都真进玩法,不许纯显示。
- *
- * 回归点:四门术数(周易问卦 / 紫微命格 / 奇门择门 / 星象值日)此前逐条核实都已接进
- * 玩法(卦入 finalStats.mods、命格入 finalStats.mods、值日入 exploreEventChance、
- * 择门入交给 runGauntlet 的 CombatRules),但**没有任何东西逼一条未来的术数线自己交代
- * 玩法落点** —— 新加一门只当纯摆设也会静默过 CI。这里给整族钉住「描述即承诺」。
- *
- * 判据取真实落点(不是"函数存在"):
- *  - 卦力:在身之卦的词条真的并入 finalStats.mods(正值生效)
- *  - 命格:紫微一世之格的词条真的并入 finalStats.mods(正值生效)
- *  - 值日:今日星象所利的地界际遇更高,他处不加(exploreEventChance 拉开)
- *  - 择门:八门各自产出不同的 CombatRules —— 交到 runGauntlet 的就是这个对象
+ * 术数四门接线:卦力、命格入 finalStats.mods;值日入 exploreEventChance;择门产出交给 runGauntlet 的 CombatRules。
+ * 判据取真实落点,不是"函数存在"。
  */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -32,7 +22,7 @@ describe('术数四门接线完整性 —— 描述即承诺', () => {
 
   it('卦力:在身之卦的词条真正并入 finalStats.mods,不是摆设', () => {
     const player = usePlayerStore()
-    // 自选一卦确有卦力(扫常见六爻,取首个卦力非零者);卦的效力靠数据,不靠猜
+    // 扫常见六爻,取首个卦力非零者
     const candidates: number[][] = [
       [1, 1, 1, 1, 1, 1],
       [1, 0, 1, 0, 1, 0],
@@ -90,12 +80,10 @@ describe('术数四门接线完整性 —— 描述即承诺', () => {
 
   it('值日:今日星象所利的地界际遇更高,他处不加', () => {
     const game = useGameStore()
-    game.totalPlaySec = 0 // 游戏日 0:值日宿固定,界域确定
+    game.totalPlaySec = 0 // 游戏日 0:值日宿固定
     expect(favoredWorld(todayMansion())).toBe('mortal')
-    // 值日所利之地 +10%,他处不加
     expect(mansionEventLuck('qingyun')).toBeCloseTo(MANSION_EVENT_LUCK, 6)
     expect(mansionEventLuck('yunhai')).toBe(0)
-    // 所利之地际遇真被星象推开
     expect(exploreEventChance('qingyun', {})).toBeGreaterThan(exploreEventChance('yunhai', {}))
   })
 

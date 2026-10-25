@@ -1,6 +1,9 @@
-/* 楷体那几份 @font-face 与 unicode-range 是生成物(按用法频次切片、按需下载),
-   由 scripts/fonts/build-kai-font.py 写出;里面的 .woff2 会经 Vite 改写带 hash。
-   判据见 src/ui/kaiFontCoverage.spec.ts。@import 必须放在 @tailwind 之前。 */
+/* 楷体:随包分发霞鹜文楷 GB 屏幕阅读版子集(SIL OFL 1.1;协议全文在 public/fonts/OFL.txt,OFL 要求再分发时带着它)。
+   @font-face 与 unicode-range 是生成物(scripts/fonts/build-kai-font.py 写出,母体不入库;.woff2 经 Vite 改写带 hash),不在此手抄;
+   判据见 src/ui/kaiFontCoverage.spec.ts。
+   local() 只认 GB 屏幕阅读版:写成 local('LXGW WenKai') 会把装了原版的人换成日式字形。
+   不加 preload:哪一片会用到只有渲染到才知道。
+   @import 必须放在 @tailwind 之前。 */
 @import "./assets/fonts/kai-subset.css";
 
 @tailwind base;
@@ -8,13 +11,8 @@
 @tailwind utilities;
 
 /* ================= 水墨设计系统调色板 =================
-   每个颜色存两份:
-   --color-x-rgb  裸 RGB 通道值,供 tailwind.config.js 合成 rgb(通道 / alpha),
-                  这是 bg-ink/10 这类斜杠透明度能工作的前提
-   --color-x      由通道值派生的完整颜色,供 color-mix() 与模板里的
-                  var(--color-*) 直接使用
-   夜间主题只需覆盖 -rgb 通道值(见下方 html[data-theme='dark']),
-   派生变量自动跟随,两条路径同时换肤 */
+   --color-x-rgb  裸 RGB 通道值,供 tailwind.config.js 合成 rgb(通道 / alpha),斜杠透明度靠它
+   --color-x      由通道值派生的完整颜色,供 color-mix() 与 var(--color-*) */
 :root {
   --color-paper-rgb: 243 239 228;
   --color-paper-deep-rgb: 234 228 211;
@@ -47,23 +45,16 @@
   --color-amber-ink: rgb(var(--color-amber-ink-rgb));
 
   /*
-   * 楷体栈 —— **这里是唯一事实源**(tailwind.config 里的 kai/song 只是把它接成 utility)
-   *
-   * 内置那份排第一:先前是系统优先,于是同一个游戏在三端长成三种字形 —— iOS 华文楷体、
-   * Windows 楷体(它还属「中文补充字体」,Win10/11 里按需安装,没装的机器直接落到内置)、
-   * 安卓内置的那份。三端截图摆在一起,差异比「多下一次字体」更伤。
-   *
-   * 系统楷体留在第二位兜底:子集只收游戏用字 + GB2312(6940 字),名字里的生僻字
-   * (玥 玦 燊 龑 这类 GBK 扩展字)任何合理体积的子集都盖不住 —— iOS 上由华文楷体接住
-   * (还是楷体),安卓上落到系统衬线。这条退路删不得。
+   * 楷体栈唯一事实源(tailwind.config 里的 kai/song 只是把它接成 utility)。
+   * 内置那份排第一:三端统一字形(安卓一个楷体都没有)。
+   * 系统楷体第二位兜底:子集只收游戏用字 + GB2312(6940 字),GBK 扩展生僻字(玥 玦 燊 龑)在 iOS 上由它接住,删不得。
    */
   --font-kai: 'LXGW WenKai GB Screen', 'Kaiti SC', 'STKaiti', KaiTi, 'Noto Serif SC', serif;
   --font-song: 'Noto Serif SC', 'Source Han Serif SC', STSong, SimSun, 'Kaiti SC', serif;
 
-  /* 明暗通用阴影色(暗色主题下重定义) */
+  /* 阴影色(暗色主题下重定义) */
   --shadow-ink: rgb(41 39 34);
-  /* Chrome 91 兼容:color-mix() 需要 Chrome 111+,改用通道值变量
-     --shadow-ink-rgb 供 rgb(var(--shadow-ink-rgb) / alpha) 用
+  /* Chrome 91 兼容(color-mix() 需 Chrome 111+):用通道值变量;
      --color-paper-lifted-rgb 预计算 paper 92% + white 8% */
   --shadow-ink-rgb: 41 39 34;
   --color-paper-lifted-rgb: 244 240 230;
@@ -295,16 +286,14 @@
 }
 
 @keyframes glow-pulse {
-  /* 辉光改由 .animate-glow-pulse::before 承担(只动不透明度,走合成器);
-     元素本体不再逐帧重绘 box-shadow。 */
+  /* 辉光在 .animate-glow-pulse::before */
   0%,
   100% {
     opacity: 1;
   }
 }
 
-/* 呼吸蓄势的外圈:用径向渐层的伪元素按不透明度脉动 —— 不透明度只走合成器,
-   不像 box-shadow 那样逐帧触发重绘(突破就绪按钮 / 稀有提示 / 首岭战前按钮)。 */
+/* 呼吸蓄势的外圈:伪元素只动不透明度(走合成器),box-shadow 会逐帧触发重绘 */
 .animate-glow-pulse {
   position: relative;
 }
@@ -329,16 +318,10 @@
 
 /* ================= 基础 ================= */
 /*
- * 外壳高度 —— 顶栏与底栏能不能钉住,全看这一个值。
- *
- * 手机浏览器里的 100vh 是**大视口**:地址栏收起时的高度。地址栏还挂着的时候,
- * 外壳比看得见的区域高一截 —— 底栏被浏览器工具栏压在下面(要往下拖才露出来),
- * 文档层同时攒出一段可滚余量,拖一下两栏就跟着内容走,看着就是「没固定」。
- * 装成 PWA 或跑在安卓壳里时 100vh 恰是全屏,所以这个毛病只在手机浏览器里现形,
- * 桌面与无头浏览器都复现不出来(实测:见 scripts/layout-check.mjs「两栏钉死」一节)。
- *
- * dvh 跟着可见高度走,故外壳认 dvh;不认 dvh 的老浏览器退回 vh ——
- * 行为与修复前一致,不会更糟。
+ * 外壳高度:顶栏与底栏能不能钉住全看这一个值。
+ * 手机浏览器里的 100vh 是大视口(地址栏收起时的高度),地址栏挂着时外壳高出可见区、底栏被压住,
+ * 文档层攒出可滚余量;PWA / 安卓壳里 100vh 恰是全屏,桌面与无头浏览器都复现不出
+ * (见 scripts/layout-check.mjs「两栏钉死」)。外壳认 dvh,不认 dvh 的老浏览器退回 vh。
  */
 :root {
   --app-shell-height: 100vh;
@@ -349,22 +332,12 @@
   }
 }
 
-/*
- * html、body、#app、外壳四层用同一个高度,文档层就**没有**可滚余量:
- * 内容区在外壳里自己滚(main 是唯一的滚动宿主),window 从头到尾不动,
- * 两栏也就无从被拖走。四层但凡有一层还用 vh,那点差值就会变成可滚区间。
- */
+/* html、body、#app、外壳四层须同一个高度:任一层还用 vh,差值就成可滚区间。main 是唯一的滚动宿主 */
 html,
 body {
   height: var(--app-shell-height);
   overscroll-behavior: none;
-  /*
-   * 文档层**永不可滚**(玩家反馈, iOS 网页 + 装到桌面):
-   * 双击把页面拽到顶、露出底下一截白条 —— 那截白条就是「100vh/100dvh 比可视区
-   * 高一截,文档多出可滚余量」的现形;而启发式布局脚本口径(scripts/layout-check.mjs
-   * 「两栏钉死」)测的是"别再把可滚区间造出来",这里直接堵死 —— 双层保险。
-   * 真正能滚的只有 main(它自己 overflow-y-auto),文档层从此永不越轨。
-   */
+  /* 文档层永不可滚:iOS 网页 + 装到桌面时双击会把页面拽到顶、露出一截白条 */
   overflow: hidden;
 }
 
@@ -374,20 +347,12 @@ body {
   background: linear-gradient(160deg, #34312a 0%, #4a463d 45%, #2d2b25 100%);
   -webkit-font-smoothing: antialiased;
   user-select: none;
-  /*
-   * iOS Safari / 装到主页的双击缩放与 300ms 点击延时:快速连点会被吞成一次双击
-   * (玩家反馈「快速点击时容易误触」)。manipulation = 保留平移、只禁双击缩放,
-   * 连点不再有「等第二下」的窗口;点按直发 click。滚动区(main)不受影响。
-   */
+  /* iOS Safari / 装到主页:快速连点会被吞成一次双击缩放;manipulation 保留平移、只禁双击缩放 */
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
 
-/*
- * body 全局禁选是给游戏界面用的,但别把输入框也卷进去:
- * 「加个标记」「自动重铸次数」这些字的选取/光标拖动,在禁选下一部分
- * webview 会失灵(尤其安卓内嵌),玩家打完的字想改一改都难。
- */
+/* 输入框不随 body 禁选:禁选下一部分 webview(尤其安卓内嵌)的选字/光标拖动会失灵 */
 input,
 textarea {
   user-select: text;
@@ -395,9 +360,7 @@ textarea {
 }
 
 /* ================= 夜间主题 =================
-   只覆盖 -rgb 通道值:Tailwind 工具类(text-ink / bg-paper 等)读的是通道值,
-   :root 里的派生变量 --color-x 也是从通道值算出来的,组件层的 color-mix
-   与模板里的 var(--color-*) 随之自动更新,整体换肤无需逐个组件改动 */
+   只覆盖 -rgb 通道值,派生变量与 Tailwind 工具类随之换肤 */
 html[data-theme='dark'] {
   --color-paper-rgb: 33 31 28;
   --color-paper-deep-rgb: 41 38 34;
@@ -421,62 +384,18 @@ html[data-theme='dark'] {
 
 #app {
   height: var(--app-shell-height);
-  /*
-   * flow-root 只为防**外边距塌出**:大屏上外壳有 1rem 上下留白,而 #app 没有
-   * 边框也没有内边距,子元素的上外边距会穿过它塌到 body 上 —— 文档层于是凭空多出
-   * 16px 可滚余量(自检「两栏钉死」那条当场报红)。flow-root 建一层 BFC,把外边距
-   * 关在里面,不裁切、不影响布局。
-   */
+  /* flow-root 防外边距塌出:大屏外壳的 1rem 上外边距会穿过 #app 塌到 body,文档层多出 16px 可滚余量(自检「两栏钉死」) */
   display: flow-root;
 }
 
-/* 外壳:与 #app 同高(模板里的 h-screen 已被它取代) */
 .app-shell {
   height: var(--app-shell-height);
 }
 
 /*
- * 楷体 —— 随包分发的一份子集(霞鹜文楷 GB 屏幕阅读版,SIL OFL 1.1)
- *
- * 为什么需要它:iOS 有 Kaiti SC、Windows 有 KaiTi,**安卓一个楷体都没有**。而这套
- * 水墨味的标题、境界名、名号全压在 font-kai 上 —— APK 是主力渠道,不能在那儿落成衬线。
- *
- * 为什么选这一支(GB 屏幕阅读版,而不是原版霞鹜文楷):原版源自日本 Klee One,带日式
- * 字形 —— 「这 边 过 运 巡 遍 遥 道」的辶旁是日式两点辶,「令 骨 直 真」也不合大陆规范;
- * GB 版按 G 源改过,对简体玩家这是对错而非审美。屏幕阅读版则把笔画调实,10~13px 的小字
- * (本项目 UI 的主战场)清楚得多。两者同版本(v1.522),覆盖也够:游戏用字一个不少。
- *
- * 为什么这样挂:字体栈(kai)把它排第一位 —— **三端统一用这份内置字体**,系统的华文楷体 /
- * 楷体退到第二位只作兜底。装了「GB 屏幕阅读版」本体的人由 local() 命中、不必下载;
- * 注意 local() **只认这一支**:写成 local('LXGW WenKai') 会把装了原版的人悄悄换成日式
- * 字形,那正好破坏这次统一。
- *
- * 子集外的生僻字(GBK 扩展区,如 玥 玦 燊 龑)按字符回退到系统楷体或系统衬线,不会
- * 变成豆腐块;▬▸▾◈✧ 这几个装饰符号母体里就没有,一直由系统符号字体画(生成脚本里
- * 有一份显式名单,新增内容若用到别的、字体又画不出的字,脚本会当场报错)。
- *
- * 体积与重做方式见 scripts/fonts/build-kai-font.py(24.4MB 的母体不入库,只入库按
- * 用法频次切好的二十来片 woff2);协议全文在 public/fonts/OFL.txt —— OFL 要求再分发
- * 时带着它,别删。
- *
- * font-display: swap —— 先用回退字体把字显示出来,楷体到了再换,不白屏。
- * 没有加 preload:切片之后首屏只要第一片(~30KB),跟 JS+CSS 比不算大头;而且哪一片
- * 会用到只有渲染到才知道,preload 反而会预取用不上的储备片。要不要上得拿真机实测。
+ * 大屏:窄栏上下留白、加圆角与细边。留白从高度里扣:1rem + (100dvh - 2rem) + 1rem 恰好一屏
+ * (判据见 scripts/layout-check.mjs 第二十七件事)。矮屏(横屏手机)例外:1rem 的上下留白正是内容区缺的 32px。
  */
-/* @font-face 声明是**生成物** —— 已在文件顶部的
-   @import './assets/fonts/kai-subset.css' 里:按用法频次分成多片,每片一段
-   unicode-range,浏览器按需下载。手抄一份在这里迟早与切片对不上,故此不再重复。 */
-
-/*
- * 大屏:把窄栏收成一「册」
- *
- * 桌面与平板上,430px 的栏直接顶到屏幕上下边缘、两侧不描线,看着像一条没做完的
- * 窄带;上下各留一指、加圆角与一道细边之后,同一栏宽才像一册摊开的书页。
- *
- * 留白要从高度里扣:1rem + (100dvh - 2rem) + 1rem 恰好一屏,文档层依旧没有可滚
- * 余量,顶栏底栏照旧钉死(判据见 scripts/layout-check.mjs 第二十七件事)。
- */
-/* 矮屏(横屏手机)例外:那里高度比气度要紧,1rem 的上下留白正是内容区缺的 32px */
 @media (min-width: 768px) and (min-height: 561px) {
   .app-shell {
     height: calc(var(--app-shell-height) - 2rem);
@@ -486,7 +405,6 @@ html[data-theme='dark'] {
   }
 }
 
-/* 宣纸颗粒 */
 .paper-grain::after {
   content: '';
   position: absolute;
@@ -533,18 +451,13 @@ html[data-theme='dark'] {
   background: var(--color-cinnabar-deep);
 }
 
-/*
- * 夜主题印面换深朱:亮朱(201 85 78)当底托奶油白字只有 3.81:1,手机上
- * 「突破」「闭关」这类关键按钮的字会糊;深朱(163 70 64)白字 5.31:1。
- * 浅色印面保持 cinnabar,它在白纸上已是 5.42:1 —— 两套主题各自选能托住
- * 白字的那枚,判据见 src/ui/palette.spec.ts「印面」一节。
- */
+/* 夜主题印面换深朱:亮朱当底托奶油白字只有 3.81:1,深朱 5.31:1;浅色保持 cinnabar(5.42:1)。
+   判据见 src/ui/palette.spec.ts「印面」一节 */
 html[data-theme='dark'] .btn-seal {
   background: var(--color-cinnabar-deep);
 }
 
-/* 卷首题印(本世之界):与 .btn-seal 同一套印面 —— 奶油字、内阴影、夜主题深朱
-   全在这里收编,模板只留布局;判据见 src/ui/palette.spec.ts「调色板 · 印面」 */
+/* 卷首题印(本世之界):与 .btn-seal 同一套印面,模板只留布局;判据见 src/ui/palette.spec.ts「调色板 · 印面」 */
 .world-seal {
   background: var(--color-cinnabar);
   color: #f6f1e5;
@@ -557,21 +470,9 @@ html[data-theme='dark'] .world-seal {
 }
 
 /*
- * seal-face:模板里一枚枚小方印(炉/魂/道/悟/主/世,以及劫印钮)共用的
- * 「奶油字印面」—— 与 .btn-seal / .world-seal 同一套脸,只是背景由各个
- * 使用点自己的 bg-* /NN 负责。
- *
- * 为什么必须有这一层:这些小印过去写成 `text-paper`。依纸色路由是对的
- * (浅色 paper 就是奶油),但夜主题把 --color-paper-rgb 翻成近黑(33 31 28),
- * 印的底却仍是亮朱/亮金 —— 于是现出「黑字顶红方」,与旁边奶油字的
- * .btn-seal 脱节,反差也就 3.5:1 上下。
- *
- * 处理:浅色只校准字形为奶油白(底用调用处的 bg-cinnabar/90 · bg-gold-ink/85);
- * 夜主题把整面印统一压成深朱底(rgb(--color-cinnabar-deep),与 .btn-seal 同
- * 源),奶油字照旧。金字/靛字/紫字印在夜主题也并到深朱面:金(200 163 90)、
- * 靛(147 179 185)、紫(169 143 211)在夜主题都够亮,托不住奶油字,且与
- * 主按钮收编成同一枚印,视觉更整 —— 这是有意让「此世的四界色标」让位于
- * 「统一的印面」,与卷首题印的做法一致。
+ * seal-face:小方印(炉/魂/道/悟/主/世,以及劫印钮)共用的奶油字印面,背景由使用点自己的 bg-* 负责。
+ * 不用 text-paper:夜主题把 paper 翻成近黑,会现出「黑字顶红方」。
+ * 夜主题整面压成深朱底(与 .btn-seal 同源);金/靛/紫字印也并到深朱面,它们在夜主题托不住奶油字。
  */
 .seal-face {
   color: #f6f1e5;
@@ -581,24 +482,13 @@ html[data-theme='dark'] .seal-face {
 }
 
 .btn-seal:disabled {
-  /*
-   * 禁用态**不是装饰态**:按钮上的字往往正是「为什么不让我点」
-   * (「修为未至圆满」「灵石不足」「道源不足」)—— 那是玩家最需要读到的一句。
-   * 原先用最淡的 ink-ghost 打底 + 75% 白字,实测对比度只有 1.79:1,
-   * 在手机上基本看不见。改用 ink-faint 打底,对比度约 3.9:1,
-   * 「灰掉」的观感不变,字却读得出来。
-   */
+  /* 禁用态的字往往正是「为什么不让我点」,须读得出:ink-faint 打底约 3.9:1 */
   background: var(--color-ink-faint);
   color: rgb(255 255 255 / 0.92);
   box-shadow: none;
 }
 
-/*
- * 夜主题禁用态**:夜里的 ink-faint(168 161 140)是亮暖灰,白字压上去只有 ~2:1,
- * 整枚按钮被洗白,读不出「为什么不让我点」(修为未至圆满 / 灵石不足 / 道源不足)。
- * 浅色主题那套 ink-faint 打底(3.9:1)在夜里不成立,故单独换一块真正暗的
- * 惰性底(paper-dark,51 48 43):92% 白字在上面 >11:1 —— 「灰掉」的观感不变,字却读得出来。
- */
+/* 夜主题禁用态:夜里 ink-faint 是亮暖灰,白字只有 ~2:1;换 paper-dark 惰性底,92% 白字 >11:1 */
 html[data-theme='dark'] .btn-seal:disabled {
   background: rgb(var(--color-paper-dark-rgb));
   color: rgb(255 255 255 / 0.92);
@@ -628,11 +518,7 @@ html[data-theme='dark'] .btn-seal:disabled {
 }
 
 .btn-ghost:disabled {
-  /*
-   * 与 btn-seal 的禁用态同理:这里的字常常正是门槛本身(「需 筑基 境」「灵石不足」)。
-   * 原先整块压到 40% 透明 —— 实测前景对背景只剩 2.23:1,手机上读不出来。
-   * 改成压色不压字:底色淡下去、字保留 ink-soft,仍一眼看出「点不得」。
-   */
+  /* 压色不压字:字常常正是门槛本身,整块压到 40% 透明只剩 2.23:1 */
   opacity: 1;
   border-color: rgb(var(--color-ink-rgb) / 0.12);
   color: var(--color-ink-faint);
@@ -651,12 +537,7 @@ html[data-theme='dark'] .btn-seal:disabled {
   white-space: nowrap;
 }
 
-/*
- * chip-ink 默认 nowrap 是防「你/好」被拆断;可真要占满整行时(如闭关按钮,
- * 卡片内宽 ~208px 塞不下「闭关 · 5分钟 修炼 +150%」一长串),钉死不换行就会
- * 让文字戳破圆角胶囊的两端。这里给一个显式换行覆写:需要长文案占行时
- * 加 .chip-ink-wrap,并把「数+量词」各自 nowrap,换行只发生在分隔符处。
- */
+/* chip-ink 的显式换行覆写,长文案占行时用(如闭关按钮);「数+量词」各自 nowrap,换行只发生在分隔符处 */
 .chip-ink-wrap {
   white-space: normal;
   text-align: left;
@@ -664,20 +545,11 @@ html[data-theme='dark'] .btn-seal:disabled {
 }
 
 /*
- * 吸顶页签栏(InkTabs 的外壳:背包的四册、图鉴、名号、界域志、天界)
- *
- * 这几册都是越往下越长的列表 —— 页签若跟着滚走,想换一册就得先滚回顶上。
- * 故把它钉在内容区顶部,内容从底下穿过。三处细节都不是随手写的:
- *
- * 一 只动横向边距(-mx-4 + px-4):页面根节点的内边距是 px-4 pt-4,吸顶盒
- *    要铺满内容区宽度,否则内容会从两侧那 16px 的空隙里明晃晃地穿过去。
- *    **纵向一分不碰** —— space-y-4 的间距写在父级上(如天界页,页签前面还有
- *    一张道源卡),负的上边距会被父级的间距规则盖掉,只有第一个孩子才吃得到,
- *    同一套样式在五页里会长得不一样。
- * 二 自己铺一层纸色 + 毛玻璃:穿过去的东西必须被挡住,与顶栏、底栏同一种做法。
- *    颜色走 --color-paper-rgb,夜间主题自动跟随。
- * 三 ::after 是往下 12px 的渐隐遮罩。卡片是圆角的,圆角底下那两块三角缺口
- *    挡不住,内容会从角上冒出来。它只画不占位,页面上原有的行距一点没变。
+ * 吸顶页签栏(InkTabs 的外壳)。
+ * 只动横向边距:页面根节点的内边距是 px-4 pt-4,吸顶盒要铺满内容区宽度。纵向不碰:
+ * space-y-4 写在父级上,负的上边距会被父级的间距规则盖掉,只有第一个孩子吃得到。
+ * 自铺纸色 + 毛玻璃:从下面穿过的内容须被挡住(同顶栏、底栏)。
+ * ::after 是往下 12px 的渐隐遮罩,挡住卡片圆角缺口里冒出的内容;只画不占位。
  */
 .tab-rail {
   position: sticky;
@@ -717,7 +589,7 @@ html[data-theme='dark'] .btn-seal:disabled {
   transition: width 0.45s ease;
 }
 
-/* 进度条流光:灵气在条内缓缓游走 */
+/* 进度条流光 */
 .bar-fill::after {
   content: '';
   position: absolute;
@@ -728,7 +600,7 @@ html[data-theme='dark'] .btn-seal:disabled {
   animation: shimmer 2.8s ease-in-out infinite;
 }
 
-/* 页面入场:子块自下而上依次浮现(似墨迹次第晕开) */
+/* 页面入场:子块依次浮现 */
 .stagger-in > * {
   animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
@@ -757,13 +629,13 @@ html[data-theme='dark'] .btn-seal:disabled {
   animation-delay: 0.36s;
 }
 
-/* 章节标题朱杆:研墨般自上而下生长 */
+/* 章节标题朱杆 */
 .brush-bar {
   transform-origin: top;
   animation: bar-grow 0.4s 0.1s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
-/* 受击震颤:战斗中挨打的一方短促晃动(暴击更重) */
+/* 受击震颤(暴击更重) */
 .hit-shake {
   animation: hit-shake 0.3s ease-out;
 }
@@ -771,7 +643,7 @@ html[data-theme='dark'] .btn-seal:disabled {
   animation: hit-shake-hard 0.4s ease-out;
 }
 
-/* 稀有天降:全屏金光一闪(叠在 toast 之下) */
+/* 稀有天降:全屏金光(叠在 toast 之下) */
 .rare-flash {
   position: fixed;
   inset: 0;
@@ -781,7 +653,7 @@ html[data-theme='dark'] .btn-seal:disabled {
   animation: rare-flash 1.1s ease-out forwards;
 }
 
-/* 突破成功:朱砂墨点自印心迸溅 */
+/* 突破成功:朱砂墨点迸溅 */
 .ink-burst {
   position: absolute;
   inset: 0;
@@ -851,7 +723,7 @@ html[data-theme='dark'] .btn-seal:disabled {
   animation-delay: 0.16s;
 }
 
-/* 突破成功:金环荡开一次 */
+/* 突破成功:金环 */
 .burst-ring {
   position: absolute;
   inset: 0;
@@ -861,7 +733,7 @@ html[data-theme='dark'] .btn-seal:disabled {
   animation: burst-ring 0.9s ease-out 0.1s both;
 }
 
-/* 突破成功:全屏墨色冲击波,自印心荡向天际 */
+/* 突破成功:全屏墨色冲击波 */
 .ink-wave {
   position: fixed;
   left: 50%;
@@ -877,13 +749,12 @@ html[data-theme='dark'] .btn-seal:disabled {
   animation: ink-wave 1.15s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
 }
 
-/* 修为圆满:境界卡蓄势微光呼吸(保留卡片底影) */
+/* 修为圆满:境界卡微光呼吸(保留卡片底影) */
 .card-charged {
   position: relative;
   border-color: rgb(var(--color-cinnabar-rgb) / 0.38);
 }
-/* 常驻动画的辉光改由 ::before 承担:静态光晕 + 不透明度脉动 ——
-   box-shadow 逐帧动画会让圆满的境界卡每帧重绘。 */
+/* 辉光在 ::before 只动不透明度:box-shadow 逐帧动画会让境界卡每帧重绘 */
 .card-charged::before {
   content: '';
   position: absolute;
@@ -903,13 +774,13 @@ html[data-theme='dark'] .btn-seal:disabled {
   }
 }
 
-/* 修为圆满:进度条流光转金、涌动加速 */
+/* 修为圆满:进度条流光转金、加速 */
 .bar-charged .bar-fill::after {
   background: linear-gradient(90deg, transparent, rgb(255 226 150 / 0.6), transparent);
   animation-duration: 1.3s;
 }
 
-/* 战斗定局:败亡一方墨色散去(下一场自动复原) */
+/* 战斗定局:败亡一方(下一场自动复原) */
 .foe-defeated {
   filter: grayscale(0.9) blur(0.6px);
   opacity: 0.45;
@@ -920,12 +791,12 @@ html[data-theme='dark'] .btn-seal:disabled {
     transform 0.9s ease;
 }
 
-/* 洞府营造:升级落成时金光一闪 */
+/* 洞府营造:升级落成 */
 .card-flash {
   animation: card-flash 0.85s ease-out;
 }
 
-/* 候敌墨点:等待时三点次第跳动 */
+/* 候敌墨点 */
 .ink-dots {
   display: inline-flex;
   gap: 2px;
@@ -945,8 +816,7 @@ html[data-theme='dark'] .btn-seal:disabled {
   animation-delay: 0.3s;
 }
 
-/* 本世之界;眼下将赴的那一处 —— 节点外圈潺潺脉动,替玩家在图上指路。
-   SVG 里圈会缩放,得先把 transform 基点钉回圆心(fill-box) */
+/* 本世之界眼下将赴的节点。SVG 里圈会缩放,须先把 transform 基点钉回圆心(fill-box) */
 .node-focus {
   transform-box: fill-box;
   transform-origin: center;
@@ -964,9 +834,7 @@ html[data-theme='dark'] .btn-seal:disabled {
   }
 }
 
-/* 空态哑印:章节无物时,一枚单字印 + 一句指引 —— 空得有分量,却不抢戏。
-   字形压成浅墨、边框细淡,是「还没写」的留白,不是内容;
-   微转 2° 像一枚盖歪的闲章,替句子补上一点手泽。 */
+/* 空态哑印:章节无物时的单字印 */
 .empty-seal {
   display: inline-grid;
   place-items: center;
@@ -977,19 +845,14 @@ html[data-theme='dark'] .btn-seal:disabled {
   font-family: var(--font-kai);
   font-size: 15px;
   letter-spacing: 0.1em;
-  /* 0.38 太淡:暗色纸面上 2.79:1,远看是糊点不是章;提到 0.55(约 3.5:1),
-     仍是「还没写」的哑地位,却立得起来 */
+  /* 0.38 太淡(暗色纸面上 2.79:1);0.55 约 3.5:1 */
   color: rgb(var(--color-ink-rgb) / 0.55);
   transform: rotate(-2deg);
 }
 
-/* 空态的一句(.empty-note)—— 卡片/列表里「尚无 / 尚未」那种整块留白。
-
-   一行孤字浮在卡中央,读着像出错留下的空白;顶上一道淡墨短横,整块就有了形状 ——
-   与题头那道竖笔同族,只是横过来、更淡。与 .empty-seal 分工:
-   哑印用于「这一册还没有东西」(章的分量),短横用于「这里本该有话」(句子的分量)。
-
-   装饰性线条按规范走墨的透明度,不写裸 hex;21% 落在设计系统的淡墨档。 */
+/* 空态的一句(.empty-note):卡片/列表里「尚无 / 尚未」那种整块留白,顶上一道淡墨短横。
+   与 .empty-seal 分工:哑印用于「这一册还没有东西」,短横用于「这里本该有话」。
+   走墨的透明度,不写裸 hex。 */
 .empty-note::before {
   content: '';
   display: block;
@@ -997,7 +860,7 @@ html[data-theme='dark'] .btn-seal:disabled {
   height: 1px;
   margin: 0 auto 10px;
   border-radius: 999px;
-  /* 两端收笔:齐口的线读作分隔符,压两头的线才像手写的 */
+  /* 两端收笔:齐口的线读作分隔符 */
   background: linear-gradient(
     90deg,
     transparent,
@@ -1007,8 +870,7 @@ html[data-theme='dark'] .btn-seal:disabled {
   );
 }
 
-/* 卷首私印(修仙录扉页):墨色实印 —— 与空态哑印相对,是「已落款」的分量。
-   地界卷首那枚是朱泥(世界印),这枚走墨:墨书配墨印,两卷各得其章 */
+/* 卷首私印(修仙录扉页):墨色实印 */
 .seal-solid {
   display: inline-grid;
   place-items: center;
@@ -1023,7 +885,7 @@ html[data-theme='dark'] .btn-seal:disabled {
   transform: rotate(-2deg);
 }
 
-/* 蓄势涟漪:大事将成的按钮外圈 */
+/* 蓄势涟漪:按钮外圈 */
 .pulse-ready {
   position: relative;
 }
@@ -1045,39 +907,26 @@ html[data-theme='dark'] .btn-seal:disabled {
   font-variant-numeric: tabular-nums;
 }
 
-/*
- * 倒计时的定宽槽位 —— 与 formatCountdown 配套使用。
- *
- * 逐位补零只保证「同一量级内宽度相同」;跨量级(秒→分→时)与不同字数(如"1天"与"10天")
- * 仍会变。再给它一个固定宽度的右对齐槽位,整行才不会随倒数推移而左右跳。
- * 收成一个类而不是在四处各写一遍 min-w-[3.5rem]:它是同一件事的同一条口径。
- */
+/* 倒计时的定宽右对齐槽位,与 formatCountdown 配套:逐位补零只保证同一量级内宽度相同,
+   跨量级(秒→分→时)与不同字数("1天"/"10天")仍会变。统一走此类,不各写 min-w-[3.5rem] */
 .countdown-slot {
   display: inline-block;
   min-inline-size: 3.5rem;
   text-align: right;
 }
 
-/*
- * 键盘焦点的可见指示 —— 统一成朱砂描边,不再听浏览器默认(默认那圈颜色
- * 在暗色纸面上有时很淡,而 `outline-none` 这类写法一旦落到某个控件上,
- * 键盘用户就彻底看不出走到哪了)。
- *
- * 只对 :focus-visible 生效:鼠标点击不该冒出一圈描边。
- */
+/* 键盘焦点统一朱砂描边(浏览器默认那圈在暗色纸面上有时很淡);只对 :focus-visible,鼠标点击不出描边 */
 :focus-visible {
   outline: 2px solid var(--color-cinnabar);
   outline-offset: 2px;
 }
 
-/* 印面按钮的焦点圈:朱砂描边压在朱砂印面上看不见,换成奶油白(与印面文字同色),
-   键盘用户才能在关键按钮上看到焦点落在哪 */
+/* 印面按钮的焦点圈用奶油白:朱砂描边压在朱砂印面上看不见 */
 .btn-seal:focus-visible,
 .world-seal:focus-visible {
   outline-color: #f6f1e5;
 }
 
-/* 滚动条 */
 *::-webkit-scrollbar {
   width: 3px;
   height: 3px;
@@ -1088,7 +937,6 @@ html[data-theme='dark'] .btn-seal:disabled {
   border-radius: 2px;
 }
 
-/* 页面切换 */
 .page-fade-enter-active,
 .page-fade-leave-active {
   transition:
@@ -1106,7 +954,6 @@ html[data-theme='dark'] .btn-seal:disabled {
   transform: translateY(-4px);
 }
 
-/* Toast */
 .toast-slide-enter-active,
 .toast-slide-leave-active {
   transition:
@@ -1124,7 +971,6 @@ html[data-theme='dark'] .btn-seal:disabled {
   transform: translateY(-6px) scale(0.96);
 }
 
-/* Modal */
 .modal-fade-enter-active,
 .modal-fade-leave-active {
   transition: opacity 0.2s ease;
@@ -1151,10 +997,8 @@ html[data-theme='dark'] .btn-seal:disabled {
 }
 
 /*
- * 弹窗正文的上下渐隐(BaseModal):那一头还有内容时才出现。
- * 颜色走 --color-paper-rgb,夜间主题自动跟随;渐变终点写成同色零透明,
- * 不用 transparent —— 老内核会按 rgba(0,0,0,0) 插值,中段发灰。
- * z-index 压过正文里自带 z-10 的卡片;不吃点击,底下的按钮照常可点。
+ * 弹窗正文的上下渐隐(BaseModal)。渐变终点写成同色零透明,不用 transparent:老内核会按 rgba(0,0,0,0) 插值,中段发灰。
+ * z-index 压过正文里自带 z-10 的卡片。
  */
 .modal-edge {
   position: absolute;

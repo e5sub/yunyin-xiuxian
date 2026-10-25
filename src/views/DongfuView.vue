@@ -1,18 +1,9 @@
 <template>
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
-    <!-- 抬头 -->
     <div class="card-ink relative flex items-center justify-between gap-2 px-4 py-3">
-      <!--
-        冷启动直接落在这一页时(书签 / deep link / 恢复上次路由),站内没有上一页,
-        裸 router.back() 会退到 about:blank 把游戏一起带走 —— 故走 goBack(父页兜底)
-      -->
+      <!-- 走 goBack(父页兜底):冷启动直接落在这一页时,裸 router.back() 会退到 about:blank -->
       <button class="-my-1.5 py-1.5 text-left text-[12px] text-ink-faint" @click="goBack(router, { name: 'home' })">← 返回</button>
-      <!--
-        标题真正居中:左「返回」窄、右「经营家业,道途更稳」宽,若三件套走
-        justify-between,标题会被两侧的不等宽拽离版面中轴、看着发斜。
-        故把标题从文档流里提出来绝对居中(left-1/2),两侧各贴一边 ——
-        无论左右多宽,「洞府营造」永远钉在卡片正中。
-      -->
+      <!-- 标题绝对居中,不随左侧「返回」的宽度偏离中轴 -->
       <p class="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap font-kai text-[15px] tracking-[0.3em] text-ink">
         洞府营造
       </p>
@@ -33,15 +24,13 @@
     <div class="rounded-md border border-ink/10 bg-paper-deep/50 px-3 py-2.5">
       <div class="flex items-center justify-between">
         <span class="font-kai text-[12px] tracking-wider text-ink-soft">洞府纪要</span>
-        <!-- 离线上限在下方「离线可攒」那一行已给出(还带五段档位条),不再在右上角重复一遍同数 -->
+        <!-- 离线上限只在下方「离线可攒」那一行给出,此处不重复 -->
       </div>
       <div class="mt-1.5 grid grid-cols-3 gap-1.5">
-        <!-- 三格各配一枚小章:灵草叶 / 玄铁斧 / 悟道书,图比字先被眼睛接住 -->
         <div class="rounded bg-paper-deep/60 px-1 py-1.5 text-center">
           <GameIcon name="leaf" :size="13" class="mx-auto text-jade" />
           <p class="mt-0.5 text-[9px] text-ink-faint">灵草 / 时</p>
           <p class="tabular font-kai text-[14px] leading-tight" :class="summary.fieldLv ? 'text-jade' : 'text-ink-faint'">{{ summary.fieldLv ? summary.herbHr : '—' }}</p>
-          <!-- 灵田产草品阶:正常就报当前境的品;前瞻高一档(囤下一境草)时朱标提醒 -->
           <p v-if="summary.fieldGrade" class="mt-0.5 text-[8px] leading-none" :class="summary.fieldForward ? 'text-cinnabar' : 'text-ink-faint'">
             {{ summary.fieldForward ? `前瞻 ↑ ${summary.fieldGradeName}` : `产${summary.fieldGradeName}` }}
           </p>
@@ -67,11 +56,7 @@
           辅修栏 <span class="tabular text-ink-soft">{{ summary.subSlots }}</span>
         </span>
       </div>
-      <!--
-        离线档位:5 段一览,现在第几档、升洞府能到哪一档,不看向来只报一个数。
-        标签与档数不再和段条挤同一行 —— 那样三种字号(9px 标签 / 6px 段条 / 楷体数字)
-        竖直混排,细碎得像一行乱码。改成两行:上有标签与数,段条单独占一整行。
-      -->
+      <!-- 离线档位:标签与数一行,段条单独占一整行(三种字号混排在同一行会显得细碎) -->
       <div class="mt-1.5 flex items-baseline justify-between">
         <span class="text-[9px] text-ink-faint">离线可攒</span>
         <span class="font-kai text-[10px] tabular text-gold-ink">{{ summary.offlineHrs }} 时</span>
@@ -191,16 +176,11 @@
 
   /** 已启用建筑数(等级 > 0),营造区标题旁报数 */
   const builtCount = computed(() => BUILDINGS.filter(b => (dongfu.levels[b.id] ?? 0) > 0).length)
-  /** 洞府:全局闸门,单独把守头条 */
+  /** 洞府是全局闸门,单独横贯一排 */
   const mansionDef = computed(() => BUILDINGS.find(b => b.id === 'mansion')!)
-  /** 其余六座在其辖下成格 */
   const otherBuildings = computed(() => BUILDINGS.filter(b => b.id !== 'mansion'))
 
-  /**
-   * 洞府纪要:产出与上限一眼汇总。数字写死会与结算漂移,故直接取 store 的
-   * levels 与常数重算 —— 与 produce/effectText 同一口径(灵田 ×6 草/×2.4 铁,
-   * 藏经阁 ×1.5 悟道,聚灵阵 ×8% 容量)。
-   */
+  /** 洞府纪要(只读,不替代建筑卡详情):取 store 的 levels 与常数现算,与 produce/effectText 同一口径 */
   const summary = computed(() => {
     const fieldLv = dongfu.levels.field ?? 0
     const libLv = dongfu.levels.library ?? 0
@@ -210,8 +190,8 @@
       libLv,
       arrayLv,
       herbHr: `${fieldLv * FIELD_HERB_PER_HOUR} 株`,
-      // 灵田产草品阶:与 produce 同一判据(fieldHerbGrade)。level 0 未建时为 null。
-      // forward = 产的高于当前境品 —— 灵田不受境界门控、可前瞻一档(囤下一境草),这值得明说。
+      // 灵田产草品阶与 produce 同一判据(fieldHerbGrade);未建时为 null。
+      // forward = 产的高于当前境品:灵田不受境界门控,可前瞻一档
       fieldGrade: fieldLv > 0 ? fieldHerbGrade(player.major, fieldLv) : null,
       fieldGradeName: fieldLv > 0 ? HERB_GRADE_SHORT[fieldHerbGrade(player.major, fieldLv)] : null,
       fieldForward: fieldLv > 0 && fieldHerbGrade(player.major, fieldLv) > herbGradeOfMajor(player.major),

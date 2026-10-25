@@ -1,13 +1,8 @@
 /**
  * 易 —— 8 个单卦(八卦) · 64 个重卦(六十四卦) · 卦辞大意与象数之用
  *
- * 三件事在这里合流:
- * 1. **可读**:八卦的象、性、大意,六十四卦的卦名与大意,取自《周易》本经与《说卦》;
- * 2. **可用**:每个单卦带一组环境通道(mods),重卦由上下卦相叠而来 ——
- *    下卦为内、为己身,上卦为外、为境遇,故一卦之力天然是"内外相济"的两股;
- * 3. **可推**:重卦不逐条手写效果,由上下卦推出(见 core/divination),故不会自相矛盾。
- *
- * 卦序与卦名依《周易》通行本(王弼本);卦辞大意只取本经大要,不取后世附会。
+ * 出处:《周易》本经与《说卦》,不取后世附会;卦序卦名依通行本(王弼本)。
+ * 重卦不逐条手写效果,由上下卦推出(core/divination)。
  */
 import type { StatMods } from '@/types'
 
@@ -19,7 +14,7 @@ export interface TrigramDef {
   name: string
   /** 卦画:☰ 等 */
   symbol: string
-  /** 三爻自下而上(1 = 阳,0 = 阴)—— 摇卦所得六爻靠它取象 */
+  /** 三爻自下而上(1 = 阳,0 = 阴),与 core/divination 取象同法 */
   lines: [number, number, number]
   /** 象:天、泽、火、雷、风、水、山、地 */
   image: string
@@ -31,15 +26,10 @@ export interface TrigramDef {
   good: string
   /** 忌:此卦所示该避之事 */
   bad: string
-  /** 象数之用:并入最终属性的环境通道(数值刻意偏小,卦是时机不是外挂) */
+  /** 并入最终属性的环境通道;数值须偏小 */
   mods: StatMods
 }
 
-/**
- * 八卦 —— 三层爻自下而上:乾☰111 兑☱110 离☲101 震☳100
- *                       巽☴011 坎☵010 艮☶001 坤☷000
- * (1 = 阳爻,0 = 阴爻;爻序自下而上,与 core/divination 的取象同法)
- */
 export const TRIGRAMS: TrigramDef[] = [
   {
     id: 'qian',
@@ -155,7 +145,7 @@ function h(order: number, name: string, upper: TrigramId, lower: TrigramId, gist
   return { order, name, upper, lower, gist }
 }
 
-/** 六十四卦 —— 上下卦相叠,八八而尽(通行本序) */
+/** 六十四卦(通行本序) */
 export const HEXAGRAMS: HexagramDef[] = [
   h(1, '乾', 'qian', 'qian', '六爻皆阳,天行至健;宜进取,忌骄盈。'),
   h(2, '坤', 'kun', 'kun', '六爻皆阴,厚德载物;宜守成,忌犹疑。'),
@@ -237,7 +227,7 @@ export function trigramDef(id: TrigramId): TrigramDef | undefined {
   return TRIGRAM_BY_ID.get(id)
 }
 
-/** 上下卦相叠取重卦(六十四卦的构成法:下卦为内,上卦为外) */
+/** 上下卦相叠取重卦 */
 export function hexagramOf(upper: TrigramId, lower: TrigramId): HexagramDef | undefined {
   return HEXAGRAM_BY_PAIR.get(`${upper}/${lower}`)
 }

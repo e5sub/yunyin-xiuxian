@@ -33,7 +33,6 @@ describe('自动战斗', () => {
     const got = toNum(snapPower(enemy))
     const want = toNum(powerScore(enemy.attack, enemy.defense, enemy.maxHp))
     expect(got).toBeCloseTo(want, 6)
-    // 层级越高战力越高:凡狼 (tier1) < 洪荒魔 (tier20)
     const far = makeEnemySnap(enemyDef('e_hmdemon')!, 20, 2)
     expect(toNum(snapPower(far))).toBeGreaterThan(got)
   })
@@ -41,7 +40,7 @@ describe('自动战斗', () => {
   it('规则改后的敌力沿用规则倍率:enemyAtkMult/敌HpMult 一并计进卡片那对数', () => {
     const enemy = makeEnemySnap(wolf, 1, 1)
     const plain = toNum(snapPower(enemy))
-    // 敌攻 ×2:战力两道都动(攻击项翻倍、减伤按攻防比走)—— 至少比基准高
+    // 敌攻 ×2:战力两道都动(攻击项翻倍、减伤按攻防比走)
     const { eEff } = applyCombatRuleSnap(playerSnap(10), enemy, { enemyAtkMult: 2 })
     expect(toNum(snapPower(eEff))).toBeGreaterThan(plain)
   })
@@ -54,10 +53,8 @@ describe('自动战斗', () => {
   })
 
   /**
-   * 先手判定随战斗结果带出(供战后分析讲清「差多少」)。
-   *
-   * 判据是**阈值**语义本身:1 + 先手判定修正 ≥ 对手速度 才算抢先,差一点就是没有 ——
-   * 这条一旦被写成连续收益,词条文案与分析面板就又要开始撒谎。
+   * 先手判定随战斗结果带出,供战后分析讲清「差多少」。
+   * 阈值语义:1 + 先手判定修正 ≥ 对手速度才算抢先;写成连续收益会让词条文案与分析面板失实。
    */
   it('先手判定如实带出:恰好持平也算抢先,差一点就不算', () => {
     const enemy = { ...makeEnemySnap(wolf, 1, 1), speed: 1.1 }
@@ -91,7 +88,7 @@ describe('自动战斗', () => {
   })
 
   it('同层级适度成长即可取胜(数值曲线体检)', () => {
-    // 玩家基础 ×2.5(相当于同大境界内数层成长 + 装备),应能击败同层小怪
+    // 玩家基础 ×2.5(同大境界内数层成长 + 装备)
     const enemy = makeEnemySnap(wolf, 1, 1)
     const p: CombatantSnap = {
       ...playerSnap(1),
@@ -104,7 +101,7 @@ describe('自动战斗', () => {
   })
 
   it('sampleWinRate 取样数超表长时顶格,不越界取到 undefined→NaN', () => {
-    // 表是 4 档(0.08/0.4/0.72/0.93),samples=5 且全胜时旧代码算 table[5] → NaN
+    // 表 4 档(0.08/0.4/0.72/0.93);samples=5 全胜若取 table[5] 得 NaN
     const enemy = makeEnemySnap(wolf, 1, 1)
     const rate = sampleWinRate(playerSnap(1000), enemy, seeded(9), 5)
     expect(rate).toBe(0.93)
@@ -154,8 +151,7 @@ describe('自动战斗', () => {
   it('技能概率在战斗判定前归一:rate>1 不会绕过 capChance 的随机数语义', () => {
     const enemy = makeEnemySnap(wolf, 1, 1)
     const p = playerSnap(100)
-    // 若直接拿 999 去比随机数,这个 0.999 的固定骰子会被判成「没触发」;
-    // 归一为 1 后必中,遥测里就应记下一次技能施展。
+    // rate 不归一时,固定骰子 0.999 会被判成「没触发」;归一为 1 后必中
     p.skills = [{ name: '必中', mult: 1.2, rate: 999 }]
     const result = resolveCombat(p, enemy, new RandomService(() => 0.999))
     expect(result.stats!.player.skillCasts).toBeGreaterThan(0)
@@ -173,7 +169,6 @@ describe('自动战斗', () => {
       baseRounds += resolveCombat(base, makeEnemySnap(wolf, 1, 1), seeded(100 + i)).rounds
       buildRounds += resolveCombat(build, makeEnemySnap(wolf, 1, 1), seeded(100 + i)).rounds
     }
-    // 有流派加成的一方平均更快结束战斗
     expect(buildRounds).toBeLessThan(baseRounds)
   })
 
@@ -189,14 +184,10 @@ describe('自动战斗', () => {
   })
 
   /**
-   * 命中对闪避 —— 幻影类敌手此前是无解的。
-   *
-   * 蜃楼之主幻境 55%、冰魄化身 50%、大罗化身 48%:玩家没有命中这个属性时,
-   * 面对这些敌手只能眼看一半的出手落空,战后分析还会说「连击与暴击难以衔接」。
-   * 故这里量同一批种子的出手落空数:带命中必须明显更少,且不是靠别的数值赢。
+   * 命中对闪避:蜃楼之主幻境 55%、冰魄化身 50%、大罗化身 48%。
+   * 同一批种子量出手落空数:带命中须明显更少,且不靠别的数值赢。
    */
   it('命中按百分点抵掉闪避:同一批种子,带命中的一方落空更少', () => {
-    /** 一只「只会闪、打不动、也打不死」的幻影靶子 */
     const phantom = (): CombatantSnap => {
       const e = makeEnemySnap(enemyDef('e_shen')!, 15, 1)
       e.mods = { dodgeRate: 0.55 }

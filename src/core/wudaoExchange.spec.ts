@@ -1,12 +1,6 @@
 /**
- * 后期限量「灵石 → 悟道点」兑换(Phase C-1)
- *
- * 后期(realm≥18)灵石过剩,给一个可控、限量的出口换悟道点(功法进修/法宝炼化的真货币)。
- * 判据四连:
- *   一 境界不到不开(锁定,连灵石也不碰);
- *   二 每次扣灵石、给悟道点(原子:灵石不足拒不扣不进);
- *   三 每游戏日限次(达上限当日拒兑);
- *   四 坏档计数被 sanitize 夹回,不留下"今天白送 / 永不可兑"。
+ * 后期限量「灵石 → 悟道点」兑换。
+ * 判据:境界不到锁定(不碰灵石);灵石不足原子拒绝;每游戏日限次;坏档计数由 sanitize 夹回。
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -61,7 +55,6 @@ describe('后期限量灵石→悟道兑换(Phase C-1)', () => {
     res.spiritStone = gn(WUDAO_EXCHANGE_PRICE_BASE - 1)
     expect(player.exchangeStoneForWudao()).toBe(false)
     expect(res.wudao).toBe(0)
-    // 部分扣款也不发生:余额保持原样
     expect(toNum(res.spiritStone)).toBe(WUDAO_EXCHANGE_PRICE_BASE - 1)
     expect(player.canExchangeWudao, '付不起灵石时按钮不该亮').toBe(false)
     expect(toNum(player.wudaoExchangeState.stoneShort)).toBeCloseTo(1, 9)
@@ -99,7 +92,7 @@ describe('后期限量灵石→悟道兑换(Phase C-1)', () => {
     }
     expect(player.exchangeStoneForWudao(), '第上限+1 次应被拒(当日已兑满)').toBe(false)
     expect(player.wudaoExchangeToday).toBe(WUDAO_EXCHANGE_PER_DAY)
-    // 次日:counter 的 gameDay 不是今天,从 0 重算 → 当日次数归零,真的能再兑
+    // 次日:gameDay 不是今天,计数从 0 重算
     game.$patch({ totalPlaySec: 1 * 86400 })
     expect(player.canExchangeWudao).toBe(true)
     expect(player.wudaoExchangeToday).toBe(0)

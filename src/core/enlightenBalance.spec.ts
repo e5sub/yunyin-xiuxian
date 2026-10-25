@@ -1,21 +1,9 @@
 /* eslint-disable no-console -- 倍数表是给人看的 */
 /**
- * 顿悟的两个战斗向选项 —— 谁都不该是唯一解
- *
- * 顿悟是三选一,池子里有两条战斗向:「锤炼筋骨」让你打得更疼,
- * 「凝气护体」让你更耐打。玩家两边都该想点一下,那才叫选。
- *
- * 但这两条原先是**同一个意思、差 3.4 倍的分量**:
- *   · 锤炼筋骨 = 伤害增幅 +15% —— 纯乘数,输出 ×1.15;
- *   · 凝气护体 = 防御加成 +12% —— 走 `攻击²/(攻击+防御)` 那条曲线,
- *     攻防比一变实际减伤就变:防御只有敌方攻击一半时只剩 3.8%。
- *     名义 12%,到手三四个点,面板写着两件事、数字上只有一件。
- *
- * 判据不看 12/15 这两个名义值(那正是会撒谎的地方),而是拿真引擎打一场,
- * 把两个选项换算到同一把尺子上:
- *   输出倍数   = 带 buff 打出的总伤害 / 不带
- *   生存倍数   = 不带时承受的总伤害 / 带 buff 承受的
- * 两侧都是流量乘数,量纲一致,可以直接比。
+ * 顿悟两个战斗向选项(锤炼筋骨 / 凝气护体)须同量级,谁都不是唯一解。
+ * 判据不看名义值,拿真引擎打一场换算到同一把尺:
+ *   输出倍数 = 带 buff 打出的总伤害 / 不带
+ *   生存倍数 = 不带时承受的总伤害 / 带 buff 承受的
  */
 import { describe, expect, it } from 'vitest'
 import { resolveCombat } from './combat'
@@ -27,10 +15,7 @@ import type { BuffDef, StatMods } from '@/types'
 
 type CombatantSnap = Parameters<typeof resolveCombat>[0]
 
-/**
- * 一对固定的对手:攻 1000 / 防 500 对 攻 600 / 防 600。
- * 血做成极大值,故谁都不会死,量到的是整场的伤害流量而不是胜负。
- */
+/** 血极大、打不死:量的是整场伤害流量,不是胜负 */
 function snap(isPlayer: boolean, mods: StatMods): CombatantSnap {
   return {
     name: isPlayer ? '我' : '敌',
@@ -45,7 +30,7 @@ function snap(isPlayer: boolean, mods: StatMods): CombatantSnap {
   }
 }
 
-/** 多跑几场取总量:伤害有 ±方差,单场比值会抖 */
+/** 伤害有方差,多场取总量 */
 const SAMPLES = 24
 
 function measure(mods: StatMods): { dealt: number; taken: number } {
@@ -53,14 +38,12 @@ function measure(mods: StatMods): { dealt: number; taken: number } {
   let taken = 0
   for (let seed = 1; seed <= SAMPLES; seed += 1) {
     const result = resolveCombat(snap(true, mods), snap(false, {}), new RandomService(mulberry32(seed)), undefined, false)
-    // 血极大且打不死,故 stats 里的累计伤害就是这一场的总流量
     dealt += Number(result.stats!.player.dealt.m) * 10 ** result.stats!.player.dealt.e
     taken += Number(result.stats!.player.taken.m) * 10 ** result.stats!.player.taken.e
   }
   return { dealt, taken }
 }
 
-/** 战斗向的顿悟选项(选项 → 它挂的 buff 定义) */
 function combatOptions(): { label: string; desc: string; def: BuffDef }[] {
   return ENLIGHTENMENT_OPTIONS.filter(o => o.type === 'combat' && o.buffId).map(o => ({
     label: o.label,
@@ -69,7 +52,7 @@ function combatOptions(): { label: string; desc: string; def: BuffDef }[] {
   }))
 }
 
-/** 同量级带宽:1.10 ~ 1.25 倍,且两者相差不超过 0.05 */
+/** 同量级带宽 */
 const BAND = [1.1, 1.25] as const
 const MAX_GAP = 0.05
 
@@ -116,7 +99,6 @@ describe('顿悟 · 两个战斗向选项同量级', () => {
       const survivability = base.taken / buffed.taken
       return { label, offense, survivability, mult: def.mods.damageBonus ? offense : survivability }
     })
-    // 把量出来的数摊在测试输出里:改数值时先看这张表,比看报错快
     console.log(
       ['  选项        输出倍数   生存倍数', ...rows.map(r => `  ${r.label}      ×${r.offense.toFixed(3)}     ×${r.survivability.toFixed(3)}`)].join(
         '\n'
@@ -137,9 +119,7 @@ describe('判据自证 · 它认得出旧的「防御加成」', () => {
   it('把纯乘数换成 defensePct,量出来的减伤远低于带宽', () => {
     const base = measure({})
     const legacy = measure({ defensePct: 0.12 })
-    // defensePct 由 finalStats 折进基础防御,战斗层根本不读它 ——
-    // 直接把它塞进 mods,生存倍数是 1.000,当场落在带宽之外。
-    // 这正是旧版「名义 12%、到手三四个点」的根源:分量不在同一把尺上。
+    // defensePct 由 finalStats 折进基础防御,战斗层不读:塞进 mods 生存倍数为 1.000
     const survivability = base.taken / legacy.taken
     expect(survivability, 'defensePct 被当成本场减伤量到了,判据在自欺').toBeLessThan(BAND[0])
   })

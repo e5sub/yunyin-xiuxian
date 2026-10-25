@@ -1,11 +1,6 @@
 <template>
-  <!-- 购入货架 -->
-  <!-- ref 供「去坊市续草」跳进来后滚到货架 -->
   <section ref="buySection">
     <SectionTitle title="货架" :hint="`${cards.length} 格`" />
-    <!-- 深链进来却碰不上可买的草:先说实话,别让「续草」落成一架看不懂的货 -->
-    <!-- 换新工期从 MARKET_REFRESH_SECONDS 现算,不手打「两时辰」——
-         那个说法实测与 7200s(一个时辰)对不上(见 core/dataTextAudit 的工期判据) -->
     <p
       v-if="focusHerbState"
       class="mt-2 rounded-md border border-gold-ink/30 bg-gold-ink/10 px-3 py-2 text-[10px] leading-relaxed text-gold-ink"
@@ -88,18 +83,17 @@
     tag: string
     tagCls: string
     kind: string
-    /** 仅 material 格有:灵草 / 玄铁(深链高亮要靠它认出哪一格是草) */
+    /** 仅 material 格有;深链高亮靠它认草格 */
     matId?: 'herb' | 'ore'
     name: string
     nameCls: Record<string, string>
     sub: string
-    /** 装备货格才有的品阶视觉;丹药/材料保持原样,不硬套品质色 */
+    /** 仅装备货格有;丹药/材料不套品质色 */
     quality?: import('@/types').QualityId
     rare: boolean
     tierStyle?: { borderColor: string; background: string }
     price: GNum
     sold: boolean
-    /** 当前灵石是否买得起 —— 买不起的货不再与买得起的长得一样 */
     afford: boolean
     /** 灵石尚差；买得起时为 0 */
     stoneShort: GNum
@@ -122,12 +116,7 @@
   const ui = useUiStore()
   const route = useRoute()
 
-  /**
-   * 从「开炉炼丹 → 缺料 → 去坊市续草」跳进来时高亮的货格(按渲染序号认,
-   * 不按 idx:坏档/导入的货架可能有重复 idx,按 idx 会亮错那一格)。
-   *
-   * 只亮**方子要的那一品**的草:丹炉缺灵品草却亮凡品格,买回来照样开不了炉。
-   */
+  /** 续草深链高亮的货格:按渲染序号认,不按 idx(坏档可能重复 idx);只亮方子要的那一品 */
   const focusCard = ref<number | null>(null)
   /** 深链要续草却买不到:null=不必说;none=这架没进这品草;soldOut=有但卖光了 */
   const focusHerbState = ref<'none' | 'soldOut' | null>(null)
@@ -147,7 +136,7 @@
       .map(slot => renderSlot(slot))
   )
 
-  /** 把一格货摊成卡片视图;装备实例按货架时刻确定性生成,预览即购得同一件 */
+  /** 装备实例按货架时刻确定性生成,预览即购得同一件 */
   function renderSlot(slot: MarketSlot): CardView {
     const afford = !slot.sold && cmp(resources.spiritStone, slot.price) >= 0
     const base = {
@@ -172,7 +161,7 @@
     }
     if (slot.kind === 'material') {
       const meta = MAT_META[slot.matId]
-      // 灵草按上货那一刻的品阶显示(与标价、入账同源),旧档无 grade → 按当下品兜底
+      // 灵草按上货时品阶显示(与标价、入账同源);旧档无 grade 按当下品兜底
       const grade = slot.grade ?? herbGradeOfMajor(player.major)
       return {
         ...base,
@@ -194,7 +183,7 @@
       sub: `${quality.name} · ${slot.tier} 阶`,
       quality: inst.quality,
       rare: isRareQuality(inst.quality),
-      // 货格是多行小字的密卡,底色固定在弱晕染;品阶浓淡由边框与角章承担
+      // 密卡底色固定弱晕染,品阶浓淡交给边框与角章
       tierStyle: { borderColor: tint(quality.color, tier.border), background: tint(quality.color, 0.06) },
       price: slot.price
     }
@@ -239,12 +228,7 @@
   }
 
   onMounted(() => {
-    /*
-     * 「去坊市续草」深链:落在坊市后把**方子要的那一品**灵草格滚进视口并高亮。
-     * 只做一次(不改签的后续切换):玩家自己切去售/悬赏时不该被拽回来。
-     * 这架货可能没进这一品草、也可能刚卖光 —— 那就只停在货架顶部并说明,
-     * 不硬滚到不存在的东西,也不拿别品的草冒充。
-     */
+    // 宿主 v-if:每次切回购签都重挂载
     if (route.query.focus === 'herb') void nextTick(() => applyHerbFocus())
   })
 

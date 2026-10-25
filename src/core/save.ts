@@ -1,6 +1,4 @@
-/**
- * 存档服务 —— 导出 / 导入 / 重置 / 迁移
- */
+/** 存档服务:导出 / 导入 / 重置 / 迁移 */
 import {
   applyImportPayload,
   buildExportPayload,
@@ -26,9 +24,8 @@ function migrate(payload: ExportPayload): ExportPayload {
   if (typeof migrated.data.resources === 'object' && migrated.data.resources !== null) {
     migrated.data.resources = migrateHerbSlice(migrated.data.resources as Record<string, unknown>)
   }
-  // 导入 = 从这份快照继续:lastActiveAt 重戳为现在的时刻。
-  // 快照里吞着的是导出那一刻的时间戳,直接沿用会把「导入旧备份」误算成
-  // 「缺勤数月」——离线资源按 8h 封顶、年龄却按全程流,先死处理
+  // lastActiveAt 重戳为现在:沿用导出时刻会被算成缺勤数月
+  // (离线资源按 8h 封顶、年龄却按全程流,先死)
   if (migrated.data.game && typeof migrated.data.game === 'object') {
     migrated.data.game = { ...(migrated.data.game as Record<string, unknown>), lastActiveAt: Date.now() }
   }
@@ -65,15 +62,11 @@ export interface ImportInspect {
   realmLabel: string
   version: number
   exportedAt: number
-  /** 备份版本高于当前游戏:确认前就该亮出来,别等点完「覆盖导入」才弹错 */
+  /** 备份版本高于当前游戏(确认前展示) */
   tooNew: boolean
 }
 
-/**
- * 只读检视一份待导入的存档(不落库):把「这是谁的档、什么版本、什么时候导的」
- * 摆到确认框里 —— 整体覆盖是不可逆动作,玩家签之前该知道这份备份的底细。
- * 解析失败返回 null(交由导入路径报具体错)。
- */
+/** 只读检视待导入的存档(不落库),供确认框展示;解析失败返回 null(交由导入路径报具体错) */
 export function inspectImportText(text: string): ImportInspect | null {
   try {
     const parsed = JSON.parse(readSaveText(text.trim())) as Partial<
@@ -98,24 +91,20 @@ export function inspectImportText(text: string): ImportInspect | null {
 
 /**
  * 封存写盘:页面即将卸载时,丢弃一切后续 localStorage 写入。
- * persist 插件的 $subscribe 走 Vue 调度器(微任务批量刷盘)——清档/导入之后、卸载之前,
- * 排队中的持久化仍会执行并把内存状态回写进 localStorage(实测栈:persistState → flushJobs)。
- * 拦截 mutation 源头不可穷尽,直接在写盘层截断
- * 注意:必须在「导入写盘完成之后」调用——它会把 setItem 置为 noop,先调用会吞掉导入的写入
+ * persist 插件经 Vue 调度器微任务批量刷盘,清档/导入之后、卸载之前排队的持久化仍会回写(persistState → flushJobs)。
+ * 在写盘层截断(拦截 mutation 源头不可穷尽)。
+ * 须在导入写盘完成之后调用:setItem 被置为 noop,先调用会吞掉导入的写入。
  */
 export function sealStorageWrites(): void {
   const noop = (): undefined => undefined
-  // 主路径:改写 Storage.prototype。它是普通 JS 对象,defineProperty 行为可预期,
-  // 且对所有 Storage 实例生效
+  // 主路径:改写 Storage.prototype(对所有 Storage 实例生效)
   try {
     Object.defineProperty(Storage.prototype, 'setItem', { value: noop, configurable: true, writable: true })
   } catch {
     // 原型被冻结时降级到下面的实例路径
   }
-  // 备用路径:直接改实例。仅在原型改写失败时才有意义——
-  // Storage 是 WebIDL legacy platform object,带命名属性 setter,部分 WebView
-  // (实测 Android WebView 91)会把这次 defineProperty 解释成「存一条 key 为
-  // setItem 的记录」,原方法毫发无损,封存静默失效。因此它不能作为唯一手段
+  // 备用路径:直接改实例。不能作为唯一手段:Storage 带命名属性 setter,
+  // 部分 WebView(实测 Android WebView 91)会把这次 defineProperty 存成一条 key 为 setItem 的记录,封存静默失效
   try {
     Object.defineProperty(window.localStorage, 'setItem', { value: noop, configurable: true })
   } catch {
@@ -125,32 +114,26 @@ export function sealStorageWrites(): void {
 
 /**
  * 清空全部存档并回到欢迎页。
- * 顺序:停引擎(去掉 beforeunload 写档)→ 封存写盘(丢弃排队刷盘)→ 清档 → 重载
- *
- * 不碰 location.hash:改 hash 会先触发一次 SPA 路由导航,守卫与新页面挂载期间
- * 内存里的 store 仍是旧状态,persist 订阅会把刚清掉的分片回写。实测 Android
- * WebView 上封存失效时,game 分片被写回 started:true 而 player 分片没被写回,
- * 重载后就卡在主页、角色是默认的无名散修。清档后 game.started 为 false,
- * 守卫会把任何路由都弹回 welcome,目标页无需在这里指定
+ * 顺序:停引擎(去掉 beforeunload 写档)→ 封存写盘(丢弃排队刷盘)→ 清档 → 重载。
+ * 不碰 location.hash:改 hash 触发 SPA 导航,persist 订阅会把刚清掉的分片回写
+ * (实测 Android WebView 封存失效时 game 分片被写回 started:true,重载后卡在主页);清档后守卫自会弹回 welcome。
  */
 export function resetGame(): void {
   engine.stop()
   sealStorageWrites()
   clearAllSave()
-  // 内存兜底:reload 是异步的,卸载前页面仍在跑。万一两条封存路径都失效,
-  // 排队刷盘写回的也是 started:false,守卫照样把人送回 welcome
+  // 内存兜底:reload 异步,卸载前页面仍在跑;两条封存路径都失效时,排队刷盘写回的也是 started:false
   try {
     useGameStore().started = false
   } catch {
-    // Pinia 未激活时(理论上不会走到)忽略
+    // Pinia 未激活时忽略
   }
   window.location.reload()
 }
 
 /**
- * 重载(导入存档后调用)。封存写盘,防止排队刷盘在卸载前覆盖刚导入的分片。
- * 同样不碰 hash:导入只写了 localStorage,内存 store 还是旧存档,
- * 一旦触发 SPA 导航引发回写,覆盖的正是刚导入的数据
+ * 重载(导入存档后调用)。封存写盘,防排队刷盘在卸载前覆盖刚导入的分片。
+ * 不碰 hash:内存 store 还是旧存档,SPA 导航引发的回写会覆盖刚导入的数据。
  */
 export function reloadGame(): void {
   engine.stop()

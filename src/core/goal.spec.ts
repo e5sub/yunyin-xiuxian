@@ -1,6 +1,4 @@
-/**
- * 修行目标(Phase 29)接线契约 —— goal.ts 此前从未被展示,先把纯函数行为钉死。
- */
+/** 修行目标接线契约:钉住 goal.ts 纯函数行为 */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { usePlayerStore } from '@/stores/player'
@@ -111,7 +109,7 @@ describe('修行目标(Phase 29)', () => {
     const player = usePlayerStore()
     player.initCharacter('目标', { roots: [] } as never)
     player.exp = gnZero()
-    // 默认 unlocked=['qingyun']、cleared=[] → 还有可深入的地界
+    // 默认 unlocked=['qingyun']、cleared=[]
     const goal = generateCurrentGoal(player)!
     expect(goal.type).toBe('explore')
     expect(goal.text).toContain('深入')
@@ -121,9 +119,7 @@ describe('修行目标(Phase 29)', () => {
     const player = usePlayerStore()
     player.initCharacter('目标', { roots: [] } as never)
     player.exp = gnZero()
-    // 把所有已解锁地界都通关,历练目标消失
     useAdventureStore().cleared = [...useAdventureStore().unlocked]
-    // 材料/装备也都不缺 → 没有可挤的建议就闭嘴
     useResourcesStore().herbByGrade[1] = 12
     for (const slot of ['weapon', 'head', 'body', 'wrist', 'belt', 'boots', 'necklace', 'ring', 'talisman'] as const) {
       useInventoryStore().equip(`u-${slot}`, slot)
@@ -168,7 +164,7 @@ describe('修行目标(Phase 29)', () => {
     const adventure = useAdventureStore()
     adventure.unlocked = ['qingyun']
     adventure.cleared = ['qingyun']
-    // weapon、head 已填 → 优先级里第一个空槽是 body(衣袍)
+    // 优先级里第一个空槽是 body(衣袍)
     useInventoryStore().equip('u-weapon', 'weapon')
     useInventoryStore().equip('u-head', 'head')
     useResourcesStore().herbByGrade[1] = 12
@@ -198,7 +194,7 @@ describe('修行目标(Phase 29)', () => {
     const adventure = useAdventureStore()
     adventure.unlocked = ['qingyun']
     adventure.cleared = ['qingyun']
-    // 凡品 0(当前境可炼数)、却囤着一堆高品草 —— 旧口径 resources.herb(总和)读 500 会放过这次断粮
+    // resources.herb(跨品总和)读 500 会放过这次断粮
     useResourcesStore().herbByGrade[1] = 0
     useResourcesStore().herbByGrade[3] = 500
     const goal = generateCurrentGoal(player)!
@@ -220,7 +216,7 @@ describe('修行目标(Phase 29)', () => {
     const resources = useResourcesStore()
     resources.herbByGrade[1] = 50 // 地界品(凡品)成堆
     resources.herbByGrade[3] = 0 // 当前大境界品(仙品)见底
-    // 采集只出凡品 —— 仙品见底它救不了,不该推荐「去青云采集」的假方子
+    // 采集只出凡品,救不了仙品见底
     expect(generateCurrentGoal(player)).toBeNull()
   })
 })

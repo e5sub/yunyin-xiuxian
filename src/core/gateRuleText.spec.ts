@@ -1,10 +1,4 @@
-/**
- * 行军一指(gateRuleSummary)—— 八门 CombatRules 摊成一行,与结算同源
- *
- * 每个门都带一份真正参与结算的 CombatRules,但图鉴与远征选门一度只给定性 desc。
- * 此处锁两件事:① 具体门的数值串正确;② 每个生效字段都要落到文案 ——
- * 漏一个字段,就等于又把一条数值藏回散文里。
- */
+/** 行军一指(gateRuleSummary):① 各门数值串正确;② 每个生效字段都落到文案 */
 import { describe, expect, it } from 'vitest'
 import { GATES } from '@/data/qimen'
 import { gateRuleSummary } from './gateRuleText'
@@ -25,7 +19,7 @@ describe('行军一指 · 八门数值摊开', () => {
 
   it('按门对齐结算派生串(景/死/惊/开)', () => {
     expect(gateRuleSummary(GATES.find(g => g.id === 'jing9')!.rules)).toBe(
-      // 词条自带口径注脚(modsText 与别处同源),这里一并保留 —— 会心是「叠在固有值之上」
+      // 注脚来自 modsText,与别处同源
       '敌方气血 +8% · 额外 暴击率 +8%(叠于固有会心 5% 之上)'
     )
     expect(gateRuleSummary(GATES.find(g => g.id === 'si')!.rules)).toBe(
@@ -39,11 +33,7 @@ describe('行军一指 · 八门数值摊开', () => {
     )
   })
 
-  /**
-   * 逐个生效字段都必须有对应片段。这条是「规则加了字段、文案没跟上」的闸门:
-   * 只要有人给 CombatRules 添一条新字段并真的填进门里,而这里还没补,
-   * 这个循环就会当场指出是哪一门漏了。
-   */
+  /** 闸门:CombatRules 新字段填进门里时,须在此补判定 */
   it('每个生效字段都要落到文案,不许漏藏数值', () => {
     for (const g of GATES) {
       const summary = gateRuleSummary(g.rules)
@@ -83,7 +73,7 @@ describe('行军一指 · 八门数值摊开', () => {
   it('坏数不许吐出 NaN% / Infinity%(与 formatPercent 同一道兜底)', () => {
     expect(gateRuleSummary({ playerAtkMult: Number.NaN })).toBe('')
     expect(gateRuleSummary({ playerAtkMult: Number.POSITIVE_INFINITY })).toBe('')
-    // 场次类字段不是百分比,但同样不该把 NaN 摆给玩家看
+    // 场次类字段同样不许 NaN
     expect(gateRuleSummary({ maxRounds: Number.NaN })).not.toContain('NaN')
   })
 })

@@ -15,14 +15,12 @@ export const TITLES: TitleDef[] = [
   { id: 'ti_zhuanshi', name: '轮回行者', desc: '历经一次轮回', mods: { cultivationSpeed: 0.05, expGain: 0.05 } },
   { id: 'ti_changsheng', name: '万古长生', desc: '寿元逾万载', mods: { lifespanPct: 0.1 } },
   // ---- 境界称号:每一大境界一顶 ----
-  // 每个境界都得有一顶可戴的荣誉(与「每境有新功法/新丹方」同一条理由):
-  // 只有 0~3 与 9/14/20 有称号时,中间十余境过完连个名字都没留下。
   { id: 'ti_huashen', name: '化神真人', desc: '神念化形,言出法随', mods: { cultivationSpeed: 0.05, qiRegen: 0.05 } },
   { id: 'ti_lianxu', name: '炼虚道君', desc: '炼神返虚,窥见大道', mods: { cultivationSpeed: 0.05, damageReduction: 0.03 } },
   { id: 'ti_heti', name: '合体真君', desc: '身道相合,举念移山', mods: { cultivationSpeed: 0.06, maxHpPct: 0.05 } },
   { id: 'ti_dacheng', name: '大乘尊者', desc: '大道将成,静候天命', mods: { cultivationSpeed: 0.06, attackPct: 0.05 } },
   { id: 'ti_dujie', name: '渡劫行者', desc: '九重雷海,向死而生', mods: { cultivationSpeed: 0.06, tribulationResist: 0.05 } },
-  // ---- 界域里程碑称号(扩界)----
+  // ---- 界域里程碑称号 ----
   { id: 'ti_zhenxian', name: '得证仙位', desc: '飞升仙界,证得真仙', mods: { cultivationSpeed: 0.06, qiRegen: 0.06 } },
   { id: 'ti_xuanxian', name: '玄仙真人', desc: '仙体玄妙,一念山河', mods: { cultivationSpeed: 0.06, luck: 0.04 } },
   { id: 'ti_jinxian', name: '金仙道尊', desc: '金性不朽,历劫不磨', mods: { cultivationSpeed: 0.06, damageBonus: 0.05 } },

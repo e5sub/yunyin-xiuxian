@@ -30,12 +30,10 @@ export const router = createRouter({
 
 router.beforeEach(to => {
   const game = useGameStore()
-  // 已有存档:欢迎页与建号页都不再展示,直接进游戏
   if (game.started) {
     if (to.name === 'welcome' || to.name === 'create') return { name: 'home' }
     return true
   }
-  // 无存档:未同意隐私先到欢迎页,同意后可进建号页
   const settings = useSettingsStore()
   if (to.name === 'welcome') return true
   if (to.name === 'create') return settings.privacyAccepted ? true : { name: 'welcome' }

@@ -1,11 +1,4 @@
-/**
- * 收徒 · 各尽其长决策函数(`dispatchAllToNeed` / `needTargetDoor`)。
- *
- * 这是「一键各尽其长」的纯计算核心:给定闲置道童与资源库存快照,
- * 决定把每人派到哪一扇门。此前只在 store 层(欠灵草→采药那一支)被间接覆盖,
- * 而「全并列→各自专职」「皆有余→历练兜底」「空手→零派」这几支没有直接单测 ——
- * 本文件把它们逐一钉死,守的是导演口径「040/030/030/030」与历练固定兜底分。
- */
+/** 收徒「各尽其长」决策(`dispatchAllToNeed` / `needTargetDoor`);钉导演口径「040/030/030/030」与历练固定兜底分 */
 import { describe, it, expect } from 'vitest'
 import {
   apprenticeRecruitCost,
@@ -45,7 +38,7 @@ describe('各尽其长 · needTargetDoor 取最缺之门', () => {
   })
 
   it('谷有余而丹药见底时,取「寻机缘」为唯一目标', () => {
-    // 最基本的四门皆够(score ≈0.97~0.97),丹药存量 0 → seek score 10/1=10 独大
+    // 四门皆够(score ≈0.97),丹药存量 0 → seek score 10/1=10 独大
     const stock: DispatchNeedStock = { herb: 40, ore: 30, wudao: 30, dust: 30, seek: 0 }
     expect(needTargetDoor(stock)).toBe('seek')
   })

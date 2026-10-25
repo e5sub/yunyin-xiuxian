@@ -515,8 +515,7 @@ export const GONGFA: GongfaDef[] = [
     { cultivationSpeed: 0.32, breakthroughRate: 0.05, luck: 0.08 },
     { cultivationSpeed: 0.09, breakthroughRate: 0.015 }
   ),
-  // 仙界其余四境各补一部 —— 此前 10-13 境的人只有一件本境功法可参,
-  // 「主修只此一部、辅修只此一部」的时候,参悟这件事就没有选择可言。
+  // 仙界其余四境各补一部:本境功法只有一部时参悟无从选择
   g(
     's_xianguang',
     '仙光护体诀',
@@ -655,8 +654,7 @@ export function gongfaDef(id: string): GongfaDef | undefined {
   return BY_ID.get(id)
 }
 
-/** 一部功法的满级:数据没写就用 g() 里的型默认(秘术 3 / 主辅 9)。
- *  只此一处事实源 —— 各处重复 `?? 9` 会把漏配 maxLevel 的秘术当真主修练到 9 层。 */
+/** 功法满级:数据没写就用 g() 里的型默认(秘术 3 / 主辅 9);唯一事实源,别处写 `?? 9` 会把漏配 maxLevel 的秘术练到 9 层 */
 export function gongfaMaxLevel(def: GongfaDef | undefined): number {
   return def?.maxLevel ?? (def?.type === 'secret' ? 3 : 9)
 }

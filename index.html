@@ -5,7 +5,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="description" content="一款文字版修仙放置游戏。一念修行 · 云深不知处。" />
-    <!-- theme-color 由 src/core/theme.ts 在启动与主题切换时动态同步(亮/暗各一色) -->
+    <!-- theme-color 由 src/core/theme.ts 在启动与主题切换时同步(亮/暗各一色) -->
     <meta name="theme-color" content="#F3EFE4" />
     <meta name="keywords" content="云隐修仙录,云隐,云隐修仙,修仙,修仙游戏,文字游戏,文字修仙,放置修仙,放置游戏" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -15,7 +15,6 @@
     <meta property="og:title" content="云隐修仙录 — 一念修行 · 云深不知处" />
     <meta property="og:description" content="文字版修仙放置游戏" />
     <link rel="icon" href="./favicon.ico" />
-    <!-- PWA「添加到主屏幕」:manifest 提供独立图标/全屏/启动画面(ISS-171) -->
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <title>云隐修仙录</title>
@@ -25,17 +24,9 @@
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
     <!--
-      统计代码勿删 —— 但**不许挡住游戏**。
-
-      它原本是一条普通 <script>:解析器要停下等它下载并执行完,才轮到后面的模块脚本,
-      也就是「统计脚本多久回来,首屏就晚多久」(实测脚本卡 1200ms,界面 1294ms 才出现;
-      弱网或劫持下没有上限)。改成 defer 后它退到文档解析之后、与游戏模块脚本并行下载,
-      恰好在 DOMContentLoaded 之前执行完。
-
-      下面这句因此不能再裸写 LA.init:离线(Service Worker 只兜自家资源,跨域一律不干预)
-      或被广告拦截时,脚本压根不存在,裸写会抛未捕获的 ReferenceError —— 每次离线冷启动
-      都抛一次。defer 脚本必定先于 DOMContentLoaded 跑完,所以在这里等 DOMContentLoaded
-      再初始化;取不到就静默,统计丢了不要紧,游戏照常。
+      统计代码勿删,须 defer:同步 <script> 会让首屏等它下载执行完。
+      离线或被拦截时 LA 不存在,裸写 LA.init 会抛 ReferenceError;defer 脚本先于 DOMContentLoaded 执行完,故在此时初始化。
+      autoTrack 开启即采集点击与滚动,改它须同步 public/privacy.html 与 PrivacyDialog.vue 的统计说明。
     -->
     <script defer charset="UTF-8" id="LA_COLLECT" src="https://sdk.51.la/js-sdk-pro.min.js"></script>
     <script>

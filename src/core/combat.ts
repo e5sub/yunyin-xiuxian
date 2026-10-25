@@ -1,6 +1,4 @@
-/**
- * 自动战斗解算 —— 预先解算完整战报,UI 负责按节奏播放
- */
+/** 自动战斗解算:预先解算完整战报,UI 按节奏播放 */
 import type {
   CombatantSnap,
   CombatLogEntry,
@@ -53,7 +51,7 @@ interface Fighter {
   defSunder: number
   /** 组合技已触发次数(每场限量) */
   comboUses: number
-  /** 铁壁共鸣本场是否尚可触发(一次性) —— 存入 Fighter 自身,不写回调用方快照,避免同份快照连打时抢先消费 */
+  /** 铁壁共鸣本场是否尚可触发(一次性) */
   brace: boolean
   stats: CombatSideStats
 }
@@ -79,21 +77,14 @@ function emptyStats(): CombatSideStats {
 }
 
 /**
- * 凡界敌人的加成来源 —— 与天界的判定同一条纪律:生成方写明,战后分析照读。
- *
- * 两件事相乘:层级补偿(敌人按这一层的装备水平补齐)与危地
- * (出行方式 × 地界凶险 × 灵兽之性 × 区域事件,由调用方先乘成一个数)。
- * 知道得更细的调用方(历练)可以传入更细的 origin,把「危地」摊成它的四项来源。
+ * 凡界敌人的加成来源:生成方写明,战后分析照读(与天界判定同一条纪律)。
+ * 层级补偿 × 危地(出行方式 × 地界凶险 × 灵兽之性 × 区域事件,由调用方先乘成一个数)。
  */
 export function mortalFoeOrigin(tier: number, dangerMult: number): FoeOrigin {
   return mortalFoeOriginFromParts(tier, [{ label: '危地', ratio: dangerMult }])
 }
 
-/**
- * 按**已经摊开**的几件事组装来源:层级补偿排在最前(它不是玩家的选择,却是最大的一项),
- * 其余各项由调用方按自己知道的粒度给。总倍率一律由各项相乘得出 ——
- * 手写一个总数再手写一份明细,两者迟早对不上,而这类对不上没人看得出来。
- */
+/** 按已摊开的各项组装来源:层级补偿排最前,其余由调用方给;总倍率须由各项相乘得出,不另写总数 */
 export function mortalFoeOriginFromParts(tier: number, situation: readonly FoeOriginPart[]): FoeOrigin {
   const gear = enemyGearFactor(tier)
   const parts: FoeOriginPart[] = []
@@ -119,8 +110,7 @@ export function mortalFoeOriginFromParts(tier: number, situation: readonly FoeOr
 
 /**
  * 依据敌人模板与区域层级构建敌方快照。
- * `origin` 是这只敌人加成的**来源说明书**:不传则按实际乘过的两件事自动拆开,
- * 知道得更细的调用方(历练)传进来的是摊开到四项的那一份。
+ * `origin` 为加成来源:不传则按实际乘过的两件事自动拆开;历练传入摊开到四项的那一份。
  */
 export function makeEnemySnap(def: EnemyDef, tier: number, dangerMult: number, origin?: FoeOrigin): CombatantSnap {
   const scale = powerScale(tier)
@@ -158,18 +148,14 @@ function mergeAdd(base: StatMods, extra: StatMods): StatMods {
   return out
 }
 
-/**
- * 一张快照的战力 —— 战斗卡片那枚「敌 X · 我 Y」两侧同用这一把 powerScore,
- * 界面不另算一套权重。
- */
+/** 快照战力:战斗卡片「敌 X · 我 Y」两侧同用 powerScore,界面不另算权重 */
 export function snapPower(snap: CombatantSnap): GNum {
   return powerScore(snap.attack, snap.defense, snap.maxHp)
 }
 
 /**
- * 规则改后的双方有效快照 —— resolveCombat 开打用的同一份,抽出来供调用方
- * 在「战斗那一刻」折同一对战力(卡片「敌 X · 我 Y」与结算同源,不另算)。
- * 规则没改时原样返回;改了什么就是什么,卡片不谎报生效前的基准。
+ * 规则改后的双方有效快照,与 resolveCombat 开打用的同一份;卡片「敌 X · 我 Y」据此折战力,与结算同源。
+ * 规则没改时原样返回。
  */
 export function applyCombatRuleSnap(
   pSnap: CombatantSnap,
@@ -199,7 +185,7 @@ export function resolveCombat(
   eSnap: CombatantSnap,
   rng: RandomService,
   rules?: CombatRules,
-  /** 纯胜负抽样 / 审计 / 扫描只读 .win 时置 false,跳过战报构建(formatGN/数组/每段 hpPct) */
+  /** 纯胜负抽样 / 审计 / 扫描只读 .win 时置 false,跳过战报构建 */
   buildLog: boolean = true
 ): CombatResult {
   // 规则注入:道途与特殊世界只改参数,不改逻辑
@@ -241,15 +227,12 @@ export function resolveCombat(
   }
 
   /**
-   * 震慑落地前的最后一道门:受方若带着「净念」法宝,有机会当场挣脱。
-   *
-   * 三个落点(词条 stunRate、法宝震慑、敌人神通震慑)都走这里 —— 一处漏了,
-   * 净念就变成「只挡某一种摄魂」的半成品,而玩家从界面上看不出差别。
-   * 挣脱概率取自受方自己的法宝,与出手的一方无关。
+   * 震慑落地前的最后一道门:受方带「净念」法宝时有机会挣脱,概率取自受方自己的法宝。
+   * 三个落点(词条 stunRate、法宝震慑、敌人神通震慑)须都走这里。
    */
   const tryStun = (target: Fighter): boolean => {
     const owned = (target.snap.artifacts ?? []).find(o => o.def.active.effect.type === 'purge')
-    // 上限 0.9 写在 data/artifacts 里:留一丝「摄魂也不是吃素的」——再高也不该等于免疫
+    // 上限 0.9 写在 data/artifacts 里,不等于免疫
     if (owned && rng.chance(artifactValue(owned.def, owned.level).active.amount)) {
       target.stats.artifactProcs += 1
       const who = target.snap.isPlayer ? '你' : `【${target.snap.name}】`
@@ -260,12 +243,11 @@ export function resolveCombat(
     return true
   }
 
-  /** 护体灵光有极限:护盾总量不超过最大生命的一定比例(默认一半,可被世界规则覆盖) */
+  /** 护盾总量不超过最大生命的一定比例(默认一半,可被世界规则覆盖) */
   const gainShield = (f: Fighter, amount: GNum): void => {
     f.shield = gnMin(add(f.shield, amount), mulN(f.snap.maxHp, shieldCap))
   }
 
-  // 开战护盾
   for (const f of [p, e]) {
     const pct = modOf(f.snap.mods, 'shieldOnStart')
     if (pct > 0) {
@@ -286,9 +268,8 @@ export function resolveCombat(
       shieldBroken = isZero(target.shield)
     }
     target.hp = subClamp(target.hp, remain)
-    // Phase 31 S5:铁壁共鸣 —— 近致命伤首次保命(保留 1 点气血,一次性)
-    // 从 Fighter.brace 消费(该场一次性),绝不写回 target.snap —— 调用方快照可能被复用连打,
-    // 写回会让「第一场触发、后续全场失效」,玩家侧命中率被系统性低估
+    // 铁壁共鸣:近致命伤首次保命(保留 1 点气血)。只消费 Fighter.brace,
+    // 写回 target.snap 会让复用快照连打时「第一场触发、后续全场失效」
     if (isZero(target.hp) && target.brace && target.snap.isPlayer) {
       target.brace = false
       target.hp = { m: 1, e: 0 }
@@ -305,10 +286,10 @@ export function resolveCombat(
     return shieldBroken
   }
 
-  /** 治疗:受治疗效率规则影响;溢出部分按「溢疗成盾」转化为护盾 */
+  /** 治疗:受治疗效率规则影响;溢出部分按「溢疗成盾」转护盾 */
   const healSelf = (f: Fighter, rawAmount: GNum): void => {
     let amount = healMult === 1 ? rawAmount : mulN(rawAmount, healMult)
-    // 组合技·枯泽回春:濒死时治疗增幅,但灵光护盾随之消散一半(有得有失)
+    // 组合技·枯泽回春:濒死时治疗增幅,护盾随之消散一半
     const kuze = f.snap.comboArt === 'kuze' && hpPct(f) < LOW_HP_THRESHOLD
     if (kuze) amount = mulN(amount, 1.5)
     const missing = subClamp(f.snap.maxHp, f.hp)
@@ -404,7 +385,6 @@ export function resolveCombat(
       if (isZero(attacker.hp)) return
     }
 
-    // 吸血
     const ls = modOf(aMods, 'lifesteal')
     if (ls > 0) {
       healSelf(attacker, mulN(dmg, ls))
@@ -419,7 +399,7 @@ export function resolveCombat(
       })
     }
     if (opts.skipFollowups) return
-    // 组合技·锋连诀:满血会心必接一记追击(每场限一次)
+    // 组合技·锋连诀:满血会心接一记追击(每场限一次)
     if (isCrit && attacker.snap.comboArt === 'fenglian' && selfPct > FULL_HP_THRESHOLD && attacker.comboUses < 1 && !isZero(target.hp)) {
       attacker.comboUses += 1
       attacker.stats.combos += 1
@@ -429,7 +409,6 @@ export function resolveCombat(
         skipCounter: true
       })
     }
-    // 连击(连环词条增幅追击威力)
     if (!isZero(target.hp) && rng.chance(capChance(modOf(aMods, 'comboRate')))) {
       attacker.stats.combos += 1
       strike(attacker, target, 0.6 * (1 + modOf(aMods, 'comboDamage')), '追击', round, {
@@ -448,7 +427,6 @@ export function resolveCombat(
     const name = self.snap.isPlayer ? '你' : `【${self.snap.name}】`
     const side = self.snap.isPlayer ? 'p' : 'e'
 
-    // 回合回复
     const regen = modOf(self.snap.mods, 'regenPerRound')
     if (regen > 0 && hpPct(self) < 1) {
       healSelf(self, mulN(self.snap.maxHp, regen))
@@ -460,18 +438,17 @@ export function resolveCombat(
       if (isZero(foe.hp)) return
       const art = owned.def
       const eff = art.active.effect
-      // 净念是随身被动,由 tryStun 在受慑的那一刻接管 —— 不走「每 N 回合出手」的节拍
+      // 净念是随身被动,由 tryStun 在受慑时接管,不走「每 N 回合出手」的节拍
       if (eff.type === 'purge') continue
       if (round % art.active.interval !== 0) continue
       self.stats.artifactProcs += 1
-      // 数值取自 artifactValue —— 界面上的神通说明读的是同一个函数,不会各说各话
+      // 数值取自 artifactValue,与界面神通说明同源
       const values = artifactValue(art, owned.level).active
       if (eff.type === 'damage') {
         const dmgAmt = mulN(self.snap.attack, values.amount)
         applyDamage(self, foe, dmgAmt)
         push('proc', side, `${name}的【${art.name}】自行出手——${art.active.name}!`, dmgAmt)
       } else if (eff.type === 'drain') {
-        // 吸命:伤害与回复是同一件事的两面 —— 打出多少,按比例补回自身
         const dmgAmt = mulN(self.snap.attack, values.amount)
         applyDamage(self, foe, dmgAmt)
         const returned = mulN(dmgAmt, values.heal ?? 0)
@@ -491,27 +468,18 @@ export function resolveCombat(
         foe.defSunder = Math.max(foe.defSunder, values.amount)
         push('proc', side, `【${art.name}】${art.active.name},${foe.snap.isPlayer ? '你的' : `【${foe.snap.name}】的`}护体被撕开一道口子。`)
       } else if (eff.type === 'weaken') {
-        /**
-         * 取强不取新:削弱与破甲是同一类「本场余下回合持续」的减益,
-         * 都存在 fighter 上、从不回落。从前这里是**直接赋值** ——
-         * 两个法宝位各带一件削弱时,出手顺序决定谁说了算:先摄魂铃(30%)
-         * 后缚妖索(20%),末了一赋值,强的那份被弱的那份当场顶掉,
-         * 玩家把更强的法宝换上第二个位,反而削得更少(实测:缚妖索在前时
-         * 敌方攻势只降 20% 而非 30%)。与同行 sunder 的 Math.max 对齐。
-         */
+        // 取强不取新(与 sunder 的 Math.max 对齐):直接赋值会让两件削弱法宝里弱的按出手顺序顶掉强的
         foe.weaken = Math.max(foe.weaken, values.amount)
         push('proc', side, `【${art.name}】发威,${foe.snap.isPlayer ? '你' : `【${foe.snap.name}】`}的攻势被削弱了。`)
       }
     }
     if (isZero(foe.hp)) return
-    // 震慑跳过
     if (self.stunned) {
       self.stunned = false
       self.stats.stunnedTurns += 1
       push('info', side, `${name}气血逆涌,这一招被生生打断。`)
       return
     }
-    // 选择技能
     let mult = 1
     let label = self.snap.isPlayer ? '一记攻势' : '一记爪击'
     let isSkill = false
@@ -527,7 +495,6 @@ export function resolveCombat(
       }
     }
     strike(self, foe, mult, label, round, { isSkill, pierce: effect === 'pierce' })
-    // 技能附加效果
     if (effect && !isZero(foe.hp)) {
       if (effect === 'multi') {
         for (let i = 0; i < SKILL_MULTI_HITS && !isZero(foe.hp) && !isZero(self.hp); i += 1) {
@@ -546,7 +513,7 @@ export function resolveCombat(
   }
 
   let rounds = 0
-  // 先手判定:一条阈值,不是连续收益 —— 两个数都要留着给战后分析(见 CombatResult.firstMove)
+  // 先手判定是一条阈值,不是连续收益;两个数都留给战后分析(CombatResult.firstMove)
   const pSpeed = 1 + modOf(pEff.mods, 'speed')
   const eSpeed = eEff.speed
   const pFirst = pSpeed >= eSpeed
@@ -581,9 +548,7 @@ export function resolveCombat(
 
   for (let round = 1; round <= maxRounds; round += 1) {
     rounds = round
-    // Boss 阶段检测(在每回合开始前触发)
     if (bossPhases.length > 0 && !isZero(e.hp)) applyPhaseTransition()
-    // 长生印:每隔若干回合玩家得一枚印记(恢复+护盾),敌人攻势渐涨
     if (perRounds && round % perRounds.interval === 0 && !isZero(p.hp) && !isZero(e.hp)) {
       healSelf(p, mulN(p.snap.maxHp, perRounds.playerHealPct))
       gainShield(p, mulN(p.snap.maxHp, perRounds.playerShieldPct))
@@ -623,9 +588,7 @@ export function resolveCombat(
     log,
     rounds,
     playerHpPct: hpPct(p),
-    // 敌人加成的来源随战报带走 —— 战后分析不必回头去猜这一场是怎么变难的
     foeOrigin: eSnap.origin,
-    // 先手判定如实带出:这是条阈值(见 CombatResult.firstMove 的注释),战后分析据此讲清「差多少」
     firstMove: { playerFirst: pFirst, playerSpeed: pSpeed, enemySpeed: eSpeed },
     stats: { player: p.stats, enemy: e.stats }
   }
@@ -638,7 +601,6 @@ export function sampleWinRate(pSnap: CombatantSnap, eSnap: CombatantSnap, rng: R
     if (resolveCombat(pSnap, eSnap, rng, rules, false).win) wins += 1
   }
   const table = [0.08, 0.4, 0.72, 0.93]
-  // 索引夹到表长内:samples 取 >3 时 Math.min(samples, wins) 会越界取到 undefined →
-  // 静默变 NaN,被调用方当作胜率一路传导(离线收益/远征)。表是 4 档,顶格就是 0.93
+  // 索引夹到表长内:越界取到 undefined 会静默变 NaN,一路传导进离线收益/远征
   return table[Math.min(table.length - 1, wins)]!
 }

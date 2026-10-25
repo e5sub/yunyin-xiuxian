@@ -1,22 +1,12 @@
 /**
- * 存档导出平台抽象 —— 单测钉住「平台分叉」：
- *
- * - Web/Electron:isNativePlatform()=false,必须走 saveAs 浏览器下载
- * - Android:getPlatform()=android,必须走 SaveTransfer 的 SAF 保存面板
- * - 其他 Capacitor 原生:保留 Filesystem.writeFile 文档目录退路
- *
- * Android 回归重点:
- *   一 不再请求公共存储权限,也不直接写 Documents;
- *   二 只有原生桥回报 saved=true 才返回 null(设置页才记「上次导出」);
- *   三 用户取消与写入失败都要有明确回执,不能假装成功。
- *
- * 故障注入:把 Android 分支改回 requestPermissions + writeFile,
- * 或把 saved=false 当成功,下列用例会红。
+ * 存档导出平台分叉:Web/Electron 走 saveAs,Android 走 SaveTransfer 的 SAF 保存面板,
+ * 其他 Capacitor 原生走 Filesystem.writeFile。
+ * 故障注入:把 Android 分支改回 requestPermissions + writeFile,或把 saved=false 当成功,对应用例红。
  */
 import { createPinia, setActivePinia } from 'pinia'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-/** node 测试环境无 localStorage,导出路径内部(buildExportPayload)要读它,补一个最小桩 */
+/** node 环境无 localStorage,buildExportPayload 要读它 */
 class MemStorage {
   private map = new Map<string, string>()
   getItem(k: string): string | null {
@@ -43,14 +33,13 @@ const mocks = vi.hoisted(() => ({
   registerPlugin: vi.fn()
 }))
 
-// 替换 @capacitor/filesystem 为可追踪桩:断言 Web 端绝不调用它
+// 可追踪桩:断言 Web 端不调用
 vi.mock('@capacitor/filesystem', () => ({
   Filesystem: { writeFile: mocks.writeFile, requestPermissions: mocks.requestPermissions },
   Directory: { Documents: 'DOCUMENTS' },
   Encoding: { UTF8: 'utf8' }
 }))
 
-// 钉死 Capacitor 原生判定为 false(与 vitest/node 环境一致),再导入被测模块
 vi.mock('@capacitor/core', async () => {
   const actual = await vi.importActual<typeof import('@capacitor/core')>('@capacitor/core')
   return {
@@ -68,7 +57,7 @@ import { Capacitor } from '@capacitor/core'
 
 describe('savePlatform(Web 分支)', () => {
   beforeEach(() => {
-    // Web 成功路径现在也会 toast(旧的只是静默返回),给足 Pinia
+    // 成功路径也 toast,需 Pinia
     setActivePinia(createPinia())
     mocks.writeFile.mockClear()
     mocks.requestPermissions.mockReset()
@@ -87,7 +76,6 @@ describe('savePlatform(Web 分支)', () => {
   })
 
   it('Web 端(非原生):导出成功返回 null,且绝不触碰 Filesystem', async () => {
-    // 环境断言:被测分支确实是 Web 分支
     expect(Capacitor.isNativePlatform()).toBe(false)
 
     const { exportSaveToDevice } = await import('./savePlatform')

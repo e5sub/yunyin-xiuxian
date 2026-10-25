@@ -1,10 +1,6 @@
 /**
- * 远征 · 天机透视出发前「先算后战」的同源口径
- *
- * previewFight 是 fate 道的招牌「天机透视·入界之敌」:出发前预览应当用
- * 与首战完全相同的规则来算胜算(道途 × 世界 × 契约 × 奇门)。此前 run=null
- * 时只按 currentDaoRules() 预估,漏掉 world.rules 与所择契约/奇门 ——
- * 报的胜算比实况乐观一整档(赤炎天的回合上限、生机稀薄一概不报)。
+ * 远征 · 天机透视出发前与首战同源:previewFight 须按首战规则算胜算(道途 × 世界 × 契约 × 奇门)。
+ * 只按 currentDaoRules() 预估会漏掉 world.rules 与所择契约/奇门,胜算偏乐观。
  */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -45,30 +41,21 @@ describe('远征 · 天机透视出发前', () => {
 })
 
 /**
- * 天机「携带气血」预报边界守卫 —— 把 1.33 那条「天机预览补算携带气血,玩家越残它不再
- * 报得越乐观」的修复钉成测试(此前 only 测了 run=undefined 的出发前视角)。
- *
- * 界主战是天堑(胜0.08/负0.93,一翻即变),资深预览在真实界主上拿不到中段胜率,
- * 故这里守三件「携带气血 → 预报如实报低」所依赖的原子事实:
- *  1. withCarriedHp 把携带气血精确写进 playerStartHpPct(±起手上限夹逼);
- *  2. 战斗结算真的按 playerStartHpPct 起手(构造刀口之战:满血赢、带伤输);
- *  3. 天机预览确定性(同输入必同预报)。
- * 任一环被拆掉(预报再报乐观),必有断言翻红。
+ * 天机预览计入携带气血的边界守卫。真实界主战拿不到中段胜率,只钉三件原子事实:
+ * withCarriedHp 写入并夹逼 playerStartHpPct;战斗按 playerStartHpPct 起手;预览确定性。
+ * 任一环被拆,必有断言红。
  */
 describe('远征 · 天机携带气血预报边界', () => {
   it('withCarriedHp 把携带气血精确写进入界起手(playerStartHpPct,含上限夹逼)', () => {
     const run = (hp: number): WorldRunState =>
       ({ worldId: 'x', layer: 1, gateId: null, pactId: null, carriedHpPct: hp, cleared: [], history: [] }) as unknown as WorldRunState
-    // 携带 30% → 起手 30%
     expect(withCarriedHp({}, run(0.3)).playerStartHpPct).toBe(0.3)
-    // 携带 30% vs 入界起手上限 90% → 取小 30%
     expect(withCarriedHp({ playerStartHpPct: 0.9 }, run(0.3)).playerStartHpPct).toBe(0.3)
-    // 携带 50% 不得越过入界起手上限 20%(出发时的血线就是天花)
     expect(withCarriedHp({ playerStartHpPct: 0.2 }, run(0.5)).playerStartHpPct).toBe(0.2)
   })
 
   it('战斗结算按 playerStartHpPct 起手:满血赢、带伤输(刀口之战)', () => {
-    // 刀口:玩家 2 击杀 150 血的敌;敌每击 40。满血 100 扛得住两击,50% 血 50 就扛不住。
+    // 刀口:玩家两击杀敌;敌每击 40,满血 100 扛两击,半血扛不住
     const SK = { name: '击', mult: 1, rate: 1, effect: 'plain' as const }
     const player: CombatantSnap = {
       name: 'F战', icon: 'x', isPlayer: true,
@@ -94,12 +81,8 @@ describe('远征 · 天机携带气血预报边界', () => {
 })
 
 /**
- * 逆命契(sealCore)/ 无相(soloArtifact)的玩家侧负担,出发前天机预览不勾销。
- *
- * 这是「所窥即所打」的契约:真打(runSnap)与远征预估(forecastExpedition)都吃
- * 逆命契封印核心、无相伴生只带一件法宝;出发前的 previewFight 若不吃,玩家看到的
- * 胜算就比真打乐观。共享 helper pactBoundedSnap 把它做成单一来源 —— 这里直接在
- * 快照上验证负担真的落位,不用去赌一场胜负正好五五开的仗。
+ * 逆命契(sealCore)/ 孤剑契(soloArtifact)的玩家侧负担,出发前预览不勾销。
+ * 单一来源 pactBoundedSnap;直接验快照上的负担落位,不赌一场胜负。
  */
 describe('远征 · 出发前契约不勾销玩家侧负担', () => {
   beforeEach(() => setActivePinia(createPinia()))
@@ -110,7 +93,7 @@ describe('远征 · 出发前契约不勾销玩家侧负担', () => {
     player.initCharacter('探', { roots: [{ element: 'wood', aptitude: 90 }] } as never)
     player.major = 5
     player.sub = 0
-    // 明确的连击流:武器带 连击(cb2)/连环(lh2),其余只堆生存,让核心词条是主要战力来源
+    // 连击流:核心词条 cb2/lh2,其余只堆生存
     const SLOTS: EquipSlot[] = ['weapon','head','body','wrist','belt','boots','necklace','ring','talisman']
     const MORTAL_TOP = ['w_jiujie','h_zichen','b_taiqing','wr_jieyun','bl_yunlei','bo_lingxu','n_jiuzhuan','r_ziyuan','tl_yulei']
     inv.items = MORTAL_TOP.map((t, i): EquipmentInstance => ({
@@ -118,14 +101,13 @@ describe('远征 · 出发前契约不勾销玩家侧负担', () => {
       affixes: [{ id: 'cb2', roll: 0.9 }, { id: 'lh2', roll: 0.9 }, { id: 'hp4', roll: 0.7 }, { id: 'def4', roll: 0.7 }]
     }))
     inv.items.forEach((it, i) => inv.equip(it.uid, SLOTS[i]!))
-    // 词条真落位 + 流派真被识别 —— 否则「封印核心」这句断言是空转
+    // 前置:词条落位、流派可识别,否则封印断言空转
     const comboRate = modOf(player.finalStats.mods, 'comboRate')
     expect(comboRate, '连击词条应落进面板').toBeGreaterThan(0)
     expect(detectBuild(player.finalStats.mods), '应识别出流派').not.toBeNull()
 
     const base = buildPlayerSnap(true)
     const bounded = pactBoundedSnap(base, pactDef('ni')!)
-    // 逆命契把当前流派核心词条反向抹掉
     expect(modOf(bounded.mods, 'comboRate'), '逆命契应封印连击核心').toBeCloseTo(0, 6)
     expect(modOf(bounded.mods, 'comboDamage'), '逆命契应封印连环核心').toBeCloseTo(0, 6)
   })

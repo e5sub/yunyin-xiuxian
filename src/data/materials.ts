@@ -1,11 +1,6 @@
 /**
- * 灵材谱(Phase 32.3)—— 具体灵材及其双向属性
- *
- * 同一块材料,炼丹看的是药性(药力/温性/毒性),炼器看的是器性(硬度/灵性/导灵)。
- * 认知分四层:未知 → 已辨识 → 已知性 → 已通用。层数决定玩家在生产时能用上它多少。
- *
- * 注意:Phase 32.3 库存仍是 herb/ore 两个标量(见 stores/resources.ts),
- * 灵材在此只有"身份与认知",尚无独立存量。实体化留给 Phase 32.4。
+ * 灵材谱:具体灵材及其双向属性。炼丹看药性(药力/温性/毒性),炼器看器性(硬度/灵性/导灵);认知层数决定生产时能用上多少。
+ * 灵材只有身份与认知,无独立存量;库存按 herb/ore 大类记(见 stores/resources.ts)。
  */
 import type { ElementId } from '@/types'
 
@@ -24,9 +19,9 @@ export interface MaterialDef {
   /** 阶位 1~9,决定它在什么层级现世、入什么阶的方子 */
   rank: number
   element: ElementId
-  /** 药性 —— 炼丹视角。thermal 负数为寒性 */
+  /** 药性(炼丹);thermal 负数为寒性 */
   medicinal: { potency: number; thermal: number; toxin: number }
-  /** 器性 —— 炼器视角 */
+  /** 器性(炼器) */
   forging: { hardness: number; spirit: number; conduct: number }
   /** 三层认知文本:辨识时 / 知性时 / 通用时各解锁一句 */
   lore: readonly [string, string, string]
@@ -146,9 +141,9 @@ export function materialDef(id: string): MaterialDef | undefined {
   return BY_ID.get(id)
 }
 
-/** 某阶位附近现世的灵材(用于采集时抽取"遇见了什么") */
+/** 某阶位附近现世的灵材(采集时抽取) */
 export function materialsNearRank(rank: number, bucket?: MaterialBucket): MaterialDef[] {
   const pool = MATERIALS.filter(x => (bucket === undefined || x.bucket === bucket) && x.rank <= rank + 1)
-  // 层级越高越少见低阶材料,但永远不彻底消失
+  // 低阶材料越高越少见,但不彻底消失
   return pool.length > 0 ? pool : MATERIALS.filter(x => x.rank === 1)
 }

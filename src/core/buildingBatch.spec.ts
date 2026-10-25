@@ -1,8 +1,6 @@
 /**
- * 建筑连升 · 批量账
- * buildingBatchPlan 只算不动手(级数受品类满级 / 洞府辖限 / 余额共同约束,
- * 判据与 buildingUpgradeInfo 同源),upgradeBuildingBatch 按计划一次升到位,
- * 扣费/等级与计划一致;一升都升不动(0 级计划)时绝不扣一分。
+ * 建筑连升批量账:buildingBatchPlan 只算不动手(级数受品类满级 / 洞府辖限 / 余额约束,判据与 buildingUpgradeInfo 同源);
+ * upgradeBuildingBatch 按计划一次升到位,0 级计划不扣费。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -30,7 +28,7 @@ function seat(major: number, mansion: number): void {
   useDongfuStore().levels = { ...useDongfuStore().levels, mansion }
 }
 
-/** 与 service 同式:第 lv 级的单次成本(吃 formulas.buildingCost,不另抄公式) */
+/** 第 lv 级单次成本,与 service 同式 */
 function costOf(lv: number): { stone: ReturnType<typeof buildingCost>; ore: number } {
   return { stone: buildingCost(ARRAY.costBase, lv), ore: ARRAY.costOre * (lv + 1) }
 }
@@ -120,9 +118,7 @@ describe('建筑连升 · 批量账', () => {
     const n = upgradeBuildingBatch('array')
     expect(n).toBe(plan.levels)
     expect(useDongfuStore().levels.array).toBe(plan.levels)
-    // 账上看少掉的整笔 = 计划总账。用「期初减期末」重建会沾上 ~1e-4 石的浮点尾差
-    // (两个 ~1e12 端点相减的 ULP 级抖动,实测 1.1e-4),远小于 1 石的显示粒度:
-    // 断言「到显示粒度分毫不差」即可,别去跟 add 的尾数逐比特对齐。
+    // 期初减期末有 ~1e-4 石浮点尾差(~1e12 端点相减),只断言到显示粒度
     expect(toNum(sub(before, useResourcesStore().spiritStone))).toBeCloseTo(toNum(plan.stone), 2)
     expect(useResourcesStore().ore).toBe(1e9 - plan.ore)
   })
@@ -142,30 +138,24 @@ describe('建筑连升 · 批量账', () => {
     expect(useResourcesStore().ore).toBe(1e9)
   })
 
-  /**
-   * 连升 N 级买的是整段:单步预告只讲「再升一层又添 X」,玩家得拿看不到的
-   * 逐级增量自己加总。批量预览从当前级直接 diff 到目标级(effectText 是
-   * 累计值,两张表相减即整段净得),与单步共用同一套「只报会变的行」。
-   */
+  /** 批量预览从当前级直接 diff 到目标级(effectText 是累计值),与单步共用「只报会变的行」 */
   it('连升整段预览:从当前级直接 diff 到目标级,报累积净得', () => {
     const def = buildingDef('mansion')!
     const linesOf = (level: number): string[] =>
       def.effectText(level).split(/[;；]/).map(line => line.trim()).filter(Boolean)
-    // 0→2(两步,不越 maxLevel):与首建同义(当前效果为空表),整张 2 级效果
+    // 0→2:当前效果为空表,即整张 2 级效果
     const two = buildingUpgradePreview('mansion', 0, undefined, 2)
     expect(two.nextLevel).toBe(2)
     expect(two.lines).toEqual(linesOf(2))
-    // 从 1 级升到 3 级:预览指向 3,行 = effectText(3) 相对 effectText(1) 变化的行
     const prev = buildingUpgradePreview('mansion', 1, undefined, 2)
     expect(prev.nextLevel).toBe(3)
     const cur = linesOf(1)
     const to = linesOf(3)
     expect(prev.lines).toEqual(to.filter((line, i) => line !== cur[i]))
-    // 步数 1 退化为单步(与不传一致)
     expect(buildingUpgradePreview('mansion', 1, undefined, 1).lines).toEqual(
       buildingUpgradePreview('mansion', 1).lines
     )
-    // 越过上限:整段预览为空(卡面已有到顶理由,不画画不了的饼)
+    // 越过上限:预览为空
     expect(buildingUpgradePreview('mansion', 3, undefined, 5).lines).toEqual([])
   })
 })

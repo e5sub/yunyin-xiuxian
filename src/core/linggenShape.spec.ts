@@ -1,13 +1,6 @@
 /**
- * 灵根画像的形状修复 —— 建号草稿与角色灵根共用一道闸。
- *
- * 两处界面都是**裸下标 + 裸方法**:`ELEMENTS[root.element].color` 取元素元数据、
- * `growthMult.toFixed(2)` 读倍率。坏档里元素名认不出时对 `undefined` 取属性,
- * 倍率写成 `null` 时对 `null` 调方法 —— 渲染期直接抛错,而 Vue 会不断重试渲染,
- * 玩家看到的是「出现异常,已记录」的 toast 反复弹出。
- *
- * 这个文件只测纯函数(不建 Pinia);store 侧的落地见 stores/linggenShape.spec.ts,
- * 分层判据要求 core 用例带 Pinia 的文件数只许减。
+ * 灵根画像的形状修复。只测纯函数、不建 Pinia(分层判据:core 用例带 Pinia
+ * 的文件数只许减);store 侧见 stores/linggenShape.spec.ts。
  */
 import { describe, expect, it } from 'vitest'
 import { sanitizeLinggen } from './linggenGen'

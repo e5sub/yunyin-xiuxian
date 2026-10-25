@@ -1,18 +1,10 @@
 /**
- * 奇缘 —— 8 条缘 · 21 个阶段事件(数据驱动,阶段事件随链推进逐段出现)
- *
- * 与普通事件的分工:
- * - 普通事件按**区域标签**随机出现,同一件事在哪里都能碰上;
- * - 奇缘按**链条阶段**出现 —— 上一程结了哪一段缘,下一程才轮得到它。
- *   故阶段事件一律带 `chain` 标签,任何区域都不引用它(见 eventEngine.regionEventPoolFor),
- *   只有 pickChainStageEvent 这一条路能把它们请出来。
- *
- * 链条身份只此一处:谁属于哪条链、是第几程,一律问 chainOfEvent,
- * 不在别处再写一份 id 前缀清单(重复的口径迟早对不上)。
+ * 奇缘 —— 8 条缘 · 21 个阶段事件,只经 pickChainStageEvent 按链条阶段逐段出现。
+ * 链条身份只此一处:一律问 chainOfEvent,不在别处再写一份 id 前缀清单。
  */
 import type { EventChoice, EventDef, EventEffect, EventOutcome } from '@/types'
 
-/** 奇缘阶段事件的专属标签 —— 任何区域都不得引用它,否则奇缘会漏进随机池 */
+/** 奇缘阶段事件专属标签;任何区域不得引用(见 eventEngine.regionEventPoolFor),否则奇缘漏进随机池 */
 export const CHAIN_TAG = 'chain'
 
 function o(weight: number, text: string, ...effects: EventEffect[]): EventOutcome {
@@ -33,17 +25,13 @@ const leave = (text = '你收回目光,转身离去。缘未到,强求不得。'
 export interface ChainDef {
   id: string
   name: string
-  /** 一句话写这条缘为何未了(展示层用) */
+  /** 这条缘为何未了(展示层用) */
   hint: string
-  /** 各程事件 id,顺序即缘分 */
+  /** 各程事件 id */
   stages: string[]
 }
 
-/**
- * 8 条奇缘 —— 四个界域各有其缘:人间五条起于寻常处,仙界自云海接续,
- * 神界是代天的那一行,混沌海是一滴未凝的本源。
- * 每条的起点门槛写在第一程事件的 minRealm 上,链条自身不另存一份。
- */
+/** 每条的起点门槛写在第一程事件的 minRealm 上,链条自身不另存一份 */
 export const CHAINS: ChainDef[] = [
   {
     id: 'old_man_stone',
@@ -95,7 +83,6 @@ export const CHAINS: ChainDef[] = [
   }
 ]
 
-/** 21 个阶段事件 —— 前一程结了,后一程才可能出现 */
 export const CHAIN_EVENTS: EventDef[] = [
   // ---- 青石问路 ----
   ev(
@@ -208,7 +195,7 @@ export const CHAIN_EVENTS: EventDef[] = [
         ],
         { isDefault: true }
       ),
-      // 狠手:得一时之利,这条缘也就断在这里(后续两程不会再来)
+      // 狠手断缘:后续两程不会再来
       c(
         '取它皮毛',
         [o(1, '你下手极快。狐狸到死都没叫。皮毛尚温,你却没有多看它一眼。', { type: 'material', id: 'dust', amount: 4 })],
@@ -326,7 +313,7 @@ export const CHAIN_EVENTS: EventDef[] = [
     ]
   ),
 
-  // ---- 云海故碑(仙界起头:高界也该有自己的缘,而不是只剩凡间那笔旧账) ----
+  // ---- 云海故碑(仙界起头) ----
   ev(
     'yunzhong_1',
     '云海故碑',
@@ -409,7 +396,7 @@ export const CHAIN_EVENTS: EventDef[] = [
     ]
   ),
 
-  // ---- 代天一行(神界起头:这一次不是旁人给你指路,是有人让你去判别人) ----
+  // ---- 代天一行(神界起头) ----
   ev(
     'daitian_1',
     '名册',
@@ -502,7 +489,7 @@ export const CHAIN_EVENTS: EventDef[] = [
     ]
   ),
 
-  // ---- 本源一滴(混沌海起头:这里没有旧账,只有还没成形的东西) ----
+  // ---- 本源一滴(混沌海起头) ----
   ev(
     'benyuan_1',
     '一滴未凝',
@@ -592,7 +579,7 @@ export const CHAIN_EVENTS: EventDef[] = [
   )
 ]
 
-/** 某事件属于哪条链的第几程(非奇缘返回 null)—— 事件引擎靠它推进缘分 */
+/** 某事件属于哪条链的第几程(非奇缘返回 null) */
 export function chainOfEvent(eventId: string): { chain: ChainDef; stage: number } | null {
   for (const chain of CHAINS) {
     const stage = chain.stages.indexOf(eventId)

@@ -1,8 +1,6 @@
 /**
- * 穿梭传送门的粒子快照。
- *
- * 随机距离、大小与延迟只在 show() 时取一次。若把它们留在模板的 style 绑定里,
- * 父组件任何一次重渲染都会重掷,正在播放的粒子会突然跳位。
+ * 穿梭传送门的粒子快照;随机值只在 show() 时取一次。
+ * 放进模板 style 绑定会随父组件重渲染重掷,粒子跳位。
  */
 export interface WarpParticleStyles {
   stars: Record<string, string>[]

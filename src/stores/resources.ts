@@ -1,4 +1,4 @@
-/** 资源状态 —— 灵石(大数)与各类材料 */
+/** 资源:灵石(大数)与各类材料 */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type { GNum, SmallResourceId } from '@/types'
@@ -9,20 +9,19 @@ import { HERB_GRADES, herbGradeOfMajor, isHerbGrade, type HerbGrade } from '@/da
 import { persistConfig } from '@/utils/storage'
 import { usePlayerStore } from '@/stores/player'
 
-/** 入账只认有限正数:0、负数、NaN 与 Infinity 一律原样不动 */
+/** 入账只认有限正数 */
 function positiveAmount(n: number): number | null {
   if (!Number.isFinite(n) || n <= 0) return null
   const amount = Math.floor(n)
   return amount > 0 ? amount : null
 }
 
-/** 扣款只认有限非负数;非整数按整数份额扣,0 保持「成功且不动账」 */
+/** 扣款只认有限非负数;非整数按整数份额扣;0 成功且不动账 */
 function spendAmount(n: number): number | null {
   if (!Number.isFinite(n) || n < 0) return null
   return Math.floor(n)
 }
 
-/** 全新空灵草账:五品各 0 */
 export function emptyHerbMap(): Record<HerbGrade, number> {
   return { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
 }
@@ -39,15 +38,14 @@ export const useResourcesStore = defineStore(
     const page = ref(0)
     const dust = ref(0)
 
-    // wudao/ore/page/dust 仍是单标量小资源;herb 另走 grade 分账,不在 smallRefs 里
+    // herb 另走品阶分账,不在 smallRefs 里
     const smallRefs: Record<Exclude<SmallResourceId, 'herb'>, { value: number }> = { wudao, ore, page, dust }
 
-    /** 玩家当前所在大境界应得的灵草品阶 —— 无来源界域的普发/采集默认落这品 */
+    /** 当前大境界的灵草品阶;无来源界域的普发/采集默认落这品 */
     function currentHerbGrade(): HerbGrade {
       return herbGradeOfMajor(usePlayerStore().major)
     }
 
-    /** 单标量小资源(herb 已分账,排除在外);取不到返回 undefined */
     function smallRef(id: SmallResourceId): { value: number } | undefined {
       if (id === 'herb') return undefined
       if (id in smallRefs) return smallRefs[id as Exclude<SmallResourceId, 'herb'>]
@@ -61,7 +59,7 @@ export const useResourcesStore = defineStore(
     }
 
     function spendStone(v: GNum): boolean {
-      // 坏调用传负大数时,subClamp 会把它当成加法,余额反而上涨
+      // 负大数会被 subClamp 当成加法,余额反而上涨
       if (!v || !Number.isFinite(v.m) || !Number.isFinite(v.e) || v.m < 0) return false
       const amount = gn(v)
       if (amount.m === 0) return true
@@ -78,7 +76,7 @@ export const useResourcesStore = defineStore(
       return herbByGrade.value[grade] ?? 0
     }
 
-    /** 全部品阶之和 —— 界面「灵草 x」这类总量展示读它 */
+    /** 全部品阶之和;界面总量展示读它 */
     const herb = computed(() => HERB_GRADES.reduce((sum, g) => sum + (herbByGrade.value[g] ?? 0), 0))
 
     /** 指定品阶入账(来源界域明确的采集走它) */
@@ -89,12 +87,10 @@ export const useResourcesStore = defineStore(
       herbByGrade.value[g] = Math.max(0, Math.floor(herbByGrade.value[g] + amount))
     }
 
-    /** 指定品阶是否够 n 株 */
     function hasHerb(grade: HerbGrade, n: number): boolean {
       return herbByGrade.value[grade] >= n
     }
 
-    /** 指定品阶扣 n 株;不够则不动、返回 false */
     function spendHerb(grade: HerbGrade, n: number): boolean {
       if (!isHerbGrade(grade)) return false
       const amount = spendAmount(n)
@@ -104,23 +100,16 @@ export const useResourcesStore = defineStore(
       return true
     }
 
-    /**
-     * 天道熔炉可熔的灵草总和(仙品起,`FURNACE_HERB_MIN_GRADE`)。
-     * 凡/灵品草只走坊市→灵石,永不入炉(道源是仙才有的货币)。
-     */
+    /** 天道熔炉可熔的灵草总和(仙品起);凡/灵品草永不入炉 */
     const herbMeltable = computed(() =>
       HERB_GRADES.filter(g => g >= FURNACE_HERB_MIN_GRADE).reduce((sum, g) => sum + (herbByGrade.value[g] ?? 0), 0)
     )
 
-    /**
-     * 跨品实扣仙品+灵草 n 株(自低品起扣,余数保留)。
-     * 与 herbMeltable 同判据 —— 熔炉「按总和算、按这些品扣」,杜绝白拿道源。
-     */
+    /** 跨品实扣仙品+灵草 n 株,自低品起扣;须与 herbMeltable 同判据 */
     function spendHerbMeltable(n: number): boolean {
       if (!Number.isFinite(n) || n < 1) return false
       const need = Math.floor(n)
-      // 原子:不足则一枚不动 —— 与其余 spend(spendSmall/spendStone/spendHerb)同契约,
-      // 失败不得白扣材料。此前先逐品扣再返回 false,失败路径会把可熔草啃成 0。
+      // 原子:不足则一枚不动,与其余 spend 同契约
       if (herbMeltable.value < need) return false
       const acc = herbByGrade.value
       let rest = need
@@ -134,7 +123,7 @@ export const useResourcesStore = defineStore(
       return rest <= 0
     }
 
-    /** 转世清零:五品一把清 */
+    /** 转世清零 */
     function resetHerbs(): void {
       herbByGrade.value = emptyHerbMap()
     }
@@ -168,17 +157,14 @@ export const useResourcesStore = defineStore(
     }
 
     function setQi(v: number, cap: number): void {
-      // 灵气可「积余」到标称容量的 QI_BANK_MULT 倍:标称容量只是"满"的界线
-      // (灵气充盈加成、突破耗时皆以它为基准),不是硬顶 —— 卡境期间灵气继续累积
+      // 可积余到标称容量的 QI_BANK_MULT 倍;标称容量是灵气充盈加成、突破耗时的基准,不是硬顶
       qi.value = Math.max(0, Math.min(cap * QI_BANK_MULT, v))
     }
 
-    /** 存档修复:重建大数字段,并把负数/非有限值一并夹回 0(与 settings.sanitize 同判据) */
+    /** 存档修复:重建大数,负数/非有限值夹回 0(与 settings.sanitize 同判据) */
     function sanitize(): void {
       const stone = gn(spiritStone.value)
-      // 灵石是资源账:尾数为负(坏档/坏调用)必须归零,不能留下负数余额
       spiritStone.value = stone.m < 0 ? gnZero() : stone
-      // 灵草分账:逐品阶夹回非负有限整数,烂品清 0
       const raw = herbByGrade.value as unknown
       const clean: Record<HerbGrade, number> = emptyHerbMap()
       if (raw && typeof raw === 'object') {

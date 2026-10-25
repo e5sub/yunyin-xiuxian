@@ -1,18 +1,11 @@
 /* eslint-disable no-console */
 /**
- * 逆旅契 —— 道果第一个非效率出口的四条强制判据
- *
- * 这是第一个真正会让道果**下降**的出口。上一轮把边界划定后,
- * 本轮验证边界是否真的守住了。四条判据缺一不可:
- *
- *   1. 消费后余额真的下降 —— 不是记一笔「已花费」
+ * 逆旅契(道果非效率出口)的四条判据:
+ *   1. 消费后余额真的下降,不是记一笔「已花费」
  *   2. 产物不进 StatMods
  *   3. 产物不经第二/三跳回到 StatMods
- *   4. 不形成自供能循环 —— 出口产物不得最终产生道果本身
- *
- * 判据 3、4 靠类型检查抓不到,故用**源码扫描**强制:
- * 服务层不得出现 addDaoFruit / addInsight / 资源发放 / StatMods 写入。
- * 这样以后任何人给契约「加个甜头」都会立刻变红。
+ *   4. 不形成自供能循环:出口产物不得最终产生道果
+ * 3、4 用源码扫描强制:服务层不得出现 addDaoFruit / addInsight / 资源发放 / StatMods 写入。
  */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -33,7 +26,7 @@ import { reachesEfficiency } from './fruitOutlets'
 import type { AnyStatKey } from '@/types'
 
 const SERVICE_SRC = readFileSync(resolve(__dirname, 'lifeTrialService.ts'), 'utf-8')
-/** 只看代码,不看注释 —— 注释里正大光明地写着这些名字 */
+/** 去掉注释再扫:服务层注释里写着这些名字 */
 const SERVICE_CODE = SERVICE_SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
 
 beforeEach(() => {
@@ -95,10 +88,8 @@ describe('逆旅契 · 判据一:余额真的下降', () => {
     player.addDaoFruit(200)
     expect(signLifeTrial('tr_gu')).toBe(true)
     const after = player.reincarnation.daoFruit
-    // 第二份签不了,余额也不再变化
     expect(signLifeTrial('tr_ji')).toBe(false)
     expect(player.reincarnation.daoFruit).toBe(after)
-    // 可退款等于没花掉,故服务层不提供任何退款入口
     expect(SERVICE_CODE).not.toMatch(/refund|退款|cancelTrial/i)
     console.log('\n无退款入口 —— 可退的消费等于假消费')
   })
@@ -107,13 +98,11 @@ describe('逆旅契 · 判据一:余额真的下降', () => {
 describe('逆旅契 · 判据二:产物不进 StatMods', () => {
   it('契约只施加战斗规则,不发放任何属性', () => {
     for (const t of LIFE_TRIALS) {
-      // playerExtraMods 若存在,其值必须全为负(减益)
       for (const [k, v] of Object.entries(t.rules.playerExtraMods ?? {})) {
         expect(v).toBeLessThanOrEqual(0)
         expect(reachesEfficiency(k as AnyStatKey)).toBe(true)
       }
     }
-    // 服务层不写任何 mods
     expect(SERVICE_CODE).not.toMatch(/StatMods|attackPct|cultivationSpeed/)
   })
 
@@ -132,7 +121,7 @@ describe('逆旅契 · 判据二:产物不进 StatMods', () => {
     expect(adverseViolations({ playerExtraMods: { attackPct: 0.2 } })).not.toHaveLength(0)
     expect(adverseViolations({ enemyExtraMods: { attackPct: -0.2 } })).not.toHaveLength(0)
     expect(adverseViolations({ perRounds: { interval: 3, playerHealPct: 0.1, playerShieldPct: 0.1, enemyAtkGrowth: 0 } })).not.toHaveLength(0)
-    // 回合上限界要与战斗真实默认(MAX_COMBAT_ROUNDS=50)一致:压到 41~50(比真实更严)是合法努力,51+ 才是减难
+    // 回合上限界须与战斗真实默认(MAX_COMBAT_ROUNDS=50)一致:≤50 合法,51+ 才是减难
     expect(adverseViolations({ maxRounds: 45 })).toHaveLength(0)
     expect(adverseViolations({ maxRounds: 51 })).not.toHaveLength(0)
     console.log(`\n伪装示例被拒:${adverseViolations({ playerExtraMods: { attackPct: 0.2 } })[0]}`)
@@ -141,7 +130,7 @@ describe('逆旅契 · 判据二:产物不进 StatMods', () => {
   it('非法契约即使被写进数据也签不下去', () => {
     const player = usePlayerStore()
     player.addDaoFruit(500)
-    // canSign/sign 都要过 isPurelyAdverse,数据层出错时服务层是第二道闸
+    // canSign/sign 都要过 isPurelyAdverse:数据层之后的第二道闸
     expect(SERVICE_CODE).toMatch(/isPurelyAdverse/)
     const occurrences = SERVICE_CODE.match(/isPurelyAdverse/g)!.length
     expect(occurrences).toBeGreaterThanOrEqual(2)
@@ -151,14 +140,12 @@ describe('逆旅契 · 判据二:产物不进 StatMods', () => {
 
 describe('逆旅契 · 判据三:不经第二三跳回到 StatMods', () => {
   it('服务层不发放任何资源', () => {
-    // 灵石/丹药/材料 → 强化 → 战力 → 历练更快,三跳回环
     expect(SERVICE_CODE).not.toMatch(/spiritStone|addHerb|addOre|wudao|pills|useResourcesStore/)
     console.log('\n无资源发放 —— 堵住「道果 → 灵石 → 强化 → 战力」这条三跳路径')
   })
 
   it('服务层不发放宿慧 —— 这是最隐蔽的一条路径', () => {
     // 宿慧 → aptitudeFloorNow → growthMult → linggenMult → cultivationSpeed
-    // 「完成契约给命题进度」看起来很自然,实际是三跳回到修炼速度
     expect(SERVICE_CODE).not.toMatch(/addInsight|setVow|useQuestsStore/)
     console.log(
       '\n无宿慧发放 —— 「契约完成给命题进度」看似自然,' +
@@ -171,20 +158,18 @@ describe('逆旅契 · 判据三:不经第二三跳回到 StatMods', () => {
     player.addDaoFruit(100)
     signLifeTrial('tr_gu')
     expect(archiveLifeTrial()).toBe('tr_gu')
-    // LifeRecord.trialId 只被展示,不参与任何数值
     console.log('\n回报 = LifeRecord.trialId,纯记录')
   })
 })
 
 describe('逆旅契 · 判据四:不形成自供能循环', () => {
   it('服务层不产生道果 —— 道果不得生道果', () => {
-    // 「完成契约返还部分道果」「困难契约多给道果」都会造出新的资源机器
     expect(SERVICE_CODE).not.toMatch(/addDaoFruit/)
     console.log('\n无 addDaoFruit —— 堵住「道果 → 契约 → 更多道果 → 再买契约」')
   })
 
   it('契约也不提高道果产出速率', () => {
-    // daoFruitGain 只看终点境界;契约不碰它,故不能间接增产
+    // daoFruitGain 只看终点境界
     expect(SERVICE_CODE).not.toMatch(/daoFruitGain|DAO_FRUIT_/)
     console.log('\n不碰 daoFruitGain —— 契约无法让同一世凝出更多道果')
   })
@@ -194,7 +179,6 @@ describe('逆旅契 · 判据四:不形成自供能循环', () => {
     player.addDaoFruit(100)
     const before = player.reincarnation.daoFruit
     signLifeTrial('tr_ji')
-    // 本世内不存在任何回流路径
     expect(player.reincarnation.daoFruit).toBeLessThan(before)
     console.log(`\n净支出确认:${before} → ${player.reincarnation.daoFruit}`)
   })
@@ -218,7 +202,6 @@ describe('逆旅契 · 接入与存档', () => {
 
   it('老存档无 trial 字段时安全降级为未签约', () => {
     const player = usePlayerStore()
-    // 模拟老存档:reincarnation 里没有 trial
     const legacy = { count: 3, daoFruit: 50, talents: [], insight: 0, lives: [], vow: null }
     player.$patch({ reincarnation: legacy as never })
     player.sanitize()
@@ -230,7 +213,7 @@ describe('逆旅契 · 接入与存档', () => {
   it('坏档带未知契 id 或缺字段的 trial 会被 sanitize 清成未签约,不锁死本世', () => {
     const player = usePlayerStore()
     player.addDaoFruit(200)
-    // 坏档:契带认不出的 id —— 若不清理,canSign 会因「已立契」永远置灰,须等转世才解
+    // 坏档:未知契 id 不清理,canSign 会因「已立契」永远置灰
     player.$patch({
       reincarnation: {
         count: 3,
@@ -246,7 +229,7 @@ describe('逆旅契 · 接入与存档', () => {
     expect(player.reincarnation.trial).toBeNull()
     expect(canSignLifeTrial('tr_gu')).toBe(true)
 
-    // 坏档:契缺 paid 字段 —— 同样清理
+    // 坏档:契缺 paid 字段
     player.$patch({
       reincarnation: {
         count: 3,
@@ -267,7 +250,6 @@ describe('逆旅契 · 接入与存档', () => {
     player.addDaoFruit(200)
     signLifeTrial('tr_gu')
     player.sanitize()
-    // 合法契原样保留:转世履历与规则注入都不受影响
     expect(player.reincarnation.trial?.trialId).toBe('tr_gu')
     expect(activeLifeTrial()?.id).toBe('tr_gu')
   })

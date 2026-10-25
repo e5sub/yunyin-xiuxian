@@ -34,7 +34,6 @@
         <p v-if="upCost" class="mt-3 text-right text-[11px] text-ink-faint tabular">
           进修需 悟道点×{{ upCost.wudao }} · 残页×{{ upCost.page }}
         </p>
-        <!-- 缺料先说清差哪一样、差多少;悟道点与残页的来路不同 -->
         <p v-if="upShort" class="mt-1 text-right text-[11px] leading-relaxed text-cinnabar tabular">
           {{ upShortText }}
         </p>
@@ -74,7 +73,7 @@
               <p v-if="gongfaBranchDef(branchConfirm)" class="mt-1 text-[11px] tabular text-azure">
                 {{ modsText(gongfaBranchDef(branchConfirm)!.mods) }}
               </p>
-              <!-- 择道确认是玩家唯一一次定流派走向:!py-1 盒高不足 28px,抬到 !py-2(35px) -->
+              <!-- !py-2(35px):!py-1 盒高不足 28px -->
               <div class="mt-1.5 flex justify-end gap-2">
                 <button class="btn-ghost !px-3 !py-2 !text-[11px]" @click="branchConfirm = null">再想想</button>
                 <button class="btn-seal !px-3 !py-2 !text-[11px]" @click="confirmBranch()">确认择道</button>
@@ -155,7 +154,7 @@
   const level = computed(() => (def.value ? (cultivation.learned[def.value.id] ?? 0) : 0))
   const learned = computed(() => level.value > 0)
   const upCost = computed(() => (def.value ? gongfaUpgradeCost(def.value.id) : null))
-  /** 缺哪一样 —— 与服务升级路径同一处判定 */
+  /** 缺料判定,与服务升级路径同一处 */
   const upShort = computed(() => (upCost.value ? gongfaUpgradeShort(upCost.value) : null))
   const upShortText = computed(() => {
     const c = upCost.value
@@ -164,13 +163,13 @@
     return gongfaUpShortToast(s, gongfaUpgradeShortfall(c))
   })
 
-  /** 与灵根同源?判据直接取自参悟权重函数,标签与实际权重不可能分叉 */
+  /** 与灵根同源:判据取自参悟权重函数 */
   const sameRoot = computed(() => gongfaAffinity(def.value?.element, rootElements(player.linggen?.roots)) > 1)
 
   const modRows = computed(() => {
     if (!def.value || !learned.value) return []
     const sources: StatMods[] = [gongfaModsAt(def.value.id, level.value)]
-    // 已悟道分支并入同一账本(与人物总览完全一致),否则顶部列表与面板口径分叉
+    // 已悟道分支并入同一账本,与人物总览一致
     if (branchPicked.value) sources.push(branchPicked.value.mods)
     const mods = mergeMods(sources)
     return Object.entries(mods).map(([k, v]) => ({
@@ -179,7 +178,7 @@
     }))
   })
 
-  /** 未习得时的满级预览 —— 与习得后同一套算法(满级 = maxLevel 层) */
+  /** 未习得时的满级预览,与习得后同一套算法 */
   const previewRows = computed(() => {
     const d = def.value
     if (!d) return []
@@ -192,15 +191,15 @@
 
   const isMain = computed(() => def.value && cultivation.mainGongfa === def.value.id)
   const isSub = computed(() => def.value && cultivation.subGongfa.includes(def.value.id))
-  // 辅修/秘术共一个槽位预算;满了且这本不是现有辅修时「设为…」点了只吃一发 warn toast —— 置灰 + 报 N/M
+  // 辅修/秘术共一个槽位预算;满了且这本不是现有辅修时置灰并报 N/M
   const subFull = computed(() => !isSub.value && cultivation.subGongfa.length >= dongfu.subGongfaSlots)
-  // 秘术不该被叫「辅修」:两者都放进同一槽位,但门类是两块不同的印 —— 按钮如实点名
+  // 秘术与辅修同槽不同门类,按钮按门类点名
   const subActionText = computed(() => {
     const label = def.value?.type === 'secret' ? '秘术' : '辅修'
     return isSub.value ? `卸下${label}` : `设为${label}`
   })
 
-  // Phase 31 A3:满级悟道分支
+  // 满级悟道分支
   const fullLevel = computed(() => (def.value ? level.value >= gongfaMaxLevel(def.value) : false))
   const branches = computed(() => (def.value ? branchesFor(def.value.id) : []))
   const branchPicked = computed(() => {
@@ -209,7 +208,7 @@
     return id ? gongfaBranchDef(id) : undefined
   })
 
-  /** 悟道分岔确认态(按分支 id):永久抉择先确认。换功法/关弹窗即复位 */
+  /** 悟道分岔确认态(按分支 id);换功法/关弹窗即复位 */
   const branchConfirm = ref<string | null>(null)
   watch(def, () => {
     branchConfirm.value = null

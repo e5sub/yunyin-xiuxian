@@ -1,6 +1,4 @@
-/**
- * 灵草五品 —— 品阶换算口 / 购价阶梯 / 配方品阶一致性 / 「低阶草炼高阶丹」红线 / 旧档迁移
- */
+/** 灵草五品:品阶换算口 / 购价阶梯 / 配方品阶一致性 / 「低阶草炼高阶丹」红线 / 旧档迁移 */
 import { describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import {
@@ -32,7 +30,6 @@ describe('灵草 · 品阶与境界的换算口', () => {
   })
 
   it('换算口随大境界单调不降,五档各安其界', () => {
-    // 人间界前中两品、仙界仙品、神界神品、混沌海道品
     expect(herbGradeOfMajor(0)).toBe(1)
     expect(herbGradeOfMajor(4)).toBe(1)
     expect(herbGradeOfMajor(5)).toBe(2)
@@ -43,10 +40,8 @@ describe('灵草 · 品阶与境界的换算口', () => {
     expect(herbGradeOfMajor(17)).toBe(4)
     expect(herbGradeOfMajor(18)).toBe(5)
     expect(herbGradeOfMajor(MAX_MAJOR)).toBe(5)
-    // 越界夹回
     expect(herbGradeOfMajor(-5)).toBe(1)
     expect(herbGradeOfMajor(999)).toBe(5)
-    // 单调:逐境不应回落
     let prev = 0
     for (let m = 0; m <= MAX_MAJOR; m += 1) {
       const g = herbGradeOfMajor(m)
@@ -81,7 +76,7 @@ describe('灵草 · 购价(随境界层级缩放 · 草比石贵恒常)', () => 
   it('凡品 ≈6.4 战、道品 ≈100 战:草贵于一场战斗,且与层级无关', () => {
     for (const major of [0, 9, 18]) {
       const battle = toNum(stoneByTier(maxTierForMajor(major), 10))
-      // 凡品草 ≈ 6.4 战(4 的倍数取整下 ±~1),道品 ×2^4 ≈ 100 战 —— 草比石贵
+      // 价取 4 的倍数,比值 ±~1
       const ratio1 = herbBuyPrice(1, major) / battle
       expect(ratio1).toBeGreaterThan(5.5)
       expect(ratio1).toBeLessThan(7.5)
@@ -98,14 +93,12 @@ describe('灵草 · 购价(随境界层级缩放 · 草比石贵恒常)', () => 
         const next = HERB_GRADES[idx + 1]!
         const lo = herbBuyPrice(g, major)
         const hi = herbBuyPrice(next, major)
-        // 高一品难采两倍(2^(grade-1)):相邻品级比值须 ≈2。容差只为「取 4 的倍数」的 floor 舍入
-        // (早期小价最多 ≈3%),若中间品被改成 3x/5x/7x,此断言即红。
+        // 价按 2^(grade-1);容差只为「取 4 的倍数」的 floor 舍入(小价最多 ≈3%);中间品改成 3x/5x/7x 即红
         expect(hi / lo, `第 ${next} 品应约为第 ${g} 品的两倍`).toBeGreaterThan(1.9)
         expect(hi / lo, `第 ${next} 品应约为第 ${g} 品的两倍`).toBeLessThan(2.1)
         expect(Number.isInteger(lo)).toBe(true)
       }
     }
-    // 层级越高,同一品越贵:拿到更高界的战力,草也按那界的石粮计价
     let prevMajor = 0
     for (const major of [0, 9, 18]) {
       const g = 1
@@ -136,15 +129,12 @@ describe('灵草 · 配方品阶与丹出处一致(炼丹消费口径)', () => {
   it('红线:新手村的凡品草,炼不了混沌道的道品丹', () => {
     setActivePinia(createPinia())
     const resources = useResourcesStore()
-    // 道祖丹出身混沌海(20 境),只认道品(5)
     const daoZhu = PILLS.find(p => p.id === 'p_daozu')!
     const daoTier = herbGradeOfMajor(daoZhu.minRealm)
     expect(daoTier).toBe(5)
-    // 凡品(1)远比道品(5)低,给满凡品也填不了道品的坑
     resources.herbByGrade[1] = 1_000_000
     expect(resources.hasHerb(5, daoZhu.recipe!.herb), '低阶草不得顶替高阶草').toBe(false)
     expect(resources.hasHerb(1, daoZhu.recipe!.herb)).toBe(true)
-    // 反向:道品草能喂道品丹
     resources.herbByGrade[5] = 1_000_000
     expect(resources.hasHerb(5, daoZhu.recipe!.herb)).toBe(true)
   })
@@ -153,18 +143,15 @@ describe('灵草 · 配方品阶与丹出处一致(炼丹消费口径)', () => {
 describe('灵草 · 旧档迁移不丢草', () => {
   it('旧档单标量 herb 统一落凡品(品 1)分账,不丢草、幂等', () => {
     const hg = (res: Record<string, unknown>): Record<string, number> => res.herbByGrade as Record<string, number>
-    // 混沌海(20 境)玩家:40 株旧草 → 仍落凡品账(迁移统一凡品,不随境界折算)
     const migrated = migrateHerbSlice({ herb: 40, ore: 7 })
     expect(hg(migrated)).toEqual({ 1: 40, 2: 0, 3: 0, 4: 0, 5: 0 })
     expect('herb' in migrated).toBe(false)
-    // 已有分账且无残留标量:原样返回,不重复折算
     const already = migrateHerbSlice({ herbByGrade: { 1: 0, 2: 0, 3: 5, 4: 0, 5: 0 }, ore: 1 })
     expect(already).toEqual({ herbByGrade: { 1: 0, 2: 0, 3: 5, 4: 0, 5: 0 }, ore: 1 })
-    // 标量 + 分账并存(迁移中断的怪档):并账不丢,标量部分并入凡品账
+    // 标量 + 分账并存(迁移中断的怪档)
     const both = migrateHerbSlice({ herbByGrade: { 1: 0, 2: 0, 3: 5, 4: 0, 5: 0 }, herb: 3 })
-    expect(hg(both)[1]).toBe(3) // 标量旧草并入凡品账(品 1)
-    expect(hg(both)[3]).toBe(5) // 原有仙品账不动
-    // 坏档非数值标量:当 0,不崩
+    expect(hg(both)[1]).toBe(3)
+    expect(hg(both)[3]).toBe(5)
     const junk = migrateHerbSlice({ herb: 'abc' })
     expect(hg(junk)[1]).toBe(0)
   })

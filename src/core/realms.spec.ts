@@ -1,13 +1,4 @@
-/**
- * 境界体系结构审计(扩界核心)
- *
- * 扩界把 10 境改成 4 界域 21 境,整套内容 gate / 存档 / 审计都建立在下标之上。
- * 这里守住四条承重结构:
- *   1. 界域是 0..MAX 的一个真划分(无缝、无重叠、有序),每个境界恰属一界
- *   2. 0-9 号境界「冻结」:id/名称不得改动 —— 存档、内容 minRealm、审计口径全押在旧下标上
- *   3. 具名常量不自相矛盾:WORLD_BREAK_MAJOR = 仙界起点 = 真仙;REBIRTH_REFERENCE_MAJOR 同指
- *   4. 回查函数越界即钳制,不返回 undefined
- */
+/** 境界体系结构审计:内容 gate / 存档 / 审计都建立在境界下标之上 */
 import { describe, expect, it } from 'vitest'
 import {
   REALMS,
@@ -22,7 +13,7 @@ import {
   isWorldEntry
 } from '@/data/realms'
 
-/** 扩界时对 0-9 号境界的承诺:id 与名称一字不动(存档/内容 gate 兼容) */
+/** 0-9 号境界冻结:id 与名称一字不动(存档、内容 minRealm、审计口径依赖) */
 const FROZEN_IDS = ['lianqi', 'zhuji', 'jindan', 'yuanying', 'huashen', 'lianxu', 'heti', 'dacheng', 'dujie', 'zhenxian']
 const FROZEN_NAMES = ['炼气', '筑基', '金丹', '元婴', '化神', '炼虚', '合体', '大乘', '渡劫', '真仙']
 
@@ -56,10 +47,8 @@ describe('境界体系 · 结构', () => {
       expect(w.name).toBeTruthy()
       expect(w.desc).toBeTruthy()
       if (i > 0) {
-        // 严丝合缝:上一界的 end + 1 === 本界 start
         expect(w.start, `${WORLDS[i - 1]!.name} 与 ${w.name} 之间有空隙/重叠`).toBe(WORLDS[i - 1]!.end + 1)
       }
-      // 界内每个大境界都归属本界
       for (let m = w.start; m <= w.end; m += 1) {
         expect(worldOf(m).id, `第 ${m} 境归属错误`).toBe(w.id)
         expect(isWorldEntry(m), `第 ${m} 境入口判定错误`).toBe(m === w.start)
@@ -71,20 +60,12 @@ describe('境界体系 · 结构', () => {
     expect(worldOf(WORLD_BREAK_MAJOR).id).toBe('immortal')
     expect(worldDef('immortal').start).toBe(WORLD_BREAK_MAJOR)
     expect(REALMS[WORLD_BREAK_MAJOR]!.name).toBe('真仙')
-    expect(REBIRTH_REFERENCE_MAJOR).toBe(WORLD_BREAK_MAJOR) // 轮回经济参照终点同指真仙
+    expect(REBIRTH_REFERENCE_MAJOR).toBe(WORLD_BREAK_MAJOR)
   })
 
   it('大关皆劫:三个跨界入口一视同仁,境界表上不再有「无劫开关」', () => {
-    /**
-     * 旧设计里真仙是唯一的「无劫门槛」(飞升之赏)。那条例外让三件事说不清:
-     * 进阶成功率的作用域、三个跨界入口的规矩不一致、"大关未必渡劫"玩家猜不到。
-     * 现在规则只剩一条(小进阶掷点 / 大关渡劫),开关也随之删掉 —— 无劫的大关
-     * 不再是一种**可表示的状态**,而不是"这次恰好没启用"。
-     *
-     * 行为一侧(三个入口真的都要渡劫)由 core/breakthrough.spec 覆盖;
-     * 这里只守数据结构:门槛必须在炼气之上,且那枚开关不许复活。
-     */
-    // 人间界的入口是炼气(0)—— 那是起点,不是要渡的关;其余三界入口都必须可渡劫
+    // 规则只有一条(小进阶掷点 / 大关渡劫),无劫开关不许复活;行为侧由 core/breakthrough.spec 覆盖
+    // 人间界入口炼气(0)是起点,不是要渡的关
     for (const w of WORLDS.slice(1)) {
       expect(w.start, `${w.name} 的入口落在炼气 —— 那一境没有可渡的关`).toBeGreaterThan(0)
     }
@@ -98,7 +79,7 @@ describe('境界体系 · 结构', () => {
     expect(realmLabel(MAX_MAJOR, 999)).toContain(REALMS[MAX_MAJOR]!.name)
   })
 
-  // ---- 可解释性:境界名不是随手堆的字,每一境都要说得出出处与承接 ----
+  // ---- 可解释性:每一境都要有命名出处 ----
 
   it('每一境都有可解释的命名出处(非空、够长)', () => {
     for (const r of REALMS) {
@@ -126,7 +107,7 @@ describe('境界体系 · 结构', () => {
       const cur = REALMS[i]!.lifespanYears
       expect(cur, `${REALMS[i]!.name} 寿元未高于 ${REALMS[i - 1]!.name}`).toBeGreaterThanOrEqual(prev * 2)
     }
-    // 飞升是全流程唯一的一次寿元大跃(脱离凡尘),它必须显著高于寻常一境
+    // 飞升是全流程唯一的寿元大跃
     const dujie = REALMS[WORLD_BREAK_MAJOR - 1]!.lifespanYears
     expect(REALMS[WORLD_BREAK_MAJOR]!.lifespanYears / dujie).toBeGreaterThanOrEqual(10)
   })

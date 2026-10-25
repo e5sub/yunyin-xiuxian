@@ -1,8 +1,6 @@
 /**
- * 灵根画像在读档口落地 —— player.linggen 与 game.createProfile 都要过闸。
- *
- * 两个渲染点都是裸写:ELEMENTS[root.element].color 与 growthMult.toFixed(2)。
- * 修形判据本身在 core/linggenShape.spec.ts;这里守的是「读档真的调了它」。
+ * 读档口灵根过闸:player.linggen 与 game.createProfile(渲染点裸读 ELEMENTS[root.element].color 与 growthMult.toFixed(2))。
+ * 修形判据在 core/linggenShape.spec.ts;这里只守读档确实调用了它。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'

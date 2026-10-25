@@ -1,20 +1,16 @@
 /**
- * 词条转移(议题 #22)—— 把一条词条从源件抽出,原样({id, roll})落到另一件装备上。
- *
- * 规则(界面的禁用态、价签与服务执行只认本文件的判据,不另写一份):
- *   · 一次一条,必定成功。源件保留,只少这一条 —— 不销毁:销毁时的分解返还几乎抵掉代价,
- *     刹不住什么,反倒带来拒装备、拒上锁、静默卸下、构筑缺件一串坑。
+ * 词条转移(议题 #22):把一条词条从源件抽出,原样({id, roll})落到另一件装备上。
+ * 界面禁用态、价签与服务执行只认本文件的判据。
+ *   · 一次一条,必定成功。源件不销毁、只少这一条(销毁的分解返还会抵掉代价);
  *     已装备、已上锁、带封存的源件都能转出;被转那条的封存不随行。
  *   · 部位与品质:与掉落、重铸同一判据 affixFitBlock。
- *   · 落位:新增(目标未满),或顶替目标上任意一条;顶替已封存的条时新条沿用封存,
- *     封存数不变(词条本身可自行解封 —— reforge.unsealAffix —— 转移不代劳;
- *     要换掉一条封过的平庸词条,先在目标上解封它再转)。
- *   · 同 id 只能覆盖它自己,且数值须更高 —— 永不出现重复 id。
- *   · 递减属性(DIMINISH_KEYS)不新增叠加:件内同属性先相加、件与件之间才递减,
- *     把暴击、吸血之类集中到一件上就绕开了递减;非递减属性照掉落规则可以并存。
- *   · 「同时封存」可选,费用与手动封存同一函数 sealCost:转完一点重铸,未封的这条就会被洗掉。
- *   · 价格:见 constants.TRANSFER_PRICE_RATE;灵石按目标阶。转移花费不计入 invested
- *     (否则分解多出一条返还渠道),也不记计数、不长技艺。
+ *   · 落位:新增(目标未满)或顶替任意一条;顶替已封存的条时新条沿用封存,封存数不变;
+ *     解封走 reforge.unsealAffix,转移不代劳。
+ *   · 同 id 只能覆盖它自己,且数值须更高;永不出现重复 id。
+ *   · 递减属性(DIMINISH_KEYS)不新增叠加(件内同属性先相加、件间才递减);非递减属性照掉落规则可并存。
+ *   · 「同时封存」可选,费用与手动封存同一函数 sealCost。
+ *   · 价格:constants.TRANSFER_PRICE_RATE,灵石按目标阶。花费不计入 invested(否则分解多一条返还渠道),
+ *     不记计数、不长技艺。
  */
 import type { AffixRoll, AnyStatKey, EquipmentInstance, GNum } from '@/types'
 import { affixDef, affixFitBlock, affixValue } from '@/data/affixes'
@@ -87,10 +83,7 @@ export interface TransferRequest {
 export interface TransferCandidate {
   item: EquipmentInstance
   worn: boolean
-  /**
-   * null = 可选;其余置灰列出:
-   * 'dup' 目标已有这条且不更低;'rank' 同部位但品质不够(玩家会找「我那件新的怎么不在」)
-   */
+  /** null = 可选;其余置灰列出:'dup' 目标已有这条且不更低,'rank' 同部位但品质不够 */
   block: 'dup' | 'rank' | null
 }
 
@@ -102,9 +95,7 @@ export interface TransferLanding {
 
 const DIMINISH = new Set<AnyStatKey>(DIMINISH_KEYS)
 
-/**
- * 目标件接不接得了这一条(不看落位)—— 候选列表用;planTransfer 的前半段就是它。
- */
+/** 目标件接不接得了这一条(不看落位);候选列表与 planTransfer 前半段共用 */
 export function targetBlock(source: EquipmentInstance, target: EquipmentInstance, affixId: string): TransferBlock | null {
   if (source.uid === target.uid) return 'same'
   const moved = source.affixes.find(a => a.id === affixId)
@@ -132,10 +123,7 @@ function priceTimes(target: EquipmentInstance, affixId: string, keptIds: readonl
   return TRANSFER_PRICE_RATE * (1 + REFORGE_SEAL_LOAD * keptIds.length) * expectedRollsToHit(target, affixId, keptIds)
 }
 
-/**
- * 成不成立、结果是什么、花多少 —— 纯函数,不读也不改 store。
- * 界面的禁用态、价签与服务执行都只认它。
- */
+/** 成不成立、结果、花费;纯函数,不读不改 store */
 export function planTransfer(
   source: EquipmentInstance,
   target: EquipmentInstance,
@@ -156,8 +144,8 @@ export function planTransfer(
 
   const landed: AffixRoll = { id: affixId, roll: moved.roll }
   const affixes = replaced ? target.affixes.map(a => (a.id === replaced.id ? landed : a)) : [...target.affixes, landed]
-  // 封存表先去重,再只留**落地前**确实在身、且不是被顶替那条的 id。
-  // 按落地后的词条过滤会出事:残留的封存 id 恰好等于转入那条时,它会白得封存(或封存表重复)
+  // 封存表去重后只留落地前在身、且非被顶替的 id。
+  // 按落地后的词条过滤,残留封存 id 恰等于转入那条时会白得封存(或封存表重复)
   const before = new Set(target.affixes.map(a => a.id))
   const prevSeals = [...new Set(target.sealedAffixIds ?? [])]
   const inherit = replaced !== null && prevSeals.includes(replaced.id)
@@ -198,7 +186,7 @@ export function planTransfer(
   }
 }
 
-/** 缺哪一样 —— 主按钮的禁用态与服务同一处 */
+/** 缺哪一样;主按钮禁用态与服务同读 */
 export function transferShort(cost: TransferCost): TransferShort {
   const resources = useResourcesStore()
   if (!resources.hasStone(cost.stone)) return 'stone'
@@ -215,10 +203,7 @@ export interface TransferShortfall {
   dust: number
 }
 
-/**
- * 这一笔转移两样各差多少 —— 主按钮、页脚与服务拒因同读这一处。
- * 与 transferShort 共用余额判据;差别只在这份把「差多少」也一并算出。
- */
+/** 两样各差多少;主按钮、页脚与服务拒因同读这一处,余额判据与 transferShort 相同 */
 export function transferShortfall(cost: TransferCost): TransferShortfall {
   const resources = useResourcesStore()
   const stone = resources.hasStone(cost.stone) ? gnZero() : subClamp(cost.stone, resources.spiritStone)
@@ -230,10 +215,7 @@ export function transferShortfall(cost: TransferCost): TransferShortfall {
   }
 }
 
-/**
- * 能接这一条的目标件:可选在前 → 已装备在前 → 与源件同部位在前 → 品质高、阶高在前。
- * 部位不合的件不列出;已有这条且不更低的、同部位但品质不够的,列出置灰(写明原因)。
- */
+/** 能接这一条的目标件;部位不合的不列,'dup' 与同部位的 'rank' 置灰列出 */
 export function transferCandidates(source: EquipmentInstance, affixId: string): TransferCandidate[] {
   const inventory = useInventoryStore()
   const sourceSlot = equipmentTemplate(source.templateId)?.slot
@@ -252,8 +234,8 @@ export function transferCandidates(source: EquipmentInstance, affixId: string): 
 }
 
 /**
- * 目标件上的落位:「新增」在前,其后是目标词条(按展示序倒排 —— 常见、低值的先顶);
- * 成立的排前,被挡的排后。每一项都带 planTransfer 的结论(不封存口径),价签与禁用态由它给。
+ * 目标件上的落位:「新增」在前,其后按展示序倒排(常见、低值的先顶);成立的排前。
+ * 每项带 planTransfer 的结论(不封存口径)。
  */
 export function transferLandings(source: EquipmentInstance, target: EquipmentInstance, affixId: string): TransferLanding[] {
   const options: (string | null)[] = [null, ...[...sortAffixLines(target.affixes)].reverse().map(a => a.id)]
@@ -261,7 +243,7 @@ export function transferLandings(source: EquipmentInstance, target: EquipmentIns
   return [...rows.filter(r => r.check.ok), ...rows.filter(r => !r.check.ok)]
 }
 
-/** 服务:全部校验 → 扣费 → 写目标 → 写源件。同步执行,任何一步被拒都一笔不扣、一处不改 */
+/** 服务:校验 → 扣费 → 写目标 → 写源件;同步执行,被拒则一笔不扣、一处不改 */
 export function transferAffix(req: TransferRequest): boolean {
   const inventory = useInventoryStore()
   const resources = useResourcesStore()
@@ -290,7 +272,7 @@ export function transferAffix(req: TransferRequest): boolean {
   resources.spendSmall('dust', check.plan.cost.dust)
   inventory.replaceItem(check.plan.target)
   inventory.replaceItem(check.plan.source)
-  playSfx('success') // 词条易地,一声落地
+  playSfx('success')
   ui.toast(transferDoneToast(affixDef(req.affixId)?.name ?? req.affixId), 'success')
   return true
 }

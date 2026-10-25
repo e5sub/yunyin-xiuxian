@@ -1,6 +1,6 @@
 <template>
   <div>
-    <!-- 场次导航:多场连战逐场看 -->
+    <!-- 场次导航 -->
     <div v-if="rows.length > 1" class="mb-2 flex flex-wrap items-center gap-1">
       <button
         v-for="(fight, i) in rows"
@@ -76,7 +76,7 @@
   const php = ref(1)
   const ehp = ref(1)
   const logBox = ref<HTMLElement | null>(null)
-  /** 回放的收表函数(gameClock 收口:暂停冻结) */
+  /** 回放的收表函数 */
   let timer: (() => void) | undefined
 
   const row = computed(() => props.rows[current.value])
@@ -101,7 +101,7 @@
     timer = undefined
   }
 
-  /** 按日志里的血量快照推进血条(战报自带 php/ehp,不必重算战斗) */
+  /** 血条取日志自带的 php/ehp 快照,不重算战斗 */
   function applyEntry(entry: CombatLogEntry): void {
     if (typeof entry.php === 'number') php.value = entry.php
     if (typeof entry.ehp === 'number') ehp.value = entry.ehp
@@ -119,14 +119,13 @@
     ehp.value = 1
     const all = logs.value
     if (all.length === 0) return
-    // 关动效时直接给结果,不逐条播
     if (settings.reduceMotion) {
       skip()
       return
     }
     let i = 0
     const interval = Math.max(COMBAT_PLAYBACK_MIN_MS, COMBAT_PLAYBACK_BASE_MS / settings.battleSpeed)
-    // 回放是已结算战局的演出:心跳停着(重置/导入确认)就该跟着停
+    // 走 gameClock:心跳停着(重置/导入确认)时回放同停
     timer = gameClock(() => {
       const entry = all[i]
       if (!entry) {
@@ -157,7 +156,6 @@
     play()
   }
 
-  // 换了一场(或换了一份战报)就从头播
   watch(
     () => props.rows,
     () => {

@@ -1,17 +1,7 @@
 /* eslint-disable no-console */
 /**
- * 器魂 · 叠加,而不是压缩
- *
- * 旧口径:凡器入天界先被 `forgeSoul` 压到 SOUL_CAPACITY —— 玩家在天界的强度与
- * 「装备堆了多厚」无关,换来「堆厚度不占便宜」,代价是**基础属性在天界等于不存在**
- * (一身神品与一身凡品打同一个守关者,结果一模一样)。
- *
- * 现口径(改由判定承担代价):
- *   · 凡界装备照常作数(三维与词条都算),器魂是**叠加**上去的一层;
- *   · 堆叠这件事交给**敌人一侧的判定**:构筑越厚,守关者的道之理解越深
- *     (三维加厚 + 增伤 + 减伤,见 gauntlet.celestialJudgement),且判定有上限。
- *
- * 判据三组:①器魂是加法的一层 ②方向不同则器魂不同 ③厚度的代价真的落在判定上。
+ * 凡界装备在天界照常作数(三维与词条都算),器魂是叠加层,不压缩。
+ * 堆叠代价在敌人判定(gauntlet.celestialJudgement):构筑越厚,守关者三维加厚 + 增伤 + 减伤,判定有上限。
  */
 import { describe, expect, it } from 'vitest'
 import type { StatMods } from '@/types'
@@ -19,14 +9,13 @@ import { modDepth } from './statsCalc'
 import { SOUL_GRADES, SOUL_SLOTS, SOUL_TYPES, soulMods, type SoulInstance } from '@/data/souls'
 import { celestialDepthScale, celestialJudgement } from './gauntlet'
 
-/** 按比例放大一组词条,模拟「同方向但堆得更厚」 */
+/** 按比例放大词条:同方向、堆得更厚 */
 function scaleMods(mods: StatMods, k: number): StatMods {
   const out: StatMods = {}
   for (const key in mods) out[key as keyof StatMods] = (mods[key as keyof StatMods] ?? 0) * k
   return out
 }
 
-/** 一个满配等级的器魂(品阶拉满) */
 function soulAt(type: SoulInstance['type'], grade: number, uid = 's'): SoulInstance {
   return { uid, type, grade, fromName: '测试' }
 }
@@ -83,7 +72,7 @@ describe('器魂 · 厚度的代价落在敌人判定上', () => {
     const absurd = celestialJudgement(scaleMods(HEAVY, 500), 20, 22)
     expect(absurd.damageBonus).toBeLessThanOrEqual(0.35 + 1e-9)
     expect(absurd.damageReduction).toBeLessThanOrEqual(0.35 + 1e-9)
-    // 加厚本身不封顶(它就是"堆多厚、对面有多厚"),封顶的是增伤减伤那两味
+    // 加厚不封顶;封顶的只有增伤与减伤
     expect(celestialDepthScale(scaleMods(HEAVY, 500))).toBeGreaterThan(1)
   })
 

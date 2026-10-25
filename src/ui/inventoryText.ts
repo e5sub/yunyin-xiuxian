@@ -32,11 +32,8 @@ export function loadoutRenamedToast(name: string): string {
 }
 
 /**
- * 换装结果的汇报 —— 阙的不止一个数:「哪几件没了」才是玩家下一步要去补的,
- * 只报个数等于让人回到行囊里重新核对一遍
- *
- * `slotLimited` = 缺的原因里有「槽位不够」(辅修槽随藏经阁、法宝位随境界):
- * 那种缺不是去历练/坊市能补的,说清该升级哪一处,否则玩家照着名单白找一圈。
+ * 换装回执:阙件报出哪几件,不只报个数。
+ * `slotLimited` = 缺的原因里有「槽位不够」(辅修槽随藏经阁、法宝位随境界):标「槽位不足」,与「没学过 / 没收藏」的阙件分开。
  */
 export function loadoutApplyToast(
   name: string,

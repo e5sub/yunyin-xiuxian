@@ -1,8 +1,4 @@
-/**
- * playerMatchups —— 当前构筑对本世七类实敌的胜率面。
- * 纯算:给构筑快照、场次、种子,回来七行;断言只认「稳定性与有意义的单调」,
- * 不钉具体百分比(数值随平衡走,契约是方向与确定性)。
- */
+/** playerMatchups:只断言确定性与方向,不钉具体百分比(数值随平衡走)。 */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -27,8 +23,7 @@ function snap(over: Partial<CombatantSnap>): CombatantSnap {
 
 describe('本世对局 · playerMatchups', () => {
   it('固定种子 → 同构筑两遍读数逐位一致(不随刷新跳)', () => {
-    // 带铁壁(一次性保命)的构筑:引擎会在命中时改写快照的 ironwallBrace,
-    // 若快照被复用,第二遍会因「第一遍已消耗」而与第一遍读数不同 —— 这里就是它的回归闸
+    // 带铁壁(一次性保命)
     const a = playerMatchups(snap({ ironwallBrace: true }), 40)
     const b = playerMatchups(snap({ ironwallBrace: true }), 40)
     expect(a.map(r => r.winRate)).toEqual(b.map(r => r.winRate))
@@ -61,8 +56,7 @@ describe('本世对局 · playerMatchups', () => {
   })
 
   it('三维更强的构筑,平均胜率不输、且有实打实的拉开(聚合口径,抗抽样方差)', () => {
-    // 按面逐一比不抗抽样噪声:两遍独立采样,更强的构筑也有可能在某面上被方差拽低,
-    // 平衡一动就随机翻红 —— 比七面平均,合计 840 场下方差被平均掉,方向断言才稳。
+    // 比七面平均(合计 840 场),不逐面比:逐面会被抽样方差随机翻红
     const weak = playerMatchups(snap({}), 120)
     const strong = playerMatchups(snap({ attack: gn(300), defense: gn(150), maxHp: gn(4000) }), 120)
     const avg = (rows: { winRate: number }[]): number => rows.reduce((s, r) => s + r.winRate, 0) / rows.length
@@ -74,7 +68,7 @@ describe('本世对局 · playerMatchups', () => {
 })
 
 describe('采样场次 · 一处出', () => {
-  // 文案「每类各打 N 场」与模拟实算必须读同一枚 —— 曾有一处注释写 120、实算 60 各说各话
+  // 文案「每类 N 场估算」与模拟实算须读同一枚
   const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '').replace(/<!--[\s\S]*?-->/g, '')
 
   it('默认值与回落兜底都走 MATCHUP_SAMPLE_RUNS,不再手抄 60', () => {

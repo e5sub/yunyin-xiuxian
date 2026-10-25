@@ -1,7 +1,9 @@
 /**
- * 道侣共同事件(Phase 33.9)
+ * 道侣共同事件
  *
- * ## 33.8 留下的缺口
+ * 契合是行为结果,不是 API 参数:
+ *   玩家行为计数 → playerLean() + 道侣道途 + 选择与道侣的诉求/底线是否相合 → 三维各自变化。
+ * 玩家只看到道侣的反应,看不到「accord +5」。
  *
  * 上一版道侣只有「状态」,没有「关系中的事件与选择」。三个缺口
  * (accordShift 无调用点、诉求与底线只是展示文本、玩家做不了选择)
@@ -40,26 +42,26 @@ export type ConflictKind =
   | 'resource'
   /** 道途冲突:救还是杀 */
   | 'path'
-  /** 风险冲突:陪她冒险还是拦住她 */
+  /** 风险冲突:陪道侣冒险还是拦住道侣 */
   | 'risk'
   /** 价值观冲突:拿到它要伤及无辜 */
   | 'value'
-  /** 人生目标:她要离开这条路线 */
+  /** 人生目标:道侣要离开这条路线 */
   | 'pursuit'
-  /** 共同承担:她救你要折损自己 */
+  /** 共同承担:道侣救你要折损自己 */
   | 'sacrifice'
   /** 共命之险:两个人只够一个人先走 */
   | 'mortal'
 
-/** 一个选项对三维的影响 —— 由「与她是谁相合与否」决定,不是固定数值 */
+/** 一个选项对三维的影响 —— 由与道侣相合与否决定,不是固定数值 */
 export interface BondOutcome {
-  /** 缘分:共历本身带来的深度 */
+  /** 缘分:共历本身 */
   fate: number
-  /** 信任:她敢不敢把事交给你 */
+  /** 信任:道侣敢不敢把事交给你 */
   trust: number
   /** 契合:你们是不是同一种人 */
   accord: number
-  /** 她因此离开 */
+  /** 道侣因此离开 */
   leaves?: boolean
   /** 事件后的叙述 */
   text: string
@@ -68,40 +70,22 @@ export interface BondOutcome {
 export interface BondChoice {
   id: string
   label: string
-  /**
-   * 这个选项体现的道途 —— 与她的道途比对后决定契合走向。
-   * null 表示这个选项不涉及道途判断(如「两者都不取」)
-   */
+  /** 选项体现的道途,与道侣的道途比对后决定契合走向;null 表示不涉及道途判断 */
   lean: DaoLean | null
-  /** 是否触碰她的底线 */
+  /** 是否触碰道侣的底线 */
   crossesTaboo?: boolean
-  /** 是否兑现了对她的支持 */
+  /** 是否兑现了对道侣的支持 */
   supportsHer?: boolean
-  /** 是否有风险 */
   risky?: boolean
   /**
-   * 是否「共命之险」:选了它,她的生死取决于你俩此刻的关系够不够深
-   * (由 daoluService 判定:信任与契合都够则同生,不够则她殒落)。
-   * 只有这一条路会死人 —— 而且必须在 label 里写出代价。
+   * 共命之险:道侣的生死由 daoluService 判定(信任与契合都够则同生,不够则道侣殒落)。
+   * 唯一会死人的选项;label 里必须写出代价。
    */
   peril?: boolean
   outcome: Omit<BondOutcome, 'text'> & { text: string }
 }
 
-/**
- * 事件发生的时机 —— 由历练情境决定,不是定时器。
- *
- * 33.9 的事件只在打开道侣弹窗时抽取,内容是真的但**时机是假的**。
- * 34.0 把每个事件挂到它天然属于的那一刻:
- *
- *   进入新地界 → 线索 / 岔路      眼前是没走过的路
- *   首胜之后   → 刀下              刀已经落下,人还跪着
- *   通关首领   → 遗府 / 代价       打开了本不该开的地方
- *   濒死       → 重伤              她手里有能救你的东西
- *
- * 这样共同事件属于「这一段旅程中发生的事」,
- * 而不是「系统随机弹了一个关系窗口」
- */
+/** 事件发生的时机 —— 由历练情境决定,不是定时器 */
 export type BondTrigger =
   /** 踏入一处新地界 */
   | 'enterPlace'
@@ -125,19 +109,16 @@ export interface BondEventDef {
   title: string
   /** 事件背景 */
   text: string
-  /** 她的诉求 —— 由 DaoluDef.pursuit 填充语气,此处是本事件的具体要求 */
+  /** 道侣在本事件的具体诉求(语气由 DaoluDef.pursuit 填充) */
   herWish: string
-  /** 她的底线 */
+  /** 道侣的底线 */
   herLimit: string
   /** 至少到这一阶才会发生 */
   minStageIndex: number
-  /** 这件事会在什么时候发生 —— 空数组等于「随时」,那正是要避免的 */
+  /** 触发时机;空数组等于「随时」,须避免 */
   triggers: readonly BondTrigger[]
   choices: BondChoice[]
-  /**
-   * 她自己的决定 —— 并非每次都由玩家拍板。
-   * 满足条件时她先表态,玩家只能在「尊重/说服/独行」之间选
-   */
+  /** 满足条件时道侣先表态,玩家只能在「尊重/说服/独行」之间选 */
   sheDecides?: { when: 'lowTrust' | 'lowAccord' | 'cautious'; line: string }
 }
 
@@ -151,11 +132,6 @@ function c(
   return { id, label, lean, outcome, ...opts }
 }
 
-/**
- * 六个共同事件,各代表一种关系冲突。
- *
- * 刻意不做几十个 —— 类型齐比数量多重要
- */
 export const BOND_EVENTS: BondEventDef[] = [
   {
     id: 'be_relic',
@@ -453,7 +429,7 @@ export const LEAN_COUNTERS: Record<DaoLean, readonly CounterKey[]> = {
   truth: ['gongfaLearned', 'events']
 }
 
-/** 各道途的行为量级差异很大,故按典型量纲归一 */
+/** 归一量纲:各道途行为的典型量级 */
 const LEAN_SCALE: Record<DaoLean, number> = {
   slaughter: 300,
   longevity: 30,
@@ -463,11 +439,7 @@ const LEAN_SCALE: Record<DaoLean, number> = {
   truth: 40
 }
 
-/**
- * 由行为计数推断玩家实际在走的道。
- *
- * 取归一后最高的一条;都很低时返回 null(还没走出自己的路)
- */
+/** 由行为计数推断玩家实际在走的道:取归一后最高的一条,都很低时返回 null */
 export function leanFromCounters(counter: (k: CounterKey) => number): DaoLean | null {
   let best: DaoLean | null = null
   let bestScore = 0
@@ -479,29 +451,18 @@ export function leanFromCounters(counter: (k: CounterKey) => number): DaoLean | 
       best = lean
     }
   }
-  // 阈值:行为量太少时不判定道途
   return bestScore >= 0.15 ? best : null
 }
 
 // ============ 选择的后果 ============
 
-/**
- * 结算一个选择。
- *
- * 三维各吃不同来源:
- *   缘分  选项自带(共历本身)
- *   信任  选项自带 + 是否支持她 + 是否触碰底线
- *   契合  选项自带 + **玩家道途与她道途的关系**
- *
- * 最后一项正是 33.8 缺失的那条链:契合终于由「你是谁」决定
- */
 export function resolveChoice(
   def: DaoluDef,
   choice: BondChoice,
   playerLean: DaoLean | null
 ): BondOutcome & { leanShift: number } {
   const o = choice.outcome
-  // 选项体现的道途与她的道途是否相合
+  // 选项体现的道途与道侣的道途是否相合
   const tension: Partial<Record<DaoLean, DaoLean>> = {
     slaughter: 'longevity',
     longevity: 'slaughter',
@@ -513,12 +474,7 @@ export function resolveChoice(
     if (choice.lean === def.lean) leanShift = 6
     else leanShift = tension[def.lean] === choice.lean ? -8 : -2
   }
-  /**
-   * 玩家一贯的道途也参与判断 —— 这是契合成为「行为结果」的关键一环。
-   *
-   * 三档都要有区别,否则「杀伐玩家」与「丹鼎玩家」做同一个选择会拿到
-   * 完全相同的契合,那就退回了 33.8「接口存在但玩家无关」的状态
-   */
+  /** 玩家一贯的道途也参与契合:三档须各有区别,否则不同道途的玩家做同一个选择契合相同 */
   if (playerLean) {
     if (playerLean === def.lean) leanShift += 3
     else if (tension[def.lean] === playerLean) leanShift -= 5
@@ -534,7 +490,7 @@ export function resolveChoice(
   }
 }
 
-/** 她是否会自己先做决定 */
+/** 道侣是否会自己先做决定 */
 export function sheDecidesNow(
   def: BondEventDef,
   bond: { trust: number; accord: number },

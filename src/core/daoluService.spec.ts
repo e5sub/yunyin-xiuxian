@@ -1,19 +1,5 @@
 /* eslint-disable no-console */
-/**
- * 道侣系统验收(Phase 33.8)
- *
- * 核心句:**道侣不是让你变强的人,而是让这一世变得不一样的人。**
- *
- * 五条验收指标:
- *   一 不进入效率链      任何永久效果都不得通向 cultivationSpeed
- *   二 不存在唯一最优    多个角色在不同情境下各有占优
- *   三 不是灵兽替代品    改变的是事件/选择/命题/历史,不是战力
- *   四 每世结果可不同    同一角色允许出现结契/错过/分离/陨落
- *   五 轮回留历史不留人  人物不继承,记录继承
- *
- * 判据沿用前面确立的习惯:能靠源码扫描锁死的就扫描,
- * 因为「类型上没有 mods 字段」挡不住有人后来加一个。
- */
+/** 道侣系统验收。能靠源码扫描锁死的就扫描:「类型上没有 mods 字段」挡不住后来加一个 */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { readFileSync } from 'node:fs'
@@ -37,7 +23,7 @@ import {
 import { usePlayerStore } from '@/stores/player'
 
 const SRC = readFileSync(resolve(__dirname, 'daoluService.ts'), 'utf-8')
-/** 只看代码,不看注释 —— 注释里正大光明地写着这些名字 */
+/** 只看代码,不看注释:注释里写着这些名字 */
 const CODE = SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
 const DATA = readFileSync(resolve(__dirname, '../data/daolu.ts'), 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '')
 
@@ -47,8 +33,7 @@ beforeEach(() => {
 
 describe('道侣 · 一:不进入效率链', () => {
   it('服务层不含任何属性、资源、道果、宿慧写入', () => {
-    // 前面的审计证明 45 个属性键全部可达 cultivationSpeed,
-    // 所以这里不是「少给一点」,而是一个都不给
+    // 45 个属性键全部可达 cultivationSpeed:一个都不给
     expect(CODE).not.toMatch(/StatMods|attackPct|cultivationSpeed|maxHpPct|dropRate|luck/)
     expect(CODE).not.toMatch(/addDaoFruit|addInsight|spendDaoFruit/)
     expect(CODE).not.toMatch(/useResourcesStore|spiritStone|addHerb|addOre|wudao|pills/)
@@ -56,7 +41,6 @@ describe('道侣 · 一:不进入效率链', () => {
   })
 
   it('数据层结构上就不给属性留位置', () => {
-    // DaoluDef 里没有 mods 字段,是刻意的结构性约束
     expect(DATA).not.toMatch(/mods\s*[?:]/)
     expect(DATA).not.toMatch(/StatMods/)
     console.log('\nDaoluDef 没有 mods 字段 —— 想「顺手加个属性」得先改类型,改动会很显眼')
@@ -68,16 +52,13 @@ describe('道侣 · 一:不进入效率链', () => {
     const before = { ...player.finalStats.mods }
     advanceBond({ fate: 50, trust: 50, accord: 50, shared: true })
     const after = { ...player.finalStats.mods }
-    // 关系拉满,玩家属性分毫未动
     expect(JSON.stringify(after)).toBe(JSON.stringify(before))
     console.log('\n三维各 +50 之后,player.finalStats.mods 完全不变')
   })
 
   it('故障注入:若给道侣接上属性,判据必须变红', () => {
-    // 模拟有人在服务层加了 cultivationSpeed
     const tampered = CODE + "\nconst evil = { cultivationSpeed: 0.2 }\n"
     expect(tampered).toMatch(/cultivationSpeed/)
-    // 对照:当前源码不含它
     expect(CODE).not.toMatch(/cultivationSpeed/)
     console.log('\n注入一行 cultivationSpeed 即被扫描命中 —— 判据不是摆设')
   })
@@ -99,7 +80,7 @@ describe('道侣 · 二:不存在唯一最优', () => {
     const leans = ['slaughter', 'longevity', 'sword', 'alchemy', 'artifice', 'truth'] as const
     const table: Record<string, number[]> = {}
     for (const d of DAOLU) {
-      // 用同一个中性选项,只让玩家道途变化 —— 差异必定来自「你是谁」
+      // 同一中性选项,只变玩家道途
       const ev = BOND_EVENTS.find(e => e.id === 'be_spare')!
       const neutral = ev.choices.find(c => c.id === 'leave')!
       const row = leans.map(pl => resolveChoice(d, neutral, pl).leanShift)
@@ -109,7 +90,6 @@ describe('道侣 · 二:不存在唯一最优', () => {
     for (const [name, row] of Object.entries(table)) {
       console.log(`${name.padEnd(10)} ${row.map(v => String(v).padStart(3)).join(' ')}`)
     }
-    // 每一位都至少在一种玩家道途下是负的 —— 没有通吃
     for (const [name, row] of Object.entries(table)) {
       expect(row.some(v => v < 0)).toBe(true)
       expect(row.some(v => v > 0)).toBe(true)
@@ -136,7 +116,7 @@ describe('道侣 · 三:改变的是关系,不是战力', () => {
           `${String(g.accord).padStart(4)} ${String(g.shared).padStart(4)}  ${g.desc}`
       )
     }
-    // 共历次数是行为条件:光刷数值到顶也进不了同行
+    // 共历次数是行为条件:数值刷满也进不了同行
     const withShared = STAGE_GATES.filter(g => g.shared > 0)
     expect(withShared.length).toBeGreaterThan(0)
   })
@@ -176,7 +156,7 @@ describe('道侣 · 四:每一世的结果可以不同', () => {
   it('同一角色能走出四种结局', () => {
     const endings = new Set<string>()
 
-    // 相伴:走到结契以上再归档
+    // 相伴
     meet('dl_zhaoyan')
     advanceBond({ fate: 100, trust: 100, accord: 100, shared: true })
     advanceBond({ shared: true })
@@ -184,7 +164,7 @@ describe('道侣 · 四:每一世的结果可以不同', () => {
     advanceBond({ shared: true })
     endings.add(archiveBond()!.ending)
 
-    // 错过:关系尚浅便到了尽头
+    // 错过
     meet('dl_zhaoyan')
     advanceBond({ fate: 20 })
     endings.add(archiveBond()!.ending)
@@ -241,7 +221,6 @@ describe('道侣 · 五:轮回留历史,不留人', () => {
       if (destinedCandidate(deep, ['林泽', '山岳'])) met += 1
     }
     const rate = met / N
-    // 既不是零,也远不是必然
     expect(rate).toBeGreaterThan(0)
     expect(rate).toBeLessThan(0.5)
     console.log(
@@ -271,11 +250,10 @@ describe('道侣 · 边界', () => {
     advanceBond({ fate: 60, trust: 50, accord: 60, shared: true })
     advanceBond({ shared: true })
     const mid = currentBond()!
-    // 道途分歧让契合掉下来
     advanceBond({ accord: -40 })
     const after = currentBond()!
     expect(after.accord).toBeLessThan(mid.accord)
-    // highestReachable 会重算,故阶段可能回落 —— 这是设计:道心不合就是走不下去
+    // highestReachable 会重算,阶段可能回落(设计如此)
     expect(stageIndex(after.stage)).toBeLessThanOrEqual(stageIndex(mid.stage))
     console.log(`\n契合 ${mid.accord} → ${after.accord},阶段 ${STAGE_NAMES[mid.stage]} → ${STAGE_NAMES[after.stage]}`)
   })
@@ -320,7 +298,7 @@ describe('道侣 · 共命之险的生死判据', () => {
       opportunities: 0,
       nextEventAt: 0
     } as BondState)
-    // share 选择自带 +trust/+accord,会把事后值抬到 60/48 —— 但生死按事前 50/40 判
+    // share 自带 +trust/+accord,事后值 60/48;生死按事前 50/40 判
     const res = chooseBondEvent('be_jie', 'share')
     expect(res?.perished, '事前 trust50<55 应殒落,而非靠这次挺身的事后加成救活').toBe(true)
     expect(player.bond?.fallen).toBe(true)

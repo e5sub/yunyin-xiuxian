@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { produceTierText } from './produceText'
 
-/** 地界物产阶位文案 —— 「此界掉几阶」在出发前亮出,页面只许调用不许手打 */
+/** 地界物产阶位文案;页面只许调用不许手打 */
 describe('地界物产文案', () => {
   it('报出阶位', () => {
     expect(produceTierText(6)).toContain('6 阶')

@@ -1,9 +1,6 @@
 /**
- * 区域动态事件表(原在 core/regionEvent.ts)。
- *
- * 挪到 data/ 是为了让读档校验(player.sanitize 按 id 认事件)不必反向 import
- * core/regionEvent —— 那支模块会 import player store,一引就成环。
- * 这里的数字是真实倍率,改它会同时改在线、离线与预览三处结算。
+ * 区域动态事件表。须留在 data/:player.sanitize 按 id 认事件,改从 core/regionEvent 引会成环。
+ * 倍率同时作用于在线、离线与预览三处结算。
  */
 export type RegionEventId = 'yaochao' | 'lingmai' | 'gumu' | 'shangdui'
 

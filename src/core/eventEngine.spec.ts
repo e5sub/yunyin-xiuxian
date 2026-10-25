@@ -38,9 +38,9 @@ describe('事件结算 · 灵石代价守恒', () => {
       choices: [{ label: '掏钱', outcomes: [{ weight: 1, text: '花掉', effects: [{ type: 'stone', tierAmount: -60 }] }] }]
     }
     const res = resolveEventChoice(def, 0, 3)
-    // 支出被拒:这条结算里没有任何扣灵石的字样(60 → 259.92 > 50,付不起)
+    // 60 → 259.92 > 50,付不起
     expect(res.lines.some(l => l.includes('灵石 -'))).toBe(false)
-    // 余额绝不低于 50 —— 此前的 bug 是「整份余额奉上」清零(里程碑顺带发石也会让它变大,只断言下界)
+    // 里程碑顺带发石会让余额变大,只断言下界
     expect(gte(resources.spiritStone, gn(50))).toBe(true)
   })
 
@@ -53,14 +53,12 @@ describe('事件结算 · 灵石代价守恒', () => {
     const before = resources.spiritStone
     resolveEventChoice(def, 1, tier) // 「凝本源为一丹」
     const cost = stoneByTier(tier, 300)
-    // 付了声明的那笔:余额确确实实少了 cost(大数重构有尾数噪声,用容差比:与原值差 ≤ 1e-9 级)
+    // 大数有尾数噪声,用容差比
     const spent = sub(before, resources.spiritStone)
     const tol = mulN(cost, 1e-6)
     expect(gte(add(spent, tol), cost), '花掉的应 ≥ cost(容差)').toBe(true)
     expect(gte(add(cost, tol), spent), '花掉的应 ≤ cost(容差)').toBe(true)
-    // 药也真到手
     expect(inventory.pills['p_daoyuan']).toBe(1)
-    // 顺手确认这笔不是负值(300 灵石代价在等价档位下真实大于零,不是虚设)
     expect(gte(cost, gn(1))).toBe(true)
   })
 
@@ -92,8 +90,7 @@ describe('际遇 haul(事件所得并入会话账目)', () => {
       stoneGain: gn(0), expGain: gn(0), itemGain: 0
     })
     const expBefore = toNum(player.exp)
-    // 结算取用 rng.weighted(依权重挑结局),不是 rng.chance —— 强制挑「饮下泉水」的 exp 结局,
-    // 避免 75%/25% 掷点让断言在 CI 里偶发翻车(取到 injury 时 expGain 不动)
+    // 结局由 rng.weighted 挑:强制取 exp 结局,免得掷到 injury 时偶发失败
     const spring = eventDef('ev_spring')!
     const expOutcome = spring.choices[0]!.outcomes[0]!
     const spy = vi.spyOn(rng, 'weighted').mockImplementationOnce(() => expOutcome)
@@ -107,15 +104,7 @@ describe('际遇 haul(事件所得并入会话账目)', () => {
   })
 })
 
-/**
- * 自动结算不许替玩家祭法宝。
- *
- * 离线整段、事件超时与「遇事勿扰」都走 `autoResolveEvent` —— 玩家**不在场**。
- * 从前它照默认 `autoEquip=true` 收法宝:挂一夜回来囊里多了一件,而随身那一格
- * 已经被换过,他从没点过那个按钮,也看不出是谁换的。
- * 离线结算的法宝通道早就守住了这条(offline.ts 传 autoEquip=false),
- * 际遇这条却漏着 —— 两条都是「趁玩家不在」,纪律该一样。
- */
+/** 离线整段、事件超时与「遇事勿扰」都走 autoResolveEvent,玩家不在场;纪律同 offline.ts 的 autoEquip=false */
 describe('自动结算不替玩家祭法宝', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -155,11 +144,8 @@ describe('自动结算不替玩家祭法宝', () => {
   })
 
   /**
-   * 故障注入:把 autoResolveEvent 的 `{ autoEquipArtifact: false }` 去掉
-   * → 本条红;手动那条仍绿(证明红的是这条纪律,不是整个法宝通道)。
-   *
-   * 差别只在「随身那一格还空着」时看得见:`addArtifact` 的自动祭上本来就是
-   * 「空祭炼位才祭」(不抢占已有构筑),所以判据要在**空手**状态下比。
+   * 故障注入:去掉 autoResolveEvent 的 { autoEquipArtifact: false },本用例红(手动那条仍绿)。
+   * addArtifact 只在空祭炼位自动祭,判据须在空手状态下比。
    */
   it('判据自家不空转:同一掷点下,自动路径不祭、手动路径祭', () => {
     const wine = eventDef('ev_wine_immortal')!

@@ -1,11 +1,7 @@
 /**
- * 分类测试报告的路径映射。
- *
- * 匹配是路径子串,按数组顺序取第一个命中的分类。两条约束:
- * ① 串要够长以免误伤 —— `stores/game.spec` 不能写成 `game.spec`,否则
- *    data/stores 的 endgame.spec 也会被截进 Regression;
- * ② 同一文件只应命中一类 —— 新增 spec 后必须在此登记,否则报告会少算它。
- * `gateWiring.spec.ts` 会枚举真实 spec 文件,逐个验证「恰好命中一类」。
+ * 分类测试报告的路径映射:按路径子串匹配,取数组里第一个命中的分类。
+ * ① 串要够长:`stores/game.spec` 写成 `game.spec` 会把 data/stores 的 endgame.spec 截进 Regression;
+ * ② 新增 spec 须在此登记,且只命中一类(`gateWiring.spec.ts` 逐个验证)。
  */
 export interface TestCategory {
   name: string
@@ -29,8 +25,7 @@ export const TEST_CATEGORIES: readonly TestCategory[] = [
   { name: 'Economy     资源经济', match: ['economySim', 'economyModuleBalance', 'expIncome', 'lootSim', 'loot.spec', 'salvage', 'smartKeep', 'petLuck', 'eventPetLuck', 'pillValue', 'pillService', 'pillBatch', 'useBrewing', 'veinEconomyAudit', 'veinVisibility', 'resourceGuidance', 'offlineCap', 'offlineEquipCap', 'offlineLedger', 'offlineModeReward', 'offlineParity', 'offlineScope', 'offlineFactorParity', 'veinService', 'veinBatch', 'qiRepair', 'buildingService', 'buildingBatch', 'affixTransferEconomy', 'dropQualityWindow', 'herbGrade', 'resources.spec', 'buffCap', 'economyAudit', 'wudaoExchange'] },
   {
     name: 'Regression  服务与归因',
-    // artifactsIcon 与 iconRegistry、dataTextAudit 同类:都是「展示层引用对不对得上」的
-    // 源码级归因,而不是数值性质;故归这里不归 Unit(那里放的是纯函数)。
+    // artifactsIcon 属展示层引用的源码级归因(同 iconRegistry、dataTextAudit),归此不归 Unit
     match: ['/ui/', 'rewardText', 'gateWiring', 'gateRuleText', 'unlockChainSelfHeal', 'loadoutService', 'loadouts.spec', 'adventure.spec', 'battleAnalysis', 'foeOrigin', 'loreService', 'lore.spec', 'smithingLore', 'contentReachability', 'contentDensity', 'mentorService', 'daoluService', 'bondEvents', 'bondTiming', 'bondIntent', 'bondCausality', 'worldMemory', 'phase31LinkAudit', 'suppress.spec', 'suppressOnline', 'regionRevival', 'stores/game.spec', 'playerBoundary.spec', 'enginePause', 'engine.spec', 'audio', 'earlyGameService', 'cavePatrolDay', 'earlyGameBuffs', 'savePlatform', 'saveAndroidTransfer', 'saveRoundTrip', 'saveBackup', 'saveFileRead', 'importCorruption', 'saveMigration', 'sanitizeAll', 'codexSource', 'achievementHint', 'titleLadder', 'titleReunlock', 'artifactEffects', 'artifactsIcon', 'dataHeaderAudit', 'deadExportAudit', 'chainProgression', 'vocabularyCoverage', 'singleSourceAudit', 'effectWiring', 'uiLayering', 'layeringAudit', 'itemText', 'kaiFontCoverage', 'fatePreview', 'goBack', 'storeResilience', 'smokeClassify', 'cultivation.spec', 'diag.spec', 'platform.spec', 'pacingTelemetry.spec', 'rewardReachability', 'dataIntegrity', 'dataTextAudit', 'useAffixTransfer', 'useGameClock', 'useNow', 'useWallClock', 'useServiceWorkerUpdate', 'useModalStack', 'time.spec', 'soulText', 'produceText', 'settings.spec', 'scriptDepsAudit', 'layoutMeasure']
   },
   { name: 'Celestial   真仙终局', match: ['celestialSim', 'celestialCaliber', 'endgameService', 'endgame.spec', 'phase21', 'expedition', 'trialChallenge', 'dailyChallenge', 'challenge', 'soulForge', 'souls.spec', 'soulService', 'daoSource', 'rulesetEra', 'qimen', 'celestialJudgementInvariant'] },
@@ -47,7 +42,7 @@ export const TEST_CATEGORIES: readonly TestCategory[] = [
   }
 ]
 
-/** 路径统一成正斜杠:Windows 上 vitest 报反斜杠,目录级匹配否则会漏 */
+/** Windows 上 vitest 报反斜杠;统一成正斜杠,目录级匹配才不漏 */
 export function normalizeSpecPath(path: string): string {
   return path.split('\\').join('/')
 }
@@ -58,7 +53,7 @@ export function matchingCategories(path: string): TestCategory[] {
   return TEST_CATEGORIES.filter(category => category.match.some(m => normalized.includes(m)))
 }
 
-/** 报告归类:保持旧行为,按数组顺序取第一个命中分类 */
+/** 报告归类:取第一个命中分类 */
 export function classifySpecPath(path: string): TestCategory | undefined {
   return matchingCategories(path)[0]
 }

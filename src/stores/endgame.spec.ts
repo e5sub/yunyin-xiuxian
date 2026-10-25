@@ -1,14 +1,7 @@
 /**
- * 远征读档恢复守卫 —— endgame.sanitize() 对 worldRun(在途远征)的形体修复。
- *
- * worldRun 是**活状态**(每场战斗都读 layer/carriedHpPct/winStacks):
- * layer 越界会跳到不存在的层,carriedHpPct 越界会把开局算成 NaN 或无敌。
- * 读档恢复处(endgame.sanitize)把每一域都夹回安全区间 —— 但此前 0 个测试调用
- * sanitize,一处 clamp 写坏(unknown worldId 不 void / layer 不夹 / carriedHp 不夹 /
- * rows 不过滤)会静默滑过 CI。这里把「夹回」钉成测试。
- *
- * 规则来源(端到端核实):endgame.ts:81-99 sanitize;saveShape.ts:56-59
- * asCarriedHpPct;EXPEDITION_GUARDIAN_LAYER = EXPEDITION_ROUTE_LAYERS = 3。
+ * 远征读档恢复守卫:endgame.sanitize() 把 worldRun(在途远征)每一域夹回安全区间。
+ * 故障注入:sanitize 任一处 clamp 写坏(unknown worldId 不 void / layer 不夹 / carriedHp 不夹 / rows 不过滤),本文件红。
+ * 规则来源:endgame.ts sanitize;saveShape.ts asCarriedHpPct;EXPEDITION_GUARDIAN_LAYER = EXPEDITION_ROUTE_LAYERS = 3。
  */
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -24,12 +17,11 @@ import { legacyComparisons } from '@/core/compare'
 import { snapFromReplay } from '@/core/endgameService'
 import { gn } from '@/utils/gnum'
 
-// generateApprovedWorld 的成败由 h.genResult 开关:让重掷代价的「扣/退」可确定性断言
+// h.genResult 控制 generateApprovedWorld 成败,用于断言重掷代价的扣/退
 const h = vi.hoisted(() => ({ genResult: 'world' as 'world' | 'null' }))
 vi.mock('@/core/worldGen', async importOriginal => {
   const mod = await importOriginal<typeof import('@/core/worldGen')>()
-  // vi.mock 工厂被提升至一切静态 import 之上,此处只能运行时 import;
-  // 静态导入的绑定在工厂执行时尚未就绪(TDZ),故为已知模块仍须 await import。
+  // vi.mock 工厂被提升到静态 import 之前(TDZ),只能 await import
   const { celestialWorldDef } = await import('@/data/endgame')
   return {
     ...mod,
@@ -94,11 +86,11 @@ describe('远征读档恢复 · worldRun sanitize', () => {
   it('layer 越界/非数被夹回 [0, GUARDIAN_LAYER],NaN 兜底 0', () => {
     const endgame = useEndgameStore()
     const cases: [unknown, number][] = [
-      [EXPEDITION_GUARDIAN_LAYER + 50, EXPEDITION_GUARDIAN_LAYER], // 越上界夹到界主层
-      [-5, 0], // 越下界夹到 0
-      [2.9, 2], // 小数取整
-      [NaN, 0], // 非数兜底 0
-      ['7' as unknown as number, 0] // 非数(字符串)兜底 0
+      [EXPEDITION_GUARDIAN_LAYER + 50, EXPEDITION_GUARDIAN_LAYER],
+      [-5, 0],
+      [2.9, 2],
+      [NaN, 0],
+      ['7' as unknown as number, 0]
     ]
     for (const [raw, expected] of cases) {
       endgame.$patch({ worldRun: hostileRun({ layer: raw as number }) })
@@ -110,10 +102,10 @@ describe('远征读档恢复 · worldRun sanitize', () => {
   it('carriedHpPct 夹到 [0.05, 1],非数兜底 1(不能开局就 NaN/无敌)', () => {
     const endgame = useEndgameStore()
     const cases: [unknown, number][] = [
-      [2, 1], // 上限(无敌禁区)
-      [0, 0.05], // 下限(垂死也保一格)
-      [0.4, 0.4], // 中值原样
-      [NaN, 1], // 非数兜底满血
+      [2, 1],
+      [0, 0.05],
+      [0.4, 0.4],
+      [NaN, 1],
       ['x' as unknown as number, 1]
     ]
     for (const [raw, expected] of cases) {
@@ -132,10 +124,6 @@ describe('远征读档恢复 · worldRun sanitize', () => {
     expect(endgame.worldRun?.pactId).toBeNull()
     expect(endgame.worldRun?.gateId).toBeNull()
 
-    /**
-     * 野 id 在 pactDef/gateDef 里查不到:签约时的规则与门之规则会双双静默失效,
-     * 玩家打的是无契无门的白板局,界面却还挂着那个名字。
-     */
     endgame.$patch({ worldRun: hostileRun({ pactId: 'ghost_pact', gateId: 'ghost_gate' }) })
     endgame.sanitize()
     expect(endgame.worldRun?.pactId, '认不出的契约等同未立约').toBeNull()
@@ -147,11 +135,6 @@ describe('远征读档恢复 · worldRun sanitize', () => {
     expect(endgame.worldRun?.gateId, '真门原样保留').toBe('xiu')
   })
 
-  /**
-   * 逆命契封印的词条每一场都并入玩家属性:
-   * NaN 会顺着 stackedMods 把整身攻防染成 NaN(玩家打不动任何东西),
-   * 野键则会被 modDepth 算进构筑厚度,让天道判定凭空加厚。
-   */
   it('sealedMods 只留目录里的有限数词条,坏整份当作没有封印', () => {
     const endgame = useEndgameStore()
     endgame.$patch({
@@ -203,11 +186,6 @@ describe('远征读档恢复 · worldRun sanitize', () => {
     expect(endgame.worldRun?.rows.map(r => r.foeName)).toEqual(['某某妖王', '另有其人'])
   })
 
-  /**
-   * 结算时杀伐速战赏与道痕纪录都读 totalRounds,而界面只逐行报 rows。
-   * 坏档写「rows 五场共 60 回合、totalRounds 0」时,速战赏会按 0 回合给满,
-   * 道痕还记成一场没发生过的快仗。总回合必须由逐行战报重建。
-   */
   it('totalRounds 与逐行战报不一致时,以逐行回合和为准', () => {
     const endgame = useEndgameStore()
     endgame.$patch({
@@ -276,7 +254,7 @@ describe('混元界重掷代价 · rerollVoidWorld 扣/退与失效分支', () =
   })
 })
 
-// 恢复 snaity:让 h.genResult 回默认,免得影响其他可能读取它的用例
+// 复位 h.genResult,免得串到其他用例
 afterEach(() => {
   h.genResult = 'world'
 })
@@ -290,7 +268,7 @@ describe('道源原始操作 · spend/addDaoSource 原子·单调·取整', () =
     const endgame = useEndgameStore()
     endgame.$patch({ daoSource: 7 })
     expect(endgame.spendDaoSource(8)).toBe(false)
-    expect(endgame.daoSource).toBe(7) // 拒绝不吞账
+    expect(endgame.daoSource).toBe(7)
   })
 
   it('大于等于余额即扣,且余额精确为差', () => {
@@ -313,20 +291,20 @@ describe('道源原始操作 · spend/addDaoSource 原子·单调·取整', () =
   it('addDaoSource 取整:小数向下取整(非四舍五入)', () => {
     const endgame = useEndgameStore()
     endgame.$patch({ daoSource: 3 })
-    endgame.addDaoSource(0.5) // 3 + 0.5 = 3.5 → floor 3
+    endgame.addDaoSource(0.5)
     expect(endgame.daoSource).toBe(3)
-    endgame.addDaoSource(1) // +1 → 4
+    endgame.addDaoSource(1)
     expect(endgame.daoSource).toBe(4)
   })
 
   it('addDaoSource 单调:小数叠加逐次向下取整,不漏不四舍五入', () => {
     const endgame = useEndgameStore()
     endgame.$patch({ daoSource: 0 })
-    endgame.addDaoSource(2.2) // → 2
+    endgame.addDaoSource(2.2)
     expect(endgame.daoSource).toBe(2)
-    endgame.addDaoSource(0.5) // 2 + 0.5 = 2.5 → 2(不是 3)
+    endgame.addDaoSource(0.5)
     expect(endgame.daoSource).toBe(2)
-    endgame.addDaoSource(1) // +1 → 3
+    endgame.addDaoSource(1)
     expect(endgame.daoSource).toBe(3)
   })
 
@@ -532,10 +510,6 @@ describe('终局一次性引导标记 sanitize', () => {
     expect(e.soulTutorialSeen, '0 → false').toBe(false)
   })
 
-  /**
-   * 器魂 uid 重复:装配表按 uid 映回魂仓,两条同号会让同一枚的词条被算两次。
-   * 这是「一件东西被当成两件」的同族缺陷(装备/法宝侧同一根因)。
-   */
   it('sanitize:器魂 uid 与装配位都去重,同一枚不重复计词条', () => {
     const e = useEndgameStore()
     e.$patch({
@@ -552,11 +526,6 @@ describe('终局一次性引导标记 sanitize', () => {
     expect(e.activeSouls, '装配出来的也是两枚,不是三枚').toHaveLength(2)
   })
 
-  /**
-   * 器魂品阶是 `SOUL_GRADES[rank]!` 的裸下标:坏档写成 NaN 时取到 undefined,
-   * 器魂页渲染 `soulGradeDef(grade).color` 当场抛错,而 Vue 会不断重试渲染 ——
-   * 玩家看到的是「出现异常,已记录」的 toast 反复弹出。类型认不出同理(名与词条皆空)。
-   */
   it('sanitize:器魂的坏品阶夹回合法档、野类型清掉,不再让器魂页白屏', () => {
     const e = useEndgameStore()
     e.$patch({
@@ -576,10 +545,6 @@ describe('终局一次性引导标记 sanitize', () => {
     expect(e.souls.every(s => typeof soulGradeDef(s.grade).color === 'string'), '每一枚都能取到品阶名色').toBe(true)
   })
 
-  /**
-   * 装配位是硬闸(equipSoul 装到 SOUL_SLOTS 即拒):坏档写进五缕时若不截断,
-   * 五缕词条会一起生效,「已凝 5/3」还会把读数顶破上限。
-   */
   it('sanitize:装配位超出器魂槽数时按上限裁剪,多出来的不生效', () => {
     const e = useEndgameStore()
     e.$patch({
@@ -596,10 +561,6 @@ describe('终局一次性引导标记 sanitize', () => {
     expect(e.activeSouls, '生效的也只有三缕').toHaveLength(SOUL_SLOTS)
   })
 
-  /**
-   * 修行节点是「首次」语义(addMilestone 只在没有时才记):坏档同一条写两遍,
-   * 「修行节点 N/总数」会多报,时间线上同一件事还要出现两次。
-   */
   it('sanitize:修行节点同一条只留一次', () => {
     const e = useEndgameStore()
     e.$patch({
@@ -628,7 +589,6 @@ describe('天界终局坏档 · 按 id 认道/认界/认试炼', () => {
     e.$patch({ daoPath: 'ghost_dao' as never })
     e.sanitize()
     expect(e.daoPath).toBeNull()
-    // 回落之后这一世重新选得动 —— 这正是坏 id 最要命的后果
     expect(e.chooseDao('sword')).toBe(true)
   })
 
@@ -703,11 +663,7 @@ describe('天界终局坏档 · 按 id 认道/认界/认试炼', () => {
   })
 })
 
-/**
- * 道痕是「修行画像」「今昔之比」「忆战/重写」的共同底账:
- * 一条缺字段或坏字段的道痕就能把这三处一起打穿 ——
- * 画像读 `buildName.includes('·')`、今昔之比按 `at` 排序、忆战直接拿快照开打。
- */
+/** 道痕是「修行画像」「今昔之比」「忆战/重写」的共同底账 */
 describe('道痕坏档 · 逐条逐字段修形', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -746,7 +702,6 @@ describe('道痕坏档 · 逐条逐字段修形', () => {
     expect(m.powerText).toBe('')
     expect(m.at).toBe(0)
 
-    // 画像与今昔之比都要能跑 —— 这两处正是坏字段的爆点
     expect(() => cultivatorProfile(e.marks)).not.toThrow()
     expect(() => legacyComparisons(e.marks)).not.toThrow()
   })
@@ -799,7 +754,7 @@ describe('道痕坏档 · 逐条逐字段修形', () => {
               { defId: 'af_muyu', level: Number.NaN },
               { defId: 'af_muyu', level: 9 },
               { defId: 'af_lihuo', level: 999 },
-              // 第三、四件合法却超出法宝位上限 —— 忆战里不该多出两件被动与神通
+              // 第三、四件合法但超出法宝位上限
               { defId: 'af_xuantian', level: 0 },
               { defId: 'af_fuyao', level: 0 }
             ],
@@ -882,11 +837,6 @@ describe('道痕坏档 · 逐条逐字段修形', () => {
   })
 })
 
-/**
- * 虚界是程序化生成的临时世界:天界页读 `foes.map` / `ruleText.map`,
- * 远征读 `routes[layer][choice]` 与 `guardian`。缺一节就白屏或一点启程就抛错。
- * 它没有目录可逐字段对照,故形状不成立时整座作废 —— 界面回到「窥探虚界」。
- */
 describe('虚界坏档 · 形状不成立整座作废', () => {
   beforeEach(() => {
     setActivePinia(createPinia())

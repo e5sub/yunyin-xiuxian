@@ -1,4 +1,3 @@
-/** 设置 */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { persistConfig } from '@/utils/storage'
@@ -11,37 +10,29 @@ import { RELEASE_NOTES } from '@/ui/releaseNotes'
 export const useSettingsStore = defineStore(
   'settings',
   () => {
-    /** 版本与更新:上次看过发布说明的版本(空 = 从没看过) */
+    /** 上次看过发布说明的版本(空 = 从没看过) */
     const lastSeenVersion = ref('')
     const sfxOn = ref(true)
     const musicOn = ref(true)
-    /** 音量 0~100 */
+    /** 音量 0~100,不是 0~1 */
     const musicVol = ref(50)
     const sfxVol = ref(70)
     /**
-     * 减少动效 —— 默认值从**系统偏好**播种(prefers-reduced-motion)。
-     *
-     * style.css 的媒体查询只压得住 CSS 动画,战斗回放是 JS 驱动的
-     * (CombatPanel / GauntletPanel 的逐条投入),只认这个应用内开关 ——
-     * 系统关了动效的人,若这里永远 false 起步,照样被迫逐条看战报。
-     * 播种只在**无持久化档的首次创建**生效:持久化水合随后盖回,老玩家
-     * 显式存下的 true/false 不会被系统偏好改写。
+     * 减少动效:默认值从系统偏好(prefers-reduced-motion)播种;战斗回放是 JS 驱动的
+     * (CombatPanel / GauntletPanel),只认这个应用内开关。
+     * 播种只在无持久化档的首次创建生效,持久化水合随后盖回显式存下的 true/false。
      */
     const reduceMotion = ref(
       typeof window !== 'undefined' && typeof window.matchMedia === 'function'
         ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
         : false
     )
-    /**
-     * 遇事勿扰(玩家反馈「手动关闭际遇事件触发」):历练撞见际遇/机缘/奇缘时,
-     * 不再弹窗 —— 立刻按默认好愿了结(与超时自动处置同一条路),奖励照拿、不卡手。
-     */
+    /** 遇事勿扰:历练撞见际遇/机缘/奇缘时不弹窗,立刻按默认好愿了结(与超时自动处置同一条路) */
     const dndEvents = ref(false)
-    /** 战报播放速度倍率 */
     const battleSpeed = ref<1 | 2 | 4>(1)
-    /** 一键分解勾选的品质 rank 列表(持久化,免得每次重勾) */
+    /** 一键分解勾选的品质 rank 列表 */
     const decomposeRanks = ref<number[]>([0, 1])
-    /** 智能收纳(Phase 26):行囊自动去留规则(字段口径见 SmartKeepConfig,不另抄一份) */
+    /** 智能收纳:行囊自动去留规则(字段口径见 SmartKeepConfig) */
     const smartKeep = ref<import('@/core/smartKeep').SmartKeepConfig>({
       enabled: false,
       minQuality: 3,
@@ -53,43 +44,31 @@ export const useSettingsStore = defineStore(
     })
     /** 是否已同意隐私政策(欢迎页勾选后记录,老档视为已同意) */
     const privacyAccepted = ref(false)
-    /** 主题:跟随系统 / 日间 / 夜间 */
     const theme = ref<'auto' | 'light' | 'dark'>('auto')
-    /**
-     * 上次导出存档的时间戳(0 = 从未导出)。设置页据此常驻一句「上次导出备份:…」,
-     * 备份旧了而这一档又攒了东西时才提醒 —— 导出是丢档前唯一的保险,而它是个
-     * 没人提醒就不会做的动作(见 core/saveBackup.ts)。
-     */
+    /** 上次导出存档的时间戳(0 = 从未导出);备份提醒见 core/saveBackup.ts */
     const lastExportAt = ref(0)
-    /** iOS「添加到主屏幕」那张提示卡被玩家关掉过(关掉即不再出现,只劝一次) */
+    /** iOS「添加到主屏幕」提示卡被玩家关掉过(关掉即不再出现) */
     const installNoticeDismissed = ref(false)
 
-    /**
-     * 该不该亮「新版本/未读发布说明」:当前版本更新于上次看过的那版时成立。
-     * 首条只当真——发布说明里确实有当前版本才成立,否则版本号吹了牛,圆圈也是空楼。
-     */
+    /** 该不该亮「新版本/未读发布说明」:当前版本更新于上次看过的那版,且发布说明里确实有当前版本 */
     const hasUnseenRelease = computed(
       () =>
         RELEASE_NOTES.some(n => compareVersions(n.version, APP_VERSION) === 0) &&
         compareVersions(APP_VERSION, lastSeenVersion.value) > 0
     )
 
-    /** 打开过发布说明:把「已看到的最新版」记成当前版本,新标记随之熄灭 */
+    /** 打开过发布说明:记成当前版本,新标记随之熄灭 */
     function markReleaseSeen(): void {
       lastSeenVersion.value = APP_VERSION
     }
 
-    /** 存档修复:设置项被写坏会让音量/战斗速度算出 NaN,或让主题类名失效 */
     function sanitize(): void {
-      // 音量是 0~100 的整数,不是 0~1 —— 别照搬比例类的写法
       musicVol.value = Math.min(100, asFiniteNumber(musicVol.value, 50, 0))
       sfxVol.value = Math.min(100, asFiniteNumber(sfxVol.value, 70, 0))
       if (![1, 2, 4].includes(battleSpeed.value)) battleSpeed.value = 1
       if (!['auto', 'light', 'dark'].includes(theme.value)) theme.value = 'auto'
       dndEvents.value = dndEvents.value === true
-      // 布尔开关与 dndEvents/installNoticeDismissed 同理:损坏档里一旦混入字符串("false")/数字(1),
-      // 不清洗就会以真值存活 —— musicOn/sfxOn 永远静不了音、reduceMotion 永远卡在减动效、
-      // privacyAccepted 让没同意隐私的玩家被当成已同意直接跳过。一律 ===true 归一。
+      // 布尔开关一律 ===true 归一:损坏档里混入的字符串("false")/数字(1)会以真值存活
       sfxOn.value = sfxOn.value === true
       musicOn.value = musicOn.value === true
       reduceMotion.value = reduceMotion.value === true
@@ -107,11 +86,7 @@ export const useSettingsStore = defineStore(
       const sk = asRecord<unknown>(smartKeep.value)
       smartKeep.value = {
         enabled: sk.enabled === true,
-        /**
-         * 品质线必须是真实存在的 rank:坏档写成 99 时没有一件装备达线,
-         * 智能收纳又会把未达线的裸件静默化尘 —— 玩家会以为掉落没了。
-         * 认不出的值回落默认「灵品」,与首次进入游戏的设置同一档。
-         */
+        /** 品质线须是真实存在的 rank:坏档写成 99 时没有一件装备达线,未达线的裸件被静默化尘;认不出回落默认「灵品」 */
         minQuality: (() => {
           const v = Math.floor(asFiniteNumber(sk.minQuality, 3, 0))
           return QUALITIES.some(q => q.rank === v) ? v : 3

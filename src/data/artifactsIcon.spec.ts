@@ -18,8 +18,7 @@ import { ICONS } from '@/ui/icons'
 
 describe('法宝图标', () => {
   it('全部法宝的图标键都已注册,没有死键', () => {
-    // 直接在注册表里查成员 —— iconOf 会兜底成 Sparkles、永不抛错,
-    // 包在 try/catch 里等于永远测不出死键(会静默掉成四角星)。
+    // 须直接查注册表:iconOf 兜底成 Sparkles、永不抛错,try/catch 测不出死键
     const dead = ARTIFACTS.filter(a => !(a.icon in ICONS)).map(a => `${a.id}:${a.icon}`)
     expect(dead, '以下法宝的图标键未注册').toEqual([])
   })
@@ -42,8 +41,7 @@ describe('法宝图标', () => {
     expect(artifactDef('af_xuantian')?.icon, '玄天镜 → 圆镜').toBe('mirror-round')
     expect(artifactDef('af_taixu')?.icon, '太虚镜 → 方镜').toBe('mirror-rectangular')
     expect(artifactDef('af_zhenyue')?.icon, '镇岳印 → 印').toBe('stamp')
-    // 幽冥幡走「阴风摄魂」而非「旗」:幡面之下是亡魂,不是战阵;
-    // 真灵幡(af_zhenlingfan)才用旗 —— 两面幡靠这一层分家。
+    // 幽冥幡取幽魂而非旗;旗归真灵幡,两面幡靠此分家
     expect(artifactDef('af_youming')?.icon, '幽冥幡 → 幽魂').toBe('ghost')
     expect(artifactDef('af_zhenlingfan')?.icon, '真灵幡 → 旗').toBe('flag')
     expect(artifactDef('af_shenyuling')?.icon, '神域令旗 → 令旗').toBe('flag-triangle-right')
@@ -56,8 +54,6 @@ describe('法宝图标', () => {
   })
 
   it('同名的另一件不同图:两个「镜」、两个「幡」、两个「钟」各走各的路', () => {
-    // 「同槽清一色」的老毛病在装备那边已经修过(见 equipmentIcon.spec);
-    // 法宝这边名字本就各不相同,撞图只说明写表的人没看图 —— 这里按住三组反例。
     const mirrors = ['af_xuantian', 'af_taixu'].map(id => artifactDef(id)?.icon)
     const banners = ['af_youming', 'af_zhenlingfan'].map(id => artifactDef(id)?.icon)
     const bells = ['af_hundun', 'af_shenzhong'].map(id => artifactDef(id)?.icon)
@@ -68,14 +64,8 @@ describe('法宝图标', () => {
 })
 
 /**
- * 法宝位的**顺序**也是信息 —— 玩家照着槽位做决定,做的必须是那件事。
- *
- * 槽满时替下「最早祭炼的一件」(列表第一件)。界面从前拿「品质降序的法宝行」
- * 过滤出已佩带者来画槽位:高品阶的件永远画在第一格,而实际先让位的可能是另一件。
- * 提示条写「替下最早祭炼的一件」,被替下的却画在第二格 —— 换件像掷骰子。
- *
- * 故障注入:把 `artifactSlotViews` 改回按品质排序(或让 `artifactEvictedBy`
- * 返回末件),下面两条各自转红。
+ * 法宝位顺序:槽满时替下最早祭炼的一件(列表第一件),第一格须画它。
+ * 故障注入:槽位按品质升/降序、库存顺序或旧画法(品质→祭炼→名字)摊格,或 `artifactEvictedBy` 返回末件,各至少一条红。
  */
 describe('法宝位 · 画出来的第一格就是要让位的那一件', () => {
   /** 故意让「后佩带的」品质更高:旧画法会把它排到第一格,而替下的仍是先佩带的那件 */
@@ -102,19 +92,12 @@ describe('法宝位 · 画出来的第一格就是要让位的那一件', () => 
   })
 
   /**
-   * 超编的列表让位的是**前端几件**, 按钮得照实全念出来。
-   *
-   * 境界跌落(元婴位没了), 未经 sanitize 的内存直塞, 都能让佩带列表**本来就超编**。
-   * 替换分支会一路裁到 `slots`, 前端几件一起让位。
-   *
-   * 故障注入: 把 `artifactEvictedBy` 改回只返回 `equipped[0]`
-   * (单件), 本条必红 —— 那样按钮只点名了一件,
-   * 而真正被替下的是两件。
+   * 境界跌落、未经 sanitize 的内存直塞都能让佩带列表超编;替换分支裁到 `slots`,前端几件一起让位。
+   * 故障注入:把 `artifactEvictedBy` 改成只返回 `equipped[0]`,本条红。
    */
   it('列表超编时,让位的前端几件要全部报出来', () => {
     expect(artifactEvictedBy(['af_muyu', 'af_lihuo'], 1)).toEqual(['af_muyu', 'af_lihuo'])
     expect(artifactEvictedBy(['af_muyu', 'af_lihuo', 'af_xuantian'], 2)).toEqual(['af_muyu', 'af_lihuo'])
-    // 未超编(正好满格)时让位的只是最早那一件
     expect(artifactEvictedBy(['af_muyu', 'af_xuantian'], 2)).toEqual(['af_muyu'])
   })
 

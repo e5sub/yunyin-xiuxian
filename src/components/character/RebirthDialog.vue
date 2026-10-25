@@ -1,5 +1,4 @@
 <template>
-  <!-- 轮回弹窗(自 CharacterView 迁入;逆旅契的「立契」入口在轮回弹窗内,两浮层同宿主不拆散) -->
   <BaseModal :open="open" title="轮回" @close="emit('close')">
     <p class="flex justify-between text-[12px]">
       <span class="text-ink-soft">
@@ -24,7 +23,7 @@
           : ''
       }}
     </p>
-    <!-- 逆旅契:道果的第一个消费出口。花道果换一世逆境,回报只有履历 -->
+    <!-- 逆旅契:花道果换一世逆境,回报只有履历 -->
     <p class="mt-2 flex items-center justify-between text-[12px]">
       <span class="text-ink-soft">
         逆旅契
@@ -46,7 +45,6 @@
 
     <div class="mt-2">
       <div class="flex flex-wrap gap-1.5">
-        <!-- 天赋效果不再只藏 hover:点一下芯片,下面展开一行说明(手机上看得见才算数) -->
         <button
           v-for="t in ownedTalents"
           :key="t!.id"
@@ -192,14 +190,7 @@
   import { formatPercent } from '@/utils/format'
   import BaseModal from '@/components/common/BaseModal.vue'
 
-  /**
-   * 轮回弹窗(含逆旅契弹窗,同一宿主)。
-   *
-   * 自 CharacterView 迁入:轮回弹窗里的「立契」按钮是逆旅契弹窗的唯一出处,
-   * 两个浮层拆到两处文件就成了「出处不在一起」—— 沿用 ReincarnationDialog
-   * 一个文件宿多个 BaseModal 的先例,弹窗自己的状态(talentTap / heritageOpen /
-   * trialOpen / pendingTrial)也一并随迁,关弹窗复位的行为不变。
-   */
+  /** 轮回弹窗及其子弹窗(去留一览、逆旅契、立契确认):入口都在本弹窗内,同一文件 */
   const props = defineProps<{ open: boolean }>()
   const emit = defineEmits<{ close: [] }>()
 
@@ -207,21 +198,21 @@
   const ui = useUiStore()
   const stats = computed(() => player.finalStats)
 
-  /** S3 道果链路:有效收益与软上限白话 */
+  /** 道果有效收益与当前加成 */
   const fruitInfo = computed(() => fruitMarginalInfo())
   const ownedTalents = computed(() => player.reincarnation.talents.map(id => talentDef(id)).filter(t => t !== undefined))
   const ownedHeritage = computed(() => player.reincarnation.heritage.map(id => heritageDef(id)).filter(d => d !== undefined))
 
-  /** 转世去留一览:展开态由玩家决定;行取自 HERITAGE 同表,见 ui/rebirthText */
+  /** 转世去留一览弹窗:行取自 HERITAGE 同表(见 ui/rebirthText),与结算弹窗同源 */
   const heritageOpen = ref(false)
   const heritageRowsView = computed(() => heritageViewRows())
   const heritageKeepRows = computed(() => heritageRowsView.value.filter(r => r.mode !== 'reset'))
   const heritageResetRows = computed(() => heritageRowsView.value.filter(r => r.mode === 'reset'))
   const keepCount = computed(() => heritageKeepRows.value.length)
   const resetCount = computed(() => heritageResetRows.value.length)
-  /** 兵解提示是纯常量文案(rebirthDecisionHint 无依赖),setup 只算一次 */
+  /** 纯常量文案,setup 只算一次 */
   const rebirthHint = rebirthDecisionHint()
-  /** 天赋芯片点按展开(移动端无 hover,效果说明内联显示);关弹窗复位 */
+  /** 天赋芯片点按展开说明(移动端无 hover);关弹窗复位 */
   const talentTap = ref<string | null>(null)
   const tappedTalent = computed(() => (talentTap.value ? talentDef(talentTap.value) : undefined))
   watch(
@@ -237,7 +228,7 @@
   const trialOpen = ref(false)
   /** 本世已立的逆旅契;未立为 null */
   const signedTrial = computed(() => activeLifeTrial())
-  // 待确认的契:点卡只进这层,确认弹窗通过后才会真的 signLifeTrial —— 不可逆,先给反悔
+  // 待确认的契:确认后才 signLifeTrial(不可逆)
   const pendingTrial = ref<LifeTrialDef | null>(null)
   function requestTrial(id: string): void {
     const def = LIFE_TRIALS.find(t => t.id === id)

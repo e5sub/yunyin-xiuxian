@@ -10,7 +10,6 @@
         纪元变迁史 →
       </button>
     </div>
-    <!-- 今昔之比:与过去的自己对话 -->
     <div v-if="legacy.length" class="card-ink mt-2 px-4 py-3">
       <p class="mb-1.5 font-kai text-[12px] tracking-[0.3em] text-ink-faint">今昔之比</p>
       <div v-for="lc in legacy" :key="lc.targetName" class="mb-2 last:mb-0">
@@ -24,8 +23,7 @@
       </div>
     </div>
     <div v-if="endgame.marks.length" class="card-ink mt-2 max-h-64 divide-y divide-ink/6 overflow-y-auto px-4">
-      <!-- 行键按痕本身(落痕时刻 + 目标 + 世数):新痕插头部时,旧行仍认得出自己,
-           确认态不跟着行号错位 -->
+      <!-- 行键按痕本身:新痕插头部,用行号会让确认态错位 -->
       <div
         v-for="mark in endgame.marks"
         :key="`${mark.at}|${mark.targetId}|${mark.life}`"
@@ -55,7 +53,7 @@
         >
           忆
         </button>
-        <!-- 重写要花道源,代价内联在按钮上(不再是 hover 专属),触控面放大,并加一步确认 -->
+        <!-- 重写花道源:代价写在按钮上(不靠 hover),二步确认 -->
         <template v-if="mark.cleared && mark.replay && rewriteConfirm === mark">
           <button
             class="shrink-0 min-h-[28px] rounded border border-cinnabar/50 bg-cinnabar/10 px-2 py-1 font-kai text-[10px] text-cinnabar active:scale-90"
@@ -126,24 +124,17 @@ import BaseModal from '@/components/common/BaseModal.vue'
 import type { ReportView } from '@/components/celestial/BattleReportDialog.vue'
 
 /**
- * 道痕面板 —— 历世履历 / 今昔之比 / 忆战与重写 / 规则纪元变迁。
- *
- * 自 CelestialView 拆出:这一册只读 endgame.marks 与本册自己的两个浮层状态,
- * 宿主不再代管 rewriteConfirm 与纪元弹窗。战报仍由宿主统一 openReport 判定归因,
- * 故这里只 emit('report'),不自己拼 foeOriginLines。
+ * 道痕面板:历世履历 / 今昔之比 / 忆战与重写 / 规则纪元变迁。
+ * 战报只 emit('report'),由宿主 openReport 统一判定归因,不自己拼 foeOriginLines。
  */
 const emit = defineEmits<{ report: [ReportView] }>()
 const endgame = useEndgameStore()
-/**
- * 在途判据(远征/秘境/历练):忆战与重写都要独占一项在途终局活动,
- * 核心(replayMark / rewriteMark)本就会拒 —— 但按钮若一直亮着,玩家只能靠
- * 一次点击换来一句「远征在途」。这里把同一份判据(含同一句拒因)前置到按钮上。
- */
+/** 在途判据(远征/秘境/历练):与 replayMark / rewriteMark 同一份判据与拒因,前置到按钮 */
 const busy = computed(() =>
   endgameBusy(endgame.worldRun, usePlayerStore().secretRealm, useAdventureStore().session)
 )
 
-// ---- 忆战:与过去的自己重临此界 ----
+// ---- 忆战 ----
 function goReplay(mark: (typeof endgame.marks)[number]): void {
   const result = replayMark(mark)
   if (result) {
@@ -157,14 +148,10 @@ function goReplay(mark: (typeof endgame.marks)[number]): void {
   }
 }
 
-// ---- 重写此痕:以今日之你,快过当年 ----
+// ---- 重写此痕 ----
 /**
- * 重写确认态(按道痕这一条本身,不按行号)。
- *
- * 道痕表是「新痕插在头部」,而重写本身就会补一条新痕 —— 若按行号记,
- * 列表一变(重写、远征归来、切页后重新读档)确认态就会落到**另一条**道痕上,
- * 玩家点「确认重写」时花的是那条的道源,不是他挑的那条。
- * 记对象引用:同一条痕在列表里挪位也认得出,列表重建则自动回落未武装。
+ * 重写确认态:记道痕对象引用,不记行号(新痕插头部,重写本身也补一条新痕)。
+ * 列表重建则自动回落未武装。
  */
 const rewriteConfirm = ref<(typeof endgame.marks)[number] | null>(null)
 function goRewrite(mark: (typeof endgame.marks)[number]): void {
@@ -186,7 +173,7 @@ function doRewrite(mark: (typeof endgame.marks)[number]): void {
 
 const legacy = computed(() => legacyComparisons(endgame.marks))
 
-// 规则纪元:旧纪道痕为何与今日不可同日而语(纪元变迁史同出一源,视图不手抄)
+// 规则纪元:变迁史同出一源,视图不手抄
 const eraOpen = ref(false)
 const eraMark = ref<(typeof endgame.marks)[number] | null>(null)
 const eraChanges = computed(() => (eraMark.value ? rulesetChangesSince(eraMark.value.ruleset) : RULESET_CHANGELOG))

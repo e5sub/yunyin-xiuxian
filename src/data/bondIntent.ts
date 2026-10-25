@@ -1,31 +1,9 @@
 /**
- * 道侣的意图(Phase 34.1)
+ * 道侣的意图
  *
- * ## 34.0 留下的架构问题
- *
- * 34.0 的链路是「世界情境 → 事件出现 → 她在事件里说话」——
- * 这是**世界安排了两个人同时遇到某件事**。
- *
- * 而「她忽然停下,说想去看看前面的路」属于另一件事:
- * **NPC 自己产生意图,然后主动制造接触。**
- *
- * 两者不能共用 triggers,否则会做出假主动:
- *
- *   世界检测到她有个想法 → 世界找一个合适情境 → 她开口
- *
- * 玩家看着像主动,实际仍是引擎主动。
- *
- * ## 真主动的判据:意图的产生不依赖世界情境
- *
- * 意图只由**她自己的经历**催生:共历了什么、你怎么对她、
- * 她未了的事有没有进展。世界情境不决定她有没有这个想法,
- * 只有她自己决定。她想说的时候就会说 —— 不必等世界给位置。
- *
- * ## 不用阈值
- *
- * `trust >= 50 → 主动事件` 会把人重新塞回数值数据库。
- * 这里的酝酿度由**发生了什么**累加,不看当前关系值:
- * 同样的信任,经历不同,她未必开口;经历对了,信任不高她也可能说。
+ * 意图只由道侣自己的经历催生(共历了什么、你怎么对道侣、道侣未了的事有没有进展),
+ * 不依赖世界情境;不能与共同事件共用 triggers,否则会做出假主动。
+ * 酝酿度由发生了什么累加,不看当前关系值,不用阈值。
  */
 import type { BondStage, DaoluDef, Temperament } from '@/data/daolu'
 
@@ -33,11 +11,11 @@ import type { BondStage, DaoluDef, Temperament } from '@/data/daolu'
 export type IntentSpark =
   /** 又一次并肩走过险路 */
   | 'shared'
-  /** 你在关键处站在她那边 */
+  /** 你在关键处站在道侣那边 */
   | 'supported'
-  /** 你越过了她的底线 */
+  /** 你越过了道侣的底线 */
   | 'crossed'
-  /** 与她未了之事相关的东西出现了 */
+  /** 与道侣未了之事相关的东西出现了 */
   | 'omen'
 
 export const SPARK_NAMES: Record<IntentSpark, string> = {
@@ -60,7 +38,7 @@ export const SPARK_WEIGHT: Record<IntentSpark, number> = {
   omen: 0.35
 }
 
-/** 性格决定她多久才肯开口 —— 谨慎的人憋得更久 */
+/** 性格决定道侣多久才肯开口 */
 export const TEMPER_RESERVE: Record<Temperament, number> = {
   cautious: 1.35,
   frugal: 1.15,
@@ -70,13 +48,12 @@ export const TEMPER_RESERVE: Record<Temperament, number> = {
 
 /** 一个正在酝酿或已提出的意图 */
 export interface BondIntent {
-  /** 由哪个道侣产生 */
   daoluId: string
-  /** 她想做的那件事(由 pursuit 生成) */
+  /** 道侣想做的那件事(由 pursuit 生成) */
   wish: string
-  /** 她说出口时的那句话 */
+  /** 道侣说出口时的那句话 */
   line: string
-  /** 酝酿度 0~1;满了她就会开口 */
+  /** 酝酿度 */
   ripeness: number
   /** 催生它的那些经历,按发生顺序 */
   sparks: IntentSpark[]
@@ -84,7 +61,7 @@ export interface BondIntent {
   raised: number
   /** 玩家历次回应 */
   responses: IntentResponse[]
-  /** 已了结:她做成了、放弃了,或你替她了了 */
+  /** 已了结:道侣做成了、放弃了,或你替道侣了了 */
   settled: boolean
 }
 
@@ -128,16 +105,9 @@ export function intentFor(def: DaoluDef): { wish: string; line: string } {
   }
 }
 
-/**
- * 她此刻会不会开口。
- *
- * **不看关系值** —— 只看酝酿够不够、有没有已经在说的、是否已了结。
- * 这是「她自己是事件的来源」的技术含义:
- * 提出与否只由她自己的状态决定,不需要世界给一个情境位
- */
+/** 道侣此刻会不会开口:不看关系值,只看酝酿够不够、是否已了结 */
 export function willSpeak(intent: BondIntent | null, temper: Temperament): boolean {
   if (!intent || intent.settled) return false
-  // 被忽略过之后,她开口的门槛会提高 —— 说了没人应,下次就更难开口
   const ignored = intent.responses.filter(r => r === 'ignore').length
   const bar = TEMPER_RESERVE[temper] * (1 + ignored * 0.4)
   return intent.ripeness >= bar
@@ -151,7 +121,7 @@ export function sparkDelta(spark: IntentSpark, temper: Temperament): number {
   return base * TEMPER_RESERVE[temper]
 }
 
-/** 回应之后她怎么变 —— 结果反过来改变她的状态 */
+/** 回应之后道侣怎么变 */
 export interface IntentAftermath {
   /** 关系三维的变化 */
   fate: number
@@ -159,7 +129,7 @@ export interface IntentAftermath {
   accord: number
   /** 意图是否就此了结 */
   settled: boolean
-  /** 她的反应 */
+  /** 道侣的反应 */
   text: string
 }
 
@@ -175,7 +145,6 @@ export function respondTo(def: DaoluDef, intent: BondIntent, response: IntentRes
     }
   }
   if (response === 'refuse') {
-    // 回绝伤人,但她知道你听见了
     return {
       fate: 2,
       trust: -8,
@@ -203,5 +172,5 @@ export function respondTo(def: DaoluDef, intent: BondIntent, response: IntentRes
   }
 }
 
-/** 意图能出现的最低关系阶 —— 不是阈值触发,只是「还不熟就不会说这种话」 */
+/** 意图能出现的最低关系阶 —— 不是阈值触发 */
 export const INTENT_MIN_STAGE: BondStage = 'together'

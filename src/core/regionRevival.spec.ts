@@ -134,14 +134,7 @@ describe('妖气复聚(regionRevival)', () => {
     expect(adventure.cleared).not.toContain(id)
   })
 
-  /**
-   * 松闸看的也是**那一片地方**的钟,不是镇压表另起的一把。
-   *
-   * 从前 suppress.settleSuppressedRegions 按 suppressedSince 判满 72h 就解镇压:
-   * 玩家今天还在那片打怪(regionStats.lastUpdateAt 是刚才),镇压却按更早的镇压
-   * 时刻被收了回去 —— 明明一直在守,收益却被判「久无人烟」。故障注入:松闸改回
-   * isReviving(player.suppressedSince[...]) → 本条红。
-   */
+  // 故障注入:松闸改回 isReviving(player.suppressedSince[...]) → 本条红
   it('镇压满 72h 但今天仍在那片战斗:不松闸(钟取最后一次打交道)', () => {
     const adventure = useAdventureStore()
     const player = usePlayerStore()
@@ -163,16 +156,7 @@ describe('妖气复聚(regionRevival)', () => {
     expect(adventure.revived).not.toContain(id)
   })
 
-  /**
-   * 旧主归来 = 首领该复出 —— 哪怕这处地界在本世路线上。
-   *
-   * markRevived 只收掉旧链 cleared 与起钟,本世路线节点 mortalCleared **不动**
-   * (那个节点还扛着后续路段的可达性,撤掉会把整条路线重新锁死)。于是
-   * regionBossCleared 必须自己补问一次 revived:路线内的区域复聚后,首领判定
-   * 要回到「未靖」,runBattle 才会再召出旧主,玩家读到的「再历一程即可复靖」
-   * 才兑现。此前它只看 mortalCleared,复聚后那条路线节点仍算已通 ——
-   * 旧主永不再现,界面上却挂着「妖气复聚 · 再历一程即可复靖」。
-   */
+  /** markRevived 不动 mortalCleared(撤掉会把整条路线重新锁死);regionBossCleared 须自己补问 revived */
   it('复聚后首领判定转回未靖:路线内区域的本世节点仍通,也不再算「已靖」(首领复出)', () => {
     vi.setSystemTime(T0)
     const adventure = useAdventureStore()

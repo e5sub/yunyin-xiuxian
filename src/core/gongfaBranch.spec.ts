@@ -1,6 +1,4 @@
-/**
- * Phase 31.0 A3:功法悟道分支 —— 满级后择一,改变成长方向
- */
+/** 功法悟道分支:满级后择一 */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useCultivationStore } from '@/stores/cultivation'
@@ -30,7 +28,6 @@ describe('功法悟道分支(gongfaBranch)', () => {
     for (let i = 0; i < 9; i++) cul.upgrade('m_taixuan') // 1 + 9 = 10 层(>= maxLevel 9)
     const ok = cul.chooseBranch('m_taixuan', 'b_taixuan_sha')
     expect(ok).toBe(true)
-    // 分支词条(attackPct +0.1, damageBonus +0.05)已并入
     expect(modOf(cul.gongfaMods, 'attackPct')).toBeCloseTo(0.1, 5)
     expect(modOf(cul.gongfaMods, 'damageBonus')).toBeCloseTo(0.05, 5)
   })
@@ -52,17 +49,10 @@ describe('功法悟道分支(gongfaBranch)', () => {
   })
 })
 
-/**
- * 「可悟道」不得虚指。
- *
- * 曾经界面只判满级就挂出「可悟道」,而全书三十余部功法里只有三部写了分支——
- * 玩家练满其余任意一部,都会看到一个点开即空的提示,这正是「不知道什么意思、也没法悟道」的由来。
- * 判据自此收归 canEnlighten 一处,下面这几条守着它别再散开。
- */
+/** 「可悟道」不得虚指(满级却无分支可选);判据只在 canEnlighten 一处 */
 describe('悟道提示与实际可选项同源', () => {
   it('全书功法尽数写有分支,练满哪一部都真能悟道', () => {
-    // Phase 32.4 补全前只有三部写了分支,其余练满都是空头支票。
-    // 这条守的是「全书无遗漏」,新增功法若忘了配分支,会在此处被拦下。
+    // 新增功法忘配分支,此处红
     for (const def of GONGFA) {
       expect(branchesFor(def.id).length, `${def.name} 没有悟道分支`).toBeGreaterThanOrEqual(2)
       expect(canEnlighten(def.id, def.maxLevel), `${def.name} 满级却不可悟道`).toBe(true)
@@ -105,22 +95,15 @@ describe('悟道提示与实际可选项同源', () => {
 })
 
 /**
- * Phase 32.4 分支平衡审计。
- *
- * 分支给多少不该拍脑袋,标尺取自游戏已有的词条经济:每个词条在 data/affixes.ts 里
- * 都有一档最低值(如 attackPct 最低档 2%),记作一个「词条单位」;
- * 一条分支的份量 = 各词条值 ÷ 各自单位,再相加。
- *
- * 标尺随词条池一起演化,不是另写一张会与数据脱节的权重表。
- * 它对发育向词条(修炼速度、灵气)的估值偏保守 —— 这类词条的真实价值随进度浮动,
- * 装备档位量不出来,所以下面的比值阈值留了余量,不追求小数点上的精确。
+ * 分支平衡审计。标尺取自 data/affixes.ts:各词条最低档记作一个「词条单位」(如 attackPct 2%),
+ * 分支份量 = Σ 词条值 ÷ 各自单位。发育向词条(修炼速度、灵气)估值偏保守,比值阈值留了余量。
  */
 describe('悟道分支平衡审计', () => {
   /** 各词条在装备池里的最低档(单位)与最高档(封顶),已换算为 StatMods 的小数口径 */
   const SCALE = (() => {
     const out = new Map<string, { unit: number; cap: number }>()
     for (const a of AFFIXES) {
-      // 装备词条以百分数书写(2 表示 2%),分支词条以小数书写(0.02),故除以 100 对齐
+      // 装备词条为百分数(2 即 2%),分支词条为小数(0.02)
       const min = a.min / 100
       const max = a.max / 100
       const cur = out.get(a.key)

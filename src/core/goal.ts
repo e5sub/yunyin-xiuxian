@@ -1,18 +1,4 @@
-/**
- * Phase 29 修行目标 —— 给玩家"现在应该干什么"的轻量上下文
- *
- * 核心原则:
- * - 给方向,不替玩家做决定
- * - 不引入新资源/新系统,只复用现有状态
- * - 从前期教学自然过渡到 Build 游戏
- *
- * 类型:
- * - breakthrough  修为接近突破 → 小进阶「尝试突破」/ 大关「引劫突破」
- * - equipment     装备槽有空位 → "寻一件XX法器"
- * - explore       区域未涉足   → "深入XX"
- * - material      材料不足     → "采集XX"
- * - build         流派未成形   → "凑出XX流" (中期核心目标)
- */
+/** 修行目标:给玩家"现在应该干什么"的轻量上下文;只复用现有状态,不引入新资源/新系统 */
 import { usePlayerStore } from '@/stores/player'
 import { useAdventureStore } from '@/stores/adventure'
 import { useResourcesStore } from '@/stores/resources'
@@ -32,18 +18,13 @@ export type GoalType = 'breakthrough' | 'equipment' | 'explore' | 'material' | '
 export interface Goal {
   type: GoalType
   text: string
-  /** 进度(0~1),可选 */
+  /** 进度 0~1 */
   progress?: number
-  /** 建议下一步(可选) */
+  /** 附带读数:临近突破的灵气缺口 / 流派已凑核心数 */
   hint?: string
 }
 
-/**
- * 实体装备槽(排除 artifact —— 法宝是独立系统 equippedArtifacts,装备模板从不落此槽,
- * 见 equipGen.generateEquipment 的 t.slot !== 'artifact')。按有意义的优先级排列:
- * 武器占攻、衣袍护身居先;灵符是真槽(有整套模板),一并纳入。
- * 空槽扫描按此顺序挑第一个,保证建议具体且不来回跳。
- */
+/** 实体装备槽,不含 artifact(法宝走 equippedArtifacts);顺序即空槽提示优先级 */
 const GEAR_SLOTS = EQUIP_SLOTS
 
 /**
@@ -80,10 +61,8 @@ function breakthroughNearHint(needTribulation: boolean, qiShort: number): string
 
 /** 纯函数:根据玩家状态生成当前目标 */
 export function generateCurrentGoal(player: ReturnType<typeof usePlayerStore>): Goal | null {
-  // 1. 死后无目标
   if (player.dead) return null
 
-  // 2. 修为接近突破(最高优先级)。大道尽头没有下一境,不硬塞突破。
   if (!player.atMaxRealm && player.expProgress >= 0.5) {
     const near = player.expProgress >= 0.85
     const info = breakthroughInfo()
@@ -97,12 +76,10 @@ export function generateCurrentGoal(player: ReturnType<typeof usePlayerStore>): 
     }
   }
 
-  // 3. 检测 Build 完整度(中期核心目标)
   const build = detectBuild(player.finalStats.mods)
   if (build) {
     const style = build.style.name
-    // 分母是流派真正的核心词条数(2 或 3),不是写死的 4 —— 否则 2 键/3 键流派
-    // 满筑也到不了 100%,这个中期目标结构性永不完成
+    // 分母取流派真实核心词条数(2 或 3),写死 4 则满筑也到不了 100%
     const core = build.coreValues.length
     const coreTotal = Object.keys(build.style.core).length
     return {
@@ -113,9 +90,7 @@ export function generateCurrentGoal(player: ReturnType<typeof usePlayerStore>): 
     }
   }
 
-  // 4. 低优先级:历练/材料/装备(未涉足且可入的地界向前,推前线推进永远优先;
-  //    材料与装备同门 —— 供应/装填补缺 —— 都只在"已通关过至少一地界"后才提示,
-  //    免得开局就叠在 explore 上重复"去历练"。)
+  // 历练优先于材料/装备;材料与装备只在已通关过至少一地界后提示,免与 explore 重复
   const adventure = useAdventureStore()
   const nextRegion = REGIONS.find(r => adventure.unlocked.includes(r.id) && !adventure.cleared.includes(r.id))
   if (nextRegion) {
@@ -127,12 +102,9 @@ export function generateCurrentGoal(player: ReturnType<typeof usePlayerStore>): 
   }
   const hasClearedAny = adventure.cleared.length > 0
 
-  // 5. 材料不足 → 采集:灵草见底便指向最高层级的已通关地界(取材收益最大)。
-  //    材料在装备之前 —— 断粮卡丹方是"阻断",空槽是"可选的战力余量"。
-  //    判缺按「实际采得到的那一品」:采集只出最高已通关地界的品(loot 按地界给品,
-  //    见 loot.ts:267)。报当前大境界品不总是对得上 —— world-break 后最高已通关
-  //    地界常低于当前大境界,按当前品判缺会推荐「采不出所需之品」的假方子。
-  //    以地界品判缺,建议自洽(照旧不读跨品总和:旧品炼不了此刻的丹方,仍会掩盖断粮)。
+  // 材料先于装备:断粮卡丹方是阻断,空槽只是战力余量。
+  // 判缺按最高已通关地界的品(loot 按地界给品,见 loot.ts):world-break 后它常低于当前大境界,
+  // 按当前品判缺会推荐采不出的品。不读跨品总和(旧品会掩盖断粮)。
   const resources = useResourcesStore()
   const best = hasClearedAny
     ? [...REGIONS].filter(r => adventure.cleared.includes(r.id)).sort((a, b) => b.tier - a.tier)[0]
@@ -147,7 +119,6 @@ export function generateCurrentGoal(player: ReturnType<typeof usePlayerStore>): 
     }
   }
 
-  // 6. 装备槽有空位 → 寻法器:指第一个空槽,进度 = 已填槽占比(填满即自解)。
   const inventory = useInventoryStore()
   const emptySlot = GEAR_SLOTS.find(slot => !inventory.equipped[slot])
   if (hasClearedAny && emptySlot) {

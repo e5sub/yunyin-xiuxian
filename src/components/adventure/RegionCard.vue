@@ -5,11 +5,8 @@
     :class="{ 'opacity-70': !row.canEnter, '!border-gold-ink/30 bg-gold-ink/5': row.suppressed }"
   >
     <!--
-      第一行只放「图标 + 名字 + 标签 + 一个短动作」。
-
-      产出速率、守土时长、复聚倒计时这些**长信息一律下移成整行** —— 从前它们和名字挤在同一行,
-      右侧那一列 `shrink-0` 把左边的名字压到只剩一个字宽,「青云山麓」当场变成竖排,
-      标签还会盖到产出字上(无头浏览器量的「横向溢出」抓不到这种挤压:它不溢出,只是挤)。
+      第一行只放图标 + 名字 + 标签 + 一个短动作。
+      长信息(产出速率 / 守土时长 / 复聚倒计时)一律下移成整行:同排会把名字挤成竖排,且横向溢出检测抓不到。
     -->
     <div class="flex items-start gap-3">
       <span
@@ -19,13 +16,13 @@
         <GameIcon :name="row.suppressed ? 'shield-check' : row.canEnter ? row.def.icon : 'lock'" :size="18" />
       </span>
       <div data-region-head class="min-w-0 grow">
-        <!-- 标签与名字同排但**可换行**:窄屏上宁可标签绕到下一行,也不许把名字挤成竖排 -->
+        <!-- 标签可换行,不挤名字 -->
         <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span data-region-name class="font-kai text-[15px] tracking-wider text-ink">{{ row.def.name }}</span>
           <span v-if="row.suppressed && !row.revived" class="chip-ink border-gold-ink/60 text-[9px] text-gold-ink">已镇压</span>
           <span v-else-if="row.revived" class="chip-ink border-cinnabar/60 text-[9px] text-cinnabar">妖气复聚</span>
           <span v-else-if="row.cleared" class="chip-ink border-jade/60 text-[9px] text-jade">已靖</span>
-          <!-- 世界记忆(Phase 30.9):区域兴衰状态 -->
+          <!-- 区域兴衰 -->
           <span
             v-if="recall.prosperity !== 'chaos'"
             class="chip-ink text-[9px]"
@@ -52,10 +49,7 @@
           此地之敌:{{ foeOriginPartsText(row.foeOrigin) }}
         </p>
       </div>
-      <!--
-        已通关的地界仍可再历 —— 「已靖」只是标记,不是封路。
-        首领已清之后进去仍能刷杂兵、拾遗、碰机缘
-      -->
+      <!-- 「已靖」只是标记,不封路 -->
       <button
         v-if="row.canEnter && !row.suppressed"
         data-region-action
@@ -66,10 +60,7 @@
       </button>
     </div>
 
-    <!--
-      镇压中的产出条:整行铺开、可换行。
-      速率放在这里而不是右上角,长数字(1.2 亿灵石每小时 · 玄铁 12/时)才有地方舒展
-    -->
+    <!-- 镇压中的产出条:整行、可换行,长数字才放得下 -->
     <div
       v-if="row.suppressed"
       data-region-action
@@ -77,23 +68,15 @@
       class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-gold-ink/10 px-2.5 py-1.5"
     >
       <span class="text-[11px] text-gold-ink tabular">自动产出 · {{ rateText }}</span>
-      <!-- 镇压也在掉装备,阶位照旧取 region.tier(与 generateEquipment 同源);
-           nowrap 同上:320 窄屏不许「4 阶」被拆成两行 -->
+      <!-- 镇压同样掉装备,阶位同取 region.tier;nowrap 同上 -->
       <span class="whitespace-nowrap text-[10px] text-ink-faint tabular">{{ produceTierText(row.def.tier) }}</span>
-      <!-- 守土之年:守得越久,兴衰越盛,产出随之上浮 -->
       <span class="text-[10px] text-ink-faint tabular">已守 {{ heldText }}</span>
-      <!--
-        镇守道韵与装备成长同属「守久了有什么好处」:从前卡面只讲灵石与物产,
-        玩家看不到「压着这几处」在修为与装备上换来了什么。判据与结算同源
-        (suppressionExpRate),不让卡片自己乘一遍区数 × 8%。
-      -->
       <span v-if="daoText" class="text-[10px] text-azure tabular">道韵 {{ daoText }}</span>
       <span v-if="tenureLuck > 0" class="text-[10px] text-jade tabular">装备气运 +{{ tenureLuck.toFixed(1) }}</span>
-      <!-- 复聚有确定期限,就该有倒计时:否则玩家只会看到镇压某天突然消失 -->
       <span class="text-[10px] tabular" :class="reviveNow <= 12 ? 'text-cinnabar' : 'text-ink-faint'">
         妖气 {{ reviveText(reviveNow) }}后复聚
       </span>
-      <!-- 停取收益是次级动作:放在产出条里,不跟名字抢那一行 -->
+      <!-- 次级动作放产出条里,不占名字那一行 -->
       <button
         class="ml-auto inline-flex min-h-[28px] items-center px-1 text-[10px] text-ink-faint underline underline-offset-2 active:scale-90 active:text-ink"
         @click.stop="emit('toggle-suppress', row.def.id)"
@@ -102,10 +85,7 @@
       </button>
     </div>
 
-    <!--
-      已取得镇压资格、眼前正在历练的地界:转收益的入口与产出同样整行铺开,
-      不去挤右上角那枚「出发」
-    -->
+    <!-- 已取得镇压资格:转收益入口同样整行,不挤「出发」 -->
     <div
       v-else-if="row.canEnter && row.qualified"
       data-region-action
@@ -196,51 +176,34 @@
 
   const props = defineProps<{ row: RegionRow }>()
   const emit = defineEmits<{
-    /** 出发:出行方式弹窗的开关留在宿主,卡片只交出「哪一处」 */
+    /** 出发;出行方式弹窗的开关在宿主 */
     depart: [region: RegionDef]
-    /** 停取收益 / 转为镇压:确认与播报随本体(exchange 由宿主执行) */
+    /** 停取收益 / 转为镇压,由宿主执行 */
     'toggle-suppress': [regionId: string]
   }>()
 
   const player = usePlayerStore()
-  /**
-   * 复聚倒计时与「已守多久」都按墙钟走,得有一枚每秒推进的读数。
-   *
-   * 此前这两处直接调 `Date.now()`,而所在 computed 只依赖 player 的那几个字段 ——
-   * 玩家停在历练页不动时,exp 之类的变化不会让它们重算,倒计时便冻在进页那一刻:
-   * 「妖气 71 时后复聚」可以挂一整天不动,「已守 3 时」也不会长大。
-   */
+  /** 每秒推进的读数:复聚倒计时与已守时长靠它重算,直接调 `Date.now()` 不会触发 computed 重算 */
   const now = useNow()
 
   /** 适配原因点按展开(移动端无 hover) */
   const adaptExpand = ref(false)
 
-  /**
-   * 兴衰随守土时长自己翻档。
-   *
-   * 此前 `recall` 在区域大表里一次性算好,卡片只读那份静态快照 —— 玩家停在
-   * 历练页跨过 6 / 24 小时时,「稳定 / 繁盛」章与产出速率都冻住,直到别处
-   * store 变化或重进页面。现在只让这张卡随每秒游戏钟重算兴衰。
-   */
+  /** 兴衰随 now 就地重算,不读区域大表的静态快照(否则跨 6 / 24 小时不翻档) */
   const recall = computed(() => regionRecallFor(props.row.def.id, now.value))
 
-  /** 产出行文案收进 core/suppress 的单源实现 —— 与「镇压达成」回执共用一份数字 */
+  /** 产出行文案走 core/suppress 的单源实现,与「镇压达成」回执同一份数字 */
   const rateText = computed(() => suppressRateLine(props.row.def.id, recall.value.prosperity))
 
   /**
-   * 复聚剩余小时:整卡里唯一随时间变的一列。
-   * 就地读 now(与 heldText 同依赖),不让每秒一跳的读数拖着地界表整表重算。
-   *
-   * 喂给 hoursUntilRevive 的是**结算用的那一份钟**(regionReviveClock:最后一次
-   * 在当地战斗 / 镇压 / 靖平取最晚),不是单看 suppressedSince。从前这里只给镇压
-   * 时刻,玩家还在守着打的地界会一路倒数到「0 时后复聚」并停在那儿,而结算按
-   * 最后一次战斗判「还早」—— 倒计时与真实期限当场分叉。
+   * 复聚剩余小时:就地读 now,不进地界表(免每秒整表重算)。
+   * 钟须用结算那一份 regionReviveClock(当地战斗 / 镇压 / 靖平取最晚),不能只看 suppressedSince。
    */
   const reviveNow = computed(() =>
     props.row.suppressed ? hoursUntilRevive(regionReviveClock(props.row.def.id), now.value) : 0
   )
 
-  /** 已守时长(自镇压起算)—— 守得越久,兴衰越盛 */
+  /** 已守时长,自镇压起算 */
   const heldText = computed(() => {
     const since = player.suppressedSince[props.row.def.id]
     if (since === undefined) return '—'
@@ -248,20 +211,14 @@
     return hours < 24 ? `${hours} 时` : `${Math.floor(hours / 24)} 日`
   })
 
-  /**
-   * 镇守道韵:手上有几处镇压,这里就写那句 —— 判据来自 core/suppress 的
-   * `suppressionExpRate`(与结算同一份),卡片自己不乘 8%。
-   */
+  /** 镇守道韵:文案走 core/suppress,判据与结算的 `suppressionExpRate` 同一份,卡片不自乘 8% */
   const daoText = computed(() => {
     if (!props.row.suppressed) return ''
     const line = suppressDaoText(player.suppressedRegions.length)
     return line === '—' ? '' : line
   })
 
-  /**
-   * 老区装备气运:守满一天 +0.1(封顶 +0.8)—— 镇不足一天时不必印一个 +0.0。
-   * 与结算读同一个 `suppressionEquipmentLuck`。
-   */
+  /** 老区装备气运:与结算读同一个 `suppressionEquipmentLuck`;不足一天为 0,不显示 */
   const tenureLuck = computed(() => {
     if (!props.row.suppressed) return 0
     const since = player.suppressedSince[props.row.def.id]
@@ -272,7 +229,6 @@
     props.row.def.requireCleared ? (regionDef(props.row.def.requireCleared)?.name ?? '') : ''
   )
 
-  /** 复聚倒计时文案:一天以上说日,一天以内说时 */
   function reviveText(hours: number): string {
     if (hours >= 24) return `${Math.floor(hours / 24)} 日`
     return `${Math.max(0, Math.floor(hours))} 时`

@@ -1,7 +1,4 @@
-/**
- * 进度服务 —— 计数器 / 成就 / 主线任务 / 每日任务 / 奖励发放
- * 所有系统通过 track() 汇报行为,由此统一驱动成就与任务
- */
+/** 进度服务:计数器 / 成就 / 主线任务 / 每日任务 / 奖励发放;各系统经 track() 上报行为。 */
 import type { AchvCond, CounterKey, RewardBundle } from '@/types'
 import { gte, sub, toNum } from '@/utils/gnum'
 import { todayStr } from '@/utils/time'
@@ -23,12 +20,12 @@ import { useInventoryStore } from '@/stores/inventory'
 import { useUiStore } from '@/stores/ui'
 import type { CollectionCategory } from '@/stores/quests'
 
-/** 玩家当前所处的等效掉落层级 —— 骑真实区域阶梯(maxTierForMajor),与坊市/悬赏/丹药/锻造同尺 */
+/** 玩家当前的等效掉落层级,与坊市/悬赏/丹药/锻造同尺 */
 export function playerTier(): number {
   return maxTierForMajor(usePlayerStore().major)
 }
 
-/** 资源行与发放共用。灵石按当前层级折算,不写死一个数。 */
+/** 资源行,预览与发放共用;灵石按当前层级折算 */
 function resourceParts(bundle: RewardBundle): string[] {
   const lines: string[] = []
   if (bundle.stoneTier) lines.push(`灵石 +${formatGN(stoneByTier(playerTier(), bundle.stoneTier))}`)
@@ -41,7 +38,7 @@ function resourceParts(bundle: RewardBundle): string[] {
   return lines
 }
 
-/** 领赏前就能看见的清单(含称号)。数字与 grantReward 入账的是同一套折算。 */
+/** 领赏前的清单(含称号);数字与 grantReward 入账同一套折算 */
 export function rewardPreview(bundle: RewardBundle): string {
   const lines = resourceParts(bundle)
   if (bundle.titleId && titleDef(bundle.titleId)) lines.push(`称号「${titleDef(bundle.titleId)!.name}」`)
@@ -73,13 +70,7 @@ export function grantReward(bundle: RewardBundle, quiet = false): string[] {
   return lines
 }
 
-/**
- * 任务 / 成就条件的唯一判定。
- *
- * 导出的理由只有一个:界面上的进度读数必须与发赏判定同源。此前首页只给
- * counter 型主线报进度,境界与 `realm_<major>_<sub>` 型里程碑只有一句说明;
- * 若界面另写一套比较,就会出现「卡面说已至、领赏时却不算」的两本账。
- */
+/** 任务 / 成就条件的唯一判定;界面进度读数须与发赏判定同源,不另写比较 */
 export function evalCond(cond: AchvCond): boolean {
   const quests = useQuestsStore()
   const player = usePlayerStore()
@@ -117,12 +108,7 @@ export function checkAchievements(): void {
   for (const def of ACHIEVEMENTS) {
     if (quests.hasAchieved(def.id)) continue
     if (def.cond.type === 'quality') continue
-    /**
-     * custom 分两种:
-     * - `realm_<major>_<sub>`:状态可判,这里直接判(此前被一并跳过,于是这条分支成了死代码,
-     *   「炼气圆满」那类成就根本无人解锁);
-     * - 其余状态型键(lifespanLow / lifespan10k / stone1m):由 checkStateAchievements 显式触发。
-     */
+    // custom 只在此判 realm_<major>_<sub>;其余状态型键(lifespanLow / lifespan10k / stone1m)由 checkStateAchievements 触发
     if (def.cond.type === 'custom' && !/^realm_\d+_\d+$/.test(def.cond.key)) continue
     if (evalCond(def.cond)) unlockAchievement(def.id)
   }
@@ -148,13 +134,9 @@ export function checkCustomAchievement(key: string): void {
   }
 }
 
-/** 周期检查(寿元/灵石等状态型成就 + 全成就/主线补扫) */
+/** 周期检查:寿元/灵石等状态型成就,并补扫全成就与主线(二者只在 track()/trackRealm() 求值,老档/导入档靠此自愈) */
 export function checkStateAchievements(): void {
-  // 全成就补扫:realm / counter 成就是累计事实,只要满足了就该解锁。
-  // 它们原本只在 track()/trackRealm() 两个行为触发点被求值;老档/导入档在
-  // 境界已高却再没触发计数时,低境界成就会一直锁着 —— 周期里重放一次即自愈。
   checkAchievements()
-  // 主线任务同根:也只在这些触发点被推进;补扫一并推进,免得老档卡在早该完成的一步
   checkMainQuest()
   const player = usePlayerStore()
   const resources = useResourcesStore()
@@ -190,34 +172,20 @@ function checkDaily(): void {
   }
 }
 
-/**
- * 修为圆满的估算时长(秒)—— 按现速。
- *
- * 现速即 player.cultPerSec(闭关/丹药/天时俱已在内),这里只做
- * 「缺口 ÷ 现速」这一道除法,不另造口径;已圆满或速率为 0 时返回 0。
- * 离线上限之外不再累积,故这只是「按现速」的估算,不是担保 ——
- * 与修炼页那句「按现速,修为圆满约……」的措辞是同一份承诺。
- */
+/** 修为圆满的估算秒数:缺口 ÷ player.cultPerSec(闭关/丹药/天时俱已在内);已圆满或速率为 0 返回 0 */
 export function expEtaSec(): number {
   const player = usePlayerStore()
   if (player.expFull) return 0
-  // cultPerSec 本就是普通数(见 player store),别拿 toNum 去拧它
+  // cultPerSec 是普通数,不经 toNum
   const rate = player.cultPerSec
   if (!(rate > 0)) return 0
   const gap = toNum(sub(player.expReq, player.exp))
-  // toNum 在指数 >308 时返回 Infinity(见 utils/gnum) —— Infinity > 0 恒真,
-  // 若不排掉,Infinity/rate 会把「修为圆满估算」算成无穷时长的坏读数。
+  // toNum 在指数 >308 时返回 Infinity,须排掉
   if (!(gap > 0) || !Number.isFinite(gap)) return 0
   return gap / rate
 }
 
-/**
- * 灵气回满的估算时长(秒)—— 按现速。
- *
- * 与 expEtaSec 同法:缺口 = qiCapValue − 当前灵气,除以现速 qiRegenPerSec,
- * 只做这一道除法,与灵气条读的是同一份数;已满或零恢复时返回 0。
- * 灵气满后恢复不再累积(超出的部分那是积余容量),故这条只在未满时出现。
- */
+/** 灵气回满的估算秒数:缺口 ÷ qiRegenPerSec,与灵气条同源;已满或零恢复返回 0 */
 export function qiEtaSec(): number {
   const player = usePlayerStore()
   const resources = useResourcesStore()
@@ -228,14 +196,7 @@ export function qiEtaSec(): number {
   return gap / rate
 }
 
-/**
- * 距「灵气充盈」的估算时长(秒)—— 按现速。
- *
- * 灵气过半即滋养修为(见 player store 的 qiRich / statsCalc 的 QI_RICH_BONUS),
- * 这条答的是「修为还有多久要往上跳一档」。判据与 qiRich 同一道界:
- * 缺口 = qiCapValue × QI_RICH_RATIO − 当前灵气,除以现速;
- * 已在充盈线以上或零恢复时返回 0。
- */
+/** 距「灵气充盈」的估算秒数;判据须与 player store 的 qiRich 同一道界。已充盈或零恢复返回 0 */
 export function qiRichEtaSec(): number {
   const player = usePlayerStore()
   const resources = useResourcesStore()
@@ -247,12 +208,9 @@ export function qiRichEtaSec(): number {
 }
 
 /**
- * 闭关的边际修炼速度(已过修炼速度软上限折算,见 statsCalc CULT_SPEED_SOFT_CAP)。
- *
- * 入参 `cappedTotal` 是修炼行当前**已封顶**的 cultivationSpeed(越过 5.0 后半价折算的那份),
- * `boost` 是闭关的词条加成(+1.5)。返回「加上闭关后,每 base 修炼的净增量」——
- * 即 `封顶后的新 total − 封顶后的原 total`。低于阈值(≤5.0)时反解即恒等,增量恰为 boost;
- * 越阈后把越出部分按 CULT_SPEED_SOFT_CAP_DIMINISH 压回,不能按全额 boost 报。
+ * 闭关的边际修炼速度(过软上限折算,见 statsCalc CULT_SPEED_SOFT_CAP)。
+ * cappedTotal:修炼行当前已封顶的 cultivationSpeed;boost:闭关词条加成。
+ * 返回封顶后的新 total − 封顶后的原 total;阈值以下恰为 boost。
  */
 export function retreatMarginalSpeed(cappedTotal: number, boost: number): number {
   const U = cappedTotal > CULT_SPEED_SOFT_CAP_T ? CULT_SPEED_SOFT_CAP_T + (cappedTotal - CULT_SPEED_SOFT_CAP_T) / CULT_SPEED_SOFT_CAP_DIMINISH : cappedTotal
@@ -261,10 +219,7 @@ export function retreatMarginalSpeed(cappedTotal: number, boost: number): number
   return C2 - cappedTotal
 }
 
-/**
- * 闭关「约多得修为」的每多得速率 —— 报的是加成那部分,不是闭关期间全部产出。
- * 过软上限时按 retreatMarginalSpeed 折算,与修炼行同走一道 soft cap。
- */
+/** 闭关「约多得修为」的每多得速率:只报加成部分;与修炼行同读 baseCultPerSec、同走一道 soft cap */
 function retreatGainPerSec(): number {
   const player = usePlayerStore()
   const def = buffDef('retreat')
@@ -277,13 +232,8 @@ function retreatGainPerSec(): number {
 }
 
 /**
- * 闭关五分钟「约多得」的修为预览 —— 只报加成那部分,不是闭关期间全部产出。
- *
- * 速率与时长都从 buffs.ts 的 retreat 本体取,不手抄 1.5 / 300 两处:
- * 增量 = baseCultPerSec(境界) × 词条加成 × 时长(秒),与修炼行读的
- * baseCultPerSec 是同一份数(玩家现有其他修为词条与闭关增量互不影响,
- * 闭关只在这之上再加 1.5 倍 base)。闭关中 buff 已落在 cultPerSec 上,
- * 这条只在不闭关时出现,报的是「点了会多拿多少」而不是「正在拿多少」。
+ * 闭关「约多得」的修为预览,只报加成部分。速率与时长取自 buffs.ts 的 retreat 本体,不手抄 1.5 / 300。
+ * 只在不闭关时出现:报「点了会多拿多少」。
  */
 export function retreatGainText(): string {
   const def = buffDef('retreat')
@@ -305,12 +255,8 @@ export function retreatGainedText(elapsedSec: number): string {
 }
 
 /**
- * 灵气积余蓄满的估算时长(秒)—— 按现速。
- *
- * 灵气越过标称容量后进入「积余」段(上限 = 标称容量 × QI_BANK_MULT,见
- * resources.setQi 与 player.qiBankCapValue),恢复仍照常累积、不因「满了」就收手。
- * 这条答的是积余阶段的「蓄满还差多久」:缺口 = qiBankCapValue − 当前灵气,除以现速,
- * 与灵气条读同一份数;未积余(qi ≤ 标称容量)或零恢复时返回 0 —— 非积余阶段不报这事。
+ * 灵气积余蓄满的估算秒数。积余上限 = 标称容量 × QI_BANK_MULT(见 resources.setQi 与 player.qiBankCapValue);
+ * 未进积余段(qi ≤ 标称容量)或零恢复返回 0。
  */
 export function qiBankEtaSec(): number {
   const player = usePlayerStore()
@@ -350,7 +296,7 @@ export function trackRealm(): void {
       unlockAchievement(def.id)
     }
   }
-  // 小层也走这里:realm_<major>_<sub> 型成就要在「修至本境圆满」那一刻就解锁
+  // 小层也走这里:realm_<major>_<sub> 型成就修至该层即解锁
   checkAchievements()
   checkMainQuest()
 }

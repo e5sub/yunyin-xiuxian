@@ -1,9 +1,4 @@
-/**
- * 可冻结倒计时的读数契约 —— 与到期结算共用 `gameNow()`。
- *
- * 暂停(重置 / 导入确认)时引擎把 Buff、历练、卦等时间戳顺延;显示若仍读
- * 真实墙钟,倒计时会先跑到 0,恢复后又跳回来。这里直接钉读数本身。
- */
+/** 可冻结倒计时读数与到期结算共用 `gameNow()`;读真实墙钟会先跑到 0、恢复后又跳回 */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { gameNow, setEnginePaused } from '@/core/enginePause'
 

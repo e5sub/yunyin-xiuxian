@@ -1,10 +1,7 @@
 /* eslint-disable no-console */
 /**
- * Phase 32.3:可炼程度审计
- *
- * 这套测试守的不是某个具体数值,而是设计口径本身:
- * 「够级必成」的二元门槛已被废除,取而代之的是知识 × 技艺 × 承受的连续曲面。
- * 一旦有人把硬门槛偷偷加回来,或者把越阶做成"随便炼",这里会先炸。
+ * 可炼程度审计。守的是口径:成功率为知识 × 技艺 × 承受的连续曲面;
+ * 不得加回「够级必成」的硬门槛,越阶不得做成随便炼。
  */
 import { describe, expect, it } from 'vitest'
 import { bearableRank, composeSuccessRate, CRAFT_BASE_RATE, materialLoreOf, overReachFactor, weightedSkill } from './craftability'
@@ -77,7 +74,7 @@ describe('Phase 32.3:越阶强炼', () => {
   })
 
   it('越一阶尚可一搏,越四阶已是赌命', () => {
-    // 全知全能者越阶的实际把握 —— 这条决定了"强炼"是不是一条真出路
+    // 全知全能者越阶的实际把握
     const over1 = composeSuccessRate(1, 1, 100, 1)
     const over4 = composeSuccessRate(1, 1, 100, 4)
     expect(over1).toBeGreaterThan(0.5)
@@ -102,7 +99,7 @@ describe('Phase 32.3:材料认知与加权技艺', () => {
     const mats = ['a', 'b']
     expect(materialLoreOf(mats, () => LORE_MAX)).toBeCloseTo(1, 6)
     expect(materialLoreOf(mats, () => 0)).toBe(0)
-    // 超出上限的脏数据不应把均值顶过 1
+    // 超上限的脏数据不把均值顶过 1
     expect(materialLoreOf(mats, () => LORE_MAX + 5)).toBeCloseTo(1, 6)
     expect(materialLoreOf(mats, id => (id === 'a' ? LORE_MAX : 0))).toBeCloseTo(0.5, 6)
   })
@@ -111,7 +108,7 @@ describe('Phase 32.3:材料认知与加权技艺', () => {
     const craft = { rank: 3, materials: [], skills: { condense: 0.6, flame: 0.4 } }
     expect(weightedSkill(craft, () => 100)).toBeCloseTo(100, 6)
     expect(weightedSkill(craft, id => (id === 'condense' ? 100 : 0))).toBeCloseTo(60, 6)
-    // 铭纹是炼器技艺,再高也帮不上这张丹方
+    // 铭纹是炼器技艺,帮不上丹方
     expect(weightedSkill(craft, id => (id === 'inscribe' ? 100 : 0))).toBeCloseTo(0, 6)
   })
 })
@@ -178,7 +175,7 @@ describe('Phase 32.3:认知检定', () => {
   it('辨识概率随技艺升、随阶位降,且始终留有一线', () => {
     expect(discernChance(1, 100, 0)).toBeGreaterThan(discernChance(1, 0, 0))
     expect(discernChance(8, 50, 0)).toBeLessThan(discernChance(1, 50, 0))
-    // 最难的情况也不为 0 —— 见得多总有认出来的一天
+    // 最难的情况也不为 0
     expect(discernChance(9, 0, 0)).toBeGreaterThan(0)
     expect(discernChance(1, 100, 999)).toBeLessThanOrEqual(0.9)
   })
@@ -205,7 +202,7 @@ describe('Phase 32.3:认知检定', () => {
 })
 
 describe('Phase 32.3:端到端口径 —— 开局到大师', () => {
-  /** 用真实丹方走一遍完整链路,确认"知识决定成败"不是纸上谈兵 */
+  /** 用真实丹方走一遍完整链路 */
   function rateFor(pillId: string, mastery: number, lore: number, skill: number, major: number): number {
     const def = PILLS.find(p => p.id === pillId)!
     const craft = recipeCraft(def)!
@@ -213,15 +210,14 @@ describe('Phase 32.3:端到端口径 —— 开局到大师', () => {
     return composeSuccessRate(mastery, matLore, skill, Math.max(0, craft.rank - bearableRank(major)))
   }
 
-  /** 开局实况:三张方子烂熟(掌握度 1)、方中药仅「已辨识」、技艺有 STARTER_SKILL_EXP 的底子 */
+  /** 开局:三张方子掌握度 1、方中药仅「已辨识」、技艺为 STARTER_SKILL_EXP 的底子 */
   const DAY_ONE_SKILL = skillLevelFromExp(200)
 
   it('首炉不是必输:开局聚气散把握在四分之一以上', () => {
     const day1 = rateFor('p_jvqisan', 1, 1, DAY_ONE_SKILL, 0)
     console.log(`\n  开局首炉聚气散:${(day1 * 100).toFixed(1)}%(技艺 ${DAY_ONE_SKILL.toFixed(0)},药材仅已辨识)`)
-    // 低于 25% 意味着五炉炸四炉,那是劝退不是设计
+    // 下限防开局劝退,上限防开局就不用学
     expect(day1).toBeGreaterThan(0.25)
-    // 高于 50% 则开局就不用学了,失去了整个体系的意义
     expect(day1).toBeLessThan(0.5)
   })
 
@@ -231,9 +227,7 @@ describe('Phase 32.3:端到端口径 —— 开局到大师', () => {
     for (const [i, v] of curve.entries()) {
       console.log(`    ${LORE_STAGE_NAMES[i]}:${(v * 100).toFixed(1)}%`)
     }
-    // 严格单调:多认识一层药,就该多一分把握
     for (let i = 1; i < curve.length; i += 1) expect(curve[i]!).toBeGreaterThan(curve[i - 1]!)
-    // 从"叫不出名字"到"通晓用法",光靠认药就该有实质飞跃
     expect(curve[3]! / curve[0]!).toBeGreaterThan(1.8)
   })
 

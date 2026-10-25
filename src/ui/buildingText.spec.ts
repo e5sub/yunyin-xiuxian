@@ -5,7 +5,7 @@ import { REALMS } from '@/data/realms'
 import { BUILDINGS } from '@/data/buildings'
 import { buildingGateRealmName, buildingRealmGate } from './buildingText'
 
-/** 境界闸的境名不复抄,unlockRealm 的名字就是 REALMS[unlockRealm].name */
+/** 境界闸境名 = REALMS[unlockRealm].name,不复抄 */
 describe('建筑境界闸文案 · buildingText', () => {
   it('读表取名:unlockRealm 即 REALMS 下标,一字不差', () => {
     for (const b of BUILDINGS) {

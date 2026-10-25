@@ -4,12 +4,8 @@ import { daoluDef } from '@/data/daolu'
 import { pendingBondEvent, pendingIntent } from '@/core/daoluService'
 
 /**
- * 道侣域的共享投影 —— 人物页道侣入口卡与道侣弹窗(BondDialog)都要读的那一批。
- *
- * 入口卡的副行/badge 与弹窗正文读的是同一份关系状态。拆分后两处各自拿一份
- * computed(都只读 player store 与 core 服务,无共享可变状态),定义只此一份,
- * 不会各抄各的之后漂移 —— 尤其 hasBondWord(有未答的事)与 herIntent 的
- * 在世守卫,这类复合条件抄两份迟早走样。
+ * 道侣域共享投影:人物页道侣入口卡与道侣弹窗(BondDialog)同读。
+ * hasBondWord、herIntent 的在世守卫等复合条件只在此定义。
  */
 export function useBondOverview() {
   const player = usePlayerStore()
@@ -24,7 +20,7 @@ export function useBondOverview() {
    * 现在事件在历练途中就已发生,弹窗只是去看它
    */
   const pendingEvent = computed(() => pendingBondEvent())
-  /** 她主动提出的事(34.1);三种回应,忽略不等于回绝 */
+  /** 道侣主动提出的事;三种回应,忽略不等于回绝 */
   const herIntent = computed(() =>
     bond.value && !bond.value.departed && !bond.value.fallen ? pendingIntent() : null
   )

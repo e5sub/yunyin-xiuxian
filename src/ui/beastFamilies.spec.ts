@@ -1,14 +1,6 @@
 /**
- * 族类 → 形 判据
- *
- * 敌人与灵宠的 icon「大类够用就行」那一套把 47 只敌人塞进一枚骷髅、兽爪那枚同时
- * 是野狼/野猪/石猿/灵狐 与「麒麟」;族类表(src/data/beastFamilies.ts)是唯一事实源,
- * 数据里只写 `family`,形从表里取。这里把这份账钉死,量五件事:
- *   一 一枚形不许被两个族类共用(「异族不共形」的红线,真能抓错);
- *   二 每个族类都有形,且那枚形注册在 ICONS 里(不会静默掉成 Sparkles);
- *   三 每只敌人/灵宠都有族类,且是声明过的族类(未归类 = 0 遗漏);
- *   四 族类表不留闲族 —— 立了族却没人归进去,说明分类没落到底;
- *   五 数据不自己另写 icon —— def 上只有 family,没有 icon 字段。
+ * 族类 → 形 判据。唯一事实源:族类表 src/data/beastFamilies.ts,数据只写 `family`。
+ * 形须注册在 ICONS 里,否则静默掉成 Sparkles。
  */
 import { describe, expect, it } from 'vitest'
 import { BEAST_FAMILIES, beastIcon } from '@/data/beastFamilies'
@@ -30,7 +22,6 @@ describe('族类 → 形 · 一族一形', () => {
       perIcon.set(def.icon, list)
     }
     const shared = [...perIcon.entries()].filter(([, fams]) => fams.length > 1)
-    // 一枚 icon 被一个以上族类共用即红 —— 这是「异族不共形」的判据。
     expect(shared, `以下形被多个族类共用,须拆开或在族类表里归并:${JSON.stringify(shared)}`).toEqual([])
   })
 

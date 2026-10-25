@@ -1,15 +1,6 @@
 /**
- * 奖励可达性 —— 称号与丹药奖励不能是"看得见拿不到"
- *
- * 本轮实测:`ti_lianqi`(炼气修士)在称号页里摆着,desc 写着「于炼气境站稳脚跟」,
- * 却没有任何成就/任务发它 —— 玩家永远拿不到。同类的还有一处死分支:
- * evalCond 支持 `realm_<major>_<sub>` 型 custom 条件,但 checkAchievements 把所有
- * custom 一并跳过,于是那条分支从未被求值。
- *
- * 故这里钉两条:
- *   一 每个称号都必须有获取路径(有成就/任务/轮回等发放点);
- *   二 发放点引用的称号 id 必须真实存在 —— grantReward 对不存在的 titleId 是**静默丢弃**,
- *      对不存在的 pillId 则直接抛错(非空断言),两种都要在数据层拦住。
+ * 奖励可达性:每个称号都有发放点;发放点引用的称号/丹药 id 都存在
+ * (grantReward 对不存在的 titleId 静默丢弃,对不存在的 pillId 抛错)。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -29,13 +20,13 @@ function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry)
     if (statSync(full).isDirectory()) walk(full, out)
-    // 排除 spec:用例里的示例字符串不是游戏内的发放点
+    // 排除 spec:用例里的字符串不是发放点
     else if (/\.(ts|vue)$/.test(entry) && !entry.endsWith('.spec.ts')) out.push(full)
   }
   return out
 }
 
-/** 全部源码(含数据)里出现 `titleId: 'x'` 的地方 —— 那就是发放点 */
+/** 全部源码(含数据)里的 `titleId: 'x'` 即发放点 */
 const corpus = walk(SRC).map(f => readFileSync(f, 'utf8')).join('\n')
 const grantedTitles = new Set([...corpus.matchAll(/titleId:\s*'([^']+)'/g)].map(m => m[1]!))
 
@@ -68,7 +59,7 @@ describe('奖励可达性 · 丹药与成就条件', () => {
     const src = readFileSync(join(SRC, 'core/progress.ts'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/.*$/gm, '')
-    // checkAchievements 必须放过这类 custom 条件交给 evalCond,而不是把 custom 一律跳过
+    // checkAchievements 须把这类 custom 条件交给 evalCond
     expect(src).toContain("/^realm_\\d+_\\d+$/.test(def.cond.key)")
   })
 

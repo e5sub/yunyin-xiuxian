@@ -1,5 +1,4 @@
 <template>
-  <!-- 部位候选列表 -->
   <BaseModal
     :open="slotName !== null"
     :title="slotName ? EQUIP_SLOT_NAMES[slotName] : ''"
@@ -19,7 +18,6 @@
             <template v-if="row.item.level > 0">+{{ row.item.level }}</template>
           </span>
           <span class="block text-[10px] text-ink-faint">
-            <!-- 条数带分母:这一件还剩多少条可涨,一眼看得出(上限来自品质表) -->
             {{ qualityDef(row.item.quality).name }} · {{ row.item.tier }} 阶 · 词条
             {{ row.item.affixes.length }}/{{ qualityDef(row.item.quality).affixes[1] }}
           </span>
@@ -47,20 +45,13 @@
   import BaseModal from '@/components/common/BaseModal.vue'
   import GameIcon from '@/components/common/GameIcon.vue'
 
-  /**
-   * 部位候选列表 —— 自 InventoryView 迁入。
-   *
-   * 「哪一个部位被点开」是宿主的页面状态(pickerSlot),这里只认它、回传关闭,
-   * 换装与卸下都直接走 inventory store;详情仍经全局 ui.equipDetailUid,
-   * 与装备卡同一个入口,没有第二本账。
-   */
+  /** 部位由宿主 pickerSlot 传入,此处只回传关闭;详情经 ui.equipDetailUid,与装备卡同一入口 */
   const props = defineProps<{ slotName: EquipSlot | null }>()
   const emit = defineEmits<{ close: [] }>()
 
   const inventory = useInventoryStore()
   const ui = useUiStore()
 
-  /** 当前部位的候选:佩戴中的置顶,其余按品质/层级降序 */
   const rows = computed(() => {
     const slot = props.slotName
     if (!slot) return []

@@ -7,23 +7,16 @@
           {{ region?.name }}
           <span class="text-[11px] text-ink-faint">· {{ modeName }}</span>
         </p>
-        <!-- 每秒在走的倒计时同样要定宽:与状态面板同一类抖动,修就修干净 -->
+        <!-- 每秒走的倒计时须定宽,防抖动 -->
         <span class="tabular text-[12px] text-ink-soft">
           余 <span class="countdown-slot">{{ formatCountdown(timeLeft) }}</span>
-          <!--
-            倒计时给「还剩多久」,这句给「几时归」—— 同一分 endsAt,翻译成本地钟点,
-            玩家不用倒着心算 00:27:31 是几点几分,得空了知道几时回来收一趟
-          -->
+          <!-- 同一 endsAt 换算成本地钟点 -->
           <span v-if="session && timeLeft > 0" class="ml-1 text-[10px] text-ink-faint">约 {{ formatClock(session.endsAt) }} 归</span>
         </span>
       </div>
       <p class="mt-1 text-[11px] text-ink-faint tabular">
         {{ session ? sessionRecordText(session) : '胜 0 场' }} · 际遇 {{ session?.events ?? 0 }} 次 · 拾获 {{ session?.itemGain ?? 0 }} 件
-        <!--
-          本场「胜 N 场」是一趟历练里的账,连胜是跨趟的「还没输过」—— 两本账。
-          连胜只在 3/5/10 的奖励 toast 里现身过一次,平时是多少、距下一档还剩几场,
-          玩家是看不见的:把活数挂回眼前,顺手报清下一档的缺口。
-        -->
+        <!-- 连胜跨趟计,与本场胜场是两本账 -->
         <span v-if="streak" class="ml-1 text-gold-ink">
           · 连胜 {{ streak }}
           <template v-if="nextStreak">
@@ -31,7 +24,7 @@
             <template v-if="nextReward">(奖:{{ nextReward }})</template>
           </template>
         </span>
-        <!-- 下一场也讲「几时」:同一分 nextBattleAt 翻译成钟点,和归时那句一个承诺 -->
+        <!-- 同一 nextBattleAt 换算成钟点 -->
         <span v-if="huntIn > 0.4" class="text-ink-faint">
           · 下一场 {{ formatCountdown(huntIn) }}
           <span v-if="session" class="text-[10px]">(约 {{ formatClock(session.nextBattleAt) }})</span>
@@ -52,7 +45,7 @@
     <div class="card-ink relative overflow-hidden px-4 py-4">
       <!-- 敌方 -->
       <div class="relative" :class="[shakeCls.e, defeated === 'e' ? 'foe-defeated' : '']">
-        <!-- 图标与首行文字顶部对齐:名字+标签换行时,图标不该跟着往下沉 -->
+        <!-- 图标与首行顶部对齐,名字换行时不下沉 -->
         <div class="flex items-start gap-2">
           <span
             class="grid h-10 w-10 shrink-0 place-items-center rounded-full border"
@@ -61,14 +54,7 @@
             <GameIcon :name="battle?.enemyIcon ?? 'paw'" :size="18" />
           </span>
           <div class="min-w-0 grow">
-            <!--
-              名字 + 适配星级一行,**标签另起一行**。
-
-              从前名字、首领/宿敌、特性、星级全挤在同一行 nowrap 的 flex 里:
-              名字最长 9 字(「残魂·堕落冰魄仙子」)、特性最多 3 个,窄屏上名字被挤成两行、
-              标签压在一起。标签数量不定,让它跟名字抢宽度就永远会有下一档挤法 ——
-              干脆分层:第一行只答「这是谁、我打它多合适」,第二行只答「它有什么路数」。
-            -->
+            <!-- 名字 + 星级一行,标签另起一行:标签数不定,同排会把名字挤断(名字最长 9 字) -->
             <p class="flex flex-wrap items-center gap-x-2 gap-y-1 font-kai text-[14px] text-ink">
               <template v-if="battle">
                 <span data-foe-name class="whitespace-nowrap">{{ battle.enemyName }}</span>
@@ -89,7 +75,7 @@
                 {{ starsText(foeAdaptation.stars) }}
               </span>
             </p>
-            <!-- 标签行:首领 / 宿敌 / 敌人路数(特性)—— 有几个就排几个,放不下就在这一行里换行 -->
+            <!-- 标签行:首领 / 宿敌 / 特性 -->
             <p
               v-if="battle && (battle.isBoss || isNemesisFoe || shownTraits.length)"
               class="mt-1 flex flex-wrap items-center gap-1.5"
@@ -102,10 +88,8 @@
             </p>
             <ProgressBar :value="ehp" color="var(--color-cinnabar)" :height="6" class="mt-1" />
             <!--
-              敌力亮出来:星级只答「合适不合适」,这枚数答「悬殊多少」。
-              两侧都是**开打那一刻**从同一对有效快照折出的冻结数(combat.snapPower +
-              applyCombatRuleSnap),规则改过就按改过后的算 —— 战后换装不会让「我」飘走,
-              逆旅契/道途生效也不是摆设。老战报缺 playerPower 时退回当前面板,只作兜底
+              敌我战力取开打那一刻的冻结快照(combat.snapPower + applyCombatRuleSnap,含规则改动);
+              老战报缺 playerPower 时退回当前面板
             -->
             <p v-if="battle?.enemyPower" class="mt-1 text-[10px] text-ink-faint tabular">
               敌力 {{ formatGN(battle.enemyPower) }} · 我
@@ -132,12 +116,7 @@
           跳过播放 »
         </button>
         <div ref="logBox" class="h-48 space-y-1 overflow-y-auto rounded-md bg-ink/4 px-3 py-2">
-          <!--
-            data-battle-log 挂在**行**上(不是外面那层框):自检要数「这场到底出了几行」,
-            而框里还有一行占位文案「山风掠过,四下无声……」—— 挂在框上会把它一起数进去。
-            为什么要数行而不是数关键词:暴击那行只写「会心一击」,一击定胜负的战斗
-            五个关键词一个不沾,曾被误判成「回放没出内容」。
-          -->
+          <!-- data-battle-log 挂在行上不挂外框:自检按行计数,外框里还有占位「暂无战报」 -->
           <p
             v-for="(entry, i) in displayed"
             :key="i"
@@ -172,7 +151,7 @@
           {{ f.text }}
         </span>
       </div>
-      <!-- 战后统计 / 本战所得 / 此物所知 / 战斗分析:四块只此一处消费,随本体迁出 -->
+      <!-- 战后统计 / 本战所得 / 此物所知 / 战斗分析 -->
       <BattleIntelPanel />
     </div>
 
@@ -215,9 +194,9 @@
   const defeated = ref<'p' | 'e' | null>(null)
   const logBox = ref<HTMLElement | null>(null)
 
-  /** 回放的收表函数(gameClock 收口:暂停冻结) */
+  /** 回放停表函数;走 gameClock,暂停时冻结 */
   let playTimer: (() => void) | undefined
-  /** 回放派生的浮字计时与逐帧任务:离页或换场时一并撤销,不许回写已销毁组件 */
+  /** 浮字计时与逐帧任务:离页或换场时一并撤销,不回写已销毁组件 */
   const pendingTimers = new Set<ReturnType<typeof setTimeout>>()
   const pendingFrames = new Set<number>()
   let floatSeq = 1
@@ -229,7 +208,7 @@
   const huntIn = computed(() => (session.value ? Math.max(0, (session.value.nextBattleAt - now.value) / 1000) : 0))
   const modeName = computed(() => (session.value ? EXPLORE_MODES[session.value.mode].name : ''))
 
-  /** 本次历练已得(灵石/修为/拾获件数)—— 取自会话里如实累计的入账数,不是期望值 */
+  /** 本次历练已得:会话里累计的实际入账,非期望值 */
   const gains = computed(() => {
     const s = session.value
     if (!s) return null
@@ -245,7 +224,6 @@
   const streak = computed(() => player.winStreak)
   const nextRewardRow = computed(() => WIN_STREAK_REWARDS.find(r => r.streak > streak.value) ?? null)
   const nextStreak = computed(() => nextRewardRow.value?.streak ?? null)
-  /** 赏格预览:数字取自 WIN_STREAK_REWARDS 那一行,只排格式,不手写数 */
   const nextReward = computed(() => {
     const r = nextRewardRow.value
     if (!r) return null
@@ -277,7 +255,7 @@
     return def ? enemyTraits(def) : []
   })
 
-  /** 此物所知(Phase 32.5)—— 战前情报由认知层决定,不是白送的 */
+  /** 此物所知:情报由认知层决定 */
   const lore = computed(() => {
     const id = battle.value?.enemyId
     return id ? enemyLoreView(id) : null
@@ -297,7 +275,7 @@
     return id ? isNemesis(player.nemeses, id) : false
   })
 
-  /** 当前构筑对此敌的适配(战力之外的胜负参考) */
+  /** 当前构筑对此敌的适配 */
   const foeAdaptation = computed(() => {
     const b = battle.value
     if (!b || !foeKnown.value) return null
@@ -330,7 +308,7 @@
     pendingFrames.clear()
   }
 
-  /** 浮字到时自己收;回调离页后由 stopPlayback 撤掉 */
+  /** 浮字到时自收;离页由 stopPlayback 撤销 */
   function scheduleFloatRemoval(id: number): void {
     const timer = setTimeout(() => {
       pendingTimers.delete(timer)
@@ -354,7 +332,7 @@
     stopPlayback()
     defeated.value = null
     const entries = b.result.log
-    // 减动效:同 GauntletPanel —— 直接给结果不逐条播,开关对两处战斗回放一视同仁
+    // 减动效直接给结果,与 GauntletPanel 一致
     if (instant || settings.reduceMotion) {
       displayed.value = entries.slice(-100)
       const last = entries[entries.length - 1]
@@ -368,7 +346,7 @@
     ehp.value = 1
     let idx = 0
     const interval = Math.max(COMBAT_PLAYBACK_MIN_MS, COMBAT_PLAYBACK_BASE_MS / settings.battleSpeed)
-    // 回放是已结算战局的演出:心跳停着(重置/导入确认)就该跟着停
+    // 走 gameClock:心跳停着(重置/导入确认)时回放同停
     playTimer = gameClock(() => {
       const entry = entries[idx]
       if (!entry) {
@@ -396,7 +374,7 @@
     }, interval)
   }
 
-  /** 受击方短促震颤(暴击更重);先清类、下一帧再挂,保证连击时动画也能重放 */
+  /** 受击震颤(暴击更重);先清类、下一帧再挂,连击时动画才能重放 */
   function triggerShake(side: 'p' | 'e', hard: boolean): void {
     shakeCls.value = { ...shakeCls.value, [side]: '' }
     nextFrame(() => {
@@ -404,7 +382,6 @@
     })
   }
 
-  /** 跳过播放,直接呈现战果 */
   function skipPlayback(): void {
     playBattle(true)
   }

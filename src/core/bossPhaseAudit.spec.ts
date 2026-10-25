@@ -4,25 +4,10 @@ import { ENEMIES } from '@/data/enemies'
 import { REGIONS, regionDef } from '@/data/regions'
 import { enemyTraits, regionEcology } from './buildAdvisor'
 
-/**
- * Phase 30.8: Boss 阶段与机制有效性审计
- *
- * 核心问题: Boss 的阶段与机制系统是否真正有效?
- *
- * 审计方法(机制配置验证):
- * ① Boss 阶段覆盖 - 大多数 Boss 应有战斗阶段
- * ② 阶段机制多样性 - 阶段变化的类型应多样化
- * ③ 阶段变化强度 - 阶段改变的机制参数应有显著差异
- * ④ Boss 生态一致性 - archetype 与技能/mod 机制匹配
- * ⑤ Boss 机制指纹 - 各位 Boss 的机制组合应多数独特(数量随区域表增长)
- *
- * 注: 战斗胜率模拟依赖玩家属性与 Boss 的数值对齐(游戏内随境界同步增长),
- * 测试无法模拟装备/功法成长,故审计聚焦机制配置本身。
- */
+/** Boss 阶段与机制有效性审计:只验机制配置,不模拟胜率(装备/功法成长测不出) */
 
 const ALL_BOSSES = ENEMIES.filter(x => x.isBoss)
 
-/** 提取 Boss 的机制指纹(技能效果 + mods + archetype) */
 function bossFingerprint(boss: (typeof ALL_BOSSES)[number]): string {
   const effects = [...new Set(boss.skills.map(s => s.effect ?? 'plain'))].sort()
   const modKeys = Object.keys(boss.mods ?? {}).sort()
@@ -56,7 +41,6 @@ describe('Phase 30.8: Boss 阶段与机制有效性审计', () => {
     console.log(`\n  阶段变化类型: ${changes.size} 种`)
     for (const c of changes) console.log(`    - ${c}`)
 
-    // 至少 4 种不同的阶段变化机制
     expect(changes.size, '阶段变化应多样化').toBeGreaterThanOrEqual(4)
   })
 
@@ -66,7 +50,6 @@ describe('Phase 30.8: Boss 阶段与机制有效性审计', () => {
     for (const boss of ALL_BOSSES) {
       for (const p of boss.phases ?? []) {
         if (!p.modChanges) continue
-        // 每个变化的 mod 值应至少为 0.1 的显著量
         for (const [k, v] of Object.entries(p.modChanges)) {
           const base = boss.mods?.[k as keyof typeof boss.mods] ?? 0
           const delta = (v as number) - (base as number)
@@ -142,7 +125,6 @@ describe('Phase 30.8: Boss 阶段与机制有效性审计', () => {
       console.log(`    ${boss.name}: ${bossFingerprint(boss)}`)
     }
 
-    // 至少 60% 的 Boss 应有独特机制组合
     expect(uniqueCount / ALL_BOSSES.length).toBeGreaterThanOrEqual(0.6)
   })
 
@@ -156,7 +138,6 @@ describe('Phase 30.8: Boss 阶段与机制有效性审计', () => {
       const eco = regionEcology(regionDef(region.id)!)
       const bossTraits = enemyTraits(boss)
 
-      // Boss 的 trait 应至少与区域生态的一个 trait 对应
       const hasOverlap = bossTraits.some(t => (eco[t as keyof typeof eco] ?? 0) > 0)
       if (!hasOverlap) {
         inconsistencies.push(`${boss.name}(区域 ${region.id} 生态 ${JSON.stringify(eco)})的机制 ${bossTraits.join(',') || '无'} 与生态无重叠`)

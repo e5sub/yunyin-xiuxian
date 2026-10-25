@@ -72,28 +72,18 @@ import { useApprenticeStore } from '@/stores/apprentice'
 import { sanitizeAllStores } from '@/stores/sanitizeAll'
 import { apprenticeReturnText } from '@/ui/apprenticeText'
 
-/**
- * 离线事件兜底池:世界标签不命中公共事件池时的默认通用际遇。
- * 一律取无代价、可幂等自动结算的 general 事件(在线在绝大多数字段地界也能遇到)。
- */
+/** 离线事件兜底池(世界标签不命中时用):只放无代价、可幂等自动结算的 general 事件 */
 const DEFAULT_OFFLINE_EVENT_IDS = ['ev_spring', 'ev_herb_garden', 'ev_night_talk', 'ev_falling_star', 'ev_old_man']
 
-/**
- * 在线有取舍的事件效果类(身份/永久构筑):离线的自动结算**不得替玩家拍板**。
- * 灵兽认主(pet)、习得功法(gongfa)、收下法宝(artifact)、加寿元(lifespan)
- * 在线都默许玩家亲手取舍 —— 缺席几小时回来发现灵兽/功法/古宝变了,比少拿点收益难受得多。
- * 放行的是与默认通用池同族的:资源/修为/材料/丹药/装备/时效 buff(offlineScope 红线段言里
- * 唯一受保护的是玩家分片,这里按「无拍板后果」一刀切,连法宝这类收进囊中的也不替做)。
- */
+/** 离线自动结算放行的事件效果;身份/永久构筑类(pet、gongfa、artifact、lifespan)不替玩家拍板 */
 const OFFLINE_SAFE_EFFECTS = new Set(['stone', 'exp', 'material', 'equipment', 'pill', 'buff', 'nothing'])
 function isOfflineSafeEvent(ev: EventDef): boolean {
   return ev.choices.every(c => c.outcomes.every(o => o.effects.every(e => OFFLINE_SAFE_EFFECTS.has(e.type))))
 }
 
 /**
- * 离线单胜材料均值 —— 与在线 afterWin 同一套期望(单源取 drop 常量,防两处漂移)。
- * herb 在线 = HERB_DROP_CHANCE(0.5)×E[1..3](2);ore = ORE_DROP_CHANCE(0.35)×E[1..2](1.5);
- * page = PAGE_DROP_CHANCE×1.5×倍率。flat dust 是离线独有的便捷值,在线并无此入口(见 dust 注释)。
+ * 离线单胜材料期望,与在线 afterWin 同源(单源取 drop 常量):herb ×E[1..3]=2,ore ×E[1..2]=1.5,page ×1.5×倍率。
+ * dust 为离线独有,在线无此入口。
  */
 export function offlineMaterialGain(
   wins: number,
@@ -131,13 +121,12 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
   const effSec = capSec * OFFLINE_EFFICIENCY
   const notes: string[] = []
   const equipmentGained: OfflineSummary['equipment'] = []
-  /** 离线期间化尘所得的器灵尘(自动回收/满包化尘/腾位化掉的旧件) */
+  /** 离线化尘所得(自动回收、满包化尘、腾位旧件) */
   let recycledDust = 0
   let evicted = 0
   /*
-   * 离线期间的每一次装备入账(历练掉落、镇压产出、际遇奖励)都记进这一本账。
-   * 从前各条路各记一笔:际遇奖励的装备从没进过归来卷轴;腾位时只看 bagged,
-   * 被挤掉的旧件化出的尘与件数都漏报。入包的件带 uid(归来卷轴点开看详情),化尘的不带。
+   * 离线期间每次装备入账(历练掉落、镇压产出、际遇奖励)都记这本账;入包件带 uid,化尘的不带。
+   * 腾位不能只看 bagged:被挤掉的旧件化出的尘与件数也要记。
    */
   const stopLedger = onAcquire((inst, res) => {
     equipmentGained.push({
@@ -150,10 +139,7 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
     if (res.evicted) evicted += 1
   })
 
-  // 结算前先清算已过期 buff:离线期 finalStats.mods 会被本段全部产出引用,
-  // 若 buff 已过期末清算,已过期的修炼/掉落加成会对整段离线全程生效(在线每 tick 即时清算,
-  // 离线单次结算必须在这里先剪枝)。已在当下过期即不再计;恰在途中过期的按整段生效(远轻于全程漏删,留档)。
-  // 离开时还挂着的增益若在离线期间已过时效,归来只会看到效果没了、不知缘由(在线已提示,这里同样口径补一句)
+  // 须在一切产出之前剪掉已过期 buff,否则过期加成对整段离线生效;途中才过期的按整段生效(留档)
   const goneBuffNames = cultivation.buffs
     .filter(b => b.endsAt <= nowMs)
     .map(b => buffDef(b.defId)?.name)
@@ -161,52 +147,30 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
   cultivation.pruneBuffs(nowMs)
   if (goneBuffNames.length > 0) notes.push(`「${goneBuffNames.join('、')}」已到期`)
 
-  /**
-   * 道童按墙钟走工,完工后由 `collectFinished` 入账。这个入口此前只在
-   * ApprenticeView 挂载时调用:玩家离线归来若先转世,`resetForRebirth()` 会把
-   * 道童连同未领取的资材一起清空 —— 归来卷轴却对此只字未提。离线结算先收一趟,
-   * 与进道童页收割走同一个 store 方法,不另算产出。
-   */
+  // 收割离线完工的道童(与道童页同走 collectFinished);漏收则归来先转世时 resetForRebirth() 连资材清空
   const reapedApprentices = useApprenticeStore().collectFinished(nowMs, player.major)
   if (reapedApprentices.length > 0) notes.push(apprenticeReturnText(reapedApprentices, player.major))
 
-  // ---- 修炼 ----
   const expBefore = { ...player.exp }
   player.gainExp(mulN(gn(player.cultPerSec), effSec))
 
-  // ---- 灵气 ----
   const qiBefore = resources.qi
   resources.setQi(resources.qi + player.qiRegenPerSec * effSec, player.qiCapValue)
 
-  // ---- 建筑产出 ----
   const herbBefore = resources.herb
   const herbBeforeByGrade = { ...resources.herbByGrade }
   const oreBefore = resources.ore
   const wudaoBefore = resources.wudao
   dongfu.produce(effSec)
 
-  // ---- 藏经阁被动钻研(与在线同源,只是 dt 不同) ----
+  // 藏经阁被动钻研:与在线同源
   studyTick(effSec)
 
-  // ---- 镇压区域被动收益(豁免离线效率折扣,是统治该区域的补偿;但仍受洞府离线上限约束) ----
-  // 之前误传完整 dtSec:镇压收益绕过 mansion 离线封顶,洞府离线等级对"镇压力"玩家几乎失效。
-  // 折扣豁免只豁免 0.9 效率,不平白豁免洞府离线上限本身
-  /**
-   * 收益按 capSec 结(洞府离线上限),妖气复聚按**真实的此刻**判 —— 两个时刻
-   * 分开传。离线 75 小时、洞府满级(cap 72h)时,镇压在第 72 小时复聚:复聚若排在
-   * 收益之前并读真实墙钟,它会在**开头**就松开,72 小时的租一分不剩
-   * (归来卷轴上连「镇压诸域仍有余韵」那一行都不出现)。现在收益先结清,
-   * 复聚再收尾 —— 前 72 小时照收,之后回到历练地。
-   */
+  // 镇压收益按 capSec 结:豁免 0.9 离线效率,不豁免洞府离线上限
+  // 妖气复聚按真实此刻判(两个时刻分开传);收益先结清再复聚,否则复聚在开头就松开、整段收益归零
   const suppressYield = settleSuppressedRegions(capSec, rng, nowMs)
   if (suppressYield && suppressYield.revived.length > 0) {
-    /**
-     * 妖气复聚要写进**归来卷轴**的账目,不能只靠一条提示条。
-     *
-     * 刚回来的玩家眼前是这扇卷轴(弹窗),提示条正在跟它抢注意力;而「我靖过的
-     * 地界怎么旧主又回来了」是这一屏最需要被解释的事 —— 写在这里,顺手把
-     * 「该怎么办」一起给(再历一程即可复靖),免得玩家把它当成丢档或 bug。
-     */
+    // 妖气复聚须写进归来卷轴,不能只靠提示条
     const names = suppressYield.revived.map(id => regionDef(id)?.name ?? id)
     const head = names.slice(0, 3).join('、')
     const tail = names.length > 3 ? ` 等 ${names.length} 处` : ''
@@ -237,57 +201,36 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
   let battles = 0
   let wins = 0
   let events = 0
-  /**
-   * 这趟历练记进会话的账(与在线 runBattle 同一本):
-   * 普通战按估算的胜负场,首领战胜则再算一场 —— 在线首领战同样计入会话 wins。
-   * 从前只写 wins 不写 losses,挂一夜回来「此行胜 2 场」却判不出打过 5 场,
-   * 提前收手时连「这趟算不算历练过」的 3 战门槛都过不去。
-   */
+  // 计入会话的胜负,与在线 runBattle 同一本账(含首领战)
+  // 败场也须记:提前收手的 3 战门槛按胜+负判
   let sessionWins = 0
   let sessionLosses = 0
   const stoneBefore = { ...resources.spiritStone }
   const session = adventure.session
-  /**
-   * 挂机期间这趟历练的所得(灵石/修为/实物)。
-   *
-   * 折进会话总账 —— 玩家挂了一夜再回来接着打时,战斗页上的「本次所得」不该把离线段漏掉。
-   * 离线本来就按期望值整段结算,这里记的也是同一份数(不是另算一套)。
-   */
+  // 本段历练所得,折进会话总账(与实发同一份数,不另算)
   const trip = { stone: gnZero(), exp: gnZero(), items: 0 }
   if (session) {
     const region = regionDef(session.regionId)
     if (region) {
       const modeDef = EXPLORE_MODES[session.mode]
-      // 与在线同源:灵兽性格 × 区域事件(妖潮)修正危险,普通战与首领战共用——
-      // 从前离线两处都漏,「好战更易走险路 / 谨慎避祸」离线毫无作用
+      // 与在线同源:灵兽性格修正危险,普通战与首领战共用
       const petDangerMult = personalityEffects(player.petId).dangerMult
-      // 与在线同源:区域事件(妖潮/古墓/商队)同时改两件事 —— 危险(dangerMult)与加丰(rewardMult)。
-      // 危险侧此前已接进离线;奖励侧漏了的话,事件就只剩「更难」没有「更丰」——
-      // 在线 afterWin 每次取胜都乘 rewardMult,离线这里读同一份 regionEventDef,一次读两用
+      // 与在线同源:区域事件同时改危险(dangerMult)与加丰(rewardMult),两侧都须接
       const regEvent = currentRegionEvent(region.id)
       const regionEventDanger = regEvent ? (regionEventDef(regEvent.eventId)?.dangerMult ?? 1) : 1
       const regionEventReward = regEvent ? (regionEventDef(regEvent.eventId)?.rewardMult ?? 1) : 1
       const remainSec = Math.max(0, (session.endsAt - (nowMs - dtSec * 1000)) / 1000)
       const simSec = Math.min(capSec, remainSec)
       const mods = player.finalStats.mods
-      // 遇敌间隔与在线同一把尺(exploreBattleGapSec):这里从前把
-      // `EXPLORE_BATTLE_INTERVAL * 1000 / speed` 又内联了一遍 —— 数学上等价,
-      // 但调速公式一改,离线会按旧尺子数遭遇数,而界面仍报新尺子的「遇敌约…」。
+      // 遇敌间隔与在线同源(exploreBattleGapSec),不内联间隔公式
       const battleGapSec = exploreBattleGapSec(modOf(mods, 'explorationSpeed'))
       const encounters = Math.floor(simSec / battleGapSec)
-      // 与在线同源:同一个 exploreEventChance(含今日星象之利)——
-      // 从前离线漏了星象,同一天同一地会比在线少算一成际遇
+      // 与在线同源:exploreEventChance(含星象之利)
       events = Math.round(encounters * exploreEventChance(region.id, mods))
       battles = Math.max(0, encounters - events)
 
       if (battles > 0) {
-        /**
-         * 破题与在线同源:在线每交一次手,只要身上祭着法宝就 `noteTaboo('artifact')`
-         * ——「独行」看的是有没有真的祭出,不是有没有法宝在身。
-         * 离线这一整段用的正是含法宝被动的 `buildPlayerSnap()`,从前却从不记这一笔:
-         * 挂机打赢几十场回来,「整世未祭一件法宝」的题还立着,两套账。
-         * noteTaboo 幂等(破一次即止),整段记一次与在线逐场记等价。
-         */
+        // 破题与在线同源:祭着法宝(非仅持有)交手即 noteTaboo('artifact');幂等,整段记一次等价逐场记
         if (inventory.equippedArtifacts.length > 0) {
           const vowBefore = vowResult()
           noteTaboo('artifact')
@@ -300,8 +243,7 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
         const mobId = rng.pick([...placeContent(region.id).enemies])
         const mobDef = enemyDef(mobId)
         const dangerFactor = dangerFactorFor(modeDef.dangerMult, region.danger, petDangerMult, regionEventDanger)
-        // 与在线同源:道途规则 × 本世逆旅契(explorationRules)一并生效——
-        // 从前离线只带 currentDaoRules,四张逆旅契的加难在本世最大时段里落空
+        // 与在线同源:explorationRules(道途规则 × 本世逆旅契)
         const winRate = mobDef
           ? sampleWinRate(buildPlayerSnap(), makeEnemySnap(mobDef, region.tier, dangerFactor), rng, 3, explorationRules())
           : 0.3
@@ -309,20 +251,14 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
         sessionWins += wins
         sessionLosses += battles - wins
 
-        // 灵石与修为 —— 与在线 afterWin 同源:取胜奖励乘区域事件加丰倍率(rewardMult)
-        // 福缘(doubleDropRate)也同源:在线每战掷一次翻倍、期望 ×(1+p);
-        // 离线按期望值计入(doubleMult),与 winRate 的期望结算一致,词条不再对离线失效
+        // 与在线 afterWin 同源:乘区域加丰;福缘在线每战掷翻倍,离线按期望 ×(1+p) 计入
         const doubleMult = 1 + Math.min(1, Math.max(0, modOf(mods, 'doubleDropRate')))
         const stoneGain = stoneByTier(
           region.tier,
           10 * wins * modeDef.rewardMult * regionEventReward * (1 + modOf(mods, 'spiritStoneGain')) * doubleMult
         )
         resources.addStone(stoneGain)
-        /**
-         * 修为与在线 afterWin 同源(同一把尺子、同一个结算函数):
-         * 秒数与层上限一并随场数线性放大,故「N 场」恒等于「N 次单场」——
-         * 离线不会偷跑,也不会因为整段结算而被封顶吃掉(见 formulas.expFromSecs)。
-         */
+        // 修为与在线 afterWin 同走 expFromSecs:秒数与层上限都随场数线性放大,N 场 = N 次单场
         const expGain = expFromSecs(
           player.expReq,
           BATTLE_EXP_SECS * wins * modeDef.rewardMult * regionEventReward * (1 + modOf(mods, 'expGain')) * doubleMult,
@@ -332,8 +268,6 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
         player.gainExp(expGain)
         trip.stone = add(trip.stone, stoneGain)
         trip.exp = add(trip.exp, expGain)
-        // 材料 —— 离线也会撞见新灵材,只是次数封顶,免得回来一屏 toast。
-        // 用与在线同一套期望(offlineMaterialGain,单源取 drop 常量):herb 0.5×2、ore 0.35×1.5、page 0.12×1.5
         const { herb: herbGain, ore: oreGain, page: pageGain, dust: dustGain } = offlineMaterialGain(
           wins,
           doubleMult,
@@ -345,10 +279,7 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
         harvestMaterials(region.tier, 'ore', oreGain)
         resources.addSmall('page', pageGain)
         resources.addSmall('dust', dustGain)
-        // 装备:最多实际生成 6 件,其余折算为器灵尘(掉落数与在线同源 ——
-        // 在线 afterWin 把 mode×regReward 折进 rewardMult,离线同乘模式倍率 × 事件加丰 × 福缘)。
-        // 每场概率同样吃在线那道封顶(EQUIP_DROP_CHANCE_CAP):此前离线期望式不夹取,
-        // 长线云游×区域加丰×掉落词条叠过 0.9 时,离线按超顶值计、在线每场封顶,期望分叉。
+        // 装备:最多生成 6 件,其余折尘;掉落数与在线 afterWin 同源(模式 × 加丰 × 福缘),每场概率同吃 EQUIP_DROP_CHANCE_CAP
         const equipChance = Math.min(
           EQUIP_DROP_CHANCE_CAP,
           EQUIP_DROP_CHANCE * modeDef.rewardMult * regionEventReward * (1 + modOf(mods, 'dropRate'))
@@ -356,9 +287,9 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
         const equipCount = Math.round(wins * equipChance * doubleMult)
         const realCount = Math.min(6, equipCount)
         for (let i = 0; i < realCount; i += 1) {
-          // 灵兽性格同样管离线掉落:贪宝更易稀出,谨慎稍稍寻常(与在线 afterWin 同源)
+          // 灵兽性格同样管掉落,与在线 afterWin 同源
           const inst = generateEquipment(region.tier, rng, { luck: modOf(mods, 'luck') + personalityEffects(player.petId).dropLuck })
-          // 入账清单、化尘与腾位由开头订阅的那本账统一记(onAcquire)
+          // 入账、化尘、腾位由开头 onAcquire 那本账统一记
           acquireEquipment(inst, { quiet: true })
         }
         trip.items += realCount
@@ -402,7 +333,7 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
          */
         const artifactChance = capChance(ARTIFACT_DROP_CHANCE * (1 + modOf(mods, 'luck') + personalityEffects(player.petId).dropLuck))
         const artifactCount = Math.round(wins * artifactChance)
-        /** 按 defId 聚合:同一件只报一行,重复的折算悟道点并进那一行(见 offlineArtifactNote) */
+        /** 按 defId 聚合:同件只报一行,重复件折悟道点并入(见 offlineArtifactNote) */
         const artifactTally = new Map<string, { name: string; count: number; wudao: number }>()
         for (let i = 0; i < artifactCount; i += 1) {
           const artId = randomDropArtifact(region.tier)
@@ -443,19 +374,9 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
         gainBondOpportunities((wins > 0 ? 1 : 0) + (battles > wins ? 1 : 0))
         track('kills', wins)
         track('battles', battles)
-        /**
-         * 图鉴与区域战绩从前是**在线专属**:离线砍了一夜,归来后敌人认知、
-         * 区域统计与镇压进度纹丝不动,历练页和界域志悄悄与账本分叉。
-         * 这里按同一套口径整段补写:N 场净胜一次入账(见 applyRegionWinBatch),
-         * 照面按胜 +1 / 负 ×ENEMY_LORE_LOSS_WEIGHT 折算。
-         */
+        // 图鉴与区域战绩与在线同口径整段入账:净胜批量入账(见 applyRegionWinBatch),照面胜 +1 / 负 ×ENEMY_LORE_LOSS_WEIGHT
         if (mobId) noteEnemyMany(mobId, wins, battles - wins)
-        /**
-         * 宿敌账与在线同源:在线每败一场走一次 `recordLoss`,达到三次即标记宿敌;
-         * 离线整段结算没有「哪一场」,但败了几场是确定的,按整批入账。
-         * 从前这里整段漏记 —— 挂机被打死几回不算宿敌,征战录永远空白,
-         * 而图鉴与区域账都已经记了这些败场。
-         */
+        // 宿敌账与在线 recordLoss 同源,败场整批入账
         if (mobId && mobDef && battles > wins) {
           const { list, becameNemesis } = recordLossBatch(
             player.nemeses,
@@ -505,10 +426,7 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
       }
       // 事件按默认选项自动结算
       const evCap = Math.min(events, 40)
-      // 与在线同源:事件也取自本世路线节点(regionEventPoolFor 尊重世界标签/境界门槛/once),
-      // 敌群早就走 placeContent 了,事件不能再用硬编码通用池另算一套。
-      // 机缘/奇缘那类带代价选择的不做离线替选(在线可拒,离线不能替玩家拍板),
-      // 故不用 pickEventFor 的完整分支;空池时兜底默认通用际遇
+      // 与在线同源:事件取自本世路线节点(regionEventPoolFor);不走 pickEventFor 的机缘/奇缘分支,离线不替玩家拍板
       const worldEventTags = [...placeContent(region.id).eventTags]
       let offlineEventPool = regionEventPoolFor({ ...region, eventTags: worldEventTags })
         .filter(isOfflineSafeEvent)
@@ -522,23 +440,10 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
           autoResolveEvent(rng.pick(offlineEventPool), region.tier)
         }
       }
-      // 事件只实际结算了 evCap 个;events 此前按全程估算,超额部分只是"路上料到"、
-      // 并非真实经历。总结与旅途记录若按全量上报,玩家会看到「际会 3456 次」
-      // 而实际只结算了 40 次——把 count 收敛为真实经历再写进 summary 与 session
+      // summary 与 session 只报实际结算的事件数
       events = evCap
-      /**
-       * 离线自动挑战区域首领(收益折损,胜则连锁解锁)。
-       *
-       * 「首领是否已清」按**本世路线**判(与在线 exploration.regionBossCleared 同源):
-       * 旧 REGIONS cleared 链在本世路线下会留空,若离线仍按它判,已清的 boss 会被离线再砍一遍、
-       * 还能顺手解锁下一区 —— 与在线判定分叉。
-       *
-       * 门槛数的是**整趟会话**的胜场,不是这一段挂机窗口的胜场:在线只看 `s.wins`
-       * (这趟历练从出发起累计的胜场),离线从前却拿本次结算的 `wins` 去比 ——
-       * 先在线赢 9 场再挂机赢 1 场,整趟已够 10 胜,离线却因「本段只赢 1 场」不出首领,
-       * 同一趟历练在线离线两套判据。这里把本段胜场并回会话再问同一个函数。
-       */
-      // 仍要求本段真的交过手:在线是「这一战恰好轮到首领」,不是凭空开一场
+      // 离线自动挑战区域首领(收益折损,胜则连锁解锁)
+      // 已清按本世路线判(regionBossCleared,与在线同源);门槛数整趟会话胜场(含本段);本段须真交过手
       const bossDue = winsUntilRegionBoss(session.wins + wins, regionBossCleared(region.id)) === 0
       if (bossDue && battles > 0) {
         const bossDef = enemyDef(placeContent(region.id).boss)
@@ -546,23 +451,12 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
           const bossDanger = dangerFactorFor(modeDef.dangerMult, region.danger, petDangerMult, regionEventDanger)
           const bossResult = resolveCombat(buildPlayerSnap(), makeEnemySnap(bossDef, region.tier, bossDanger), rng, explorationRules(), false)
           noteEnemy(bossDef.id, bossResult.win)
-          /**
-           * 首领战本身就是一场战斗 —— 与在线 runBattle 同一本账:
-           * 在线不论胜败都先 `track('battles')` 并记一场,再按结果记 wins/losses。
-           * 从前离线只在这里 `track('bossKills')` 与 `sessionWins += 1`:
-           * 归来卷轴写「胜 12 / 战 12」,可这一趟其实打了 13 场;
-           * 首领落败更是连会话 losses 都不记,整趟像没交过手。
-           *
-           * 这一场加在奖励计算**之后**:`wins` 是普通战按胜率折出的期望值,
-           * 掉落/修为/材料都已按它结算完毕,事后补一场不会把奖励再乘一遍。
-           */
+          // 首领战计一场(与在线 runBattle 同一本账,不论胜败);须在奖励结算之后,不重复放大奖励
           track('battles')
           battles += 1
           if (bossResult.win) {
-            // 首领战奖励同样并入事件加丰倍率(在线 boss 也是 mode×regReward,离线再叠收益折损)
-          // 第四个参数 false:玩家不在场,首领战走的是同一个 afterWin
-          // —— 不传 false 时它会照默认把掉落的法宝祭上空祭炼位,挂一夜回来随身那一格已经被人换过
-          // (与 autoResolveEvent 同一处教训)
+            // 与在线首领同乘 mode×regReward,另叠收益折损
+            // 第四参 false:玩家不在场,不自动祭上掉落的法宝(同 autoResolveEvent)
             const drops = afterWin(region, modeDef.rewardMult * OFFLINE_BOSS_REWARD_MULT * regionEventReward, true, false)
             trip.stone = add(trip.stone, drops.stone)
             trip.exp = add(trip.exp, drops.exp)
@@ -598,9 +492,9 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
             }
           } else {
             sessionLosses += 1
-            // 首领败也是败:连胜归零,与在线「非胜即清」同一条
+            // 首领败连胜归零(与在线同源)
             recordWinStreakBatch(0, 1)
-            // 首领败北也是一次败北:在线败在谁手里就记谁的宿敌账,离线同一本
+            // 首领败北记宿敌账(与在线同源)
             const { list, becameNemesis } = recordLossBatch(
               player.nemeses,
               bossDef.id,
@@ -617,7 +511,6 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
           }
         }
       }
-      // 会话推进
       if (simSec >= remainSec) {
         adventure.setSession(null)
         track('explores')
@@ -628,22 +521,20 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
           wins: session.wins + sessionWins,
           losses: session.losses + sessionLosses,
           events: session.events + events,
-          // 挂机所得计入这趟总账(与在线同一份会话字段,回来接着打的数才是整趟的数)
           stoneGain: add(session.stoneGain, trip.stone),
           expGain: add(session.expGain, trip.exp),
           itemGain: session.itemGain + trip.items,
-          // 与在线 nextBattleTime 同源:速度加成要除以 speed,否则恢复后首战被拖慢一拍
+          // 与在线 nextBattleTime 同源
           nextBattleAt: nowMs + battleGapSec * 1000
         })
       }
     }
   }
 
-  // ---- 寿元流逝(不受离线上限约束) ----
+  // 寿元流逝不受离线上限约束
   const ageBefore = player.age
   player.addAge((dtSec / 3600) * AGE_YEARS_PER_HOUR)
 
-  // ---- Buff 过期 ----
   cultivation.pruneBuffs(nowMs)
 
   stopLedger()
@@ -655,7 +546,7 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
     stone: sub(resources.spiritStone, stoneBefore),
     qi: Math.round(resources.qi - qiBefore),
     herb: resources.herb - herbBefore,
-    // 逐品净增(仅列>0)—— 灵田可前瞻产当前/高一档,单品名会误报,故逐品记
+    // 逐品净增(仅列 >0):灵田可产高一档,不能按单品报
     herbByGrade: HERB_GRADES.map(g => ({
       grade: g,
       amount: resources.herbOf(g) - (herbBeforeByGrade[g] ?? 0)
@@ -710,17 +601,7 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
   return summary
 }
 
-/**
- * 读档兜底:把各 store 的形状修回可用值。
- *
- * 从前只有 player/resources/lore/dongfu 四处 —— 其余八个分片若被写坏,
- * 会在**渲染期**抛出(如 cultivation.gongfaBranch 为 null 时的 Object.entries),
- * 玩家看到的是白屏。见 storeResilience.spec:逐个字段灌 undefined 的红线。
- *
- * 清单覆盖**所有**持久化分片(PERSISTED_STORES,见 utils/storage.ts)——
- * 曾漏了 pacing:它的 sanitize 定义了但没人调,record() 里 events.slice(-119)
- * 在 events 被写坏(null / 非数组)时照样抛错。这里与其余分片一视同仁地修平。
- */
+/** 读档兜底:修平全部持久化分片(PERSISTED_STORES,见 utils/storage.ts)的形状;spec 钉:storeResilience.spec */
 export function sanitizeOfflineInputs(): void {
   sanitizeAllStores()
 }

@@ -1,17 +1,7 @@
 /**
- * 离线装备掉落的「每场概率封顶」与在线同源 —— 行为层回归。
- *
- * 在线 afterWin 把每场装备掉落概率夹在 `Math.min(EQUIP_DROP_CHANCE_CAP, equipChance)`:
- * 长线云游(×2.4)×区域加丰(商队 1.25/妖潮 1.2)×掉落词条堆起来会越过 0.9,
- * 在线封顶、离线 settleOffline 的期望式却从不夹取 —— 同一本世同一地界,
- * 离线装备期望比在线高出一大截(HYP-015「在线离线各写一遍」家族的又一处)。
- *
- * 行为层怎么证:离线普通战的装备按**期望件数**计(equipCount = round(wins×每场概率×福缘)),
- * 超出行囊 6 件的部分折器灵尘,并在归来卷轴上留一句「另有 N 件寻常之物」。
- * 上一段代码里那句 N 就是 (equipCount − 6) —— 直接读出即得当场的期望件数。
- * 把模式拉到 prolonged(×2.4)+ 商队(×1.25)使裸概率 = 0.9,再挂「鸿运」天赋
- * (dropRate +0.1)把裸概率顶到 0.99:封顶生效则 equipCount 仍按 0.9 计;
- * 若哪天真把封顶从离线拿掉,note 里的 N 会按 0.99 算 —— 与本断言(0.9)差出近一成,必红。
+ * 离线装备每场掉落概率与在线 afterWin 同吃 EQUIP_DROP_CHANCE_CAP(行为层)。
+ * 期望件数 = 卷轴「另有 N 件折作器灵尘」的 N + 6;裸概率顶到 0.99 时仍须按 0.9 计。
+ * 故障注入:把封顶从离线拿掉,N 按 0.99 算,本用例红。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -25,7 +15,7 @@ import { regionDef } from '@/data/regions'
 import { avgDustPerDrop } from './economySim'
 import { EXPLORE_BATTLE_INTERVAL } from '@/data/constants'
 
-// rng 全响应固定:概率判定处处 0.5、pick 恒取首项、int/float 取左端 —— 全链路确定
+// rng 全响应固定,全链路确定
 vi.mock('@/utils/random', async importOriginal => {
   const mod = await importOriginal<typeof import('@/utils/random')>()
   return {
@@ -41,7 +31,7 @@ vi.mock('@/utils/random', async importOriginal => {
   }
 })
 
-// 胜率固定 0.5:wins = round(battles×0.5),与模式难度解耦 —— 本测试只盯装备件数这一件事
+// 胜率固定 0.5,与模式难度解耦
 vi.mock('./combat', async importOriginal => {
   const mod = await importOriginal<typeof import('./combat')>()
   return {
@@ -102,15 +92,13 @@ describe('离线装备掉落 · 每场概率吃在线那道封顶(行为层·确
     expect(equipped, '离线期望件数未按 0.9 封顶(裸概率 0.99 直接乘了进去)').toBe(
       Math.round(summary.wins * 0.9)
     )
-    // 钉死这不是「0.99 恰好与 0.9 同 round」的巧合:两者必须真的分得开
+    // 防 0.99 与 0.9 恰好同 round
     expect(Math.round(summary.wins * 0.99)).not.toBe(Math.round(summary.wins * 0.9))
   })
 
   /**
-   * 溢出件数折尘与在线化尘口径同源(avgDustPerDrop),而非固定 4 尘。
-   * 旧固定 4 只在中阶(约 tier 12,avgDust≈4.2)碰巧对得上:低阶多发、高阶少给近一个数量级。
-   * 用高阶地界(道祖悟道崖 tier 32,avgDust≈77)验:溢出折尘 ≥ 溢出数 × 同层分解尘均值;
-   * 若退回固定 4(只给溢出×4),该下界必不满足 —— 稳红。
+   * 溢出件折尘按 avgDustPerDrop(tier),不按固定 4 尘;用 tier 32(avgDust≈77)验下界。
+   * 故障注入:退回固定 4 尘,本用例红。
    */
   it('溢出件数折尘按 avgDustPerDrop(tier) 折算,高阶不再按固定 4 少付', () => {
     const game = useGameStore()
@@ -143,10 +131,9 @@ describe('离线装备掉落 · 每场概率吃在线那道封顶(行为层·确
     const dustGain = useResourcesStore().dust - beforeDust
     const overflow = overflowFromNotes(summary.notes)
     const tier = regionDef('wudaoya')!.tier
-    // 溢出折尘下界 = 溢出数 × 同层平均分解尘;旧固定 4(溢出×4)在 32 阶远低于它,退回必红
     const floor = Math.round(overflow * avgDustPerDrop(tier))
     expect(dustGain, `溢出折尘应 ≥ 溢出${overflow} × avgDustPerDrop(${tier})=${floor},不可退回固定 4`).toBeGreaterThanOrEqual(floor)
-    // 显式卡死这不是「4 恰好也过下界」的巧合:必须明显高于固定 4 的溢出贡献
+    // 防固定 4 恰好也过下界
     expect(dustGain).toBeGreaterThan(overflow * 6)
   })
 })

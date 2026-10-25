@@ -1,14 +1,10 @@
-/**
- * 事件引擎 —— 挑选事件 / 结算选项 / 应用效果
- */
+/** 事件引擎:挑选事件 / 结算选项 / 应用效果 */
 import type { EventChoice, EventDef, EventEffect, RegionDef, AdventureSession, GNum } from '@/types'
 import { RandomService, rng } from '@/utils/random'
 import { formatGN } from '@/utils/format'
 import { EVENTS, FORTUNE_EVENTS, eventDef } from '@/data/events'
 import { CHAINS, chainOfEvent } from '@/data/chains'
-// 三档触发概率是同一份数据(见 data/constants 那段注释):际遇在 exploration 掷,
-// 奇缘与机缘在这里从上一步的结果里再掷一次。数字不在本文件另写一遍 ——
-// core/eventTier 要把这条乘法链讲给玩家听,两边各写一份就会互相撒谎。
+// 三档触发概率同源 data/constants(际遇在 exploration 掷,奇缘与机缘在此掷);本文件不另写数字,core/eventTier 同读
 import { CHAIN_STAGE_CHANCE, FORTUNE_CHANCE, INSTANT_EXP_LAYER_CAP } from '@/data/constants'
 import { pillDef, PILLS, pillRank } from '@/data/pills'
 import { HERB_GRADE_SHORT, herbGradeOfMajor } from '@/data/herbGrades'
@@ -51,14 +47,14 @@ export function pendingChainStages(major: number): { chainId: string; stage: num
   return out
 }
 
-/** 从当前该走的几程里掷一程(缘分不分先后,几条链可以并行) */
+/** 从当前该走的几程里掷一程;几条链可并行 */
 export function pickChainStageEvent(major: number, rand: RandomService = rng): EventDef | null {
   const pending = pendingChainStages(major)
   if (pending.length === 0) return null
   return rand.pick(pending).event
 }
 
-/** 奇缘录:已起了头的缘(未起的不列,免得把往后的路先说破) */
+/** 奇缘录:只列已起了头的缘 */
 export interface ChainProgress {
   id: string
   name: string
@@ -76,13 +72,7 @@ export function chainProgressRows(): ChainProgress[] {
   }).filter(c => c.stage > 0)
 }
 
-/**
- * 区域事件池 —— **不含奇缘阶段**。
- *
- * 奇缘不属于任何地界:它按链条推进,不按区域标签出现。
- * 抽出来单独成函数,既是为了让"奇缘不漏进随机池"这条契约可测,
- * 也是为了提醒后来者:往池子里加东西之前,先想清楚它属于哪一类。
- */
+/** 区域事件池,不含奇缘阶段(奇缘按链条推进,不按区域标签出现) */
 export function regionEventPoolFor(region: RegionDef): EventDef[] {
   const player = usePlayerStore()
   const adventure = useAdventureStore()
@@ -94,19 +84,16 @@ export function regionEventPoolFor(region: RegionDef): EventDef[] {
   })
 }
 
-/** 为区域挑选一个事件(rand 可注入,便于测试与模拟) */
+/** 为区域挑选一个事件(rand 可注入) */
 export function pickEventFor(region: RegionDef, rand: RandomService = rng): EventDef | null {
   const player = usePlayerStore()
-  // Phase 34.2 奇缘:上一程结在哪里,下一程才从哪里起
   if (rand.chance(CHAIN_STAGE_CHANCE)) {
     const chainEvent = pickChainStageEvent(player.major, rand)
     if (chainEvent) return chainEvent
   }
-  // Phase 31 S2:极小概率先判机缘事件(带代价选择)
   if (rand.chance(FORTUNE_CHANCE)) {
     const fortune = FORTUNE_EVENTS.filter(ev => ev.tags.some(t => region.eventTags.includes(t)))
-    // Phase 32.2:同源机缘更容易撞见——灵根在此接入"机缘 → 师承 → 流派"的因果链起点。
-    // 非同源机缘权重不变(仍是 ev.weight),没有一条路被灵根关掉。
+    // 同源灵根的机缘加权;非同源仍是 ev.weight,不关掉任何一条
     if (fortune.length > 0) {
       const elements = rootElements(player.linggen?.roots)
       return rand.weighted(fortune, ev => ev.weight * fortuneAffinity(ev.element, elements))
@@ -117,7 +104,6 @@ export function pickEventFor(region: RegionDef, rand: RandomService = rng): Even
   return rand.weighted(pool, ev => ev.weight)
 }
 
-/** 选项条件校验 */
 export function choiceAvailable(choice: EventChoice, tier: number): boolean {
   const cond = choice.cond
   if (!cond) return true
@@ -133,12 +119,7 @@ export function choiceAvailable(choice: EventChoice, tier: number): boolean {
   }
 }
 
-/**
- * 事件落账并入历练会话账目 —— 与 runBattle 把 afterWin 真实入账写进 session 对称:
- * 事件给出的灵石/修为/拾获(装备·丹药·法宝)若不并进去,「此行得灵石/修为/拾获」的
- * 总结就只数战斗所得、漏掉际遇入账(所得对不上文案)。仅在历练途中(有 session)时折叠,
- * 其余场景(测试/非途)跳过。只并「得」,事件里花掉的灵石不入账。
- */
+/** 事件所得并入历练会话账目(与 runBattle 入账对称);无 session 时跳过,只并所得不并花费 */
 function foldSession(stone?: GNum, exp?: GNum, items = 0): void {
   const adventure = useAdventureStore()
   const s = adventure.session
@@ -152,15 +133,8 @@ function foldSession(stone?: GNum, exp?: GNum, items = 0): void {
   adventure.setSession(next)
 }
 
-/**
- * 事件结算时的在场性 —— 只有「玩家在场」才允许替他改这一身构筑。
- *
- * 离线整段结算与「遇事勿扰」都是玩家不在场(或明确说过别弹窗)的路径:
- * 那里掉出一件法宝时若照默认自动祭上,回来第一眼看到的是**被换过的构筑**,
- * 而他从没点过那个按钮(离线结算的法宝通道早就守住了这条,见 offline.ts 的 autoEquip=false)。
- */
 export interface EventApplyOpts {
-  /** 空祭炼位时自动祭上法宝。默认 true(玩家亲手选的那一选项) */
+  /** 空祭炼位时自动祭上法宝;默认 true,玩家不在场的自动结算(离线 / 遇事勿扰 / 超时)传 false,同 offline.ts 的 autoEquip=false */
   autoEquipArtifact?: boolean
 }
 
@@ -195,7 +169,7 @@ function applyEffect(effect: EventEffect, tier: number, opts: EventApplyOpts = {
       return `${MATERIAL_NAMES[effect.id]} +${effect.amount}`
     case 'equipment': {
       const inst = generateEquipment(Math.max(tier, 1), rng, {
-        // 品质 luck 与战斗/离线掉落同源:并上灵兽性格的掉落倾向(贪宝更易稀出,谨慎稍稍寻常)
+        // luck 与战斗/离线掉落同源,含灵兽性格的掉落倾向
         luck: modOf(player.finalStats.mods, 'luck') + personalityEffects(player.petId).dropLuck,
         minQualityRank: effect.minQualityRank
       })
@@ -271,12 +245,6 @@ export interface EventResolution {
   lines: string[]
 }
 
-/**
- * 结算某个选项。
- *
- * `opts.autoEquipArtifact` 只在**自动结算**(离线整段 / 遇事勿扰 / 超时)传 false:
- * 玩家亲手点的选项照旧自动祭上,替他决定的那几条路不许改他的构筑。
- */
 export function resolveEventChoice(def: EventDef, choiceIdx: number, tier: number, opts: EventApplyOpts = {}): EventResolution {
   const adventure = useAdventureStore()
   const choice = def.choices[choiceIdx] ?? def.choices[0]!
@@ -290,23 +258,16 @@ export function resolveEventChoice(def: EventDef, choiceIdx: number, tier: numbe
   collect('event', def.id)
   track('events')
 
-  // Phase 34.2 奇缘:解了哪一程,就把那条链往前推一程;断了缘,直接记到尽头
+  // 奇缘推进一程;断了缘直接记到尽头
   const chain = chainOfEvent(def.id)
   if (chain) {
     const ended = def.choices[choiceIdx]?.endsChain ?? false
     usePlayerStore().setEventChain(chain.chain.id, ended ? chain.chain.stages.length : chain.stage + 1)
   }
 
-  /**
-   * Phase 30.9 S3:记录事件记忆(完成的余波后,未来再遇时有机会发余波文本)。
-   *
-   * `lastAt` 读游戏时钟 —— `enginePause` 的纪律是「可冻结的到期判定读 gameNow(),
-   * 不要直接读 Date.now()」。事件记忆跟 Buff 同属一类:
-   * 墙钟与其余到期判定同源，否则暂停墙钟就会超过未来到期判定。
-   * 本文件的 `case 'buff'` 早就改成 gameNow() 了,这一行是最后一处遗忘。
-   */
+  // 事件记忆(再遇时可发余波文本);lastAt 读 gameNow()
   adventure.eventMemories = recordEvent(adventure.eventMemories, def.id, choiceIdx, gameNow())
-  // Phase 31.1 机缘链:机缘选择记入世界记忆(取/弃,影响未来)
+  // 机缘选择(取/弃)记入世界记忆
   if (def.id.startsWith('ft_')) {
     const isDefault = def.choices[choiceIdx]?.isDefault ?? false
     recordFortuneChoice(def.id, isDefault ? 'leave' : 'take')
@@ -314,13 +275,7 @@ export function resolveEventChoice(def: EventDef, choiceIdx: number, tier: numbe
   return { outcomeText: outcome.text, lines }
 }
 
-/**
- * 离线/超时/勿扰自动按默认选项结算 —— 玩家**不在场**,不许替他祭法宝。
- *
- * 这条路径是离线整段结算(offline.ts)、事件超时与「遇事勿扰」的共用出口。
- * 从前它照默认 `autoEquip=true` 收法宝:挂一夜回来,囊里多了一件法宝,
- * 而随身那一格已经被人换过 —— 玩家从没点过那个按钮,也看不出是谁换的。
- */
+/** 离线/超时/勿扰按默认选项自动结算(三者共用出口);玩家不在场,不自动祭法宝 */
 export function autoResolveEvent(eventId: string, tier: number): EventResolution | null {
   const def = eventDef(eventId)
   if (!def) return null

@@ -1,19 +1,7 @@
 /* eslint-disable no-console */
 /**
- * 道侣事件自然介入验收(Phase 34.0)
- *
- * 33.9 的判词是:**内容是真的,发生时机是假的。**
- * 事件只在打开道侣弹窗时抽取,道侣于是成了「需要主动点击检查的系统」。
- *
- * 34.0 把事件挂回历练情境。四条验收:
- *
- *   一 道侣事件能在不打开道侣页时自然发生
- *   二 事件必须由历练情境触发,而不是纯时间随机
- *   三 同一世不会把关系事件刷成 farming loop
- *   四 玩家选择仍能真实改变三维与结局
- *
- * 故障注入(用户指定):把历练上下文断掉 —— 让事件在任意情境都能触发 ——
- * 测试必须变红。防止日后有人图省事改回 randomDaoluEvent()。
+ * 道侣事件自然介入验收:事件由历练情境触发,不在打开道侣弹窗时抽取。
+ * 故障注入:断掉历练上下文(事件在任意情境都能触发,如改回 randomDaoluEvent()),本用例红。
  */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -42,7 +30,6 @@ function ready(id = 'dl_qingli'): void {
 
 describe('自然介入 · 一:不打开道侣页也会发生', () => {
   it('历练代码在四个情境点主动提供事件', () => {
-    // 33.9 的时机来自「打开弹窗」;34.0 必须来自历练本身
     for (const t of ['enterPlace', 'firstVictory', 'bossDefeated', 'nearDeath'] as const) {
       expect(EXPLORATION).toContain(`offerBondEvent('${t}')`)
     }
@@ -54,19 +41,15 @@ describe('自然介入 · 一:不打开道侣页也会发生', () => {
     ready()
     expect(pendingBondEvent()).toBeNull()
     offerBondEvent('bossDefeated')
-    // 没有打开任何界面,事件已经在那里等着
     expect(pendingBondEvent()).not.toBeNull()
     console.log(`\n击破首领之后,待决事件已写入:「${pendingBondEvent()!.title}」`)
   })
 
   it('界面不再自行抽取事件', () => {
-    // 道侣弹窗拆出后,「只读待决事件」的接线在 components/character/BondDialog.vue
     const view =
       readFileSync(resolve(__dirname, '../views/CharacterView.vue'), 'utf-8') +
       readFileSync(resolve(__dirname, '../components/character/BondDialog.vue'), 'utf-8') +
-      // 关系投影(只读待决事件)收在 composable,一并合扫
       readFileSync(resolve(__dirname, '../composables/useBondOverview.ts'), 'utf-8')
-    // 旧写法:打开弹窗 → rollBondEvent()
     expect(view).not.toMatch(/rollBondEvent/)
     expect(view).toMatch(/pendingBondEvent/)
     console.log('\n角色页只读 pendingBondEvent(),不再自己 roll —— 时机不归界面管')
@@ -78,14 +61,13 @@ describe('自然介入 · 二:情境决定,不是随机', () => {
     console.log('\n事件      冲突       发生于')
     for (const e of BOND_EVENTS) {
       console.log(`${e.title.padEnd(8)} ${e.kind.padEnd(10)} ${e.triggers.map(t => TRIGGER_NAMES[t]).join('、')}`)
-      // 空数组等于「随时」,那正是要避免的
+      // 空数组等于「随时」
       expect(e.triggers.length).toBeGreaterThan(0)
     }
   })
 
   it('不匹配的情境拿不到事件', () => {
     ready()
-    // 「重伤」只在濒死时发生
     const rescue = BOND_EVENTS.find(e => e.id === 'be_rescue')!
     expect(rescue.triggers).toEqual(['nearDeath'])
     const gotOnEnter = new Set<string>()
@@ -102,11 +84,9 @@ describe('自然介入 · 二:情境决定,不是随机', () => {
   })
 
   it('故障注入:抹掉情境筛选,事件就能在任何地方发生', () => {
-    // 模拟有人把 offerBondEvent 改回「不看 trigger 直接抽」
     const withContext = BOND_EVENTS.filter(e => e.triggers.includes('enterPlace')).length
     const withoutContext = BOND_EVENTS.length
     expect(withContext).toBeLessThan(withoutContext)
-    // 源码层面锁死:必须按 trigger 过滤
     expect(CODE).toMatch(/triggers\.includes\(trigger\)/)
     console.log(
       `\n踏入新地界只该遇到 ${withContext}/${withoutContext} 个事件。` +
@@ -118,11 +98,10 @@ describe('自然介入 · 二:情境决定,不是随机', () => {
   it('机会点而非时间:走得多才有更多机会', () => {
     ready()
     const before = currentBond()!.opportunities
-    // 每次情境都累积一个机会点,即便没给出事件
+    // 每次情境都累积机会点,即便没给出事件
     offerBondEvent('firstVictory')
     offerBondEvent('firstVictory')
     expect(currentBond()!.opportunities).toBeGreaterThan(before)
-    // 源码里没有任何基于时间的判断
     expect(CODE).not.toMatch(/setInterval|Date\.now\(\)\s*-\s*.*lastEvent|elapsed/)
     console.log(
       `\n机会点 ${before} → ${currentBond()!.opportunities}。` +
@@ -137,7 +116,6 @@ describe('自然介入 · 三:不是 farming loop', () => {
     const first = offerBondEvent('bossDefeated')
     expect(first).not.toBeNull()
     chooseBondEvent(first!.id, first!.choices[0]!.id)
-    // 刚做完选择,立刻再给情境也不会出第二件
     const immediate = offerBondEvent('bossDefeated')
     expect(immediate).toBeNull()
     console.log(`\n做完「${first!.title}」后立刻再触发:无事发生 —— 事件是人生节点,不是每日任务`)
@@ -165,7 +143,6 @@ describe('自然介入 · 三:不是 farming loop', () => {
     ready()
     const a = offerBondEvent('bossDefeated')
     expect(a).not.toBeNull()
-    // 还没选,再来一个情境
     const b = offerBondEvent('enterPlace')
     expect(b).toBeNull()
     expect(pendingBondEvent()!.id).toBe(a!.id)
@@ -197,7 +174,6 @@ describe('自然介入 · 四:选择仍然真实改变关系', () => {
       setActivePinia(createPinia())
       ready()
       const e = offerBondEvent('bossDefeated')
-      // 确保拿到遗府;若抽到别的就跳过本轮
       if (!e || e.id !== 'be_relic') continue
       chooseBondEvent('be_relic', cid)
       const b = currentBond()!
@@ -267,7 +243,7 @@ describe('自然介入 · 边界', () => {
     meet('dl_qingli')
     advanceBond({ fate: 55, trust: 55, accord: 20, shared: true })
     advanceBond({ shared: true })
-    // 没有清冷却:刚认识就该沉默一阵
+    // 不清冷却
     expect(offerBondEvent('bossDefeated')).toBeNull()
     console.log('\n刚认识就掏心掏肺不合情理 —— 初遇后有一段冷却')
   })

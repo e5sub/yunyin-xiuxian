@@ -1,13 +1,10 @@
-/**
- * 机制指纹(Phase 24)—— 把异常从「某个构筑」抽象为「某种机制结构」
- * 新装备无论叫玄武甲还是幽冥战衣,只要词条落入同一家族,风险模型自动跟踪
- */
+/** 机制指纹:按词条家族把构筑归为机制结构,供风险模型跟踪 */
 import type { AnyStatKey, StatMods } from '@/types'
 import { modOf } from './statsCalc'
 
 export type MechanicFamily = 'burst' | 'sustain' | 'mitigation' | 'shield' | 'counter' | 'combo' | 'desperate'
 
-/** 家族 → 词条清单与「成型档」参考值(与 synergyScan 的扫描档一致) */
+/** 家族 → 词条与「成型档」参考值;须与 synergyScan 扫描档一致 */
 export const MECHANIC_FAMILIES: Record<MechanicFamily, Partial<Record<AnyStatKey, number>>> = {
   burst: { fullHpDamage: 0.36, firstStrike: 0.48, critRate: 0.18, critDamage: 0.48, executeDamage: 0.3, armorPen: 0.18, damageBonus: 0.18 },
   sustain: { lifesteal: 0.09, regenPerRound: 0.024, overhealShield: 0.6 },
@@ -18,7 +15,7 @@ export const MECHANIC_FAMILIES: Record<MechanicFamily, Partial<Record<AnyStatKey
   desperate: { lowHpDamage: 0.6 }
 }
 
-/** 已命名的风险/风格指纹(按家族签名索引;签名 = 达标家族按字典序连接) */
+/** 已命名的风险/风格指纹;键为家族签名(达标家族按字典序连接) */
 export const FINGERPRINT_NAMES: Record<string, string> = {
   burst: '锋锐直击',
   'burst+combo': '疾风骤雨',
@@ -37,7 +34,7 @@ export const FINGERPRINT_NAMES: Record<string, string> = {
   counter: '以彼之道',
   shield: '灵光护体',
   mitigation: '铜皮铁骨',
-  // P24 破墙扫描登记的风险结构
+  // 破墙扫描登记的风险结构
   'burst+combo+mitigation': '铁骑冲阵',
   'combo+mitigation+shield': '坚壁连环',
   'burst+combo+sustain': '不竭连锋',
@@ -62,14 +59,14 @@ export const FINGERPRINT_NAMES: Record<string, string> = {
 export interface Fingerprint {
   /** 家族签名(字典序,如 'mitigation+sustain') */
   signature: string
-  /** 有名字则给名字,否则标「未名结构」 */
+  /** 无名则为「未名结构」 */
   name: string
   /** 各家族归一强度(≥0.5 视为达标) */
   strengths: Partial<Record<MechanicFamily, number>>
   known: boolean
 }
 
-/** 家族强度:该家族各词条(当前值 / 成型档)的最大值与均值折中 */
+/** 家族强度:各词条(当前值 / 成型档)的最大值与均值折中 */
 function familyStrength(mods: StatMods, family: MechanicFamily): number {
   const refs = MECHANIC_FAMILIES[family]
   const keys = Object.keys(refs) as AnyStatKey[]
@@ -89,10 +86,9 @@ function familyStrength(mods: StatMods, family: MechanicFamily): number {
   return max * 0.6 + avg * 0.4
 }
 
-// ---------- 风险图谱(Phase 25):机制结构的故障知识库 ----------
+// ---------- 风险图谱 ----------
 
 export interface RiskProfile {
-  /** 指纹签名 */
   signature: string
   /** 高风险语境 */
   riskContexts: string[]
@@ -103,10 +99,7 @@ export interface RiskProfile {
   risk: 'low' | 'watch' | 'high'
 }
 
-/**
- * 风险图谱:破墙扫描与跨界检测中出现过的结构,连同语境、对策与事故史。
- * 新增词条/装备时,若显著增强某档案结构,应先查此表再上线
- */
+/** 风险图谱:破墙扫描与跨界检测中出现过的机制结构;新增词条/装备若显著增强某档案结构,须先查此表 */
 export const RISK_ATLAS: RiskProfile[] = [
   {
     signature: 'mitigation+shield+sustain',
@@ -205,7 +198,7 @@ export function riskProfileOf(signature: string): RiskProfile | undefined {
   return RISK_ATLAS.find(r => r.signature === signature)
 }
 
-/** 计算构筑的机制指纹:签名取主导家族(最强二者;第三家族须显著方计入) */
+/** 构筑的机制指纹:签名取主导家族(最强二者;第三家族须显著方计入) */
 export function fingerprintOf(mods: StatMods): Fingerprint {
   const strengths: Partial<Record<MechanicFamily, number>> = {}
   const ranked: { fam: MechanicFamily; s: number }[] = []

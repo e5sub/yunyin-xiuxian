@@ -1,43 +1,13 @@
 /**
  * 法宝池 —— 45 件,拥有被动属性与自动触发的主动神通
  *
- * ## 数值写的是「凡品零重基线」,不是玩家会看到的数
+ * passive / active.effect 是凡品零重基线(算式第一个因子),品阶与祭炼两条放大由 artifactValue 施加;
+ * desc 与 effect 描述的是基线,不是面板。
  *
- * 每件的 passive / active.effect 是算式里的**第一个因子**,品阶与祭炼两条放大
- * 由 artifactValue 施加(见那里的注释)。所以写着 30% 的那一件,若它是仙品,
- * 玩家拿到手就是 ×2.61 之后的数 —— desc 与 effect 描述的是基线,不是面板。
- *
- * ## 品阶(quality)是稀缺标签,也是强度阶梯
- *
- * 品阶同时管两件事:掉落权重(core/loot.artifactDropWeight)与数值倍率
- * (artifactQualityMult)。故标签按 (fromTier 升,同阶内预算升) 排成一条**不降**的
- * 阶梯 —— 越深的地界越贵,同一阶之内预算大的更贵:
- *
- *   凡 12(t1-12)· 良 6(t13-18)· 精 6(t19-23)· 灵 6(t23-27)
- *   · 玄 6(t28-29)· 地 5(t30-31)· 天 2(t31)· 仙 1(t32)· 神 1(t32)
- *
- * 于是四个界域各有自己的那一段:人间界凡→精、仙界精/灵、神界灵、混沌海玄→神。
- *
- * ## 为什么凡品占着头十二阶
- *
- * 凡品是**基线档**:表里写的数就是它的零重值 —— 那十二件的力量由基准值自己逐级
- * 抬升(回血 12% → 削弱 30%),不需要品质再抬一层。从第十三阶起才用品阶表达稀缺。
- * 另有两条压力把这条曲线钉在这里(loot.spec 的「品阶阶梯」盯着它们):
- *
- *   一 神品要稀缺:它在每个界域的掉落池里都只占个位数百分比,否则「神品」二字
- *      没有信息量,挂在它上面的倍率也就失去了意义;
- *   二 池子仍要以近阶之物为主:掉落权重是「品质越差越常见」×「越贴近当前层级越重」。
- *      标签诚实化之后,人间界的旧物大批落在凡品上(权重 100,是神品的十三倍),
- *      故就近窗口也跟着收紧到「同阶 ×21」(见 loot.ARTIFACT_NEAR_BONUS)——
- *      两处一起调,「混沌海多半掉混沌海之物」才依旧成立。
- *
- * ## 封顶类效果:品阶买的是「更早到顶」,不是更高的顶
- *
- * 破甲/削弱有 50% 的顶、净念有九成的顶、吸命的回补不超过打出去的那一份 ——
- * 这几个顶是**规则与平衡边界**,不随品阶浮动(理由写在 ARTIFACT_WEAKEN_CAP 那一段)。
- * 于是高品阶的那几件零重就在顶:神鞭(玄品)破甲零重 50.2%、无相念珠(地品)净念
- * 零重 134% 被截到九成、神魔镜(神品)回补零重就吃满十成 —— 它们之后祭炼只涨被动。
- * 这不是漏乘:把无相念珠的标签压回凡品,它要炼到第 4 重才摸到九成。
+ * 品阶同管掉落权重(core/loot.artifactDropWeight)与数值倍率(artifactQualityMult),
+ * 按 (fromTier 升,同阶内预算升) 排成不降的阶梯;凡品占头十二阶(基线档),第十三阶起才用品阶表达稀缺。
+ * loot.spec 钉着:品阶不倒挂;神品在每个界域掉落池里只占个位数百分比。
+ * 就近窗口「同阶 ×21」(loot.ARTIFACT_NEAR_BONUS)须与品阶分布一起调,池子仍以近阶之物为主。
  */
 import type { AnyStatKey, ArtifactDef, ArtifactEffect, QualityId, StatMods } from '@/types'
 import { formatPercent } from '@/utils/format'
@@ -223,7 +193,6 @@ export const ARTIFACTS: ArtifactDef[] = [
     'fine',
     13,
     '推演周天,窥探命数',
-    // 推演得见的,自然打得中 —— 这是本池里唯一带命中的法宝,专治幻影(见 SpecialKey accuracy)
     { luck: 0.06, cultivationSpeed: 0.06, accuracy: 0.06 },
     '星辉',
     '每 4 回合引星辉入体,回复 24% 生命',
@@ -402,7 +371,7 @@ export const ARTIFACTS: ArtifactDef[] = [
     { type: 'heal', pctMaxHp: 0.27 },
     'gem'
   ),
-  // 高界补两件:法宝位只有两个,一个界域若只给两件,「带上就完事」——取舍就没有了
+  // 法宝位只有两个:每个界域须多于两件,否则没有取舍
   f(
     'af_xianjian',
     '青锋仙剑',
@@ -483,8 +452,6 @@ export const ARTIFACTS: ArtifactDef[] = [
   ),
 
   // ============ 仙界初段(21-25 阶)============
-  // 与装备同一条理由:仙界原本四件法宝全在 23 阶,刚飞升的真仙一路上捡到的东西
-  // 与「过仙门者方称仙人」毫无关系。此为仙界两端补上本界域的名目与手艺。
   f(
     'af_yunhai',
     '云海幡',
@@ -646,14 +613,7 @@ export const ARTIFACTS: ArtifactDef[] = [
     'scan-eye'
   ),
 
-  /*
-   * 第一件防身型法宝。
-   *
-   * 前面 32 件全在回答「我怎么打你」,没有一件回答「我扛得住你的阴招」。
-   * 而震慑是玩家唯一无从招架的状态(十三种敌人会摄魂,中了就是白丢一回合),
-   * 战后分析还会明说「N 个回合被震慑打断,节奏尽失」—— 报了病因,却无药可抓。
-   * interval 记 1:它不是「每 N 回合出手」,而是随身常在(见 combat.tryStun)。
-   */
+  // 防身型:interval 记 1 表示随身常在,不是「每 N 回合出手」(见 combat.tryStun)
   f(
     'af_wuxiangzhu',
     '无相念珠',
@@ -682,24 +642,10 @@ export const ARTIFACT_UP_WUDAO_BASE = 6
 export const ARTIFACT_UP_STONE_TIER = 40
 
 /**
- * 单项效果的封顶 —— 数值只写在这里,战斗与界面文案都读它。
- *
- * 从前这几个上限各写在 combat.ts 的分支里(0.5 / 0.9 / 1),而界面上的神通说明
- * 是**手写死的基线文案**:祭炼到九重时,战斗按 ×1.72 算,卡片上印的还是原来的数
- * (实测玄虚拂尘:说明「造成 230% 攻击伤害」,真打出去是 395.6%)。
- * 故把上限收成一份,由同一处给出「某等级下真正生效的数值」(见 artifactValue)。
- *
- * ## 顶是绝对的:品阶只改变「多早到顶」
- *
- * 两个顶是**规则**:回补不超过打出去的那一份(1.0)、挣脱概率最高九成
- * (「再高也不该等于免疫」)。规则不随品阶浮动 —— 一件地品的无相念珠零重就顶在
- * 九成(×1.92 之后的 134% 被截掉),神魔镜的回补零重就吃满十成。这不是漏乘:
- * 品阶买的是更早到顶(把念珠的标签压回凡品,它要炼到第 4 重才摸到九成)。
- *
- * 破甲/削弱的 50% 是**平衡顶**,不是规则:一个法宝位最多把敌手的护甲或攻势砍掉
- * 一半 —— 与修士自己的减伤带同一量级(玩家侧 damageReduction 软顶 0.55、
- * 硬顶 MITIGATION_CAP 0.75),再往上,一件法宝就把敌人变成木桩。故一样定死,
- * 也正因为定死,高品阶的破甲件零重就在顶上,祭炼只涨它的被动。
+ * 单项效果的封顶,战斗与界面文案同读(见 artifactValue)。顶不随品阶浮动,品阶只改变多早到顶:
+ * 高品阶件零重即可能在顶(无相念珠、神魔镜),之后祭炼只涨被动,不是漏乘。
+ * 吸命回补 ≤ 打出的那一份、挣脱 ≤ 九成(不等于免疫)是规则;
+ * 破甲 / 削弱 50% 是平衡顶,与玩家侧减伤同量级(damageReduction 软顶 0.55、硬顶 MITIGATION_CAP 0.75)。
  */
 export const ARTIFACT_WEAKEN_CAP = 0.5
 export const ARTIFACT_SUNDER_CAP = 0.5
@@ -707,16 +653,12 @@ export const ARTIFACT_PURGE_CAP = 0.9
 export const ARTIFACT_DRAIN_HEAL_CAP = 1
 
 /**
- * 品阶对法宝数值的放大指数。
- *
- * 与装备那条(EQUIP_QUALITY_FLAT_EXP = 1.8)刻意分开:法宝只占两个槽位、是**第二来源**,
- * 同一条陡梯挂上去,「先看构筑、再攒一件好的」会变成「先看抽到几件神品」。
- * 0.5 的指数把品质倍率(凡 1.0 → 神 9.5)开方成 1.0 → 3.08:每高一档约 ×1.14,
- * 同一件法宝,神品约等于凡品的三个 —— 品阶拉开了台阶,却没盖过「越深的地界越强」这条主轴。
+ * 品阶对法宝数值的放大指数:品质倍率(凡 1.0 → 神 9.5)开方成 1.0 → 3.08。
+ * 与装备的 EQUIP_QUALITY_FLAT_EXP(1.8)刻意分开:法宝是第二来源,品阶不能盖过「越深的地界越强」这条主轴。
  */
 export const ARTIFACT_QUALITY_EXP = 0.5
 
-/** 品阶倍率(凡品 1.0 → 神品 ≈3.08;品质倍率的开方,见 ARTIFACT_QUALITY_EXP) */
+/** 品阶倍率(见 ARTIFACT_QUALITY_EXP) */
 export function artifactQualityMult(quality: QualityId): number {
   return Math.pow(qualityDef(quality).mult, ARTIFACT_QUALITY_EXP)
 }
@@ -742,16 +684,8 @@ export interface ArtifactEffectValues {
 }
 
 /**
- * 法宝数值的**唯一出口**:
- *
- *   基础值 × 品阶倍率(def.quality) × 祭炼倍率(level)
- *
- * 表里的 passive / active.effect 是**凡品零重基线** —— 算式里的第一个因子,
- * 不是玩家会看到的数(见文件头)。两条放大只在这里做一次:属性汇总、背包卡片、
- * 图鉴、战斗、构筑模拟读的都是这一份,谁也不会自己再乘一遍。
- *
- * 从前这两条乘法散在四处(属性汇总 store/inventory、背包卡片、图鉴、构筑模拟),
- * 谁改了增幅率都得改四回 —— 漏掉的那一处就会安静地说错话。
+ * 法宝数值的唯一出口:基础值 × 品阶倍率(def.quality) × 祭炼倍率(level)。
+ * 属性汇总、背包卡片、图鉴、战斗、构筑模拟同读这一份,别处不再自乘。
  */
 export function artifactValue(def: ArtifactDef, level = 0): ArtifactValue {
   const mult = artifactQualityMult(def.quality) * artifactLevelMult(level)
@@ -763,12 +697,7 @@ export function artifactValue(def: ArtifactDef, level = 0): ArtifactValue {
   return { passive, active: effectValuesAt(def.active.effect, mult) }
 }
 
-/**
- * 某倍率下神通**真正生效**的数值(含封顶)。
- *
- * 只有 artifactValue 会调它 —— 战斗与文案读同一份结果,「显示的数字」与
- * 「打出来的数字」不可能再分叉。
- */
+/** 某倍率下神通真正生效的数值(含封顶),只由 artifactValue 调用 */
 function effectValuesAt(eff: ArtifactEffect, mult: number): ArtifactEffectValues {
   switch (eff.type) {
     case 'damage':
@@ -777,20 +706,8 @@ function effectValuesAt(eff: ArtifactEffect, mult: number): ArtifactEffectValues
       return { amount: eff.mult * mult, heal: Math.min(ARTIFACT_DRAIN_HEAL_CAP, eff.healPct * mult) }
     case 'heal':
       return { amount: eff.pctMaxHp * mult }
-    /**
-     * 护盾:单次给的那一份同样受**总盾上限**约束。
-     *
-     * 战斗侧 `gainShield` 把护盾总量钳在 `SHIELD_CAP_RATIO`(默认 50% 气血),
-     * 而这里从前只乘倍率、不套顶:本源莲台(仙品 17%)九重报 76.2%、
-     * 混沌青莲 69.5%、帝阙神符 69.1%、太虚镜 61.5% —— 真打出去最多 50%。
-     * 卡片、图鉴、法宝谱三处都读这一份,于是三处一起报了个打不出来的数,
-     * 「下一重」还会写「护盾 44% → 76%」且不标已至上限,劝人花钱买不存在的收益。
-     *
-     * 取**默认上限**而不是各界的 `shieldCapRatio`:那张表是战斗时的世界规则
-     * (长生道抬到 65%、无生天压到 25%、秘境直接封 0),法宝卡不知道玩家下一步
-     * 会进哪个世界;而 `SHIELD_CAP_RATIO` 是「一件护盾法宝自己能兑现多少」的
-     * 常规口径 —— 世界规则只会在此之上再收紧或放宽,不会让卡片撒谎。
-     */
+    // 护盾同受总盾上限约束(战斗侧 gainShield 钳在 SHIELD_CAP_RATIO);
+    // 取默认上限而非各界 shieldCapRatio:那是战斗时的世界规则,法宝卡不知道玩家会进哪个世界
     case 'shield':
       return { amount: Math.min(SHIELD_CAP_RATIO, eff.pctMaxHp * mult) }
     case 'weaken':
@@ -800,21 +717,17 @@ function effectValuesAt(eff: ArtifactEffect, mult: number): ArtifactEffectValues
     case 'purge':
       return { amount: Math.min(ARTIFACT_PURGE_CAP, eff.pct * mult) }
     case 'stun':
-      // 震慑没有数值 —— 它掐掉的是敌手那一手,不是打掉多少血
+      // 震慑没有数值
       return { amount: 0 }
   }
 }
 
-/** 中文成数(净念写的是「七成」而不是「70%」,缩放后得换同一个字的说法) */
+/** 中文成数(净念说明写「七成」,缩放后按成数替换) */
 const CHENG_WORDS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'] as const
 
 /**
- * 法宝神通在某祭炼等级下的说明。
- *
- * 做法是**把原说明里的数值换掉**,而不是另写一份模板:文案的措辞(「云海四合」
- * 「扫落敌人气机」)是手写的,只有数字会随品阶与祭炼变。**凡品零重**时结果与原
- * 说明逐字相同 —— 这条由 artifactEffects.spec 守着(它就是拿 desc 与 effect 对账的);
- * 品阶高于凡品的那几件,零重就与 desc 不同,那正是这套算法的意思。
+ * 法宝神通在某祭炼等级下的说明:替换原说明里的数值,不另写模板。
+ * 凡品零重时与原说明逐字相同(artifactEffects.spec 钉着,拿 desc 与 effect 对账)。
  */
 export function artifactActiveText(def: ArtifactDef, level = 0): string {
   const values = artifactValue(def, level).active
@@ -824,7 +737,7 @@ export function artifactActiveText(def: ArtifactDef, level = 0): string {
     const cheng = CHENG_WORDS[Math.max(0, Math.min(CHENG_WORDS.length - 1, Math.round(values.amount * 10) - 1))]!
     return def.active.desc.replace(/[一二三四五六七八九十]成/, `${cheng}成`)
   }
-  // 主体数值:吸命有两个百分数(打出的、回补的),其余只有一个
+  // 吸命有两个百分数(打出的、回补的)
   const pct = formatPercent(values.amount)
   let text = def.active.desc.replace(/(\d+(?:\.\d+)?)\s*%/, pct)
   if (eff.type === 'drain' && values.heal !== undefined) {
@@ -833,13 +746,13 @@ export function artifactActiveText(def: ArtifactDef, level = 0): string {
   return text
 }
 
-/** 法宝祭炼等级的说法 —— 「阶」是区域层级与装备层级的词,这里另立一名免得两件事混作一件 */
+/** 祭炼等级的说法用「重」;「阶」留给区域与装备层级 */
 export function artifactLevelLabel(level: number): string {
   const lv = Math.max(0, Math.min(ARTIFACT_MAX_LEVEL, Math.floor(level || 0)))
   return `祭炼 ${lv}/${ARTIFACT_MAX_LEVEL} 重`
 }
 
-/** 某类效果的封顶(没有封顶的返回 undefined)—— 与 effectValuesAt 用的是同一批常数 */
+/** 某类效果的封顶(无封顶返回 undefined),须与 effectValuesAt 同一批常数 */
 function effectCap(eff: ArtifactEffect): number | undefined {
   switch (eff.type) {
     case 'shield':
@@ -860,20 +773,13 @@ export interface ArtifactNextLevelGain {
   level: number
   /** 各被动项的现值 → 下一重值 */
   passive: { key: AnyStatKey; from: number; to: number }[]
-  /** 神通主体数值;震慑没有数值,故为 null */
+  /** 神通主体数值;震慑为 null */
   active: { from: number; to: number; capped: boolean } | null
   /** 吸命的回补比例(只有吸命有) */
   heal?: { from: number; to: number; capped: boolean }
 }
 
-/**
- * 祭炼到下一重,具体能多拿多少。
- *
- * 炼化按钮此前只报代价(悟道点 × 灵石),收益留给玩家自己按 ×1.08 心算 ——
- * 而「值不值」正是按下之前要想清楚的事。这里把下一重的账算好交给界面:
- * 被动逐项、神通主体、吸命的回补,顶上封顶的也标出来(再炼也不会更多了)。
- * 已至满重返回 null。
- */
+/** 祭炼到下一重的收益:被动逐项、神通主体、吸命回补,到顶的也标出;已满重返回 null */
 export function artifactNextLevelGain(def: ArtifactDef, level = 0): ArtifactNextLevelGain | null {
   const lv = Math.max(0, Math.min(ARTIFACT_MAX_LEVEL, Math.floor(level || 0)))
   if (lv >= ARTIFACT_MAX_LEVEL) return null
@@ -901,35 +807,17 @@ export function artifactNextLevelGain(def: ArtifactDef, level = 0): ArtifactNext
   }
 }
 
-/**
- * 法宝位:开局 1 位,元婴(第 3 大境界)起再开 1 位。
- *
- * 这条规则此前写在两处(界面的槽位显示、切换构筑时的截断),数字各写各的;
- * 界面还会把门槛写成「元婴境开启第二法宝位」——境界改名或门槛挪动,文案就撒谎。
- * 故门槛与上限一并放这里,两边都读同一份。
- */
+/** 法宝位:开局 1 位,元婴(第 3 大境界)起再开 1 位;界面槽位显示与切换构筑截断同读这一份 */
 export const ARTIFACT_SLOT_UNLOCK_MAJOR = 3
 export const ARTIFACT_MAX_SLOTS = 2
 
-/** 某大境界下可用几个法宝位 */
 export function artifactSlotsFor(major: number): number {
   return major >= ARTIFACT_SLOT_UNLOCK_MAJOR ? ARTIFACT_MAX_SLOTS : 1
 }
 
 /**
- * 槽满时会被替下的那一件 —— **最早祭炼的**,也就是列表里的第一件。
- *
- * 这条规则从前只活在 `inventory.toggleArtifact` 的 `slice(1)` 里,界面另有一份
- * 「按品质降序」的槽位排法:两处各说各的,于是玩家看到的第一格未必是要被替下的
- * 那一件 —— 提示条写「替下最早祭炼的一件」,被替下的却画在第二格,换件像掷骰子。
- * 现在替下判据与槽位排法都读这一份。
- *
- * 报的是**全部**会让位的,不是只报第一件:列表可能本来就超编(境界跌落、
- * 未经 sanitize 的内存直塞),此时替换分支会一路裁到 `slots`,前端几件一起让位。
- * 只报一件的话,按钮上点名的那件确实让位了,它身后那件**也**悄悄不见了 ——
- * 玩家对着按钮核对行囊,永远对不上账。
- *
- * 认不出的 id 不报(它画不出卡,玩家无从核对是谁),空数组表示这一件放得下。
+ * 槽满时会被替下的法宝:最早祭炼的在前,替下判据与槽位排法同读这一份。
+ * 报全部会让位的(列表可能超编:境界跌落、未经 sanitize);认不出的 id 不报;空数组表示放得下。
  */
 export function artifactEvictedBy(equipped: readonly string[], maxSlots: number): string[] {
   if (!Number.isFinite(maxSlots)) return []
@@ -946,14 +834,8 @@ export interface ArtifactSlotView {
 }
 
 /**
- * 把「祭炼位列表」摊成界面上的逐格视图 —— **按佩带顺序**,不是按品质排序。
- *
- * 顺序本身就是信息:第一格是最早祭炼的那件,槽满时正是它先让位。
- * 从前界面拿「品质降序的法宝行」再过滤出已佩带者,顺序与祭炼位列表脱钩:
- * 高品阶的件永远画在第一格,而实际先被替下的可能是第二格那件 ——
- * 玩家看着槽位做决定,做的却是另一件事。
- *
- * 认不出的 id 与已不在库里的 id 跳过(不画一格幽灵位),空位补 `undefined`。
+ * 祭炼位列表摊成逐格视图:按佩带顺序,不按品质(第一格即槽满时先让位的那件)。
+ * 认不出或已不在库里的 id 跳过,空位补 `undefined`。
  */
 export function artifactSlotViews(
   equipped: readonly string[],

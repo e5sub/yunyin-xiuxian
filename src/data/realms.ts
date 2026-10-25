@@ -1,24 +1,8 @@
 /**
  * 境界体系 —— 四大界域 · 21 大境界 × (九层 + 圆满)
  *
- * 界域与境界的对应(下标 = 大境界序号 major):
- *
- *   人间界 0-8   炼气 筑基 金丹 元婴 化神 炼虚 合体 大乘 渡劫
- *   仙界   9-13  真仙 玄仙 金仙 太乙 大罗        (自渡劫飞升入仙)
- *   神界   14-17 神人 神将 神王 神帝             (自大罗破界入神)
- *   混沌海 18-20 混沌真灵 混沌神魔 混沌道祖       (万界之始,大道的尽头)
- *
- * 兼容约束:0-9 号境界的 id/名称/寿元/desc 一律保持原值不动 ——
- * 既有存档、内容 gate(minRealm)、审计口径全部建立在旧下标上。
- * 新界只做「追加」,不改旧序号。
- *
- * 「真仙」是旧设计里的飞升终点,且当时是唯一的「无劫门槛」(飞升之赏)。
- * 那段历史留下过一枚 per-realm 的 `tribulation` 开关,已随「大关皆劫」一起删掉:
- * 真仙/神人/混沌真灵三个跨界入口同样要渡 —— 飞升是这一路最重的一场劫,
- * 不是免检的过场。劫型与解法空间见 core/tribulationDecision。
- *
- * 寿元由 LIFESPAN_WORLDS 表算得(见下):界域内复利、跨界为大跃,
- * 不再是手填数字;由 realms.spec 守着单调、"每境至少翻倍"与"飞升为大跃"。
+ * 下标 = 大境界序号 major。兼容约束:0-9 号境界的 id/名称/寿元/desc 保持原值不动
+ * (存档、内容 gate(minRealm)、审计口径都建立在旧下标上);新界只追加,不改旧序号。
  */
 import type { RealmDef, WorldId } from '@/types'
 
@@ -54,7 +38,7 @@ export const LIFESPAN_WORLDS: Record<WorldId, { base: number; growth: number; st
   chaos: { base: 50_000_000_000_000, growth: 4.5, start: 18 }
 }
 
-/** 某大境界的寿元(该界域起点 × 复利,起点即一次跨界大跃) */
+/** 某大境界的寿元 */
 export function lifespanOf(major: number): number {
   const m = Math.max(0, Math.min(WORLDS[WORLDS.length - 1]!.end, major))
   const w = WORLDS.find(x => m >= x.start && m <= x.end) ?? WORLDS[0]!
@@ -62,12 +46,7 @@ export function lifespanOf(major: number): number {
   return Math.round(cfg.base * Math.pow(cfg.growth, m - cfg.start))
 }
 
-/**
- * 飞升大跃的倍数:渡劫(人间界末) → 真仙(仙界首)的寿元倍数。
- *
- * 说明文档里「约 ×N」的说法必须读这里 —— 手写过的 ×100 与数据里的 ×102
- * 差了一档,而这种句子没人会去核。以后调寿元曲线,文案自己跟上。
- */
+/** 飞升大跃倍数:渡劫 → 真仙的寿元倍数。文案里「约 ×N」须读此值,不手写 */
 export function ascensionLeap(): number {
   const mortal = WORLDS[0]!
   const immortal = WORLDS[1]!
@@ -107,20 +86,10 @@ export const REALMS: RealmDef[] = [
 
 export const MAX_MAJOR = REALMS.length - 1
 
-/**
- * 仙界起点(飞升门槛)。
- * 天界终局内容(道途/远征/试炼/熔炉)以此为准 —— 不再借用「满级」表示,
- * 否则日后每加一境,终局门槛都会跟着漂移。
- */
+/** 仙界起点(飞升门槛)。天界终局内容(道途/远征/试炼/熔炉)以此为准,不借用「满级」(每加一境门槛会漂移) */
 export const WORLD_BREAK_MAJOR = 9
 
-/**
- * 轮回(道果 / 天赋)经济的参照终点。
- *
- * 玩家实测多在元婴~合体之间就转世,「修满一世」的口径历来以飞升真仙为准;
- * 仙界/神界/混沌海是同一世内的长线攀登,属于另一套经济。
- * 轮回 ROI / 道果曲线一族审计以本值为基线,避免日后每加一境都要重算一遍参考量。
- */
+/** 轮回(道果 / 天赋)经济的参照终点:「修满一世」以飞升真仙计,仙界以上属另一套经济;轮回 ROI / 道果曲线一族审计以此为基线 */
 export const REBIRTH_REFERENCE_MAJOR = WORLD_BREAK_MAJOR
 
 export const SUB_NAMES = ['一层', '二层', '三层', '四层', '五层', '六层', '七层', '八层', '九层', '圆满'] as const
@@ -142,13 +111,12 @@ export function worldDef(id: WorldId): WorldDef {
   return WORLD_BY_ID.get(id) ?? WORLDS[0]!
 }
 
-/** 该大境界所属界域 */
 export function worldOf(major: number): WorldDef {
   const m = Math.max(0, Math.min(MAX_MAJOR, major))
   return WORLDS.find(w => m >= w.start && m <= w.end) ?? WORLDS[WORLDS.length - 1]!
 }
 
-/** 该大境界是否为所在界域的第一境(跨界那一境) */
+/** 是否为所在界域的第一境(跨界那一境) */
 export function isWorldEntry(major: number): boolean {
   return worldOf(major).start === Math.max(0, Math.min(MAX_MAJOR, major))
 }

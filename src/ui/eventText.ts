@@ -1,7 +1,4 @@
-/**
- * Event choice hint. Stone prices are tier-scaled; the handwritten
- * 「需要灵石」 never says how much.
- */
+/** Event choice hint. Stone prices are tier-scaled; the handwritten 「需要灵石」 never says how much */
 import type { EventChoice } from '@/types'
 import { stoneByTier } from '@/core/formulas'
 import { formatGN } from '@/utils/format'

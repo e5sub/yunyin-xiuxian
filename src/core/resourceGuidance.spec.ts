@@ -1,7 +1,4 @@
-/**
- * Phase 30.9:道源/道果认知服务审计
- * S1 生命周期标签 / S2 资源说明 / S3 道源→道果链路 / S4/S5 首次教学 / S6 认知埋点
- */
+/** 道源/道果认知服务:S1 生命周期标签 / S2 资源说明 / S3 道源→道果链路 / S4/S5 首次教学 / S6 认知埋点 */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import {
@@ -55,8 +52,7 @@ describe('S3 道果边际收益', () => {
     const info = fruitMarginalInfo()
     expect(info.total).toBe(10)
     expect(info.nextEffective).toBeGreaterThan(info.effective)
-    // 软上限:有效道果 = 道果^0.9
-    // 增量 = ((11^0.9)/(10^0.9) - 1) ≈ 8.96%(基本等同 1.1^0.9 - 1,不随基数骤变)
+    // 软上限:有效道果 = 道果^0.9;10→11 增量 ≈ 8.96%
     expect(info.effective).toBeCloseTo(effectiveDaoFruit(10), 9)
     expect(fruitCountLabel(info.effective)).toBe('7.9 枚')
     expect(fruitCountLabel(info.effective)).not.toBe('8 枚')
@@ -73,13 +69,12 @@ describe('S3 道果边际收益', () => {
       const marginalEff = next - eff
       const effPct = (marginalEff / eff) * 100
       const cultPct = marginalEff * DAO_FRUIT_CULT_BONUS * 100
-      // 文案列出的两个百分比 = 引擎现算的真实边际(改指数/倍率即同步变真)
+      // 文案里的两个百分比 = 引擎现算的真实边际
       expect(t, `total=${total}`).toContain(`+${effPct.toFixed(1)}%`)
       expect(t, `total=${total}`).toContain(`+${cultPct.toFixed(1)}%`)
-      // 引用当前道果数,不硬编码「二十」;也不用夸大字眼糊弄(200 枚边际依旧存在)
+      // 引用当前道果数,不硬编码「二十」
       expect(t, `total=${total}`).toContain(`道果已 ${total} 枚`)
       expect(t, `total=${total}`).not.toContain('微乎其微')
-      // 任何总量下边际都仍为正 —— 若文案说成「已尽」即此处红
       expect(Number(effPct.toFixed(1))).toBeGreaterThan(0)
     }
   })

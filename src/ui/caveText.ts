@@ -1,9 +1,4 @@
-/**
- * 洞府巡游选项文案 —— 点数与时长只从奖励本体现算。
- *
- * 「获得少量修为」「提升灵气上限」这种话在三选一里无法比较。
- * 修为就是 gainExp 的那个整数,增益就是 buff 上的词条和时长。
- */
+/** 洞府巡游选项文案:点数与时长只从奖励本体现算(修为即 gainExp 的数,增益即 buff 的词条与时长) */
 import type { CaveEvent } from '@/types'
 import { buffDef } from '@/data/buffs'
 import { formatChoiceSpan, formatNum, formatGN } from '@/utils/format'
@@ -34,7 +29,7 @@ export function caveOptionText(opt: CaveOption): string {
       const line = buffLine(String(opt.reward.value))
       if (line) parts.push(line)
     } else if (opt.reward.type === 'exp') {
-      // 修为按「等效闭关时长 + 不满一层」计价,展示与结算同一把 expFromSecs(示=算)
+      // 修为按等效闭关时长计价、封顶不满一层;展示与结算同用 expFromSecs
       const player = usePlayerStore()
       const gained = expFromSecs(
         player.expReq,

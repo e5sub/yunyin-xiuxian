@@ -1,7 +1,4 @@
-/**
- * Phase 31.4:世界遗产叙事 —— 宿敌残魂 + 区域凭吊
- * 纯叙事:不改变奖励/属性/战斗规则
- */
+/** 世界遗产叙事:宿敌残魂 + 区域凭吊(纯叙事,不改奖励/属性/战斗规则) */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { ghostOf, ghostTitle, ghostLeadIn, ECHO_GHOST_CHANCE, recordLoss } from './worldMemory'
@@ -17,7 +14,6 @@ describe('宿敌残魂(ghost)', () => {
   it('只有已雪耻的宿敌才有残魂形态', () => {
     let list: NemesisRecord[] = []
     for (let i = 0; i < 3; i++) list = recordLoss(list, 'e_wolfking', '独角妖狼', 'qingyun', Date.now()).list
-    // 未雪耻:无残魂
     expect(ghostOf(list, 'e_wolfking')).toBeNull()
   })
 

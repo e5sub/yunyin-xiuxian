@@ -1,11 +1,4 @@
-/**
- * 主线进度读数 —— 新手第一天唯一的路线图,不该只有「要做什么」。
- *
- * 本文件守三件事:
- *   ① 三种条件(计数 / 境界 / 境界层数)都能翻成人话;
- *   ② 读数里的「成了吗」与发赏判定同一份(evalCond),逐条对账全部主线;
- *   ③ 计数进度夹在 0~1,坏计数不会画出越界的进度条。
- */
+/** 主线进度读数:「成了吗」与发赏判定同源(evalCond),计数进度夹在 0~1 */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { questProgressOf } from './questProgress'
@@ -55,7 +48,7 @@ describe('主线进度读数', () => {
     expect(questProgressOf(cond)!.text).toContain('需至 炼气·三层')
     player.$patch({ sub: 2 })
     expect(questProgressOf(cond)!.done).toBe(true)
-    // 境界超过之后仍算达成(老档回头看不该变成「没成」)
+    // 境界超过之后仍算达成
     player.$patch({ major: 3, sub: 0 })
     expect(questProgressOf(cond)!.done).toBe(true)
   })

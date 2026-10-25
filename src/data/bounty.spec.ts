@@ -1,6 +1,4 @@
-/**
- * 坊市悬赏板 —— 数据不变量
- */
+/** 坊市悬赏板 —— 数据不变量 */
 import { describe, expect, it } from 'vitest'
 import { toNum } from '@/utils/gnum'
 import { maxTierForMajor } from '@/data/regions'
@@ -21,9 +19,8 @@ describe('悬赏板 · 订单生成与定价', () => {
 
   it('募材价都给得出正数(募草按所交品计价:生成时占位、交货现算),募丹价 > 售出倍率,未交货未盖戳', () => {
     const board = generateBounty(3, 1)
-    // 募草 reward 生成时为占位 0 —— 交货按**所交之品**现算(任意品可交),故订单不预定价
+    // 募草 reward 生成时为占位 0,交货时由 herbBountyReward 按所交之品现算(同境界层级折算)
     expect(toNum(board[0]!.reward)).toBe(0)
-    // 真正担纲的是 herbBountyReward:凡品即给得出正数,高品更高(同境界层级折算)
     const MAJOR = 5
     expect(toNum(herbBountyReward(1, MAJOR, BOUNTY_MAT_TARGET))).toBeGreaterThan(0)
     expect(toNum(herbBountyReward(5, MAJOR, BOUNTY_MAT_TARGET))).toBeGreaterThan(toNum(herbBountyReward(1, MAJOR, BOUNTY_MAT_TARGET)))

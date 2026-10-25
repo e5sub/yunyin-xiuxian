@@ -1,29 +1,13 @@
 /**
- * 调色板判据 —— 颜色只有一份事实源(src/style.css 的语义色变量 + tailwind.config.js 的转发),
- * 界面与数据层一律引用变量。判据盯五类只在"改颜色"时才现形的事故:
+ * 调色板判据。单一事实源:src/style.css 语义色变量 + tailwind.config.js 转发;界面与数据层只引用变量。
  *
- * 一 **两处对不上**:tailwind 配了、CSS 变量没定义(或反过来),产物里那类名不生成,
- *    而模板照写不误 —— 改配置不生效就是这么来的。
- * 二 **同值异名**:两个 token 是同一个 RGB(qinghua/azure 曾是同一枚,azure 沿用、
- *    qinghua 已撤),必有一个是没人记得的死 token;改配色时改一个漏一个,两处就不是一个颜色了。
- * 三 **浅/夜两套对不上**:夜间主题只覆盖通道值,却不许只在一边定义 token。
- * 四 **小字读不清**:每一档颜色按它**自己的角色**过线 ——
- *    正文承载档(墨四阶里的三阶 + 紫)在浅/夜里都要 ≥4.5:1;
- *    印面(cinnabar-deep)是按钮底,只考核它托奶油白字:浅 7.09:1、夜 5.31:1;
- *    夜主题的印面覆盖为深朱(亮朱当底只有 3.81:1,字糊)。
- *    强调档(朱)是标题、大字的主场,守 ≥3:1(大字 AA)。
- *    纸上的墨只有三档:第四档 ink-ghost(浅色仅 1.66:1,托不住能读的字)已撤,
- *    原先承载次要小字的 134 处全迁 ink-faint,判据断言"不得复活"。
- * 五 **手抄回流**:浏览器 chrome 色(theme.ts)、index.html 首帧 meta、独立成篇的
- *    public/privacy.html 不能引用 CSS 变量,只能抄;用判据代替人眼盯账。
- *
- * ── 对比度账目(worst 于 纸/纸深/卡片 三底,本轮调色后)──
- *   正文档:ink 11.75/10.03 · ink-soft 7.40/7.06 · ink-faint 4.71/5.03 · violet-ink 4.71/4.67
- *          azure 4.67/4.70 · gold-ink 4.74/5.46 · amber-ink 4.58/5.16
- *          jade 4.51/5.44 · indigo-ink 5.67/5.80
- *   强调档:cinnabar 4.81/3.02(夜朱作大字 3.02,按钮底已交给深朱)
- *   印面:cinnabar-deep × 奶油白字 7.09(浅)/5.31(夜)
- *   墨档:ink-ghost 已撤(浅 1.66:1 读不清,134 处 text-ink-ghost 全迁 ink-faint)
+ * 一 两处对不上:tailwind 配了、CSS 变量没定义(或反过来),类名不生成。
+ * 二 同值异名:两个 token 同一 RGB。
+ * 三 浅/夜两套对不上:夜间只覆盖通道值,不许只在一边定义 token。
+ * 四 小字读不清,按角色过线:正文承载档浅/夜都 ≥4.5:1;印面只考核托奶油白字,
+ *    夜主题印面为深朱(亮朱当底 3.81:1);强调档(朱)≥3:1(大字 AA);
+ *    墨只有三档,ink-ghost(浅 1.66:1)已撤,不得复活。
+ * 五 手抄回流:theme.ts 的 chrome 色、index.html 首帧 meta、public/privacy.html 不能引用 CSS 变量,只能抄。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -48,9 +32,8 @@ function bodyOf(scope: RegExp): string {
 }
 
 /**
- * 语义色 token 名单 —— 以**浅色那份**为准:它既定义通道值、又派生出完整颜色
- * (`--color-x: rgb(var(--color-x-rgb))`),只存通道值给阴影/color-mix 用的
- * `--color-paper-lifted-rgb` 这类中间量不算 token。
+ * 语义色 token 名单,以浅色为准:只认派生出完整颜色的(`--color-x: rgb(var(--color-x-rgb))`);
+ * 只存通道值的中间量(`--color-paper-lifted-rgb`)不算 token。
  */
 function tokenNames(): Set<string> {
   return new Set(
@@ -58,7 +41,7 @@ function tokenNames(): Set<string> {
   )
 }
 
-/** 某个作用域里的通道值;夜间那份不重复派生声明,故不要求它自带完整颜色 */
+/** 某作用域里的通道值;夜间不重复派生声明,不要求自带完整颜色 */
 function paletteOf(scope: RegExp, names: Set<string>): Map<string, Rgb> {
   const out = new Map<string, Rgb>()
   for (const m of bodyOf(scope).matchAll(/--color-([a-z0-9-]+)-rgb:\s*(\d+)\s+(\d+)\s+(\d+);/g)) {
@@ -71,7 +54,7 @@ const TOKENS = tokenNames()
 const LIGHT = paletteOf(/:root \{([\s\S]*?)\n\}/, TOKENS)
 const DARK = paletteOf(/html\[data-theme='dark'\] \{([\s\S]*?)\n\}/, TOKENS)
 
-/** 三张铺字底:纸 / 纸深 / 卡片(卡片是 --color-paper-lifted,比纸略亮,最伤浅色字) */
+/** 三张铺字底:纸 / 纸深 / 卡片(--color-paper-lifted,比纸略亮) */
 function surfacesOf(theme: 'light' | 'dark'): Rgb[] {
   const p = theme === 'light' ? LIGHT : DARK
   const body = theme === 'light' ? bodyOf(/:root \{([\s\S]*?)\n\}/) : bodyOf(/html\[data-theme='dark'\] \{([\s\S]*?)\n\}/)
@@ -99,12 +82,12 @@ function contrast(a: Rgb, b: Rgb): number {
   return (hi! + 0.05) / (lo! + 0.05)
 }
 
-/** 把半透明前景混到不透明底上 —— 与浏览器绘制品阶淡底的口径一致 */
+/** 半透明前景混到不透明底上;与浏览器绘制品阶淡底同口径 */
 function mix(fg: Rgb, bg: Rgb, alpha: number): Rgb {
   return fg.map((v, i) => Math.round(v * alpha + bg[i]! * (1 - alpha))) as unknown as Rgb
 }
 
-/** 一档颜色在它那套主题上最难看的那一面(三底取最小) */
+/** 一档颜色在其主题上的对比度,三底取最小 */
 function worst(name: string, theme: 'light' | 'dark'): number {
   const color = (theme === 'light' ? LIGHT : DARK).get(name)!
   return Math.min(...surfacesOf(theme).map(bg => contrast(color, bg)))
@@ -114,7 +97,7 @@ function hexOf(rgb: Rgb): string {
   return '#' + rgb.map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase()
 }
 
-/** CIE76 色差 —— 只用来问「两档品阶/五行色是不是糊在一起了」 */
+/** CIE76 色差;只用于判两档品阶/五行色是否糊在一起 */
 function deltaE(a: Rgb, b: Rgb): number {
   const f = (t: number): number => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116)
   const lab = ([r, g, b]: Rgb): [number, number, number] => {
@@ -141,7 +124,7 @@ function resolveRgb(colorRef: string): Rgb {
   throw new Error(`数据层颜色无法解析为 RGB:${colorRef}`)
 }
 
-/** 扫源码文本,回报命中的文件(用于"某某名字不该再出现"这类判据) */
+/** 扫源码文本,回报命中的文件 */
 function filesMatching(dir: string, pattern: RegExp, ext: RegExp): string[] {
   const hits: string[] = []
   const walk = (d: string): void => {
@@ -157,7 +140,7 @@ function filesMatching(dir: string, pattern: RegExp, ext: RegExp): string[] {
   return hits
 }
 
-/** 色系首段(ink / paper / jade …):判断一个工具类后缀「像不像色名」 */
+/** 色系首段(ink / paper / jade …),用于判工具类后缀像不像色名 */
 const FAMILIES = new Set([...TOKENS].map(t => t.split('-')[0]!))
 /** 颜色工具类前缀 + 后缀名;后缀后面只能跟分隔符或 /透明度 */
 const COLOR_UTILITY =
@@ -203,18 +186,10 @@ describe('调色板 · 一份事实源', () => {
     }
   })
 
-  /*
-   * 模板与脚本里引用的色名必须是已定义的 token。
-   *
-   * 写错一个色名不会报错:产物里只是不生成那条类,文字静默退回继承色。
-   * 开炉弹窗的「把握」写过 text-jade-ink / text-crimson-ink(主题里根本没有),
-   * 高低两档从首次导入起就没上过色,直到议题 #21 改版时才被看见。
-   * 只认「像色名」的写法(首段是已有色系,或以 -ink 结尾),text-left / bg-linear-to-b
-   * 这类非颜色工具类不在此列,故不会误伤。
-   */
+  // 只认像色名的写法(首段是已有色系,或以 -ink 结尾);text-left / bg-linear-to-b 等非颜色工具类不在此列
   it('源码里引用的色名都在色板里(写错名字,产物里那条类不生成、颜色静默失效)', () => {
     expect(unknownColorRefs('class="text-ink-faint bg-paper-deep/60 border-cinnabar/40"'), '合法写法不许误报').toEqual([])
-    // 故障注入:正是开炉弹窗写过的那两枚
+    // 故障注入
     expect(unknownColorRefs(`return 'text-jade-ink'`)).toEqual(['text-jade-ink'])
     expect(unknownColorRefs('<p class="text-crimson-ink">')).toEqual(['text-crimson-ink'])
     const offenders: string[] = []
@@ -232,11 +207,8 @@ describe('调色板 · 一份事实源', () => {
   })
 
   /*
-   * 斜杠透明度只用配置里有的档位。
-   *
-   * Tailwind 3.4 的 /N 走 theme.opacity:默认步长 5,外加 tailwind.config.js 里补的几档。
-   * 写了不在其中的(/12、/14、/3)也不报错,只是不生成 —— 底色直接没了,
-   * border-t 退成当前文字色(装备详情的词条分隔线因此一直是亮线)。曾散落 10 处。
+   * Tailwind 3.4 的 /N 走 theme.opacity:默认步长 5 + tailwind.config.js 补的几档。
+   * 不在其中的(/12、/14、/3)不报错、不生成,border-t 退成当前文字色。
    * 方括号写法(bg-ink/[0.03])是任意值,不在此列。
    */
   it('斜杠透明度只用配置里有的档位(写了没有的,那条类不生成)', () => {
@@ -246,7 +218,7 @@ describe('调色板 · 一份事实源', () => {
     const OPACITY = /(?<![\w-])((?:text|bg|border(?:-[trblxy])?|ring|from|via|to|fill|stroke|accent|divide|outline|decoration|shadow)-[a-z]+(?:-[a-z]+)*)\/(\d{1,3})(?![\d\]])/g
     const badSteps = (src: string): string[] =>
       [...src.matchAll(OPACITY)].filter(m => !steps.has(Number(m[2]))).map(m => `${m[1]}/${m[2]}`)
-    // 故障注入:正是曾经写过的那几档
+    // 故障注入
     expect(badSteps('class="bg-jade/12 border-violet-ink/12 bg-ink/3 bg-ink/4 border-ink/15"')).toEqual(['bg-jade/12', 'border-violet-ink/12', 'bg-ink/3'])
     const offenders: string[] = []
     const walk = (d: string): void => {
@@ -290,24 +262,15 @@ describe('调色板 · 承载文字的色都过线', () => {
     expect(LIGHT.has('ink-ghost'), 'ghost 档已撤,不许作为 token 复活').toBe(false)
     expect(TAILWIND).not.toContain('ink-ghost')
     expect(PRIVACY).not.toContain('ink-ghost')
-    // src 里的 .vue/.ts 也不许再手写这个类名(没有 token 就不生成样式,写了等于隐形文字)
     expect(filesMatching(resolve(ROOT, 'src'), /ink-ghost/, /\.(vue|ts)$/)).toEqual([])
   })
 
   /*
-   * 强文本色不叠透明度:text-<carrier>/N 一律此路不通。
-   *
-   * 半透明文字的实际颜色是「字色往底上混」,对比度只降不升 —— 任意一档 <100 的
-   * 强文本色,压在任何一张铺字底(取最暗的纸深)上都跌破它该守的 AA:
-   *   cinnabar/80 浅主题 3.46:1 / 夜主题 1.9:1(整色 4.81 / 3.02,夜朱本就是「大字」
-   *   的既定底,再降就真看不见);ink-faint/70 只有 2.71:1;azure/90 3.87:1。
-   * 要更淡是**换一档角色**(选一档已过线的 token),不是让浏览器把字色往底里混
-   * —— 混出来的结果对不上任何已核过的对比度账。
-   * 例外只有装饰性的 SVG 填色/描边(远山、路段线),它们走 fill-/stroke- 而非 text-,
-   * 透明是画法不是写字,故不在本判据的猎杀范围内。
+   * 半透明字对比度只降不升:cinnabar/80 浅 3.46:1 / 夜 1.9:1,ink-faint/70 2.71:1,azure/90 3.87:1。
+   * 要更淡须换一档已过线的 token。装饰性 SVG 填色/描边走 fill-/stroke-,不在此列。
    */
   it('强文本色不叠透明度(半透明字对底色算不出已核过的 AA)', () => {
-    // 故障注入:正是曾经散落在各视图里的那几枚(cinnabar/80、ink-faint/70、azure/90)
+    // 故障注入
     const TEXTS = [...STRONG, 'cinnabar']
     const re = new RegExp(`(?<![\\w-])text-(${TEXTS.join('|')})/\\d+`, 'g')
     expect('bg-ink/[0.03] text-cinnabar border-ink/15', '非 text- 用法不许误报').not.toMatch(re)
@@ -330,42 +293,36 @@ describe('调色板 · 承载文字的色都过线', () => {
 })
 
 describe('调色板 · 印面', () => {
-  /** .btn-seal 上那行固定奶油字,与 style.css 里的字面量必须一致 */
+  /** .btn-seal 固定奶油字;须与 style.css 字面量一致 */
   const SEAL_INK: Rgb = [246, 241, 229]
 
   it('奶油白字与 style.css 里 .btn-seal 写死的字面量一致', () => {
-    // 改了色号却忘了这一处,判据要能喊住
     expect(CSS).toMatch(/\.btn-seal \{[^}]*color: #f6f1e5/)
   })
 
   it('两套主题的印面都托得住奶油白字 ≥4.5:1', () => {
-    // 浅色印面=cinnabar;夜主题覆盖成 cinnabar-deep(深朱)
+    // 浅色印面 cinnabar;夜主题覆盖成 cinnabar-deep
     expect(contrast(LIGHT.get('cinnabar')!, SEAL_INK)).toBeGreaterThanOrEqual(4.5)
     expect(contrast(DARK.get('cinnabar-deep')!, SEAL_INK)).toBeGreaterThanOrEqual(4.5)
   })
 
   it('夜主题印面确实用深的那枚(亮朱当底会把奶油字压到 3.81:1)', () => {
-    // 深底托白字更高:deep 5.31 > 亮朱 3.81 —— 这正说明 deep 是更暗的那枚
+    // 夜:deep 5.31 > 亮朱 3.81
     expect(contrast(DARK.get('cinnabar-deep')!, SEAL_INK)).toBeGreaterThan(contrast(DARK.get('cinnabar')!, SEAL_INK))
     expect(CSS).toMatch(/html\[data-theme='dark'\] \.btn-seal \{[^}]*background: var\(--color-cinnabar-deep\)/)
   })
 
   it('卷首题印(.world-seal)也在 style.css 里钉同样的奶油字,夜主题同样换深朱', () => {
-    // .world-seal 从模板抄了 .btn-seal 的印面却零判据,颜色改飞了没人喊 —— 补一记
     expect(CSS).toMatch(/\.world-seal \{[^}]*color: #f6f1e5/)
     expect(CSS).toMatch(/html\[data-theme='dark'\] \.world-seal \{[^}]*background: var\(--color-cinnabar-deep\)/)
   })
 
   it('夜主题禁用态 .btn-seal:disabled 换暗底,92% 白字仍 ≥4.5:1(亮暖灰当底会洗白)', () => {
-    // 夜里 ink-faint(168 161 140)是亮暖灰,禁用按钮的 92% 白字压上去只有 ~2:1 ——
-    // 必须换成真正暗的惰性底。这里验证两件事:
-    //  ① 浅色那份 ink-faint 打底不动(浅色主题 3.9:1 成立,回归不得改它);
-    //  ② 夜主题覆盖成 paper-dark,并把 92% 白字混上去算对比度。
+    // 夜 ink-faint(168 161 140)当底只有 ~2:1;浅色仍用 ink-faint 打底(3.9:1),不得改
     const LIGHT_BG = /\.btn-seal:disabled \{[^}]*background: var\(--color-ink-faint\)/.test(CSS)
     expect(LIGHT_BG, '浅色主题禁用态必须仍用 ink-faint 打底').toBe(true)
     expect(CSS).toMatch(/html\[data-theme='dark'\] \.btn-seal:disabled \{[^}]*background: rgb\(var\(--color-paper-dark-rgb\)\)/)
 
-    // 92% 白字在暗底上的实际视效 = 白 ×0.92 + 底 ×0.08
     const paperDark = DARK.get('paper-dark')
     expect(paperDark, '暗色主题须有 paper-dark 供禁用态打底').toBeTruthy()
     const bg = paperDark!
@@ -416,7 +373,7 @@ describe('调色板 · 数据层颜色', () => {
         const tone = tokenVar
           ? palette.get(tokenVar[1]!)!
           : ([parseInt(hex![1]!.slice(0, 2), 16), parseInt(hex![1]!.slice(2, 4), 16), parseInt(hex![1]!.slice(4, 6), 16)] as const)
-        // 图中最深的品阶底是装备格的 13%,角章再在其上叠 12% 同色
+        // 品阶底最深为装备格 13%,角章再叠 12% 同色
         const mark = mix(tone, mix(tone, paper, 0.13), 0.12)
         const ratio = contrast(ink, mark)
         if (ratio < 4.5) bad.push(`${seal.name}@${theme} ${ratio.toFixed(2)}:1`)
@@ -426,9 +383,7 @@ describe('调色板 · 数据层颜色', () => {
   })
 
   it('src/data 与内联色表只许出现白名单 hex —— 不再允许手抄 token 旧值', () => {
-    // 品阶/五行色已改引 var(--color-*),留存的裸 hex 只能是「没有对应 token 的
-    // 象征色」:凡品灰/玄/仙/天(光)/土/风/冰/暗。出现白名单外的新 hex,说明
-    // 又有人把 token 当 hex 抄进数据层 —— 改 token 时它不会跟着变、漂了不报错。
+    // 白名单 = 无对应 token 的象征色:凡品灰/玄/仙/天(光)/土/风/冰/暗;其余须引 var(--color-*)
     const ALLOWED = new Set(['#A85C3F', '#C9A227', '#3E8E8B', '#8A6F4D', '#5E8C8A', '#6D93B8', '#4A463D', '#857F70'])
     const offenders: string[] = []
     const eat = (path: string, text: string): void => {
@@ -451,15 +406,13 @@ describe('调色板 · 数据层颜色', () => {
 
 describe('调色板 · 投影墨不外泄', () => {
   it('--shadow-ink 只进 box-shadow(或它自己的定义),不当可见底色/线/槽/波 —— 夜主题深纸近黑墨会隐形', () => {
-    // 剥掉注释、两处变量定义、整块 box-shadow 声明后,style.css 里不得再出现 shadow-ink。
-    // 任何把它当可见装饰(background/border/gradient/scrollbar)的意图都会留在残局里被抓住;
-    // 纸上可见的线/槽/波该用 --color-ink(夜主题翻转成亮墨)。
+    // 纸上可见的线/槽/波用 --color-ink(夜主题翻转成亮墨)
     const residue = CSS.replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/--shadow-ink-rgb:\s*[\d\s]+;/g, '')
       .replace(/--shadow-ink:\s*rgb\([\d\s]+\);/g, '')
       .replace(/box-shadow:\s*[^;]*;/g, '')
     expect(residue).not.toMatch(/shadow-ink/)
-    // 保底:投影墨仍在 box-shadow 里被真正消费,不因重构变成死 token
+    // 防成死 token:投影墨仍须在 box-shadow 里被消费
     expect(CSS).toMatch(/box-shadow:\s*[\s\S]*?shadow-ink/)
   })
 })

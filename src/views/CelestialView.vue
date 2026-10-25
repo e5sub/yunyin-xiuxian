@@ -13,7 +13,6 @@
     </div>
 
     <template v-else>
-      <!-- 道源(Phase 30.9:生命周期标签 + 用途说明入口) -->
       <div class="card-ink flex items-center justify-between gap-2 px-4 py-3">
         <p class="font-kai text-[15px] tracking-[0.3em] text-ink">天 界</p>
         <div class="flex items-center gap-2">
@@ -28,7 +27,6 @@
         </div>
       </div>
 
-      <!-- 页签:长卷分册 -->
       <InkTabs v-model="celTab" :tabs="celTabRows" />
 
       <template v-if="celTab === 'dao'">
@@ -70,7 +68,6 @@
           </div>
         </section>
 
-        <!-- 天道熔炉 / 器魂:两处入口 -->
         <section class="space-y-2">
           <button
             class="card-ink flex w-full items-center justify-between gap-3 px-4 py-3 text-left active:scale-98"
@@ -107,13 +104,11 @@
     </template>
 
 
-    <!-- 战报(远征终局 / 试炼 / 变数) -->
     <BattleReportDialog :report="expedition" :player-name="player.name" @close="expedition = null" />
 
-    <!-- 天道熔炉(弹窗本体在 components/celestial/FurnaceDialog.vue,含首次凝道果弹窗) -->
+    <!-- 天道熔炉(含首次凝道果弹窗) -->
     <FurnaceDialog :open="furnaceOpen" @close="furnaceOpen = false" />
 
-    <!-- 道途选择确认:一世只此一次,点了就锁到转世 -->
     <BaseModal :open="pendingDao !== undefined" title="定下道途" @close="pendingDaoId = null">
       <template v-if="pendingDao">
         <p class="font-kai text-[14px] tracking-wider text-ink">{{ pendingDao.name }}</p>
@@ -130,7 +125,6 @@
       </template>
     </BaseModal>
 
-    <!-- Phase 30.9 S2:道源说明弹窗 -->
     <BaseModal :open="daoSourceDialogOpen" title="道源" @close="daoSourceDialogOpen = false">
       <div class="space-y-3 text-[12px] leading-relaxed">
         <p class="text-ink-soft">{{ daoSourceDialog().intro }}</p>
@@ -151,7 +145,6 @@
       </template>
     </BaseModal>
 
-    <!-- Phase 30.9 S4:首次登真仙·终局导览(弹窗本体在 components/celestial/TutorialDialog.vue) -->
     <TutorialDialog :open="tutorialOpen" @close="tutorialOpen = false" />
   </div>
 </template>
@@ -197,11 +190,9 @@
     router.push({ name: 'souls' })
   }
 
-  // Phase 30.9:道源说明弹窗 / 首次终局教学(熔炉与道果在 components/celestial/FurnaceDialog.vue)
   const daoSourceDialogOpen = ref(false)
   const furnaceOpen = ref(false)
   const tutorialOpen = ref(false)
-  // 首次进入天界(已解锁且未见过教学):自动弹终局导览
   watch(
     () => unlocked.value,
     v => {
@@ -219,7 +210,6 @@
 
   const currentDao = computed(() => (endgame.daoPath ? daoPathDef(endgame.daoPath) : undefined))
 
-  // ---- 页签:长卷分册(远征在途时落在远征册) ----
   type CelTab = 'dao' | 'exped' | 'trial' | 'marks'
   const celTab = ref<CelTab>(endgame.worldRun ? 'exped' : 'dao')
   const CEL_TABS: { id: CelTab; label: string }[] = [
@@ -229,7 +219,6 @@
     { id: 'marks', label: '道痕' }
   ]
 
-  /** 页签行:远征在途时挂朱点提醒 */
   const celTabRows = computed(() => CEL_TABS.map(t => ({ ...t, dot: t.id === 'exped' && !!endgame.worldRun })))
 
   /** 剑道:当前剑意层数与纯度构成 */
@@ -238,7 +227,7 @@
     return swordPurity(player.finalStats.mods, inventory.currentArtifacts.length, detectBuild(player.finalStats.mods))
   })
 
-  /** 道途选择二段式:先弹确认,再落一子。道途一世只定一次,误触即被锁死到转世 */
+  /** 道途选择二段式:先弹确认;一世只定一次,误触即锁死到转世 */
   const pendingDaoId = ref<(typeof DAO_PATHS)[number]['id'] | null>(null)
   const pendingDao = computed(() => (pendingDaoId.value ? daoPathDef(pendingDaoId.value) : undefined))
 
@@ -251,15 +240,11 @@
     pendingDaoId.value = null
   }
 
-  // ---- 战报弹窗(形状见 BattleReportDialog 导出的 ReportView) ----
   const expedition = ref<ReportView | null>(null)
 
   /**
-   * 开战报 —— 判定归因只此一处。
-   *
-   * 远征的文案带玩家自己的构筑厚度(见 core/gauntlet.celestialJudgementLines),
-   * 试炼/变数/忆战/重写/挑战没有那一份,就照敌人快照上的来源说明讲
-   * (worldFoeSnap 一路带下来)。两条路给的都是同一件事:这一战为什么变难。
+   * 开战报,判定归因只此一处:远征带构筑厚度(见 core/gauntlet.celestialJudgementLines);
+   * 试炼/变数/忆战/重写/挑战照敌人快照上的来源说明(worldFoeSnap 一路带下来)。
    */
   function openReport(o: {
     title: string

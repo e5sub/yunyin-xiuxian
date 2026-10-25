@@ -71,33 +71,29 @@ import urllib.request
 
 FONT_VERSION = "v1.522"
 MASTER_URL = f"https://github.com/lxgw/LxgwWenKai-Screen/releases/download/{FONT_VERSION}/LXGWWenKaiGBScreen.ttf"
-# 母体的 sha256:换版本时先改 URL 与这个哈希,再跑一次脚本
+# 母体 sha256:换版本须同步改 URL 与这个哈希
 MASTER_SHA256 = "23ec023913e1851925eb94462c4b0ccd1d78bb89533745aaa8cc682ccd339dc0"
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-# 产物放 src/assets 而不是 public:style.css 里用相对 url() 引它,Vite 才会改写
-# 成带 hash、且认得 base 的地址(vite.config 的 base 是 './',写死 /fonts/… 在
-# GitHub Pages 那种子路径部署下会 404)。协议文本放 public,原样进产物。
+# 产物放 src/assets 不放 public:style.css 用相对 url() 引它,Vite 才改写成带 hash、认 base 的地址
+# (vite.config 的 base 是 './',写死 /fonts/… 在子路径部署下 404)。协议文本放 public,原样进产物。
 OUT_DIR = ROOT / "src/assets/fonts"
 OUT_CSS = OUT_DIR / "kai-subset.css"
 META = ROOT / "scripts/fonts/kai-subset.meta.json"
 CHARS = ROOT / "scripts/fonts/kai-subset.chars.txt"
 CACHE = pathlib.Path("/tmp/lxgw-wenkai-cache")
 
-# 切片数:再多就只是把请求数堆上去(每片都要一次往返),再少则第一片太肥。
+# 切片数:多了只堆请求数(每片一次往返),少了第一片太肥
 CHUNKS = 5
 
-# 界面一定会用到、但未必出现在源码字面量里的字符:ASCII、常用标点与全角符号
+# 界面会用到、但未必出现在源码字面量里的字符
 EXTRA = (
     "".join(chr(c) for c in range(0x20, 0x7F))
     + "　、。〈〉《》「」『』【】〔〕—…·～×÷％＋－°※→←↑↓√✓○●◆◇■□★☆"
 )
 
-# 允许「由系统符号/emoji 字体去画」的字符 —— 它们不是汉字,楷体里也没有,
-# 混排时由系统字体补上(▾ 之类的箭头、✧ 之类的装饰),这是正常的回退,不是缺字。
-# 生成时会核对:凡是不在字体里、又不在这份名单里的字,一律让脚本**报错退出** ——
-# 换母体、加内容时最容易发生的就是「某个字悄悄没了」,而它在界面上只表现为
-# 一个字形突然换成衬线,没人会报 bug。
+# 允许由系统符号/emoji 字体画的字符(非汉字,楷体里没有,混排回退不算缺字)
+# 不在字体里、又不在这份名单里的字,生成时报错退出
 SYMBOLS_FROM_SYSTEM = set("✧◈▸▾▬✅")
 
 
@@ -140,7 +136,7 @@ def needed_chars() -> set[str]:
             chars |= set(p.read_text(encoding="utf-8", errors="ignore"))
     chars |= set((ROOT / "index.html").read_text(encoding="utf-8", errors="ignore"))
     chars |= set(EXTRA)
-    # GB2312 全字集:一级 3755 + 二级 3008,覆盖日常汉字与绝大多数名字
+    # GB2312 全字集:一级 3755 + 二级 3008
     for hi in range(0xB0, 0xF8):
         for lo in range(0xA1, 0xFF):
             try:
@@ -186,8 +182,7 @@ def split_chunks(chars: set[str], corpus: str, per_band: int, per_cold: int) -> 
     hot = sorted([c for c in chars if weight.get(c, 0) > 0], key=lambda c: (-weight[c], c))
     cold = sorted([c for c in chars if weight.get(c, 0) == 0])
     bands: list[list[str]] = [hot[i : i + per_band] for i in range(0, len(hot), per_band)]
-    # 储备那一段(GB2312 里语料没用到的那几千字)按码位切:它们只在「玩家起了个生僻名字」
-    # 时才用得上,整段一千多 KB 一份太贵 —— 切小之后,那一个名字只拽下来一小片。
+    # 储备字(GB2312 里语料没用到的几千字)按码位切小片:起了生僻名字只拽一小片
     bands += [cold[i : i + per_cold] for i in range(0, len(cold), per_cold)]
     return bands
 
@@ -229,8 +224,7 @@ def main() -> None:
     from fontTools import subset
     from fontTools.ttLib import TTFont
 
-    # --source 是离线再切的入口:直接复用已入库的全量字库(已含全部需用字),
-    # 不必能连外网下载母体。选 --source 时 sha256 校验的是这份待切的字库本身。
+    # --source:离线再切,复用已入库的全量字库(已含全部需用字),跳过母体下载
     source = pathlib.Path(args.source) if args.source else ensure_master(args.master)
     chars = needed_chars()
     bands = split_chunks(chars, ui_corpus(), args.per_band, args.per_cold)
@@ -254,8 +248,7 @@ def main() -> None:
         subsetter.subset(font)
         subset.save_font(font, str(out), opts)
 
-        # 从**产物**读回真实覆盖,而不是记「我要求包含的字」—— 两者会差:母体里没有的字
-        # (那些符号)pyftsubset 直接跳过,若字表照抄请求集,判据就成了空头支票。
+        # 覆盖从产物读回,不记请求集:母体里没有的字 pyftsubset 直接跳过,照抄请求集会让判据落空
         produced = TTFont(str(out), lazy=True)
         covered = {chr(cp) for cp in produced.getBestCmap()}
         missing_all |= set(band) - covered
@@ -281,8 +274,7 @@ def main() -> None:
         )
     CHARS.write_text("".join(sorted(covered_all)), encoding="utf-8")
 
-    # @font-face 声明也由脚本写:每一片的 unicode-range 必须与那一份**产物**的 cmap 一致,
-    # 手抄一份到 style.css 里迟早会与字体对不上(而那种错只表现为「有字拉不下来」)。
+    # @font-face 由脚本写:每片 unicode-range 须与该片产物的 cmap 一致,不手抄进 style.css
     rules = [
         "/* 生成物 —— 由 scripts/fonts/build-kai-font.py 写出,判据在 src/ui/kaiFontCoverage.spec.ts。",
         "   手改会被下一次生成覆盖。 */",

@@ -1,13 +1,7 @@
 /**
- * 修行身份 / 道途画像(Phase 31.2)
- *
- * 边界(关键设计):
- *   身份 = 历史行为的归纳 —— 不是玩家主动选择的职业标签
- *   三层:
- *     根因  你经历过什么(fortuneChoices / mentor / daoPath / gongfaBranch)
- *     倾向  你长期如何选择(quests 计数器 / 流派 / 灵兽)
- *     称谓  世界如何描述你(派生称号,纯叙事)
- *   无数值加成 · 无新资源 · 无等级 · 不反过来决定玩法
+ * 修行身份 / 道途画像:历史行为的归纳,不是玩家主动选择的职业标签。
+ * 三层:根因(fortuneChoices / mentor / daoPath / gongfaBranch)· 倾向(quests 计数器 / 流派 / 灵兽)· 称谓(派生称号,纯叙事)。
+ * 无数值加成 · 无新资源 · 无等级 · 不反过来决定玩法。
  */
 import type { MentorId } from '@/data/mentors'
 import { mentorDef } from '@/data/mentors'
@@ -22,9 +16,7 @@ import { gongfaBranchDef } from '@/data/gongfaBranches'
 export interface IdentityRoots {
   /** 机缘印记:取过的机缘(最多 3 条) */
   fortunes: { id: string; title: string }[]
-  /** 师承 */
   mentor: { name: string; title: string } | null
-  /** 道途 */
   daoPath: string | null
   /** 功法分支(最多 2 条) */
   branches: string[]
@@ -39,14 +31,13 @@ export interface IdentityTraits {
   adjectives: string[]
   /** 风险倾向(签名时取"勇"字表) */
   riskBias: 'gamble' | 'steady' | null
-  /** 总击杀 / 总历练 / 总突破(归一化问候) */
   counters: { kills: number; explores: number; breakthroughs: number }
 }
 
 export interface CultivatorIdentity {
   roots: IdentityRoots
   traits: IdentityTraits
-  /** 称谓(世界如何描述你,2~6 字) */
+  /** 称谓,2~6 字 */
   epithet: string
   /** 一句话修行叙事 */
   narrative: string
@@ -88,7 +79,6 @@ export function buildIdentity(): CultivatorIdentity {
 
   const mentor = player.mentor ? (mentorDef(player.mentor) ?? null) : null
 
-  // 功法分支名(最多 2 条)
   const branches = Object.values(cultivation.gongfaBranch)
     .map(id => gongfaBranchDef(id)?.name)
     .filter((x): x is string => x !== undefined)
@@ -100,7 +90,6 @@ export function buildIdentity(): CultivatorIdentity {
   if (build) adjectives.push(build.style.name.replace('流', ''))
   if (mentor) adjectives.push(mentor.name)
   if (build?.secondary) adjectives.push(`${build.secondary.style.name.replace('流', '')}辅`)
-  // 风险倾向:以击杀/突破占比推断(攻坚型 vs 稳扎型)
   const kills = quests.counter('kills')
   const explores = quests.counter('explores')
   const breakthroughs = quests.counter('breakthroughs')
@@ -108,8 +97,7 @@ export function buildIdentity(): CultivatorIdentity {
 
   // ---- 称谓 ----
   const daoKey = endgame.daoPath
-  // 道途一律先转成中文名再往下传:叙事句和画像面板必须同一份文案,
-  // 否则会写出「行slaughter」这种把内部 id 漏给玩家的句子
+  // 道途先转中文名再往下传:叙事与画像面板同一份文案,否则漏出「行slaughter」这类内部 id
   const daoName = daoKey ? (daoPathDef(daoKey)?.name ?? null) : null
   const daoEpi = daoKey ? (DAO_EPITHETS[daoKey] ?? '问道') : null
   const mentorEpi = mentor ? MENTOR_EPITHETS[mentor.id] : null

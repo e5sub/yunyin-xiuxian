@@ -1,9 +1,6 @@
 /**
- * 游戏时钟的暂停守卫契约(useGameClock / gameClock)。
- *
- * 语义原型是 useNow 那条:心跳停着(重置 / 导入确认)时冻结读数。
- * 组合式只是生命周期薄壳(挂载起表、卸载收表),守卫全在命令式的
- * gameClock 里 —— 故这里直接钉 gameClock。
+ * 游戏时钟的暂停守卫:心跳停着(重置 / 导入确认)时冻结。
+ * 守卫全在 gameClock,useGameClock 只是生命周期薄壳,本文件只钉 gameClock。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { gameClock } from './useGameClock'
@@ -21,7 +18,7 @@ describe('gameClock · 暂停冻结的游戏时钟', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
-    // enginePause 是模块级单例:恢复心跳,别把暂停态漏给下一个用例
+    // enginePause 是模块级单例,须复位
     setEnginePaused(false)
   })
 

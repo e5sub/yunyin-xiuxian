@@ -1,5 +1,6 @@
 /**
- * Phase 28 前期玩法服务 —— 悟道顿悟/突破准备/闭关/历练路线/连胜/洞府巡游/灵兽陪行
+ * 前期玩法服务:悟道顿悟/突破准备/闭关/连胜/洞府巡游
+ * 冷却、到期与 buff 起点一律读游戏时钟 gameNow()(暂停时冻住),不写墙钟。
  */
 import { usePlayerStore } from '@/stores/player'
 import { useDongfuStore } from '@/stores/dongfu'
@@ -32,7 +33,7 @@ function telemetry(): ReturnType<typeof usePacingTelemetry> {
 let enlightenmentEvent: EnlightenmentEvent | null = null
 let caveEvent: CaveEvent | null = null
 
-/** 巡游落点 → 对应洞府建筑:落点只发生在玩家盖了那座建筑的地方 */
+/** 巡游落点 → 洞府建筑;只落在已盖的建筑处,一处未盖回落灵田 */
 const CAVE_LOCATION_BUILDING: Record<keyof typeof CAVE_EVENT_POOL, BuildingId> = {
   field: 'field',
   furnace: 'alchemy',
@@ -44,7 +45,6 @@ const CAVE_LOCATION_BUILDING: Record<keyof typeof CAVE_EVENT_POOL, BuildingId> =
 /** 获取当前悟道顿悟事件(60秒窗口) */
 export function getCurrentEnlightenment(): EnlightenmentEvent | null {
   if (!enlightenmentEvent) return null
-  // gameNow() 在暂停时冻住:确认窗背后不该把 60 秒机缘窗耗掉
   const now = gameNow()
   if (now > enlightenmentEvent.expiresAt) {
     enlightenmentEvent = null
@@ -54,14 +54,8 @@ export function getCurrentEnlightenment(): EnlightenmentEvent | null {
 }
 
 /**
- * 触发悟道顿悟(修炼时低概率,每5分钟最多触发1次)
- *
- * 冷却存在 player store(随档):顿悟给悟道点,闸门若挂模块,
- * 刷新一次页面就等于把 5 分钟冷却清掉 —— 那是「重开页面刷顿悟」。
- *
- * 冷却起点与窗口到期都读游戏时钟:`enlightenmentAt` 在
- * `player.shiftTimedState` 里被顺延(即视为可冻结时钟)。暂停中写墙钟,
- * 恢复后这一条顿悟冷却会凭空多出暂停那几分钟 —— 与其余冷却不一致。
+ * 触发悟道顿悟(修炼时低概率,每5分钟最多触发1次)。
+ * 冷却存 player store(随档):挂模块会被刷新页面清掉。`enlightenmentAt` 由 `player.shiftTimedState` 顺延。
  */
 export function mayTriggerEnlightenment(): void {
   const player = usePlayerStore()
@@ -108,7 +102,6 @@ export function chooseEnlightenment(optionIndex: number): void {
   const opt = enlightenmentEvent.options[optionIndex]!
   const cult = useCultivationStore()
   const ui = useUiStore()
-  // 悟道给的 buff 也按游戏时钟写:暂停中选下的加持不该在恢复后凭空多出一段
   const now = gameNow()
 
   // 即时奖励(如灵机一动直接给悟道点)或挂 buff;buff 未注册时 addBuff 会静默……
@@ -125,10 +118,7 @@ export function chooseEnlightenment(optionIndex: number): void {
   enlightenmentEvent = null
 }
 
-/**
- * 玩家忽略本次顿悟:清掉模块级事件,否则 1s 轮询的 getCurrentEnlightenment
- * 会把它原封不动弹回来,「忽略」等于没按
- */
+/** 忽略本次顿悟:须清模块级事件,否则 1s 轮询的 getCurrentEnlightenment 会把它弹回来 */
 export function dismissEnlightenment(): void {
   if (enlightenmentEvent) telemetry().record('enlightenment_ignore', 'modal', '悟道顿悟忽略')
   enlightenmentEvent = null
@@ -151,13 +141,12 @@ export function startRetreat(): boolean {
   }
 
   const cult = useCultivationStore()
-  // 闭关是按时长判到期的状态:读游戏时钟,暂停中不会写进墙钟
   cult.addBuff('retreat', gameNow())
   telemetry().record('retreat', 'modal', '开始闭关')
   return true
 }
 
-/** 当前是否在闭关中(以 buff 为真相源,过期即假,与 prune 时机无关) */
+/** 是否闭关中(过期即假,与 prune 时机无关) */
 export function isRetreating(): boolean {
   return getRetreatRemainingSec() > 0
 }
@@ -178,13 +167,7 @@ export function prepareBreakthrough(optionId: string): boolean {
 
   const resources = useResourcesStore()
   if (opt.cost?.stone && !resources.spendStone(gn(opt.cost.stone))) return false
-  /**
-   * duration 单位为秒(meditate=180);=0 表示支付即就绪(聚气丹)。
-   *
-   * `readyAt` 读游戏时钟:`breakthroughPrep.readyAt` 在 `player.shiftTimedState`
-   * 里被顺延(视为可冻结时钟)。暂停中写墙钟,恢复后这一份准备会平白多出
-   * 暂停那几分钟 —— 与其余冷却不一致。
-   */
+  // duration 单位:秒,=0 表示支付即就绪(聚气丹)。`breakthroughPrep.readyAt` 由 `player.shiftTimedState` 顺延
   usePlayerStore().setBreakthroughPrep({
     bonus: opt.bonusRate,
     readyAt: gameNow() + Math.max(0, opt.duration) * 1000,
@@ -194,12 +177,7 @@ export function prepareBreakthrough(optionId: string): boolean {
   return true
 }
 
-/**
- * 突破准备的灵石缺口(纯算,不消费)。
- *
- * `null` 表示不是需要灵石的准备项;余额够时返回 0。界面与失败回执
- * 都读这一份,避免按钮上写「未足」、toast 里却报不出还差多少。
- */
+/** 突破准备的灵石缺口(纯算,不消费)。null = 不是需要灵石的项;余额够返回 0。界面与失败回执都读这一份 */
 export function breakthroughPrepShortfall(optionId: string): GNum | null {
   const opt = BREAKTHROUGH_PREP_OPTIONS.find(o => o.id === optionId)
   if (!opt || opt.bonusRate <= 0 || !opt.cost?.stone) return null
@@ -208,7 +186,7 @@ export function breakthroughPrepShortfall(optionId: string): GNum | null {
   return gte(stone, cost) ? gnZero() : subClamp(cost, stone)
 }
 
-/** 存进档的准备态:加成、就绪时刻、来源(见 player store 的注释) */
+/** 存进档的准备态(见 player store 的注释) */
 export interface BreakthroughPrepState {
   bonus: number
   readyAt: number
@@ -228,12 +206,8 @@ export interface BreakthroughPrepView {
 }
 
 /**
- * 突破准备当前状态(只读,不消费)。
- * 语义:静坐调息要坐满 3 分钟才转「就绪」;聚气丹支付即了就绪;
- * 两者都是一次性加成,突破时经 consumeBreakthroughPrep 取走后即空。
- *
- * 状态存在 player store(随档持久化):聚气丹是要花 80 灵石的,
- * 刷新一次就没了等于吞资源;顿悟/巡游那种免费提示才适合模块态。
+ * 突破准备当前状态(只读,不消费)。一次性加成,突破时经 consumeBreakthroughPrep 取走后即空。
+ * 状态存 player store(随档持久化):聚气丹要花灵石,挂模块刷新即失。
  */
 export function breakthroughPrepState(at: number = gameNow()): BreakthroughPrepView {
   const state = usePlayerStore().breakthroughPrep
@@ -258,7 +232,6 @@ export function recordWin(): void {
   const player = usePlayerStore()
   player.incrementWinStreak()
 
-  // 检查是否触发连胜奖励
   const streak = player.winStreak
   const reward = WIN_STREAK_REWARDS.find(r => r.streak === streak)
   if (reward) {
@@ -285,15 +258,8 @@ export interface StreakBatchReward {
 
 /**
  * 整批胜负的连胜结算(离线整段结算用)。
- *
- * 在线是逐场 `recordWin` / `recordLoss`:赢一场 +1、跨过 3/5/10 档即发赏格,
- * 输一场归零。离线按期望值整段结算,没有「第几场」,但赢了几场、输了几场是确定的:
- *
- * - 先按**在线能发生的那种顺序**把胜场接上(`wins` 场连续胜利),跨过哪几档就发哪几档;
- * - 再按败场收尾(`losses > 0` 即归零)—— 在线一败即中止这趟历练,不可能在败后再赢。
- *
- * 不发 toast:离线归来自有卷轴,一次结算弹几条只会盖住别的交代。
- * 赏格的实发数额与文案交给调用方(`streakRewardText`),这里只报「发了哪几档」。
+ * 顺序:先接 `wins` 场连胜、跨档即发,再以败场收尾(`losses > 0` 即归零);在线一败即中止历练,败后不会再赢。
+ * 不发 toast(离线归来有卷轴);赏格数额与文案交给调用方(`streakRewardText`),只报发了哪几档。
  */
 export function recordWinStreakBatch(wins: number, losses: number): StreakBatchReward[] {
   const player = usePlayerStore()
@@ -302,7 +268,7 @@ export function recordWinStreakBatch(wins: number, losses: number): StreakBatchR
   const start = Math.max(0, Math.floor(player.winStreak))
   const end = start + count
   const granted: StreakBatchReward[] = []
-  // 只发「这一批跨过去」的档;已被上一批发过的(门槛 ≤ start)不再重发
+  // 门槛 ≤ start 的档已被上一批发过,不重发
   for (const reward of WIN_STREAK_REWARDS) {
     if (reward.streak <= start || reward.streak > end) continue
     resources.addStone(gn(reward.stone))
@@ -330,9 +296,6 @@ export function mayTriggerCaveEvent(): CaveEvent | null {
     return null
   }
 
-  // 随机选一个**盖了对应建筑**的落点:别让「丹炉余温」出现在你没炼丹炉的洞府里,
-  // 或「安抚灵兽」在你没灵兽园时给一条空增益。一处都没盖(纯新人)回落灵田 ——
-  // 它的收获(灵草)恒有意义,不制造空洞
   const dongfu = useDongfuStore()
   const locationKeys = Object.keys(CAVE_EVENT_POOL) as Array<keyof typeof CAVE_EVENT_POOL>
   const owned = locationKeys.filter(loc => (dongfu.levels[CAVE_LOCATION_BUILDING[loc]] ?? 0) > 0)
@@ -342,11 +305,6 @@ export function mayTriggerCaveEvent(): CaveEvent | null {
   if (!pool || pool.length === 0) return null
 
   const event = pool[Math.floor(Math.random() * pool.length)]!
-  /**
-   * 窗口到期读游戏时钟(见 getCurrentCaveEvent):写墙钟让
-   * `expiresAt` 超过未来到期判定,恢复后窗口平白少了一段。
-   * 与本文件其余冷却同一把尺。
-   */
   const now = gameNow()
 
   caveEvent = {
@@ -366,20 +324,14 @@ export function getCurrentCaveEvent(): CaveEvent | null {
   const now = gameNow()
   if (now > caveEvent.expiresAt) {
     caveEvent = null
-    // 过期同样是「今日已巡过」:不记这天的额度,30s 轮询就会天天反复重掷,
-    // 「每日一巡」能被视而不见地无限刷(与掷签失败那条 invariant 同规)
+    // 过期也记今日,否则 30s 轮询会反复重掷(与掷签失败同规)
     usePlayerStore().markCaveEventToday(todayLocalNum())
     return null
   }
   return caveEvent
 }
 
-/**
- * 暂停恢复:把机缘 / 巡游两扇窗的到期时刻顺延暂停时长。
- *
- * 它们只活 60~120 秒,暂停(重置 / 导入确认)几十秒就足以让窗口在背后消失,
- * 玩家甚至没看见它出现过。与 `enginePause.gameNow()` 的冻结语义配套。
- */
+/** 暂停恢复:机缘 / 巡游窗口的到期时刻顺延暂停时长;与 `enginePause.gameNow()` 的冻结语义配套 */
 export function shiftEarlyGameWindows(pausedMs: number): void {
   if (pausedMs <= 0) return
   if (enlightenmentEvent) {
@@ -403,7 +355,6 @@ export function chooseCaveOption(optionIndex: number): void {
   const resources = useResourcesStore()
   const cult = useCultivationStore()
 
-  // 应用奖励 —— 巡游给的 buff 也按游戏时钟写,暂停中选下的加持不会恢复后凭空延长
   const now = gameNow()
   if (opt.reward) {
     switch (opt.reward.type) {
@@ -427,24 +378,21 @@ export function chooseCaveOption(optionIndex: number): void {
     }
   }
 
-  // 应用惩罚:按 penalty.type 映射已注册的惩罚 buff(如 cave_penalty_cultivationSpeed)。
-  // 修的是"动态随机 id 永远查无此 buff"——惩罚名称就是 type,不该掺时间戳
+  // 惩罚 buff 按 penalty.type 映射已注册 id(如 cave_penalty_cultivationSpeed),不掺时间戳
   if (opt.penalty) {
     cult.addBuff(`cave_penalty_${opt.penalty.type}`, now)
   }
 
   const today = todayLocalNum()
   player.markCaveEventToday(today)
-  // 选完给一句回执——此前选完弹窗直接关,拿到什么全凭感觉
   useUiStore().toast(`洞府巡游·${caveOptionText(opt)}`, 'success')
   telemetry().record('cave_choose', 'modal', `洞府选择:${opt.label}`)
   caveEvent = null
 }
 
 /**
- * 玩家离开本次洞府巡游 = 今日不赴巡游。
- * 只清模块级事件是不够的:mayTriggerCaveEvent 每 30s 轮询会重新掷一个新事件弹回来,
- * 「离开」就成了白按。离开与选择一样占用今日一次 —— 决定留给玩家,代价也明确
+ * 离开本次洞府巡游,与选择一样占用今日一次。
+ * 只清模块级事件不够:mayTriggerCaveEvent 每 30s 轮询会重掷一个新事件弹回来。
  */
 export function dismissCaveEvent(): void {
   if (!caveEvent) return

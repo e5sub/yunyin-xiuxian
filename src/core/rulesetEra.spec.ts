@@ -1,23 +1,13 @@
 /**
- * 天道纪元的可见性契约(Phase 25 规则纪元的收尾)
- *
- * 规则纪元从 Phase 25 起就记在每一则道痕上(`mark.ruleset`),
- * 忆战时也会说一句「天道已变」——但**变了什么,玩家无处可查**:
- * `RULESET_CHANGELOG` 写好了,全项目没有一处读它。
- *
- * 这类缺陷的共性是:**数据记了,展示层没接**。所以本文件钉的不是
- * 弹窗长什么样,而是不变量:
- *
- *   ① 纪元的先后必须有确定口径(19.0 < 19.5 < 20.0);
- *   ② 旧纪道痕必须能问出「此后改了什么」;
- *   ③ 道痕列表必须真的接上这条口径,而不是只在注释里提过。
+ * 天道纪元可见性契约(道痕 `mark.ruleset` 与 `RULESET_CHANGELOG`):
+ * ① 纪元先后有确定口径;② 旧纪道痕问得出「此后改了什么」;③ 道痕列表真的接上(注释里提过不算)。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { RULESET_CHANGELOG, RULESET_VERSION, isStaleRuleset, rulesetBefore, rulesetChangesSince } from '@/data/ruleset'
 
-/** 去掉注释,免得注释里提一嘴就算「接上了」(与 veinVisibility 同法) */
+/** 去掉注释:注释里提到不算接上(与 veinVisibility 同法) */
 function stripComments(src: string): string {
   return src
     .replace(/<!--[\s\S]*?-->/g, '')
@@ -25,10 +15,7 @@ function stripComments(src: string): string {
     .replace(/\/\/[^\n]*/g, '')
 }
 
-/**
- * 道痕册拆出 components/celestial/MarksPanel.vue 后,判据随本体走。
- * 读宿主与子组件合扫:只查其中一个,拆分后的下一次改动就会假绿。
- */
+/** 宿主与 MarksPanel.vue 合扫:只查其中一个会假绿 */
 const MARKS_VIEW_SRC = stripComments(
   readFileSync(resolve(__dirname, '../views/CelestialView.vue'), 'utf8') +
     readFileSync(resolve(__dirname, '../components/celestial/MarksPanel.vue'), 'utf8')
@@ -97,7 +84,6 @@ describe('规则纪元:道痕列表真的接上了', () => {
   })
 
   it('变更是从数据读的,不是在视图里手抄一份', () => {
-    // 手抄的纪元号不会随 RULESET_VERSION 走:数据改了,界面就开始撒谎
     expect(MARKS_VIEW_SRC).toContain('RULESET_VERSION')
     for (const c of RULESET_CHANGELOG) {
       expect(MARKS_VIEW_SRC, `视图里手抄了纪元 ${c.version}`).not.toContain(`'${c.version}'`)

@@ -1,18 +1,5 @@
 /**
- * 声明即承诺 —— 类型里写下的每种「词汇」,引擎必须接得住
- *
- * 这一轮清扫出的真事故有个共同形状:**声明在前,实现没跟**。
- * 最刺眼的是奇遇连锁:CHAIN_EVENT_IDS 列了五个事件 id、转世继承清单也写了它,
- * 而事件库里根本没有那五个事件 —— 类型与数据说着"有",引擎说着"没有"。
- *
- * 故这里把三处"词汇表"钉成红线,判据是源码级的:
- *
- *   一 事件效果的每种 type:eventEngine 必须真的处理,否则静默走兜底文案
- *     (玩家看到"灵草 +10",数据里没有任何红);
- *   二 选项条件的每种 type:choiceAvailable 必须真的校验,否则条件形同虚设;
- *   三 计数器的每个键:必须有写入方(track),否则引用它的成就永远拿不到;
- *   四 属性键的每个键:必须有读取方,否则给它的词条/天赋全是死加成。
- *
+ * 声明即承诺:类型里写下的每种词汇(事件效果 / 选项条件 / 计数器 / 属性键),引擎必须接得住。
  * 故障注入:删掉任一 case、任一 track 写入、任一属性读取点,本文件立刻变红。
  */
 import { describe, expect, it } from 'vitest'
@@ -47,17 +34,11 @@ function unionMembers(startMarker: string, endMarker: string): string[] {
   return [...new Set([...block.matchAll(/'([A-Za-z]+)'/g)].map(m => m[1]!))]
 }
 
-/**
- * 取判别联合里的 type 值(如 EventEffect/EventCond)。
- *
- * 不能只抓字符串字面量 —— 成员内部还有嵌套联合(如 material 的 id: 'herb' | 'ore'),
- * 那些是取值域不是判别值,抓进来会误报。
- */
+/** 取判别联合里的 type 值(如 EventEffect/EventCond);只认 type: 字面量,成员内的嵌套联合不算 */
 function taggedTypes(startMarker: string): string[] {
   const from = TYPES_SRC.indexOf(startMarker)
   expect(from, `types/index.ts 里找不到 ${startMarker}`).toBeGreaterThanOrEqual(0)
-  // 结束点取「声明体之后的第一个顶层 export」——EventCond 与 EventEffect 相邻,
-  // 若只按给定结束标记切,会把下一段声明的判别值一起抓进来(红线就会名不副实)
+  // 截到声明体之后的第一个顶层 export:EventCond 与 EventEffect 相邻,否则会混入下一段的判别值
   const rest = TYPES_SRC.slice(from)
   const nextExport = rest.slice(1).search(/\nexport /)
   const block = nextExport > 0 ? rest.slice(0, nextExport + 1) : rest
@@ -109,13 +90,6 @@ describe('声明即承诺 · 计数与属性', () => {
   })
 
   /**
-   * 反过来的那一半:**读得到,也得拿得到**。
-   *
-   * 上一条只保证「给了它有用」,不保证「拿得到它」。命中(accuracy)就是这么补的:
-   * 闪避型首领的幻境此前无解 —— 玩家没有命中这个属性,面对五成闪避只能靠运气,
-   * 战后分析照样会说「N 次出手落空,连击与暴击难以衔接」。若只加一个类型、
-   * 不加任何来源,玩家既看不见也拿不到,等于没加。
-   *
    * 来源池 = 所有会发 StatMods 的数据表(词条 / 功法分支 / 法宝被动 / 天赋 / 称号 / buff)。
    * 故障注入:把 accuracy 的三处来源(ac1~ac3 词条、庚金剑典·破妄、周天星盘被动)删掉,这里立刻红。
    */

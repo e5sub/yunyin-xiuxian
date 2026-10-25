@@ -1,10 +1,4 @@
-/**
- * 转世服务 —— 死亡 / 轮回 / 永久成长
- *
- * Phase 32.5 起,转世交割的重心从"再拿一次道果与天赋"移到了
- * "把这一世的所知所历带走":归档履历、结算命题、折算宿慧、补齐认知、立下新题。
- * 属性那一份仍在(道果与天赋照旧),但它已不再是玩家转世的理由。
- */
+/** 转世服务:道果与天赋、归档履历、结算命题、折算宿慧、补齐认知、立下新题 */
 import { rng } from '@/utils/random'
 import { TALENTS } from '@/data/talents'
 import { TALENT_DRAW_DIV } from '@/data/constants'
@@ -64,7 +58,6 @@ function reviewLastLife(): LifeReview {
   const result = vowResult()
   const def = vow ? lifeThemeDef(vow.themeId) : undefined
   const prog = vowProgress()
-  // 命题只在真正走到底时给宿慧;未竟与破题都不给,但也不扣
   const themeInsight = result === 'done' && def ? def.insight : 0
   return {
     index: player.reincarnation.count + 1,
@@ -79,17 +72,14 @@ function reviewLastLife(): LifeReview {
 }
 
 /**
- * 准备转世界面数据。
- *
- * 此处只算不改 —— 宿慧、履历、认知一概等到 confirmReincarnation 才落账。
- * 原因很实际:玩家可能在这一步刷新页面,重开后会再点一次「兵解转世」,
- * 若在此就发放宿慧,同一世的阅历会被记两遍。
+ * 准备转世界面数据。只算不改:宿慧、履历、认知等到 confirmReincarnation 才落账
+ * (玩家可能在这一步刷新后再点一次,在此发放会记两遍)。
  */
 export function prepareReincarnation(): ReincarnationView {
   const player = usePlayerStore()
   const owned = new Set(player.reincarnation.talents)
   const draws = 1 + Math.floor(player.major / TALENT_DRAW_DIV)
-  // 炼虚通感:已持传承者三选一 → 四选一(多一份选择,不白给属性)
+  // 炼虚通感:持传承者三选一 → 四选一
   const choices = drawTalents(3 + talentChoiceBonus(player.reincarnation.heritage), owned)
   const extras = draws > 1 ? drawTalents(draws - 1, new Set([...owned, ...choices])) : []
 
@@ -99,7 +89,7 @@ export function prepareReincarnation(): ReincarnationView {
   const stageAfter = stageAt(insightAfter)
   const next = nextStageAfter(insightAfter)
 
-  // 走到底过的题不再重复出现 —— 第五世不该还在琢磨"这一世先把丹结了"
+  // 走到底过的题不再重复出现
   const done = new Set(player.reincarnation.lives.filter(l => l.themeResult === 'done').map(l => l.themeId))
   const pool = offerThemes(stageAfter, arr => rng.pick(arr))
   const fresh = pool.filter(x => !done.has(x.id))
@@ -125,11 +115,8 @@ export function prepareReincarnation(): ReincarnationView {
 }
 
 /**
- * 已习功法的折损。
- *
- * 「记得哪些功法」是记忆,留下;**练到几层**是修为进度,随皮囊归零(回到一层的起手)。
- * 到了「百世老修」这一阶,修为最深的那一门可以完整带走 ——
- * 练过百世的东西,不至于连怎么起手都忘了。而持「大乘道统」传承者,所有门都按原等级带走。
+ * 已习功法的折损:门类留下,层数回一层。
+ * 「百世老修」阶修为最深的一门按原等级带走;持「大乘道统」传承者全部按原等级带走。
  */
 function carryGongfa(
   learned: Readonly<Record<string, number>>,
@@ -152,7 +139,6 @@ function carryGongfa(
 
 /**
  * 确认转世。
- *
  * @param chosenTalentId 三选一的先天之姿
  * @param chosenThemeId 这一世立下的题(null 为不立题)
  */
@@ -175,8 +161,7 @@ export function confirmReincarnation(chosenTalentId: string | null, chosenThemeI
     collect('talent', id)
   }
 
-  // 宿命传承:本世到达的最深未锻造门槛,于此一悟(跨世永久持有,入 reincarnation.heritage)。
-  // 一悟只在此处落账一次;若没锻得(浅修 / 已全锻造)则一无所得。
+  // 宿命传承:本世最深未锻造门槛只在此处落账一次(入 reincarnation.heritage,跨世永久持有)
   const forged = lifeForge(player.major)
   if (forged) {
     player.addHeritage(forged.id)
@@ -193,12 +178,11 @@ export function confirmReincarnation(chosenTalentId: string | null, chosenThemeI
     themeId: r.themeId,
     themeResult: r.themeResult,
     insight: r.insightGained,
-    // 逆旅契入履历 —— 这是契约唯一的回报:被记住,且不进任何计算
+    // 逆旅契唯一的回报:入履历,不进任何计算
     trialId: archiveLifeTrial(),
     at: Date.now()
   })
   player.addInsight(r.insightGained)
-  // 契随皮囊一同散去,下一世要签得重新花道果
   player.setLifeTrial(null)
 
   // 重置今生
@@ -212,11 +196,8 @@ export function confirmReincarnation(chosenTalentId: string | null, chosenThemeI
   inventory.items = []
   inventory.equipped = {}
   inventory.pills = {}
-  // 法宝亦是外物,随皮囊一同散去——留下的只有认知(丹方、药性、器纹皆在 lore)
   inventory.artifacts = []
   inventory.equippedArtifacts = []
-  // Memory of which manuals stays; levels return to 1 (top insight stage may keep one at full level).
-  // 持「大乘道统」传承者,所有门按原等级带走(keepAll)。
   const stage = stageAt(view.insightAfter)
   const heritages = player.reincarnation.heritage
   cultivation.learned = carryGongfa(cultivation.learned, stage.keepOneGongfa, keepsAllGongfa(heritages))
@@ -224,21 +205,18 @@ export function confirmReincarnation(chosenTalentId: string | null, chosenThemeI
   adventure.setSession(null)
   adventure.setPendingEvent(null, 0)
   adventure.unlocked = ['qingyun']
-  // 新的一世,新的天地:换一个本世之界(与上一世去重)
   rerollMortalWorld()
-  // 关系归档:历史留下,人不留下。只写一条记录,不产出任何资源
+  // 关系归档:只写一条记录,不产出任何资源
   const bondRec = archiveBond()
   if (bondRec) player.recordBond(bondRec)
   adventure.cleared = []
   adventure.clearedAt = {}
   adventure.revived = []
   adventure.lastBattle = null
-  // (洞府/灵脉/灵兽的归零在 player.rebirth() 里,与其余「本世进程」同处一地)
+  // 洞府/灵脉/灵兽的归零在 player.rebirth()
 
-  // 认知不因转世清零,只按阶补齐:该认得的药,睁眼就该认得
-  // 持「真仙道痕」传承者,不按本世境界,最高档全带
   const recognized = carryLore(stage, carriesAllLore(heritages))
-  // 转世前先记下旧世还在压着几处 —— rebirth() 会把镇压权益随皮囊散去
+  // 须在 rebirth() 之前记下:它会把镇压权益散去
   const releasedSuppressed = player.suppressedRegions.length
   player.rebirth(rollLinggen(rng, aptitudeFloorNow()))
   if (releasedSuppressed > 0) {
@@ -246,9 +224,9 @@ export function confirmReincarnation(chosenTalentId: string | null, chosenThemeI
   }
   // 新的一世:上一世的建号草稿作废,「逆天改命」额度归满
   useGameStore().resetCreateDraft()
-  // 道途归还天地,道源与道痕随神魂不灭
+  // 道途归还,道源与道痕保留
   useEndgameStore().onRebirth()
-  // 立下这一世的题。快照须在重置之后取,「本世」方才从此刻算起
+  // 命题快照须在重置之后取
   beginLife(view.themeChoices.includes(chosenThemeId ?? '') ? chosenThemeId : null)
   recordMilestone('first_rebirth')
   track('reincarnations')

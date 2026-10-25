@@ -1,7 +1,4 @@
-/**
- * GameFormula —— 所有成长曲线公式集中管理
- * 关键设计:装备与敌人共用 powerScale 曲线,保证任何阶段数值对齐
- */
+/** GameFormula:成长曲线公式集中管理 */
 import type { GNum, PillDef } from '@/types'
 import { gn, gnMin, gnZero, mulN, powN, mul, add } from '@/utils/gnum'
 import { maxTierForMajor } from '@/data/regions'
@@ -53,10 +50,7 @@ import {
 } from '@/data/constants'
 import { isWorldEntry, MAX_MAJOR, WORLD_BREAK_MAJOR, worldOf } from '@/data/realms'
 
-/**
- * 区域层级 → 对应大境界(与 regions.ts 设计同步)。
- * 1-20 对应人间界 0-8;21 起每层一个新境界,依次覆盖仙界/神界/混沌海。
- */
+/** 区域层级 → 大境界;须与 regions.ts 同步。1-20 对应人间界 0-8,21 起每层一境 */
 const TIER_MAJOR = [
   0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
 ] as const
@@ -67,30 +61,24 @@ export function tierMajor(tier: number): number {
   return TIER_MAJOR[Math.max(0, Math.min(TIER_MAJOR.length - 1, tier - 1))]!
 }
 
-/**
- * 该区域层级属于哪一界域 —— 「这件东西是哪一界出的」只有这一处口径。
- * 装备详情与图鉴都用它,不再各自 tierMajor + worldOf 拼一遍。
- */
+/** 区域层级所属界域;装备详情与图鉴的唯一口径 */
 export function worldNameOfTier(tier: number): string {
   return worldOf(tierMajor(tier)).name
 }
 
-/**
- * 大境界 → 成长指数(把 major 拆成「人间界内」与「跨界之后」两段)。
- * 人间界沿用旧曲线,跨界后用平坦的 LATE_* 曲线(见 constants 注释)。
- */
+/** 大境界拆成「人间界内」与「跨界之后」两段指数;跨界后走 LATE_* 曲线 */
 function earlyLate(major: number): { early: number; late: number } {
   const early = Math.min(Math.max(0, major), WORLD_BREAK_MAJOR)
   return { early, late: Math.max(0, major - early) }
 }
 
-/** 大境界基础战力因子:realmScale 与 powerScale 共用,保证玩家与内容永不脱节 */
+/** 大境界基础战力因子;realmScale 与 powerScale 共用 */
 export function majorCombatFactor(major: number): GNum {
   const { early, late } = earlyLate(major)
   return mul(powN(COMBAT_MAJOR_GROWTH, early), powN(LATE_COMBAT_GROWTH, late))
 }
 
-/** 战力曲线因子:装备数值与敌人数值都基于它,永远与玩家境界曲线对齐 */
+/** 战力曲线因子;装备与敌人数值都基于它 */
 export function powerScale(tier: number): GNum {
   const m = tierMajor(tier)
   const s = TIER_SUB[Math.max(0, Math.min(TIER_SUB.length - 1, tier - 1))]!
@@ -103,11 +91,8 @@ export function realmScale(major: number, sub: number): GNum {
 }
 
 /**
- * 跨越界膜那一步 —— 走完「界末境界的圆满」就要引劫飞升/破界/归返,
- * 故界末那一境的最后一层按 WORLD_STEP_EXP_MULT 加价。
- *
- * 判据只此一处:界面(境界志/突破页)、模拟器、审计全部经 expRequirement,
- * 任何地方另写一个"×2"都会让玩家看到两个不同的需求数。
+ * 界末那一境的最后一层(跨界前一步),修为需求按 WORLD_STEP_EXP_MULT 加价。
+ * 唯一判据:界面、模拟器、审计都经 expRequirement,别处不另写倍数。
  */
 export function isWorldStepLayer(major: number, sub: number): boolean {
   return sub >= SUB_LEVELS - 1 && major < MAX_MAJOR && isWorldEntry(major + 1)
@@ -159,8 +144,7 @@ export function baseCombatStats(major: number, sub: number): { attack: GNum; def
   }
 }
 
-/** 战力评分 */
-/** 战力算式里的三项权重 —— powerScore 与其解释文字用同一份,不许改一处漏一处 */
+/** 战力三项权重;powerScore 与释义文字共用 */
 export const POWER_WEIGHTS = { attack: 3, defense: 2, hp: 0.15 } as const
 
 export function powerScore(attack: GNum, defense: GNum, maxHp: GNum): GNum {
@@ -187,13 +171,9 @@ export function stoneByTier(tier: number, amount: number): GNum {
 }
 
 /**
- * 一枚丹药的「炼制石耗」基准(按方子准入境界的最高层级折算)。
- *
- * 这是「炼制石耗」的唯一事实源:坊市买/售、悬赏募丹、balance 审计都读它。
- * 层级只有一个事实源是区域表(maxTierForMajor) —— 从前写石耗时按 `minRealm × 2 + 1`
- * 自算,第 18 境的方子算出层级 37,超出混沌海上限 32,一张方子的价格凭空高出 322 倍
- * (1.9^5),界外炼丹被自己的报价挡在门外(ISS-211)。函数放在纯公式层而不是 stores
- * 依赖的 service 里,正是为了让纯审计(economySim)也能引它而不把整条服务链带进来。
+ * 丹药「炼制石耗」基准(按准入境界的最高层级折算)。
+ * 唯一事实源:坊市买/售、悬赏募丹、balance 审计都读它。
+ * 层级须取 maxTierForMajor,自算会超出上限 32(ISS-211)。须留在纯公式层:economySim 引它。
  */
 export function pillStoneCost(def: PillDef): GNum {
   if (!def.recipe?.stoneBase) return gnZero()
@@ -201,16 +181,8 @@ export function pillStoneCost(def: PillDef): GNum {
 }
 
 /**
- * 即时修为的**唯一结算口径**:等效闭关时长 → 修为,封顶在「不满一层」。
- *
- *   修为 = min(修速 × 等效秒数, 当前一层需求 × 层上限)
- *
- * 三条来源(丹药 / 一场遭遇 / 一次际遇)都走这一个函数,在线与离线也走它 ——
- * 从前每一处各写一遍「需求 × 百分比」,于是每一处都随境界指数膨胀(见 constants
- * 里 BATTLE_EXP_SECS 的那段读数),而修速词条反倒只管得到挂机那一条线。
- *
- * 离线 N 场:把秒数与层上限一并乘 N(`secs × N` / `layerCap × N`)——
- * 上限随场数线性放大,故「N 场」恒等于「N 次单场」,离线不会偷跑也不会被吃掉。
+ * 即时修为唯一结算口径:min(修速 × 等效秒数, 当前一层需求 × 层上限)。
+ * 丹药 / 遭遇 / 际遇、在线与离线都走它。离线 N 场:secs 与 layerCap 一并乘 N,N 场恒等于 N 次单场。
  */
 export function expFromSecs(expReq: GNum, secs: number, cultPerSec: number, layerCap: number): GNum {
   return gnMin(mulN(gn(cultPerSec), secs), mulN(expReq, layerCap))
@@ -235,33 +207,30 @@ export function upgradeCost(level: number, tier: number, qualityRank: number, di
   }
 }
 
-/** 离线收益估算辅助:胜率与战力比的映射 */
+/** 战力比 → 胜率(离线收益估算) */
 export function winChanceFromRatio(r: number): number {
   if (r <= 0) return 0.05
   const chance = 1 / (1 + Math.pow(0.85 / r, 4))
   return Math.max(0.05, Math.min(0.95, chance))
 }
 
-/** 游戏日(秒 → 日,86400/日):一处定口径,勿在别处再手写 86400 */
+/** 游戏日(秒 → 日);唯一口径,别处不手写 86400 */
 export function gameDay(totalPlaySec: number): number {
   return Math.floor(totalPlaySec / 86400)
 }
 
 /**
- * 天劫单波伤害占玩家最大生命比例。
- *
- * 式子 = (TRIB_WAVE_BASE + TRIB_WAVE_MAJOR×境界 + TRIB_WAVE_STEP×第几道) × (1 − 抗性)
- *        ↑ 三个系数收在 data/constants(Phase 39 由 0.15 / 0.02 / 0.03 上调 3%)
- *        ↑ 跨界那一境(9/14/18)的加难不在这条式子里,它走「不认三维折算」那条规则
+ * 天劫单波伤害占玩家最大生命比例;系数同源:data/constants。
+ * 跨界那一境(9/14/18)的加难不在此式,走「不认三维折算」规则。
  */
 export function tribulationWaveDamage(targetMajor: number, wave: number, resist: number): number {
-  // 境界项封顶(见 constants:难度口径只为 major ≤ 8 设,减伤有绝对上限)
+  // 境界项封顶(见 constants):难度口径只为 major ≤ 8 设
   const m = Math.min(targetMajor, TRIBULATION_DIFFICULTY_CAP_MAJOR)
   const base = TRIB_WAVE_BASE + m * TRIB_WAVE_MAJOR + wave * TRIB_WAVE_STEP
   return Math.max(0.04, base * (1 - resist))
 }
 
-/** 敌人装备补偿系数:随层级指数跟随玩家装备成长(Phase 33.2 去封顶) */
+/** 敌人装备补偿系数:随层级指数增长,不封顶 */
 export function enemyGearFactor(tier: number): number {
   return ENEMY_GEAR_BASE * Math.pow(ENEMY_GEAR_GROWTH, Math.max(0, tier - 1))
 }

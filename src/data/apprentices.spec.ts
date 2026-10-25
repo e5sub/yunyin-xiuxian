@@ -1,6 +1,4 @@
-/**
- * 收徒数据 —— 槽位曲线 / 任务表 / 产出不变量
- */
+/** 收徒数据:槽位曲线 / 任务表 / 产出不变量 */
 import { describe, expect, it } from 'vitest'
 import {
   APPRENTICE_TASKS,
@@ -54,20 +52,18 @@ describe('收徒 · 数据不变量', () => {
   })
 
   it('寻宝确定取一枚可炼丹:境界内取丹,且寻宝天赋者多得一枚', () => {
-    // 非寻宝天赋者跑寻宝:基数 1 枚
+    // 非寻宝天赋:基数 1 枚
     const plain = apprenticeSpoils('ap_luanniao', 'seek', 0, 2)
     expect(plain.pillId).toBeTruthy()
     expect(plain.pillCount).toBe(1)
-    // 只会拿一颗实丹,不会凭空多一份非丹产出
     expect(plain.herb).toBeUndefined()
-    // 寻宝天赋(ap_lingtong)×1.25 向上取整 → 2 枚,「天赋门类更丰」在寻宝上兑现
+    // 寻宝天赋 ×1.25 向上取整 → 2 枚
     const gifted = apprenticeSpoils('ap_lingtong', 'seek', 0, 2)
     expect(gifted.pillId).toBeTruthy()
     expect(gifted.pillCount).toBeGreaterThan(plain.pillCount!)
   })
 
   it('寻宝挑丹不越境界:低境界永远拿不到高界丹(堵新号白捡顶阶丹)', () => {
-    // 覆盖 0..18 境与各弟子等级,断言挑出的丹其准入境界不高于当前境界
     for (let major = 0; major <= 18; major++) {
       for (const arch of APPRENTICES) {
         for (const level of [1, 10, APPRENTICE_MAX_LEVEL]) {
@@ -94,7 +90,7 @@ describe('收徒 · 数据不变量', () => {
   })
 
   it('各尽其长:缺哪个就全体派去哪个门(缺者分高,确定性)', () => {
-    // herb 为 0 → score = 40/1 = 40,远高于其余 → 全体采药
+    // herb 为 0 → score 40/1 = 40,全体采药
     const idle = [
       { uid: 'a', talent: 'ore' as const },
       { uid: 'b', talent: 'study' as const }
@@ -106,7 +102,7 @@ describe('收徒 · 数据不变量', () => {
   })
 
   it('各尽其长:皆有余时去历练挣灵石(adventure 固定兜底分)', () => {
-    // 各资源 score < 0.25(历练兜底),故全体去历练
+    // 各资源 score < 0.25(历练兜底分)
     const idle = [{ uid: 'a', talent: 'herb' as const }]
     expect(dispatchAllToNeed(idle, { herb: 200, ore: 200, wudao: 200, dust: 200, seek: 200 })).toEqual([
       { uid: 'a', spec: 'adventure' }
@@ -114,7 +110,7 @@ describe('收徒 · 数据不变量', () => {
   })
 
   it('各尽其长:目标分无差别 → 各自专职;无闲置则空手', () => {
-    // herb score = 40/4 = 10 与 ore score = 30/3 = 10 并列最高 → null → 各自专职
+    // herb 40/4 = 10 与 ore 30/3 = 10 并列 → null,各自专职
     expect(needTargetDoor({ herb: 3, ore: 2, wudao: 100, dust: 100, seek: 0 })).toBeNull()
     const idle = [
       { uid: 'a', talent: 'herb' as const },

@@ -1,12 +1,6 @@
 /**
- * 以灵气疗伤(修复)
- *
- * 灵气既是突破的门槛,也是「修复」的本钱:负伤、遭心魔时,可耗灵气静养,
- * 立刻平复伤势,而不必干等 buff 自然过期。
- *
- * 代价取标称容量的固定比例 —— 于是它随境界指数增长(容量 ×4/境),
- * 与「上界的灵气/修复是指数级难度」这条设计一致:越往上,一次修复越贵,
- * 而积余机制保证你存得起。
+ * 以灵气疗伤(修复):负伤、遭心魔时耗灵气立刻平复伤势。
+ * 代价取标称容量的固定比例,随境界指数增长。
  */
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
@@ -22,7 +16,7 @@ import {
 /** 一次修复耗去标称灵气容量的比例 */
 export const QI_REPAIR_COST_RATIO = 0.35
 
-/** 当前修复代价(随灵气容量指数增长) */
+/** 当前修复代价 */
 export function qiRepairCost(): number {
   return Math.ceil(usePlayerStore().qiCapValue * QI_REPAIR_COST_RATIO)
 }

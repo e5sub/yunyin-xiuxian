@@ -1,17 +1,4 @@
-/**
- * 随机词条池 —— 119 条,通过权重与品质门槛控制稀有度。
- *
- * ## 说明不从这条线上手写
- *
- * 每条词条的说明曾经逐条手打:「造成伤害提升 {v}%」「受到伤害降低 {v}%」
- * 「生命上限提升 {v}%」「战斗所得修为提升 {v}%」—— 而状态弹窗、战力分解、
- * 图鉴里同一个键叫「伤害增幅」「伤害减免」「气血上限」「战斗修为」。同一个键
- * 两套名字,玩家没法把装备上那条与面板上那条对上号。
- *
- * 现在 desc 由 `data/statNames` 派生:名字取 `STAT_NAMES`,作用域取 `statCaveat`
- * —— 与面板 `statValueText` / `statModPhrase` 同一条装配,键、名字、条件都只有
- * 一处。数值位只留 `{v}`,不在这里写第二个数。
- */
+/** 随机词条池 —— 119 条,通过权重与品质门槛控制稀有度 */
 import type { AffixDef, AnyStatKey, EquipSlot, AffixRarity } from '@/types'
 import { STAT_NAMES, statCaveat } from '@/data/statNames'
 
@@ -22,11 +9,8 @@ const WJ = [...W, ...J]
 const AJ = [...A, ...J]
 
 /**
- * 词条说明:名字取 STAT_NAMES,条件取 statCaveat —— 与面板 `statValueText` 同款
- * 装配,数值位留 `{v}`(引擎按它切 before/value/after)。
- *
- * 不在这里另设一张「注解表」:那样只会把作用域说明变成第二份,新增一个带条件的
- * 键就悄悄漏掉条件(处决只打残血、背水须己身残血、护盾开战才凝…)。
+ * 词条说明不手写:名字取 STAT_NAMES,条件取 statCaveat,与面板 `statValueText` / `statModPhrase` 同一条装配;
+ * 数值位留 `{v}`(引擎按它切 before/value/after)。不另设注解表,作用域说明只此一份。
  */
 function affixDesc(key: AnyStatKey): string {
   const caveat = statCaveat(key)
@@ -42,7 +26,6 @@ function a(
   weight = 100,
   opts: { slots?: EquipSlot[]; minRank?: number; decimals?: number; rarity?: AffixRarity } = {}
 ): AffixDef {
-  // 自动推断 rarity:权重≥90=common, ≥50=rare, ≥20=epic, <20=legendary
   const rarity = opts.rarity ?? (weight >= 90 ? 'common' : weight >= 50 ? 'rare' : weight >= 20 ? 'epic' : 'legendary')
   return { id, name, desc: affixDesc(key), key, min, max, decimals: opts.decimals ?? 1, weight, rarity, slots: opts.slots, minRank: opts.minRank }
 }
@@ -102,8 +85,7 @@ export const AFFIXES: AffixDef[] = [
   a('exp2', '御风', 'explorationSpeed', 8, 15, 40, { slots: ['boots', ...J], minRank: 3 }),
   a('exp3', '寻踪', 'explorationSpeed', 15, 25, 12, { slots: ['boots', ...J], minRank: 6 }),
   // ---- 身法 ----
-  // 「出手速度提升 N%」读起来像连续收益,机制上却是一条阈值(1+修正 ≥ 对手速度即抢先)——
-  // 差一点就是完全没抢先,故照实写成「先手判定」。战后分析会把两个数与差额一并摆出来
+  // 速度是先手阈值(1+修正 ≥ 对手速度即抢先),不是连续收益
   a('spd1', '迅捷', 'speed', 5, 10, 80, { slots: ['boots', 'wrist', ...W] }),
   a('spd2', '流光', 'speed', 10, 15, 40, { slots: ['boots', 'wrist', ...W], minRank: 3 }),
   a('spd3', '瞬影', 'speed', 15, 25, 12, { slots: ['boots', ...W], minRank: 6 }),
@@ -148,7 +130,7 @@ export const AFFIXES: AffixDef[] = [
   a('dg1', '轻身', 'dodgeRate', 2, 5, 70, { slots: ['boots', ...A] }),
   a('dg2', '虚步', 'dodgeRate', 5, 9, 30, { slots: ['boots'], minRank: 4 }),
   a('dg3', '化影', 'dodgeRate', 9, 14, 10, { slots: ['boots'], minRank: 7 }),
-  // ---- 特殊:命中(破除幻影 —— 闪避型首领的对照面) ----
+  // ---- 特殊:命中(闪避型首领的对照面) ----
   a('ac1', '洞彻', 'accuracy', 2, 5, 70, { slots: WJ }),
   a('ac2', '破妄', 'accuracy', 5, 9, 30, { slots: WJ, minRank: 4 }),
   a('ac3', '明察', 'accuracy', 9, 14, 10, { slots: WJ, minRank: 7 }),
@@ -183,14 +165,11 @@ export const AFFIXES: AffixDef[] = [
   a('alc2', '丹圣', 'alchemyYield', 10, 20, 15, { slots: J, minRank: 4 }),
   a('fg1', '巧手', 'forgeDiscount', 5, 10, 40, { slots: J }),
   a('fg2', '器道', 'forgeDiscount', 10, 20, 15, { slots: J, minRank: 4 }),
-  // ---- 饰品专属战斗线:闪避 ----
-  // 闪避在主属是鞋靴+A 的天下,这里给饰品一条专属的闪避线 —— 用既有键 dodgeRate(在 DIMINISH/SOFT_CAPS 内),
-  // 让「挂件」也能站得住脚:不是纯幸运/经济饰物,而是有一门战斗身手
+  // ---- 饰品专属战斗线:闪避(用既有键 dodgeRate,在 DIMINISH/SOFT_CAPS 内) ----
   a('dgj1', '轻鸿', 'dodgeRate', 2, 5, 50, { slots: J }),
   a('dgj2', '踏虚', 'dodgeRate', 5, 9, 20, { slots: J, minRank: 4 }),
   a('dgj3', '御空', 'dodgeRate', 9, 14, 8, { slots: J, minRank: 7 }),
   // ---- 饰品专属战斗线:吸血(用既有键 lifesteal,在 DIMINISH_KEYS 内) ----
-  // 吸血在主属是武器的专利(ls1/ls2 slots:W),这里给饰品一条专属的续航线 —— 持久战里挂件的续航价值
   a('lsj1', '饮灵', 'lifesteal', 2, 5, 55, { slots: J }),
   a('lsj2', '吮魄', 'lifesteal', 5, 10, 25, { slots: J, minRank: 4 }),
   a('lsj3', '噬命', 'lifesteal', 10, 16, 8, { slots: J, minRank: 7 }),
@@ -223,10 +202,8 @@ export function affixDef(id: string): AffixDef | undefined {
 }
 
 /**
- * 一条词条能否长在某部位、某品质的装备上 —— 掉落生成、重铸抽取、自动重铸候选、
- * 词条转移共用这一处。返回挡住它的那一项('slot' 部位不符 / 'rank' 品质不够),能落返回 null。
- *
- * 此前三处各抄一份「slots + minRank」:界面亮着、服务不认的事故就从这种分叉里来。
+ * 词条能否落在某部位、某品质的装备上:掉落生成、重铸抽取、自动重铸候选、词条转移共用这一处。
+ * 返回挡住它的那一项('slot' 部位不符 / 'rank' 品质不够),能落返回 null。
  */
 export function affixFitBlock(def: AffixDef, slot: EquipSlot, rank: number): 'slot' | 'rank' | null {
   if (def.slots !== undefined && !def.slots.includes(slot)) return 'slot'
@@ -234,13 +211,7 @@ export function affixFitBlock(def: AffixDef, slot: EquipSlot, rank: number): 'sl
   return null
 }
 
-/**
- * 词条稀有度的高低序(0 最常见,3 最难得)。
- *
- * 它一直只活在数据里(reforge 按它加权抽取),界面上从没露过面 ——
- * 于是玩家看到一件装备的四条词条时,分不出哪条是随手给的、哪条是撞上的大运。
- * 展示层现在按它排序上色,故序也一并写在这里,免得界面另编一套。
- */
+/** 词条稀有度的高低序(0 最常见,3 最难得);展示层按它排序上色,界面不另编一套 */
 export const AFFIX_RARITY_RANK: Record<AffixRarity, number> = {
   common: 0,
   rare: 1,
@@ -254,11 +225,7 @@ export interface AffixRarityGroup {
   items: AffixDef[]
 }
 
-/**
- * 把一列词条按品质分成组:传世在前、空组不占位、组内保序。
- * 自动重铸候选从平铺网格改成按档分组时用它 —— 顺序不硬编码,
- * 随 AFFIX_RARITY_RANK 走,稀有度调序时这里自动跟上。
- */
+/** 按品质分组(自动重铸候选用):传世在前、空组不占位、组内保序;序随 AFFIX_RARITY_RANK */
 export function affixesByRarity(affixes: readonly AffixDef[]): AffixRarityGroup[] {
   const order = (Object.keys(AFFIX_RARITY_RANK) as AffixRarity[]).sort(
     (a, b) => AFFIX_RARITY_RANK[b] - AFFIX_RARITY_RANK[a]

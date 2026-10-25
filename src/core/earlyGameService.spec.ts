@@ -33,7 +33,7 @@ import { BREAKTHROUGH_PREP_OPTIONS } from '@/data/earlyGame'
 describe('洞府巡游(Phase 28)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    // 清掉上一条用例留下的模块级巡游窗:它按真实时钟过期,不该跨用例借道
+    // 清掉上一条用例留下的模块级巡游窗,不跨用例借道
     dismissCaveEvent()
   })
 
@@ -67,9 +67,7 @@ describe('洞府巡游(Phase 28)', () => {
 
     const today = todayLocalNum()
     dismissCaveEvent()
-    // 模块态清空
     expect(getCurrentCaveEvent()).toBeNull()
-    // 离开占用今日:轮询再也不会掷一个新事件出来
     expect(player.lastCaveEventDay).toBe(today)
     expect(mayTriggerCaveEvent()).toBeNull()
   })
@@ -112,7 +110,7 @@ describe('洞府巡游(Phase 28)', () => {
 describe('悟道顿悟(Phase 28)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    // 清掉上一条用例留下的模块级顿悟窗,避免冷却/过期时刻跨用例借道
+    // 清掉上一条用例留下的模块级顿悟窗,不跨用例借道
     dismissEnlightenment()
   })
 
@@ -145,18 +143,17 @@ describe('悟道顿悟(Phase 28)', () => {
   })
 
   it('冷却随档:重开页面刷不出顿悟(Phase 34.6)', () => {
-    // 顿悟给悟道点(真货币),冷却若挂模块,刷新一次就等于清掉 5 分钟闸门
     vi.spyOn(Math, 'random').mockReturnValue(0.001)
     mayTriggerEnlightenment()
     const player = usePlayerStore()
     const firstAt = player.enlightenmentAt
     expect(firstAt, '触发后应记下时刻').toBeGreaterThan(0)
 
-    // 写盘取的就是这份 $state —— 冷却必须在这里面
+    // 写盘取的就是这份 $state,冷却须在其中
     const persisted = JSON.parse(JSON.stringify(player.$state)) as { enlightenmentAt?: number }
     expect(persisted.enlightenmentAt).toBe(firstAt)
 
-    // 模拟刷新:新进程 + 把写盘的档灌回去,再试一次 —— 冷却未过,不该再给
+    // 模拟刷新:新进程 + 灌回写盘的档,冷却未过不该再给
     setActivePinia(createPinia())
     const reloaded = usePlayerStore()
     reloaded.$patch({ enlightenmentAt: persisted.enlightenmentAt as never })
@@ -207,29 +204,25 @@ describe('连胜(Phase 28 · 曾经无调用方,TASK-022 接线后)', () => {
     expect(player.winStreak).toBe(0)
   })
 
-  /**
-   * 整批连胜(离线整段结算):与逐场 recordWin 同一张赏格表、同一条「一败归零」。
-   * 只发**这一批跨过去**的档 —— 门槛已被上一批发过的,不许重发。
-   */
+  /** 整批连胜(离线整段结算):与逐场 recordWin 同一张赏格表、同一条「一败归零」 */
   it('整批连胜与逐场同源:跨档发赏、已发过的档不重发、败场归零', () => {
     const player = usePlayerStore()
     const resources = useResourcesStore()
     player.initCharacter('整批连胜', { roots: [] } as never)
 
-    // 从 0 连赢 6 场:跨 3、5 两档,10 档还差得远
+    // 从 0 连赢 6 场:跨 3、5 两档
     const granted = recordWinStreakBatch(6, 0)
     expect(granted.map(r => r.streak), '跨过的档才发').toEqual([3, 5])
     expect(player.winStreak).toBe(6)
     expect(toNum(resources.spiritStone), '3 档 20 + 5 档 40').toBe(60)
     expect(resources.wudao).toBe(3)
 
-    // 接着再赢 4 场(6→10):只补 10 档这一次
+    // 再赢 4 场(6→10):只补 10 档
     const second = recordWinStreakBatch(4, 0)
     expect(second.map(r => r.streak), '已发过的档不重发').toEqual([10])
     expect(player.winStreak).toBe(10)
     expect(toNum(resources.spiritStone)).toBe(160)
 
-    // 有败场即归零:在线一败就中止这趟历练,不可能败后再接着赢
     const third = recordWinStreakBatch(5, 1)
     expect(player.winStreak, '败场收尾归零').toBe(0)
     expect(third, '归零那一批不补发旧档').toEqual([])
@@ -239,7 +232,7 @@ describe('连胜(Phase 28 · 曾经无调用方,TASK-022 接线后)', () => {
 describe('突破准备(Phase 28 · TASK-023 接线后)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    consumeBreakthroughPrep() // 兜底清态;准备态自 Phase 34.6 起随 pinia 隔离
+    consumeBreakthroughPrep() // 兜底清态;准备态随 pinia 隔离
   })
 
   it('静坐调息:开始为坐定态,3 分钟完转为就绪,+8% 一次性可取', () => {
@@ -252,7 +245,6 @@ describe('突破准备(Phase 28 · TASK-023 接线后)', () => {
       expect(s.sitting).toBe(true)
       expect(s.ready).toBe(false)
       expect(s.remainingSec).toBe(180)
-      // 坐定未完,突破无加成可取,且不耗准备
       expect(consumeBreakthroughPrep()).toBe(0)
       expect(s.sitting).toBe(true)
 
@@ -263,7 +255,6 @@ describe('突破准备(Phase 28 · TASK-023 接线后)', () => {
       expect(s.bonus).toBeCloseTo(0.08)
 
       expect(consumeBreakthroughPrep()).toBeCloseTo(0.08)
-      // 一次性:取过即空
       expect(consumeBreakthroughPrep()).toBe(0)
       expect(breakthroughPrepState().ready).toBe(false)
     } finally {
@@ -291,13 +282,12 @@ describe('突破准备(Phase 28 · TASK-023 接线后)', () => {
     resources.addStone(gn(100))
 
     expect(prepareBreakthrough('pill')).toBe(true)
-    // GNum 减法在整数量级有浮点尾噪(19.9999…),显示层 formatGN 已兜底,断言取容差
+    // GNum 减法在整数量级有浮点尾噪(19.9999…),断言取容差
     expect(toNum(resources.spiritStone)).toBeCloseTo(20)
     expect(breakthroughPrepState().ready).toBe(true)
     expect(breakthroughPrepState().bonus).toBeCloseTo(0.05)
     expect(consumeBreakthroughPrep()).toBeCloseTo(0.05)
 
-    // 灵石不足:拒绝且不动加成
     resources.$patch({ spiritStone: gn(10) })
     expect(prepareBreakthrough('pill')).toBe(false)
     expect(toNum(breakthroughPrepShortfall('pill')!)).toBeCloseTo(70)
@@ -331,18 +321,18 @@ describe('突破准备(Phase 28 · TASK-023 接线后)', () => {
     resources.addStone(gn(100))
     expect(prepareBreakthrough('pill')).toBe(true)
 
-    // ① 状态在 store 上 —— 存档写盘取的就是这份 $state
+    // ① 状态在 store 上:写盘取的就是这份 $state
     const persisted = JSON.parse(JSON.stringify(usePlayerStore().$state)) as { breakthroughPrep?: unknown }
     expect(persisted.breakthroughPrep, '准备态没进 store,刷新必丢').toBeTruthy()
 
-    // ② 重开一局(新 pinia = 重新载入进程),把写盘的那份灌回来 → 加成仍在
+    // ② 新 pinia = 重新载入进程;灌回写盘的档 → 加成仍在
     setActivePinia(createPinia())
     const reloaded = usePlayerStore()
     reloaded.$patch({ breakthroughPrep: persisted.breakthroughPrep as never })
     const s = breakthroughPrepState()
     expect(s.ready).toBe(true)
     expect(s.bonus).toBeCloseTo(BREAKTHROUGH_PREP_OPTIONS.find(o => o.id === 'pill')!.bonusRate)
-    // ③ 仍是一次性的:取过即空
+    // ③ 仍是一次性:取过即空
     expect(consumeBreakthroughPrep()).toBeCloseTo(0.05)
     expect(breakthroughPrepState().ready).toBe(false)
   })
@@ -372,12 +362,10 @@ describe('突破准备数据源(BREAKTHROUGH_PREP_OPTIONS · TASK-029 接线后)
     try {
       vi.setSystemTime(1_000_000)
       prepareBreakthrough('meditate')
-      // 坐满数据表里的时长后,加成 = 数据表 bonusRate(不再是某处硬编码的 0.08)
       vi.advanceTimersByTime(meditate.duration * 1000 + 1000)
       expect(breakthroughPrepState().bonus).toBeCloseTo(meditate.bonusRate)
       expect(consumeBreakthroughPrep()).toBeCloseTo(meditate.bonusRate)
 
-      // 聚气丹:药价与加成都来自数据表
       const resources = useResourcesStore()
       resources.addStone(gn(pillCost + 1))
       expect(prepareBreakthrough('pill')).toBe(true)
@@ -401,9 +389,7 @@ describe('前期事件衰减(EARLY_EVENT_DECAY · TASK-028 接线后)', () => {
     setActivePinia(createPinia())
   })
 
-  // 顿悟的 5 分钟冷却 Phase 34.6 起存在 player store(随档),不再跨用例泄漏 ——
-  // 每个用例一个新 pinia 即天然隔离,这几条不必再按触发/不触发排序。
-  // (遗留的 enlightenmentEvent 仍是模块态:它只是"当下的弹窗",重开即无,不影响频次。)
+  // 顿悟冷却存 player store(随档),每个用例新 pinia 即隔离;enlightenmentEvent 仍是模块态
   it('真仙后顿悟完全退出(衰减 0)', () => {
     const player = usePlayerStore()
     player.major = 5
@@ -453,7 +439,7 @@ describe('前期事件衰减(EARLY_EVENT_DECAY · TASK-028 接线后)', () => {
     vi.restoreAllMocks()
   })
 
-  // 低随机数在金丹仍可触发(0.08×0.35 之上);触发会写入 store 的顿悟冷却
+  // 触发会写入 store 的顿悟冷却
   it('低随机数在金丹仍可触发(0.08×0.35 之上)', () => {
     const player = usePlayerStore()
     player.major = 2
@@ -485,9 +471,7 @@ describe('闭关(Phase 28 · 接线后:buff 注册/互斥守卫/buff 到期)', (
   })
 
   it('startRetreat 注册 5 分钟闭关 buff,isRetreating 为真,剩余 300 秒', () => {
-    // 冻实 Date.now():getRetreatRemainingSec = ceil((endsAt - now)/1000) 是真实时钟秒界,
-    // 并行重载下 startRetreat 到断言间只要跨整秒就偶发 299（重复跑又复现不了)——
-    // 冻时让两处读到同一时刻,剩余恒为 300（与突破准备/静坐同款做法）。
+    // 冻实 Date.now():getRetreatRemainingSec 按 ceil 取秒,startRetreat 到断言间跨整秒会偶发 299
     vi.useFakeTimers()
     try {
       vi.setSystemTime(1_000_000)
@@ -531,7 +515,7 @@ describe('闭关(Phase 28 · 接线后:buff 注册/互斥守卫/buff 到期)', (
   it('闭关 buff 到期后 isRetreating 转假、剩余秒数归零(持久化 buff 为唯一真相源)', () => {
     startRetreat()
     const cult = useCultivationStore()
-    // 模拟 5 分钟流逝:pruneBuffs 正是 engine 每帧清理过期 buff 的那一步
+    // 模拟 5 分钟流逝;pruneBuffs 即 engine 每帧清理过期 buff 的那一步
     expect(cult.pruneBuffs(Date.now() + 301_000)).toBe(true)
     expect(cult.hasBuff('retreat')).toBe(false)
     expect(isRetreating()).toBe(false)

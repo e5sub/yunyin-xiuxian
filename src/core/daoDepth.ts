@@ -1,7 +1,4 @@
-/**
- * 道途深化(Phase 21)—— 剑意 / 杀意 / 长生印 / 天机透视的纯逻辑
- * 长生印在 CombatRules.perRounds 中实现;此处承载剑道纯度与逐胜叠层
- */
+/** 道途深化纯逻辑:剑道纯度与逐胜叠层;长生印在 CombatRules.perRounds 中实现 */
 import type { StatMods } from '@/types'
 import { STYLE_MATURE_AFFINITY, type BuildDetection } from './buildDetect'
 import { modOf } from './statsCalc'
@@ -15,7 +12,7 @@ export const SLAUGHTER_PER_WIN: StatMods = { damageBonus: 0.05 }
 
 export interface SwordPurity {
   layers: number
-  /** 各项纯度判定(供 UI 解释「为什么是这几层」) */
+  /** 各项纯度判定(供 UI 解释层数) */
   checks: { name: string; ok: boolean }[]
 }
 
@@ -24,7 +21,6 @@ interface PurityCheckDef {
   ok: (mods: StatMods, artifactCount: number, build: BuildDetection | null) => boolean
 }
 
-/** 纯度判定共四则:层数即判定项数,UI 的「/N 层」读 SWORD_PURITY_MAX_LAYERS,不另处手抄 */
 const PURITY_CHECK_DEFS: PurityCheckDef[] = [
   // 「契合 ≥60%」是成形门槛(STYLE_MATURE_AFFINITY)的镜像 —— 判定与文案同读一枚
   {
@@ -36,13 +32,10 @@ const PURITY_CHECK_DEFS: PurityCheckDef[] = [
   { name: '不修回血之术', ok: (mods, _art, _build) => modOf(mods, 'lifesteal') + modOf(mods, 'regenPerRound') < 0.02 }
 ]
 
-/** 剑意统共几层 —— 判定项数即层数,增删一条判定时「/N」同步跟着走 */
+/** 剑意总层数;UI 的「/N 层」读这里,不另处手抄 */
 export const SWORD_PURITY_MAX_LAYERS = PURITY_CHECK_DEFS.length
 
-/**
- * 剑意纯度(0 ~ SWORD_PURITY_MAX_LAYERS 层):道途越纯,剑意越盛
- * ①主流派成形以上 ②不涉副体系 ③法宝不过一件 ④不修回血之术
- */
+/** 剑意纯度(0 ~ SWORD_PURITY_MAX_LAYERS 层) */
 export function swordPurity(mods: StatMods, artifactCount: number, build: BuildDetection | null): SwordPurity {
   const checks = PURITY_CHECK_DEFS.map(d => ({ name: d.name, ok: d.ok(mods, artifactCount, build) }))
   return { layers: checks.filter(c => c.ok).length, checks }

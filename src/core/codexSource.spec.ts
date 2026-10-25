@@ -1,21 +1,6 @@
 /**
- * 图鉴的来源说明,必须与真实的「收录点」对得上
- *
- * 未收录的条目在界面上只是一片「???」:玩家看得出还差多少,却不知道去哪儿找。
- * 故每册加了一句来源说明(「来源:历练掉落 —— 强敌与首领更易出」)。
- *
- * 但这种说明最容易变成谎话:玩法一改(比如参悟改从别的路来、掉落挪了地方),
- * 谁也想不起去改那句小字。所以判据不从文案自身出发,而是**扫源码里的 collect()
- * 调用点** —— 哪一类是在哪个模块被收录的,那个模块就得能对上说明里的路子:
- *
- *   loot.ts        → 说明里得提「掉落」
- *   gongfaService  → 「参悟」
- *   pillService    → 「炼」
- *   eventEngine    → 「际遇」(灵兽是「结缘」)
- *   reincarnation  → 「转世」
- *
- * 故障注入:把某册的说明改成不相干的字样(如把「历练掉落」改成「宗门赐下」),
- * 或把 collect('talent') 挪到别的模块,本文件立刻红。
+ * 图鉴来源说明须与真实「收录点」对得上:判据扫源码里的 collect() 调用点,收录模块须对上说明里的路子。
+ * 故障注入:把某册说明「历练掉落」改成「宗门赐下」,或把 collect('talent') 挪到别的模块,本文件红。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -34,13 +19,13 @@ function walk(dir: string, out: string[] = []): string[] {
   return out
 }
 
-/** 每一类是在哪些模块里被 collect 的(相对 src/ 的路径,统一正斜杠) */
+/** 某类在哪些模块被 collect(相对 src/ 的路径,正斜杠) */
 function collectorsOf(cat: CollectionCategory): string[] {
   const hits: string[] = []
   for (const file of walk(SRC)) {
     const src = readFileSync(file, 'utf8')
     if (new RegExp(`collect\\(\\s*'${cat}'`).test(src)) {
-      // Windows 上 walk 的 join 产出 `core\loot.ts`,机制表是正斜杠,必须归一
+      // Windows 上 join 产出 `core\loot.ts`,机制表是正斜杠,须归一
       hits.push(file.slice(SRC.length + 1).replace(/\\/g, '/'))
     }
   }
@@ -90,7 +75,6 @@ describe('图鉴 · 来源说明与收录点同源', () => {
   })
 
   it('反向也成立:说明里提到的机制,得有对应的收录点', () => {
-    // 「来源:炼丹」这类话不能凭空写 —— 提到「炼」就得真有 pillService 在 collect
     for (const cat of CATS) {
       const text = CODEX_SOURCES[cat]
       if (!text.includes('炼')) continue

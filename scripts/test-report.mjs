@@ -1,7 +1,4 @@
-/**
- * 分类测试报告 —— 按系统输出 PASS/FAIL,而非只看总数
- * 用法: bun run test:report
- */
+/** 分类测试报告:按类输出 PASS/FAIL。用法:bun run test:report */
 import { execSync } from 'node:child_process'
 import { readFileSync, readdirSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -11,23 +8,15 @@ const OUT = '.vitest-report.json'
 const ROOT = resolve(import.meta.dirname, '..')
 
 /**
- * 文档里不许写用例条数 —— 它每次加删一条用例都会变,记进文档就变成
- * 「每加一条用例改两处、改漏还打红」。规模数只记 spec **文件数**
- * (由 `bun run docs-check` 对着真实文件数校验)。
- *
- * 例外只有两种:
- *   · 行内已写明这是规则本身的(含「不许写例数」等说法);
- *   · 目录树里以 `#` 开头的结构说明,那是目录注释不是实录。
- * **代码块不整体豁免** —— xian 的第一版放了它,结果 README 里那条
- * `vp test # 全量用例(346 spec / 3436 例…)` 恰好写在代码块里,最重要的
- * 那处反而漏检。给豁免开的每个口子,都要先想到它会被用来绕过。
+ * 文档不写用例条数(每加删一条就变);规模只记 spec 文件数(由 `bun run docs-check` 校验)。
+ * 豁免:行内写明这条规则本身的(含「不许写例数」等说法)。代码块不豁免,否则命令示例里的例数漏检。
  */
 const DOC_FILES = [
   { rel: 'README.md', file: join(ROOT, 'README.md') },
   ...readdirSync(join(ROOT, 'docs'), { recursive: true, encoding: 'utf-8' })
     .filter(name => typeof name === 'string' && name.endsWith('.md'))
     .map(name => `docs/${name}`)
-    // 研读参考仓的学习笔记引的是 xian 的读数,不是本仓的
+    // 参考仓学习笔记引的是 xian 的读数
     .filter(rel => !rel.startsWith('docs/superpowers/plans/') && rel !== 'docs/study-xian.md')
     .map(rel => ({ rel, file: join(ROOT, rel) })),
   { rel: 'AGENTS.md', file: join(ROOT, 'AGENTS.md') },
@@ -37,11 +26,7 @@ function caseCountHits(text) {
   const hits = []
   text.split(/\r?\n/).forEach((line, i) => {
     if (/(不许写例数|用例条数不写进文档|不写进文档)/.test(line)) return
-    /*
-     * 只认真正的用例数写法:中文里「条」是通用量词,「四条去路」不是用例数。
-     * 英文后缀也要认 —— 中文档里偶尔夹一句 `292 tests` 一样是把例数写进文档
-     * (英文复数后缀要求后面不再接字母,免得 `1 caseX` 之类误伤)。
-     */
+    // 只认用例数写法:裸「条」是通用量词不算;英文后缀(tests/cases…)也算,其后须无字母
     if (/(\d[\d,]*)\s*(例|个用例|条用例|个断言|条断言)|\b(\d[\d,]*)\s*(?:tests?|cases?|specs?|assertions?)\b/i.exec(line)) {
       hits.push(`第 ${i + 1} 行: ${line.trim().slice(0, 80)}`)
     }
@@ -90,7 +75,7 @@ for (const { rel, file } of DOC_FILES) {
 }
 
 for (const file of report.testResults ?? []) {
-  // 统一成正斜杠:Windows 上 vitest 报的是反斜杠,目录级条目('/ui/')否则只在 CI 命中
+  // Windows 上 vitest 报反斜杠;不统一则目录级条目('/ui/')只在 CI 命中
   const path = String(file.name ?? '').split('\\').join('/')
   const category = classifySpecPath(path)
   const row = category ? rows.find(c => c.name === category.name) : undefined
@@ -129,11 +114,9 @@ if (docFailures.length > 0) {
   console.log('\n  ✗ 文档里又写回了用例条数(它每次都变,不该记在文档里):')
   for (const f of docFailures) console.log(`      ${f}`)
 }
-// 总数用逐条点名的失败数:未登记文件里的失败不计入任何一类,只按类汇总会把它算成「0 败」
+// 败数取逐条点名数:未登记文件的失败不进任何一类,按类汇总会漏
 console.log(`\n  共 ${totalPassed} 过 / ${failures.length} 败\n`)
-// 未分类也算失败:漏登记的用例不计入任何一类,报告便少算了它。
-// 只提示不拦截的话,这个数会一路悄悄涨上去(曾积到 225 个才被发现)。
-// 文档例数同样拦截:加删用例而不同步文档,等于把判据写进文档又拆掉。
+// 未分类、文档例数同样判失败:只提示不拦会悄悄累积
 if (docFailures.length > 0) {
   console.log('  退出码 1 的原因:文档里又写回了用例条数\n')
 }

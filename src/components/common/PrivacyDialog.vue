@@ -52,7 +52,7 @@
         <h4 class="mb-0.5 font-kai text-[13px] text-ink">七、联系我们</h4>
         <p class="text-ink-faint">
           若有疑问,可通过
-          <!-- 同上:行内链接的命中区要够拇指点,不能只有字体那十几 px -->
+          <!-- 行内链接命中区须够拇指点(py-1.5) -->
           <a
             href="https://github.com/setube/yunyin-xiuxian/issues"
             target="_blank"

@@ -1,8 +1,4 @@
-/**
- * Phase 31.0 A1:天时 —— 每日确定性环境
- * 续:天时词条接线验证 —— 描述里承诺的战斗/掉落/渡劫影响必须真能流进游戏,
- * 而不是只在数据表里躺平(见 ISS-027:赤阳/月蚀/雷鸣三种天时曾零作用)
- */
+/** 天时:每日确定性环境;描述里承诺的战斗/掉落/渡劫影响须真能流进游戏 */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { todayWeather, weatherDef, WEATHERS, WORLD_WEATHERS } from './weather'
@@ -41,7 +37,6 @@ describe('天时(weather)', () => {
       game.$patch({ totalPlaySec: d * 86400 })
       seen.add(todayWeather().id)
     }
-    // 至少出现 3 种(5 种并非全均衡,但 100 天应见多种)
     expect(seen.size).toBeGreaterThanOrEqual(3)
   })
 
@@ -57,7 +52,7 @@ describe('天时(weather)', () => {
   })
 })
 
-// ---- 接线验证(ISS-027):天时词条必须真正流进游戏,而非只有定义 ----
+// ---- 接线验证(ISS-027) ----
 
 describe('天时词条并入最终属性(mods 源)', () => {
   beforeEach(() => {
@@ -67,10 +62,10 @@ describe('天时词条并入最终属性(mods 源)', () => {
   it('当前天时的词条出现在 player.finalStats.mods 中(战斗/掉落/渡劫即由此读取)', () => {
     const game = useGameStore()
     const player = usePlayerStore()
-    game.$patch({ totalPlaySec: 0 }) // day 0 = 灵雨:cultivationSpeed+0.1, qiRegen+0.2
+    game.$patch({ totalPlaySec: 0 })
     const day0 = todayWeather()
     expect(day0.id).toBe('lingyu')
-    // 总属性里还叠着命格等常驻底色,故这里钉的是「天时贡献了多少」,不是总数
+    // 扣除命格等常驻底色,只比天时贡献
     const fate = player.fateMods
     expect((player.finalStats.mods.cultivationSpeed ?? 0) - (fate.cultivationSpeed ?? 0)).toBeCloseTo(0.1)
     expect((player.finalStats.mods.qiRegen ?? 0) - (fate.qiRegen ?? 0)).toBeCloseTo(0.2)
@@ -79,7 +74,6 @@ describe('天时词条并入最终属性(mods 源)', () => {
   it('赤阳日:attackPct/damageBonus 生效;月蚀日:luck/dropRate 生效', () => {
     const game = useGameStore()
     const player = usePlayerStore()
-    // day2=赤阳,day3=月蚀(确定性种子,见 weather.ts)
     game.$patch({ totalPlaySec: 2 * 86400 })
     expect(todayWeather().id).toBe('chiyang')
     const fate = player.fateMods
@@ -105,8 +99,7 @@ describe('天时词条并入最终属性(mods 源)', () => {
     const game = useGameStore()
     const player = usePlayerStore()
     player.initCharacter('雨修', { roots: [] } as never)
-    // 遍历确定性日子找清和(无加成)与灵雨(修炼+0.2 之外的 +0.1)两天,
-    // 同一角色、同一境界下唯一差异是天时 → 修行速度应差 1.1 倍、灵气回复 1.2 倍
+    // 找清和(无加成)与灵雨两天:同一角色、同一境界,唯一差异是天时
     let lingyuDay = -1
     let qingheDay = -1
     for (let d = 0; d < 40 && qingheDay < 0; d += 1) {
@@ -121,7 +114,7 @@ describe('天时词条并入最终属性(mods 源)', () => {
     const baseCult = player.cultPerSec
     const baseQi = player.qiRegenPerSec
     game.$patch({ totalPlaySec: lingyuDay * 86400 })
-    // 两日之间唯一的差别是天时那几项;常驻底色(命格等)两日相同,按倍数折算回去
+    // 命格等常驻底色两日相同,按倍数折算
     const fate = player.fateMods
     const lingyuMods = weatherDef('lingyu')!.mods
     const cultBase = 1 + (fate.cultivationSpeed ?? 0)
@@ -142,13 +135,12 @@ describe('渡劫难度随天时(雷鸣日 +8%)', () => {
     const base = waveDamage(def, mods, 1, 1, 1)
     const storm = waveDamage(def, mods, 1, 1, 1, NO_RELIEF, 1.08)
     expect(storm).toBeCloseTo(base * 1.08, 9)
-    // 审计基线(不传天时)不受影响,恒等于 1.0 倍
+    // 不传天时即 1 倍
     expect(base).toBeCloseTo(waveDamage(def, mods, 1, 1, 1, NO_RELIEF, 1), 9)
   })
 
   it('currentTribulationPlan 在同一天时下,expectedRate 随雷鸣倍率下降(难度变高)', () => {
     const game = useGameStore()
-    // 找一个雷鸣日
     let stormDay = -1
     for (let d = 0; d < 40; d += 1) {
       game.$patch({ totalPlaySec: d * 86400 })
@@ -158,7 +150,7 @@ describe('渡劫难度随天时(雷鸣日 +8%)', () => {
       }
     }
     expect(stormDay).toBeGreaterThanOrEqual(0)
-    // 同一天内预览稳定(确定性),且 > 0 即可(具体难度由构筑决定)
+    // 只验同日预览稳定且 > 0(具体难度由构筑决定)
     const a = currentTribulationPlan()
     const b = currentTribulationPlan()
     expect(a.kind).toBe(b.kind)
@@ -166,7 +158,7 @@ describe('渡劫难度随天时(雷鸣日 +8%)', () => {
   })
 })
 
-// ---- 界域专属天象(Phase 34):让 12 个新境界各有自己的天 ----
+// ---- 界域专属天象 ----
 
 describe('界域天象(weather · 仙界及以上)', () => {
   beforeEach(() => {
@@ -179,7 +171,7 @@ describe('界域天象(weather · 仙界及以上)', () => {
       expect(pool.length, `${w} 的天象池`).toBeGreaterThanOrEqual(3)
       for (const def of pool) {
         expect(def.desc).toBeTruthy()
-        // 池内天象必须能回查(界面按 id 取材),且界域名与 realms 一致
+        // 界面按 id 回查天象
         expect(weatherDef(def.id)?.name).toBe(def.name)
       }
     }
@@ -213,7 +205,7 @@ describe('界域天象(weather · 仙界及以上)', () => {
         game.$patch({ totalPlaySec: d * 86400 })
         const a = todayWeather()
         const b = todayWeather()
-        expect(a.id).toBe(b.id) // 同日内确定
+        expect(a.id).toBe(b.id)
         expect(poolIds.has(a.id), `${world} 取到了他界天象 ${a.id}`).toBe(true)
       }
     }
@@ -221,7 +213,7 @@ describe('界域天象(weather · 仙界及以上)', () => {
 
   it('界域天象确实并入最终属性(不是只放着看)', () => {
     const player = usePlayerStore()
-    player.major = 18 // 混沌海:混沌潮/本源涌动/道音 三者皆给加成
+    player.major = 18 // 混沌海:三种天象皆给加成
     const mods = player.finalStats.mods
     const anyPositive =
       (mods.cultivationSpeed ?? 0) > 0 ||

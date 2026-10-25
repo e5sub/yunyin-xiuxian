@@ -13,9 +13,8 @@
     </div>
 
     <template v-else>
-      <!-- 抬头 -->
       <div class="card-ink flex items-center justify-between gap-2 px-4 py-3">
-        <!-- 同洞府:标签写着「天界」,冷启动时也得真的去天界,而不是退出游戏 -->
+        <!-- 冷启动时也回天界,不退出游戏(同洞府) -->
         <button class="-my-1.5 py-1.5 text-left text-[12px] text-ink-faint" @click="goBack(router, { name: 'celestial' })">← 天界</button>
         <p class="font-kai text-[15px] tracking-[0.3em] text-ink">器 魂</p>
         <div class="text-right">
@@ -40,7 +39,6 @@
         </div>
       </section>
 
-      <!-- 已凝形意 -->
       <section>
         <SectionTitle title="已凝形意" :hint="`${endgame.activeSouls.length} / ${SOUL_SLOTS} 缕`" />
         <div class="mt-2 grid grid-cols-3 gap-2">
@@ -55,7 +53,7 @@
                 {{ soulSeal(endgame.activeSouls[i - 1]!) }}
               </span>
               <span class="mt-1 text-[10px] leading-tight text-ink-soft">{{ soulLabel(endgame.activeSouls[i - 1]!) }}</span>
-              <!-- 纯文字按钮只有字体那 15px 高;补成内联块给拇指一个 30px 的靶面 -->
+              <!-- 纯文字只有 15px 高;内联块给拇指 30px 靶面 -->
               <button
                 class="mt-1 inline-block px-2 py-2 text-[10px] text-ink-faint underline"
                 @click="removeSoul(endgame.activeSouls[i - 1]!.uid)"
@@ -69,7 +67,6 @@
         <p v-if="activeModText" class="mt-2 px-1 text-[10px] leading-relaxed text-gold-ink">合计:{{ activeModText }}</p>
       </section>
 
-      <!-- 两处入口 -->
       <section class="space-y-2">
         <button
           class="card-ink flex w-full items-center justify-between gap-3 px-4 py-3 text-left active:scale-98"
@@ -101,9 +98,8 @@
       </section>
     </template>
 
-    <!-- 散置形意 -->
     <BaseModal :open="idleOpen" title="散置形意" @close="idleOpen = false">
-      <!-- 散去一无所得:原器早毁,道源也不返 —— 这句得在动手之前看见,不能等散了才发现 -->
+      <!-- 散去的后果须在动手之前看见 -->
       <p class="mb-2 text-[10px] leading-relaxed text-ink-faint">{{ dissolveNote() }}</p>
       <div v-if="idleSouls.length > 0" class="card-ink max-h-64 divide-y divide-ink/6 overflow-y-auto px-4">
         <div v-for="soul in idleSouls" :key="soul.uid" class="flex items-center justify-between gap-2 py-2.5">
@@ -111,8 +107,7 @@
             <p class="truncate text-[12px]" :style="{ color: soulColor(soul) }">{{ soulLabel(soul) }}</p>
             <p class="text-[10px] text-ink-faint">凝自「{{ soul.fromName }}」 · {{ soulModText(soul) }}</p>
           </div>
-          <!-- 灵魂列表靠持有才渲染,巡页夹具无灵魂时这些钮根本不存在 —— 以前的 28px 尺子碰不到它。
-               !py-1 盒高约 21px;统一 !py-2 抬到 35px,与同行其它确认态按钮同高 -->
+          <!-- 巡页夹具无灵魂,28px 尺子碰不到这些钮;!py-2 盒高 35px,与同行确认态按钮同高 -->
           <div class="flex shrink-0 gap-1">
             <button class="btn-ghost !px-2.5 !py-2 !text-[11px]" @click="wearSoul(soul.uid)">装配</button>
             <template v-if="pendingDissolveUid !== soul.uid">
@@ -135,9 +130,8 @@
       </template>
     </BaseModal>
 
-    <!-- 凝炼台 -->
     <BaseModal :open="forgeOpen" title="凝炼台" @close="forgeOpen = false">
-      <!-- 代价与余额同屏给出 —— 弹窗盖住页面标题栏(道源在那上),不点开不知道还够不够 -->
+      <!-- 弹窗盖住标题栏的道源,代价与余额须同屏 -->
       <p class="mb-2 text-[11px] leading-relaxed text-ink-faint">{{ refineCostLine(SOUL_REFINE_COST, formatNum(endgame.daoSource)) }}</p>
       <div v-if="refinable.length > 0" class="card-ink max-h-64 divide-y divide-ink/6 overflow-y-auto px-4">
         <div v-for="row in refinable" :key="row.inst.uid" class="flex items-center justify-between gap-2 py-2.5">
@@ -148,7 +142,7 @@
               <span :style="{ color: soulGradeDef(row.gradeRank).color }">{{ soulGradeDef(row.gradeRank).name }}·{{ row.typeName }}</span>
             </p>
           </div>
-          <!-- 入炉二步确认:毁的是原器,不按一个「入 炉」就直接交代了 -->
+          <!-- 二步确认:毁的是原器 -->
           <button
             v-if="pendingRefineUid !== row.inst.uid"
             class="btn-ghost !px-3 !py-2 !text-[11px]"
@@ -208,27 +202,23 @@
   const unlocked = computed(() => endgameUnlocked())
   const idleOpen = ref(false)
   const forgeOpen = ref(false)
-  /** 等待二次确认的行(uid);非 null 表示该行已展开确认态 */
+  /** 已展开确认态的行 uid */
   const pendingRefineUid = ref<string | null>(null)
-  /** 散去形意同样二步确认:器魂是花道源与一件法器凝出来的,一脚碎掉连个反悔都没有 */
+  /** 散去同样二步确认(不可逆) */
   const pendingDissolveUid = ref<string | null>(null)
 
-  /** 二步确认后真正入炉;成败都收起确认态(失败如道源不足也让玩家重挑) */
   function doRefine(uid: string): void {
     refineEquipment(uid)
     pendingRefineUid.value = null
   }
 
-  /** 二步确认后真正散去形意;散去不可逆,成功后收拢确认态 */
   function doDissolve(uid: string): void {
     dissolveSoul(uid)
     pendingDissolveUid.value = null
   }
 
-  /** 未装配的器魂 */
   const idleSouls = computed(() => endgame.soulList.filter(s => !endgame.activeSouls.some(a => a.uid === s.uid)))
 
-  /** 可入炉的法器:未锁定、未穿戴、且确有形意可存 */
   const refinable = computed(() => {
     const wearing = new Set(Object.values(inventory.equipped).filter((v): v is string => typeof v === 'string'))
     return inventory.items
@@ -256,6 +246,5 @@
   function soulModText(soul: SoulInstance): string {
     return modsText(soulMods(soul))
   }
-  /** 已装配器魂的合计词条 */
   const activeModText = computed(() => modsText(endgame.soulMods))
 </script>

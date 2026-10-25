@@ -1,5 +1,4 @@
 <template>
-  <!-- 修行画像弹窗(Phase 31.2)—— 自 CharacterView 迁入 -->
   <BaseModal :open="open" :title="`修行画像 · 「${identity?.epithet ?? '云隐散人'}」`" @close="emit('close')">
     <div v-if="identity" class="space-y-2.5">
       <p class="text-[12px] leading-relaxed text-ink-soft">{{ identity.narrative }}</p>
@@ -25,19 +24,13 @@
   import { buildIdentity } from '@/core/identityService'
   import BaseModal from '@/components/common/BaseModal.vue'
 
-  /**
-   * 修行画像弹窗,自 CharacterView 迁入。
-   *
-   * identity 在宿主与本组件各算一份:buildIdentity() 是纯 core 调用
-   * (宿主入口卡的「云隐散人」副行要读它,弹窗正文也要读),无逻辑漂移面,
-   * 不为此穿 prop。
-   */
+  /** 修行画像弹窗。identity 与宿主各算一份(buildIdentity() 是纯 core 调用),不穿 prop */
   defineProps<{ open: boolean }>()
   const emit = defineEmits<{ close: [] }>()
 
   const identity = computed(() => buildIdentity())
 
-  /** 画像弹窗里那四项目录(空值各按原文案显示,拆分不改措辞) */
+  /** 四项目录;师承空值须与人物页入口卡同为「未拜师」 */
   const identityRoots = computed(() => {
     const r = identity.value?.roots
     return [

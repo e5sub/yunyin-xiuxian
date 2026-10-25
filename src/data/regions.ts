@@ -1,9 +1,7 @@
 /**
  * 历练区域 —— 44 处,层级递进,击败首领解锁下一区域。
  *
- * 1-20 层属人间界(旧表原样保留);21 层起每层一处,依次对应
- * 仙界/神界/混沌海的新境界(minRealm 9-20)。凡界路线生成只取人间界部分,
- * 见 MORTAL_REGIONS。
+ * 1-20 层属人间界(旧表原样保留);21 层起对应仙界/神界/混沌海(minRealm 9-20)。
  */
 import type { RegionDef } from '@/types'
 
@@ -292,17 +290,10 @@ export const REGIONS: RegionDef[] = [
   r('wudaoya', '道祖悟道崖', 32, 20, 5, 'mountain', '传说混沌道祖曾在这面崖下坐了三万年,崖上字迹至今依稀', ['e_cliffshadow', 'e_wordbeast'], 'e_daoyalord', ['general', 'chaos'], 'hongmengbenyuan')
 ]
 
-/** 人间界最高区域层级 —— 其上的层级属仙界/神界/混沌海,不进凡界路线池 */
+/** 人间界最高区域层级;其上的层级不进凡界路线池 */
 export const MORTAL_TIER_MAX = 20
 
-/**
- * 该大境界**能进入的最高区域层级**(即这一境的装备/掉落/敌人的来源上限)。
- *
- * 从前这件事有第三份实现:经济审计自己写 `min(20, 2m+2)` —— 人间界看着差不多,
- * 界外十二境却全部压死在 20,而真实区域表是 21~32(仙界 9 起一境一层)。
- * 于是「界外有没有同样的收支」这个问题的答案里,收入那一半先错了 1.9^12。
- * 唯一事实源是区域表本身,凡界内外一视同仁。
- */
+/** 该大境界能进入的最高区域层级(这一境装备/掉落/敌人的来源上限)。单一事实源:区域表本身,凡界内外一视同仁 */
 export function maxTierForMajor(major: number): number {
   let best = 1
   for (const region of REGIONS) {
@@ -321,27 +312,15 @@ export function regionDef(id: string): RegionDef | undefined {
 }
 
 /**
- * 解锁链闭包 —— 「前置已靖 → 此地已开」。
- *
- * 解锁原本是一次性**事件**:击败某地之主的那一刻,才把
- * `requireCleared === 此地` 的下游写进 adventure.unlocked
- * (见 exploration.clearRegionAndUnlockNext)。于是数据表后来才长出来的下游,
- * 对旧档永远开不了 —— 已靖的地界首领不复现(见 runBattle 的 bossDue),
- * 那个 unlock() 也就没有第二次机会。v1.34.0 的境界扩界正是这个形状:
- * 云海仙门 requireCleared = 鸿蒙裂隙,而在扩界之前就靖了鸿蒙裂隙的通关档,
- * 进入新版本后既刷不到鸿蒙裂隙之主,也开不了仙界 24 处新地界。
- *
- * 所以这里把「事件」补成「不变量」:凡前置已靖的地界,一律算已开放;
- * 已靖的地界本身也算已发现 —— 它当然进得去,不该被解锁表漏掉而藏起来。
- *
+ * 解锁链闭包:前置已靖的地界一律算已开放;已靖地界本身也算已发现。
+ * 击败首领时的一次性解锁(见 exploration.clearRegionAndUnlockNext)对旧档开不出后加的下游(已靖首领不复现),须靠此闭包补齐。
  * 幂等;原表里不认识的历史 id 原样保留,新补的按数据表顺序接在后面。
  */
 export function unlockClosure(unlocked: readonly string[], cleared: readonly string[]): string[] {
   const clearedSet = new Set(cleared)
   const open = new Set(unlocked)
   for (const id of cleared) open.add(id)
-  // 判据只看「前置靖没靖」,与被开出来的那些是否也已靖无关,
-  // 故一趟扫完即可(它不构成新的开锁条件)
+  // 只看前置靖没靖,开出来的地界不构成新的开锁条件,一趟扫完即可
   for (const r of REGIONS) {
     if (r.requireCleared && clearedSet.has(r.requireCleared)) open.add(r.id)
   }

@@ -51,7 +51,6 @@
       {{ smartStatusLine }}
     </div>
 
-    <!-- 规则 · 门槛:总开关 + 两条自留线(品质线 与 阶级线,双线皆满才留) -->
     <p class="mb-1 mt-3 font-kai text-[11px] tracking-wider text-ink-soft">规则 · 门槛</p>
     <div class="rounded-md border border-ink/8 bg-paper-deep/40 px-2.5 py-1">
       <label class="flex items-center justify-between py-1.5">
@@ -187,11 +186,8 @@
   import BaseModal from '@/components/common/BaseModal.vue'
 
   /**
-   * 一键分解与智能收纳两扇浮层 —— 自 InventoryView 迁入。
-   *
-   * 两页共用「行囊现存件」这一本账,却各按各的规矩处置:分解只认勾选档、须亲手动;
-   * 收纳只判掉落之后的去留。放在一处,是为了让「划界」那段话始终看得见两条规矩的边界。
-   * 开关是宿主的页面状态,这里只认 props、回传关闭。
+   * 分解只认勾选档、须亲手动;收纳只判掉落后的去留,两者互不干扰。
+   * 开关归宿主,此处只认 props、回传关闭。
    */
   defineProps<{ decomposeOpen: boolean; smartOpen: boolean }>()
   const emit = defineEmits<{ 'close-decompose': []; 'close-smart': [] }>()
@@ -200,8 +196,7 @@
   const settings = useSettingsStore()
   const ui = useUiStore()
 
-  // ---- 一键分解 ----
-  /** 各品质档的现存件数与分解返还(与服务同一套算法:弹窗上写多少就是真给多少) */
+  /** 各品质档现存件数与返还,与服务同一套算法 */
   const decomposeRows = computed(() =>
     QUALITIES.map(q => {
       const got = decomposePreview([q.rank])
@@ -213,7 +208,6 @@
     decomposeRows.value.filter(r => settings.decomposeRanks.includes(r.rank)).reduce((sum, r) => sum + r.count, 0)
   )
 
-  /** 已勾选那几档的总账 */
   const decomposePlanned = computed(() => decomposePreview(settings.decomposeRanks))
 
   function toggleRank(rank: number): void {
@@ -221,34 +215,26 @@
     settings.decomposeRanks = adding
       ? [...settings.decomposeRanks, rank].sort((a, b) => a - b)
       : settings.decomposeRanks.filter(r => r !== rank)
-    // 勾选只是「标记该档为废料」——行囊内现存同类不在此刻销毁,待玩家点「分 解」确认。
-    // 此勾选与「智能收纳」互不相干:掉落去哪儿由智能收纳的保留线与智能规则独立裁决。
+    // 勾选只标记,点「分 解」才销毁
   }
 
   function confirmDecompose(): void {
-    // 总账那一条由服务自己报(逐件弹提示只会互相顶掉)
+    // 总账 toast 由服务报,不逐件弹
     if (decomposeByRanks(settings.decomposeRanks) === 0) ui.toast(decomposeEmptyToast(), 'info')
     emit('close-decompose')
   }
 
-  // ---- 智能收纳 ----
-  /** 品质自留线:九档全列,自由从任意一档起珍(从前只有灵/玄/地三档可选) */
   const KEEP_QUALITY_CHOICES = QUALITIES.map(q => ({ rank: q.rank, name: q.name }))
-  /**
-   * 阶级自留线常用档位:0 = 不设;阶是「高阶产出」的近义,越高的窗口只在高阶材料里
-   * (见 qualities 的品质窗口),故给一组拉开距离的常用档,而不是 1~N 每档一个;
-   * 顶格与 MAX_EQUIP_TIER 同源,游戏阶上限涨了这里自动跟上
-   */
+  /** 阶级自留线常用档:0 = 不设;顶格同源 MAX_EQUIP_TIER */
   const KEEP_TIER_CHOICES = [0, 8, 12, 16, 20, 24, 28, MAX_EQUIP_TIER]
 
-  /** 清理预告:清单条数上限,超出收拢一行「其余 N 件从略」,别让名单淹没弹窗 */
+  /** 清理预告清单条数上限,超出收成「另 N 件」 */
   const SWEEP_PREVIEW_LIMIT = 6
 
-  /** 依当前所设尺度将化的件(预览与下手用同一份名单,所见即所得) */
+  /** 将化之件;预览与下手同一份名单 */
   const cleanPreview = computed(() => sweepTargets(inventory.bagItems))
-  /** 待清理件数(确认提示用),由名单现算,不再另写一套筛选 */
   const cleanCount = computed(() => cleanPreview.value.length)
-  /** 清理入炉收益:只见不化(与「一键分解」的 preview 同口径,纯算) */
+  /** 清理收益:纯算不化,与一键分解的 preview 同口径 */
   const cleanYield = computed<DecomposeBatch>(() => {
     const total: DecomposeBatch = { count: 0, dust: 0, stone: gnZero() }
     for (const t of cleanPreview.value) {
@@ -290,11 +276,8 @@
   const cleanConfirm = ref(false)
 
   /**
-   * 清理下手:与确认页同一份名单(cleanPreview,reactive 随行囊刷新),点下时现算。
-   * 预览与实际同源 —— decomposeBatch 只在「件在包且未锁」时成功,而 sweepTargets
-   * 恰是按这两条筛的;单线程、弹窗挡着交互,渲染帧与点击之间没有夹缝,行囊即使被
-   * 异步事件改动,cleanPreview 先变、这里的 .value 也已是新值。toast 照实报 got
-   * (decomposeBatch 的真实返回值),不报预览数。
+   * 点下时现算名单(与确认页同源):sweepTargets 恰按 decomposeBatch 成功的「件在包且未锁」筛。
+   * toast 报 decomposeBatch 实得,不报预览数。
    */
   function smartClean(): void {
     cleanConfirm.value = false

@@ -1,26 +1,5 @@
 /* eslint-disable no-console */
-/**
- * 道侣主动意图验收(Phase 34.1)
- *
- * 34.0 的链路是「世界情境 → 事件出现 → 她在事件里说话」——
- * 世界安排了两个人同时遇到某件事。
- *
- * 本轮要验证的是另一件事:**她自己产生意图,然后主动开口。**
- *
- * 真主动的判据只有一条:
- *
- *   **意图的产生与提出都不依赖世界情境。**
- *
- * 若做成「世界检测到她有个想法 → 世界找一个合适情境 → 她开口」,
- * 那看着像主动,实际仍是引擎主动。
- *
- * 五条验收:
- *   一 意图由经历催生,不由关系阈值触发
- *   二 她自己决定何时开口,不需要世界给情境位
- *   三 接受/回绝/忽略三种回应后果不同,忽略不等于回绝
- *   四 回应反过来改变她的状态
- *   五 仍不产出任何 StatMods / 资源 / 道果 / 宿慧
- */
+/** 道侣主动意图验收。判据:意图的产生与提出都不依赖世界情境 */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { readFileSync } from 'node:fs'
@@ -62,7 +41,6 @@ function together(id = 'dl_qingli'): void {
   advanceBond({ fate: 40, trust: 25, shared: true })
 }
 
-/** 反复经历同一件事,直到她开口或用尽次数 */
 function sparkUntilSpeaks(spark: Parameters<typeof sparkIntent>[0], max = 40): number {
   for (let i = 1; i <= max; i += 1) {
     sparkIntent(spark)
@@ -77,15 +55,12 @@ describe('主动意图 · 一:由经历催生,不由阈值触发', () => {
     for (const [k, v] of Object.entries(SPARK_WEIGHT)) {
       console.log(`${SPARK_NAMES[k as keyof typeof SPARK_NAMES].padEnd(24)} ${v > 0 ? '+' : ''}${v}`)
     }
-    // 被辜负是负推动 —— 不是「信任下降所以不触发」,是「这件事让她不想说了」
     expect(SPARK_WEIGHT.crossed).toBeLessThan(0)
   })
 
   it('关系值拉满但没有经历,她不会开口', () => {
     together()
-    // 三维全满
     advanceBond({ fate: 100, trust: 100, accord: 100 })
-    // 一次经历都没有
     expect(speakIntent()).toBeNull()
     expect(currentBond()!.intent ?? null).toBeNull()
     console.log('\n缘分/信任/契合全 100,却一句话都没有 —— 她的念头不由关系值触发')
@@ -98,7 +73,6 @@ describe('主动意图 · 一:由经历催生,不由阈值触发', () => {
     const n = sparkUntilSpeaks('shared')
     expect(n).toBeGreaterThan(0)
     const after = currentBond()!
-    // 信任仍然不高,她照样说了
     expect(after.trust).toBeLessThan(60)
     console.log(`第 ${n} 次同行之后她开了口,此时信任仍只有 ${after.trust}`)
   })
@@ -116,7 +90,7 @@ describe('主动意图 · 一:由经历催生,不由阈值触发', () => {
   it('sparks 只记「发生过哪些类型」:重复的同行不去重会攒出存档膨胀', () => {
     together()
     for (let i = 0; i < 3; i += 1) sparkIntent('shared')
-    // 历练每 6% 一战就推一次 'shared';界面按去重后人名展示,存一串重复的纯属浪费
+    // 历练每 6% 一战推一次 'shared'
     expect(currentBond()!.intent!.sparks, '同一经历只记一次').toEqual(['shared'])
   })
 
@@ -146,7 +120,6 @@ describe('主动意图 · 一:由经历催生,不由阈值触发', () => {
 
 describe('主动意图 · 二:她自己决定何时开口', () => {
   it('speakIntent 不接受任何情境参数', () => {
-    // 与 34.0 的 offerBondEvent(trigger) 分野:那是世界安排,这是她自己
     expect(CODE).toMatch(/export function speakIntent\(\): BondIntent \| null/)
     expect(CODE).not.toMatch(/speakIntent\(\s*trigger/)
     console.log('\nspeakIntent() 无参数 —— 不需要世界递给她一个情境位')
@@ -165,7 +138,6 @@ describe('主动意图 · 二:她自己决定何时开口', () => {
     }
     expect(willSpeak(raw, def.temper)).toBe(false)
     expect(willSpeak({ ...raw, ripeness: 99 }, def.temper)).toBe(true)
-    // 已了结的意图不再提
     expect(willSpeak({ ...raw, ripeness: 99, settled: true }, def.temper)).toBe(false)
     console.log('\nwillSpeak 只读意图本身:酝酿够了、还没了结,就说')
   })
@@ -204,7 +176,6 @@ describe('主动意图 · 三:三种回应各不相同', () => {
     const acc = respondTo(def, base, 'accept')
     const ref = respondTo(def, base, 'refuse')
     const ign = respondTo(def, base, 'ignore')
-    // 三者互不相同
     expect(acc.trust).toBeGreaterThan(0)
     expect(ref.trust).toBeLessThan(0)
     expect(ign.trust).toBeLessThan(0)
@@ -224,11 +195,9 @@ describe('主动意图 · 三:三种回应各不相同', () => {
     }
     const firstIgnore = respondTo(def, fresh, 'ignore')
     const refuse = respondTo(def, fresh, 'refuse')
-    // 第一次不作声比当面回绝伤得轻
     expect(firstIgnore.trust).toBeGreaterThan(refuse.trust)
     expect(firstIgnore.settled).toBe(false)
 
-    // 但再三不作声,她自己去了 —— 这一下比回绝更重
     const thrice: BondIntent = { ...fresh, responses: ['ignore', 'ignore'] }
     const finalIgnore = respondTo(def, thrice, 'ignore')
     expect(finalIgnore.trust).toBeLessThan(refuse.trust)
@@ -252,7 +221,6 @@ describe('主动意图 · 三:三种回应各不相同', () => {
       settled: false
     }
     expect(willSpeak(base, def.temper)).toBe(true)
-    // 同样的酝酿度,被忽略过一次就不够了
     expect(willSpeak({ ...base, responses: ['ignore'] }, def.temper)).toBe(false)
     console.log('\n同样的酝酿度,被忽略过一次她就不再开口 —— 说了没人应,下次更难说')
   })
@@ -279,7 +247,6 @@ describe('主动意图 · 四:回应反过来改变她的状态', () => {
     respondIntent('refuse')
     const b = currentBond()!
     expect(b.intent!.settled).toBe(false)
-    // 酝酿被压下去但没归零
     expect(b.intent!.ripeness).toBeLessThan(ripe)
     expect(b.intent!.ripeness).toBeGreaterThan(0)
     console.log(`\n回绝之后:酝酿 ${ripe.toFixed(2)} → ${b.intent!.ripeness.toFixed(2)},她还惦记着`)
@@ -324,12 +291,8 @@ describe('主动意图 · 边界', () => {
   })
 
   /**
-   * 她还在等你回应时,不重复开口。
-   *
-   * speakIntent 由 maybeEncounter 在**每一场战斗**里调用(历练战斗间隔 12 秒),
-   * 而 willSpeak 只看酝酿度 —— 少了这一问,酝酿度一旦过线,同一句话会每十几秒
-   * 弹一次、「已开口」次数一路涨(实测连调四次:raised 1→4,pending 一直 true)。
-   * 玩家的体感是「这句话触发概率怎么这么高」,其实是一次都没被回应。
+   * speakIntent 由 maybeEncounter 在每一场战斗里调用(历练战斗间隔 12 秒),willSpeak 只看酝酿度:
+   * 少了「还在等回应」这一问,同一句话会每十几秒弹一次、raised 一路涨。
    */
   it('她还在等回应时,不会重复开口(同一提议只弹一次)', () => {
     together()
@@ -337,7 +300,6 @@ describe('主动意图 · 边界', () => {
     const first = currentBond()!.intent!
     expect(pendingIntent(), '开口之后应当在等她回应').not.toBeNull()
 
-    // 模拟历练里一场又一场战斗继续问她
     for (let i = 0; i < 5; i += 1) expect(speakIntent()).toBeNull()
     expect(currentBond()!.intent!.raised, '重复询问不该再涨「已开口」次数').toBe(first.raised)
     expect(currentBond()!.intent!.wish).toBe(first.wish)
@@ -371,10 +333,7 @@ describe('主动意图 · 边界', () => {
   })
 })
 
-/**
- * 她的记性:玩家历次回应记录在 intent.responses 里,却没有任何一处读它 ——
- * 「忽略不等于回绝」这条设计因此只写在注释里。这里钉住展示层确实接上了
- */
+/** 钉住:历次回应(intent.responses)展示层有读取 */
 describe('主动意图 · 回应有记录', () => {
   it('三种回应都有名字,且取自同一份数据', () => {
     expect(Object.keys(RESPONSE_NAMES).sort()).toEqual(['accept', 'ignore', 'refuse'])
@@ -390,12 +349,12 @@ describe('主动意图 · 回应有记录', () => {
   })
 
   it('人物页把历次回应摆出来,不是只在注释里承诺', () => {
-    // 道侣弹窗拆出后判据随本体走
+    // 判据随道侣弹窗本体走
     const src = readFileSync(resolve(__dirname, '../components/character/BondDialog.vue'), 'utf8')
       .replace(/<!--[\s\S]*?-->/g, '')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/.*$/gm, '')
-    // 只认"用过"的形态:import 那一行不算接线(见 deadExportAudit 的同款教训)
+    // 只认使用形态:import 那一行不算接线
     expect(src).toContain('RESPONSE_NAMES[')
     expect(src).toContain('intent?.responses')
   })

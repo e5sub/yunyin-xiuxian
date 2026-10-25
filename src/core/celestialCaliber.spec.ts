@@ -1,20 +1,11 @@
-/* eslint-disable no-console -- 对账表是给人看的 */
+/* eslint-disable no-console -- 输出对账表 */
 /**
- * 天界口径审计 —— 基础属性作数,差别落在判定层
- *
- * 这套口径换过一次,记在这里,免得回头又走回去:
- *
- * **旧**:敌人参照取玩家自己的 `celestialStats`,凡器数值被器魂抹平 ——
- *   数值成长在天界互相抵消,胜负只看构筑形状。好处是「堆厚度不占便宜」,
- *   代价是**基础属性在天界等于不存在**:一身神品与一身凡品打同一个守关者,结果一样。
- *
- * **新**:敌人按**本界锚点**定标(该界该有的层级曲线,与玩家此刻多强无关),
- *   而攻防血这些基础属性到哪儿都作数 —— 境界更高、装备更好、构筑更厚就是实打实的优势。
- *   堆叠的代价改由**敌人一侧的判定**承担:
- *     · 道之理解:构筑越厚,守关者三维越加厚,且被看破(增伤)/被挡下(减伤);
- *     · 境界压制:未及本界该有的境界,守关者额外增伤。
- *
- * 本文件钉住新契约的五条,任一条被改回去都会红。
+ * 天界口径审计:基础属性作数,差别落在判定层。
+ * 敌人按本界锚点定标(与玩家此刻多强无关),攻防血到哪儿都作数;堆叠代价由敌人一侧的判定承担:
+ *   · 道之理解:构筑越厚,守关者三维越加厚,且被看破(增伤)/被挡下(减伤);
+ *   · 境界压制:未及本界该有的境界,守关者额外增伤。
+ * 敌人参照取玩家自己的 `celestialStats`、凡器被器魂抹平,会导致基础属性在天界等于不存在。
+ * 故障注入:把任一条契约改回旧口径,本文件红。
  */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -78,7 +69,7 @@ describe('天界口径 · 基础三维作数', () => {
     const gearOnly = { ...player.celestialStats.mods }
     eg.souls = [{ uid: 's1', type: 'fengmang', grade: 5, fromName: '旧剑' }] as never
     eg.equippedSouls = ['s1']
-    // 锋魂给的是暴击/满血增伤那一类字(见 data/souls):判据看词条,而不是攻击总数
+    // 锋魂给暴击/满血增伤类词条(见 data/souls),判据看词条而非攻击总数
     const added = Object.keys(player.celestialStats.mods).filter(
       k => (player.celestialStats.mods[k as never] ?? 0) > (gearOnly[k as never] ?? 0) + 1e-9
     )
@@ -186,9 +177,7 @@ describe('忆战 · 境界压制按当年大境界还原', () => {
   })
 
   it('忆战重打按当年境界判压制:低境记的痕,守关补正还在,不被 MAX 抹平', () => {
-    // 赤炎天 tier 22 -> tierMajor 10:major 8 在锚点之下(压制,守关 +25% 增伤),
-    // MAX(20) 在之上(不压制)。旧实现在忆战里传 MAX_MAJOR,把这笔当年的守关补正
-    // 整个丢掉了 —— 这正是一世道痕却按最高境界重打的落差。
+    // 赤炎天 tier 22 -> tierMajor 10:major 8 在锚点之下(压制,守关 +25% 增伤),MAX(20) 在之上(不压制)
     const low = celestialJudgement({}, 8, CELESTIAL_WORLDS[0]!.anchorTier)
     const top = celestialJudgement({}, MAX_MAJOR, CELESTIAL_WORLDS[0]!.anchorTier)
     expect(low.suppressed, '低境道痕应被压制').toBe(true)

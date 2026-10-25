@@ -1,30 +1,11 @@
 /* eslint-disable no-console */
 /**
- * 灵根职能审计(Phase 32.2 前置诊断,不改任何游戏逻辑)
- *
- * 待判定的问题:灵根是否已从"转世时必须关注的变量"
- * 退化为"存在,但没有决策权的属性"。
- *
- * 关键是区分两种病因——它们的处方完全相反:
- *   数值不足 → 调高倍率即可
- *   职能冲突 → 灵根负责的维度被别的系统整体覆盖,调倍率只是拼数值,
- *              最后必然长出新的最优阈值
- *
- * 四条诊断:
- *   ① 权重衰减:灵根贡献占总修速的比例,随转世世数如何变化
- *   ② 稀释来源:到底是谁盖过了灵根——聚灵阵,还是别的东西
- *   ③ 维度接线:灵根的元素维度(11 种)在游戏里产生了多少决策点
- *   ④ 交互形态:转世时玩家对灵根到底能做什么动作
- *
- * 结论(32.2 落地后的现状):
- *   ①② 仍然成立,且**不打算修复**——修炼倍率这条路是死路,
- *      凡进加法池者必被道果碾平,给灵根加倍率只是换个数字继续输。
- *      它们留在这里,是为了记住"为什么不走那条路"。
- *   ③ 已转为验收:元素维度接进了功法参悟、机缘出现、天劫解法三条通道。
- *      红线细则由 linggenAffinity.spec.ts 把守。
- *   ④ 仍然成立:转世依旧一掷定终身。32.2 的处方不是补重掷界面
- *      (那要新增页面,超出范围),而是让灵根即使不可选也仍有意义——
- *      它决定这一世的牌面形状,而非这一世的数值高低。
+ * 灵根职能审计(只读诊断):
+ *   ① 权重衰减:灵根贡献占总修速的比例随转世世数的变化
+ *   ② 稀释来源:谁盖过了灵根
+ *   ③ 维度接线:元素维度接进功法参悟、机缘出现、天劫解法(红线见 linggenAffinity.spec.ts)
+ *   ④ 交互形态:转世时玩家对灵根能做什么动作
+ * ①② 不打算修复:进加法池的修炼倍率必被道果碾平。
  */
 import { describe, it, expect } from 'vitest'
 import { estimateCultMult } from './progressionSim'
@@ -39,7 +20,7 @@ import { GONGFA } from '@/data/gongfa'
 import { ELEMENTS } from '@/data/linggen'
 import { effectiveDaoFruit, modOf } from './statsCalc'
 
-/** 聚灵阵:审计对照物(玩家反馈中"覆盖了灵根"的那个系统) */
+/** 聚灵阵:审计对照物 */
 const ARRAY_DEF = BUILDINGS.find(b => b.id === 'array')!
 const ARRAY_MODS = ARRAY_DEF.mods!
 const ARRAY_PER_LEVEL = modOf(ARRAY_MODS(1), 'cultivationSpeed')
@@ -104,7 +85,6 @@ describe('灵根职能审计 ① 权重衰减', () => {
       )
     }
 
-    // 单调衰减:这是"职能被稀释"的形状,而非"数值偏低"的形状
     for (let i = 1; i < shares.length; i += 1) {
       expect(shares[i]!, '典型灵根占比未随世数衰减').toBeLessThan(shares[i - 1]!)
       expect(ratios[i]!, '灵根间的速度差距未随世数收敛').toBeLessThan(ratios[i - 1]!)
@@ -115,7 +95,6 @@ describe('灵根职能审计 ① 权重衰减', () => {
     const share = linggenShare(1.15, 50, 6)
     const ratio = bestWorstRatio(50, 6)
 
-    // 全档位横向对比:第1世 vs 第50世,同一批灵根拉开的差距
     const ctxEarly = lifeContext(1, 1)
     const ctxLate = lifeContext(50, 6)
     console.log('\n  灵根档位            第1世修速   第50世修速   第50世占比')
@@ -128,8 +107,6 @@ describe('灵根职能审计 ① 权重衰减', () => {
     }
     console.log(`  第50世:典型灵根占比 ${(share * 100).toFixed(2)}% · 最好:最差 = ${ratio.toFixed(3)}x`)
 
-    // 讽刺之处:灵根本该是转世时最该看的东西,
-    // 而转世次数(道果 + 天赋)恰恰是稀释它的最大变量。
     expect(share, '典型灵根仍占可观比重——若如此,问题偏向数值而非职能').toBeLessThan(0.02)
     expect(ratio, '灵根间仍有明显速度差——若如此,灵根尚未失去决策权').toBeLessThan(1.2)
   })
@@ -154,8 +131,7 @@ describe('灵根职能审计 ② 稀释来源', () => {
     console.log(`  灵根中位数 ×${median.toFixed(2)}(贡献 +${((median - 1) * 100).toFixed(0)}%)≈ 聚灵阵 ${levelsForMedian} 级`)
     console.log(`  贡献 ≤ 聚灵阵满级的灵根占比:${((coveredByMaxArray / SAMPLES) * 100).toFixed(1)}%`)
 
-    // 聚灵阵确实能吃掉多数灵根的全部差距,但它要堆到 13/20 级才追平中位灵根——
-    // 玩家把账算在聚灵阵头上是因为它可见、可堆、有等级条,真正的稀释见下一条。
+    // 聚灵阵要堆到 13/20 级才追平中位灵根;真正的稀释见下一条
     expect(levelsForMedian, '聚灵阵满级都追不上中位灵根').toBeLessThanOrEqual(ARRAY_DEF.maxLevel)
     expect(coveredByMaxArray / SAMPLES, '聚灵阵满级覆盖不了多数灵根').toBeGreaterThan(0.6)
   })
@@ -185,8 +161,6 @@ describe('灵根职能审计 ② 稀释来源', () => {
     const linggenShareHere = 0.15 / total
     console.log(`  → 道果 ${(fruitShare * 100).toFixed(0)}% vs 灵根 ${(linggenShareHere * 100).toFixed(1)}%,相差 ${(fruitShare / linggenShareHere).toFixed(0)} 倍`)
 
-    // 处方由此确定:凡是放进这个加法池的修炼倍率都会被转世累积稀释,
-    // 所以给灵根加倍率无效——它必须改去负责加法池之外的东西。
     expect(fruitShare, '道果并非稀释主力,归因需重查').toBeGreaterThan(0.6)
     expect(fruitShare / linggenShareHere, '道果与灵根量级相差不大').toBeGreaterThan(20)
   })
@@ -194,23 +168,19 @@ describe('灵根职能审计 ② 稀释来源', () => {
 
 describe('灵根职能审计 ④ 转世时的交互形态', () => {
   it('建号可无限重掷,转世一掷定终身——灵根在转世时没有决策点', () => {
-    // 建号:CreateView 不限次重掷(CREATE_REROLL_QUOTA = null),玩家会一直挑到满意
-    // 转世:reincarnation.ts 直接 player.rebirth(rollLinggen(rng, floor)),没有任何挑选界面
+    // 建号:CreateView 不限次重掷(CREATE_REROLL_QUOTA = null)
+    // 转世:reincarnation.ts 直接 player.rebirth(rollLinggen(rng, floor)),没有挑选界面
     console.log('\n  建号重掷次数:不限  →  灵根是玩家会反复看的东西')
     console.log('  转世重掷次数:0     →  灵根是系统发下来的一张牌')
 
-    // "玩家看了灵根后是否改变选择"这个行为链,第二步在转世流程里不存在。
-    // 这比"数值被稀释"更根本:不是决策变弱了,是压根没有决策动作。
     expect(CREATE_REROLL_QUOTA, '建号重掷变成有限次数,两处形态就要重新对比').toBeNull()
   })
 
   it('转世资质保底会在第 12 世彻底顶满,灵根之间只剩根数差别', () => {
-    // floor = REINCARNATE_APTITUDE_FLOOR × (count+1);普通根资质下限 40
-    // 当 floor ≥ 60,min(100, rng.int(40,100)+floor) 恒为 100
+    // floor = REINCARNATE_APTITUDE_FLOOR × (count+1);普通根资质下限 40,floor ≥ 60 时恒为 100
     const lifeWhenCapped = Math.ceil(60 / REINCARNATE_APTITUDE_FLOOR)
     console.log(`\n  转世资质保底 +${REINCARNATE_APTITUDE_FLOOR}/世,第 ${lifeWhenCapped} 世起所有根资质恒为 100`)
 
-    // 实采:第 20 世的灵根,资质维度是否已完全塌缩
     const rng = new RandomService(mulberry32(0x5ea1ed))
     const floor = REINCARNATE_APTITUDE_FLOOR * 20
     const aptitudes = new Set<number>()
@@ -224,8 +194,6 @@ describe('灵根职能审计 ④ 转世时的交互形态', () => {
     console.log(`  出现过的品阶 = [${[...grades].join('、')}]`)
     console.log('  → 资质维度塌缩为常数,灵根差异只剩"几根"与"是否变异"')
 
-    // 转世越多,灵根资质越好;而转世越多,灵根越不重要。
-    // 系统一边把这个属性喂满,一边让它失去意义。
     expect(aptitudes.size, '资质仍有分布——保底尚未顶满,塌缩点需重算').toBe(1)
     expect([...aptitudes][0]).toBe(100)
   })
@@ -272,7 +240,6 @@ describe('灵根职能审计 ③ 维度接线(Phase 32.2:已接线)', () => {
     console.log(`\n  灵根画像字段:[${Object.keys(profile).join(', ')}]`)
     console.log(`  roots 元素:[${elements.map(e => ELEMENTS[e].name).join('、')}]`)
 
-    // 三条下游通道,逐一验明确实读到了 element 而不只是 growthMult
     const el = elements[0]!
     const channels = {
       功法参悟: gongfaAffinity(el, elements) > 1,
@@ -287,8 +254,6 @@ describe('灵根职能审计 ③ 维度接线(Phase 32.2:已接线)', () => {
   })
 
   it('记账:EventCond.element 这条入口至今仍是 0 使用', () => {
-    // 32.2 走的是"权重偏向 + 解法空间",没有动选项级的元素门槛。
-    // 保留这条观测——它现在只是一条未启用的入口,不再意味着元素维度是装饰。
     const all = [...EVENTS, ...FORTUNE_EVENTS]
     let elementGated = 0
     for (const ev of all) {

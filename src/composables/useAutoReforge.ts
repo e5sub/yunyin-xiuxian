@@ -33,17 +33,12 @@ export function useAutoReforge() {
   const reforgeCostVal = computed(() => (inst.value ? reforgeCost(inst.value) : null))
 
   const autoBudget = ref(50)
-  /** 停止条件:任一命中即停;minRoll 给「数值范围」那一嘴 */
+  /** 停止条件:任一命中即停;minRoll 对应「数值范围」 */
   const autoTargets = ref<ReforgeTarget[]>([])
-  /** 一键洗到预算上限是批量动作:同分解/连升一样先摆总账,第二步才动手 */
+  /** 批量动作的确认态:先摆总账,第二步才动手(同分解/连升) */
   const autoArm = ref(false)
 
-  /**
-   * 可选的停止词条:当前装备**真能洗到**的那些 —— 与重铸抽取池同规则
-   * (槽位匹配 + 品质门槛不高于当前),而不是全 113 条里按权重取前 24。
-   * 否则连「想洗的词条在 24 名开外」都选不进去,自动重铸就等于承诺了
-   * 一份它兑现不了的面板。
-   */
+  /** 可选的停止词条:当前装备真能洗到的全部,与重铸抽取池同规则(槽位匹配 + 品质门槛不高于当前);不按权重取前 24 */
   const affixOptions = computed(() => {
     if (!inst.value) return []
     const tpl = equipmentTemplate(inst.value.templateId)
@@ -59,22 +54,21 @@ export function useAutoReforge() {
   /** 候选按四档品质成组(传世→常见,空组不占位);组内延续 affixOptions 的权重序 */
   const rarityGroups = computed(() => affixesByRarity(affixOptions.value))
 
-  /** 已选目标的名字颜色:它从哪一档领出,就用哪一档的品质色 */
+  /** 已选目标的名字颜色:取其所在档的品质色 */
   function targetColor(id: string): string {
     return AFFIX_RARITY_META[affixDef(id)?.rarity ?? 'common'].color
   }
 
   function toggleAutoTarget(id: string): void {
     if (isAutoTarget(id)) autoTargets.value = autoTargets.value.filter(t => t.affixId !== id)
-    // 默认先求「高值」(≥50%);拉到底 0% 即回到「出现就行」
+    // 默认「高值」(≥50%);0% 即「出现就行」
     else if (autoTargets.value.length < AUTO_REFORGE_MAX_TARGETS) autoTargets.value = [...autoTargets.value, { affixId: id, minRoll: 0.5 }]
   }
 
   const autoMaxCost = computed(() => {
     const r = reforgeCostVal.value
     if (!r) return null
-    // 预览用**归一后的**预算 —— 与执行同一处(autoReforgeBudget),
-    // 手输 800 时预览与实洗都是 500,不再按 800 虚报花销
+    // 预览与执行同用归一后的预算(autoReforgeBudget)
     const n = autoReforgeBudget(autoBudget.value)
     return { stone: mulN(r.stone, n), dust: r.dust * n }
   })
@@ -86,7 +80,6 @@ export function useAutoReforge() {
     return reforgePlanShortfall(r, autoBudget.value)
   })
 
-  // 改目标/预算后动作不再是同一笔,确认态一并复位
   watch([autoTargets, autoBudget], () => {
     autoArm.value = false
   })
@@ -130,7 +123,7 @@ export function useAutoReforge() {
     // 结账即收板(由面板通知宿主收起):结果已写在 toast 与装备词条上,想再调条件重开一次即可
   }
 
-  /** 收起自动重铸(宿主换件/转移时调用):勾选与确认态一并作废 */
+  /** 收起自动重铸(宿主换件/转移时调用);勾选与确认态一并作废 */
   function closeAuto(): void {
     autoArm.value = false
     autoTargets.value = []

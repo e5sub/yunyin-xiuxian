@@ -1,11 +1,7 @@
 /**
  * 敌人库 —— 132 个,含 44 名区域首领;多段/真伤/闪避等机制用于流派克制
- *
- * 每一条写的是**族类**(`family`),形由 data/beastFamilies.ts 的族类表给出 ——
- * 从此不手写 icon:狼写 beast、蛇蟒写 serpent、傀儡写 construct、神明写 deity。
- * 原先这里直接写 icon,于是「大类够用」把 47 只敌人塞进一枚骷髅(独角妖狼、
- * 霞光巨蟒、玄冰蛟、瑶池仙后、混沌道祖…),灵宠那边应龙与螭龙幼子是星芒、麒麟是
- * 兽爪。族类与形的关系现在只有一处,见 BEAST_FAMILIES;判据在 src/ui/beastFamilies.spec.ts。 */
+ * 只写族类(`family`),不手写 icon:形由 data/beastFamilies.ts 的 BEAST_FAMILIES 给出,判据在 src/ui/beastFamilies.spec.ts。
+ */
 import type { BeastFamily, BossArchetype, BossPhase, ElementId, EnemyDef, EnemySkill, StatMods } from '@/types'
 
 function e(

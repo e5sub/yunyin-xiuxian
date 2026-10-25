@@ -1,6 +1,4 @@
-/**
- * 坊市 store —— 购买路径与坏档韧性
- */
+/** 坊市 store —— 购买路径与坏档韧性 */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { MARKET_MAT_COUNT, MARKET_CONSIGN_SLOTS, MARKET_REFRESH_SECONDS, type MarketSlot } from '@/data/market'
@@ -15,7 +13,7 @@ import { useInventoryStore } from '@/stores/inventory'
 import { usePlayerStore } from '@/stores/player'
 import { useQuestsStore } from '@/stores/quests'
 
-/** 一份远在将来的货架,让 sync 不重上货(测的是「买」,不是「刷新」) */
+/** 远期上货时刻:sync 不重上货 */
 const FAR = 4_102_444_800_000 // 2099-12-31
 
 function pillSlot(idx: number): MarketSlot {
@@ -63,7 +61,7 @@ describe('坊市 · 买卖', () => {
     const resources = useResourcesStore()
     const player = usePlayerStore()
     player.major = 0 // 当下是 1 品
-    // 货架里的草是 3 品(模拟高境期间上货、转世后未刷新)
+    // 货架草 3 品(高境上货、转世后未刷新)
     seedStock([{ kind: 'material', idx: 0, matId: 'herb', grade: 3, count: 12, price: { m: 5, e: 0 }, sold: false }])
     resources.spiritStone = gn(100)
 
@@ -87,7 +85,6 @@ describe('坊市 · 买卖', () => {
     expect(market.buy(0)).toBe('ok')
     expect(inventory.items).toHaveLength(1)
     const tpl = inventory.items[0]!.templateId
-    // 此前买来的件只入行囊、不进收藏,图鉴(经装备走)却收 —— 两处对不上
     expect(quests.collections.equip, '买来的装备应计入收藏').toContain(tpl)
   })
 
@@ -124,17 +121,12 @@ describe('坊市 · 买卖', () => {
     expect(market.stock[0]!.sold).toBe(false)
   })
 
-  /**
-   * 跨过换货窗口时点下「买」:屏幕上还是旧架,`sync` 却整架换新。
-   * 若照旧按 idx 扣钱,玩家买下的是他没看过的那件(灵石照扣,装备品质还按新的
-   * `(stockedAt, idx)` 再生)。宁可不成,让他按新货再买。
-   */
   it('跨过换货窗口时买下:不成交、不扣灵石、不入袋', () => {
     const market = useMarketStore()
     const resources = useResourcesStore()
     const inventory = useInventoryStore()
     seedStock([pillSlot(0)])
-    market.stockedAt = 0 // 屏幕上画的还是这架旧货,但已过窗口
+    market.stockedAt = 0 // 屏幕仍是旧架,但已过窗口
     resources.spiritStone = gn(100)
     const oldShelf = market.stock
 
@@ -176,11 +168,7 @@ describe('坊市 · 买卖', () => {
     expect(() => JSON.stringify(market.$state)).not.toThrow()
   })
 
-  /**
-   * 坏价会被 asPrice 归零;若保留该格,buy 会把零价当成「付得起」,
-   * 玩家可零元拿走丹药/材料/装备。数量也无上限时,还能按一件的价带走一整批。
-   * 故坏价格整格丢弃,数量按上货口径归一。
-   */
+  /** 坏价经 asPrice 归零,buy 会把零价当成付得起 */
   it('sanitize:零价货格丢弃,丹/材数量按上货口径归一,不能零元购或超量到货', () => {
     const market = useMarketStore()
     const resources = useResourcesStore()
@@ -248,7 +236,7 @@ describe('坊市 · 买卖', () => {
       ] as unknown as MarketSlot[]
     })
     market.sanitize()
-    // 先断言确实是 material 格(避免守卫空转),再断言品阶读写
+    // 先断言是 material 格,免得守卫空转
     const s0 = market.stock[0]
     expect(s0?.kind, '合法货架格应保留').toBe('material')
     if (s0?.kind === 'material') expect(s0.grade, '合法 3 品应跨读档保留').toBe(3)
@@ -257,10 +245,7 @@ describe('坊市 · 买卖', () => {
     if (s1?.kind === 'material') expect(s1.grade, '99 不是合法品阶,应落回无级兜底').toBeUndefined()
   })
 
-  /**
-   * 丹/料货格不靠格号再生:重复号只需重排到最小空闲号,货与价原样保留。
-   * 旧实现一律丢后项,坏档里两格同号就静默少一件货。
-   */
+  /** 丹/料货格不靠格号再生:重复号重排到最小空闲号,货与价原样保留 */
   it('sanitize:重复 idx 的丹料格重排保货,两格都可买', () => {
     const market = useMarketStore()
     const resources = useResourcesStore()
@@ -286,9 +271,7 @@ describe('坊市 · 买卖', () => {
     expect(inventory.pills).toEqual({})
   })
 
-  /**
-   * 装备品质由 (stockedAt, idx) 确定性再生:重复号不能改号,仍只留先出现那格。
-   */
+  /** 装备品质由 (stockedAt, idx) 确定性再生:重复号不能改号,只留先出现那格 */
   it('sanitize:重复 idx 的装备仍只留首格,绝不改号再生另一件', () => {
     const market = useMarketStore()
     market.$patch({
@@ -319,16 +302,13 @@ describe('坊市 · 买卖', () => {
     expect(material?.idx, '丹料顺延到下一个空号').toBe(3)
   })
 
-  /**
-   * 缺格号的格子无法确认原号:装备品质按 (stockedAt, idx) 确定性再生,
-   * 随手补一个号会让标价与实得品质分叉。故这类格子丢掉,但**不许顶掉**已有的货。
-   */
+  /** 缺格号无法确认原号(补号会让装备标价与实得品质分叉):丢掉,但不许顶掉已有的货 */
   it('sanitize:缺 idx 的格子丢掉,已有的那格原样留下', () => {
     const market = useMarketStore()
     market.$patch({
       stock: [
         { kind: 'material', idx: 1, matId: 'herb', grade: 1, count: 12, price: { m: 5, e: 0 }, sold: false },
-        // 第 2 格缺号:无从确认原号 → 丢弃
+        // 第 2 格缺号 → 丢弃
         { kind: 'material', matId: 'ore', count: 12, price: { m: 6, e: 0 }, sold: false }
       ] as unknown as MarketSlot[]
     })
@@ -336,7 +316,6 @@ describe('坊市 · 买卖', () => {
     expect(market.stock).toHaveLength(1)
     expect(market.stock[0]!.idx).toBe(1)
     const kept = market.stock[0]!
-    // 留下的必须还是原来那格草,不能被缺号那格(玄铁)顶掉
     expect(kept.kind === 'material' && kept.matId, '已有的草格不该被缺号格覆盖').toBe('herb')
   })
 
@@ -344,7 +323,7 @@ describe('坊市 · 买卖', () => {
     const market = useMarketStore()
     market.$patch({
       stock: [
-        // 同号但内容是坏丹方:先被丢掉,后面的好货应当留下
+        // 同号的坏丹方在前
         { kind: 'pill', idx: 2, pillId: 'p_nope', count: 1, price: { m: 1, e: 0 }, sold: false },
         { kind: 'material', idx: 2, matId: 'herb', grade: 1, count: 12, price: { m: 5, e: 0 }, sold: false }
       ] as unknown as MarketSlot[]
@@ -470,10 +449,6 @@ describe('坊市 · 买卖', () => {
     )
   })
 
-  /**
-   * 寄卖格号重复:界面按格号铺格子,同一个号会被后一条盖住 —— 玩家只看见一件,
-   * 到点却两笔都入账(钱进了账,却有一件从不露面)。格号重排,不丢任何一件。
-   */
   it('sanitize:寄卖格号重复只理顺号,一件都不丢、各自内容不串', () => {
     const market = useMarketStore()
     const now = Date.now()
@@ -486,9 +461,9 @@ describe('坊市 · 买卖', () => {
     market.sanitize()
     expect(market.consign, '两件都是玩家的东西,一条都不许丢').toHaveLength(2)
     expect(market.consign.map(p => p.slot).sort()).toEqual([0, 1])
-    // 先到期的那件在前:格号顺序与「谁先回来」一致
+    // 先到期的在前
     expect(market.consign[0]!.name).toBe('甲')
-    // 两件的名字/价都要各归各位 —— 只数条数会放过「用第一件的副本顶替第二件」
+    // 逐项比内容:只数条数会放过拿第一件副本顶替第二件
     expect(market.consign.map(p => p.name).sort(), '两件各自的名字都得在').toEqual(['乙', '甲'])
     expect(market.consign.map(p => p.tier).sort(), '层级不串').toEqual([3, 4])
     expect(market.consign.map(p => toNum(p.price)).sort(), '合法寄卖价原样保留,不串').toEqual([5, 6])
@@ -517,9 +492,9 @@ describe('坊市 · 刷新窗口时序(sync 与到期)', () => {
   it('货还新鲜、未到刷新窗:sync 原样保架,不重上货、时刻不动', () => {
     const m = useMarketStore()
     const now = 1_000_000_000_000
-    m.$patch({ stock: [pillSlot(0)], stockedAt: now - 1000 }) // 距刷新还有 7199 秒
+    m.$patch({ stock: [pillSlot(0)], stockedAt: now - 1000 })
     m.sync(now)
-    expect(m.stock).toEqual([pillSlot(0)]) // 深等:货架一字未动
+    expect(m.stock).toEqual([pillSlot(0)])
     expect(m.stockedAt).toBe(now - 1000)
   })
 
@@ -528,25 +503,19 @@ describe('坊市 · 刷新窗口时序(sync 与到期)', () => {
     const now = 1_000_000_000_000
     m.$patch({ stock: [pillSlot(0)], stockedAt: now - MARKET_REFRESH_SECONDS * 1000 - 1 })
     m.sync(now)
-    expect(m.stockedAt).toBe(now) // 重上时刻锚到本次调用,不会再立刻复刷
+    expect(m.stockedAt).toBe(now) // 锚到本次调用,不会立刻复刷
   })
 
   it('marketRemainingSec:恰好到期=0、临近为正、已过被夹回 0(绝不回负)', () => {
     const x = 1_000_000_000_000
     const windowMs = MARKET_REFRESH_SECONDS * 1000
-    expect(marketRemainingSec(x, x + windowMs)).toBe(0) // 恰好到期
-    expect(marketRemainingSec(x, x + windowMs - 5000)).toBe(5) // 还差 5 秒
-    expect(marketRemainingSec(x, x + windowMs + 5000)).toBe(0) // 已过 → 夹回 0
+    expect(marketRemainingSec(x, x + windowMs)).toBe(0)
+    expect(marketRemainingSec(x, x + windowMs - 5000)).toBe(5)
+    expect(marketRemainingSec(x, x + windowMs + 5000)).toBe(0)
   })
 })
 
-/**
- * 寄卖多格部分回款与槽位归整。
- *
- * collectConsign 逐件按 finishAt<=now 入账,再把剩下未成交的格子 sort+reindex 回 0..n-1。
- * market.spec 之前只测了「单件→腾空」;两格一售一候(只售出到账、候件原样、余槽归整无洞)
- * 从没直接断言。这里用确定性时刻,把真实回款/归整锁住。
- */
+/** collectConsign 逐件按 finishAt<=now 入账,余格 sort+reindex 回 0..n-1 */
 describe('寄卖 · 多格部分回款与槽位归整', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -577,12 +546,12 @@ describe('寄卖 · 多格部分回款与槽位归整', () => {
     pending.finishAt = 99999 // 仍候
     expect(res.spiritStone).toEqual(gn(0))
     const credits = market.collectConsign(5000)
-    expect(toNum(res.spiritStone)).toBeCloseTo(toNum(sold.price), 5) // 只入售出那份
+    expect(toNum(res.spiritStone)).toBeCloseTo(toNum(sold.price), 5)
     expect(credits, '只报售出的名字').toEqual([sold.name])
     expect(market.consign).toHaveLength(1)
     const keep = market.consign[0]!
-    expect(keep.slot).toBe(0) // 余槽归整到 0(不留洞)
-    expect(toNum(keep.price)).toBeCloseTo(toNum(pending.price), 5) // 候件价格原样
+    expect(keep.slot).toBe(0)
+    expect(toNum(keep.price)).toBeCloseTo(toNum(pending.price), 5)
   })
 
   it('第二次收割:候件也到期 -> 两笔全额到账、腾空', () => {
@@ -592,20 +561,13 @@ describe('寄卖 · 多格部分回款与槽位归整', () => {
     market.consign[0]!.finishAt = 0
     market.consign[1]!.finishAt = 0
     const credits = market.collectConsign(5000)
-    expect(credits).toHaveLength(2) // 两支都回款
+    expect(credits).toHaveLength(2)
     expect(toNum(res.spiritStone)).toBeCloseTo(p0 + p1, 5)
     expect(market.consign).toHaveLength(0)
   })
 })
 
-/**
- * 即时售材 / 售草 结算精额守恒。
- *
- * sellHerb/sellMaterial 扣一「批」(MARKET_MAT_COUNT),按「批价」入账(herbSellBatch /
- * materialSellPrice)。market.spec:181 只断言了 扣该品批数 + 低品不动 + 灵石为正;
- * 入账的**精确值**与**连售多批不漂移**从没直接断言 —— 若把批价错当成单株价、或在批价上
- * 漂移,一次次真实售卖会静默少收/多收。这里用纯过程量把「按批入账 · 连售不漂」钉死。
- */
+/** sellHerb/sellMaterial 扣一批(MARKET_MAT_COUNT),按批价入账(herbSellBatch / materialSellPrice) */
 describe('即时售材/售草结算精额守恒', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -616,13 +578,13 @@ describe('即时售材/售草结算精额守恒', () => {
     const res = useResourcesStore()
     const N = 3
     const g = 3
-    usePlayerStore().major = 10 // 非零境:若 sellHerb 忽略大境界、恒按 0 定价,此断言即红
+    usePlayerStore().major = 10 // 非零境:sellHerb 若恒按 0 定价,此断言红
     res.herbByGrade[g] = N * MARKET_MAT_COUNT
     res.spiritStone = gn(0)
     const batch = herbSellBatch(g, 10) // 售草以当前境界 10 折算
     for (let i = 0; i < N; i += 1) expect(market.sellHerb(g)).toBe(true)
     expect(res.herbByGrade[g]).toBe(0)
-    expect(toNum(res.spiritStone)).toBeCloseTo(toNum(batch) * N, 6) // 连售 N 批 = N×批价
+    expect(toNum(res.spiritStone)).toBeCloseTo(toNum(batch) * N, 6)
   })
 
   it('sellHerb 单批恰入 herbSellBatch(批价,不是单株价)', () => {
@@ -645,11 +607,7 @@ describe('即时售材/售草结算精额守恒', () => {
     expect(toNum(res.spiritStone)).toBeCloseTo(toNum(materialSellPrice(0)), 6)
   })
 
-  /**
-   * 议题 #130 的落点判据:「去坊市续草」指的是**方子要的那一品**。
-   * 这里把两品草同时摆上架,要求挑的必须是请求的那一品 —— 若按「有草就行」挑,
-   * 炼灵品丹缺草却高亮凡品格,玩家买回去照样开不了炉。
-   */
+  /** 议题 #130:「去坊市续草」指方子要的那一品,不是有草就行 */
   describe('focusHerbSlot —— 续草该指哪一格', () => {
     const herb = (idx: number, grade: number | undefined, sold = false): MarketSlot =>
       ({ kind: 'material', idx, matId: 'herb', ...(grade === undefined ? {} : { grade }), count: 12, price: { m: 5, e: 0 }, sold }) as MarketSlot

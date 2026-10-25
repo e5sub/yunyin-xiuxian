@@ -1,7 +1,4 @@
-/**
- * 洞府灵脉 —— Phase 30.3
- * 一条主脉(70 点)+ 若干副脉(各 ≤30 点),总容量 100:不能全部点满,方向即取舍。
- */
+/** 洞府灵脉:一条主脉(70 点)+ 若干副脉(各 ≤30 点),总容量 100,不能全部点满 */
 import type { StatMods } from '@/types'
 
 export type VeinId = 'gather' | 'craft' | 'alchemy' | 'insight'
@@ -48,9 +45,9 @@ export const VEINS: VeinDef[] = [
 
 /** 悟道脉每点参悟折扣 */
 export const INSIGHT_DISCOUNT_PER_POINT = 0.004
-/** 参悟省耗封顶 —— 展示与结算都以它为顶(现容量最多 70 点=28%,此值防未来加容量或调每点后展示与结算分叉) */
+/** 参悟省耗封顶:展示与结算共用(现满点 70 = 28%) */
 export const INSIGHT_DISCOUNT_CAP = 0.5
-/** 与投资卡「当前加成」同一称呼,避免一条脉两个名字 */
+/** 与投资卡「当前加成」同名 */
 export const INSIGHT_EFFECT_NAME = '参悟省耗'
 
 export function veinDef(id: VeinId): VeinDef {

@@ -9,13 +9,14 @@ import { pillDef } from '@/data/pills'
 import { HERB_GRADES } from '@/data/herbGrades'
 import { useWallNow } from '@/composables/useWallClock'
 
-/** 一纸悬赏摊成订单视图;ready 判「此刻交不交得起」 */
+/** 单张悬赏的订单视图;ready = 此刻交得起 */
 export interface BountyRow {
   idx: number
   kind: BountyKind
   tag: string
   tagCls: string
   title: string
+  /** 补充条目(如募丹的丹名);空串不渲染 */
   desc: string
   rewardText: string
   extraText: string
@@ -34,18 +35,11 @@ const B_TAG_CLS: Record<string, string> = {
 
 /**
  * 悬赏板的订单投影与换单倒计时。
- *
- * 「悬赏」签上的可交圆点与板上的「交货」按钮必须读同一份 ready 判据:
- * 各自算一遍的话,签上亮了圆点、点进去每张都写「暂不足」—— 玩家只会以为界面坏了。
+ * 「悬赏」签上的可交圆点与板上的「交货」按钮须读同一份 ready 判据。
  */
 export function useBountyRows() {
   const bounty = useBountyStore()
-  /**
-   * 只有换单倒计时需要秒针;订单投影只依赖 orders 与存货。
-   *
-   * 此前整页共用一个 `now`,秒针一跳就把悬赏板整表重算一遍;迁出后把两者拆开:
-   * 换单读数走墙钟(暂停时也照走),ready 只随存货/订单变化。
-   */
+  /** 秒针只供换单倒计时,走墙钟(暂停时照走);订单投影只依赖 orders 与存货 */
   const now = useWallNow()
 
   const bountyRemaining = computed(() => bountyRemainingSec(bounty.bountyAt, now.value))
@@ -60,7 +54,7 @@ export function useBountyRows() {
   return { bountyRemaining, bountyRows, renderBounty }
 }
 
-/** 单张订单摊成视图 —— 自取两本存货账,供 composable 与行为测试共用 */
+/** 单张订单摊成视图;自取存货,供 composable 与行为测试共用 */
 export function renderBounty(s: BountySlot): BountyRow {
     const resources = useResourcesStore()
     const inventory = useInventoryStore()

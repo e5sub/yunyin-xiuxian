@@ -1,8 +1,4 @@
-/**
- * Build 模拟器(Phase 16 自动数值平衡)
- * 六大流派 × 七种敌人原型批量对战,输出克制矩阵;
- * 配套 spec 对矩阵设置断言:任何改动打破克制格局都会在 bun run test 中暴露
- */
+/** Build 模拟器:六大流派 × 七种敌人原型批量对战,输出克制矩阵;配套 spec 断言克制格局 */
 import type { CombatantSnap, StatMods } from '@/types'
 import { gn } from '@/utils/gnum'
 import { mulberry32, RandomService } from '@/utils/random'
@@ -12,7 +8,7 @@ import { resolveCombat } from './combat'
 import { traceTribulation } from './tribulationDecision'
 import { mergeMods } from './statsCalc'
 
-// ---------- 流派构筑(中期典型成型度:词条×3~4 + 功法 + 天赋 + 法宝被动) ----------
+// 流派构筑取中期典型成型度:词条×3~4 + 功法 + 天赋 + 法宝被动
 
 export interface BuildProfile {
   id: string
@@ -85,10 +81,8 @@ export const BUILD_PROFILES: BuildProfile[] = [
 ]
 
 /**
- * 组装流派战斗快照(法宝被动按等级并入词条;与真实玩家同走 mergeMods 递减)。
- *
- * 六派的法宝都取自头十二阶 —— 那一档按 data/artifacts 的阶梯全是凡品,即**基线口径**,
- * 故品阶那一层不会扰动这套对照实验(量到的仍是构筑之间的差别)。
+ * 组装流派战斗快照:法宝被动按等级并入词条,与真实玩家同走 mergeMods 递减。
+ * 六派法宝都取自头十二阶(data/artifacts 阶梯里全是凡品,基线口径),品阶不扰动对照。
  */
 export function buildSnap(profile: BuildProfile): CombatantSnap {
   const art = artifactDef(profile.artifactId)
@@ -107,8 +101,6 @@ export function buildSnap(profile: BuildProfile): CombatantSnap {
     artifacts: art ? [{ def: art, level: ARTIFACT_LEVEL }] : []
   }
 }
-
-// ---------- 敌人原型 ----------
 
 export interface EnemyArchetype {
   id: string
@@ -169,13 +161,10 @@ export const ENEMY_ARCHETYPES: EnemyArchetype[] = [
 ]
 
 /**
- * 万金油判据里的「四墙」:首领/高爆发/真伤/疾影。
- * 连这四面都通吃(各 ≥95%、首领 ≥90%)才算万金油 —— 只要先在任意一面翻船,
- * 那个区域就会拖你后腿。四处引用都是这一个数组,别手抄。
+ * 万金油判据的「四墙」:首领/高爆发/真伤/疾影;四面通吃(各 ≥95%、首领 ≥90%)才算万金油。
+ * 四处引用共用此数组,不手抄。
  */
 export const WALL_IDS = ['boss', 'burst', 'pierce', 'dodge']
-
-// ---------- 批量对战 ----------
 
 export interface MatchStats {
   winRate: number
@@ -216,25 +205,16 @@ export function fullMatrix(n = 80): MatrixRow[] {
   })
 }
 
-// ---------- 天劫存活(期望值推演) ----------
-
 /**
  * 该流派在此境界能渡过哪几种劫型(期望值口径,无随机浮动)。
- *
- * Phase 32.1:并入 tribulationDecision 的共享内核,不再自带一份天劫数学——
- * 此前这里少算劫型修正与吸血,审计结论与玩家实际渡劫会对不上。
+ * 走 tribulationDecision 共享内核,不自带天劫数学,否则审计结论与玩家实际渡劫对不上。
  */
 export function tribulationSolvableKinds(profile: BuildProfile, targetMajor: number): TribulationKind[] {
   const snap = buildSnap(profile)
   return TRIBULATIONS.filter(def => traceTribulation(def, snap.mods, targetMajor).survived).map(def => def.id)
 }
 
-/**
- * 按流派词条推演天劫存活。
- *
- * 指定 kind 时针对该劫型;不指定则取"五种劫型皆可渡"的严格口径
- * ——即"不必挑天时也稳过"。只能渡部分劫型不算稳过,那是"择时而渡"。
- */
+/** 按流派词条推演天劫存活;不指定 kind 取严格口径:五种劫型皆可渡 */
 export function tribulationSurvives(profile: BuildProfile, targetMajor: number, kind?: TribulationKind): boolean {
   const snap = buildSnap(profile)
   if (kind) return traceTribulation(tribulationDef(kind), snap.mods, targetMajor).survived

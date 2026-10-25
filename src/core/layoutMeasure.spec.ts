@@ -1,13 +1,10 @@
 /**
- * 排版自检的「量法」守卫 —— scripts/layout-check.mjs 不在 CI 里跑(本地约 10 分钟),
- * 于是它自己的口径回归没有任何运行期信号。三条口径各自对应一次踩过的坑:
+ * scripts/layout-check.mjs 的量法守卫(该脚本不在 CI 里跑):
+ *  1. 入场动画进行中量几何 = 量到中间帧;
+ *  2. 只查右缘 = 被负边距推到左缘外的块查不出来;
+ *  3. 按类名豁免装饰层 = 自定义类(.ring-layer)关掉事件时仍算事故;转动的方形盒子 rect 随相位涨到 √2 倍。
  *
- *  1. 入场动画进行中量几何 = 量到中间帧 —— /create 的灵根圆环曾在 stagger 中段被判越界;
- *  2. 只查右缘 = 被负边距推到左缘外的块永远查不出来;
- *  3. 按类名豁免纯装饰层 = 自定义类(.ring-layer)关掉事件时仍被算作事故,
- *     而转动的方形盒子 rect 会随相位涨到 √2 倍,同一处一会儿过一会儿不过。
- *
- * 故障注入:把三种量法任一改回旧写法 → 对应判据红。
+ * 故障注入:把三种量法任一改回旧写法,对应判据红。
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -20,10 +17,6 @@ describe('排版自检量法', () => {
     expect(SCRIPT, '动画禁令要与截图 animations:"disabled" 同口径').toContain(
       '*,*::before,*::after{animation:none!important;transition:none!important}'
     )
-    /**
-     * 三把尺子各管一段:整页测量、弹窗控件审计、开局前两页的子集量尺。
-     * 只给主尺注入时,/create 的灵根圆环仍会在子集量尺上假越界(xian 复现过)。
-     */
     const injections = SCRIPT.match(/animation:none!important/g)?.length ?? 0
     expect(injections, '整页 / 弹窗 / 开箱子集三处量尺都要注入').toBeGreaterThanOrEqual(3)
   })

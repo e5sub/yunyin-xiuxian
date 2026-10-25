@@ -1,17 +1,7 @@
 /**
- * 用具的功用与出处文案 —— 装备 / 法宝 / 功法 / 丹药 / 灵兽
- *
- * 这几样东西此前都只印一句风味文字:「玄铁铸就,大巧不工」「背驮微型山岳,稳如泰山」
- * 「尾生青羽,同程多遇」。风味是好东西,但它不回答玩家真正要问的那一句 ——
- * 这件东西到底给我什么。于是图鉴点开看完仍不知道要不要留,背包里的丹看不出服下去会怎样,
- * 灵兽的「贪宝」到底多少、值不值得为它换掉一只数值更高的伙伴,全凭猜。
- *
- * 故这里把五类用具的功用与出处收成一处纯函数:
- *   · 数值一律从表里现算(与战斗、属性汇总、背包读同一份数据,不再各写一遍);
- *   · 界面与图鉴都从这里取字,改一处即改所有露面处;
- *   · 需要等级的(法宝祭炼)按玩家自己那一份给,不给 0 级那一句(见 artifactActiveText)。
- *
- * 本文件只做映射与文案,不读 store、不改状态 —— 需要状态的调用方把状态传进来。
+ * 用具的功用与出处文案(装备 / 法宝 / 功法 / 丹药 / 灵兽),界面与图鉴都从这里取字。
+ * 数值一律从表里现算,不另写一份;需要等级的(法宝祭炼)按传进来的等级给(见 artifactActiveText)。
+ * 只做映射与文案,不读 store、不改状态:需要状态的调用方把状态传进来。
  */
 import type { ArtifactDef, EquipmentTemplate, GongfaDef, PetDef, PillDef } from '@/types'
 import { qualityDef } from '@/data/qualities'
@@ -37,10 +27,8 @@ import { modsText } from '@/data/statNames'
 const FLAT_NAMES = { attack: '攻击', defense: '防御', maxHp: '生命' } as const
 
 /**
- * 装备的功用:所主(它主加哪一维)+ 固有机制 + 所属共鸣。
- *
- * 平铺数值随**掉落层级**折算(见 core/equipGen.resolveEquipStats),故这里只报
- * 「主加哪一维」而不印数字 —— 离开层级印一个数字,反而是另一种撒谎。
+ * 装备的功用:所主 + 固有机制 + 所属共鸣。
+ * 平铺数值随掉落层级折算(见 core/equipGen.resolveEquipStats),只报主加哪一维、不印数字。
  */
 export function equipFuncText(t: EquipmentTemplate): string {
   const parts: string[] = []
@@ -59,10 +47,7 @@ export function equipMetaText(t: EquipmentTemplate): string {
 
 // ============ 法宝 ============
 
-/**
- * 法宝的功用:被动(按祭炼等级放大 —— 传进来的那个等级就是该玩家自己的)
- * + 神通说明(同一套缩放与封顶,见 artifactActiveText)。
- */
+/** 法宝的功用:被动(按祭炼等级放大)+ 神通说明(同一套缩放与封顶,见 artifactActiveText) */
 export function artifactFuncText(a: ArtifactDef, level = 0): string {
   const passive = modsText(artifactValue(a, level).passive)
   const lines: string[] = []
@@ -111,19 +96,13 @@ export function gongfaMetaText(g: GongfaDef): string {
 
 // ============ 丹药 ============
 
-/**
- * 丹药的功用:服下去会发生什么。
- *
- * 丹药卡片此前只有风味与数量 —— 而「这一味值不值一趟险、值得不值得炼」正是玩家要问的。
- * 数值取自 instant / buff 本体,不另写一份:改数据,文案自己跟上。
- */
+/** 丹药的功用:服下去会发生什么;数值取自 instant / buff 本体,不另写一份。 */
 export function pillFuncText(def: PillDef): string {
   const lines: string[] = []
   const i = def.instant
   if (def.kind === 'instant' && i) {
     const parts: string[] = []
-    // 修为丹按等效闭关时长计价(Phase 39):写"折合闭关那一段等效时长"而不是百分比 ——
-    // 玩家要判断的是"这枚丹抵我多久",不是"它占这道墙的几成"
+    // 修为丹按等效闭关时长计价,不写百分比
     if (i.expSecs) parts.push(`修为 +折合闭关 ${classicalDuration(i.expSecs)}(至多不满一层)`)
     if (i.expFixed) parts.push(`修为 +${formatNum(i.expFixed)} 点`)
     if (i.qiPct) parts.push(`灵气 +上限的 ${Math.round(i.qiPct * 100)}%`)
@@ -159,13 +138,7 @@ export function petFuncText(def: PetDef): string {
   return modsText(def.mods)
 }
 
-/**
- * 灵兽性子对历练的实际影响 —— 带数说话。
- *
- * 性格此前只有一句定性的话(「更容易发现稀有之物,但也会招来危险」)——
- * 可「更容易」是多少?值不值得为它换掉一只数值更高的伙伴?这些数一直在
- * core/petPersonality 里参与结算,却没在界面上露过面。故逐项摊开(零值不列)。
- */
+/** 灵兽性子对历练的实际影响:数值取自 core/petPersonality,逐项摊开(零值不列)。 */
 export function petTraitText(def: PetDef): string {
   const e = personalityEffects(def.id)
   const delta = (mult: number): string => `${mult >= 1 ? '+' : ''}${formatPercent(mult - 1)}`
