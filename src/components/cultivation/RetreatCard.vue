@@ -12,13 +12,12 @@
         </span>
       </div>
       <p class="mt-0.5 text-[10px] text-ink-faint">
-        静坐{{ retreatSpan }},修炼速度 +{{ retreatPct }}%;闭关期间无法外出历练。
+        {{ retreatSpan }} · 修炼 +{{ retreatPct }}% · 期间不可历练
       </p>
-      <!-- 闭关中:倒计时旁边补一枚「已多得」的活数 —— 与预览行同一份每多得速率,一眼看见时间没有白熬 -->
       <p v-if="retreating && retreatSoFarGain" class="mt-1 text-[10px] text-jade">{{ retreatSoFarGain }}</p>
       <p v-if="!retreating" class="mt-1 text-[10px] text-jade">{{ retreatGain }}</p>
       <button v-if="!retreating" type="button" class="chip-ink mt-2 w-full !py-1.5 text-[11px]" @click="beginRetreat">
-        闭关 · {{ retreatMinutes }}分钟 修炼 +{{ retreatPct }}%
+        闭关
       </button>
     </div>
   </div>
@@ -44,13 +43,7 @@
   const retreating = computed(() => isRetreating())
   const retreatRemaining = computed(() => getRetreatRemainingSec(now.value))
   const retreatDef = buffDef('retreat')
-  const retreatMinutes = Math.round((retreatDef?.durationSec ?? 0) / 60)
   const retreatPct = Math.round((retreatDef?.mods.cultivationSpeed ?? 0) * 100)
-  /**
-   * 静坐时长的古今对照 —— 从 buff 本体现算,不再手打「一炷香」。
-   * 闭关实测 300s(5 分钟),而「一炷香」是 30 分钟:`classicalDuration(300)` 给
-   * 「将近一刻(5 分钟)」,既守数据又仍给玩家一个现代读数。
-   */
   const retreatSpan = classicalDuration(retreatDef?.durationSec ?? 0)
   const retreatGain = computed(() => retreatGainText())
   /** 「已多得」:速率与预览同一份 */
@@ -63,7 +56,7 @@
 
   function beginRetreat(): void {
     if (startRetreat()) {
-      ui.toast('你封洞闭关,心不外骛', 'info')
+      ui.toast('已闭关', 'info')
     }
   }
 </script>

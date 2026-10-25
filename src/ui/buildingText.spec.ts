@@ -15,10 +15,10 @@ describe('建筑境界闸文案 · buildingText', () => {
     }
   })
 
-  it('「未至X境」句与闸名同源,全套建筑无越界', () => {
+  it('「需X境」与闸名同源,全套建筑无越界', () => {
     for (const b of BUILDINGS) {
       const gate = buildingRealmGate(buildingGateRealmName(b.unlockRealm))
-      expect(gate).toContain('难营此筑')
+      expect(gate).toBe(`需${buildingGateRealmName(b.unlockRealm)}境`)
       expect(gate, `${b.id} 的闸句应带着境名`).toContain(buildingGateRealmName(b.unlockRealm))
     }
   })

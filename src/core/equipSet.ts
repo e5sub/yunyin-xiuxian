@@ -16,26 +16,29 @@ export interface EquipSetDef {
 
 /** astral 共鸣:开战护盾 = 最大生命 × 该比例(并入快照盾 mod,三层共用) */
 export const ASTRAL_SET_SHIELD = 0.05
-/** 饰品共鸣:造成伤害按该比例转化为生命(吸血被动,并入快照 lifesteal mod) */
+/** 饰品共鸣:造成伤害按该比例转化为生命(并入快照 lifesteal mod) */
 export const ACCESSORY_SET_LIFESTEAL = 0.08
 
-function astralShieldDesc(lead: string): string {
-  return `${lead}(护盾+${formatPercent(ASTRAL_SET_SHIELD)})`
+/** 三套 astral 共用;数取自常量,不手抄 */
+function astralShieldDesc(): string {
+  return `开战护盾+${formatPercent(ASTRAL_SET_SHIELD)}`
 }
 
-function peishiDesc(lead: string): string {
-  return `${lead}(造成伤害的 ${formatPercent(ACCESSORY_SET_LIFESTEAL)} 转化为生命)`
+function peishiDesc(): string {
+  return `造成伤害的 ${formatPercent(ACCESSORY_SET_LIFESTEAL)} 转化为生命`
 }
+
+const IRONWALL_DESC = '首次致命伤保留 1 点气血'
 
 const SET_DEFS: Map<string, EquipSetDef> = new Map([
-  ['s_tiebi', { id: 's_tiebi', name: '铁壁共鸣', required: 2, effectDesc: '受到致命伤害时,首次保留 1 点气血', hook: 'ironwall' }],
-  ['s_xingdou', { id: 's_xingdou', name: '星斗共鸣', required: 2, effectDesc: astralShieldDesc('每场战斗开始时获得一层星光护体'), hook: 'astral' }],
-  // 界域装备共鸣(扩界):高界的套件沿用既有两条机制钩子,不新开体系
-  ['s_xianjia', { id: 's_xianjia', name: '仙甲共鸣', required: 2, effectDesc: astralShieldDesc('开战时仙光护体'), hook: 'astral' }],
-  ['s_shenjia', { id: 's_shenjia', name: '神铠共鸣', required: 2, effectDesc: '受到致命伤害时,首次保留 1 点气血', hook: 'ironwall' }],
-  ['s_hundunjia', { id: 's_hundunjia', name: '混沌共鸣', required: 2, effectDesc: astralShieldDesc('开战时本源护体'), hook: 'astral' }],
-  // 饰品三件套(Phase B-2a):项链+戒指+灵符凑齐同族三件 → 吸血为战(独立新钩子,不占攻防套位)
-  ['s_yaoting', { id: 's_yaoting', name: '妖庭共鸣', required: 3, effectDesc: peishiDesc('妖庭三器同鸣,噬敌之血自补'), hook: 'peishi' }]
+  ['s_tiebi', { id: 's_tiebi', name: '铁壁共鸣', required: 2, effectDesc: IRONWALL_DESC, hook: 'ironwall' }],
+  ['s_xingdou', { id: 's_xingdou', name: '星斗共鸣', required: 2, effectDesc: astralShieldDesc(), hook: 'astral' }],
+  // 高界套件沿用既有机制钩子
+  ['s_xianjia', { id: 's_xianjia', name: '仙甲共鸣', required: 2, effectDesc: astralShieldDesc(), hook: 'astral' }],
+  ['s_shenjia', { id: 's_shenjia', name: '神铠共鸣', required: 2, effectDesc: IRONWALL_DESC, hook: 'ironwall' }],
+  ['s_hundunjia', { id: 's_hundunjia', name: '混沌共鸣', required: 2, effectDesc: astralShieldDesc(), hook: 'astral' }],
+  // 饰品三件套:项链+戒指+灵符,独立钩子,不占攻防套位
+  ['s_yaoting', { id: 's_yaoting', name: '妖庭共鸣', required: 3, effectDesc: peishiDesc(), hook: 'peishi' }]
 ])
 
 export function equipSetDef(setId: string): EquipSetDef | undefined {

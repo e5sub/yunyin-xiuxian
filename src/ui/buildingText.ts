@@ -5,52 +5,45 @@
 import { REALMS } from '@/data/realms'
 
 export function buildingRealmGate(realmName: string): string {
-  return `未至${realmName}境,难营此筑`
+  return `需${realmName}境`
 }
 
-/**
- * 建筑境界闸所对的境名 —— unlockRealm 就是 REALMS 的下标(与 player.major 同轴:
- * 判据是 player.major < def.unlockRealm),故直接读表取境名,不手抄「金丹」这类字
- * (三处调用曾各有一份 ['炼气','筑基','金丹'],门槛一改四处对对不上)。
- */
+/** 建筑境界闸所对的境名:unlockRealm 即 REALMS 下标(与 player.major 同轴,判据 player.major < def.unlockRealm) */
 export function buildingGateRealmName(unlockRealm: number): string {
   return REALMS[unlockRealm]?.name ?? '更高'
 }
 
 export function buildingPeakToast(): string {
-  return '此筑已至层巅'
+  return '已圆满'
 }
 
 export function buildingMansionGateToast(): string {
-  return '洞府未广,此筑难再升'
+  return '辖于洞府'
 }
 
-/** 缺料侧别:单缺灵石 / 单缺玄铁 / 双缺。 */
+/** 缺料侧别:单缺灵石 / 单缺玄铁 / 双缺 */
 export type BuildingShortSide = 'stone' | 'ore' | 'both'
 
-/** 卡面与 toast 共用的精确缺口句;调用方传 formatGN 后的石数。 */
+/** 卡面与 toast 共用的精确缺口句;调用方传 formatGN 后的石数 */
 export function buildingShortReason(side: BuildingShortSide, stoneText: string, ore: number): string {
-  if (side === 'stone') return `尚差 ${stoneText} 石`
-  if (side === 'ore') return `玄铁 ${ore} 块`
-  return `尚差 ${stoneText} 石 · 玄铁 ${ore} 块`
+  if (side === 'stone') return `灵石尚差 ${stoneText}`
+  if (side === 'ore') return `玄铁尚差 ${ore} 块`
+  return `灵石尚差 ${stoneText} · 玄铁尚差 ${ore} 块`
 }
 
-/**
- * 无侧别时保留旧泛称作兜底;有精确缺口时必须点名缺哪一样,
- * 不再让「灵石或玄铁」把两条相反的来路糊成一句。
- */
+/** 有精确缺口时须点名缺哪一样;无侧别回落泛称 */
 export function buildingShortToast(side?: BuildingShortSide, stoneText = '', ore = 0): string {
-  if (side) return `${buildingShortReason(side, stoneText, ore)},难营此工`
-  return '灵石或玄铁未足,难营此工'
+  if (side) return buildingShortReason(side, stoneText, ore)
+  return '灵石或玄铁不足'
 }
 
 export function buildingDoneToast(name: string, level: number): string {
-  return `「${name}」营造再进,已至 ${level} 级`
+  return `「${name}」已至 ${level} 级`
 }
 
-/** 建筑连升的总结账:一级一级报太吵,连升只报一次总况(stoneText 由调用方 formatGN 好) */
+/** 建筑连升只报一次总况(stoneText 由调用方 formatGN) */
 export function buildingBatchDoneToast(name: string, levels: number, newLevel: number, stoneText: string, ore: number): string {
-  return `「${name}」连升 ${levels} 级,今至 ${newLevel} 级,共耗灵石 ${stoneText} · 玄铁 ${ore} 块`
+  return `「${name}」连升 ${levels} 级至 ${newLevel} 级 · 共耗灵石 ${stoneText} · 玄铁 ${ore} 块`
 }
 
 export function buildingActLabel(level: number): string {

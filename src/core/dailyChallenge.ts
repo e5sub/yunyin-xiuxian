@@ -26,11 +26,11 @@ export function todayNumber(): number {
 
 /**
  * 生成指定本地日的天道:日期种子确定性;裁判不受(无解/虚设)则顺延候选。
- *
- * `day` 可注入,供界面用响应式墙钟日号驱动题面:不传时才读当下本地日。
+ * `day` 可注入,供界面用响应式墙钟日号驱动题面。
  */
 export function todayChallenge(day = todayNumber()): DailyChallenge | null {
-  for (let t = 0; t < 16; t += 1) {
+  // 候选上限 32:取 16 时 2026-10-24、2027-10-17 两天全数落选(第 17、18 个才过)
+  for (let t = 0; t < 32; t += 1) {
     const rng = new RandomService(mulberry32(day * 131 + t * 977))
     const world = CELESTIAL_WORLDS[rng.int(0, CELESTIAL_WORLDS.length - 1)]!
     const pool = [...MUTATORS]
@@ -50,13 +50,11 @@ export function todayChallenge(day = todayNumber()): DailyChallenge | null {
 export function undertakeDaily(daily: DailyChallenge): ExpeditionResult | null {
   const endgame = useEndgameStore()
   const ui = useUiStore()
-  // 用「当下」本地日号判闸,不能信调用方传入的 daily.day —— daily 常来自非响应式的
-  // todayChallenge()(Date.now() 不触发 computed 重算),玩家驻足跨过本地午夜时它仍是
-  // 昨天那天的考题:若按传参判,清了「昨天」一天后 dailyDoneDay 一跳、daily 重算成今天,
-  // 今天就再清一次 —— 同一会话连领两份天道赏。落闸只认当下日期。
+  // 判闸用当下本地日号,不信 daily.day:驻足跨本地午夜时 daily 仍可能是昨天的考题,
+  // 按传参判会让同一会话连领两份天道赏。
   const day = todayLocalNum()
   if (endgame.dailyDoneDay === day) {
-    ui.toast('今日天道已了,明日再会', 'info')
+    ui.toast('今日已完成', 'info')
     return null
   }
   const result = undertakeChallenge(daily.draft, daily.verdict)

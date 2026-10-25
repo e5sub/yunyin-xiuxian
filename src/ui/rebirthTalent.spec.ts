@@ -10,6 +10,6 @@ describe('轮回择姿', () => {
     expect(src).toContain('modsText(talentDef(id)!.mods)')
     const jianxin = talentDef('t_jianxin')!
     expect(modsText(jianxin.mods)).toContain('攻击')
-    expect(src).not.toMatch(/另有天资自开:[\s\S]{0,80}talentDef\(id\)\?\.name[\s\S]{0,40}<\/span>\s*<\/p>/)
+    expect(src).not.toMatch(/另得:[\s\S]{0,80}talentDef\(id\)\?\.name[\s\S]{0,40}<\/span>\s*<\/p>/)
   })
 })

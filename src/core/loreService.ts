@@ -86,7 +86,7 @@ export function encounterMaterial(id: string, quiet = false): boolean {
   if (stage === 1) lore.addSkillExp(craftSkillOf(def), 3 + def.rank)
   if (!quiet) {
     const ui = useUiStore()
-    ui.toast(stage === 0 ? `辨出一味灵材:「${def.name}」` : `已知「${def.name}」药性`, 'rare')
+    ui.toast(stage === 0 ? `辨出灵材「${def.name}」` : `已知「${def.name}」药性`, 'rare')
   }
   return true
 }
@@ -118,7 +118,7 @@ export function noteMaterialUsed(id: string, succeeded: boolean): void {
   if (!rng.chance(chance)) return
   if (lore.advanceLore(id, LORE_MAX)) {
     lore.addSkillExp(craftSkillOf(def), 6 + def.rank * 2)
-    useUiStore().toast(`已通晓「${def.name}」的用法`, 'rare')
+    useUiStore().toast(`已通晓「${def.name}」用法`, 'rare')
   }
 }
 
@@ -153,8 +153,8 @@ export function noteEnemy(enemyId: string, win: boolean): boolean {
   if (!lore.advanceEnemyLore(enemyId, cur + 1)) return false
 
   const ui = useUiStore()
-  if (cur + 1 >= ENEMY_LORE_MAX) ui.toast(`你已洞悉「${def.name}」的路数`, 'rare')
-  else if (cur + 1 === 2) ui.toast(`你摸清了「${def.name}」惯用的招式`, 'info')
+  if (cur + 1 >= ENEMY_LORE_MAX) ui.toast(`已洞悉「${def.name}」`, 'rare')
+  else if (cur + 1 === 2) ui.toast(`已知「${def.name}」路数`, 'info')
   return true
 }
 
@@ -181,8 +181,8 @@ export function noteEnemyMany(enemyId: string, wins: number, losses: number): bo
   if (lastStage <= from) return false
 
   const ui = useUiStore()
-  if (lastStage >= ENEMY_LORE_MAX) ui.toast(`你已洞悉「${def.name}」的路数`, 'rare')
-  else if (lastStage === 2) ui.toast(`你摸清了「${def.name}」惯用的招式`, 'info')
+  if (lastStage >= ENEMY_LORE_MAX) ui.toast(`已洞悉「${def.name}」`, 'rare')
+  else if (lastStage === 2) ui.toast(`已知「${def.name}」路数`, 'info')
   return true
 }
 
@@ -276,10 +276,10 @@ export function studyTick(dtSec: number): void {
     const gain = Math.min(room, lore.studyFrac)
     lore.studyFrac -= gain
     const after = lore.addRecipeMastery(target, gain)
-    // 读通要有一声:与翻出新方、灵材通晓、敌人洞悉同族,挂机等来的里程碑不许静默。
+    // 读通不静默(与翻出新方、灵材通晓、敌人洞悉同族)
     if (after >= 1) {
       const def = pillDef(target)
-      if (def) useUiStore().toast(`丹方已通晓:「${def.name}」火候节点烂熟于心`, 'rare')
+      if (def) useUiStore().toast(`丹方已通晓「${def.name}」`, 'rare')
     }
     return
   }
@@ -292,10 +292,10 @@ export function studyTick(dtSec: number): void {
   }
   lore.studyFrac -= NEW_RECIPE_COST
   studyRecipe(found.id, NEW_RECIPE_START)
-  useUiStore().toast(`藏经阁中翻出一张丹方:「${found.name}」`, 'rare')
+  useUiStore().toast(`得丹方「${found.name}」`, 'rare')
 }
 
-/** 入门修士都会的三张方子 —— 不会做这几样,连炉都开不了 */
+/** 入门修士都会的三张方子 */
 const STARTER_RECIPES = ['p_jvqisan', 'p_jvqidan', 'p_huichun'] as const
 /** 旧存档折算的掌握度(旧口径下"能炼"只代表够级,不给 1) */
 const LEGACY_MASTERY = 0.7

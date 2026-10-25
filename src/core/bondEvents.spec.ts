@@ -8,11 +8,27 @@ import { RandomService, mulberry32 } from '@/utils/random'
 import {
   BOND_EVENTS,
   LEAN_COUNTERS,
+  TRIGGER_NAMES,
+  bondEventView,
   leanFromCounters,
   resolveChoice,
   sheDecidesNow
 } from '@/data/bondEvents'
-import { daoluDef, stageIndex as stageIdxOf } from '@/data/daolu'
+import {
+  DAOLU,
+  ENDING_NAMES,
+  LEAN_NAMES,
+  STAGE_GATES,
+  STAGE_NAMES,
+  TA,
+  TEMPER_NAMES,
+  bondText,
+  daoluDef,
+  daoluView,
+  stageIndex as stageIdxOf,
+  type DaoluDef
+} from '@/data/daolu'
+import { RESPONSE_NAMES, SPARK_NAMES, intentFor, respondTo, type BondIntent } from '@/data/bondIntent'
 import {
   PERIL_SAFE_ACCORD,
   PERIL_SAFE_TRUST,
@@ -25,10 +41,15 @@ import {
   playerLean,
   offerBondEvent,
   pendingBondEvent,
-  pendingIntent
+  pendingIntent,
+  respondIntent,
+  sparkIntent,
+  speakIntent
 } from './daoluService'
+import { useBondOverview } from '@/composables/useBondOverview'
 import { usePlayerStore } from '@/stores/player'
 import { useQuestsStore } from '@/stores/quests'
+import { useUiStore } from '@/stores/ui'
 
 const SRC = readFileSync(resolve(__dirname, 'daoluService.ts'), 'utf-8')
 const CODE = SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
@@ -397,5 +418,289 @@ describe('共命之险 · 在真实路径上够得着', () => {
     }
     expect(seen.has('be_jie'), '「共劫」够不着 —— 道侣陨落又成了没有触发路径的特例').toBe(true)
     console.log(`\n历练「濒死」情境可遇:${[...seen].join('、')}`)
+  })
+})
+
+/**
+ * 道侣代词:道侣有男有女,共用文案一律写 {ta},上屏前按本人性别换成 她/他。
+ *
+ * 故障注入:把任一条事件文案里的 {ta} 改回「她」→「数据守卫」红;
+ * 去掉 pendingBondEvent 里的渲染 →「上屏路径」红。
+ */
+describe('道侣代词 · 性别', () => {
+  it('十位道侣各有性别;速写写明「女修」的必为女', () => {
+    expect(Object.fromEntries(DAOLU.map(d => [d.id, d.gender]))).toEqual({
+      dl_qingli: 'f',
+      dl_zhaoyan: 'm',
+      dl_muyan: 'f',
+      dl_hanzheng: 'm',
+      dl_yunshu: 'f',
+      dl_ligu: 'm',
+      dl_baiwei: 'f',
+      dl_zhongli: 'm',
+      dl_xuewu: 'f',
+      dl_cangming: 'm'
+    })
+    for (const d of DAOLU) if (d.brief.includes('女修')) expect(d.gender, d.name).toBe('f')
+  })
+
+  it('同一句模板:男道侣渲染为「他」,女道侣渲染为「她」', () => {
+    const tpl = BOND_EVENTS.find(e => e.id === 'be_relic')!.text
+    expect(tpl).toContain(TA)
+    const male = bondText(tpl, daoluDef('dl_zhaoyan')!.gender)
+    const female = bondText(tpl, daoluDef('dl_qingli')!.gender)
+    expect(male.startsWith('你与他循着')).toBe(true)
+    expect(male).not.toContain('她')
+    expect(female.startsWith('你与她循着')).toBe(true)
+    expect(female).not.toContain('他')
+  })
+})
+
+/** 不指道侣的「他」:逐条写明指谁,守卫只放过这些 */
+const NOT_DAOLU: Record<string, string> = {
+  他人: '「别人」,不是代词',
+  他法: '「别的法子」,不是代词',
+  他方才还在设伏: '刀下:跪地的散修',
+  放他走: '刀下:散修',
+  不管他: '刀下:散修'
+}
+
+function stripNotDaolu(text: string): string {
+  return Object.keys(NOT_DAOLU).reduce((s, w) => s.split(w).join(''), text)
+}
+
+function intentStub(d: DaoluDef, responses: BondIntent['responses']): BondIntent {
+  return { daoluId: d.id, ...intentFor(d), ripeness: 2, sparks: [], raised: 1, responses, settled: false }
+}
+
+/** 道侣文本数据里一切可能上屏的字串(未渲染的模板),逐字段收齐 */
+function bondCorpus(): { where: string; text: string }[] {
+  const out: { where: string; text: string }[] = []
+  const walk = (where: string, v: unknown): void => {
+    if (typeof v === 'string') out.push({ where, text: v })
+    else if (Array.isArray(v)) v.forEach((x, i) => walk(`${where}[${i}]`, x))
+    else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) walk(`${where}.${k}`, x)
+  }
+  walk('BOND_EVENTS', BOND_EVENTS)
+  walk('DAOLU', DAOLU)
+  walk('STAGE_GATES', STAGE_GATES)
+  walk('SPARK_NAMES', SPARK_NAMES)
+  walk('RESPONSE_NAMES', RESPONSE_NAMES)
+  walk('TRIGGER_NAMES', TRIGGER_NAMES)
+  walk('STAGE_NAMES', STAGE_NAMES)
+  walk('ENDING_NAMES', ENDING_NAMES)
+  walk('LEAN_NAMES', LEAN_NAMES)
+  walk('TEMPER_NAMES', TEMPER_NAMES)
+  for (const d of DAOLU) {
+    walk(`intentFor(${d.id})`, intentFor(d))
+    for (const responses of [[], ['ignore', 'ignore']] as BondIntent['responses'][]) {
+      for (const r of ['accept', 'refuse', 'ignore'] as const) {
+        walk(`respondTo(${d.id},${r},${responses.length})`, respondTo(d, intentStub(d, responses), r).text)
+      }
+    }
+  }
+  return out
+}
+
+describe('道侣代词 · 数据守卫', () => {
+  it('道侣文本数据里不再有裸「她/他」指代道侣', () => {
+    const corpus = bondCorpus()
+    expect(corpus.length, '语料没收上来,判据会假绿').toBeGreaterThan(150)
+    const bare = corpus.filter(c => /[她他]/.test(stripNotDaolu(c.text))).map(c => `${c.where}: ${c.text}`)
+    expect(bare, '指道侣的代词写 {ta}').toEqual([])
+    // 放行名单逐条都得真用得上,过期的条目会把将来的裸代词放过去
+    for (const w of Object.keys(NOT_DAOLU)) {
+      expect(corpus.some(c => c.text.includes(w)), `放行名单「${w}」已无出处`).toBe(true)
+    }
+  })
+
+  it('每位道侣渲染全部事件、选项、结果后不残留占位,代词与本人一致', () => {
+    for (const d of DAOLU) {
+      const want = d.gender === 'm' ? '他' : '她'
+      const wrong = d.gender === 'm' ? '她' : '他'
+      const pairs: [string, string][] = []
+      for (const ev of BOND_EVENTS) {
+        const view = bondEventView(ev, d.gender)
+        expect(view.id).toBe(ev.id)
+        pairs.push([ev.title, view.title], [ev.text, view.text], [ev.herWish, view.herWish], [ev.herLimit, view.herLimit])
+        if (ev.sheDecides) pairs.push([ev.sheDecides.line, view.sheDecides!.line])
+        ev.choices.forEach((ch, i) => {
+          pairs.push([ch.label, view.choices[i]!.label], [ch.outcome.text, view.choices[i]!.outcome.text])
+        })
+      }
+      const shown = daoluView(d)
+      pairs.push([d.brief, shown.brief], [d.pursuit, shown.pursuit], [d.taboo, shown.taboo])
+      for (const s of Object.values(SPARK_NAMES)) pairs.push([s, bondText(s, d.gender)])
+      const intent = intentFor(d)
+      pairs.push([intent.line, bondText(intent.line, d.gender)], [intent.wish, bondText(intent.wish, d.gender)])
+      for (const [raw, out] of pairs) {
+        expect(out, `${d.name}:${raw}`).not.toMatch(/[{}]/)
+        expect(stripNotDaolu(out), `${d.name}:${out}`).not.toContain(wrong)
+        if (raw.includes(TA)) expect(out, `${d.name}:${raw}`).toContain(want)
+      }
+    }
+    // 渲染出的是新对象,数据本身仍是模板
+    expect(BOND_EVENTS.find(e => e.id === 'be_relic')!.text).toContain(TA)
+  })
+
+  it('道侣的服务、投影与弹窗代码里不手写「她/他」', () => {
+    const strip = (s: string): string =>
+      s
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/.*$/gm, '')
+    const files = ['daoluService.ts', '../composables/useBondOverview.ts', '../components/character/BondDialog.vue']
+    for (const f of files) {
+      const code = strip(readFileSync(resolve(__dirname, f), 'utf-8'))
+      expect(code.match(/.*[她他].*/g) ?? [], f).toEqual([])
+    }
+    const dialog = strip(readFileSync(resolve(__dirname, '../components/character/BondDialog.vue'), 'utf-8'))
+    // 弹窗自己写的标签走投影给的代词,经历名走同一个渲染口
+    expect(dialog).toContain('{{ pronoun }}所求')
+    expect(dialog).toContain('ta(SPARK_NAMES[s])')
+  })
+})
+
+describe('道侣代词 · 上屏路径', () => {
+  /** 摆好一段知交关系,待决事件为 eventId;信任契合都压低,好让表态、离去、殒落都走一遍 */
+  function setUp(daoluId: string, eventId: string): void {
+    setActivePinia(createPinia())
+    meet(daoluId)
+    const player = usePlayerStore()
+    player.setBond({
+      ...player.bond!,
+      stage: 'confidant',
+      fate: 60,
+      trust: 10,
+      accord: 10,
+      shared: 4,
+      opportunities: 20,
+      nextEventAt: 0,
+      pendingEventId: eventId
+    })
+  }
+
+  for (const [daoluId, gender] of [
+    ['dl_zhaoyan', 'm'],
+    ['dl_qingli', 'f']
+  ] as const) {
+    it(`${daoluId}:待决事件、表态、选择结果与提示条按本人性别渲染`, () => {
+      const def = daoluDef(daoluId)!
+      expect(def.gender).toBe(gender)
+      expect(TA).toBe('{ta}')
+      const p = gender === 'm' ? '他' : '她'
+      const wrong = gender === 'm' ? '她' : '他'
+      let checked = 0
+      for (const ev of BOND_EVENTS) {
+        for (const ch of ev.choices) {
+          setUp(daoluId, ev.id)
+          const shown = pendingBondEvent()!
+          expect(shown.id).toBe(ev.id)
+          expect(shown.text).toBe(ev.text.split(TA).join(p))
+          expect(shown.herWish).toBe(ev.herWish.split(TA).join(p))
+          expect(shown.herLimit).toBe(ev.herLimit.split(TA).join(p))
+          expect(shown.choices.map(c => c.label)).toEqual(ev.choices.map(c => c.label.split(TA).join(p)))
+          const stance = herStance(shown)
+          if (ev.sheDecides) {
+            expect(stance).toBe(ev.sheDecides.line.split(TA).join(p))
+            // 传原始定义进来也得换好
+            expect(herStance(ev)).toBe(stance)
+          }
+          const r = chooseBondEvent(ev.id, ch.id)!
+          expect(r.text.startsWith(ch.outcome.text.split(TA).join(p))).toBe(true)
+          const texts = [r.text, stance ?? '', ...useUiStore().toasts.map(t => t.text)]
+          for (const t of texts) {
+            expect(t).not.toMatch(/[{}]/)
+            expect(stripNotDaolu(t), t).not.toContain(wrong)
+          }
+          checked += 1
+        }
+      }
+      expect(checked).toBe(BOND_EVENTS.reduce((n, e) => n + e.choices.length, 0))
+    })
+  }
+
+  it('男道侣自己提的事:开口提示、弹窗所见、回应结果都是「他」', () => {
+    meet('dl_zhaoyan')
+    advanceBond({ fate: 40, trust: 25, shared: true })
+    let spoke = false
+    for (let i = 0; i < 40 && !spoke; i += 1) {
+      sparkIntent('omen')
+      spoke = speakIntent() !== null
+    }
+    expect(spoke).toBe(true)
+    const def = daoluDef('dl_zhaoyan')!
+    const line = bondText(intentFor(def).line, 'm')
+    expect(line.startsWith('他')).toBe(true)
+    expect(useUiStore().toasts.map(t => t.text)).toContain(line)
+    expect(pendingIntent()!.line).toBe(line)
+    const ov = useBondOverview()
+    expect(ov.herIntent.value!.line).toBe(line)
+    expect(ov.pronoun.value).toBe('他')
+    expect(ov.ta(SPARK_NAMES.supported)).toBe('你站在他那边')
+    for (const r of ['refuse', 'ignore'] as const) {
+      const after = respondIntent(r)
+      if (after) expect(after.text).not.toMatch(/[{}她]/)
+      sparkIntent('omen')
+      speakIntent()
+    }
+    for (const t of useUiStore().toasts) expect(t.text).not.toMatch(/[{}她]/)
+  })
+
+  it('人物卡投影:所求与底线里指本人的代词按性别换好,意图存的是换好的整句', () => {
+    meet('dl_hanzheng')
+    const ov = useBondOverview()
+    expect(ov.bondDef.value!.pursuit).toBe('找到当年灭他满门的那个人')
+    expect(ov.pronoun.value).toBe('他')
+    advanceBond({ fate: 40, trust: 25, shared: true })
+    sparkIntent('omen')
+    expect(currentBond()!.intent!.wish).toBe('找到当年灭他满门的那个人')
+    expect(currentBond()!.intent!.line.startsWith('他')).toBe(true)
+
+    setActivePinia(createPinia())
+    meet('dl_ligu')
+    expect(useBondOverview().bondDef.value!.taboo).toBe('不许他人碰他未成的器胚')
+
+    setActivePinia(createPinia())
+    meet('dl_baiwei')
+    const f = useBondOverview()
+    expect(f.pronoun.value).toBe('她')
+    expect(f.ta(SPARK_NAMES.crossed)).toBe('你越过了她的线')
+  })
+
+  it('旧档:待决事件存的是 id,读档后按性别渲染;意图存的整句原样保留', () => {
+    const player = usePlayerStore()
+    const oldLine = '他把剑横在膝上:「这柄铁剑,我想带它去个地方。」'
+    player.$patch({
+      bond: {
+        daoluId: 'dl_zhaoyan',
+        stage: 'confidant',
+        fate: 60,
+        trust: 60,
+        accord: 60,
+        shared: 4,
+        metAt: 1,
+        fallen: false,
+        doneEvents: [],
+        pendingEventId: 'be_relic',
+        opportunities: 20,
+        nextEventAt: 0,
+        lastKind: null,
+        intent: {
+          daoluId: 'dl_zhaoyan',
+          wish: '把那柄铁剑养到出鞘',
+          line: oldLine,
+          ripeness: 2,
+          sparks: ['omen'],
+          raised: 1,
+          responses: [],
+          settled: false
+        },
+        intentPending: true
+      }
+    })
+    player.sanitize()
+    expect(pendingBondEvent()!.text.startsWith('你与他循着')).toBe(true)
+    expect(pendingIntent()!.line).toBe(oldLine)
   })
 })

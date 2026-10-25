@@ -104,13 +104,9 @@
 
   onMounted(() => {
     unsubscribeTheme = initTheme(() => settings.theme)
-    /*
-     * 存档写不进去必须让玩家知道:静默失败意味着从现在起的进度都不会进档,
-     * 而他可能正玩得兴起。这里只说两件事 —— 出事了(并给出可做的事:导出备份),
-     * 以及什么时候好了。反复失败不重复弹(订阅只在状态翻转时回调)。
-     */
+    // 存档写入失败 / 恢复各报一次:订阅只在状态翻转时回调
     unsubscribeSaveFailure = subscribeSaveWriteFailure(failure => {
-      if (failure) ui.toast('存档写入失败 —— 浏览器存储可能已满,建议先导出备份', 'warn')
+      if (failure) ui.toast('存档写入失败', 'warn')
       else ui.toast('存档已恢复写入', 'info')
     })
     engine.start()

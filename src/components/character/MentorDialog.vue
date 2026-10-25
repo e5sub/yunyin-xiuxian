@@ -16,7 +16,6 @@
       </p>
     </div>
     <div v-else class="space-y-2.5">
-      <p class="text-[12px] leading-relaxed text-ink-faint">师承,是你在凡界遇见的良师相赠的一份心法。拜入门下,得一条相合之增益;言行与师道相契,师尊自有嘉许 —— 纵偶有不契,也不至受罚。</p>
       <button
         v-for="m in mentorChoicesList"
         :key="m!.id"

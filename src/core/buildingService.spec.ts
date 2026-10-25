@@ -72,8 +72,8 @@ describe('buildingUpgradeInfo · 资源检查与列差', () => {
     const oreOnly = buildingShortfall(need.stone, need.ore)
     expect(oreOnly.side).toBe('ore')
     expect(oreOnly.ore).toBe(2)
-    expect(oreOnly.reason).toContain('玄铁 2 块')
-    expect(oreOnly.reason).not.toContain('尚差')
+    expect(oreOnly.reason).toContain('玄铁尚差 2 块')
+    expect(oreOnly.reason).not.toContain('灵石')
   })
 
   it('资源不足时单升拒因与卡面同源,不退回「灵石或玄铁」', () => {

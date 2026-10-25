@@ -13,10 +13,10 @@ export const DAO_SOURCE_ROLE = '此世消耗' as const
 /** 道果:跨世保留的长期成长资源 */
 export const DAO_FRUIT_ROLE = '永久积累' as const
 
-/** 道源用途一句话 */
-export const DAO_SOURCE_USAGES = ['叩问天界诸界', '参加天道试炼', '献祭前尘杂物', '凝聚道果']
-/** 道果用途一句话 */
-export const DAO_FRUIT_USAGES = ['提升转世后的长期收益', '跨世保留,永不磨灭']
+/** 道源用途(标签) */
+export const DAO_SOURCE_USAGES = ['叩问诸界', '天道试炼', '献祭杂物', '凝聚道果']
+/** 道果用途(标签) */
+export const DAO_FRUIT_USAGES = ['提升长期收益']
 
 // ---------- S2 资源说明(弹窗内容,纯数据) ----------
 
@@ -36,10 +36,10 @@ export function daoSourceDialog(): ResourceDialogData {
     name: '道源',
     role: DAO_SOURCE_ROLE,
     roleTone: 'action',
-    intro: '真仙之后用于叩问天道的资源。灵草唯仙品起可献祭;凡/灵品只走坊市换灵石。',
+    intro: '真仙后的终局资源 · 灵草仅仙品起可献祭',
     usages: DAO_SOURCE_USAGES,
     gains: ['破界', '天道试炼', '天道挑战', '天道熔炉'],
-    lifecycle: '本世使用,可通过凝道果转化为永久成长。'
+    lifecycle: '本世使用 · 可凝为道果'
   }
 }
 
@@ -48,10 +48,10 @@ export function daoFruitDialog(): ResourceDialogData {
     name: '道果',
     role: DAO_FRUIT_ROLE,
     roleTone: 'permanent',
-    intro: '跨越轮回仍不磨灭的修行成果。',
+    intro: '跨世成长资源',
     usages: DAO_FRUIT_USAGES,
     gains: ['道源凝聚', '终局奖励'],
-    lifecycle: `跨世保留。每枚至多:修行 +${formatPercent(DAO_FRUIT_CULT_BONUS)},道躯 +${formatPercent(DAO_FRUIT_COMBAT_BONUS)};边际渐减(effectiveDaoFruit=道果^0.9)。`
+    lifecycle: `跨世保留 · 每枚至多 修行 +${formatPercent(DAO_FRUIT_CULT_BONUS)} · 道躯 +${formatPercent(DAO_FRUIT_COMBAT_BONUS)} · 边际渐减`
   }
 }
 
@@ -73,21 +73,17 @@ export function fruitMarginalInfo(): { total: number; effective: number; nextEff
 }
 
 /**
- * 道果软上限白话文案 —— 如实报出「再凝一枚」的真实边际,不再堆一个夸大的字眼。
- *
- * 边际永远存在,且直接源自 DAO_FRUIT_SOFT_EXP(effectiveDaoFruit = 道果^0.9):
- * 即便 20 枚以后,再凝一枚仍带来约 +4.5% 有效收益(≈+2% 修行),并非「微乎其微」。
- * 故文案不设「已逾二十即微乎其微」这种与数据对不上的硬编码断言,而是从
- * effectiveDaoFruit 现算两个百分比(有效收益、修行)写出来 —— 改指数即同步变真。
+ * 道果软上限文案:现算「再凝一枚」的有效收益与修行两个百分比,不写「微乎其微」这类硬编码断言。
+ * 同源:DAO_FRUIT_SOFT_EXP(effectiveDaoFruit = 道果^0.9)。
  */
 export function fruitSoftCapText(total: number): string {
-  if (total <= 0) return '尚未凝得道果。'
+  if (total <= 0) return '尚未凝得道果'
   const eff = effectiveDaoFruit(total)
   const next = effectiveDaoFruit(total + 1)
   const marginalEff = next - eff
   const effPct = (marginalEff / eff) * 100
   const cultPct = marginalEff * DAO_FRUIT_CULT_BONUS * 100
-  return `道果已 ${total} 枚:再凝一枚,有效收益 +${effPct.toFixed(1)}%,修行 +${cultPct.toFixed(1)}%——收益渐减,仍属永久。`
+  return `道果已 ${total} 枚 · 再凝一枚 有效收益 +${effPct.toFixed(1)}% · 修行 +${cultPct.toFixed(1)}%`
 }
 
 // ---------- S4/S5 首次教学 ----------
@@ -114,10 +110,23 @@ export function markFruitTutorialSeen(): void {
   useEndgameStore().daoFruitTutorialSeen = true
 }
 
-// ---------- S6 行为埋点(轻量) ----------
+/** 道果说明打开后这段时间内的关闭不作数:「知道了」盖在「道果 +1」上,连点第二下会关掉一次性说明 */
+export const FRUIT_TUTORIAL_CLOSE_GUARD_MS = 400
+
+export function fruitTutorialClosable(openedAt: number, now: number): boolean {
+  return now - openedAt >= FRUIT_TUTORIAL_CLOSE_GUARD_MS
+}
+
+/** 道果说明的关闭请求:保护期内不作数;作数才置已见 */
+export function dismissFruitTutorial(openedAt: number, now: number): boolean {
+  if (!fruitTutorialClosable(openedAt, now)) return false
+  markFruitTutorialSeen()
+  return true
+}
+
+// ---------- S6 行为埋点 ----------
 
 export interface ResourceCognitionStats {
-  /** 道源总数 */
   daoSource: number
   daoFruit: number
   /** 是否见过终局教学 */

@@ -52,11 +52,11 @@ export function chooseDaoPath(id: DaoPathId): boolean {
   const def = daoPathDef(id)
   if (!def) return false
   if (!endgame.chooseDao(id)) {
-    ui.toast('此生道途已定,来世方可另择', 'warn')
+    ui.toast('此生道途已定', 'warn')
     return false
   }
   recordMilestone('first_dao')
-  ui.toast(`你于天穹之下立誓——此生行${def.name}`, 'rare')
+  ui.toast(`已择${def.name}`, 'rare')
   return true
 }
 
@@ -77,13 +77,13 @@ export function furnaceConvert(rate: FurnaceRate): number {
   const have = rate.resource === 'herb' ? resources.herbMeltable : resources[rate.resource]
   const daoSource = Math.floor(have / rate.per)
   if (daoSource <= 0) {
-    ui.toast(`${rate.name}尚差 ${furnaceMaterialShortfall(rate)},不够熔铸一缕道源`, 'warn')
+    ui.toast(`${rate.name}尚差 ${furnaceMaterialShortfall(rate)}`, 'warn')
     return 0
   }
   const spent = daoSource * rate.per
   const ok = rate.resource === 'herb' ? resources.spendHerbMeltable(spent) : resources.spendSmall(rate.resource, spent)
   if (!ok) {
-    ui.toast(`${rate.name}尚差 ${furnaceMaterialShortfall(rate)},不够熔铸一缕道源`, 'warn')
+    ui.toast(`${rate.name}尚差 ${furnaceMaterialShortfall(rate)}`, 'warn')
     return 0
   }
   endgame.addDaoSource(daoSource)
@@ -104,7 +104,7 @@ export function furnaceConvertStone(): boolean {
   const cost = furnaceStoneCost()
   if (!resources.spendStone(cost)) {
     const short = subClamp(cost, resources.spiritStone)
-    ui.toast(`尚差 ${formatGN(short)} 石`, 'warn')
+    ui.toast(`灵石尚差 ${formatGN(short)}`, 'warn')
     return false
   }
   endgame.addDaoSource(FURNACE_STONE_DAO_SOURCE)
@@ -123,15 +123,8 @@ export function condenseDaoFruit(): boolean {
     return false
   }
   player.addDaoFruit(1)
-  const first = !endgame.daoFruitTutorialSeen
-  if (first) endgame.daoFruitTutorialSeen = true
-  // S5 首次道果教学:即时因果解释,建立"现在拿道果 = 以后更强"
-  ui.toast(
-    first
-      ? `${DAO_SOURCE_PER_FRUIT} 缕道源凝作一枚道果——此物不随此身而灭,转世仍归你所有,来世修行更快。`
-      : `${DAO_SOURCE_PER_FRUIT} 缕道源凝作一枚道果`,
-    'rare'
-  )
+  // 道果说明归熔炉弹窗(resourceGuidance.daoFruitDialog),toast 只报结果;已见归玩家关掉说明时置,此处不置
+  ui.toast(`${DAO_SOURCE_PER_FRUIT} 缕道源凝作一枚道果`, 'rare')
   return true
 }
 
@@ -255,12 +248,12 @@ function markTarget(mark: DaoMark): { world?: ReturnType<typeof celestialWorldDe
 export function replayMark(mark: DaoMark): ExpeditionResult | null {
   const ui = useUiStore()
   if (!mark.replay) {
-    ui.toast('此痕年代久远,战况已不可考', 'warn')
+    ui.toast('战况不可考', 'warn')
     return null
   }
   const { world, trial } = markTarget(mark)
   if (!world && !trial) {
-    ui.toast('此界早已散于天道,无从重临', 'warn')
+    ui.toast('此界已不存在', 'warn')
     return null
   }
   const busy = endgameBusy(useEndgameStore().worldRun, usePlayerStore().secretRealm, useEndgameStore().adventureSession)
@@ -284,12 +277,10 @@ export function replayMark(mark: DaoMark): ExpeditionResult | null {
   }
   const target = (world ?? trial)!
   const rules = markRules(mark, world, trial)
-  // 忆战/重写都押了道源,卖的是「重打当年那一场」—— 用按痕定死的种子,
-  // 不随全局 rng 被别的动作推进而变(「同界同契同变数」因此才成立)
   const markRng = new RandomService(mulberry32(seedOf(mark.targetId, mark.life)))
   const report = runGauntlet(snap, foes, rules, 'healBetweenPct' in target ? target.healBetweenPct : 0.5, markRng)
-  const era = isStaleRuleset(mark.ruleset) ? `(此战录于规则纪元 ${mark.ruleset},今为 ${RULESET_VERSION},天道已变)` : ''
-  ui.toast(report.cleared ? '忆战功成——当年的你,如今依旧能赢' : '忆战未竟,当年之勇亦有时运', 'info')
+  const era = isStaleRuleset(mark.ruleset) ? `(天道已变 · 纪元 ${mark.ruleset} → ${RULESET_VERSION})` : ''
+  ui.toast(report.cleared ? '忆战功成' : '忆战未竟', 'info')
   return {
     title: `忆战 · ${mark.targetName}`,
     report,
@@ -307,7 +298,7 @@ export function rewriteMark(mark: DaoMark): ExpeditionResult | null {
   if (!mark.cleared || !mark.replay) return null
   const { world, trial } = markTarget(mark)
   if (!world && !trial) {
-    ui.toast('此界早已散于天道,无从重写', 'warn')
+    ui.toast('此界已不存在', 'warn')
     return null
   }
   const busy = endgameBusy(useEndgameStore().worldRun, usePlayerStore().secretRealm, useEndgameStore().adventureSession)
@@ -347,9 +338,9 @@ export function rewriteMark(mark: DaoMark): ExpeditionResult | null {
     trackClearRecords(mark.targetName, report.totalRounds, mark.replay.pactId, 0)
     ui.toast(`【胜于旧我】${mark.targetName}:${mark.rounds} 回合 → ${report.totalRounds} 回合`, 'rare')
   } else if (report.cleared) {
-    ui.toast(`重写功成,但未快过当年(${report.totalRounds} vs ${mark.rounds} 回合)`, 'info')
+    ui.toast(`重写功成 · 未破纪录(${report.totalRounds} vs ${mark.rounds} 回合)`, 'info')
   } else {
-    ui.toast('重写未竟——当年之你,并不好胜过', 'warn')
+    ui.toast('重写未竟', 'warn')
   }
   recordMark(mark.targetId, `重写·${mark.targetName}`, report.cleared, report.totalRounds, mark.replay.pactId, mark.context)
   return {
@@ -359,7 +350,7 @@ export function rewriteMark(mark: DaoMark): ExpeditionResult | null {
     markText: beaten
       ? `胜于旧我:${mark.rounds} → ${report.totalRounds} 回合`
       : report.cleared
-        ? `功成但未破纪录(旧痕 ${mark.rounds} 回合)`
+        ? `功成 · 未破纪录(旧痕 ${mark.rounds} 回合)`
         : `止步第 ${report.fightsWon + 1} 战`
   }
 }
@@ -372,7 +363,7 @@ export function challengeTrial(trialId: string): ExpeditionResult | null {
   const trial = trialDef(trialId)
   if (!trial || !endgameUnlocked()) return null
   if (!endgame.daoPath) {
-    ui.toast('先择道途,方可赴试炼', 'warn')
+    ui.toast('未择道途', 'warn')
     return null
   }
   const busy = endgameBusy(useEndgameStore().worldRun, usePlayerStore().secretRealm, useEndgameStore().adventureSession)
@@ -406,12 +397,12 @@ export function challengeTrial(trialId: string): ExpeditionResult | null {
     endgame.recordTrial(trial.id, report.totalRounds)
     ui.toast(
       prevBest !== undefined && report.totalRounds < prevBest
-        ? `${trial.name}新纪录!${report.totalRounds} 回合(原 ${prevBest})`
+        ? `${trial.name}新纪录,${report.totalRounds} 回合(原 ${prevBest})`
         : `${trial.name}功成,道源 +${reward}`,
       'rare'
     )
   } else {
-    ui.toast(`${trial.name}未竟(第 ${report.fightsWon + 1} 战失利)`, 'warn')
+    ui.toast(`${trial.name}未竟,止步第 ${report.fightsWon + 1} 战`, 'warn')
   }
   recordMark(trial.id, trial.name, report.cleared, report.totalRounds)
   return {

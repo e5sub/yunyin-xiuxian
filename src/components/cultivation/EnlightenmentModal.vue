@@ -27,7 +27,7 @@ function handleChoose(index: number) {
 }
 
 function handleIgnore() {
-  dismissEnlightenment() // 清模块级事件,轮询才不会把它弹回来
+  dismissEnlightenment() // 清模块级事件,否则轮询会把它弹回来
   event.value = null
 }
 
@@ -42,10 +42,9 @@ const show = computed(() => event.value !== null)
 </script>
 
 <template>
-  <!-- 背板/Esc/关闭键一律等于「忽略」:与从前点背板的语义一致 -->
+  <!-- 背板/Esc/关闭键一律等于「忽略」 -->
   <BaseModal :open="show" title="悟道顿悟" @close="handleIgnore">
-    <p class="flex items-center justify-between text-[11px] text-ink-faint">
-      <span>灵光一闪,选择一项增益</span>
+    <p class="flex items-center justify-end text-[11px]">
       <span role="status" aria-live="polite" aria-atomic="true" class="tabular text-gold-ink">{{ remaining }} 秒后自散</span>
     </p>
     <div class="mt-3 space-y-2">

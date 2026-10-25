@@ -37,11 +37,11 @@ export interface PalaceDef {
 export const PALACES: PalaceDef[] = [
   { id: 'ming', name: '命宫', domain: '一身之根本,性之所出', channel: '修行', use: '修炼速度与根基' },
   { id: 'xiongdi', name: '兄弟宫', domain: '同气与助力', channel: '同道', use: '师承与道侣之助' },
-  { id: 'fuqi', name: '夫妻宫', domain: '相与与契合', channel: '因缘', use: '道侣缘分之厚薄' },
+  { id: 'fuqi', name: '夫妻宫', domain: '相与相契', channel: '因缘', use: '道侣缘分之厚薄' },
   { id: 'zinv', name: '子女宫', domain: '生生与所养', channel: '灵兽', use: '灵兽与洞府所养' },
   { id: 'caibo', name: '财帛宫', domain: '财之所聚', channel: '财货', use: '灵石与掉落之丰' },
   { id: 'jie', name: '疾厄宫', domain: '身之强弱与所忌', channel: '道躯', use: '气血与抗劫' },
-  { id: 'qianyi', name: '迁移宫', domain: '行止与远游', channel: '行旅', use: '行止远游之象' },
+  { id: 'qianyi', name: '迁移宫', domain: '行止与远游', channel: '行旅', use: '历练在外之顺逆' },
   { id: 'jiaoyou', name: '交友宫', domain: '朋辈与部从', channel: '人脉', use: '际遇与机缘之数' },
   { id: 'guanlu', name: '官禄宫', domain: '功业与名位', channel: '征伐', use: '战阵攻伐之利' },
   { id: 'tianzhai', name: '田宅宫', domain: '所居与所积', channel: '洞府', use: '洞府产出与积蓄' },
@@ -70,12 +70,12 @@ export const STARS: StarDef[] = [
   { id: 'lianzhen', name: '廉贞', nature: '严明', gist: '化为囚气,主约束与规矩。', mods: { damageReduction: 0.02, defensePct: 0.02 } },
   { id: 'tianfu', name: '天府', nature: '库藏', gist: '南斗令星,主蓄积与安稳。', mods: { dropRate: 0.02, maxHpPct: 0.02 } },
   { id: 'taiyin', name: '太阴', nature: '柔润', gist: '月之精,主内敛与灵气之养。', mods: { qiRegen: 0.03 } },
-  { id: 'tanlang', name: '贪狼', nature: '多欲', gist: '欲望之星,主进取与所求之广。', mods: { luck: 0.03 } },
+  { id: 'tanlang', name: '贪狼', nature: '多欲', gist: '主进取与所求之广。', mods: { luck: 0.03 } },
   { id: 'jumen', name: '巨门', nature: '口舌', gist: '主言语与辨析,亦主争议。', mods: { critRate: 0.02, luck: 0.01 } },
-  { id: 'tianxiang', name: '天相', nature: '辅弼', gist: '印星辅佐,主协和与成事。', mods: { defensePct: 0.03 } },
+  { id: 'tianxiang', name: '天相', nature: '辅弼', gist: '印星,主协和与成事。', mods: { defensePct: 0.03 } },
   { id: 'tianliang', name: '天梁', nature: '荫庇', gist: '荫星,主救护与逢凶化吉。', mods: { tribulationResist: 0.03 } },
-  { id: 'qisha', name: '七杀', nature: '肃杀', gist: '将星肃杀,主威权与决断。', mods: { attackPct: 0.03 } },
-  { id: 'pojun', name: '破军', nature: '破旧', gist: '破而后立,主开路与开创。', mods: { speed: 0.02, damageBonus: 0.02 } }
+  { id: 'qisha', name: '七杀', nature: '肃杀', gist: '将星,主威权与决断。', mods: { attackPct: 0.03 } },
+  { id: 'pojun', name: '破军', nature: '破旧', gist: '主开路与开创。', mods: { speed: 0.02, damageBonus: 0.02 } }
 ]
 
 

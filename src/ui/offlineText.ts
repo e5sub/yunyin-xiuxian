@@ -6,22 +6,19 @@
 import { OFFLINE_EFFICIENCY, OFFLINE_BOSS_REWARD_MULT } from '@/data/constants'
 
 export function offlineAwayPhrase(secondsText: string, cappedText?: string): string {
-  const effNote = OFFLINE_EFFICIENCY < 1 ? ` · 离线修炼与洞府积蓄按 ${Math.round(OFFLINE_EFFICIENCY * 100)}% 计` : ''
-  if (cappedText) return `此去 ${secondsText}(收益按 ${cappedText} 结算${effNote})`
+  const effNote = OFFLINE_EFFICIENCY < 1 ? ` · 修炼与洞府 ×${Math.round(OFFLINE_EFFICIENCY * 100)}%` : ''
+  if (cappedText) return `此去 ${secondsText} · 上限 ${cappedText}${effNote}`
   return `此去 ${secondsText}${effNote}`
 }
 
-/** 离线首领战果:收益折损要带数字,别让「下线打 boss 少拿」成了哑谜(示=算) */
+/** 离线首领战果:收益折损要带数字(示=算) */
 export function offlineBossNoteText(bossName: string): string {
-  const eff =
-    OFFLINE_BOSS_REWARD_MULT < 1
-      ? `(离线战果,收益 ×${Math.round(OFFLINE_BOSS_REWARD_MULT * 100)}%)`
-      : '(离线战果)'
-  return `挂单之间,你已将【${bossName}】斩于剑下${eff}`
+  const eff = OFFLINE_BOSS_REWARD_MULT < 1 ? ` · 收益 ×${Math.round(OFFLINE_BOSS_REWARD_MULT * 100)}%` : ''
+  return `已斩【${bossName}】${eff}`
 }
 
 export function offlineAgeNote(ageYears: number): string {
-  return `此去寿元流逝 ${ageYears} 载`
+  return `寿元流逝 ${ageYears} 载`
 }
 
 /**
@@ -30,5 +27,5 @@ export function offlineAgeNote(ageYears: number): string {
  */
 export function offlineArtifactNote(entries: { name: string; count: number; wudao: number }[]): string {
   const list = entries.map(e => (e.count > 1 ? `${e.name}×${e.count}(${e.wudao} 悟道点)` : e.name))
-  return `途中拾得法宝 ${list.join('、')}`
+  return `拾得法宝 ${list.join('、')}`
 }

@@ -22,12 +22,12 @@ interface PurityCheckDef {
 }
 
 const PURITY_CHECK_DEFS: PurityCheckDef[] = [
-  // 「契合 ≥60%」是成形门槛(STYLE_MATURE_AFFINITY)的镜像 —— 判定与文案同读一枚
+  // 成形门槛 STYLE_MATURE_AFFINITY 的镜像:判定与文案同读一枚
   {
-    name: `主流派成形(契合 ≥${Math.round(STYLE_MATURE_AFFINITY * 100)}%)`,
+    name: `主流派契合 ≥${Math.round(STYLE_MATURE_AFFINITY * 100)}%`,
     ok: (_mods, _art, build) => (build?.affinity ?? 0) >= STYLE_MATURE_AFFINITY
   },
-  { name: '道路纯粹(无副体系)', ok: (_mods, _art, build) => build !== null && build.secondary === undefined },
+  { name: '无副体系', ok: (_mods, _art, build) => build !== null && build.secondary === undefined },
   { name: '法宝不过一件', ok: (_mods, art, _build) => art <= 1 },
   { name: '不修回血之术', ok: (mods, _art, _build) => modOf(mods, 'lifesteal') + modOf(mods, 'regenPerRound') < 0.02 }
 ]

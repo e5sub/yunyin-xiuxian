@@ -111,8 +111,8 @@ function firstMoveReadout(result: CombatResult): { playerSpeed: number; enemySpe
     enemySpeed,
     gapPct,
     text: f.playerFirst
-      ? `你抢先 ${playerSpeed.toFixed(2)} ≥ 敌 ${enemySpeed.toFixed(2)}`
-      : `敌先动(你 ${playerSpeed.toFixed(2)} < 敌 ${enemySpeed.toFixed(2)})`
+      ? `抢先 · 我 ${playerSpeed.toFixed(2)} ≥ 敌 ${enemySpeed.toFixed(2)}`
+      : `被抢先 · 我 ${playerSpeed.toFixed(2)} < 敌 ${enemySpeed.toFixed(2)}`
   }
 }
 
@@ -128,7 +128,7 @@ function firstMoveFinding(result: CombatResult): AnalysisFinding[] {
   if (gap <= 0) return []
   return [
     {
-      text: `先手判定是一条阈值:你 ${playerSpeed.toFixed(2)} < 敌 ${enemySpeed.toFixed(2)},被对手抢了先。先手类词条再凑 ${gap}% 即可跨过这条线(跨过即抢先,不必堆更多)。`,
+      text: `先手判定:我 ${playerSpeed.toFixed(2)} < 敌 ${enemySpeed.toFixed(2)} · 尚差 ${gap}%`,
       styleHints: ['fengmang']
     }
   ]
@@ -140,7 +140,7 @@ function foeOriginFinding(result: CombatResult): AnalysisFinding[] {
   if (!o || !hasEdge(o)) return []
   const lines = foeOriginLines(o)
   if (lines.length === 0) return []
-  return [{ text: `敌之加成(${o.label}):${lines.join(';')}`, styleHints: [] }]
+  return [{ text: `敌之加成:${lines.join(' · ')}`, styleHints: [] }]
 }
 
 function defeatFindings(p: CombatSideStats, maxHpProxy: GNum, rounds: number): AnalysisFinding[] {
@@ -148,7 +148,7 @@ function defeatFindings(p: CombatSideStats, maxHpProxy: GNum, rounds: number): A
   const pierceShare = share(p.pierceTaken, p.taken)
   if (pierceShare >= PIERCE_SHARE_WARN) {
     findings.push({
-      text: `真伤占总承伤 ${formatPercent(pierceShare, 0)},护盾与减伤被绕过`,
+      text: `真伤占承伤 ${formatPercent(pierceShare, 0)}`,
       styleHints: ['muze', 'beishui']
     })
   }
@@ -156,26 +156,26 @@ function defeatFindings(p: CombatSideStats, maxHpProxy: GNum, rounds: number): A
   const missRate = attempts > 0 ? p.missedHits / attempts : 0
   if (missRate >= MISS_RATE_WARN) {
     findings.push({
-      text: `${p.missedHits} 次出手落空(落空率 ${formatPercent(missRate, 0)}),连击与暴击难以衔接`,
+      text: `落空率 ${formatPercent(missRate, 0)}(${p.missedHits} 次)`,
       styleHints: ['gangdun', 'muze']
     })
   }
   const bigShare = share(p.biggestHitTaken, maxHpProxy)
   if (bigShare >= BIG_HIT_WARN) {
     findings.push({
-      text: `单次重击最高打掉你 ${formatPercent(bigShare, 0)} 气血,硬抗不是办法`,
+      text: `单次重击最高 ${formatPercent(bigShare, 0)} 气血`,
       styleHints: ['gangdun', 'lianji']
     })
   }
   if (rounds >= LONG_FIGHT_ROUNDS && share(p.healed, p.taken) < LOW_HEAL_SHARE) {
     findings.push({
-      text: `鏖战 ${rounds} 回合却几乎没有回复,久战无以为继`,
+      text: `鏖战 ${rounds} 回合 · 几无回复`,
       styleHints: ['muze', 'beishui']
     })
   }
   if (p.stunnedTurns >= STUN_WARN) {
     findings.push({
-      text: `${p.stunnedTurns} 个回合被震慑打断,节奏尽失`,
+      text: `被震慑 ${p.stunnedTurns} 回合`,
       styleHints: ['gangdun']
     })
   }
@@ -189,7 +189,7 @@ export function analyzeBattle(result: CombatResult, currentStyleId: string | nul
   const dataRows = battleDataRows(result)
   if (result.win) {
     return {
-      headline: `此战 ${result.rounds} 回合而胜,战后气血 ${Math.round(result.playerHpPct * 100)}%`,
+      headline: `胜于第 ${result.rounds} 回合`,
       findings: [],
       directions: [],
       dataRows
@@ -214,7 +214,7 @@ export function analyzeBattle(result: CombatResult, currentStyleId: string | nul
     })
   return {
     headline: `败于第 ${result.rounds} 回合`,
-    findings: findings.length > 0 ? findings : [{ text: '并无明显短板,只是道行尚浅——修为与装备再进一步即可', styleHints: [] }],
+    findings: findings.length > 0 ? findings : [{ text: '无明显短板', styleHints: [] }],
     directions,
     dataRows
   }

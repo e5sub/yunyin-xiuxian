@@ -1,4 +1,4 @@
-/* eslint-disable no-console -- Phase 30.8 Boss 阶段有效性审计报告 */
+/* eslint-disable no-console -- 审计报告 */
 import { describe, expect, it } from 'vitest'
 import { ENEMIES } from '@/data/enemies'
 import { REGIONS, regionDef } from '@/data/regions'
@@ -96,7 +96,7 @@ describe('Phase 30.8: Boss 阶段与机制有效性审计', () => {
       if (arch === 'berserk' && !hasBurst) mismatches.push(`${boss.name}: 狂暴但无高爆发`)
       if (arch === 'counter' && !hasMulti && !counter) mismatches.push(`${boss.name}: 反制但无多段/反击`)
       if (arch === 'truedmg' && !hasPierce) mismatches.push(`${boss.name}: 真伤但无 pierce`)
-      if (arch === 'antiheal' && !lifesteal && !hasPierce) mismatches.push(`${boss.name}: 禁疗但无回收机制`)
+      if (arch === 'antiheal' && !lifesteal) mismatches.push(`${boss.name}: 吸血型但无吸血词条`)
       if (arch === 'evasive' && !hasDodge) mismatches.push(`${boss.name}: 闪避但无闪避词条`)
       if (arch === 'attrition' && !regen && !lifesteal) mismatches.push(`${boss.name}: 消耗但无回复/吸血`)
       if (arch === 'threshold' && !shield && !hasPierce) mismatches.push(`${boss.name}: 门槛但无护盾/真伤词条`)

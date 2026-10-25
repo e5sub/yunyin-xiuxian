@@ -1,10 +1,7 @@
 <template>
   <BaseModal :open="open" title="版本与更新" @close="$emit('close')">
     <div class="space-y-4 text-[12px] leading-relaxed">
-      <p class="text-ink-faint">天道热更,皆有所记;凡破壁而来者,借此一观来路与去程。</p>
-
       <article v-for="note in RELEASE_NOTES" :key="note.version" class="card-ink px-3 py-3">
-        <!-- 版本题名:整排可点,展开/收起这一版的细则(远的版本默认收起,只摊开最近一版) -->
         <header class="flex items-center justify-between gap-2">
           <button
             type="button"

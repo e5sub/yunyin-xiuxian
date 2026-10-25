@@ -52,33 +52,33 @@ describe('凝炼装备(refineEquipment)', () => {
     expect(endgame.daoSource).toBe(100)
   })
 
-  it('装备已锁:提示"此器已锁",不动道源', () => {
+  it('装备已上锁:提示"此器已上锁",不动道源', () => {
     const inst = seedItem()
     inst.locked = true
     const endgame = useEndgameStore()
     endgame.daoSource = 100
     expect(refineEquipment(inst.uid)).toBe(false)
-    expect(useUiStore().toasts).toContainEqual(expect.objectContaining({ text: '此器已锁,先解锁再凝', kind: 'warn' }))
+    expect(useUiStore().toasts).toContainEqual(expect.objectContaining({ text: '此器已上锁', kind: 'warn' }))
     expect(endgame.daoSource).toBe(100)
   })
 
-  it('装备正穿在身上:提示"身上之物",拒绝入炉', () => {
+  it('装备正穿在身上:提示"此器已装备",拒绝入炉', () => {
     const inst = seedItem()
     const inventory = useInventoryStore()
     inventory.equipped = { weapon: inst.uid }
     expect(refineEquipment(inst.uid)).toBe(false)
     expect(useUiStore().toasts).toContainEqual(
-      expect.objectContaining({ text: '身上之物无法入炉,先卸下', kind: 'warn' })
+      expect.objectContaining({ text: '此器已装备', kind: 'warn' })
     )
   })
 
-  it('白板无构筑词条(canRefine 为假):提示"此器平平无奇"', () => {
+  it('白板无构筑词条(canRefine 为假):提示"此器无形意"', () => {
     const inst = seedItem()
     soulForge.state.canRefine = false
     const endgame = useEndgameStore()
     endgame.daoSource = 100
     expect(refineEquipment(inst.uid)).toBe(false)
-    expect(useUiStore().toasts).toContainEqual(expect.objectContaining({ text: '此器平平无奇,无形意可存', kind: 'warn' }))
+    expect(useUiStore().toasts).toContainEqual(expect.objectContaining({ text: '此器无形意', kind: 'warn' }))
     expect(endgame.daoSource).toBe(100)
   })
 
@@ -125,7 +125,7 @@ describe('凝炼装备(refineEquipment)', () => {
     expect(endgame.soulList).toEqual([soul])
     expect(progress.track).toHaveBeenCalledWith('soulsRefined')
     expect(useUiStore().toasts).toContainEqual(
-      expect.objectContaining({ text: '「玄铁重剑」形销而意存,凝作清晰·锋魂', kind: 'rare' })
+      expect.objectContaining({ text: '「玄铁重剑」凝作清晰·锋魂', kind: 'rare' })
     )
   })
 })
@@ -135,7 +135,7 @@ describe('装配器魂(wearSoul)', () => {
     setActivePinia(createPinia())
   })
 
-  it('槽位已满且是新魂:提示"神魂只容得下",不装配、返 false', () => {
+  it('槽位已满且是新魂:提示"装配已满",不装配、返 false', () => {
     const endgame = useEndgameStore()
     endgame.souls = [
       { uid: 's1', type: 'fengmang', grade: 1, fromName: 'x' },
@@ -146,7 +146,7 @@ describe('装配器魂(wearSoul)', () => {
     const equip = vi.spyOn(endgame, 'equipSoul')
 
     expect(wearSoul('s4')).toBe(false)
-    expect(useUiStore().toasts).toContainEqual(expect.objectContaining({ text: '神魂只容得下 3 缕形意,先散去一缕', kind: 'warn' }))
+    expect(useUiStore().toasts).toContainEqual(expect.objectContaining({ text: '装配已满(3 缕)', kind: 'warn' }))
     expect(equip, '槽满时不该把活交给 equipSoul').not.toHaveBeenCalled()
   })
 
@@ -169,7 +169,7 @@ describe('装配器魂(wearSoul)', () => {
       { uid: 's3', type: 'gangdun', grade: 1, fromName: 'x' }
     ]
     endgame.equippedSouls = ['s1', 's2', 's3']
-    expect(wearSoul('s1')).toBe(false) // equipSoul 见已装配 → false
+    expect(wearSoul('s1')).toBe(false)
     expect(useUiStore().toasts).toHaveLength(0)
   })
 
@@ -215,7 +215,7 @@ describe('卸下器魂(removeSoul)', () => {
     removeSoul('s1')
     expect(unequip).toHaveBeenCalledWith('s1')
     expect(endgame.equippedSouls).toEqual(['s2'])
-    expect(endgame.soulList).toHaveLength(2) // 只是卸下,不销毁灵魂
+    expect(endgame.soulList).toHaveLength(2) // 卸下不销毁
   })
 })
 
@@ -240,7 +240,7 @@ describe('散去器魂(dissolveSoul)', () => {
     expect(dissolve).toHaveBeenCalledWith('s1')
     expect(endgame.soulList).toHaveLength(0)
     expect(useUiStore().toasts).toContainEqual(
-      expect.objectContaining({ text: '清晰·锋魂散入天地', kind: 'info' })
+      expect.objectContaining({ text: '清晰·锋魂已散去', kind: 'info' })
     )
   })
 })

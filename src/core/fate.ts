@@ -80,6 +80,6 @@ export function fateFocusMods(chart: FateChart, focusStarId: string | null): Sta
 export function fateLordLine(chart: FateChart): string {
   const mine = chart.palaces.find(p => p.palace.id === 'ming')!
   const names = mine.stars.map(s => `${s.name}(${s.nature})`).join('、')
-  return `命宫落${names} —— ${mine.stars[0]!.gist}`
+  return `命宫落${names} · ${mine.stars[0]!.gist}`
 }
 

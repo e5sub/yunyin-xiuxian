@@ -11,15 +11,11 @@ import { isRetreating } from './earlyGameService'
 export interface FirstStep {
   /** 路由 */
   to: string
-  /** 按钮文字 */
+  /** 首页「第一步」格里的入口文字 */
   label: string
-  /** 一句话:现在该做什么 */
-  text: string
-  /** 一句话:为什么(不给理由的指路就是命令) */
-  hint: string
 }
 
-/** 出师的界:第一条主线「踏上仙途(突破至炼气三层)」达成 */
+/** 出师界:第一条主线「踏上仙途」达成 */
 const BEGINNER_MAIN_IDX = 0
 
 export function currentFirstStep(): FirstStep | null {
@@ -34,23 +30,10 @@ export function currentFirstStep(): FirstStep | null {
   // 闭关与历练互斥(startRetreat),闭关中不指路
   if (isRetreating()) return null
 
-  /**
-   * 修为圆满时唯一该做的是回修炼页突破。这时还把人往历练赶是错的:
-   * 新玩家九成会以为「还得多打几只」,而修为正卡在圆满线上不再涨。
-   */
+  // 修为圆满时指向突破:圆满后修为不再涨
   if (player.expFull) {
-    return {
-      to: '/cultivation',
-      label: '去突破',
-      text: '第一步 · 修为已圆满,回修炼页突破',
-      hint: '修为满了就不再涨,突破是眼下唯一能往前走的一步'
-    }
+    return { to: '/cultivation', label: '去突破' }
   }
 
-  return {
-    to: '/adventure',
-    label: '去历练',
-    text: '第一步 · 去历练走一趟',
-    hint: '历练有敌人、装备、灵草与灵石;修为自己会涨,圆满了回修炼页突破'
-  }
+  return { to: '/adventure', label: '去历练' }
 }

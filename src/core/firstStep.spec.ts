@@ -17,13 +17,11 @@ function newPlayer() {
 describe('第一步(新手起点)', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('开局新手 → 指向历练,且写清为什么', () => {
+  it('开局新手 → 指向历练', () => {
     newPlayer()
     const step = currentFirstStep()!
     expect(step.to).toBe('/adventure')
     expect(step.label).toBe('去历练')
-    expect(step.text).toContain('历练')
-    expect(step.hint).toContain('突破')
   })
 
   it('修为圆满 → 改指修炼页突破(这时还往历练赶是错的)', () => {
@@ -32,11 +30,8 @@ describe('第一步(新手起点)', () => {
     expect(player.expFull).toBe(true)
     const step = currentFirstStep()!
     expect(step.to).toBe('/cultivation')
+    // 不报层数:目标层由突破页显示
     expect(step.label).toBe('去突破')
-    expect(step.text).toContain('圆满')
-    expect(step.text).toContain('突破')
-    // 实际目标层由突破页自己亮;这张卡只负责递「该去哪点」,不另报层数
-    expect(step.text).not.toContain('层')
   })
 
   it('修为未满 → 仍指历练(圆满那一支不该提前触发)', () => {

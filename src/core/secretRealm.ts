@@ -11,7 +11,7 @@ import { ENEMIES, enemyDef } from '@/data/enemies'
 import { beastIcon } from '@/data/beastFamilies'
 import { maxTierForMajor } from '@/data/regions'
 import { HERB_GRADE_SHORT, herbGradeOfMajor } from '@/data/herbGrades'
-import { SECRET_LAYERS, SECRET_MAX_LOSSES, SECRET_REALMS, SECRET_RULES, secretRealmDef, type SecretRealmDef } from '@/data/secretRealms'
+import { SECRET_LAYERS, SECRET_MAX_LOSSES, SECRET_REALMS, SECRET_RULES, secretRealmDef, secretRuleByText, type SecretRealmDef } from '@/data/secretRealms'
 import { resolveCombat } from './combat'
 import { mergeRules, worldFoeSnap } from './gauntlet'
 import { buildPlayerSnap } from './playerSnap'
@@ -19,6 +19,7 @@ import { currentDaoRules } from './endgameService'
 import { stoneByTier } from './formulas'
 import { generateEquipment } from './equipGen'
 import { acquireEquipment } from './loot'
+import { harvestMaterials } from './loreService'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useUiStore } from '@/stores/ui'
@@ -85,12 +86,12 @@ export function entryShortfallOf(def: SecretRealmDef, major: number): SecretEntr
     const resources = useResourcesStore()
     if (resources.hasStone(cost.stone)) return null
     const stone = subClamp(cost.stone, resources.spiritStone)
-    return { kind: 'stone', stone, daoSource: 0, reason: `尚差 ${formatGN(stone)} 石` }
+    return { kind: 'stone', stone, daoSource: 0, reason: `灵石尚差 ${formatGN(stone)}` }
   }
   const endgame = useEndgameStore()
   if (endgame.daoSource >= cost.daoSource) return null
   const daoSource = Math.max(0, cost.daoSource - endgame.daoSource)
-  return { kind: 'daoSource', stone: gnZero(), daoSource, reason: `尚差 ${daoSource} 道源` }
+  return { kind: 'daoSource', stone: gnZero(), daoSource, reason: `道源尚差 ${daoSource}` }
 }
 
 /** 该册是否已开:至少有一处够格可入(凡境册元婴起,天界册真仙起) */
@@ -122,16 +123,11 @@ export function enterSecretRealm(defId: string): EnterResult {
   const ui = useUiStore()
   const def = secretRealmDef(defId)
   if (!def) return { ok: false, reason: '此境不存在' }
-  if (player.major < def.minMajor) return { ok: false, reason: `${def.name}需更高境界` }
-  if (player.secretRealm) return { ok: false, reason: '已在秘境之中' }
-  /**
-   * 秘境与历练/远征互斥:不许同时在两处「在途」—— 否则历练心跳还会按秘境化了的新演算。
-   *
-   * 判据与拒绝文案都取自 endgameBusy 那**唯一一份**(它的头部注释写明「拒绝文案也只写
-   * 在这里」)。此前这里手抄了两支:秘境卡按钮(读 endgameBusy 的 reason)与核心 toast
-   * 说的是同一件事的两句话,改一处必漏一处。拒绝仍要让玩家看见(静默 return 等于
-   * 「点了没反应」)。实参传 player.secretRealm 只为对齐签名,上面已先拒过「已在其中」。
-   */
+  if (player.major < def.minMajor) return { ok: false, reason: '境界未到' }
+  if (player.secretRealm) return { ok: false, reason: '身在秘境' }
+  // 秘境与历练/远征互斥。
+  // 判据与拒绝文案只取 endgameBusy,不另写;拒绝须 toast。
+  // 传 player.secretRealm 只为对齐签名,上面已拒过「身在秘境」。
   const busy = endgameBusy(endgame.worldRun, player.secretRealm, useAdventureStore().session)
   if (busy) {
     ui.toast(busy.reason, 'warn')
@@ -143,10 +139,10 @@ export function enterSecretRealm(defId: string): EnterResult {
     ui.toast(short.reason, 'warn')
     return { ok: false, reason: short.reason }
   }
-  // 扣款仍是最终权威:即便判据与扣款之间余额被别处改动,也绝不落状态。
+  // 扣款为最终权威:判据与扣款之间余额被改动也不落状态
   if (cost.kind === 'stone' ? !resources.spendStone(cost.stone) : !endgame.spendDaoSource(cost.daoSource)) {
     const latest = entryShortfallOf(def, player.major)
-    const reason = latest?.reason ?? '灵石或道源未足'
+    const reason = latest?.reason ?? '灵石或道源不足'
     ui.toast(reason, 'warn')
     return { ok: false, reason }
   }
@@ -175,7 +171,7 @@ export function enterSecretRealm(defId: string): EnterResult {
 export function secretFightRules(state: SecretRealmState, layer = state.layer): CombatRules {
   const def = secretRealmDef(state.realmId)
   const rolled = state.rules
-    .map(text => SECRET_RULES.find(r => r.text === text)?.rules)
+    .map(text => secretRuleByText(text)?.rules)
     .filter((r): r is CombatRules => !!r)
   const escalation: CombatRules = { enemyAtkMult: 1 + 0.1 * (layer - 1), enemyHpMult: 1 + 0.12 * (layer - 1) }
   const base = mergeRules(currentDaoRules(), def?.rules)
@@ -244,12 +240,13 @@ export function fightSecretLayer(): SecretLayerResult | null {
     const { stone, material: mat } = secretLayerReward(tier, state.layer, def.rewardMult)
     resources.addStone(stone)
     resources.addSmall('herb', mat)
+    harvestMaterials(tier, 'herb', mat)
     lines.push(`胜 ${snap.name} · 灵石 +${formatGN(stone)} · ${HERB_GRADE_SHORT[herbGradeOfMajor(player.major)]}灵草 +${mat}`)
     const nextLayer = state.layer + 1
     if (nextLayer > SECRET_LAYERS) {
       // 通关:最终宝藏
       const inst = generateEquipment(tier, rng, { minQualityRank: 2 })
-      lines.push(`破境而出!${acquireEquipment(inst).line}`)
+      lines.push(`获得 ${acquireEquipment(inst).line}`)
       resources.addSmall('wudao', 3)
       lines.push('悟道点 +3')
       player.setSecretRealm(null)
@@ -271,9 +268,9 @@ export function fightSecretLayer(): SecretLayerResult | null {
   lines.push(`不敌 ${snap.name} · 气血余 ${Math.round(result.playerHpPct * 100)}%`)
   if (losses >= SECRET_MAX_LOSSES) {
     player.setSecretRealm(null)
-    // 「两场」从 SECRET_MAX_LOSSES 现算:门槛写在数据里,文案跟着它走
-    lines.push(`连败 ${cnNumber(SECRET_MAX_LOSSES)} 场,被逐出秘境`)
-    ui.toast('你被逐出了秘境', 'warn')
+    // 「两场」从 SECRET_MAX_LOSSES 现算,文案跟门槛走
+    lines.push(`已败${cnNumber(SECRET_MAX_LOSSES)}场`)
+    ui.toast('被逐出秘境', 'warn')
     return { win: false, finished: true, cleared: false, lines }
   }
   player.setSecretRealm({

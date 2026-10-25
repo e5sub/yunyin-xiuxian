@@ -12,6 +12,8 @@ import {
   type BondStage,
   type DaoluDef,
   STAGE_GATES,
+  STAGE_NAMES,
+  bondText,
   daoluDef,
   stageIndex
 } from '@/data/daolu'
@@ -19,6 +21,7 @@ import {
   BOND_EVENTS,
   type BondEventDef,
   bondEventDef,
+  bondEventView,
   type BondTrigger,
   leanFromCounters,
   resolveChoice,
@@ -141,7 +144,7 @@ export function meet(daoluId: string, now = Date.now()): boolean {
     nextEventAt: EVENT_GAP,
     lastKind: null
   })
-  useUiStore().toast(`途中遇见一人——${def.name}`, 'info')
+  useUiStore().toast(`遇见${def.name}`, 'info')
   return true
 }
 
@@ -172,7 +175,7 @@ export function advanceBond(delta: BondDelta): BondState | null {
   player.setBond(next)
   if (stageIndex(next.stage) > stageIndex(b.stage)) {
     const def = daoluDef(b.daoluId)
-    useUiStore().toast(`你与${def?.name ?? '她'}的关系更进一步`, 'rare')
+    useUiStore().toast(`${def?.name ?? '道侣'}·${STAGE_NAMES[next.stage]}`, 'rare')
   }
   return next
 }
@@ -195,7 +198,7 @@ export function nextGateHint(): { stage: BondStage; lacking: string[] } | null {
   if (!next) return null
   const lacking: string[] = []
   if (b.fate < next.fate) lacking.push('缘分尚浅')
-  if (b.trust < next.trust) lacking.push('信任未足')
+  if (b.trust < next.trust) lacking.push('信任不足')
   if (b.accord < next.accord) lacking.push('道心未契')
   if (b.shared < next.shared) lacking.push('共历太少')
   return { stage: next.stage, lacking }
@@ -210,7 +213,7 @@ export function fall(): BondRecord | null {
   if (!b || b.fallen) return null
   const def = daoluDef(b.daoluId)
   player.setBond({ ...b, fallen: true })
-  useUiStore().toast(`${def?.name ?? '她'}没能走完这一世`, 'warn')
+  useUiStore().toast(`${def?.name ?? '道侣'}已殁`, 'warn')
   return { daoluId: b.daoluId, name: def?.name ?? b.daoluId, stage: b.stage, ending: 'perished', shared: b.shared }
 }
 
@@ -291,24 +294,19 @@ export function offerBondEvent(trigger: BondTrigger, rand: RandomService = rng):
   }
   const picked = rand.weighted(pool, e => weightFor(e, b))
   player.setBond({ ...b, opportunities: b.opportunities + 1, pendingEventId: picked.id })
-  useUiStore().toast(`${currentDaolu()?.name ?? '她'}似乎有话要说`, 'info')
+  useUiStore().toast(`${currentDaolu()?.name ?? '道侣'}有话说`, 'info')
   return picked
 }
 
-/** 当下待决的共同事件(供界面读取,不再由打开弹窗触发) */
+/** 当下待决的共同事件;供界面读取,打开弹窗不触发 */
 export function pendingBondEvent(): BondEventDef | null {
   const id = currentBond()?.pendingEventId
-  return id ? (bondEventDef(id) ?? null) : null
+  const ev = id ? bondEventDef(id) : undefined
+  const def = currentDaolu()
+  return ev && def ? bondEventView(ev, def.gender) : null
 }
 
-/**
- * 离线用:只攒机会点,不抽事件。
- *
- * 在线每遇到一个历练情境(首胜、败北、击破首领)都会走一次 `offerBondEvent`,
- * 由它推进机会点;离线整段没有「哪一刻」,不能替玩家抽一件待决之事
- * —— 关系怎么走必须由玩家自己选 —— 但机会点本身是「走得多才有」的记账,
- * 不该因为挂机就少攒。故这里只补记账,不碰缘分/信任/契合,也不设待决。
- */
+/** 离线用:只补记机会点;不抽事件、不设待决、不碰缘分/信任/契合 */
 export function gainBondOpportunities(n: number): void {
   const player = usePlayerStore()
   const b = player.bond
@@ -322,7 +320,8 @@ export function herStance(ev: BondEventDef): string | null {
   const b = currentBond()
   const def = currentDaolu()
   if (!b || !def) return null
-  return sheDecidesNow(ev, b, def.temper)
+  const line = sheDecidesNow(ev, b, def.temper)
+  return line === null ? null : bondText(line, def.gender)
 }
 
 export interface ChoiceResult {
@@ -366,8 +365,8 @@ export function chooseBondEvent(eventId: string, choiceId: string): ChoiceResult
     nextEventAt: b.opportunities + EVENT_GAP
   })
   advanceBond({ fate: out.fate, trust: out.trust, accord: out.accord, shared: true })
+  const text = bondText(out.text, def.gender)
 
-  // 这次选择也是一段经历 —— 它会推动或压回她自己的那个念头
   if (ch.supportsHer) sparkIntent('supported')
   if (ch.crossesTaboo) sparkIntent('crossed')
 
@@ -375,7 +374,7 @@ export function chooseBondEvent(eventId: string, choiceId: string): ChoiceResult
   if (ch.peril && !(beforeTrust >= PERIL_SAFE_TRUST && beforeAccord >= PERIL_SAFE_ACCORD)) {
     fall()
     return {
-      text: `${out.text}——可你回头时,劫云里已经没有第二个人了。`,
+      text: `${text}走出来的只有你。`,
       left: false,
       perished: true,
       reaction: 'broken'
@@ -394,13 +393,13 @@ export function chooseBondEvent(eventId: string, choiceId: string): ChoiceResult
         : 'neutral'
 
   if (left) {
-    useUiStore().toast(`${def.name}离你而去`, 'warn')
+    useUiStore().toast(`${def.name}已离去`, 'warn')
     player.setBond({ ...after, departed: true })
   }
-  return { text: out.text, left, reaction }
+  return { text, left, reaction }
 }
 
-// ============ 她自己的意图(Phase 34.1) ============
+// ============ 道侣自己的意图 ============
 
 /** 一次经历推动道侣的意图;由具体发生的事调用,不看当前关系值 */
 export function sparkIntent(spark: IntentSpark): BondIntent | null {
@@ -412,7 +411,7 @@ export function sparkIntent(spark: IntentSpark): BondIntent | null {
 
   const cur: BondIntent = b.intent ?? {
     daoluId: def.id,
-    ...intentFor(def),
+    ...intentText(def),
     ripeness: 0,
     sparks: [],
     raised: 0,
@@ -471,5 +470,11 @@ export function respondIntent(response: IntentResponse): IntentAftermath | null 
   }
   player.setBond({ ...b, intent: next, intentPending: false })
   advanceBond({ fate: after.fate, trust: after.trust, accord: after.accord, shared: response === 'accept' })
-  return after
+  return { ...after, text: bondText(after.text, def.gender) }
+}
+
+/** 意图落档存换好代词的整句,开口提示与弹窗直接用 */
+function intentText(def: DaoluDef): { wish: string; line: string } {
+  const { wish, line } = intentFor(def)
+  return { wish: bondText(wish, def.gender), line: bondText(line, def.gender) }
 }

@@ -1,43 +1,18 @@
 <template>
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
-    <!-- 基本信息:名号、境界、年龄、世数皆在全局顶栏常驻,此处不再重复 -->
+    <!-- 名号、境界、年龄、世数在全局顶栏常驻,此处不重复 -->
     <div class="card-ink px-4 py-4">
       <div class="flex items-center justify-between">
-        <button class="-my-1 py-1.5 text-left active:opacity-60" @click="powerOpen = !powerOpen">
+        <button class="-my-1 py-1.5 text-left active:opacity-60" @click="powerOpen = true">
           <span class="text-[10px] tracking-[0.3em] text-ink-faint">战 力</span>
-          <span class="ml-1 text-[9px] text-ink-faint">{{ powerOpen ? '▾' : '▸' }}拆解</span>
+          <span class="ml-1 text-[9px] text-ink-faint">拆解 →</span>
         </button>
         <span class="font-kai text-[18px] text-cinnabar tabular">{{ formatGN(stats.power) }}</span>
       </div>
-      <!--
-        战力是全书出现最频繁却从不解释的一个数 —— 一句算式说清它从哪来。
-        权重取自 POWER_WEIGHTS,与 powerScore 同一份,界面不手抄
-      -->
+      <!-- 战力算式:权重取自 POWER_WEIGHTS,与 powerScore 同一份 -->
       <p class="mt-0.5 text-right text-[10px] text-ink-faint tabular">{{ powerExplain }}</p>
-      <!--
-        逐行把攻/防/血各折算多少摊开,合计又对上总战力 —— 「拆解」不是另起口径,
-        读的与 powerScore 同一批属性同一份权重。
-      -->
-      <div v-if="powerOpen" class="mt-2 rounded-md bg-paper-deep/60 px-2.5 py-2 text-[10px]">
-        <p v-for="row in powerRows" :key="row.name" class="flex items-center justify-between">
-          <span class="text-ink-faint">{{ row.name }}</span>
-          <span class="tabular">
-            {{ formatGN(row.raw) }} ×{{ row.weight }} = <span class="text-azure">{{ formatGN(row.value) }}</span>
-          </span>
-        </p>
-        <p class="mt-1 flex items-center justify-between border-t border-ink/8 pt-1">
-          <span class="text-ink-faint">合计</span>
-          <span class="tabular font-kai text-[12px] text-cinnabar">{{ formatGN(stats.power) }}</span>
-        </p>
-        <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">战力由此数项合计而成,每项的权重都明码在列。</p>
-      </div>
       <div class="ink-divider my-3" />
-      <!-- 灵根 -->
-      <!--
-        灵根名必须 nowrap 且不参与收缩:窄屏上「杂灵根」曾被两侧
-        (灵根圆环 + ×倍率)挤到只剩 24px 宽,一个字一行竖排下来。
-        改成一整行可换行:挤不下时让 ×倍率 落到下一行,而不是把名字压扁。
-      -->
+      <!-- 灵根名必须 nowrap 且不参与收缩(窄屏会被挤成竖排);挤不下时让 ×倍率 落到下一行 -->
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span class="shrink-0 font-kai text-[12px] tracking-widest text-ink-faint">灵根</span>
         <span class="shrink-0 whitespace-nowrap font-kai text-[13px] text-cinnabar">{{ player.linggen?.gradeName }}</span>
@@ -72,9 +47,18 @@
       </div>
     </div>
 
-    <!-- 属性 -->
     <section>
-      <SectionTitle title="道躯" />
+      <div class="flex items-center gap-2">
+        <SectionTitle title="道躯" />
+        <button
+          v-if="panelCaveats.length"
+          class="-m-2 p-2 text-ink-faint active:scale-90"
+          aria-label="属性说明"
+          @click="caveatsOpen = true"
+        >
+          <GameIcon name="circle-help" :size="14" />
+        </button>
+      </div>
       <div class="card-ink mt-2 px-4 py-3">
         <div class="grid grid-cols-3 gap-2 text-center">
           <div>
@@ -96,7 +80,7 @@
             v-for="row in modRows"
             :key="row.label"
             class="-my-1 flex justify-between py-1.5 text-left text-[11px] active:opacity-60"
-            @click="toggleBreakdown(row.key)"
+            @click="openBreakdown(row.key)"
           >
             <span class="text-ink-faint">
               {{ row.label }}
@@ -107,38 +91,15 @@
             </span>
           </button>
         </div>
-        <p v-if="modRows.length" class="mt-1 text-[9px] text-ink-faint">点一行看它从哪来</p>
-        <p
-          v-for="note in panelCaveats"
-          :key="note.key"
-          class="mt-0.5 text-[9px] leading-relaxed text-ink-faint"
-        >
-          {{ note.label }}: {{ note.caveat }}
-        </p>
-        <div v-if="breakdownRows.length" class="mt-1.5 rounded-md bg-paper-deep/60 px-2.5 py-2">
-          <p class="text-[10px] text-ink-soft">{{ STAT_NAMES[breakdownKey!] }} · 来源明细</p>
-          <p v-for="c in breakdownRows" :key="c.name" class="mt-0.5 flex justify-between text-[10px]">
-            <span class="text-ink-faint">
-              {{ c.name }}
-              <span v-if="c.onTop" class="ml-1 text-[9px] text-cinnabar">另乘</span>
-            </span>
-            <span class="tabular" :class="c.value > 0 ? 'text-azure' : 'text-cinnabar'">
-              {{ signedPercent(c.value) }}
-            </span>
-          </p>
-          <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
-            总数即各项之和;标「另乘」的不并入百分比,而是单独乘在攻防血上。
-          </p>
-        </div>
         <p v-if="softCappedNotes.length" class="mt-1.5 text-[10px] leading-relaxed text-cinnabar">
-          标「软」的,已堆到好处将尽之处:{{ softCappedNotes.join('、') }}。再叠上去,收效渐微,实乃大道有涯。
+          软上限:{{ softCappedNotes.join('、') }}
         </p>
       </div>
     </section>
 
-    <!-- 各处入口 —— 按「道途 / 缘法 / 记录」分节,每张卡带一枚题头图标,免成一列同形的卡 -->
+    <!-- 入口按「道途 / 缘法 / 记录」分节,每张卡带一枚题头图标 -->
     <section>
-      <SectionTitle title="道途" hint="流派" />
+      <SectionTitle title="道途" />
       <div class="mt-2 space-y-4">
         <RouterLink to="/build" class="card-ink flex items-center gap-3 px-4 py-3 active:scale-98">
           <GameIcon name="swords" :size="16" class="shrink-0 text-cinnabar" />
@@ -148,7 +109,7 @@
               <template v-if="build">
                 {{ build.displayName }} · 契合 {{ Math.round(build.affinity * 100) }}% · 快照 {{ loadouts.list.length }} 套
               </template>
-              <template v-else>道途尚未成路,词条与功法凑成一派便见分晓</template>
+              <template v-else>未成</template>
             </span>
           </span>
           <span class="text-[11px] text-cinnabar">参详 →</span>
@@ -159,8 +120,8 @@
           <GameIcon name="circle-user" :size="16" class="shrink-0 text-ink-soft" />
           <span class="min-w-0 grow">
             <span class="block font-kai text-[14px] tracking-[0.25em] text-ink">修行画像</span>
-            <!-- 画像叙述是这一页最有「人味」的一行,一行截断会拦腰断句 —— 给两行 -->
-            <span class="line-clamp-2 text-[10px] leading-relaxed text-ink-faint">「{{ identity?.epithet ?? '云隐散人' }}」 · {{ identity?.narrative ?? '足迹尚浅' }}</span>
+            <!-- 叙述给两行:一行截断会拦腰断句 -->
+            <span class="line-clamp-2 text-[10px] leading-relaxed text-ink-faint">「{{ identity?.epithet ?? '云隐散人' }}」 · {{ identity?.narrative ?? '暂无记录' }}</span>
           </span>
           <span class="shrink-0 text-[11px] text-ink-soft">展卷 →</span>
         </button>
@@ -170,7 +131,7 @@
           <span class="min-w-0 grow">
             <span class="block font-kai text-[14px] tracking-[0.25em] text-ink">名号与灵兽</span>
             <span class="block truncate text-[10px] text-ink-faint">
-              {{ currentTitleName ?? '未佩称号' }} · {{ currentPetName ?? '未伴灵兽' }}
+              {{ currentTitleName ?? '未佩名号' }} · {{ currentPetName ?? '未伴灵兽' }}
             </span>
           </span>
           <span class="text-[11px] text-jade">整理 →</span>
@@ -178,17 +139,15 @@
       </div>
     </section>
 
-    <!-- 缘法:这一世遇见的人 -->
     <section>
-      <SectionTitle title="缘法" hint="师承道侣" />
+      <SectionTitle title="缘法" />
       <div class="mt-2 space-y-4">
-        <!-- 师承(Phase 31 S1):修行理念 + 师尊评价 -->
         <button class="card-ink flex w-full items-center gap-3 px-4 py-3 text-left active:scale-98" @click="mentorDialog = true">
           <GameIcon name="scroll" :size="16" class="shrink-0 text-azure" />
           <span class="min-w-0 grow">
             <span class="block font-kai text-[14px] tracking-[0.25em] text-ink">师 承</span>
             <span class="block truncate text-[10px] text-ink-faint">
-              {{ mentorVer ? `${mentorVer.mentor?.name ?? ''}·${mentorVer.mentor?.title ?? ''} | ${mentorVer.line}` : '尚未拜师,可寻一位师尊' }}
+              {{ mentorVer ? `${mentorVer.mentor?.name ?? ''}·${mentorVer.mentor?.title ?? ''} | ${mentorVer.line}` : '未拜师' }}
             </span>
           </span>
           <span class="shrink-0 text-[11px] text-azure">{{ mentorVer ? '求教 →' : '拜师 →' }}</span>
@@ -206,8 +165,8 @@
                 bondDef && bond
                   ? `${bondDef.name}·${STAGE_NAMES[bond.stage]}${bond.fallen ? '(已殁)' : ''} | ${bondDef.brief}`
                   : pastBonds.length
-                    ? `此生尚未遇见,历世曾有 ${pastBonds.length} 段同行`
-                    : '此生尚未遇见谁'
+                    ? `尚未遇见 · 历世同行 ${pastBonds.length} 段`
+                    : '尚未遇见'
               }}
             </span>
           </span>
@@ -216,9 +175,8 @@
       </div>
     </section>
 
-    <!-- 记录:走过什么、这条路从哪来 -->
     <section>
-      <SectionTitle title="记录" hint="藏珍" />
+      <SectionTitle title="记录" />
       <div class="mt-2 space-y-4">
         <RouterLink to="/collection" class="card-ink flex items-center gap-3 px-4 py-3 active:scale-98">
           <GameIcon name="gem" :size="16" class="shrink-0 text-gold-ink" />
@@ -235,7 +193,7 @@
           <GameIcon name="book" :size="16" class="shrink-0 text-ink-soft" />
           <span class="min-w-0 grow">
             <span class="block font-kai text-[14px] tracking-[0.25em] text-ink">修仙录</span>
-            <span class="block truncate text-[10px] text-ink-faint tabular">画像 · 节点 · 我的纪录——这一部只写你自己</span>
+            <span class="block truncate text-[10px] text-ink-faint tabular">画像 · 节点 · 我的纪录</span>
           </span>
           <span class="text-[11px] text-ink-soft">展卷 →</span>
         </RouterLink>
@@ -244,7 +202,7 @@
           <GameIcon name="mountain" :size="16" class="shrink-0 text-ink-soft" />
           <span class="min-w-0 grow">
             <span class="block font-kai text-[14px] tracking-[0.25em] text-ink">界域志</span>
-            <span class="block truncate text-[10px] text-ink-faint tabular">{{ cnNumber(WORLDS.length) }}界{{ cnNumber(REALMS.length) }}境 · 每一境的来路与典籍</span>
+            <span class="block truncate text-[10px] text-ink-faint tabular">{{ cnNumber(WORLDS.length) }}界{{ cnNumber(REALMS.length) }}境</span>
           </span>
           <span class="text-[11px] text-ink-soft">查阅 →</span>
         </RouterLink>
@@ -270,6 +228,45 @@
     <BondDialog :open="bondDialog" @close="bondDialog = false" />
 
     <MentorDialog :open="mentorDialog" @close="mentorDialog = false" />
+
+    <BaseModal :open="powerOpen" title="战力 · 拆解" @close="powerOpen = false">
+      <div class="rounded-md bg-paper-deep/60 px-2.5 py-2 text-[11px]">
+        <p v-for="row in powerRows" :key="row.name" class="flex items-center justify-between">
+          <span class="text-ink-faint">{{ row.name }}</span>
+          <span class="tabular">
+            {{ formatGN(row.raw) }} ×{{ row.weight }} = <span class="text-azure">{{ formatGN(row.value) }}</span>
+          </span>
+        </p>
+        <p class="mt-1 flex items-center justify-between border-t border-ink/8 pt-1">
+          <span class="text-ink-faint">合计</span>
+          <span class="tabular font-kai text-[12px] text-cinnabar">{{ formatGN(stats.power) }}</span>
+        </p>
+      </div>
+    </BaseModal>
+
+    <BaseModal :open="caveatsOpen" title="属性说明" @close="caveatsOpen = false">
+      <div class="space-y-1 rounded-md bg-paper-deep/60 px-2.5 py-2 text-[11px]">
+        <p v-for="note in panelCaveats" :key="note.key" class="flex gap-2 leading-relaxed">
+          <span class="shrink-0 text-ink">{{ note.label }}</span>
+          <span class="text-ink-faint">{{ note.caveat }}</span>
+        </p>
+      </div>
+    </BaseModal>
+
+    <BaseModal :open="breakdownOpen" :title="breakdownTitle" @close="breakdownOpen = false">
+      <div class="space-y-1 rounded-md bg-paper-deep/60 px-2.5 py-2 text-[11px]">
+        <p v-for="c in breakdownRows" :key="c.name" class="flex justify-between gap-2">
+          <span class="text-ink-faint">
+            {{ c.name }}
+            <span v-if="c.onTop" class="ml-1 text-[10px] text-cinnabar">另乘</span>
+          </span>
+          <span class="shrink-0 tabular" :class="c.value > 0 ? 'text-azure' : 'text-cinnabar'">
+            {{ signedPercent(c.value) }}
+          </span>
+        </p>
+        <p v-if="!breakdownRows.length" class="text-ink-faint">暂无数据</p>
+      </div>
+    </BaseModal>
   </div>
 </template>
 
@@ -306,6 +303,7 @@
   import { powerBreakdownRows, powerExplainText } from '@/ui/powerText'
   import SectionTitle from '@/components/common/SectionTitle.vue'
   import GameIcon from '@/components/common/GameIcon.vue'
+  import BaseModal from '@/components/common/BaseModal.vue'
   import { useBondOverview } from '@/composables/useBondOverview'
   import IdentityDialog from '@/components/character/IdentityDialog.vue'
   import BondDialog from '@/components/character/BondDialog.vue'
@@ -344,9 +342,13 @@
       return caveat ? [{ key: row.key, label: row.label, caveat }] : []
     })
   )
+  const caveatsOpen = ref(false)
 
-  /** 来源明细:点哪一行看哪一行 —— 数据来自 finalStats.breakdown,不在界面里另算 */
+  /** 来源明细:数据来自 finalStats.breakdown,不在界面里另算 */
   const breakdownKey = ref<AnyStatKey | null>(null)
+  // 关窗只收 open、不清 key:淡出过程中标题与明细不闪空
+  const breakdownOpen = ref(false)
+  const breakdownTitle = computed(() => (breakdownKey.value ? `${STAT_NAMES[breakdownKey.value]} · 来源明细` : ''))
   const breakdownRows = computed(() => {
     const key = breakdownKey.value
     if (!key) return []
@@ -355,14 +357,12 @@
       .filter(c => c.value !== 0)
   })
 
-  function toggleBreakdown(key: AnyStatKey): void {
-    breakdownKey.value = breakdownKey.value === key ? null : key
+  function openBreakdown(key: AnyStatKey): void {
+    breakdownKey.value = key
+    breakdownOpen.value = true
   }
 
-  /**
-   * 软上限从来不是暗改:越过之后超出部分按折扣计入,
-   * 折扣率取自 SOFT_CAPS 本体,不在这里手抄"折半"(各键并非同一个数)
-   */
+  /** 软上限:超出部分按折扣计入,折扣率取自 SOFT_CAPS 本体(各键不同),不手抄 */
   const softCappedNotes = computed(() =>
     modRows.value
       .filter(r => r.capped)

@@ -290,34 +290,30 @@ describe('图鉴 · 用具三类的收录深度', () => {
   })
 
   /**
-   * 同一条谎话在深度 2 那一行还有一份:「炼到九重,才算把它用透」对零重就封顶的
-   * 几件同样是假话 —— 神魔镜炼到九重,神通与炼第一重时逐字相同(实测 0/3/9 三个
-   * 等级的主体伤害 8.01/9.30/13.78 在涨,而回补三个等级全是 100%),「用透」的是
-   * 被动,不是这一句让人以为的那件法宝的全部。玩家在这一行看到的承诺,与下一行
-   * 「下一重」给的那笔账对不上。
-   *
-   * 故障注入:把深度 2 那句改回不分子女的固定文案,本条必红。
+   * 深度 2 与深度 1 共用同一句「祭炼买到什么」,按件给话。
+   * 故障注入:把深度 2 那句改回不分件的固定文案,本条红。
    */
-  it('深度 2 的提示也按件给话:零重封顶的不再拿「炼到九重才算用透」催人', () => {
+  it('深度 2 的提示也按件给话,不再拿「炼到九重才算用透」催人', () => {
     const mid = describeArtifact(artifactDef('af_shenmojing')!, 1, true)
     expect(mid.stage, '祭炼过一重即深度 2').toBe(2)
     expect(mid.hint, '神通早就到顶了,不该再拿「用透」催人').not.toContain('才算把它用透')
-    // 神魔镜只有回补满了、主体还在涨:既不能说「用透」,也不能说成只买被动
-    expect(mid.hint, '要说清楚往后买的是什么').toContain('仍让被动与神通主体各强')
+    // 神魔镜:回补已满、主体仍涨
+    expect(mid.hint, '要说清楚往后买的是什么').toContain('被动与神通主体各强')
 
-    // 阳性对照:还能涨的那一件照旧用「用透」那一句
+    // 还能涨的那一件报祭炼收益
     const fuchenMid = describeArtifact(artifactDef('af_xuanxu')!, 1, true)
-    expect(fuchenMid.hint).toContain('才算把它用透')
+    expect(fuchenMid.hint, '「才算把它用透」已删').not.toContain('才算把它用透')
+    expect(fuchenMid.hint).toContain('神通各强')
 
-    // 阳性对照:主体真的冻住的那件照旧说「只买被动」
+    // 阳性对照:主体封顶的那件照旧说「只涨被动」
     const whipMid = describeArtifact(artifactDef('af_shenbian')!, 1, true)
-    expect(whipMid.hint).toContain('只买被动')
+    expect(whipMid.hint).toContain('只涨被动')
   })
 
-  it('提示语里的重数上限从 ARTIFACT_MAX_LEVEL 现算,不是写死的「九」', () => {
+  it('提示语里的增幅从 ARTIFACT_LEVEL_BONUS 现算;「炼到九重」那句已删', () => {
     const hint = describeArtifact(artifactDef('af_xuanxu')!, 1, true).hint
-    // 句子里写的是中文数词(「九重」),故比对现算出来的那一个,而不是阿拉伯数字
-    expect(hint, `重数上限改了,提示语还在说旧数字:${hint}`).toContain(`${cnNumber(ARTIFACT_MAX_LEVEL)}重`)
+    expect(hint, `增幅改了,提示语还在说旧数字:${hint}`).toContain(formatPercent(ARTIFACT_LEVEL_BONUS))
+    expect(hint, '重数上限不再写进提示语').not.toContain(`${cnNumber(ARTIFACT_MAX_LEVEL)}重`)
   })
 
   it('丹方:已录 → 已得方 → 通晓;无方之丹到「已录」即顶并说明缘由', () => {
@@ -338,7 +334,7 @@ describe('图鉴 · 用具三类的收录深度', () => {
   it('丹方:掌握度写进脚注,未到手与通晓各自给一句话', () => {
     const craftable = PILLS.find(p => p.recipe)!
     expect(describePill(craftable, true, 0.42).foot.value).toBe('42%')
-    expect(describePill(craftable, true, 0).hint).toContain('方子还没到手')
+    expect(describePill(craftable, true, 0).hint).toContain('需得丹方')
     const top = describePill(craftable, true, 1)
     expect(top.stageName).toBe(PILL_STAGE_NAMES[PILL_STAGE_MAX])
     expect(top.badge).toBe('通')

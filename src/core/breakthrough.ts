@@ -1,8 +1,6 @@
-/**
- * 突破服务 —— 成功率计算 / 天劫 / 结算
- */
+/** 突破服务:成功率计算 / 天劫 / 结算 */
 import { mulberry32, rng } from '@/utils/random'
-import { formatNum, formatPercent, formatYears } from '@/utils/format'
+import { formatNum, formatYears } from '@/utils/format'
 import {
   breakthroughExpReason,
   breakthroughPeakReason,
@@ -52,8 +50,7 @@ export interface BreakthroughInfo {
   reason: string
   /** 修炼突破的基础成功率(未计天劫) */
   rate: number
-  rateText: string
-  /** 成功率的构成 —— 与 rate 同一批操作数,逐项可见(0 项已省略) */
+  /** rate 的构成项,与 rate 同一批操作数;0 项省略 */
   rateParts: RatePart[]
   qiCost: number
   isMajor: boolean
@@ -119,9 +116,12 @@ export function breakthroughInfo(at: number = gameNow()): BreakthroughInfo {
   const prepBonus = !needTribulation && prep.ready ? prep.bonus : 0
   const rateParts: RatePart[] = [{ label: '基础', value: baseRate }]
   if (rateMod !== 0) rateParts.push({ label: '词条加成', value: rateMod })
-  if (luckPart !== 0) rateParts.push({ label: '气运 (幸运×5%)', value: luckPart })
+  if (luckPart !== 0) rateParts.push({ label: '气运 ×5%', value: luckPart })
   if (prepBonus !== 0) rateParts.push({ label: prep.kind === 'meditate' ? '静坐调息' : '聚气丹', value: prepBonus })
-  const rate = clampRate(baseRate + rateMod + luckPart + prepBonus)
+  const rawRate = baseRate + rateMod + luckPart + prepBonus
+  const rate = clampRate(rawRate)
+  // 越过上下限的差额单列一行:各行相加正好是展示率
+  if (Math.abs(rate - rawRate) > 1e-9) rateParts.push({ label: rate < rawRate ? '封顶' : '保底', value: rate - rawRate })
   let ready = true
   let reason = ''
   if (player.atMaxRealm) {
@@ -138,7 +138,6 @@ export function breakthroughInfo(at: number = gameNow()): BreakthroughInfo {
     ready,
     reason,
     rate,
-    rateText: formatPercent(rate, 0),
     rateParts,
     qiCost,
     isMajor,
@@ -164,19 +163,19 @@ function runTribulation(targetMajor: number): { survived: boolean; log: string[]
   const stat = currentStatGuard()
   const regen = sustainScore(mods, tDef, relief)
   let hpLeft = 1 + guardScore(mods, tDef, relief) + stat.guard
-  const log: string[] = [`乌云压顶,${realmDef(targetMajor).name}劫将至——${tDef.name}之劫,共 ${waves} 道!`]
-  if (reliefFelt(relief)) log.push('你体内灵根与此劫气机隐隐相应,自有一线生路。')
+  const log: string[] = [`乌云压顶,${realmDef(targetMajor).name}劫将至。${tDef.name}之劫,共 ${waves} 道。`]
+  if (reliefFelt(relief)) log.push('你体内灵根与此劫气机相应。')
   for (let w = 1; w <= waves; w += 1) {
     hpLeft =
       hpLeft - waveDamage(tDef, mods, targetMajor, w, hpLeft, relief, weatherMult, stat) * rng.float(0.85, 1.15) + regen
     if (hpLeft <= 0) {
-      log.push(`第 ${w} 道天雷轰然落下,你护体灵光崩碎,重伤坠地……`)
+      log.push(`第 ${w} 道天雷轰然落下,你护体灵光崩碎,重伤坠地。`)
       return { survived: false, log }
     }
     const pct = Math.max(1, Math.round(hpLeft * 100))
     log.push(`第 ${w} 道天雷落下,你咬牙硬撼,气血余 ${Math.min(999, pct)}%。`)
   }
-  log.push('雷云散尽,天光重开。你于劫灰中缓缓立起——渡劫,成了!')
+  log.push('雷云散尽,你于劫灰中立起,渡劫已成。')
   return { survived: true, log }
 }
 
@@ -221,8 +220,8 @@ export function attemptBreakthrough(): BreakthroughView | null {
     const crossedWorld = info.isMajor && player.major > 0 && isWorldEntry(player.major)
     const world = crossedWorld ? worldOf(player.major) : null
     if (world) recordMilestone(`first_${world.id}`)
-    const baseMessage = `境界跃迁,天地翻覆。${realm.desc}。寿元增至 ${formatYears(player.lifespanMax)}。`
-    // 大关进阶时附上这一境的出处(可解释性:境界名不是随手堆的字)
+    const baseMessage = `${realm.desc}。寿元增至 ${formatYears(player.lifespanMax)}。`
+    // 大关进阶附这一境的出处
     const loreLine = `——「${realm.basis}」${realm.lore}`
     view = {
       success: true,
@@ -230,10 +229,11 @@ export function attemptBreakthrough(): BreakthroughView | null {
       toLabel: player.realmName,
       isMajor: info.isMajor,
       tribulationLog,
+      // 小进阶不附言:成败与境界去向弹窗已写明
       message: !info.isMajor
-        ? '灵台清明,经脉拓宽,修为更上一层。'
+        ? ''
         : world
-          ? `天地改换,山河重立。你踏入${world.name}——${world.desc}。${realm.desc},寿元增至 ${formatYears(player.lifespanMax)}。${loreLine}`
+          ? `已入${world.name}。${world.desc}。${baseMessage}${loreLine}`
           : `${baseMessage}${loreLine}`
     }
   } else {
@@ -255,7 +255,8 @@ export function attemptBreakthrough(): BreakthroughView | null {
       toLabel: info.targetLabel,
       isMajor: info.isMajor,
       tribulationLog,
-      message: info.needTribulation ? '天威难测,此番渡劫失利。所幸道基未毁,来日再战。' : '灵气逆冲,功亏一篑。你吐出一口淤血,盘膝疗伤。'
+      // 渡劫败局伤势已在劫报末行;小进阶无劫报,附一句状态
+      message: info.needTribulation ? '' : '重伤'
     }
   }
   ui.breakthrough = view

@@ -94,7 +94,7 @@ export const MAIN_QUESTS: QuestDef[] = [
   {
     id: 'q_zhenxian',
     name: '飞升仙界',
-    desc: '跨过天门,证得真仙 —— 从今往后,天不再是顶',
+    desc: '飞升真仙境',
     cond: { type: 'realm', major: 9 },
     reward: { stoneTier: 1000, wudao: 300 }
   },
@@ -107,7 +107,7 @@ export const MAIN_QUESTS: QuestDef[] = [
   {
     id: 'q_shenren',
     name: '破界入神',
-    desc: '自仙界踏入神界,证得神人境',
+    desc: '证得神人境',
     cond: { type: 'realm', major: 14 },
     reward: { stoneTier: 2500, wudao: 750 }
   },
@@ -118,7 +118,7 @@ export const MAIN_QUESTS: QuestDef[] = [
   {
     id: 'q_hundunling',
     name: '归返混沌',
-    desc: '踏入混沌海,证得混沌真灵',
+    desc: '证得混沌真灵',
     cond: { type: 'realm', major: 18 },
     reward: { stoneTier: 4800, wudao: 1600 }
   },
@@ -126,7 +126,7 @@ export const MAIN_QUESTS: QuestDef[] = [
   {
     id: 'q_hundundaozu',
     name: '万道之祖',
-    desc: '证道混沌道祖 —— 走到这里,这条路才算走到了尽头',
+    desc: '证道混沌道祖',
     cond: { type: 'realm', major: 20 },
     reward: { stoneTier: 7000, wudao: 2400 }
   }

@@ -47,7 +47,7 @@ export function mentorVerdict(mentorId: MentorId | null): MentorVerdict | null {
   } else if (affinity < -0.2) {
     line = def.narrative.unaligned
   } else {
-    line = '师尊不语,只是静静看着你。'
+    line = '师尊不语,只是看着你。'
   }
 
   return {

@@ -39,7 +39,7 @@ export const HERITAGE_DEFS: HeritageDef[] = [
     gateMajor: 3,
     effect: 'bounded-flat',
     axis: 'honor',
-    desc: '转世起始境界,保底从筑基起,而非炼气',
+    desc: '转世起始境界保底筑基',
     effectDesc: '出生时起始境界不低于筑基(major 抬一档,尊重;只此一档,不随世徒增)'
   },
   {
@@ -57,7 +57,7 @@ export const HERITAGE_DEFS: HeritageDef[] = [
     gateMajor: 7,
     effect: 'bounded-flat',
     axis: 'honor',
-    desc: '转世时,已习功法等级不再折回起手',
+    desc: '转世时,已习功法等级不折回起手',
     effectDesc: '转世交割按原等级带走各门已习功法(本作默认折回一层,此为平直保留)'
   },
   {
@@ -75,7 +75,7 @@ export const HERITAGE_DEFS: HeritageDef[] = [
     gateMajor: 9,
     effect: 'bounded-flat',
     axis: 'honor',
-    desc: '转世睁眼,即认得世间所有灵材,不按境界补认知',
+    desc: '转世即认得所有灵材',
     effectDesc: '出生时认知按最高档全带,不因本世境界受限(平直开放,非增减数值)'
   }
 ]

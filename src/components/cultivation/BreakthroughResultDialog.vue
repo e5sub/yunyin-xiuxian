@@ -32,10 +32,10 @@
           {{ line }}
         </p>
       </div>
-      <p class="mt-3 text-[12px] leading-relaxed text-ink-faint">{{ view.message }}</p>
+      <p v-if="view.message" class="mt-3 text-[12px] leading-relaxed text-ink-faint">{{ view.message }}</p>
     </div>
     <template #footer>
-      <button class="btn-seal w-full" @click="close">{{ view?.success ? '继续问道' : '收拾心情' }}</button>
+      <button class="btn-seal w-full" @click="close">知道了</button>
     </template>
   </BaseModal>
 </template>

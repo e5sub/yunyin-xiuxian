@@ -41,7 +41,7 @@ export function mansionRedirectCheck(
   if (current && current.gameDay === day) {
     if (current.worldId === worldId) return { blocked: 'already', stoneShort: gnZero(), reason: '已定向此界' }
     if (current.count >= MANSION_REDIRECT_MAX) {
-      return { blocked: 'limit', stoneShort: gnZero(), reason: '今日次数已尽' }
+      return { blocked: 'limit', stoneShort: gnZero(), reason: '今日已用尽' }
     }
   }
   const cost = gn(MANSION_REDIRECT_COST)

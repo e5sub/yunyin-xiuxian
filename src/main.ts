@@ -34,7 +34,7 @@ app.config.errorHandler = (err, _instance, info) => {
   console.error('[全局异常]', info, err)
   noteError(String(info), err)
   try {
-    useUiStore().toast('出现异常,已记入留档(设置页可查)', 'warn')
+    useUiStore().toast('异常已留档', 'warn')
   } catch {
     // UI 尚未就绪时静默
   }
@@ -52,15 +52,11 @@ app.mount('#app')
 
 if (corrupted.length > 0) {
   useUiStore().corruptedNotice = corrupted
-  useUiStore().toast('检测到部分存档数据异常,已为你隔离修复', 'warn')
+  useUiStore().toast('存档损坏,已隔离修复', 'warn')
 }
 
-// PWA 离线缓存:只在生产构建、且只在**真正的网页部署**上注册。
-// dev 下 SW 会缓存 HMR 产物、干扰热重载;而 Electron(file://)与 Capacitor(https://localhost)
-// 本身就是本地文件,离线缓存毫无意义,反而致命:SW 接管导航后 fetch() 这类本地 URL 会失败,
-// 缓存又没有副本,于是第二次启动起就只剩「离线且无缓存副本」—— Windows 版白屏、
-// 安卓版卡在加载遮罩(玩家反馈)。第一次启动总是好的,因为那次 SW 还没接管,最会误导排查。
-// 注册失败静默 —— 有 SW 是增强(断网可重开),没有也不影响在线游玩。
+// SW 只在生产构建的网页部署上注册。dev 下会缓存 HMR 产物;
+// Electron(file://)/ Capacitor(https://localhost)里 SW 接管导航后本地 fetch 失败,第二次启动起 Windows 版白屏、安卓版卡加载遮罩(首次正常)。
 const isLocalShell = location.protocol === 'file:' || Capacitor.isNativePlatform()
 if (import.meta.env.PROD && !isLocalShell && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {

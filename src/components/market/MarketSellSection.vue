@@ -1,13 +1,8 @@
 <template>
   <section class="space-y-4">
-    <!-- 寄卖装备 -->
     <div>
       <SectionTitle title="装备寄卖" :hint="consignHint" />
-      <!-- 工期从 MARKET_CONSIGN_SECONDS 现算(2400s → 「两刻有余(40 分钟)」),
-           不手打「一炷香」—— 那个说法把 40 分钟说成了 30 分钟 -->
-      <p class="mb-2 text-[10px] text-ink-faint">
-        离包即定,约{{ consignSpan }}售出,灵石入账;离线照走,不可撤回。价比坊市购入同档更廉,唯图个落袋为安。
-      </p>
+      <p class="mb-2 text-[10px] text-ink-faint">约{{ consignSpan }}售出 · 不可逆</p>
       <div class="mb-2 grid grid-cols-2 gap-2">
         <div v-for="s in consignSlotsArr" :key="s" class="card-ink flex items-center justify-between p-2.5">
           <template v-if="consignBySlot[s]">
@@ -20,12 +15,8 @@
           <span v-else class="text-[11px] text-ink-faint">空</span>
         </div>
       </div>
-      <!-- 超出渲染上限的寄卖:照样在档里、照样到点入账,只是不各占一格 -->
-      <p v-if="consignHidden > 0" class="mb-2 text-[10px] leading-relaxed text-ink-faint">
-        另有 {{ consignHidden }} 件寄卖未在此展开(照常计时,到点自售入账)。
-      </p>
+      <p v-if="consignHidden > 0" class="mb-2 text-[10px] text-ink-faint">另有 {{ consignHidden }} 件寄卖</p>
 
-      <!-- 背包可寄卖清单 -->
       <div class="card-ink max-h-64 divide-y divide-ink/6 overflow-y-auto px-1">
         <div v-for="eq in bagList" :key="eq.uid" class="flex items-center gap-2 px-2.5 py-2">
           <span class="min-w-0 grow truncate font-kai text-[13px]" :style="{ color: eq.color }">{{ eq.name }}</span>
@@ -35,9 +26,7 @@
             寄卖
           </button>
         </div>
-        <p v-if="bagList.length === 0" class="px-2.5 py-3 text-center text-[10px] text-ink-faint">
-          行囊里没有可寄卖的兵刃。
-        </p>
+        <p v-if="bagList.length === 0" class="px-2.5 py-3 text-center text-[10px] text-ink-faint">暂无可寄卖兵刃</p>
       </div>
     </div>
 
@@ -49,7 +38,7 @@
             <GameIcon :name="m.icon" :size="16" class="text-jade" />
             <span class="font-kai text-[13px] text-ink">{{ m.name }}</span>
             <span class="text-[10px] text-ink-faint">存 {{ m.count }}</span>
-            <span v-if="m.count < MARKET_MAT_COUNT" class="text-[10px] text-cinnabar">再 {{ MARKET_MAT_COUNT - m.count }} 份可售</span>
+            <span v-if="m.count < MARKET_MAT_COUNT" class="text-[10px] text-cinnabar">尚差 {{ MARKET_MAT_COUNT - m.count }}</span>
           </div>
           <button class="btn-ghost shrink-0 !px-2.5 !py-2 !text-[11px]" :disabled="m.count < MARKET_MAT_COUNT" @click="m.grade == null ? sellOreOne() : sellHerbOne(m.grade)">
             售出 ×{{ MARKET_MAT_COUNT }} ({{ formatGN(m.price) }})
@@ -68,9 +57,7 @@
             售出 ({{ formatGN(p.price) }})
           </button>
         </div>
-        <p v-if="sellablePills.length === 0" class="px-2.5 py-3 text-center text-[10px] text-ink-faint">
-          身上无可售的丹药。
-        </p>
+        <p v-if="sellablePills.length === 0" class="px-2.5 py-3 text-center text-[10px] text-ink-faint">暂无可售丹药</p>
       </div>
     </div>
   </section>
@@ -121,10 +108,10 @@
   )
   const consignHidden = computed(() => Math.max(0, market.consign.length - MARKET_CONSIGN_RENDER_MAX))
   const consignSlotsFull = computed(() => market.consign.length >= consignSlots)
-  /** 坏档能塞进多于上限的寄卖:照实报条数,别让「3/2」这种读数看起来像坏了 */
+  /** 坏档条数可超上限:照实报条数与上限,不写成「3/2」 */
   const consignHint = computed(() =>
     market.consign.length > consignSlots
-      ? `${market.consign.length} 件(超出上限 ${consignSlots},售出后不再补)`
+      ? `${market.consign.length} 件 · 上限 ${consignSlots}`
       : `${market.consign.length}/${consignSlots}`
   )
 
@@ -176,20 +163,20 @@
 
   function consignOne(uid: string): void {
     const result = market.consignEquip(uid, Date.now())
-    if (result === 'ok') ui.toast('已摆上寄卖格,售出即入账', 'info')
+    if (result === 'ok') ui.toast('已寄卖', 'info')
     else if (result === 'full') ui.toast('寄卖格已满', 'info')
   }
 
   function sellOreOne(): void {
-    if (market.sellMaterial(player.major)) ui.toast('玄铁 已售出', 'success')
+    if (market.sellMaterial(player.major)) ui.toast('「玄铁」已售出', 'success')
   }
 
   function sellHerbOne(g: HerbGrade): void {
-    if (market.sellHerb(g)) ui.toast(`${HERB_GRADE_NAMES[g]} 已售出`, 'success')
+    if (market.sellHerb(g)) ui.toast(`「${HERB_GRADE_NAMES[g]}」已售出`, 'success')
   }
 
   function sellPillOne(pillId: string): void {
     const name = pillDef(pillId)?.name ?? ''
-    if (market.sellPill(pillId)) ui.toast(`${name} 已售出`, 'success')
+    if (market.sellPill(pillId)) ui.toast(`「${name}」已售出`, 'success')
   }
 </script>

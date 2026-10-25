@@ -24,11 +24,13 @@ export interface HeritageRow {
   id: string
   name: string
   mode: HeritageMode
-  /** 代码中的实际处理(核实过,非设计文档口径) */
+  /** 代码中的实际处理(核实过) */
   detail: string
+  /** 界面用语:轮回结算芯片展开的去留事实(由 detail 压缩,不写代码名与缘由) */
+  brief: string
   /** 属于「遗产」(我是谁)还是「状态」(我拥有多少) */
   kind: 'legacy' | 'state'
-  /** 对战力的直接贡献:none / low / mid / high */
+  /** 对战力的直接贡献 */
   power: 'none' | 'low' | 'mid' | 'high'
   /** 是否压缩下一世的成长空间 */
   compressesGrowth: boolean
@@ -41,6 +43,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '境界与修为',
     mode: 'reset',
     detail: 'rebirth() 将 major/sub/exp 归零,年龄回到 START_AGE',
+    brief: '境界、修为归零 · 年龄重置',
     kind: 'state',
     power: 'high',
     compressesGrowth: false
@@ -50,6 +53,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '装备',
     mode: 'reset',
     detail: 'items = [] 且 equipped = {},佩戴与行囊一并清空',
+    brief: '佩戴与行囊清空',
     kind: 'state',
     power: 'high',
     compressesGrowth: false
@@ -59,6 +63,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '丹药',
     mode: 'reset',
     detail: 'pills = {}',
+    brief: '清空',
     kind: 'state',
     power: 'mid',
     compressesGrowth: false
@@ -68,6 +73,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '法宝',
     mode: 'reset',
     detail: 'artifacts = [] 且 equippedArtifacts = []',
+    brief: '持有与已祭清空',
     kind: 'state',
     power: 'high',
     compressesGrowth: false
@@ -77,6 +83,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '材料与灵石',
     mode: 'reset',
     detail: 'spiritStone/qi/wudao/herb/ore/page/dust 全部归零',
+    brief: '灵石、灵气、悟道点与各类材料归零',
     kind: 'state',
     power: 'low',
     compressesGrowth: false
@@ -86,6 +93,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '区域进度',
     mode: 'reset',
     detail: 'unlocked 退回 qingyun,cleared 清空',
+    brief: '只留起始地界 · 通关记录清空',
     kind: 'state',
     power: 'none',
     compressesGrowth: false
@@ -95,6 +103,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '洞府建筑',
     mode: 'reset',
     detail: 'dongfu.resetForRebirth() 将每座建筑等级归零 —— 屋舍是外物,随皮囊散去',
+    brief: '建筑等级归零',
     kind: 'state',
     power: 'mid',
     compressesGrowth: false
@@ -104,6 +113,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '功法',
     mode: 'partial',
     detail: '记得哪些功法(门类)是记忆,留下;练到几层是修为进度,归零回一层;顶阶宿慧可留一门满层',
+    brief: '门类保留 · 层数回一层 · 顶阶宿慧留一门满层',
     kind: 'state',
     power: 'high',
     compressesGrowth: true
@@ -113,6 +123,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '道果',
     mode: 'full',
     detail: `每世凝 ${daoFruitGain(REBIRTH_REFERENCE_MAJOR, 9)} 枚(修满人间界并飞升真仙口径),永不清零`,
+    brief: '永不清零',
     kind: 'legacy',
     power: 'high',
     compressesGrowth: true
@@ -122,6 +133,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '先天之姿',
     mode: 'full',
     detail: `每世得 1 + major/${TALENT_DRAW_DIV} 项,共 ${TALENTS.length} 项可集齐`,
+    brief: `永不清零 · 共 ${TALENTS.length} 项`,
     kind: 'legacy',
     power: 'high',
     compressesGrowth: true
@@ -131,6 +143,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '宿命传承',
     mode: 'full',
     detail: 'reincarnation.heritage 随神魂不灭,跨世不清零;每世至多锻造最深一道未入门槛(见 core/heritageForge),重复锻造被忽略',
+    brief: '永不清零 · 每世至多锻造一道',
     kind: 'legacy',
     power: 'none',
     compressesGrowth: false
@@ -140,6 +153,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '宿慧',
     mode: 'full',
     detail: '决定阶位,影响功法保留档与认知补齐量;不直接给战力',
+    brief: '决定境地 · 影响功法保留与认知补齐 · 不加战力',
     kind: 'legacy',
     power: 'none',
     compressesGrowth: true
@@ -149,6 +163,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '称号',
     mode: 'full',
     detail: 'rebirth() 未重置 titleId,称号 mods 直接带入下一世',
+    brief: '称号加成带入下一世',
     kind: 'state',
     power: 'mid',
     compressesGrowth: true
@@ -158,6 +173,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '灵兽',
     mode: 'reset',
     detail: 'rebirth() 调 setPet(null) —— 灵兽是相伴的外物,下一世要与新的灵兽相识',
+    brief: '灵兽离去',
     kind: 'state',
     power: 'mid',
     compressesGrowth: false
@@ -167,6 +183,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '师承',
     mode: 'full',
     detail: 'rebirth() 未重置 mentor,师承 mods 直接带入下一世',
+    brief: '师承加成带入下一世',
     kind: 'state',
     power: 'mid',
     compressesGrowth: true
@@ -176,6 +193,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '灵脉投资',
     mode: 'reset',
     detail: 'dongfu.resetForRebirth() 清空 veinPoints/veinMain —— 灵脉投资是外物,每世从零重投(旧稿曾满投封顶后跨世保留)',
+    brief: '投点与主脉清空',
     kind: 'state',
     power: 'mid',
     compressesGrowth: false
@@ -185,6 +203,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '认知(丹方/药性/器纹/敌手)',
     mode: 'full',
     detail: 'lore store 整体不清,另按宿慧阶位 carryLore 补齐',
+    brief: '永不清零 · 按境地补齐灵材认知',
     kind: 'legacy',
     power: 'none',
     compressesGrowth: false
@@ -194,6 +213,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '成就与图鉴',
     mode: 'full',
     detail: 'quests store 不参与轮回重置',
+    brief: '永不清零',
     kind: 'legacy',
     power: 'none',
     compressesGrowth: false
@@ -203,6 +223,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '道源与道痕',
     mode: 'partial',
     detail: 'onRebirth 只归还道途,道源/道痕/纪录随神魂不灭',
+    brief: '道途归还 · 道源、道痕、纪录保留',
     kind: 'legacy',
     power: 'low',
     compressesGrowth: false
@@ -213,16 +234,18 @@ export const HERITAGE: HeritageRow[] = [
     mode: 'partial',
     detail:
       '镇压收益与资格是「我拥有多少」:旧世压下的远境若跨世,新世炼气仍按旧阶位派发高阶装备/灵石,数值当场爆炸(玩家实报)。故 rebirth() 清空 suppressedRegions/suppressedSince/suppressQualified —— 妖气复聚、回到历练地;sanitize 按 suppressLife(世号)兜「上一世留下的」同款。世号是本体判据,不再拿境界当代理:进入某地只受解锁链与本世路线管,不受 minRealm 管,按境界清会把「本世真打下来的高境副本」一并误收。regionStats 战绩与 nemeses 宿敌仍随神魂不灭(「世界记得你」的叙事与石碑不丢)',
+    brief: '镇压解除 · 战绩与宿敌保留',
     kind: 'state',
     power: 'none',
     compressesGrowth: false
   },
   {
     id: 'regionWinsLife',
-    name: '区域胜场世号',
+    name: '区域兴衰胜场',
     mode: 'reset',
     detail:
       '与 regionStats 同一本账的世号:胜场本身跨世留作叙事,但兴衰判据(30 胜稳定 / 80 胜繁盛)只认本世 —— 否则新世重新镇压一次,旧世刷出的 80 胜立刻让地界繁盛,凭空多拿 10% 产出。rebirth() 当场把旧账逐条盖成旧世号',
+    brief: '兴衰只计本世胜场',
     kind: 'state',
     power: 'none',
     compressesGrowth: false
@@ -232,6 +255,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '短期秘境',
     mode: 'reset',
     detail: 'player.rebirth() 置 secretRealm=null —— 进行中的一次性内容随本世结束',
+    brief: '进行中的秘境结束',
     kind: 'state',
     power: 'none',
     compressesGrowth: false
@@ -241,6 +265,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '区域动态事件',
     mode: 'reset',
     detail: 'player.rebirth() 置 regionEvent=null(临时异象不该跨世)',
+    brief: '当前异象清除',
     kind: 'state',
     power: 'none',
     compressesGrowth: false
@@ -250,6 +275,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '本世之界',
     mode: 'reset',
     detail: 'rerollMortalWorld() 每世换一方天地(与上一世去重)',
+    brief: '每世重换 · 不与上一世重复',
     kind: 'state',
     power: 'none',
     compressesGrowth: false
@@ -259,15 +285,17 @@ export const HERITAGE: HeritageRow[] = [
     name: '机缘与际遇记忆',
     mode: 'full',
     detail: 'fortuneChoices / eventChains / eventMemories 不清 —— 「世界记得你的选择」',
+    brief: '机缘选择、事件链与见闻保留',
     kind: 'legacy',
     power: 'none',
     compressesGrowth: false
   },
   {
     id: 'bonds',
-    name: '道友',
+    name: '道侣',
     mode: 'partial',
     detail: '关系归档入履历(archiveBond),人不留下;留的是曾同行这件事',
+    brief: '关系入履历 · 道侣不随行',
     kind: 'legacy',
     power: 'none',
     compressesGrowth: false
@@ -277,6 +305,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '逆旅契',
     mode: 'reset',
     detail: '契随皮囊散去,下一世要签得重新花道果(setLifeTrial(null))',
+    brief: '契约失效 · 再立需重付道果',
     kind: 'state',
     power: 'none',
     compressesGrowth: false
@@ -286,6 +315,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '连胜与当日巡游',
     mode: 'reset',
     detail: 'winStreak / lastCaveEventDay 归零 —— 属「这一世」的当下进度',
+    brief: '连胜与巡游记录归零',
     kind: 'state',
     power: 'none',
     compressesGrowth: false
@@ -295,6 +325,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '灵根',
     mode: 'reset',
     detail: 'rebirth() 重掷灵根;资质地板随宿慧上浮(aptitudeFloorNow)',
+    brief: '重掷 · 资质下限随宿慧上浮',
     kind: 'state',
     power: 'high',
     compressesGrowth: false
@@ -304,6 +335,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '问卦所得之卦',
     mode: 'reset',
     detail: 'rebirth() 置 divination=null —— 卦是「此一时的时机」,不是「我是谁」',
+    brief: '清除',
     kind: 'state',
     power: 'low',
     compressesGrowth: false
@@ -313,42 +345,47 @@ export const HERITAGE: HeritageRow[] = [
     name: '突破准备(静坐/聚气丹)',
     mode: 'reset',
     detail: 'rebirth() 置 breakthroughPrep=null —— 下一世要重新备;未用完的一次性加成也不跨世',
+    brief: '未用的加成作废',
     kind: 'state',
     power: 'low',
     compressesGrowth: false
   },
   {
     id: 'wudaoExchange',
-    name: '悟道兑换(灵石→悟道点的当日限次出口)',
+    name: '悟道兑换',
     mode: 'full',
     detail: '日账不入世:gameDay 相合才计入当日,次日自动重置;转世不清 — 否则同游戏日转世会重开每日兑换配额',
+    brief: '当日次数转世不清',
     kind: 'state',
     power: 'low',
     compressesGrowth: false
   },
   {
     id: 'mansionRedirect',
-    name: '星象值日定向(今日所利界域的战术覆盖)',
+    name: '星象定向',
     mode: 'full',
     detail: '日账不入世:gameDay 相合才生效,次日自动回落到天数派生;转世不清 — 否则同游戏日转世会重开当日改向配额',
+    brief: '当日次数转世不清',
     kind: 'state',
     power: 'low',
     compressesGrowth: false
   },
   {
     id: 'fateFocus',
-    name: '命格点化主星(择一主星显化)',
+    name: '点化主星',
     mode: 'reset',
     detail: 'rebirth() 置 fateFocus=null —— 点化是「这一世侧重哪一路」的选择,位随盘转:转世命盘重排,点化随之散去',
+    brief: '清除',
     kind: 'state',
     power: 'low',
     compressesGrowth: false
   },
   {
     id: 'enlightenmentAt',
-    name: '悟道频次(顿悟冷却)',
+    name: '顿悟冷却',
     mode: 'full',
     detail: 'enlightenmentAt 不随转世清零 —— 它是频次闸不是本世进度;清了就能靠转世刷顿悟',
+    brief: '转世不清',
     kind: 'legacy',
     power: 'none',
     compressesGrowth: false
@@ -358,6 +395,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '道号',
     mode: 'reset',
     detail: 'rebirth() 每世重掷新道号 —— 神魂不灭带走的是所知所历,不是名号;新的皮囊换新的名(见 stores/player.rebirth)',
+    brief: '每世重取',
     kind: 'state',
     power: 'none',
     compressesGrowth: false
@@ -367,6 +405,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '转世次数',
     mode: 'full',
     detail: 'reincarnation.count 只增不减 —— 每世道果与天赋的发放都按它计',
+    brief: '只增不减',
     kind: 'legacy',
     power: 'none',
     compressesGrowth: true
@@ -376,6 +415,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '历世履历',
     mode: 'full',
     detail: 'confirmReincarnation 里 recordLife 逐世归档,只增不改(修仙录据此成书)',
+    brief: '逐世归档',
     kind: 'legacy',
     power: 'none',
     compressesGrowth: false
@@ -385,6 +425,7 @@ export const HERITAGE: HeritageRow[] = [
     name: '本世命题',
     mode: 'reset',
     detail: 'beginLife() 每世重立;上一世的题只入履历与宿慧,不再参与本世结算',
+    brief: '每世重立',
     kind: 'state',
     power: 'none',
     compressesGrowth: false
@@ -400,15 +441,12 @@ export interface HeritageGroup {
   rows: HeritageRow[]
 }
 
-/**
- * 按去留分组的继承清单 —— 界面(轮回结算)与审计共用同一份,
- * 保证玩家看到的「带走/放下」与代码实际交割不会分叉。
- */
+/** 按去留分组的继承清单;轮回结算界面与审计共用 */
 export function heritageGroups(): HeritageGroup[] {
   const titles: Record<HeritageMode, string> = {
-    full: '随神魂带走',
-    partial: '折损带走',
-    reset: '随皮囊放下'
+    full: '保留',
+    partial: '部分保留',
+    reset: '归零'
   }
   return (['full', 'partial', 'reset'] as const).map(mode => ({
     mode,

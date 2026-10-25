@@ -97,14 +97,8 @@ export function mortalFoeOriginFromParts(tier: number, situation: readonly FoeOr
     damageBonus: 0,
     damageReduction: 0,
     parts,
-    // 报了病因也要给方向:加成全在敌人那一侧的三维上,解法自然也在自己这一侧。
-    // 反向的账(敌人比这一层该有的还薄)也照实说 —— 占了便宜却不说,玩家会以为自己看错了
-    note:
-      parts.length === 0
-        ? '此敌没有额外加成 —— 你遇到的就是它自己。'
-        : ratio > 1
-          ? '加成的都是敌人的三维:把自己的三围补到这一层该有的样子,或换更浅的出行方式,它自会收窄。'
-          : '此敌比这一层该有的还薄 —— 这一场你占着便宜。'
+    // parts 已是全账,有加成时不另附说明
+    note: parts.length === 0 ? '无额外加成' : ratio > 1 ? '' : '弱于本层'
   }
 }
 
@@ -255,7 +249,7 @@ export function resolveCombat(
       push('shield', f.snap.isPlayer ? 'p' : 'e', `${f.snap.name}灵光护体,凝起一层护盾。`)
     }
   }
-  push('info', 'sys', `你与【${eSnap.name}】狭路相逢!`)
+  push('info', 'sys', `你与【${eSnap.name}】狭路相逢。`)
 
   const applyDamage = (attacker: Fighter | null, target: Fighter, dmg: GNum, bypassShield = false): boolean => {
     let remain = { ...dmg }
@@ -273,9 +267,8 @@ export function resolveCombat(
     if (isZero(target.hp) && target.brace && target.snap.isPlayer) {
       target.brace = false
       target.hp = { m: 1, e: 0 }
-      push('proc', 'p', `${target.snap.name}气血将尽,铁壁共鸣铮然作响——性命保住了!`)
+      push('proc', 'p', `${target.snap.name}气血将尽,铁壁共鸣铮然作响,护住心脉。`)
     }
-    // 遥测
     target.stats.taken = add(target.stats.taken, dmg)
     if (bypassShield) target.stats.pierceTaken = add(target.stats.pierceTaken, dmg)
     target.stats.biggestHitTaken = gnMax(target.stats.biggestHitTaken, dmg)
@@ -317,20 +310,14 @@ export function resolveCombat(
     const aName = attacker.snap.isPlayer ? '你' : `【${attacker.snap.name}】`
     const tName = target.snap.isPlayer ? '你' : `【${target.snap.name}】`
     const side = attacker.snap.isPlayer ? 'p' : 'e'
+    const verb = opts.isSkill ? `施展【${label}】` : `使出${label}`
 
-    /*
-     * 闪避判定 —— 命中先抵掉一部分闪避。
-     *
-     * 闪避型首领的幻境一度是**无解**的:蜃楼幻境 55%、冰魄化身 50%,
-     * 玩家没有命中这个属性,只能眼看一半的出手落空,而战后分析还会明说
-     * 「N 次出手落空,连击与暴击难以衔接」。故这里让攻击方的命中按百分点
-     * 相减(不为负)——堆命中的代价是一整条词条位,换的是「打得中」。
-     */
+    // 闪避判定:攻击方命中按百分点抵掉闪避(不为负)
     const dodge = capChance(modOf(tMods, 'dodgeRate') - modOf(aMods, 'accuracy'))
     if (rng.chance(dodge)) {
       target.stats.dodges += 1
       attacker.stats.missedHits += 1
-      push('dodge', side, `${aName}施展${label},却被${tName}身形一晃避开。`)
+      push('dodge', side, `${aName}${verb},却被${tName}身形一晃避开。`)
       return
     }
 
@@ -367,17 +354,16 @@ export function resolveCombat(
     const dmg = mulN(attacker.snap.attack, Math.max(0.02, factor) * attacker.atkRamp)
     const shieldBroken = applyDamage(attacker, target, dmg, opts.pierce)
 
-    const verb = opts.isSkill ? `施展【${label}】` : `祭出${label}`
     if (isCrit) {
       push('crit', side, `${aName}${verb},会心一击!${tName}受创甚重。`, dmg)
     } else {
       push(opts.isSkill ? 'skill' : 'atk', side, `${aName}${verb},击中${tName}。`, dmg)
     }
 
-    // 组合技·玄罡反震:护盾被击破的刹那,立即一次强化反击(每场限两次)
+    // 组合技·玄罡反震:护盾被击破时强化反击(每场限两次)
     if (shieldBroken && target.snap.comboArt === 'xuangang' && target.comboUses < 2 && !isZero(target.hp)) {
       target.comboUses += 1
-      push('proc', target.snap.isPlayer ? 'p' : 'e', `${tName}罡盾崩碎,碎光尽数化作反震之力!`)
+      push('proc', target.snap.isPlayer ? 'p' : 'e', `${tName}罡盾崩碎,碎光化作反震之力。`)
       strike(target, attacker, 0.9 * (1 + modOf(target.snap.mods, 'counterDamage')), '玄罡反震', round, {
         skipFollowups: true,
         skipCounter: true
@@ -389,10 +375,10 @@ export function resolveCombat(
     if (ls > 0) {
       healSelf(attacker, mulN(dmg, ls))
     }
-    // 反击(锋反词条增幅反击威力):多段攻击的每一段都可能挨反击
+    // 反击:多段攻击的每一段都可能挨反击
     if (!opts.skipCounter && !isZero(target.hp) && rng.chance(capChance(modOf(tMods, 'counterRate')))) {
       target.stats.counters += 1
-      push('proc', target.snap.isPlayer ? 'p' : 'e', `${tName}顺势反击!`)
+      push('proc', target.snap.isPlayer ? 'p' : 'e', `${tName}顺势反击。`)
       strike(target, attacker, 0.5 * (1 + modOf(tMods, 'counterDamage')), '反击', round, {
         skipFollowups: true,
         skipCounter: true
@@ -416,9 +402,8 @@ export function resolveCombat(
         skipCounter: true
       })
     }
-    // 震慑
     if (!isZero(target.hp) && rng.chance(capChance(modOf(aMods, 'stunRate')))) {
-      if (tryStun(target)) push('proc', side, `${tName}被震得气血翻涌,一时难以动弹!`)
+      if (tryStun(target)) push('proc', side, `${tName}被震得气血翻涌,一时难以动弹。`)
     }
   }
 
@@ -430,8 +415,8 @@ export function resolveCombat(
     const regen = modOf(self.snap.mods, 'regenPerRound')
     if (regen > 0 && hpPct(self) < 1) {
       healSelf(self, mulN(self.snap.maxHp, regen))
-      // 与法宝/长生印的回血一致:回合自然回复也入账,否则血条涨了、回放里看不见来源
-      push('heal', side, `${name}气息平复,伤势缓缓愈合。`)
+      // 与法宝/长生印的回血一致:回合回复也入战报
+      push('heal', side, `${name}气息平复,伤势渐愈。`)
     }
     // 法宝自动触发(元婴起可佩两件)
     for (const owned of self.snap.artifacts ?? []) {
@@ -462,7 +447,7 @@ export function resolveCombat(
         push('heal', side, `【${art.name}】洒下灵光,${name}伤势恢复。`)
       } else if (eff.type === 'stun') {
         if (tryStun(foe)) {
-          push('proc', side, `【${art.name}】摄住${foe.snap.isPlayer ? '你' : `【${foe.snap.name}】`}的心神,那一手没能出。`)
+          push('proc', side, `【${art.name}】摄住${foe.snap.isPlayer ? '你' : `【${foe.snap.name}】`}的心神。`)
         }
       } else if (eff.type === 'sunder') {
         foe.defSunder = Math.max(foe.defSunder, values.amount)
@@ -518,14 +503,11 @@ export function resolveCombat(
   const eSpeed = eEff.speed
   const pFirst = pSpeed >= eSpeed
   const perRounds = rules?.perRounds
-  // Phase 30.7: Boss 阶段系统 + 机制家族
+  // Boss 阶段系统 + 机制家族
   let phaseIdx = -1
   const bossPhases = eSnap.phases ?? []
-  const bossMods: StatMods = { ...eEff.mods }
-  const bossSkills = [...eEff.skills]
-  eEff.mods = bossMods
-  eEff.skills = bossSkills
 
+  // 阶段改动只换 e.snap 的副本:无规则时 eEff 就是调用方快照,写进去会让复用快照的下一场从末阶段开打
   const applyPhaseTransition = (): void => {
     const hpRatio = hpPct(e)
     let nextIdx = -1
@@ -535,12 +517,19 @@ export function resolveCombat(
     if (nextIdx > phaseIdx) {
       for (let i = phaseIdx + 1; i <= nextIdx; i += 1) {
         const ph = bossPhases[i]!
-        if (ph.modChanges) Object.assign(bossMods, ph.modChanges)
-        if (ph.skillChanges) {
-          bossSkills.length = 0
-          bossSkills.push(...ph.skillChanges)
+        const prevShieldPct = modOf(e.snap.mods, 'shieldOnStart')
+        e.snap = {
+          ...e.snap,
+          mods: ph.modChanges ? { ...e.snap.mods, ...ph.modChanges } : e.snap.mods,
+          skills: ph.skillChanges ? [...ph.skillChanges] : e.snap.skills
         }
         if (ph.label) push('info', 'e', `【${eSnap.name}】${ph.label}!`)
+        // 开战护盾只在开战时读;阶段抬高的 shieldOnStart 只补差额(整额凝盾会让门槛型首领难度陡增)
+        const raise = modOf(e.snap.mods, 'shieldOnStart') - prevShieldPct
+        if (raise > 0) {
+          gainShield(e, mulN(e.snap.maxHp, raise))
+          push('shield', 'e', `【${eSnap.name}】凝起一层护盾。`)
+        }
       }
       phaseIdx = nextIdx
     }
@@ -553,7 +542,7 @@ export function resolveCombat(
       healSelf(p, mulN(p.snap.maxHp, perRounds.playerHealPct))
       gainShield(p, mulN(p.snap.maxHp, perRounds.playerShieldPct))
       e.atkRamp += perRounds.enemyAtkGrowth
-      push('heal', 'p', `岁月为你加冕——长生印生效,气血与护盾俱增;敌人杀意亦涨。`)
+      push('heal', 'p', `长生印生效,气血与护盾俱增;敌人杀意亦涨。`)
     }
     const order: [Fighter, Fighter][] = pFirst
       ? [
@@ -574,14 +563,14 @@ export function resolveCombat(
   let win: boolean
   if (isZero(e.hp) && !isZero(p.hp)) {
     win = true
-    push('win', 'sys', `【${eSnap.name}】轰然倒地,魂飞魄散。此战,你胜了。`)
+    push('win', 'sys', `【${eSnap.name}】轰然倒地,你胜了。`)
   } else if (isZero(p.hp)) {
     win = false
-    push('lose', 'sys', '你气血耗尽,身负重伤,含恨败退……')
+    push('lose', 'sys', '你气血耗尽,重伤败退。')
   } else {
-    // 回合耗尽:你是猎手,拖不死对方即是无功而返(防「不死但杀不动」流躺赢)
+    // 回合耗尽判负:防「不死但杀不动」流躺赢
     win = false
-    push('lose', 'sys', `鏖战多时仍未能建功,【${eSnap.name}】遁走,你无功而返。`)
+    push('lose', 'sys', `鏖战多时,【${eSnap.name}】遁走,你无功而返。`)
   }
   return {
     win,

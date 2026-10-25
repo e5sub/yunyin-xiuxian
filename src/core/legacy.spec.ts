@@ -23,6 +23,13 @@ describe('今日天道', () => {
     expect(a!.verdict.reward).toBeLessThanOrEqual(90)
     expect(a!.verdict.ok).toBe(true)
   })
+
+  it('候选顺延够深:16 个候选全数落选的日子也有题', () => {
+    // 故障注入:dailyChallenge 候选上限改回 16,本用例红
+    for (const day of [20261024, 20271017]) {
+      expect(todayChallenge(day)?.verdict.ok).toBe(true)
+    }
+  })
 })
 
 describe('构筑对照', () => {

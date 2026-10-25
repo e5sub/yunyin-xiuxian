@@ -13,9 +13,8 @@
         {{ def?.name }} · {{ def?.desc }}
       </p>
       <p class="mt-1 text-[10px] leading-relaxed text-violet-ink">此地规则:{{ state.rules.join(' · ') }}</p>
-      <!-- 败场明写:再输一场就被逐出,却是打之前唯一看不见的数 -->
       <p v-if="state.losses > 0" class="mt-0.5 text-[10px] leading-relaxed tabular text-cinnabar">
-        已败 {{ state.losses }} 场 · 再败 {{ SECRET_MAX_LOSSES - state.losses }} 场即被逐出
+        已败 {{ state.losses }} 场 · 再败 {{ SECRET_MAX_LOSSES - state.losses }} 场逐出
       </p>
       <p v-if="state.spoils.length" class="mt-1 max-h-24 overflow-y-auto text-[10px] leading-relaxed text-ink-faint">
         <span v-for="(s, i) in state.spoils" :key="i" class="block">· {{ s }}</span>
@@ -28,9 +27,8 @@
 
     <!-- 未入 -->
     <template v-else>
-      <!-- 身在另一册的境中:先说明进不去,不摆一列点了才被拒的门 -->
       <p v-if="elsewhere" class="mt-1 text-[10px] leading-relaxed text-ink-faint">
-        身在「{{ elsewhere.name }}」秘境之中 —— 出而后再来择境。
+        身在「{{ elsewhere.name }}」
       </p>
       <div v-else class="mt-2 space-y-1.5">
         <button
@@ -54,7 +52,7 @@
           <span class="mt-0.5 block text-[10px] leading-relaxed text-ink-faint">{{ r.desc }}</span>
         </button>
         <p v-if="list.length === 0" class="empty-note text-center text-[11px] text-ink-faint">
-          尚无秘境可探 —— 境界再高些,自有去处。
+          暂无秘境
         </p>
       </div>
     </template>
@@ -123,10 +121,10 @@
   function enter(id: string): void {
     const out = enterSecretRealm(id)
     if (!out.ok) {
-      ui.toast(out.reason ?? '不得其门而入', 'warn')
+      ui.toast(out.reason ?? '无法进入', 'warn')
       return
     }
-    ui.toast('你踏入秘境,身后的路随即合拢', 'info')
+    ui.toast('已入秘境', 'info')
   }
 
   function fight(): void {

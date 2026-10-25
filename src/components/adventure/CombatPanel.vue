@@ -30,12 +30,11 @@
           <span v-if="session" class="text-[10px]">(约 {{ formatClock(session.nextBattleAt) }})</span>
         </span>
       </p>
-      <!-- 本次所得:石头与修为此前只在挂机总结里出现,在线历练中玩家看不到这一趟赚了什么 -->
+      <!-- 本次所得 -->
       <p v-if="gains" class="mt-0.5 text-[10px] text-ink-faint tabular">
         本次所得 · 灵石 <span class="text-gold-ink">+{{ gains.stone }}</span> · 修为
-        <span class="text-jade">+{{ gains.exp }}</span><template v-if="gains.itemText"> · 拾获 <span class="text-azure">{{ gains.itemText }}</span> 件</template>
+        <span class="text-jade">+{{ gains.exp }}</span>
       </p>
-      <!-- 目标感:未靖的地界,打完十胜就该遇首领;不给提示的话玩家不知道还要打多久 -->
       <p v-if="bossHint" class="mt-0.5 text-[10px]" :class="bossSoon ? 'text-cinnabar' : 'text-gold-ink'">
         {{ bossHint }}
       </p>
@@ -127,7 +126,7 @@
             {{ entry.text }}
             <span v-if="entry.dmg" class="tabular" :class="entry.t === 'crit' ? 'text-cinnabar' : ''">{{ entry.dmg }}</span>
           </p>
-          <p v-if="displayed.length === 0" class="pt-16 text-center text-[12px] text-ink-faint">山风掠过,四下无声……</p>
+          <p v-if="displayed.length === 0" class="pt-16 text-center text-[12px] text-ink-faint">暂无战报</p>
         </div>
       </div>
 
@@ -212,15 +211,10 @@
   const gains = computed(() => {
     const s = session.value
     if (!s) return null
-    return { stone: formatGN(s.stoneGain), exp: formatGN(s.expGain), itemText: s.itemGain > 0 ? String(s.itemGain) : null }
+    return { stone: formatGN(s.stoneGain), exp: formatGN(s.expGain) }
   })
 
-  /**
-   * 连胜、下一档的缺口,与那一档的赏格:与奖励 toast 读同一本账
-   * (player.winStreak + WIN_STREAK_REWARDS),只差一个 milestone 时跳过一次
-   * (比如连胜 9 时「距 10」还在),满了 10 无话可说。赏格取自表里那一行,
-   * 只排格式不手写数 —— 到账的 toast 另走 streakRewardText,同一本账。
-   */
+  /** 连胜、下一档缺口与赏格:与奖励 toast 同读 player.winStreak + WIN_STREAK_REWARDS,只排格式不手写数 */
   const streak = computed(() => player.winStreak)
   const nextRewardRow = computed(() => WIN_STREAK_REWARDS.find(r => r.streak > streak.value) ?? null)
   const nextStreak = computed(() => nextRewardRow.value?.streak ?? null)
@@ -244,7 +238,7 @@
   const bossHint = computed(() => {
     const n = bossIn.value
     if (n === null) return null
-    return n > 0 ? `距此地之主还差 ${n} 胜` : '此地之主将现 —— 下一战即是首领'
+    return n > 0 ? `距首领 ${n} 胜` : '下一战:首领'
   })
 
   /** 当前敌人的机制特性标签 */
@@ -261,11 +255,8 @@
     return id ? enemyLoreView(id) : null
   })
 
-  /**
-   * 认得它,才谈得上"知道它会怎么打"。
-   * 交过一场手即达「眼熟」,所以这道门只挡第一次照面 —— 那一次本就该是未知的。
-   */
-  const foeKnown = computed(() => (lore.value?.stage ?? 0) >= 1)
+  /** 第一次照面不露特性与星级;读开打快照(渲染时本战已入账),旧战报无快照才读当前认知 */
+  const foeKnown = computed(() => battle.value?.foeKnown ?? (lore.value?.stage ?? 0) >= 1)
 
   const shownTraits = computed(() => (foeKnown.value ? foeTraits.value : []))
 

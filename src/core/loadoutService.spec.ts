@@ -115,7 +115,7 @@ describe('构筑快照(保存/一键切换)', () => {
     expect(captureLoadout('超载')).toBeNull()
   })
 
-  it('改名:收敛空白与 8 字上限,套内装束原样不动,提示说「已改名」而非「已存入行囊」', () => {
+  it('改名:收敛空白与 8 字上限,套内装束原样不动,提示说「已改名」而非「已保存」', () => {
     seed()
     const loadouts = useLoadoutsStore()
     const ui = useUiStore()
@@ -123,15 +123,12 @@ describe('构筑快照(保存/一键切换)', () => {
     const weaponUid = lo.equipment.weapon
     expect(renameLoadout(lo.id, '   ')).toBe(true)
     expect(loadouts.list.find(l => l.id === lo.id)!.name).toBe('无名构筑')
-    // 改名成功时的 toast:说的是改名,不是保存进包(此前复用了「已存入行囊」,报了假动作);
-    // captureLoadout 那一声「已存入行囊」在更早,断言只看最新一条
+    // captureLoadout 那一声「已保存」在更早,断言只看最新一条
     const lastToast = ui.toasts[ui.toasts.length - 1]!.text
     expect(lastToast).toContain('已改名')
-    expect(lastToast).not.toContain('已存入行囊')
-    // 超过 8 字 → 截到 8 字
+    expect(lastToast).not.toContain('已保存')
     expect(renameLoadout(lo.id, '超长名字超过八个字会截断')).toBe(true)
     expect(loadouts.list.find(l => l.id === lo.id)!.name).toBe('超长名字超过八个')
-    // 只动名号,套内功/宝/装原样
     const renamed = loadouts.list.find(l => l.id === lo.id)!
     expect(renamed.equipment.weapon).toBe(weaponUid)
     expect(renamed.mainGongfa).toBe('m_taixuan')
@@ -139,18 +136,12 @@ describe('构筑快照(保存/一键切换)', () => {
     expect(loadouts.list.length).toBe(1)
   })
 
-  /**
-   * 「学过但槽位不够」也得点名 —— 从前它只进计数,不进名单。
-   *
-   * 藏经阁 0 级只有 1 个辅修槽,而快照里存着两件都学过的辅修:切换时第二件被砍,
-   * 界面却只印「阙 1 件」而不说阙的是谁。玩家既不知道该补什么,也看不出
-   * 「去升级藏经阁」才是解法 —— 照着名单回行囊白找一圈。
-   */
-  it('辅修槽不够时,被砍的那件也要带名报出来,并说清该升级藏经阁', () => {
+  /** 藏经阁 0 级只有 1 个辅修槽 */
+  it('辅修槽不够时,被砍的那件也要带名报出来,并标出槽位不足', () => {
     const cultivation = useCultivationStore()
     const ui = useUiStore()
     seed()
-    cultivation.learn('s_lianti') // 第二件辅修,也学过
+    cultivation.learn('s_lianti')
     const loadout = captureLoadout('双辅修')!
     loadout.subGongfa = ['s_tuna', 's_lianti']
     applyLoadout(loadout.id)

@@ -38,7 +38,7 @@ export const TRIGRAMS: TrigramDef[] = [
     lines: [1, 1, 1],
     image: '天',
     nature: '健',
-    gist: '三爻皆阳,天行至健 —— 「天行健,君子以自强不息」。',
+    gist: '三爻皆阳,「天行健,君子以自强不息」。',
     good: '进取',
     bad: '骄盈',
     mods: { breakthroughRate: 0.06, cultivationSpeed: 0.08 }
@@ -50,7 +50,7 @@ export const TRIGRAMS: TrigramDef[] = [
     lines: [1, 1, 0],
     image: '泽',
     nature: '说',
-    gist: '泽润而悦,上下相说 —— 人和则事顺,然悦言易失其正。',
+    gist: '泽润而悦,上下相说。',
     good: '交际',
     bad: '轻诺',
     mods: { luck: 0.08, dropRate: 0.06 }
@@ -62,7 +62,7 @@ export const TRIGRAMS: TrigramDef[] = [
     lines: [1, 0, 1],
     image: '火',
     nature: '丽',
-    gist: '火附于物而明,「明两作离」—— 有明则有照,亦易焚。',
+    gist: '火附于物而明,「明两作离」。',
     good: '扬名',
     bad: '燥烈',
     mods: { damageBonus: 0.08, critRate: 0.04 }
@@ -74,7 +74,7 @@ export const TRIGRAMS: TrigramDef[] = [
     lines: [1, 0, 0],
     image: '雷',
     nature: '动',
-    gist: '雷动而万物惧而后省 —— 惊者先觉,动者在先。',
+    gist: '雷动,万物惊而后省。',
     good: '先手',
     bad: '妄动',
     mods: { speed: 0.08, counterRate: 0.05 }
@@ -86,7 +86,7 @@ export const TRIGRAMS: TrigramDef[] = [
     lines: [0, 1, 1],
     image: '风',
     nature: '入',
-    gist: '风行无所不入,「随风巽,君子以申命行事」—— 渐入者远。',
+    gist: '风行无所不入,「随风巽,君子以申命行事」。',
     good: '远行',
     bad: '随波',
     mods: { explorationSpeed: 0.1, dodgeRate: 0.04 }
@@ -98,7 +98,7 @@ export const TRIGRAMS: TrigramDef[] = [
     lines: [0, 1, 0],
     image: '水',
     nature: '陷',
-    gist: '水行于险而不失其信,「习坎,有孚维心亨」—— 险中蓄养,方见其功。',
+    gist: '水行于险而不失其信,「习坎,有孚维心亨」。',
     good: '蓄养',
     bad: '涉险',
     mods: { qiRegen: 0.12, damageReduction: 0.05 }
@@ -110,7 +110,7 @@ export const TRIGRAMS: TrigramDef[] = [
     lines: [0, 0, 1],
     image: '山',
     nature: '止',
-    gist: '山止而不迁,「艮其背,不获其身」—— 止得其所,方能久。',
+    gist: '山止而不迁,「艮其背,不获其身」。',
     good: '静守',
     bad: '固执',
     mods: { damageReduction: 0.08, tribulationResist: 0.05 }
@@ -122,7 +122,7 @@ export const TRIGRAMS: TrigramDef[] = [
     lines: [0, 0, 0],
     image: '地',
     nature: '顺',
-    gist: '三爻皆阴,地势厚而承物,「厚德载物」—— 承者能容,能容者久。',
+    gist: '三爻皆阴,地势厚而承物,「厚德载物」。',
     good: '守成',
     bad: '犹疑',
     mods: { maxHpPct: 0.08, defensePct: 0.06 }
@@ -149,24 +149,24 @@ function h(order: number, name: string, upper: TrigramId, lower: TrigramId, gist
 export const HEXAGRAMS: HexagramDef[] = [
   h(1, '乾', 'qian', 'qian', '六爻皆阳,天行至健;宜进取,忌骄盈。'),
   h(2, '坤', 'kun', 'kun', '六爻皆阴,厚德载物;宜守成,忌犹疑。'),
-  h(3, '屯', 'kan', 'zhen', '云雷交作,万物始生;创业之初,难在起步。'),
+  h(3, '屯', 'kan', 'zhen', '云雷交作,万物始生;草创多艰。'),
   h(4, '蒙', 'gen', 'kan', '山下出泉,蒙昧未开;求教有则,再问则渎。'),
-  h(5, '需', 'kan', 'qian', '云上于天,需而不进;待时而动,不涉大川。'),
+  h(5, '需', 'kan', 'qian', '云上于天,需而不进;待时而动,利涉大川。'),
   h(6, '讼', 'qian', 'kan', '天水违行,争讼之象;争则两伤,不如早止。'),
   h(7, '师', 'kun', 'kan', '地中有水,众聚为师;师出以律,无律则凶。'),
-  h(8, '比', 'kan', 'kun', '水行地上,亲比相依;择善而从,来者不追。'),
-  h(9, '小畜', 'xun', 'qian', '风行天上,蓄而未行;密云不雨,小有积蓄。'),
+  h(8, '比', 'kan', 'kun', '水行地上,亲比相依;择善而从,去者不追。'),
+  h(9, '小畜', 'xun', 'qian', '风行天上,密云不雨;小有积蓄。'),
   h(10, '履', 'qian', 'dui', '上天下泽,履虎尾而不咥;守礼而行,虽险无咎。'),
   h(11, '泰', 'kun', 'qian', '天地交而万物通;上下同心,其道大昌。'),
-  h(12, '否', 'qian', 'kun', '天地不交而万物塞;闭而不通,宜守宜俭。'),
-  h(13, '同人', 'qian', 'li', '天与火同明,与人同心;同心于野,其利断金。'),
+  h(12, '否', 'qian', 'kun', '天地不交而万物塞;宜守宜俭。'),
+  h(13, '同人', 'qian', 'li', '天与火同明,与人同心;其利断金。'),
   h(14, '大有', 'li', 'qian', '火在天上,无所不照;所有既大,富有而顺。'),
   h(15, '谦', 'kun', 'gen', '地中有山,谦而不显;谦尊而光,卑而不可逾。'),
   h(16, '豫', 'zhen', 'kun', '雷出地奋,豫乐之作;乐极则溢,备豫则安。'),
   h(17, '随', 'dui', 'zhen', '泽中有雷,随时而动;随不失正,乃得其贞。'),
   h(18, '蛊', 'gen', 'xun', '山下有风,物腐生虫;整饬积弊,先难后治。'),
   h(19, '临', 'kun', 'dui', '泽上有地,临下以教;临事以诚,八月有凶。'),
-  h(20, '观', 'xun', 'kun', '风行地上,观民设教;观其所感,可悟天则。'),
+  h(20, '观', 'xun', 'kun', '风行地上,观民设教;中正以观天下。'),
   h(21, '噬嗑', 'li', 'zhen', '雷电合章,噬嗑而合;决断刑罚,去梗则通。'),
   h(22, '贲', 'gen', 'li', '山下有火,贲饰其外;文饰之美,不可以尽信。'),
   h(23, '剥', 'gen', 'kun', '山附于地,剥落将尽;顺而止之,厚下安宅。'),
@@ -178,8 +178,8 @@ export const HEXAGRAMS: HexagramDef[] = [
   h(29, '坎', 'kan', 'kan', '重险相习,维心亨通;行险而不失信,乃能出险。'),
   h(30, '离', 'li', 'li', '明两作离,继明照于四方;附丽得正,乃得其明。'),
   h(31, '咸', 'dui', 'gen', '山上有泽,二气感应;感而遂通,虚己以受。'),
-  h(32, '恒', 'zhen', 'xun', '雷风相与,恒久之道;立不易方,守常乃久。'),
-  h(33, '遁', 'qian', 'gen', '天下有山,遁避之象;遁而时义大,退非为怯。'),
+  h(32, '恒', 'zhen', 'xun', '雷风相与,恒久之道;立不易方。'),
+  h(33, '遁', 'qian', 'gen', '天下有山,遁避之象;遁而时义大。'),
   h(34, '大壮', 'zhen', 'qian', '雷在天上,壮盛之时;壮而守正,非礼弗履。'),
   h(35, '晋', 'li', 'kun', '明出地上,晋而进升;自昭明德,进而有光。'),
   h(36, '明夷', 'kun', 'li', '明入地中,光明受伤;用晦而明,内其明也。'),
@@ -192,9 +192,9 @@ export const HEXAGRAMS: HexagramDef[] = [
   h(43, '夬', 'dui', 'qian', '泽上于天,决而必行;刚决柔邪,不尚武力。'),
   h(44, '姤', 'qian', 'xun', '天下有风,不期而遇;遇合之初,不可与长。'),
   h(45, '萃', 'dui', 'kun', '泽上于地,聚而萃之;聚则必有备,除戎器戒不虞。'),
-  h(46, '升', 'kun', 'xun', '地中生木,积小而升;升而不已,积渐成高。'),
+  h(46, '升', 'kun', 'xun', '地中生木,积小而升。'),
   h(47, '困', 'dui', 'kan', '泽无水而困;处困而言不信,唯以心自守。'),
-  h(48, '井', 'kan', 'xun', '水风相与,井养不穷;井道在养人,不在自用。'),
+  h(48, '井', 'kan', 'xun', '水风相与,井养不穷。'),
   h(49, '革', 'dui', 'li', '泽中有火,革故鼎新;己日乃孚,改命则吉。'),
   h(50, '鼎', 'li', 'xun', '木上有火,鼎烹饪以养;正位凝命,养贤为先。'),
   h(51, '震', 'zhen', 'zhen', '重雷相荐,震来虩虩;惊而后省,笑言哑哑。'),
@@ -213,11 +213,11 @@ export const HEXAGRAMS: HexagramDef[] = [
   h(64, '未济', 'li', 'kan', '火在水上,未济之象;事未成而慎终,如濡其尾。')
 ]
 
-/** 动爻数与"卦力/时长"的换挡(静卦久而缓,动多者盛而易过) */
+/** 动爻数 → 卦力 / 时长档位 */
 export const CHANGING_TIERS: { min: number; power: number; minutes: number; note: string }[] = [
-  { min: 0, power: 1, minutes: 45, note: '六爻不动,卦静而力缓 —— 照此行事,可久。' },
-  { min: 1, power: 1.25, minutes: 30, note: '一二爻动,事有转机 —— 力稍盛,时机稍急。' },
-  { min: 3, power: 1.5, minutes: 15, note: '三爻以上皆动,事变在即 —— 卦力最盛,也最易错过。' }
+  { min: 0, power: 1, minutes: 45, note: '六爻不动,卦静;力缓,可久。' },
+  { min: 1, power: 1.25, minutes: 30, note: '一二爻动,事有转机;力稍盛,时机稍急。' },
+  { min: 3, power: 1.5, minutes: 15, note: '三爻以上皆动,事变在即;卦力最盛,时机最急。' }
 ]
 
 const TRIGRAM_BY_ID = new Map(TRIGRAMS.map(t => [t.id, t]))

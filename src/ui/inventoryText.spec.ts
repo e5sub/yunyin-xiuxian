@@ -9,24 +9,30 @@ import {
   smartCleanToast
 } from './inventoryText'
 
-describe('行囊提示 · 文言仍报清件数与尘石', () => {
+describe('行囊提示 · 只报结果,仍报清件数与尘石', () => {
   it('法宝位、化尘、收纳不说分解替换', () => {
     expect(artifactSlotReplacedToast()).toContain('祭炼')
     expect(artifactSlotReplacedToast()).not.toContain('替换')
+    expect(artifactSlotReplacedToast(['墨玉葫芦'])).toBe('已替下「墨玉葫芦」')
     expect(decomposeEmptyToast()).toContain('化尘')
     expect(decomposeEmptyToast()).not.toContain('分解')
-    expect(smartCleanToast(0, '器灵尘×1')).toContain('有缘')
-    expect(smartCleanToast(3, '器灵尘×9')).toBe('收纳既毕,3 件无缘之物化尘,器灵尘×9')
+    // 清理行囊一件没化与一键分解落空同词
+    expect(smartCleanToast(0, '器灵尘×1')).toBe(decomposeEmptyToast())
+    expect(smartCleanToast(3, '器灵尘×9')).toBe('已化尘 3 件 · 得器灵尘×9')
   })
 
   it('构筑满套、存入、换上仍报套数与阙件', () => {
     expect(loadoutFullToast(5)).toContain('5 套')
+    expect(loadoutFullToast(5), '与流派页按钮同一个状态词').toContain('快照已满')
+    expect(loadoutFullToast(5), '只报状态,不教玩家下一步').not.toContain('先卸')
     expect(loadoutSavedToast('杀伐')).toContain('「杀伐」')
     expect(loadoutApplyToast('杀伐', 0, [])).toBe('已换上「杀伐」')
-    // 阙件有名有姓:说不清是哪几件时,至少还把个数带上
     expect(loadoutApplyToast('杀伐', 2, ['灵鹤诀', '清霜剑'])).toBe('已换上「杀伐」,阙 2 件:灵鹤诀、清霜剑')
     expect(loadoutApplyToast('杀伐', 2, [])).toBe('已换上「杀伐」,阙 2 件')
     expect(loadoutApplyToast('杀伐', 2, ['灵鹤诀'])).not.toContain('切换')
+    // 槽位不够只标事实,不附建议
+    expect(loadoutApplyToast('杀伐', 1, ['灵鹤诀'], true)).toBe('已换上「杀伐」,阙 1 件(槽位不足):灵鹤诀')
+    expect(loadoutApplyToast('杀伐', 1, [], true)).toBe('已换上「杀伐」,阙 1 件(槽位不足)')
   })
 })
 

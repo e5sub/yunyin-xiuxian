@@ -4,7 +4,6 @@ import { rng } from '@/utils/random'
 import { pillDef } from '@/data/pills'
 import { herbGradeOfMajor, type HerbGrade } from '@/data/herbGrades'
 import { INSTANT_EXP_LAYER_CAP } from '@/data/constants'
-import { classicalDuration } from '@/data/timeUnits'
 import { formatGN } from '@/utils/format'
 import { recipeCraft, type SkillId } from '@/data/crafting'
 import { expFromSecs, pillStoneCost } from './formulas'
@@ -45,12 +44,11 @@ export function usePill(id: string, quiet = false): boolean {
     if (def.instant.expSecs) {
       const gain = expFromSecs(player.expReq, def.instant.expSecs, player.cultPerSec, INSTANT_EXP_LAYER_CAP)
       player.gainExp(gain)
-      lines.push(`修为 +${formatGN(gain)}(约抵闭关 ${classicalDuration(def.instant.expSecs)})`)
+      lines.push(`修为 +${formatGN(gain)}`)
     }
     if (def.instant.expFixed) {
-      // 固定点数丹同守「即时修为不满一层」:以 1 点=1 秒折算,走与 expSecs 同一个
-      // 结算函数(expFromSecs)统一收口层封顶 —— 入门丹写死 30/45/80,炼气一层
-      // 需求才几十,不封就一枚连跳多层(见 expIncome.spec 接线红线 / pillValue 审计)
+      // 固定点数按 1 点=1 秒走 expFromSecs,同守「不满一层」封顶;不封则入门丹一枚连跳多层
+      // spec 钉:expIncome.spec 接线红线 / pillValue 审计
       player.gainExp(expFromSecs(player.expReq, def.instant.expFixed, 1, INSTANT_EXP_LAYER_CAP))
       lines.push('修为精进')
     }
@@ -72,16 +70,10 @@ export function usePill(id: string, quiet = false): boolean {
     const now = gameNow()
     const overflow = buffOverflowOf(cultivation.buffs, def.buffId, now)
     cultivation.addBuff(def.buffId, now)
-    lines.push(
-      overflow === 'full'
-        ? '药力已至上限,这一颗白费了'
-        : overflow === 'partial'
-          ? '药力已至上限,这一颗只延续到顶'
-          : '药力化开,状态加身'
-    )
+    lines.push(overflow === 'full' ? '药力已顶满,白费' : overflow === 'partial' ? '药力只延续到顶' : '药力化开')
   }
   track('pillsUsed')
-  // Phase 32.5:「不假外物」之誓在按下这一刻就落空,不必等到转世才被告知
+  // 「不假外物」之誓当场落空
   noteTaboo('pill')
   collect('pill', id)
   if (!quiet) {
@@ -92,16 +84,14 @@ export function usePill(id: string, quiet = false): boolean {
 }
 
 /**
- * 批量服丹(玩家反馈「批量吃丹」):连服至多 count 枚,吃到没有就停。
- * 与连点 count 下完全等价 —— 逐枚结算,只把提示合为一条。
- * @returns 实际服下的枚数(0 表示一枚没服下)
+ * 批量服丹:连服至多 count 枚,吃完即停;与连点 count 下等价,只把提示合为一条。
+ * @returns 实际服下的枚数
  */
 export function usePillBatch(id: string, count: number): number {
-  if (count < 1) return 0 // 没要求服,一枚也不许动
+  if (count < 1) return 0
   const def = pillDef(id)
   if (!def) return 0
-  // 增益丹(带 buffId)批量连服是陷阱:药力一顶,后面的全白费(涉策 buffOverflowOf)——
-  // 退化为单服,让「只延续到顶 / 这一颗白费了」那句说得明白,而不是「连服 N 枚」一笔带过。
+  // 增益丹退化为单服:药力一顶后面全白费(buffOverflowOf),单服提示才报得出「只延续到顶 / 白费」
   if (def.buffId) return usePill(id) ? 1 : 0
   if (count === 1) return usePill(id) ? 1 : 0
   let eaten = 0
@@ -113,7 +103,7 @@ export function usePillBatch(id: string, count: number): number {
   const ui = useUiStore()
   if (eaten > 0) {
     playSfx('success')
-    ui.toast(`连服 ${eaten} 枚「${name}」${eaten < count ? `(仅存 ${eaten} 枚)` : ''}`, 'success')
+    ui.toast(`连服 ${eaten} 枚「${name}」`, 'success')
   } else {
     ui.toast(pillGoneToast(), 'warn')
   }
@@ -240,8 +230,8 @@ export function craftPill(id: string, quiet = false): CraftOutcome {
   const ui = useUiStore()
   const def = pillDef(id)
   const cost = pillCraftCost(id)
-  // 批量静默路径从不读 weakness(仅失败 toast 用)—— 跳过那份最重的计算
-  const able = craftability(id, quiet ? { omitWeakness: true } : undefined)
+  // 结算不读 weakness,跳过最重的那份计算
+  const able = craftability(id, { omitWeakness: true })
   if (!def || !cost || !able) return { ok: false, count: 0, aborted: true }
 
   if (able.blockers.length > 0) {
@@ -284,7 +274,7 @@ export function craftPill(id: string, quiet = false): CraftOutcome {
     track('pillsFailed')
     if (!quiet) {
       playSfx('fail')
-      ui.toast(failLine(able.weakness), 'warn')
+      ui.toast('炸炉', 'warn')
     }
     return { ok: false, count: 0 }
   }
@@ -303,16 +293,14 @@ export function craftPill(id: string, quiet = false): CraftOutcome {
 }
 
 /**
- * 批量炼丹(玩家反馈「批量炼丹」):连开至多 count 炉,材料见底就停。
- * 逐炉结算与连点完全等价,只把提示合为一条。材料一份都不够时,
- * 把真正的阻塞理由交给一次非静默开炉去说明。
- * @returns 成丹数 / 炸炉数
+ * 批量炼丹:连开至多 count 炉,材料见底即停;与连点等价,只把提示合为一条。
+ * 一炉都开不了时,由一次非静默开炉报阻塞理由。
  */
 export function craftPillBatch(id: string, count: number): { rounds: number; made: number; failed: number } {
-  if (count < 1) return { rounds: 0, made: 0, failed: 0 } // 没要求炼,一炉也不许开
+  if (count < 1) return { rounds: 0, made: 0, failed: 0 }
   if (count === 1) {
     const first = craftPill(id)
-    // 炉根本没开(方子未知/掌握不足/缺料)不算「开了一炉又炸了」—— 与 count≥2 的循环口径对齐
+    // 未开炉不计为炸炉,与 count≥2 的循环同口径
     if (first.aborted) return { rounds: 0, made: 0, failed: 0 }
     return { rounds: 1, made: first.ok ? first.count : 0, failed: first.ok ? 0 : 1 }
   }
@@ -335,10 +323,4 @@ export function craftPillBatch(id: string, count: number): { rounds: number; mad
     ui.toast(`连炼 ${rounds} 炉「${name}」:成 ${made} 枚${failed > 0 ? `,炸 ${failed} 炉` : ''}`, failed > 0 ? 'warn' : 'success')
   }
   return { rounds, made, failed }
-}
-
-/** 炸炉话术:优先复述最要命的那条短板,让玩家知道该补什么 */
-function failLine(weakness: readonly string[]): string {
-  const reason = weakness[0]
-  return reason ? `炉中一声闷响,丹毁了。${reason}` : '炉中一声闷响,丹毁了——火候差了那么一线。'
 }

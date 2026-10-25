@@ -14,6 +14,7 @@ import { personalityEffects } from './petPersonality'
 import { expFromSecs, stoneByTier } from './formulas'
 import { generateEquipment } from './equipGen'
 import { acquireArtifact, acquireEquipment, randomDropArtifact } from './loot'
+import { harvestMaterials } from './loreService'
 import { gameNow } from './enginePause'
 import { learnRandomGongfa } from './gongfaService'
 import { fortuneAffinity, rootElements } from './linggenAffinity'
@@ -38,7 +39,7 @@ export function pendingChainStages(major: number): { chainId: string; stage: num
   for (const chain of CHAINS) {
     const done = player.eventChains[chain.id] ?? 0
     const eventId = chain.stages[done]
-    if (!eventId) continue // 这条缘已了
+    if (!eventId) continue
     const def = eventDef(eventId)
     if (!def) continue
     if (def.minRealm !== undefined && major < def.minRealm) continue
@@ -148,23 +149,25 @@ function applyEffect(effect: EventEffect, tier: number, opts: EventApplyOpts = {
       const v = stoneByTier(tier, Math.abs(effect.tierAmount))
       if (effect.tierAmount >= 0) {
         resources.addStone(v)
-        foldSession(v) // 灵石所得并入会话账目
+        foldSession(v)
         return `灵石 +${formatGN(v)}`
       }
-      // 入不敷出就拒绝,不「把整份余额奉上」——传余额拷贝会让 gte 恒真、清零收场
+      // 余额不足即拒绝;传余额拷贝会让 gte 恒真、余额清零
       if (!resources.spendStone(v)) return null
       return `灵石 -${formatGN(v)}`
     }
     case 'exp': {
-      // 与丹药、一场遭遇同一把尺子:等效闭关时长,封顶不满一层(见 formulas.expFromSecs)
+      // 与丹药、遭遇同口径:等效闭关时长,封顶不满一层(formulas.expFromSecs)
       const v = expFromSecs(player.expReq, effect.secs, player.cultPerSec, INSTANT_EXP_LAYER_CAP)
       player.gainExp(v)
-      foldSession(undefined, v) // 修为所得并入会话账目
+      foldSession(undefined, v)
       return `修为 +${formatGN(v)}`
     }
     case 'material':
       resources.addSmall(effect.id, effect.amount)
-      // 灵草按品入账(addSmall 落当前品),文案显式报品,与五品经济同口径 —— events 数据只写数量不写品
+      // 每笔只抽 1 味:离线每段事件可达 40 件,按数量抽会盖过离线普通战每段至多 6 抽的封顶
+      if ((effect.id === 'herb' || effect.id === 'ore') && effect.amount >= 1) harvestMaterials(tier, effect.id, 1)
+      // addSmall 落当前品;events 数据只写数量不写品,文案报品
       if (effect.id === 'herb') return `${HERB_GRADE_SHORT[herbGradeOfMajor(player.major)]}灵草 +${effect.amount}`
       return `${MATERIAL_NAMES[effect.id]} +${effect.amount}`
     case 'equipment': {
@@ -174,7 +177,7 @@ function applyEffect(effect: EventEffect, tier: number, opts: EventApplyOpts = {
         minQualityRank: effect.minQualityRank
       })
       const line = `获得 ${acquireEquipment(inst).line}`
-      foldSession(undefined, undefined, 1) // 拾获一件并入会话账目
+      foldSession(undefined, undefined, 1)
       return line
     }
     case 'pill': {
@@ -184,32 +187,28 @@ function applyEffect(effect: EventEffect, tier: number, opts: EventApplyOpts = {
       if (!def) return null
       inventory.addPill(id, effect.count)
       collect('pill', id)
-      foldSession(undefined, undefined, effect.count) // 丹药所得并入会话账目
+      foldSession(undefined, undefined, effect.count)
       return `丹药「${def.name}」×${effect.count}`
     }
     case 'gongfa': {
       const learnt = learnRandomGongfa(effect.id)
       if (learnt) return `习得功法《${learnt}》`
       resources.addSmall('page', 10)
-      return '功法残页 +10(已尽览此道)'
+      return '功法残页 +10'
     }
     case 'artifact': {
       const id = effect.id ?? randomDropArtifact(tier)
       if (!id) return null
       const line = `获得 ${acquireArtifact(id, false, opts.autoEquipArtifact ?? true)}`
-      foldSession(undefined, undefined, 1) // 法宝所得并入会话账目
+      foldSession(undefined, undefined, 1)
       return line
     }
     case 'buff': {
       const def = buffDef(effect.id)
       if (!def) return null
-      /**
-       * 读游戏时钟 —— `enginePause` 的纪律是「可冻结的到期判定读 gameNow(),
-       * 不要直接读 Date.now()」。事件祝福同样按 endsAt 判到期,暂停中写墙钟
-       * 会让它在恢复后凭空多出一段(与 usePill 同一处修正)。
-       */
+      // 可冻结的到期判定读 gameNow()(enginePause 纪律)
       cultivation.addBuff(effect.id, gameNow())
-      return def.kind === 'injury' ? `陷入「${def.name}」状态` : `获得「${def.name}」加持`
+      return def.kind === 'injury' ? `陷入「${def.name}」` : `获得「${def.name}」加持`
     }
     case 'lifespan':
       player.addLifespan(effect.years)
@@ -222,12 +221,13 @@ function applyEffect(effect: EventEffect, tier: number, opts: EventApplyOpts = {
       const id = effect.id ?? (pool.length ? rng.pick(pool).id : null)
       if (!id || owned.has(id)) {
         resources.addSmall('herb', 10)
+        harvestMaterials(tier, 'herb', 1)
         return `${HERB_GRADE_SHORT[herbGradeOfMajor(player.major)]}灵草 +10`
       }
       collect('pet', id)
       if (!player.petId) player.setPet(id)
       const def = petDef(id)
-      return `灵兽「${def?.name ?? ''}」愿意追随于你`
+      return `获得灵兽「${def?.name ?? ''}」`
     }
     case 'nothing':
       return null

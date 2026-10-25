@@ -8,13 +8,13 @@ export const DAO_PATHS: DaoPathDef[] = [
     id: 'sword',
     name: '剑道',
     seal: '剑',
-    desc: '一剑破万法。极致的锋锐,换走厚重的余地',
+    desc: '一剑破万法,不留余地',
     ruleText: ['暴击率 +10%,暴击伤害 +30%', '攻击无视敌方 15% 防御', '自身受到伤害 +10%'],
     rules: {
       playerExtraMods: { critRate: 0.1, critDamage: 0.3, armorPen: 0.15, damageReduction: -0.1 }
     },
     deepText: [
-      '剑意:道途越纯,剑意越盛——主流派大成、法宝不过一件、不修回血之术,至多四层,每层伤害 +4%、会心 +2%',
+      '剑意:主流派成形、无副体系、法宝不过一件、不修回血之术,至多四层,每层伤害 +4%、会心 +2%',
       '远征蓄势:每胜一场,剑意再添一层'
     ]
   },
@@ -30,19 +30,19 @@ export const DAO_PATHS: DaoPathDef[] = [
       enemyHpMult: 1.2,
       perRounds: { interval: 5, playerHealPct: 0.04, playerShieldPct: 0.04, enemyAtkGrowth: 0.06 }
     },
-    deepText: ['长生印:每五回合得一印,恢复 4% 气血、凝 4% 护盾——越拖越强', '印生杀意:敌人攻势亦随之每印 +6%。长生不怕鏖战,最怕爆发']
+    deepText: ['长生印:每五回合得一印,恢复 4% 气血、凝 4% 护盾', '印生杀意:敌人攻势亦随之每印 +6%']
   },
   {
     id: 'fate',
     name: '天机道',
     seal: '机',
-    desc: '窥破天机,亦被天机所窥。胜负交予概率',
-    ruleText: ['敌我双方暴击率 +8%', '敌我双方闪避 +6%', '战局大起大落'],
+    desc: '窥破天机,亦被天机所窥',
+    ruleText: ['敌我双方暴击率 +8%', '敌我双方闪避 +6%'],
     rules: {
       playerExtraMods: { critRate: 0.08, dodgeRate: 0.06 },
       enemyExtraMods: { critRate: 0.08, dodgeRate: 0.06 }
     },
-    deepText: ['天机透视:远征启程前,可窥见敌人招式明细与此战胜算', '契约与路线的凶险,于你不再是未知数']
+    deepText: ['天机透视:远征启程前,可窥见敌人招式明细与此战胜算', '契约与路线的凶险亦可窥见']
   },
   {
     id: 'slaughter',
@@ -51,7 +51,7 @@ export const DAO_PATHS: DaoPathDef[] = [
     desc: '以战证道。你我皆利刃,先断者输',
     ruleText: ['自身攻击 +25%', '一切敌人攻击 +15%', '战斗回合上限 -30%'],
     rules: { playerAtkMult: 1.25, enemyAtkMult: 1.15, maxRounds: 35 },
-    deepText: ['杀意:远征每胜一场,伤害 +5%,层层递进', '速战之赏:远征总回合越短,道源加成越高(至多 +25%)']
+    deepText: ['杀意:远征每胜一场,伤害 +5%', '速战之赏:远征总回合越短,道源加成越高(至多 +25%)']
   }
 ]
 
@@ -94,8 +94,8 @@ export const CELESTIAL_WORLDS: CelestialWorldDef[] = [
     name: '赤炎天',
     seal: '炎',
     anchorTier: 22,
-    desc: '天穹燃烧,雷火贯体。此界只问一件事:你扛得住几击?',
-    ruleText: ['敌人攻击 +40%', '真伤横行,烈焰炙烤(治疗 -35%)', '回合上限骤减(拖字诀必败)'],
+    desc: '天穹燃烧,雷火贯体',
+    ruleText: ['敌人攻击 +40%', '真伤横行', '治疗 -35%', '回合上限骤减'],
     rules: { enemyAtkMult: 1.4, maxRounds: 32, healMult: 0.65, enemyExtraMods: { critRate: 0.1 } },
     entryCost: 20,
     fights: 6,
@@ -172,8 +172,8 @@ export const CELESTIAL_WORLDS: CelestialWorldDef[] = [
     name: '万刃天',
     seal: '刃',
     anchorTier: 25,
-    desc: '亿万飞刃永不停歇。每一段锋芒,都是反击者的粮',
-    ruleText: ['敌人皆为多段连击且血厚如山', '速攻在此撞墙', '受击反制收益极高'],
+    desc: '亿万飞刃永不停歇,段段皆可反击',
+    ruleText: ['敌人皆为多段连击且血厚'],
     rules: { enemyExtraMods: { critRate: 0.1 } },
     entryCost: 20,
     fights: 6,
@@ -219,7 +219,7 @@ export const CELESTIAL_WORLDS: CelestialWorldDef[] = [
         node(
           'wr_rain',
           '刃雨原',
-          '刃雨骤落,一波致命',
+          '刃雨骤落,一阵致命',
           shape('刃雨妖主', 'wind', 0.9, 0.5, 1.5, 1.3, [{ name: '刃雨倾盆', mult: 2.0, rate: 0.4 }]),
           14,
           '爆发骤袭'
@@ -237,7 +237,7 @@ export const CELESTIAL_WORLDS: CelestialWorldDef[] = [
         node(
           'wr_still',
           '静刃庭',
-          '刃静无声,一顿封喉',
+          '刃静无声,动则封喉',
           shape('静刃守卫', 'moon', 0.82, 0.55, 1.7, 1.2, [{ name: '静刃封喉', mult: 1.6, rate: 0.45, effect: 'stun' }]),
           16,
           '频繁震慑'
@@ -251,7 +251,7 @@ export const CELESTIAL_WORLDS: CelestialWorldDef[] = [
     name: '无生天',
     seal: '寂',
     anchorTier: 29,
-    desc: '此界拒绝生机。治疗近乎无效,唯有向死而生者能行',
+    desc: '此界不容生机,治疗近乎无效',
     ruleText: ['治疗效率 -70%', '护盾上限减半', '敌人攻击 +15%'],
     rules: { healMult: 0.3, shieldCapRatio: 0.25, enemyAtkMult: 1.15, enemyExtraMods: { critRate: 0.1 } },
     entryCost: 20,
@@ -329,8 +329,8 @@ export const CELESTIAL_WORLDS: CelestialWorldDef[] = [
     name: '无相天',
     seal: '影',
     anchorTier: 32,
-    desc: '万物无相,出手落空。此界嘲笑一切依赖招式衔接的道',
-    ruleText: ['敌人闪避极高', '敌人出手极快', '概率与稳定的对决'],
+    desc: '万物无相,出手落空',
+    ruleText: ['敌人闪避极高', '敌人出手极快'],
     rules: { enemyExtraMods: { critRate: 0.12 } },
     entryCost: 20,
     fights: 6,
@@ -416,7 +416,7 @@ export const TRIALS: TrialDef[] = [
     name: '七杀试炼',
     seal: '七',
     anchorTier: 23,
-    desc: '七场连战,不得换装,场场增强。记录你最快的杀伐',
+    desc: '七杀星下,石台染赤',
     ruleText: ['连战 7 场,敌人逐场增强', '场间仅恢复三成气血', '追求最少总回合'],
     rules: {},
     entryCost: 15,
@@ -430,8 +430,8 @@ export const TRIALS: TrialDef[] = [
     name: '一线试炼',
     seal: '悬',
     anchorTier: 26,
-    desc: '开局气血仅余三成半。向死而生者的主场',
-    ruleText: ['每场开局仅 35% 气血', '连战 4 场', '濒死者的证道之地'],
+    desc: '一线悬空,下临无地',
+    ruleText: ['每场开局仅 35% 气血', '连战 4 场'],
     rules: { playerStartHpPct: 0.35 },
     entryCost: 15,
     fights: 4,
@@ -444,7 +444,7 @@ export const TRIALS: TrialDef[] = [
     name: '无回试炼',
     seal: '断',
     anchorTier: 30,
-    desc: '此地一切治疗无效。不靠回复,你还剩什么?',
+    desc: '身后桥断,四野枯寂',
     ruleText: ['治疗完全无效', '连战 5 场', '场间不恢复'],
     rules: { healMult: 0 },
     entryCost: 15,

@@ -83,23 +83,22 @@ function weaknessLines(c: {
   mastery: number
   matLore: number
   skill: number
-  over: number
   craft: RecipeCraft
   loreOf: (id: string) => number
   levelOf: (id: SkillId) => number
 }): string[] {
   const out: string[] = []
-  if (c.mastery < 0.35) out.push('丹方只记得个大概,火候节点全靠猜。')
-  else if (c.mastery < 0.7) out.push('丹方尚未烂熟于心,关键几步还要现想。')
+  if (c.mastery < 0.35) out.push('丹方生疏')
+  else if (c.mastery < 0.7) out.push('丹方未熟')
 
   const unknown = c.craft.materials.filter(id => c.loreOf(id) < 1)
   if (unknown.length > 0) {
-    out.push(`方中有 ${unknown.length} 味药你还叫不出名字。`)
+    out.push(`${unknown.length} 味灵材未识`)
   } else {
     const shallow = c.craft.materials.filter(id => c.loreOf(id) < LORE_MAX)
     if (shallow.length > 0) {
       const names = shallow.map(id => materialDef(id)?.name).filter(Boolean).slice(0, 2)
-      out.push(`${names.join('、')}的用法你只知其一。`)
+      out.push(`${names.join('、')}未通晓`)
     }
   }
 
@@ -113,10 +112,10 @@ function weaknessLines(c: {
   }
   if (worst && c.levelOf(worst.id) < 55) {
     const def = skillDef(worst.id)
-    if (def) out.push(`${def.name}不足:${def.lackText}`)
+    if (def) out.push(`${def.name}不足`)
   }
 
-  if (c.over > 0) out.push(`此方高出你能承受的 ${c.over} 阶,强炼是在赌命。`)
+  // 越阶不在这里另报:方子行头已有「越阶 N」标签
   return out
 }
 
@@ -147,7 +146,7 @@ export function craftability(id: string, opts?: { omitWeakness?: boolean }): Cra
   const over = Math.max(0, craft.rank - bearable)
 
   const blockers: string[] = []
-  if (mastery <= 0) blockers.push('尚未得此丹方')
+  if (mastery <= 0) blockers.push('未得方')
 
   return {
     recipeId: id,
@@ -163,7 +162,7 @@ export function craftability(id: string, opts?: { omitWeakness?: boolean }): Cra
     bonusChanceWithYield: Math.min(PILL_SECOND_CAP, bonusChanceOf(mastery, skill) + modOf(player.finalStats.mods, 'alchemyYield')),
     blockers,
     weakness:
-      blockers.length > 0 || opts?.omitWeakness ? [] : weaknessLines({ mastery, matLore, skill, over, craft, loreOf, levelOf }),
+      blockers.length > 0 || opts?.omitWeakness ? [] : weaknessLines({ mastery, matLore, skill, craft, loreOf, levelOf }),
     materials: craft.materials
   }
 }

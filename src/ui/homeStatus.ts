@@ -15,12 +15,12 @@ export interface HomePresence {
 
 export function homeStatusText(p: HomePresence): string {
   if (p.dead) return '陨落'
-  // 秘境与远征都不是「历练会话」,却都占着玩家本体 —— 写「修炼中」等于说他在家打坐
-  if (p.exploringSecret) return '探秘中'
-  if (p.expedition) return '远征中'
-  if (p.adventuring) return `历练中 · ${p.regionName}`
+  // 三种在途写法与 core/endgameActivity 拒因同词,修为圆满与离线卷轴(ui/cultivationText)同词。
+  if (p.exploringSecret) return '身在秘境'
+  if (p.expedition) return '远征在途'
+  if (p.adventuring) return `历练在途 · ${p.regionName}`
   if (p.injured) return '疗伤中'
   if (p.retreating) return '闭关中'
-  if (p.expFull) return '修为已满'
+  if (p.expFull) return '修为已至圆满'
   return '修炼中'
 }

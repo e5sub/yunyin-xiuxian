@@ -34,17 +34,13 @@
         <p class="mt-0.5 text-[11px] text-ink-faint">
           {{ REALMS[row.def.minRealm]?.name }}境相宜 ·
           <span :class="row.def.danger >= 4 ? 'text-cinnabar' : ''">{{ DANGER_NAMES[row.def.danger] }}</span>
-          <span v-if="row.tooHard" class="ml-1 text-cinnabar">· 境界尚浅,恐有性命之忧</span>
-          <!-- 复聚要说出「该怎么办」:旧主归来了,再历一程即可复靖 -->
-          <span v-if="row.revived" class="ml-1 text-cinnabar">· 旧主归来,再历一程即可复靖</span>
-          <!-- 掉落阶位与 generateEquipment 用的同一档(region.tier):「此界掉几阶」出发前就亮着。
-               nowrap:320px 上这句曾被从空格处断行,数字与量词拆成两行(layout-check 抓的) -->
+          <span v-if="row.tooHard" class="ml-1 text-cinnabar">· 境界未到</span>
+          <!-- 复聚状态读落盘的 adventure.revived -->
+          <span v-if="row.revived" class="ml-1 text-cinnabar">· 旧主归来</span>
+          <!-- 掉落阶位与 generateEquipment 同一档(region.tier);nowrap 防 320px 下数字与量词断行(layout-check 抓的) -->
           <span class="ml-1 whitespace-nowrap text-ink-soft">· {{ produceTierText(row.def.tier) }}</span>
         </p>
-        <!--
-          敌人的「层级补偿」此前只落在数值里:玩家看到的只是一只小怪,打起来却像换了一身装备。
-          此处与战后归因同源(regionFoeOrigin)—— 出行方式与灵兽之性那一半在出行弹窗里摊开。
-        -->
+        <!-- 敌人层级补偿,与战后归因同源(regionFoeOrigin);出行方式与灵兽之性那一半在出行弹窗 -->
         <p v-if="row.foeOrigin.parts.length" data-region-foe-origin class="mt-0.5 text-[10px] leading-relaxed text-ink-faint">
           此地之敌:{{ foeOriginPartsText(row.foeOrigin) }}
         </p>
@@ -81,7 +77,7 @@
         class="ml-auto inline-flex min-h-[28px] items-center px-1 text-[10px] text-ink-faint underline underline-offset-2 active:scale-90 active:text-ink"
         @click.stop="emit('toggle-suppress', row.def.id)"
       >
-        停取收益,改去历练
+        停取收益
       </button>
     </div>
 
@@ -101,16 +97,11 @@
       </button>
     </div>
     <p class="mt-2 text-[11px] leading-relaxed text-ink-faint">
-      <!-- 进得去:给全景;进不去且没被本世路线拦:给旧链的「先击败某主」。
-           被本世路线拦时(下头 blockReason)只讲那一条 —— 两条理由并存会指向,
-           玩家不知道该往哪走 -->
+      <!-- 被本世路线拦时(blockReason)只讲那一条,不与「需击败某主」并存 -->
       <template v-if="row.canEnter">{{ row.def.desc }}</template>
-      <template v-else-if="!row.blockReason">需先击败{{ prevRegionName }}之主,方可踏足此地。</template>
+      <template v-else-if="!row.blockReason">需击败{{ prevRegionName }}之主</template>
     </p>
-    <!--
-      镇压资格进度:只显示「能不能镇压」时,玩家打够了场数却压不住,
-      只能猜自己差在哪 —— 这里把三条判据的当前值与阈值并排摆出来,未达标项标红
-    -->
+    <!-- 镇压资格进度:三条判据的当前值与阈值,未达标项标红 -->
     <p
       v-if="row.canEnter && !row.suppressed && !row.qualified"
       class="mt-1 text-[10px] leading-relaxed tabular"
@@ -127,9 +118,8 @@
           均受伤 {{ Math.round(row.progress.avgDamagePct * 100) }}%(需≤{{ Math.round(row.progress.maxAvgDamagePct * 100) }}%)
         </span>
       </template>
-      <span v-else class="ml-1.5 text-ink-faint">尚无战绩</span>
+      <span v-else class="ml-1.5 text-ink-faint">暂无战绩</span>
     </p>
-    <!-- 进不去时,理由指向眼下就能去的那一段,不让玩家自己排先后 -->
     <p v-if="row.blockReason" class="mt-1 text-[11px] text-cinnabar">{{ row.blockReason }}</p>
     <div v-if="row.canEnter && (row.chips.length || row.adaptation)" class="mt-2 flex flex-wrap items-center gap-1.5">
       <span
@@ -140,10 +130,9 @@
       >
         {{ chip.name }}·{{ ECO_LEVEL_NAMES[chip.level] }}
       </span>
-      <!-- 适配原因点按展开:手机没有 hover,得知道自己为什么被看好/看衰 -->
-      <!-- min-h-[28px] 是排版自检的尺子:展开按钮此前只有 15px 高,拇指点不着 -->
+      <!-- min-h-[28px] 是排版自检的触达下限;无理由可展时只报星级,不留点了没反应的按钮 -->
       <button
-        v-if="row.adaptation"
+        v-if="row.adaptation && row.adaptation.reasons.length"
         class="ml-auto inline-flex min-h-[28px] items-center text-[10px] text-ink-soft tabular active:scale-90"
         :title="row.adaptation.reasons.join(';')"
         :aria-expanded="adaptExpand"
@@ -152,8 +141,12 @@
         适配
         <span class="text-gold-ink">{{ starsText(row.adaptation.stars) }}</span>
       </button>
+      <span v-else-if="row.adaptation" class="ml-auto inline-flex min-h-[28px] items-center text-[10px] text-ink-soft tabular">
+        适配
+        <span class="text-gold-ink">{{ starsText(row.adaptation.stars) }}</span>
+      </span>
     </div>
-    <div v-if="adaptExpand && row.adaptation" class="mt-1">
+    <div v-if="adaptExpand && row.adaptation?.reasons.length" class="mt-1">
       <p v-for="(r, i) in row.adaptation.reasons" :key="i" class="text-[10px] leading-relaxed text-ink-faint">· {{ r }}</p>
     </div>
   </div>

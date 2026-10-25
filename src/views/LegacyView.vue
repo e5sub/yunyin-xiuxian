@@ -3,10 +3,8 @@
     <div class="card-ink paper-grain relative overflow-hidden px-4 pb-4 pt-5 text-center">
       <span class="seal-solid" aria-hidden="true">我</span>
       <h1 class="mt-2.5 font-kai text-[20px] tracking-[0.3em] text-ink">修 仙 录</h1>
-      <p class="mt-1 text-[10px] tracking-[0.25em] text-ink-faint">这一部,只写你自己</p>
     </div>
 
-    <!-- 修行画像 -->
     <div v-if="profile" class="card-ink px-4 py-3">
       <p class="mb-1.5 font-kai text-[12px] tracking-[0.3em] text-ink-faint">修行画像</p>
       <p class="font-kai text-[13px] leading-relaxed text-ink">「{{ profile.verdict }}」</p>
@@ -45,24 +43,21 @@
           <span class="text-cinnabar">{{ profile.weakWorld }}</span>
         </p>
       </div>
-      <p class="mt-1.5 text-[9px] text-ink-faint">画像全部来自真实道痕统计,不可人工修饰。</p>
     </div>
     <p v-else class="card-ink px-4 py-6 text-center">
       <span class="empty-seal" aria-hidden="true">像</span>
       <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">道痕未满{{ cnNumber(PROFILE_MIN_MARKS) }}则</span>
-      <span class="mt-1 block text-[10px] leading-relaxed text-ink-faint">画像尚不成形 —— 走远些,才照见自己</span>
     </p>
 
-    <!-- 轮回录(Phase 32.5):第 N 世与第 1 世的实质区别 -->
     <SectionTitle title="轮回录" :hint="`宿慧 ${insight}`" />
     <div class="card-ink px-4 py-3">
       <p class="flex items-center gap-2">
         <span class="font-kai text-[14px] tracking-widest text-ink">{{ stage.name }}</span>
         <span class="text-[10px] text-ink-faint tabular">第 {{ player.reincarnation.count + 1 }} 世</span>
         <span v-if="toNextStage !== null" class="ml-auto shrink-0 text-[10px] text-ink-faint tabular">
-          再积 {{ toNextStage }} 宿慧入下一境地
+          下一境地 · 宿慧尚差 {{ toNextStage }}
         </span>
-        <span v-else class="ml-auto shrink-0 text-[10px] text-gold-ink">此道已至尽头</span>
+        <span v-else class="ml-auto shrink-0 text-[10px] text-gold-ink">已至尽头</span>
       </p>
       <p class="mt-1 text-[11px] leading-relaxed text-ink-faint">{{ stage.desc }}</p>
 
@@ -97,10 +92,9 @@
           <span v-if="vowProg" class="tabular">({{ Math.floor(vowProg.cur) }} / {{ vowProg.need }})</span>
         </p>
       </div>
-      <p v-else class="mt-2 text-[11px] text-ink-faint">这一世不曾为自己立题。兵解转世时,可择一题而行。</p>
+      <p v-else class="mt-2 text-[11px] text-ink-faint">本世未立题</p>
     </div>
 
-    <!-- 历世履历 -->
     <div class="card-ink divide-y divide-ink/6 px-4">
       <template v-if="lifeRows.length">
         <p v-for="l in lifeRows" :key="l.index" class="flex items-center gap-2 py-2 text-[12px]">
@@ -115,7 +109,6 @@
       <p v-else class="py-5 text-center">
         <span class="empty-seal" aria-hidden="true">初</span>
         <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">此为初世</span>
-        <span class="mt-1 block text-[10px] leading-relaxed text-ink-faint">你尚未死过一次,也就还没有什么可以回忆</span>
       </p>
     </div>
 
@@ -130,8 +123,7 @@
       </div>
       <p v-else class="py-5 text-center">
         <span class="empty-seal" aria-hidden="true">白</span>
-        <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">此录尚白</span>
-        <span class="mt-1 block text-[10px] leading-relaxed text-ink-faint">天界之行,自会留名</span>
+        <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">暂无记录</span>
       </p>
     </div>
 
@@ -148,8 +140,7 @@
       </template>
       <p v-else class="py-5 text-center">
         <span class="empty-seal" aria-hidden="true">敌</span>
-        <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">尚无宿敌</span>
-        <span class="mt-1 block text-[10px] leading-relaxed text-ink-faint">此录待你的血与道来填</span>
+        <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">暂无宿敌</span>
       </p>
     </div>
 
@@ -166,12 +157,11 @@
       </template>
       <p v-else class="py-5 text-center">
         <span class="empty-seal" aria-hidden="true">缘</span>
-        <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">尚无未了之缘</span>
-        <span class="mt-1 block text-[10px] leading-relaxed text-ink-faint">缘起于路上,不在名录里</span>
+        <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">暂无奇缘</span>
       </p>
     </div>
 
-    <SectionTitle title="行迹录" :hint="`际遇回响 ${lossRows.length} 则`" />
+    <SectionTitle title="行迹录" :hint="`${lossRows.length} 则`" />
     <div class="card-ink divide-y divide-ink/6 px-4">
       <template v-if="lossRows.length">
         <p v-for="l in lossRows" :key="l.eventId + l.at" class="flex items-center gap-2 py-2 text-[12px]">
@@ -182,13 +172,11 @@
       </template>
       <p v-else class="py-5 text-center">
         <span class="empty-seal" aria-hidden="true">迹</span>
-        <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">行迹未著</span>
-        <span class="mt-1 block text-[10px] leading-relaxed text-ink-faint">走过,自会有人记得你的来时路</span>
+        <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">暂无行迹</span>
       </p>
     </div>
 
-    <!-- 我的纪录 -->
-    <SectionTitle title="我的纪录" hint="只与过去的自己比" />
+    <SectionTitle title="我的纪录" />
     <div class="card-ink divide-y divide-ink/6 px-4">
       <template v-if="recordRows.length">
         <p v-for="r in recordRows" :key="r.id" class="flex items-center gap-2 py-2 text-[12px]">
@@ -199,8 +187,7 @@
       </template>
       <p v-else class="py-5 text-center">
         <span class="empty-seal" aria-hidden="true">创</span>
-        <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">纪录待创</span>
-        <span class="mt-1 block text-[10px] leading-relaxed text-ink-faint">破界之时,自见分晓</span>
+        <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">暂无纪录</span>
       </p>
     </div>
   </div>
@@ -245,7 +232,7 @@
   const vowDone = computed(() => vowResult() === 'done')
 
   const RESULT_TEXTS: Record<'done' | 'unfinished' | 'broken', string> = {
-    done: '践行到底',
+    done: '已成',
     unfinished: '未竟',
     broken: '已破'
   }
@@ -290,7 +277,7 @@
         eventId: m.eventId,
         at: m.lastAt,
         eventName: eventDef(m.eventId)?.title ?? m.eventId,
-        note: `${m.times} 次际遇后,此地已别有风貌`
+        note: `际遇 ${m.times} 次`
       }))
       .sort((a, b) => b.at - a.at)
       .slice(0, 8)

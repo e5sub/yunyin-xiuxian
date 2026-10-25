@@ -31,26 +31,18 @@
       <template v-else>
         <button
           class="btn-seal flex-1 !py-2"
-          title="条数与数值一并重掷,封存的不动"
           :disabled="reforgeShortVal?.short != null"
           @click="doReforge"
         >
-          重掷?{{ formatGN(reforgeCostVal?.stone ?? 0) }} · 尘×{{ reforgeCostVal?.dust ?? 0 }}
+          确认重铸 {{ formatGN(reforgeCostVal?.stone ?? 0) }} · 尘×{{ reforgeCostVal?.dust ?? 0 }}
         </button>
         <button class="btn-ghost flex-1 !py-2 text-ink-faint" @click="reforgeArm = null">再想想</button>
       </template>
     </div>
-    <!--
-      重铸到底做什么,得在按下之前说清:条数与数值一并重掷(封存的不动),
-      不限次数、成本只随「阶数」与「封存数」走 —— 与旧版"越洗越贵、上限十次"不同。
-    -->
+    <!-- 条数上限在正文「n / 上限 条」,此处不重复 -->
     <p v-if="reforgeCostVal" class="text-center text-[10px] leading-relaxed text-ink-faint">
-      重掷未封存的词条:条数(≤{{ affixCap }} 条)与数值一并重掷,封存的不动 · 不限次数,成本随阶数与封存数走
+      条数与数值重掷 · 封存不动
     </p>
-    <!--
-      付不起时先说清差哪一样、差多少:灵石与器灵尘来路相反,
-      一句「灵石或器灵尘不足」会把玩家指得两头都跑。
-    -->
     <p v-if="reforgeShortVal?.short" class="text-center text-[10px] leading-relaxed text-cinnabar tabular">
       {{ reforgeShortText }}
     </p>
@@ -69,7 +61,7 @@
   </template>
   <template v-else-if="inst">
     <p class="text-center text-[10px] leading-relaxed text-ink-faint">
-      {{ inst.affixes.length === 0 ? '此物一颗词条也无,无从重铸,也无可封存。想炼它,先有纹可刻。' : '词条已尽数封存,无从重铸' }}
+      {{ inst.affixes.length === 0 ? '暂无词条' : '无可重铸词条' }}
     </p>
     <!-- 全封存的旧档件也能把词条转出去 -->
     <button v-if="canTransferOut" class="btn-ghost w-full !py-2 !text-[11px]" @click="emit('transfer')">{{ TRANSFER_LABELS.entry }}</button>
@@ -80,9 +72,7 @@
   import { computed, ref } from 'vue'
   import { useUiStore } from '@/stores/ui'
   import { useInventoryStore } from '@/stores/inventory'
-  import { qualityDef } from '@/data/qualities'
   import { reforgeEquipment, reforgeCost, reforgeShortfall, sealCapacity, sealCost, sealShortfall } from '@/core/reforge'
-  import { reforgeShortToast } from '@/ui/reforgeText'
   import { formatGN } from '@/utils/format'
   import { TRANSFER_LABELS } from '@/ui/affixTransferText'
 
@@ -108,18 +98,13 @@
     const parts: string[] = []
     if (s.stone.m > 0) parts.push(`灵石尚差 ${formatGN(s.stone)}`)
     if (s.dust > 0) parts.push(`器灵尘尚差 ${s.dust}`)
-    return `${parts.join(' · ')} —— ${reforgeShortToast(s.short!, {
-      stone: formatGN(s.stone),
-      dust: s.dust
-    })}`
+    return parts.join(' · ')
   })
   const sealCostVal = computed(() => (inst.value ? sealCost(inst.value) : null))
-  /** 封存还差多少灵石;封满为 null,付得起为 0 —— 与封存钮、服务拒因同源 */
+  /** 封存石差:封满为 null,付得起为 0;与封存钮、服务拒因同源 */
   const sealGap = computed(() => (inst.value ? sealShortfall(inst.value) : null))
-  /** 这一件按品质能有多少条词条:上限来自品质表,不在界面里另写一份 */
-  const affixCap = computed(() => (inst.value ? qualityDef(inst.value.quality).affixes[1] : 0))
 
-  // 重铸一次就重掷所有未封存词条(条数+数值),成本不低、可能盖掉好roll —— 与分解同款二步确认
+  // 二步确认(与分解同款):重铸重掷全部未封存词条,可能盖掉好 roll
   const reforgeArm = ref<string | null>(null)
 
   function doReforge(): void {

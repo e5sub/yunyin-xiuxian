@@ -34,12 +34,12 @@ function suppressionStoneAfterOffline(mansionLevel: number): number {
   const player = usePlayerStore()
   const dongfu = useDongfuStore()
   game.markStarted()
-  game.lastActiveAt = Date.now() - GAP_HOURS * 3600 * 1000 // 60h 前最后在线
+  game.lastActiveAt = Date.now() - GAP_HOURS * 3600 * 1000
   player.major = 3
   player.suppressedRegions = ['qingyun']
   dongfu.setLevel('mansion', mansionLevel)
   settleOffline(Date.now())
-  const line = useUiStore().offlineSummary?.notes.find(n => n.startsWith('镇压诸域仍有余韵'))
+  const line = useUiStore().offlineSummary?.notes.find(n => n.startsWith('镇压收益'))
   expect(line, '镇压区域离线应有镇压提示').toBeDefined()
   const m = /灵石 \+([\d.,]+\s*万?亿?兆?京?)/.exec(line!)
   expect(m, '镇压提示应含灵石数').not.toBeNull()
@@ -201,7 +201,7 @@ describe('离线结算同源吃天时(ISS-027 续)', () => {
       game.markStarted()
       player.major = major
       player.sub = 0
-      const gapHours = 4 // 低于最低封顶(8h),故 capSec = 真实时长
+      const gapHours = 4 // 低于最低封顶 8h,capSec = 真实时长
       game.lastActiveAt = Date.now() - gapHours * 3600 * 1000
       const rate = player.cultPerSec
       const effSec = gapHours * 3600 * OFFLINE_EFFICIENCY
@@ -232,13 +232,12 @@ describe('离线总结报数 == 实发', () => {
       const resources = useResourcesStore()
       const dongfu = useDongfuStore()
     player.major = 3
-    dongfu.setLevel('field', 3) // 灵田在产,让 herb/ore 真实走通
-    dongfu.setLevel('library', 3) // 藏经阁让 wudao 真实走通
-    // 先排掉「首次 track('offlineClaims') 时被一并补发的主线/境界成就一次性石头/灵草」——
-    // 那是成就系统的账,不在离线总结的管辖内;不排掉会用原始总额差污染 "报数==实发" 断言
+    dongfu.setLevel('field', 3) // herb/ore 真实走通
+    dongfu.setLevel('library', 3) // wudao 真实走通
+    // 先结清成就:首次 track('offlineClaims') 会补发成就奖励,污染总额差
     checkStateAchievements()
     game.markStarted()
-    game.lastActiveAt = Date.now() - 3600 * 1000 // 1h 前最后在线;洞府 0 级 cap 8h -> 非封顶
+    game.lastActiveAt = Date.now() - 3600 * 1000 // 1h;洞府 0 级 cap 8h,不封顶
 
     const s0 = toNum(resources.spiritStone)
     const q0 = resources.qi
@@ -287,17 +286,17 @@ describe('离线总结报数 == 实发', () => {
       player.major = 3
       dongfu.setLevel('field', 3)
       dongfu.setLevel('library', 3)
-      checkStateAchievements() // 排掉首次 track 补发的成就/主线一次性收益,保持断言纯净
+      checkStateAchievements() // 先结清成就奖励
       game.markStarted()
       game.lastActiveAt = Date.now() - 60 * 3600 * 1000 // 60h;洞府 0 级 cap 8h
 
       const age0 = player.age
-      const rate = player.cultPerSec // 结算前速率(60h 修为可能当场越层,结算后会涨,须以结算前为准)
+      const rate = player.cultPerSec // 须取结算前速率:结算中可能越层
       const summary = settleOffline(Date.now())
       expect(summary, '60h 离线应结算').not.toBeNull()
       const sm = summary!
 
-      const capSec = 8 * 3600 // 28800
+      const capSec = 8 * 3600
       const effSec = capSec * OFFLINE_EFFICIENCY
       expect(sm.capped, '60h 超过 8h 封顶').toBe(true)
       expect(sm.cappedSeconds, '报出真实 capSec').toBe(capSec)
@@ -344,7 +343,7 @@ describe('离线结算 · 已过期 buff 不补贴(结算前先清算)', () => {
   it('已过期的聚灵(+50% 修速)对离线修为零贡献:与无 buff 完全一致', () => {
     const expired = offlineCultExp('expired')
     const none = offlineCultExp('none')
-    expect(expired).toBe(none) // 过期即不补贴离线修为
+    expect(expired).toBe(none)
   })
 
   it('未过期聚灵仍正常抬离线修为(阳性对照:测试不是空转)', () => {
@@ -369,7 +368,7 @@ describe('离线归来卷轴 · 镇压账目', () => {
     player.suppressRegion('qingyun')
 
     settleOffline(Date.now())
-    const line = useUiStore().offlineSummary?.notes.find(n => n.startsWith('镇压诸域仍有余韵'))
+    const line = useUiStore().offlineSummary?.notes.find(n => n.startsWith('镇压收益'))
     expect(line, '镇压一区离线应有镇压提示').toBeDefined()
     expect(line, '守着一片地界多拿了修为,卷轴得说清是哪来的').toContain('道韵修为 +')
   })
@@ -395,23 +394,15 @@ describe('离线归来卷轴 · 镇压账目', () => {
       settleOffline(Date.now())
       const notes = useUiStore().offlineSummary?.notes.join('\n') ?? ''
       expect(notes, '旧主归来得写进卷轴').toContain('妖气复聚')
-      expect(notes, '顺手给出「该怎么办」').toContain('再历一程即可复靖')
+      expect(notes, '复聚那一行要点明旧主归来').toContain('旧主归来')
+      expect(notes, '只报状态,不附「再历一程」的指引').not.toContain('再历一程')
     } finally {
       vi.useRealTimers()
     }
   })
 
-  /**
-   * 只镇压、没靖平的地界跨过复聚钟:镇压被松开,卷轴必须说清。
-   *
-   * 这条从前整段归零:结算侧 `settleRegionRevivals` 只回报「旧主归来」那一类
-   * (returned),被妖气压不住的这一类(loosened)只走一条 toast —— 离线归来时它
-   * 早飘过去了。实测归来卷轴只有「修为已至圆满」「此去寿元流逝 100 载」两行,
-   * 而 `suppressedRegions` 已经空了:收益停了,卷轴上一个字都没有。
-   *
-   * 故障注入:把 offline.ts 的 loosened 分支删掉 → 本条红。
-   */
-  it('镇压被妖气复聚松开也写进卷轴,并说出「资格仍在、一键接回」', () => {
+  /** 故障注入:把 offline.ts 的 loosened 分支删掉,本条红 */
+  it('镇压被妖气复聚松开也写进卷轴,并说出「资格仍在」', () => {
     vi.useFakeTimers()
     try {
       vi.setSystemTime(1_760_000_000_000)
@@ -432,7 +423,7 @@ describe('离线归来卷轴 · 镇压账目', () => {
       expect(player.suppressedRegions, '够钟了镇压该松').toEqual([])
       const notes = useUiStore().offlineSummary?.notes.join('\n') ?? ''
       expect(notes, '镇压松开要写进卷轴').toContain('镇压松开')
-      expect(notes, '顺手说出资格还在、能接回').toContain('资格仍在')
+      expect(notes, '写明资格还在').toContain('资格仍在')
     } finally {
       vi.useRealTimers()
     }

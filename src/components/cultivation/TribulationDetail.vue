@@ -30,7 +30,7 @@
           <span class="text-ink-faint">减伤</span>
           <span class="text-ink-soft">{{ formatPercent(tribLedger.reduction, 0) }}</span>
         </span>
-        <span v-if="tribLedger.lowHpReduction > 0" class="text-ink-faint">濒危垂危再 {{ formatPercent(tribLedger.lowHpReduction, 0) }}</span>
+        <span v-if="tribLedger.lowHpReduction > 0" class="text-ink-faint">濒危再 {{ formatPercent(tribLedger.lowHpReduction, 0) }}</span>
       </p>
       <p class="flex flex-col gap-0.5 text-[10px] tabular">
         <span class="text-ink-faint">开劫护持</span>
@@ -40,15 +40,12 @@
         </span>
       </p>
     </div>
-    <p class="mt-2 text-[10px] leading-relaxed text-ink-faint">
-      攻伐之力不助渡劫;防御与气血按当下境界另算,再厚也只能硬抗一隅,余者靠抗性、减伤与恢复;晋升与准备只能帮小进阶,渡劫大关不认。
-    </p>
+    <p class="mt-2 text-[10px] leading-relaxed text-ink-faint">不计:攻伐、进阶成功率、突破准备 · 防御/气血折算封顶</p>
 
-    <!-- 界膜之劫:跨界规则加难(见 TRIB_WORLD_STEP_STAT_FOLD),决意之前必须说清 -->
+    <!-- 界膜之劫(TRIB_WORLD_STEP_STAT_FOLD):须在决意前写明 -->
     <div v-if="worldStep" class="mt-2 rounded-md border border-cinnabar/30 bg-cinnabar/5 px-2.5 py-2">
-      <p class="text-[10px] leading-relaxed text-cinnabar">界膜之劫:跨界这一关血肉之厚一概不算 —— 防御与气血折算出的抗性、开劫护持在此作废,只认词条与准备。</p>
+      <p class="text-[10px] leading-relaxed text-cinnabar">界膜之劫:防御/气血折算作废</p>
     </div>
-    <!-- 天威长相:道数随境界涨、单波逐道加重,摊出来才知道护持该留到哪一段 -->
     <p v-if="tribWeatherLine" class="mt-1.5 text-[10px] leading-relaxed text-cinnabar">{{ tribWeatherLine }}</p>
     <p v-if="tribWave" class="mt-1 text-[10px] text-ink-faint tabular">
       共 {{ tribWave.waves }} 道,单波 {{ formatPercent(tribWave.min, 0) }}–{{ formatPercent(tribWave.max, 0) }} 最大生命(合计约 {{ formatPercent(tribWave.total, 0) }})
@@ -56,10 +53,8 @@
 
     <div class="ink-divider my-1.5" />
     <p class="text-[10px] leading-relaxed text-ink-faint"><span class="text-ink-soft">主要风险:</span>{{ tribPlan.risks.join('; ') }}</p>
-    <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">{{ tribPlan.advice }}</p>
-    <!-- Phase 32.2:灵根解开的那条路——说明这道劫为何对你不太一样(留一线,不是免死) -->
     <p v-if="reliefRoots.length" class="mt-1.5 text-[10px] leading-relaxed text-jade">
-      灵根相应:{{ reliefRoots.map(e => ELEMENTS[e].name).join('、') }} —— 此劫为你留了一线,能走到哪一步仍看自身准备。
+      灵根相应:{{ reliefRoots.map(e => ELEMENTS[e].name).join('、') }}
     </p>
   </div>
   <p class="mt-1 flex items-center gap-1.5 text-[11px] text-ink-faint tabular">

@@ -88,20 +88,15 @@ export function useBrewing() {
   const studyLine = computed(() => {
     const eta = studyEta()
     if (!eta) return ''
-    // 读通了又在手的两态;「够得着的都到手」与「正读某张」是两回事,措辞分开
-    if (!eta.readingId && !eta.nextIsNew) return '藏经阁翻检中:够得着的方子都已到手'
+    if (!eta.readingId && !eta.nextIsNew) return '藏经阁 · 暂无新方'
     if (eta.readingId) {
       const name = pillDef(eta.readingId)?.name ?? '某方'
-      return `藏经阁正研读「${name}」,约 ${formatDuration(eta.nextInSec)} 后读通`
+      return `藏经阁 · 研读「${name}」· 约 ${formatDuration(eta.nextInSec)}`
     }
-    return `藏经阁翻检中,约 ${formatDuration(eta.nextInSec)} 后翻出一张新方`
+    return `藏经阁 · 翻检新方 · 约 ${formatDuration(eta.nextInSec)}`
   })
 
-  /**
-   * 把握度配色:七成以上放心开炉,三成以下是在赌。
-   * 色名只能用主题里有的 token —— 此前写的 jade-ink / crimson-ink 不存在,
-   * 产物里不生成这两条类,高低两档一直没上色(palette.spec 现有判据守着)。
-   */
+  /** 把握度配色;色名只能用主题里有的 token(palette.spec 守着) */
   function rateClass(rate: number): string {
     if (rate >= 0.7) return 'text-jade'
     if (rate >= 0.3) return 'text-gold-ink'

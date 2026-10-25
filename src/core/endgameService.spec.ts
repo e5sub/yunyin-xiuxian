@@ -57,7 +57,7 @@ describe('真仙终局服务', () => {
     const gained = furnaceConvert(rate) // 130/25 = 5 缕
     expect(gained).toBe(5)
     expect(endgame.daoSource).toBe(5)
-    expect(resources.ore).toBe(5) // 余数保留
+    expect(resources.ore).toBe(5)
   })
 
   it('熔炉预览通过后扣料失败:必须报出回执,不能点了没反应', () => {
@@ -74,7 +74,7 @@ describe('真仙终局服务', () => {
     expect(furnaceConvert(rate)).toBe(0)
     expect(endgame.daoSource).toBe(before)
     expect(useUiStore().toasts.at(-1)).toEqual(
-      expect.objectContaining({ text: `${rate.name}尚差 ${rate.per},不够熔铸一缕道源`, kind: 'warn' })
+      expect.objectContaining({ text: `${rate.name}尚差 ${rate.per}`, kind: 'warn' })
     )
   })
 
@@ -123,6 +123,17 @@ describe('真仙终局服务', () => {
     expect(condenseDaoFruit()).toBe(false) // 道源不足
   })
 
+  /** 故障注入:condenseDaoFruit 恢复置 daoFruitTutorialSeen,本用例红 */
+  it('凝成道果不置道果说明已见 —— 已见归玩家关掉说明时置,凝果即置则说明显示中刷新就永久丢失', () => {
+    ascend()
+    const endgame = useEndgameStore()
+    endgame.addDaoSource(DAO_SOURCE_PER_FRUIT * 2)
+    expect(condenseDaoFruit()).toBe(true)
+    expect(condenseDaoFruit()).toBe(true)
+    expect(usePlayerStore().reincarnation.daoFruit).toBe(2)
+    expect(endgame.daoFruitTutorialSeen).toBe(false)
+  })
+
   it('入界即扣道源、开出一场入界战(结算与留痕由路线远征自己管)', () => {
     ascend()
     const endgame = useEndgameStore()
@@ -143,17 +154,13 @@ describe('真仙终局服务', () => {
     const endgame = useEndgameStore()
     endgame.addDaoSource(50)
     expect(startWorldExpedition('chiyan', null)).toBeNull()
-    expect(endgame.daoSource).toBe(50) // 未扣费
+    expect(endgame.daoSource).toBe(50)
   })
 
-  /**
-   * 扩界后真仙不再是大道的尽头 —— 它只是仙界的门槛。
-   * 这条守住「继续攀登」与「天界常开」两件事:门槛改锚后,上面还有境界可走,
-   * 而终局内容在整个仙界/神界/混沌海期间始终可用(不因境界升高而关闭)。
-   */
+  /** 真仙只是仙界门槛;终局内容在仙界/神界/混沌海期间始终可用 */
   it('真仙之上仍可继续攀登,且天界始终开启', () => {
     const player = usePlayerStore()
-    ascend() // 至真仙(仙界门槛)
+    ascend()
     expect(player.realm.name).toBe('真仙')
     expect(player.worldName).toBe('仙界')
     expect(endgameUnlocked()).toBe(true)
@@ -166,15 +173,10 @@ describe('真仙终局服务', () => {
     expect(player.atMaxRealm).toBe(true)
     expect(player.realm.name).toBe('混沌道祖')
     expect(player.worldName).toBe('混沌海')
-    expect(endgameUnlocked()).toBe(true) // 越往高处走,天界只会更开,不会关
+    expect(endgameUnlocked()).toBe(true)
   })
 
-  /**
-   * 飞升是扩界新增的三次「换一片天」之一(另两次是入神、归返混沌)。
-   * 从前真仙是唯一的「无劫门槛」(旧设计当它是飞升之赏),只按成功率判定;
-   * 现在大关皆劫 —— 飞升同样要渡(见本文件顶部的 mock 说明),
-   * 这条守住跨界叙事与跨世节点真的落到存档里。
-   */
+  /** 飞升是三次「换一片天」之一(另两次是入神、归返混沌);同样要渡劫,见文件顶部 mock */
   it('飞升真仙:记下跨世节点 first_immortal,并给出界域叙事', () => {
     const player = usePlayerStore()
     const resources = useResourcesStore()
@@ -260,7 +262,7 @@ describe('天道熔炉 · 灵石熔铸价随层级(现役函数直测)', () => {
     })
     expect(furnaceConvertStone()).toBe(false)
     expect(useUiStore().toasts.at(-1)).toEqual(
-      expect.objectContaining({ text: `尚差 ${formatGN(cost)} 石`, kind: 'warn' })
+      expect.objectContaining({ text: `灵石尚差 ${formatGN(cost)}`, kind: 'warn' })
     )
   })
 })

@@ -14,10 +14,9 @@
               <span class="whitespace-nowrap font-kai text-[13px] text-ink">{{ r.def.name }}</span>
               <span class="whitespace-nowrap text-[10px] text-ink-faint">{{ r.able.rank }} 阶</span>
               <span v-if="r.able.overReach > 0" class="whitespace-nowrap text-[10px] text-cinnabar">越阶 {{ r.able.overReach }}</span>
-              <span v-if="r.plan.rounds > 0" class="whitespace-nowrap text-[10px] text-jade">现可炼 {{ r.plan.rounds }} 炉</span>
+              <span v-if="r.plan.rounds > 0" class="whitespace-nowrap text-[10px] text-jade">可炼 {{ r.plan.rounds }} 炉</span>
             </p>
             <p class="text-[11px] text-ink-faint tabular">{{ HERB_GRADE_SHORT[r.cost.grade] }}灵草×{{ r.cost.herb }} · 灵石 {{ formatGN(r.cost.stone) }}</p>
-            <!-- 炼出来是什么:方子清单此前只报代价与把握,不报成品 -->
             <p class="text-[10px] leading-relaxed text-azure">{{ pillFuncText(r.def) }}</p>
             <p v-for="w in r.able.weakness" :key="w" class="mt-0.5 text-[10px] text-ink-faint">· {{ w }}</p>
             <!-- 存货读 inventory.pills,与丹匣同一份账 -->
@@ -32,7 +31,7 @@
           <p class="whitespace-nowrap text-[10px] text-ink-faint">
             把握
             <span class="tabular text-[13px]" :class="rateClass(craftGuarantee > 0 ? 1 : r.able.successRate)">{{ formatPercent(craftGuarantee > 0 ? 1 : r.able.successRate) }}</span>
-            <span v-if="craftGuarantee > 0" class="ml-1 tabular text-gold-ink" title="浴火丹心:本世前几炉必成,开一炉耗 1 次额度">· 本世必成 ×{{ craftGuarantee }}</span>
+            <span v-if="craftGuarantee > 0" class="ml-1 tabular text-gold-ink" title="浴火丹心">· 本世必成 ×{{ craftGuarantee }}</span>
             <span v-if="r.able.bonusChanceWithYield > 0" class="ml-1 tabular text-jade">· 双丹 {{ formatPercent(r.able.bonusChanceWithYield) }}</span>
           </p>
           <div class="ml-auto flex shrink-0 gap-1.5">
@@ -85,23 +84,17 @@
           v-if="pillFullId === r.def.id"
           class="mt-1.5 text-[9px] leading-relaxed text-cinnabar"
         >
-          开 {{ r.plan.rounds }} 炉,约耗 {{ HERB_GRADE_SHORT[r.cost.grade] }}灵草×{{ r.plan.herb }} · 灵石 {{ formatGN(r.plan.stone) }};
-          炸炉按技艺省下残料,或可再多开几炉 —— 仍要?
+          约耗 {{ HERB_GRADE_SHORT[r.cost.grade] }}灵草×{{ r.plan.herb }} · 灵石 {{ formatGN(r.plan.stone) }}
         </p>
       </div>
     </div>
-    <p v-else class="px-1 py-6 text-center text-[11px] leading-relaxed text-ink-faint">
-      你还不知道任何丹方。
-      <br />
-      <span class="text-[10px]">多采多看多打听,方子自会找上门来</span>
-    </p>
+    <p v-else class="px-1 py-6 text-center text-[11px] text-ink-faint">暂无丹方</p>
     <!--
-      百工技艺:做得多就精。技艺一直在影响成丹,却从不显示 —— 玩家看不到自己在长。
-      排在方子之后:九项技艺在窄屏上要占半屏,放在前面会把方子压到折叠线以下。
-      说明一栏至少留 9 个字宽,不够就整段换到下一行,不再被三列定宽挤成竖排。
+      技艺排在方子之后:放前面会把方子压到折叠线以下。
+      说明栏至少 9 字宽,不够整段换行,否则被三列定宽挤成竖排。
     -->
     <div v-if="skillRows.length" class="mt-3 rounded-md bg-paper-deep/60 px-3 py-2">
-      <p class="text-[10px] text-ink-faint">技艺(按道分,做得多就精)</p>
+      <p class="text-[10px] text-ink-faint">技艺</p>
       <div class="mt-1 space-y-1">
         <p v-for="s in skillRows" :key="s.id" class="flex flex-wrap items-baseline gap-x-2 text-[11px]">
           <span class="w-14 shrink-0 text-ink-faint">{{ s.daoName }}</span>

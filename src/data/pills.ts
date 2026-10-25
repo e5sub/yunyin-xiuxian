@@ -69,7 +69,7 @@ export const PILLS: PillDef[] = [
     recipe: { herb: 10, stoneBase: 18 },
     alchemyLevel: 2
   }),
-  p('p_juling', '聚灵丹', 'excellent', 0, '一炷香内修炼倍增(30 分钟)', {
+  p('p_juling', '聚灵丹', 'excellent', 0, '一炷香内修炼加快(30 分钟)', {
     kind: 'buff',
     buffId: 'buff_juling',
     recipe: { herb: 14, stoneBase: 25 },
@@ -138,11 +138,11 @@ export const PILLS: PillDef[] = [
     '灵乳',
     'spirit',
     2,
-    '万年钟乳凝成的灵液,一口涤尽枯竭 —— 灵材难得,火候更难',
+    '万年钟乳凝成的灵液,一口涤尽枯竭',
     { instant: { qiPct: 1 }, recipe: { herb: 16, stoneBase: 32 }, alchemyLevel: 4 },
     'droplets'
   ),
-  p('p_dahuan', '大还丹', 'profound', 4, '起死人肉白骨,服之如闭关一炷香(30 分钟)', {
+  p('p_dahuan', '大还丹', 'profound', 4, '服之如闭关一炷香(30 分钟)', {
     instant: { expSecs: 1800 },
     recipe: { herb: 47, stoneBase: 100 },
     alchemyLevel: 6
@@ -167,7 +167,7 @@ export const PILLS: PillDef[] = [
     recipe: { herb: 150, stoneBase: 350 },
     alchemyLevel: 9
   }),
-  p('p_jiuzhuan', '九转还魂丹', 'heaven', 7, '九转丹成,天地同贺,服之如闭关一个时辰(2 小时)', {
+  p('p_jiuzhuan', '九转还魂丹', 'heaven', 7, '九转丹成,服之如闭关一个时辰(2 小时)', {
     instant: { expSecs: 7200 },
     recipe: { herb: 200, stoneBase: 500 },
     alchemyLevel: 10
@@ -216,29 +216,29 @@ export const PILLS: PillDef[] = [
     recipe: { herb: 410, stoneBase: 1120 },
     alchemyLevel: 10
   }),
-  /** 混沌两境与神王境的补位:此前这三境一味本境丹都没有(见 contentDensity 的「每境一味」判据) */
-  p('p_shenwu', '神悟丹', 'divine', 16, '一炉神悟,胜过百年面壁', {
+  /** 神王境与混沌两境的本境丹(见 contentDensity 的「每境一味」判据) */
+  p('p_shenwu', '神悟丹', 'divine', 16, '一炉神悟,胜过经年面壁', {
     instant: { wudao: 100 },
     recipe: { herb: 420, stoneBase: 1200 },
     alchemyLevel: 10
   }),
-  p('p_hunyuan', '混元丹', 'divine', 19, '混元一炉,吞之如再开一次天地,抵三个时辰闭关(6 小时)', {
+  p('p_hunyuan', '混元丹', 'divine', 19, '混元一炉,吞之抵三个时辰闭关(6 小时)', {
     instant: { expSecs: 21600 },
     recipe: { herb: 490, stoneBase: 1550 },
     alchemyLevel: 10
   }),
-  p('p_daozu', '道祖丹', 'divine', 20, '万道之祖留下的方子,一炉殊难成一枚,丹成则道贯古今', {
+  p('p_daozu', '道祖丹', 'divine', 20, '万道之祖留下的方子,一炉殊难成一枚', {
     instant: { wudao: 150 },
     recipe: { herb: 520, stoneBase: 1700 },
     alchemyLevel: 10
   }),
-  /** 寿元线自万寿金丹(地品 1000)向上;掉落线顶端(蟠桃 500)始终在可炼线之下(法则 H) */
-  p('p_yongchang', '永昌丹', 'immortal', 13, '服之添寿三千载,岁月于我何有', {
+  /** 寿元线自万寿金丹向上;掉落线顶端在可炼线之下(法则 H) */
+  p('p_yongchang', '永昌丹', 'immortal', 13, '服之添寿三千载', {
     instant: { lifespanYears: 3000 },
     recipe: { herb: 320, stoneBase: 820 },
     alchemyLevel: 10
   }),
-  p('p_wugou', '无垢金丹', 'divine', 17, '金丹无垢,寿与天齐,增寿万载', {
+  p('p_wugou', '无垢金丹', 'divine', 17, '金丹无垢,增寿万载', {
     instant: { lifespanYears: 10000 },
     recipe: { herb: 440, stoneBase: 1300 },
     alchemyLevel: 10
@@ -255,7 +255,7 @@ export const PILLS: PillDef[] = [
     '仙泉玉液',
     'immortal',
     11,
-    '仙泉一盏,灵气涤尽复满 —— 泉眼难寻,火候更难',
+    '仙泉一盏,灵气涤尽复满',
     { instant: { qiPct: 1 }, recipe: { herb: 90, stoneBase: 260 }, alchemyLevel: 10 },
     'droplets'
   ),
@@ -272,7 +272,7 @@ export const PILLS: PillDef[] = [
     recipe: { herb: 360, stoneBase: 1000 },
     alchemyLevel: 10
   }),
-  p('p_benyuandan', '本源丹', 'divine', 18, '混沌本源入体,一日修行抵百日', {
+  p('p_benyuandan', '本源丹', 'divine', 18, '混沌本源入体,修行转疾', {
     kind: 'buff',
     buffId: 'buff_hundun',
     recipe: { herb: 150, stoneBase: 560 },
@@ -299,7 +299,7 @@ export const PILLS: PillDef[] = [
     recipe: { herb: 380, stoneBase: 1160 },
     alchemyLevel: 9
   }),
-  p('p_yiyuan', '一元始丹', 'dao', 20, '一元复始,万象其中,服之如闭关三个半时辰(7 小时)', {
+  p('p_yiyuan', '一元始丹', 'dao', 20, '一元复始,服之如闭关三个半时辰(7 小时)', {
     instant: { expSecs: 25200 },
     recipe: { herb: 560, stoneBase: 1900 },
     alchemyLevel: 9
@@ -309,7 +309,7 @@ export const PILLS: PillDef[] = [
     recipe: { herb: 350, stoneBase: 980 },
     alchemyLevel: 8
   }),
-  p('p_tiandao', '天道金丹', 'dao', 20, '万法归于一道,拈之如亲聆天道,悟道点 +200', {
+  p('p_tiandao', '天道金丹', 'dao', 20, '拈之如亲聆天道,悟道点 +200', {
     instant: { wudao: 200 },
     recipe: { herb: 520, stoneBase: 1800 },
     alchemyLevel: 9
@@ -324,7 +324,7 @@ export const PILLS: PillDef[] = [
     recipe: { herb: 420, stoneBase: 1200 },
     alchemyLevel: 9
   }),
-  p('p_wuliang', '无量寿丹', 'dao', 19, '寿与道同,增寿三万载', {
+  p('p_wuliang', '无量寿丹', 'dao', 19, '增寿三万载', {
     instant: { lifespanYears: 30000 },
     recipe: { herb: 460, stoneBase: 1500 },
     alchemyLevel: 9
@@ -335,11 +335,11 @@ export const PILLS: PillDef[] = [
     '道液',
     'dao',
     18,
-    '大道至简,一滴道液涤尽浩气 —— 混沌海深处方凝得成',
+    '一滴道液,浩气复满;混沌海深处方凝得成',
     { instant: { qiPct: 1 }, recipe: { herb: 120, stoneBase: 420 }, alchemyLevel: 9 },
     'droplets'
   ),
-  p('p_shenyuan', '神元丹', 'divine', 16, '神元入体,修炼如虎添翼', {
+  p('p_shenyuan', '神元丹', 'divine', 16, '神元入体,周天运转更疾', {
     kind: 'buff',
     buffId: 'buff_shenyuan',
     recipe: { herb: 300, stoneBase: 900 },
@@ -371,18 +371,12 @@ export const PILLS: PillDef[] = [
   }),
 
   // ============ 高界掉落(仅掉落,无方;照法则 A 压在可炼同规格的六成之下)============
-  /**
-   * 扩界前高境界只能捡到入门丹(妖血丹之类),那是「每个境界掉得出东西」的字面满足,
-   * 不是真内容。补上高界的掉落线后,仙界以上的战斗才有值得捡的丹药。
-   */
   p('p_xianyao', '仙药丹', 'immortal', 9, '仙山深处的野药结丹,服之如闭关六刻(90 分钟)', { instant: { expSecs: 5400 } }),
   p('p_quanlu', '泉露', 'spirit', 6, '灵泉石壁凝出的露水,饮之灵气回涌', { instant: { qiPct: 0.3 } }, 'droplets'),
-  p('p_xianquanlu', '仙泉露', 'immortal', 10, '仙泉一滴,涤尽枯竭', { instant: { qiPct: 0.5 } }, 'droplets'),
+  p('p_xianquanlu', '仙泉露', 'immortal', 10, '仙泉一滴,灵气回涌', { instant: { qiPct: 0.5 } }, 'droplets'),
   p('p_yudao', '玉道丹', 'immortal', 11, '玉质道纹凝成的丹,拈之如聆道音', { instant: { wudao: 32 } }),
-  p('p_xianshou', '仙寿丹', 'heaven', 12, '仙家野生的延寿灵果炼成,增寿八百载', { instant: { lifespanYears: 800 } }, 'leaf'),
-  // ---- 深邃设计:神界 / 混沌海的掉落线(此前这六个高境一味本境掉落都没有)----
-  // 神界(14-17)与混沌海(18-20)过去只能捡仙界留下的旧货。补上本界掉落,
-  // 且照法则 A 压在可炼同规格的六成之下 —— 炼出来的仍是决定性的一条线。
+  p('p_xianshou', '仙寿丹', 'heaven', 12, '仙家野生灵果炼成,增寿八百载', { instant: { lifespanYears: 800 } }, 'leaf'),
+  // ---- 神界 / 混沌海掉落线 ----
   p('p_shenyin', '神引丹', 'divine', 14, '神域游离的仙气凝丹,服之如闭关九刻(135 分钟)', { instant: { expSecs: 8100 } }),
   p('p_hundunjing', '混沌精', 'dao', 18, '混沌初分时漏出的一缕精气,服之如闭关十三刻有余(200 分钟)', { instant: { expSecs: 12000 } }, 'sparkles'),
   p('p_shenfeng', '神风余韵', 'divine', 15, '神风过处道痕犹存,悟道点 +55', { instant: { wudao: 55 } }, 'wind'),

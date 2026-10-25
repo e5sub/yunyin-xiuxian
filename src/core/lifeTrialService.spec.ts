@@ -62,7 +62,7 @@ describe('逆旅契 · 判据一:余额真的下降', () => {
     expect(short).toBe(def.cost - 10)
 
     expect(signLifeTrial('tr_ni')).toBe(false)
-    expect(useUiStore().toasts.at(-1)?.text).toBe(`尚差 ${def.cost - 10} 道果`)
+    expect(useUiStore().toasts.at(-1)?.text).toBe(`道果尚差 ${def.cost - 10}`)
     expect(player.reincarnation.daoFruit).toBe(10)
     expect(player.reincarnation.trial).toBeNull()
   })
@@ -79,7 +79,7 @@ describe('逆旅契 · 判据一:余额真的下降', () => {
     const card = readFileSync(resolve(__dirname, '../components/character/RebirthDialog.vue'), 'utf8')
     expect(card, '付不起的契必须真的禁用').toContain(':disabled="!canSignLifeTrial(t.id)"')
     expect(card, '卡面缺口读同一份服务判据').toContain('lifeTrialShortfall(t.id)')
-    expect(card, '付不起时就地列差').toContain('尚差 {{ lifeTrialShortfall(t.id) }} 道果')
+    expect(card, '付不起时就地列差').toContain('道果尚差 {{ lifeTrialShortfall(t.id) }}')
     expect(card, '不许退回笼统道果不足').not.toContain("ui.toast('道果不足'")
   })
 

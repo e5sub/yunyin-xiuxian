@@ -68,7 +68,7 @@ export function renderBounty(s: BountySlot): BountyRow {
         tag: '草',
         tagCls: B_TAG_CLS.herb ?? '',
         title: `募 灵草 ×${s.target}`,
-        desc: '自动交出最低可用一档灵草,现货即结,价随该品(高阶留作丹方)',
+        desc: '自动交最低可用一品',
         rewardText: '价随品',
         extraText: '',
         claimed,
@@ -84,12 +84,12 @@ export function renderBounty(s: BountySlot): BountyRow {
         tag: '铁',
         tagCls: B_TAG_CLS.ore ?? '',
         title: `募 玄铁 ×${s.target}`,
-        desc: '交 玄铁 一摞,现货即结',
+        desc: '',
         rewardText: formatGN(s.reward),
         extraText: '',
         claimed,
         ready,
-        shortText: ready ? null : `尚差 ${s.target - resources.ore} 块玄铁`
+        shortText: ready ? null : `尚差 ${s.target - resources.ore} 块`
       }
     }
     if (s.kind === 'pill') {
@@ -102,12 +102,12 @@ export function renderBounty(s: BountySlot): BountyRow {
         tag: '丹',
         tagCls: B_TAG_CLS.pill ?? '',
         title: `募 丹药 ×${s.target}`,
-        desc: def ? `收「${def.name}」${s.target} 枚` : '一味指定的丹药',
+        desc: def ? `「${def.name}」` : '未知丹药',
         rewardText: formatGN(s.reward),
         extraText: s.extra ? `另赠 悟道×${s.extra}` : '',
         claimed,
         ready,
-        shortText: ready ? null : s.kindId ? `尚差 ${s.target - owned} 枚` : '此丹不可辨识'
+        shortText: ready ? null : s.kindId ? `尚差 ${s.target - owned} 枚` : '不可辨识'
       }
     }
     const ready = inventory.bagItems.some(e => e.tier >= s.tier)
@@ -116,10 +116,10 @@ export function renderBounty(s: BountySlot): BountyRow {
       kind: s.kind,
       tag: '器',
       tagCls: B_TAG_CLS.equip ?? '',
-      title: `贡一柄 ${s.tier} 阶以上兵刃`,
-      desc: '交一柄不低于此阶者,灵石器尘随品而赠',
+      title: `贡 ${s.tier} 阶以上兵刃`,
+      desc: '',
       rewardText: '价随品',
-      extraText: '另赠 器尘',
+      extraText: '另赠 器灵尘',
       claimed,
       ready,
       shortText: ready ? null : `无 ${s.tier} 阶以上兵刃`

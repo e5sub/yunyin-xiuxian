@@ -26,10 +26,8 @@ export interface SkillDef {
   id: SkillId
   name: string
   dao: DaoId
-  /** 这项技艺具体管什么(玩家可见) */
+  /** 玩家可见 */
   desc: string
-  /** 练不到家时会发生什么(玩家可见,替代枯燥的数值说明) */
-  lackText: string
 }
 
 export const DAO_NAMES: Record<DaoId, string> = {
@@ -40,15 +38,15 @@ export const DAO_NAMES: Record<DaoId, string> = {
 }
 
 export const SKILLS: SkillDef[] = [
-  { id: 'discern', name: '识材', dao: 'shicai', desc: '认出眼前是什么灵材', lackText: '采回来的东西堆在角落,你叫不出它的名字。' },
-  { id: 'herbLore', name: '辨药', dao: 'liandan', desc: '通晓药性寒热与毒理', lackText: '寒热不分,烈药下炉便是一炉焦糊。' },
-  { id: 'pairing', name: '配伍', dao: 'liandan', desc: '定君臣佐使,调和相冲药性', lackText: '药性在炉中互斗,成丹药力散乱。' },
-  { id: 'condense', name: '凝丹', dao: 'liandan', desc: '聚散乱药力为丹形', lackText: '火候到了却聚不拢,药液在炉底摊成一片。' },
-  { id: 'temper', name: '淬药', dao: 'liandan', desc: '逼出杂质,提纯药力', lackText: '丹是成了,药力却虚浮不实。' },
-  { id: 'nurture', name: '养丹', dao: 'liandan', desc: '温养护持,压住残毒', lackText: '出炉即散气,毒性也压不住。' },
-  { id: 'flame', name: '控火', dao: 'linghuo', desc: '引火、控温、护炉', lackText: '炉温忽高忽低,越好的方子越经不起你这么烧。' },
-  { id: 'smithing', name: '锻打', dao: 'lianqi', desc: '千锤定形,逼出材质本性', lackText: '锤下去的是力气,不是形。' },
-  { id: 'inscribe', name: '铭纹', dao: 'lianqi', desc: '刻纹引灵,使器通灵', lackText: '纹刻得工整,却是死纹,引不进一丝灵气。' }
+  { id: 'discern', name: '识材', dao: 'shicai', desc: '认出眼前是什么灵材' },
+  { id: 'herbLore', name: '辨药', dao: 'liandan', desc: '通晓药性寒热与毒理' },
+  { id: 'pairing', name: '配伍', dao: 'liandan', desc: '定君臣佐使,调和相冲药性' },
+  { id: 'condense', name: '凝丹', dao: 'liandan', desc: '聚散乱药力为丹形' },
+  { id: 'temper', name: '淬药', dao: 'liandan', desc: '逼出杂质,提纯药力' },
+  { id: 'nurture', name: '养丹', dao: 'liandan', desc: '温养护持,压住残毒' },
+  { id: 'flame', name: '控火', dao: 'linghuo', desc: '引火、控温、护炉' },
+  { id: 'smithing', name: '锻打', dao: 'lianqi', desc: '千锤定形,逼出材质本性' },
+  { id: 'inscribe', name: '铭纹', dao: 'lianqi', desc: '刻纹引灵,使器通灵' }
 ]
 
 export const SKILL_IDS = SKILLS.map(s => s.id)

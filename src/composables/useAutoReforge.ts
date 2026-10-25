@@ -17,13 +17,12 @@ import { formatGN } from '@/utils/format'
 import { mulN } from '@/utils/gnum'
 import { playSfx } from '@/core/audio'
 import { AFFIX_RARITY_META } from '@/data/statNames'
+import { reforgeEmptyToast, reforgeShortToast } from '@/ui/reforgeText'
+import { affixRollText } from '@/ui/equipText'
 
 /**
- * 自动重铸 —— 「洗到指定词条即停」的整本账。
- *
- * 候选池、预算归一、至多花销、开洗结账与换件复位原本挤在 817 行的装备详情里;
- * 现收进这一处,面板(AutoReforgePanel)与页脚开关同读一份,不各留一套 ref。
- * 价签与抽取规则全转调 core/reforge:候选只问 affixFitBlock,不另抄 slots/minRank。
+ * 自动重铸:洗到指定词条即停。面板(AutoReforgePanel)与页脚开关同读这一份。
+ * 价签与抽取规则归 core/reforge:候选只问 affixFitBlock,不另抄 slots/minRank。
  */
 export function useAutoReforge() {
   const ui = useUiStore()
@@ -89,38 +88,29 @@ export function useAutoReforge() {
     const targets = autoTargets.value
     const budget = autoReforgeBudget(autoBudget.value)
     const out = autoReforge(inst.value.uid, targets, budget)
-    const cost = `花 ${formatGN(out.stone)} · 尘×${out.dust}`
-    // 「没洗到目标」不等于「没洗动」:每次重铸词条都尽数重掷,结账要报清现在这一身落在哪
-    const wanted = autoTargets.value.map(t => affixDef(t.affixId)?.name ?? t.affixId).join('、')
-    const now = out.affixIds.map(id => affixDef(id)?.name ?? id).join('、') || '空'
+    const tally = `${out.rolls} 次 · 花 ${formatGN(out.stone)} · 尘×${out.dust}`
     if (out.stop === 'target' && out.hit) {
-      playSfx('success') // 结账一声:洗到了
-      ui.toast(
-        `洗出「${affixDef(out.hit.id)?.name ?? out.hit.id}」值 ${Math.round(out.hit.roll * 100)}% —— 共洗 ${out.rolls} 次,${cost}`,
-        'success'
-      )
+      playSfx('success')
+      ui.toast(`洗出「${affixDef(out.hit.id)?.name ?? out.hit.id}」${affixRollText(out.hit.roll)} · ${tally}`, 'success')
     } else if (out.stop === 'budget') {
       playSfx('warn')
-      ui.toast(`定好的次数用完了:连洗 ${out.rolls} 次,未能撞上「${wanted}」。如今这一身是:${now},${cost}`, 'warn')
+      ui.toast(`未洗出目标 · ${tally}`, 'warn')
     } else if (out.stop === 'broke') {
       playSfx('warn')
+      const short = out.short === 'dust' ? 'dust' : 'stone'
       if (out.rolls === 0) {
-        // 缺哪一样说哪一样:灵石去历练/悬赏挣,器灵尘靠分解闲置装备 —— 两条去路相反
+        // 与手动重铸缺料同一句
         const gap = reforgeCostVal.value ? reforgeShortfall(reforgeCostVal.value) : null
-        const short =
-          out.short === 'dust'
-            ? `器灵尘${gap ? `尚差 ${gap.dust}` : '未足'}(分解闲置装备可得)`
-            : `灵石${gap ? `尚差 ${formatGN(gap.stone)}` : '未足'}(历练与悬赏可得)`
-        ui.toast(`${short},难开这一炉,${cost}`, 'warn')
+        ui.toast(reforgeShortToast(short, gap ? { stone: formatGN(gap.stone), dust: gap.dust } : undefined), 'warn')
       } else {
-        ui.toast(`灵石/器灵尘见底,洗了 ${out.rolls} 次即止;今一身为 ${now},${cost}`, 'warn')
+        ui.toast(`${reforgeShortToast(short)} · ${tally}`, 'warn')
       }
     } else {
-      // frozen 是「没得洗」不是「没洗成」,不响;这一档兼两种收法:无位可洗(全封存/无词条),或装备已不在行囊
+      // frozen = 没得洗(全封存/无词条)或装备已不在行囊;不响
       const gone = inst.value !== undefined && !inventory.findItem(inst.value.uid)
-      ui.toast(gone ? '此物已不在行囊,重铸无从谈起' : '此物已无未封存词条,无从重铸', 'info')
+      ui.toast(gone ? '未找到装备' : reforgeEmptyToast(), 'info')
     }
-    // 结账即收板(由面板通知宿主收起):结果已写在 toast 与装备词条上,想再调条件重开一次即可
+    // 结账即收板(由面板通知宿主收起)
   }
 
   /** 收起自动重铸(宿主换件/转移时调用);勾选与确认态一并作废 */

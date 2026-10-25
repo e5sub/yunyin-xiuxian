@@ -113,12 +113,7 @@ export function prosperityYieldMult(p: RegionProsperity): number {
 /** 标记为宿敌所需败北次数 */
 export const NEMESIS_THRESHOLD = 3
 
-/** 由敌人图鉴 id 组装宿敌记录(内部用;首次败北即 lossCount=1) */
-function makeNemesis(enemyId: string, enemyName: string, regionId: string, now: number): NemesisRecord {
-  return { enemyId, enemyName, regionId, lossCount: 1, lastLossAt: now }
-}
-
-/** 记录一次败北:更新宿敌计数,新增或累加 */
+/** 记录一次败北:即 recordLossBatch 记一场 */
 export function recordLoss(
   nemeses: NemesisRecord[],
   enemyId: string,
@@ -127,19 +122,7 @@ export function recordLoss(
   now: number,
   threshold = NEMESIS_THRESHOLD
 ): { list: NemesisRecord[]; becameNemesis: boolean } {
-  const existing = nemeses.find(n => n.enemyId === enemyId)
-  if (existing) {
-    const next = { ...existing, lossCount: existing.lossCount + 1, lastLossAt: now }
-    return {
-      list: nemeses.map(n => (n.enemyId === enemyId ? next : n)),
-      becameNemesis: next.lossCount >= threshold
-    }
-  }
-  const created = makeNemesis(enemyId, enemyName, regionId, now)
-  return {
-    list: [...nemeses.slice(-49), created],
-    becameNemesis: created.lossCount >= threshold
-  }
+  return recordLossBatch(nemeses, enemyId, enemyName, regionId, now, 1, threshold)
 }
 
 /** 是否已为宿敌(雪耻未完成) */
@@ -165,15 +148,14 @@ export function recordLossBatch(
   const count = Math.floor(times)
   if (!Number.isFinite(count) || count <= 0) return { list: nemeses, becameNemesis: false }
   const existing = nemeses.find(n => n.enemyId === enemyId)
-  const wasNemesis = existing !== undefined && existing.lossCount >= threshold
+  const wasOver = existing !== undefined && existing.lossCount >= threshold
   const next: NemesisRecord = existing
     ? { ...existing, lossCount: existing.lossCount + count, lastLossAt: now }
     : { enemyId, enemyName, regionId, lossCount: count, lastLossAt: now }
   const list = existing
     ? nemeses.map(n => (n.enemyId === enemyId ? next : n))
     : [...nemeses.slice(-49), next]
-  // 与单场同义:只有「这一批把它推过门槛」才算新成宿敌,已过门槛的再败不重复播报
-  return { list, becameNemesis: !wasNemesis && next.lossCount >= threshold }
+  return { list, becameNemesis: !wasOver && next.avengedAt === undefined && next.lossCount >= threshold }
 }
 
 /** 首次雪耻:记录击破宿敌时间 */
@@ -210,9 +192,9 @@ export function shouldTriggerAftermath(memories: Record<string, EventMemory>, ev
 export function aftermathText(eventTitle: string, kind: 'good' | 'echo' | 'silence'): string {
   switch (kind) {
     case 'good':
-      return `${eventTitle}的痕迹依旧温存,你感到一丝久违的暖意。`
+      return `${eventTitle}的痕迹犹带暖意。`
     case 'echo':
-      return `${eventTitle}的余韵未散,往事如画卷般在眼前展开。`
+      return `${eventTitle}的余韵未散。`
     case 'silence':
       return `${eventTitle}已然远去,只余一片寂静。`
   }
@@ -267,7 +249,7 @@ export function ghostTitle(n: NemesisRecord): string {
   return `残魂·${n.enemyName}`
 }
 
-/** 残魂引导语 (战报第一行前) */
+/** 残魂引导语(战报第一行前) */
 export function ghostLeadIn(n: NemesisRecord): string {
-  return `你曾${n.lossCount}败于此,又将此敌斩于剑下。如今一道残魂再度拦路——它似乎仍记得你。`
+  return `你曾${n.lossCount}败于此,又将此敌斩于剑下。如今一道残魂再度拦路。`
 }

@@ -16,10 +16,9 @@ describe('retreatGainText 闭关约多得预览', () => {
 
   it('炼气初成:值 = CULT_BASE_SPEED ×1.5×300(写死算一遍,不镜像实现)', () => {
     const player = usePlayerStore()
-    // 初始境界无任何成长系数相乘,base 恰为 CULT_BASE_SPEED
     expect(baseCultPerSec(player.major, player.sub)).toBeCloseTo(CULT_BASE_SPEED, 6)
     const expected = CULT_BASE_SPEED * 1.5 * 300 // 585
-    expect(retreatGainText()).toBe(`此行约多得修为 ${formatGN(expected)}`)
+    expect(retreatGainText()).toBe(`约多得修为 ${formatGN(expected)}`)
   })
 
   it('加成翻倍 → 预览翻倍(buff 本体改,这里的数也线性跟)', () => {
@@ -29,9 +28,8 @@ describe('retreatGainText 闭关约多得预览', () => {
     const def = buffDef('retreat')!
     const boost = def.mods.cultivationSpeed ?? 0
     const expected = baseline * boost * def.durationSec
-    expect(retreatGainText()).toBe(`此行约多得修为 ${formatGN(expected)}`)
+    expect(retreatGainText()).toBe(`约多得修为 ${formatGN(expected)}`)
 
-    // 加成一倍后,预览该是原先的两倍(把 boost 近似的翻倍代入)
     const doubled = baseline * (boost * 2) * def.durationSec
     expect(formatGN(doubled)).toBe(formatGN(expected * 2))
   })
@@ -42,16 +40,16 @@ describe('retreatGainText 闭关约多得预览', () => {
     player.major = 2
     const hi = baseCultPerSec(player.major, player.sub)
     expect(hi).toBeGreaterThan(lo)
-    expect(retreatGainText()).toBe(`此行约多得修为 ${formatGN(hi * 1.5 * 300)}`)
+    expect(retreatGainText()).toBe(`约多得修为 ${formatGN(hi * 1.5 * 300)}`)
   })
 
   it('闭关中的活数:过半 → 恰为全长的一半(同一速率,只差已走时长)', () => {
     const player = usePlayerStore()
-    const perSec = baseCultPerSec(player.major, player.sub) * 1.5 // 与实现同一口径的基准量
+    const perSec = baseCultPerSec(player.major, player.sub) * 1.5
     const half = perSec * 150
     const full = perSec * 300
-    expect(retreatGainedText(150)).toBe(`此行已多得修为 ${formatGN(half)}`)
-    expect(full).toBeCloseTo(half * 2, 6) // 585 = 292.5 × 2,时长翻倍→所得翻倍
+    expect(retreatGainedText(150)).toBe(`已多得修为 ${formatGN(half)}`)
+    expect(full).toBeCloseTo(half * 2, 6)
   })
 
   it('闭关中的活数:未起步(0 秒)→ 空白,不报「已多得 0」', () => {

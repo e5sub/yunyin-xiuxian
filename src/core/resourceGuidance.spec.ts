@@ -11,6 +11,9 @@ import {
   markEndgameTutorialSeen,
   shouldShowFruitTutorial,
   markFruitTutorialSeen,
+  fruitTutorialClosable,
+  dismissFruitTutorial,
+  FRUIT_TUTORIAL_CLOSE_GUARD_MS,
   cognitionStats,
   markResourceDialogSeen,
   DAO_SOURCE_ROLE,
@@ -22,6 +25,14 @@ import { condenseDaoFruit } from './endgameService'
 import { effectiveDaoFruit } from './statsCalc'
 import { DAO_SOURCE_PER_FRUIT } from '@/data/endgame'
 import { DAO_FRUIT_CULT_BONUS } from '@/data/constants'
+
+/** 模拟刷新:endgame 按持久化口径(JSON)读回新 pinia,再走启动清洗 */
+function reloadEndgame(): void {
+  const saved = JSON.parse(JSON.stringify(useEndgameStore().$state))
+  setActivePinia(createPinia())
+  useEndgameStore().$patch(saved)
+  useEndgameStore().sanitize()
+}
 
 describe('S1 生命周期语义', () => {
   it('道源=此世消耗,道果=永久积累', () => {
@@ -102,6 +113,43 @@ describe('S4/S5 首次教学', () => {
     markFruitTutorialSeen()
     expect(shouldShowFruitTutorial()).toBe(false)
   })
+
+  /** 故障注入:condenseDaoFruit 恢复置 daoFruitTutorialSeen,本用例红 */
+  it('凝成道果不置已见:说明未关前刷新,下次凝果仍弹', () => {
+    useEndgameStore().addDaoSource(DAO_SOURCE_PER_FRUIT)
+    expect(shouldShowFruitTutorial()).toBe(true)
+    expect(condenseDaoFruit()).toBe(true)
+    expect(useEndgameStore().daoFruitTutorialSeen, '凝成即置:说明显示中刷新即永久丢失').toBe(false)
+    reloadEndgame()
+    expect(shouldShowFruitTutorial(), '刷新后仍应弹').toBe(true)
+  })
+
+  /** 故障注入:dismissFruitTutorial 先置已见再判保护期,本用例红 */
+  it('保护期内的关闭请求不作数,也不置已见', () => {
+    const t0 = 5000
+    for (const dt of [0, 120, FRUIT_TUTORIAL_CLOSE_GUARD_MS - 1]) {
+      expect(dismissFruitTutorial(t0, t0 + dt), `+${dt}ms 关了窗`).toBe(false)
+      expect(useEndgameStore().daoFruitTutorialSeen, `+${dt}ms 置了已见`).toBe(false)
+    }
+  })
+
+  it('过了保护期关掉才算已见:刷新后不再弹', () => {
+    const t0 = 5000
+    expect(dismissFruitTutorial(t0, t0 + FRUIT_TUTORIAL_CLOSE_GUARD_MS)).toBe(true)
+    expect(useEndgameStore().daoFruitTutorialSeen).toBe(true)
+    reloadEndgame()
+    expect(shouldShowFruitTutorial()).toBe(false)
+  })
+
+  /** 故障注入:保护期改成 0,本用例红 */
+  it('道果说明打开后的连点不关窗,过了保护期照常关', () => {
+    const t0 = 5000
+    expect(fruitTutorialClosable(t0, t0), '双击的第二下').toBe(false)
+    expect(fruitTutorialClosable(t0, t0 + 120), '120ms 后再点').toBe(false)
+    expect(fruitTutorialClosable(t0, t0 + FRUIT_TUTORIAL_CLOSE_GUARD_MS - 1)).toBe(false)
+    expect(fruitTutorialClosable(t0, t0 + FRUIT_TUTORIAL_CLOSE_GUARD_MS)).toBe(true)
+    expect(fruitTutorialClosable(t0, t0 + 500), '半秒后照常关').toBe(true)
+  })
 })
 
 describe('S6 认知埋点', () => {
@@ -115,10 +163,12 @@ describe('S6 认知埋点', () => {
     condenseDaoFruit()
     markResourceDialogSeen()
     const stats = cognitionStats()
-    expect(stats.daoSource).toBe(0) // 凝果消耗后
+    expect(stats.daoSource).toBe(0)
     expect(stats.daoFruit).toBe(1)
-    expect(stats.fruitSeen).toBe(true)
+    expect(stats.fruitSeen, 'fruitSeen 只记关掉过道果说明,凝果不算').toBe(false)
     expect(stats.dialogSeen).toBe(true)
     expect(stats.tutorialSeen).toBe(false)
+    dismissFruitTutorial(0, FRUIT_TUTORIAL_CLOSE_GUARD_MS)
+    expect(cognitionStats().fruitSeen).toBe(true)
   })
 })

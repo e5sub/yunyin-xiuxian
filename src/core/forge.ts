@@ -179,7 +179,7 @@ export function decomposeEquipment(uid: string, opts: { quiet?: boolean } = {}):
   resources.addStone(gain.stone)
   track('decomposed')
   if (!opts.quiet) {
-    playSfx('success') // 批量分解走 quiet,这一声由一键分解的总账那一层发
+    playSfx('success')
     ui.toast(
       isZero(gain.stone)
         ? decomposeToast(gain.dust)
@@ -237,7 +237,7 @@ export function decomposeByRanks(ranks: readonly number[]): number {
   const ui = useUiStore()
   const got = decomposeBatch(decomposeTargets(ranks))
   if (got.count > 0) {
-    playSfx('success') // 逐件走的是 quiet,总账这一层只发一声
+    playSfx('success') // 逐件走 quiet,总账只发一声
     ui.toast(batchDecomposeToast(got.count, batchYieldText(got)), 'success')
   }
   return got.count
@@ -374,7 +374,7 @@ export function upgradeArtifactBatch(defId: string): number {
       ? artifactCapToast()
       : short && gap
         ? artifactShortToast(short, { wudao: gap.wudao, stone: formatGN(gap.stone) })
-        : '祭炼未成,请稍后再试'
+        : '祭炼未成'
     useUiStore().toast(text, 'warn')
     return 0
   }

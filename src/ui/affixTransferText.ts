@@ -50,24 +50,24 @@ export const TRANSFER_LABELS = {
   pendingAffix: '未选词条',
   pendingTarget: '未选目标',
   pendingSlot: '未选位置',
-  gone: '装备不在'
+  gone: '未找到装备'
 } as const
 
-/** 挡住这次转移的原因;品质不够时写明要哪一品(「需仙品」比「品质不够」多一条事实) */
+/** 挡住这次转移的原因;品质不足时写明要哪一品 */
 export function transferBlockText(block: TransferBlock, affixId: string): string {
   if (block !== 'rank') return BLOCK_TEXT[block]
   const minRank = affixDef(affixId)?.minRank ?? 0
   const q = QUALITIES.find(x => x.rank === minRank)
-  return q ? `需${q.name}` : '品质不够'
+  return q ? `需${q.name}` : '品质不足'
 }
 
-/** 缺哪一样就报哪一样;给了实际差额就写「尚差 N」 */
+/** 缺哪样报哪样;给了实际差额写「尚差 N」 */
 export function transferShortText(
   short: Exclude<TransferShort, null>,
   gap?: { stone: string; dust: number }
 ): string {
   const amount = short === 'stone' ? gap?.stone : gap?.dust
-  const missing = amount === undefined ? '未足' : `尚差 ${amount}`
+  const missing = amount === undefined ? '不足' : `尚差 ${amount}`
   return short === 'stone' ? `灵石${missing}` : `器灵尘${missing}`
 }
 

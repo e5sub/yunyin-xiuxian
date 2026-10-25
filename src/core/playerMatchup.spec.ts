@@ -82,7 +82,7 @@ describe('采样场次 · 一处出', () => {
   it('BuildView 文案读同一枚常量,不许再写「60 场」;旧的「120 场」注释别复活', () => {
     const src = strip(readFileSync(resolve(__dirname, '../views/BuildView.vue'), 'utf8'))
     expect(src).toContain('{{ MATCHUP_SAMPLE_RUNS }} 场估算')
-    expect(src, '文案不该再手抄 60').not.toContain('各打 60 场')
+    expect(src, '文案不该再手抄 60').not.toContain('每类 60 场')
     expect(src, '韧性采样是 RESILIENCE_SAMPLE_RUNS(resilience.ts 的 60),不是 120').not.toContain('120 场')
   })
 })

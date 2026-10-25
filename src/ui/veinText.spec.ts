@@ -43,14 +43,15 @@ describe('灵脉效果行与每点加成同源', () => {
 })
 
 describe('灵脉投点提示 · 文言仍报清主副与灵石', () => {
-  it('容量、圆满、缺石、改立,不说不足', () => {
+  it('容量、圆满、上限、缺石、改立', () => {
     expect(veinFullToast()).toContain('容量已尽')
     expect(veinPeakToast(true)).toContain('圆满')
     expect(veinPeakToast(false)).toContain('副脉')
+    expect(veinPeakToast(false)).toBe('副脉已至上限')
     expect(veinShortToast()).toContain('灵石')
-    expect(veinShortToast()).not.toContain('不足')
+    expect(veinShortToast()).toBe('灵石不足')
     expect(veinShortToast('12')).toContain('灵石尚差 12')
-    expect(veinSwitchShortToast()).toContain('迁脉')
+    expect(veinSwitchShortToast()).toBe('灵石不足')
     expect(veinSwitchShortToast('12')).toContain('灵石尚差 12')
     expect(veinSwitchDoneToast('聚灵')).toBe('主脉改立「聚灵」')
   })

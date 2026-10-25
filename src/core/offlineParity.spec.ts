@@ -130,10 +130,10 @@ describe('离线历练 · 首领判定与在线同源(本世路线)', () => {
         itemGain: 0
       }
       const summary = settleOffline(now)!
-      return summary.notes.some(n => n.includes('区域之主')) || adventure.cleared.includes('qingyun')
+      return summary.notes.some(n => n.startsWith('败于【')) || adventure.cleared.includes('qingyun')
     }
 
-    // 对照组:整趟只有本段那几场,不够门槛 → 不出首领
+    // 对照组:只有本段胜场,不够门槛
     expect(run(0), '本段不满 10 胜时不该出首领').toBe(false)
     // 实验组:在线已赢 9 场
     expect(run(9), '整趟已够门槛,挂机这段就该遇首领').toBe(true)

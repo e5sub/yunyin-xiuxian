@@ -5,21 +5,19 @@
         道果
         <span class="ml-1 text-[10px] text-violet-ink">【永久积累】</span>
         <span class="block text-[10px] text-ink-faint">
-          每枚至多:修行 +{{ formatPercent(DAO_FRUIT_CULT_BONUS) }},道躯 +{{
+          每枚至多 修行 +{{ formatPercent(DAO_FRUIT_CULT_BONUS) }} · 道躯 +{{
             formatPercent(DAO_FRUIT_COMBAT_BONUS)
-          }};边际渐减(见下),转世保留
+          }} · 边际渐减
         </span>
       </span>
       <span class="tabular font-kai text-[15px] text-cinnabar">{{ player.reincarnation.daoFruit }}</span>
     </p>
-    <!-- S3 道果收益:有效值与软上限白话 -->
     <p class="mt-1 text-[11px] text-ink-faint tabular">
-      有效收益
+      有效
       <span class="text-gold-ink">{{ fruitCountLabel(fruitInfo.effective) }}</span>
-      (边际渐减)·
       {{
         fruitInfo.total > 0
-          ? `当前修行 +${formatPercent(fruitInfo.effective * DAO_FRUIT_CULT_BONUS * stats.cultSpeedFactor)} · 道躯 +${formatPercent(fruitInfo.effective * DAO_FRUIT_COMBAT_BONUS)}`
+          ? `· 当前修行 +${formatPercent(fruitInfo.effective * DAO_FRUIT_CULT_BONUS * stats.cultSpeedFactor)} · 道躯 +${formatPercent(fruitInfo.effective * DAO_FRUIT_COMBAT_BONUS)}`
           : ''
       }}
     </p>
@@ -28,11 +26,11 @@
       <span class="text-ink-soft">
         逆旅契
         <span class="ml-1 text-[10px] text-violet-ink">【本世 · 消耗道果】</span>
-        <span class="block text-[10px] text-ink-faint">
-          {{ signedTrial ? `此生已立「${signedTrial.name}」·${signedTrial.ruleText}` : '以道果换一世逆境,所得唯有履历一笔' }}
+        <span v-if="signedTrial" class="block text-[10px] text-ink-faint">
+          已立「{{ signedTrial.name }}」· {{ signedTrial.ruleText }}
         </span>
       </span>
-      <!-- 拇指够得着:纯文字按钮只有 18px 高,补成 30px(弹窗里的可点元素同样受 28px 那条约束) -->
+      <!-- 纯文字按钮补到 30px 高:弹窗可点元素受 28px 下限约束 -->
       <button
         v-if="!signedTrial"
         class="shrink-0 self-center -my-1.5 px-2 py-1.5 text-[12px] text-gold-ink underline underline-offset-2 active:text-cinnabar"
@@ -56,7 +54,7 @@
         >
           {{ t!.name }}
         </button>
-        <span v-if="!ownedTalents.length" class="text-[11px] text-ink-faint">转世后可觉醒先天之姿</span>
+        <span v-if="!ownedTalents.length" class="text-[11px] text-ink-faint">暂无先天之姿</span>
       </div>
       <p v-if="talentTap && tappedTalent" class="mt-1.5 text-[10px] leading-relaxed text-ink-faint">
         <span :style="{ color: TALENT_GRADE_COLORS[tappedTalent.grade] }">{{ tappedTalent.name }}</span>
@@ -67,10 +65,8 @@
     <div class="mt-3">
       <p class="text-[11px] text-ink-soft">
         宿命传承
-        <span class="ml-1 text-[10px] text-violet-ink">【永久积累 · 随神魂不灭】</span>
-        <span class="block text-[10px] text-ink-faint">
-          某道境界走到底,才留下独有一道传承(能力位)。金丹以下浅修,永远锻造不出。
-        </span>
+        <span class="ml-1 text-[10px] text-violet-ink">【永久积累】</span>
+        <span class="block text-[10px] text-ink-faint">需金丹境 · 每世至多一道</span>
       </p>
       <ul v-if="ownedHeritage.length" class="mt-1.5 space-y-1.5">
         <li v-for="h in ownedHeritage" :key="h!.id" class="rounded-md border border-jade/40 bg-jade/5 px-2.5 py-1.5">
@@ -81,64 +77,48 @@
           <p class="text-[10px] leading-relaxed text-ink-soft">{{ h!.desc }}</p>
         </li>
       </ul>
-      <p v-else class="mt-1.5 text-[11px] text-ink-faint">尚未铸得传承 —— 金丹及以上的深修,方有一道可留</p>
+      <p v-else class="mt-1.5 text-[11px] text-ink-faint">暂无传承</p>
     </div>
-    <!--
-      去留一览:兵解是不可逆的大事,一句「随皮囊散去」盖不住整本账 ——
-      每一样去了哪、留下什么,读的就是结算弹窗那份 HERITAGE(同表,不另写)。
-      默认收起:不压弹窗高度,按下前点开即可核对
-    -->
     <button
       class="mt-3 flex w-full items-center justify-between px-2 py-2 text-left text-[11px] text-ink-soft active:opacity-60"
-      :aria-expanded="heritageOpen"
-      @click="heritageOpen = !heritageOpen"
+      @click="heritageOpen = true"
     >
       <span>转世去留一览({{ keepCount }} 留 · {{ resetCount }} 去)</span>
-      <span class="text-[10px] text-azure">{{ heritageOpen ? '▾ 收 起' : '▸ 展 开' }}</span>
+      <span class="text-[10px] text-azure">→</span>
     </button>
-    <div v-if="heritageOpen" class="mt-1.5 rounded-md bg-paper-deep/60 px-3 py-2">
-      <p class="text-[10px] text-ink-soft">随魂弥留 · 与结算弹窗同表</p>
-      <div class="mt-1 space-y-1">
-        <p v-for="row in heritageKeepRows" :key="row.id" class="flex items-baseline justify-between gap-2 text-[10px]">
-          <span class="text-ink-soft">{{ row.name }}</span>
-          <span class="shrink-0" :class="row.cls">{{ row.modeLabel }}</span>
-        </p>
-        <div class="my-1 border-t border-ink/6" />
-        <p v-for="row in heritageResetRows" :key="row.id" class="flex items-baseline justify-between gap-2 text-[10px]">
-          <span class="text-ink-faint">{{ row.name }}</span>
-          <span class="shrink-0" :class="row.cls">{{ row.modeLabel }}</span>
-        </p>
-      </div>
-    </div>
     <p class="mt-3 text-[11px] leading-relaxed text-ink-faint">{{ rebirthHint }}</p>
     <template #footer>
-      <!--
-        未达金丹仍可点、点了才 toast 拦 —— 与全库「不可行就置灰 + 就地列因」相反。
-        门槛读 MANUAL_REBIRTH_MIN_MAJOR,境名读 REALMS,不手写「金丹」。
-      -->
+      <!-- 门槛读 MANUAL_REBIRTH_MIN_MAJOR,境名读 REALMS,不手写「金丹」 -->
       <button class="btn-ghost w-full !text-[12px]" :disabled="!canRebirth" @click="rebirth">
-        {{
-          canRebirth
-            ? '兵解转世'
-            : `${REALMS[MANUAL_REBIRTH_MIN_MAJOR]?.name ?? ''}境方可自行兵解`
-        }}
+        {{ canRebirth ? '兵解转世' : `兵解需${REALMS[MANUAL_REBIRTH_MIN_MAJOR]?.name ?? ''}境` }}
       </button>
     </template>
   </BaseModal>
 
-  <!-- 逆旅契弹窗:一世一份,签下不可解除;只加难度,不给任何属性或资源 -->
+  <BaseModal :open="heritageOpen" title="转世去留一览" top @close="heritageOpen = false">
+    <div class="space-y-1 rounded-md bg-paper-deep/60 px-3 py-2">
+      <p v-for="row in heritageKeepRows" :key="row.id" class="flex items-baseline justify-between gap-2 text-[11px]">
+        <span class="text-ink-soft">{{ row.name }}</span>
+        <span class="shrink-0" :class="row.cls">{{ row.modeLabel }}</span>
+      </p>
+      <div class="my-1 border-t border-ink/6" />
+      <p v-for="row in heritageResetRows" :key="row.id" class="flex items-baseline justify-between gap-2 text-[11px]">
+        <span class="text-ink-faint">{{ row.name }}</span>
+        <span class="shrink-0" :class="row.cls">{{ row.modeLabel }}</span>
+      </p>
+    </div>
+  </BaseModal>
+
+  <!-- 逆旅契弹窗:只加难度,不给任何属性或资源 -->
   <BaseModal :open="trialOpen" title="逆旅契" @close="trialOpen = false">
-    <p class="text-[11px] leading-relaxed text-ink-faint">
-      道果本是历世所积,却一向只堆在身上。立一份契,把它押在这一世的逆境里——
-      契不予你分毫气力,只把路走窄。走完了,它会留在你的履历上。
-    </p>
+    <p class="text-[11px] leading-relaxed text-ink-faint">一世一契 · 立下不可解 · 转世失效 · 回报仅履历</p>
     <div class="mt-3 space-y-2">
       <button
         v-for="t in LIFE_TRIALS"
         :key="t.id"
         :class="['card-ink w-full px-3 py-2 text-left', canSignLifeTrial(t.id) ? '' : 'opacity-40', lifeTrialShortfall(t.id) !== null ? 'cursor-not-allowed' : '']"
         :disabled="!canSignLifeTrial(t.id)"
-        :title="lifeTrialShortfall(t.id) !== null ? `尚差 ${lifeTrialShortfall(t.id)} 道果` : undefined"
+        :title="lifeTrialShortfall(t.id) !== null ? `道果尚差 ${lifeTrialShortfall(t.id)}` : undefined"
         @click="requestTrial(t.id)"
       >
         <span class="flex items-baseline justify-between">
@@ -150,18 +130,16 @@
         <span class="mt-0.5 block text-[11px] leading-relaxed text-ink-soft">{{ t.desc }}</span>
         <span class="mt-0.5 block text-[10px] text-ink-faint">{{ t.ruleText }}</span>
         <span v-if="lifeTrialShortfall(t.id) !== null" class="mt-0.5 block text-[10px] tabular text-cinnabar">
-          尚差 {{ lifeTrialShortfall(t.id) }} 道果
+          道果尚差 {{ lifeTrialShortfall(t.id) }}
         </span>
       </button>
     </div>
-    <p class="mt-3 text-[11px] leading-relaxed text-ink-faint">一世只可立一契,立下不可解。转世时契随皮囊散去,履历长存。</p>
   </BaseModal>
 
-  <!-- 逆旅契 · 确认:不可逆、花费高,先给一次反悔的机会再立 -->
   <BaseModal :open="pendingTrial !== null" title="立契确认" @close="pendingTrial = null">
     <template v-if="pendingTrial">
       <p class="text-[11px] leading-relaxed text-ink-faint">
-        立下「{{ pendingTrial.seal }} · {{ pendingTrial.name }}」,押上 {{ pendingTrial.cost }} 道果。此世再无回头路,回报只在履历。
+        「{{ pendingTrial.seal }} · {{ pendingTrial.name }}」· 消耗 {{ pendingTrial.cost }} 道果 · 立下不可解 · 回报仅履历
       </p>
       <p class="mt-2 text-[12px] leading-relaxed text-ink-soft">{{ pendingTrial.desc }}</p>
       <p class="mt-1 text-[10px] text-ink-faint">{{ pendingTrial.ruleText }}</p>
@@ -234,12 +212,12 @@
     const def = LIFE_TRIALS.find(t => t.id === id)
     if (!def) return
     if (player.reincarnation.trial) {
-      ui.toast('此生已有契在身', 'warn')
+      ui.toast('已立契', 'warn')
       return
     }
     const short = lifeTrialShortfall(id)
     if (short !== null) {
-      ui.toast(`尚差 ${short} 道果`, 'warn')
+      ui.toast(`道果尚差 ${short}`, 'warn')
       return
     }
     pendingTrial.value = def
@@ -254,8 +232,8 @@
 
   function rebirth(): void {
     if (!canRebirth.value) {
-      // 与弹窗内那句「金丹境方可兵解」同源:门槛挪动,toast 跟着走,不手抄境名
-      ui.toast(`至少${REALMS[MANUAL_REBIRTH_MIN_MAJOR]?.name ?? ''}境方可自行兵解`, 'warn')
+      // 与按钮置灰文案同源,不手抄境名
+      ui.toast(`兵解需${REALMS[MANUAL_REBIRTH_MIN_MAJOR]?.name ?? ''}境`, 'warn')
       return
     }
     emit('close')

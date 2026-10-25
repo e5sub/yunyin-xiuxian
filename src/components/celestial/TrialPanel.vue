@@ -1,8 +1,7 @@
 <template>
-  <!-- 试炼册:今日天道 + 天道变数 + 天道试炼 + 天道挑战书 -->
   <!-- 今日天道:程序生成的每日挑战 -->
   <section v-if="daily">
-    <SectionTitle title="今日天道" hint="日出而题,日落而息" />
+    <SectionTitle title="今日天道" hint="午夜重置" />
     <div class="card-ink mt-2 px-4 py-3">
       <p class="flex items-center gap-2">
         <span class="font-kai text-[14px] tracking-widest text-ink">{{ dailyWorld?.name }}</span>
@@ -21,7 +20,7 @@
       >
         {{
           endgame.dailyDoneDay === daily.day
-            ? '今日已成,明日再会'
+            ? '今日已完成'
             : busy
               ? busy.kind === 'expedition' ? '应 战(远征在途)' : busy.kind === 'exploration' ? '应 战(历练在途)' : '应 战(身在秘境)'
               : endgame.daoSource < CHALLENGE_ENTRY_COST
@@ -32,9 +31,8 @@
     </div>
   </section>
 
-  <!-- 天道变数 -->
   <section>
-    <SectionTitle title="天道变数" hint="规则随机,每探一次天机便换一副面孔" />
+    <SectionTitle title="天道变数" hint="规则随机" />
     <div class="card-ink mt-2 px-4 py-3">
       <template v-if="mutationDraw.length">
         <p v-for="m in mutationRows" :key="m!.id" class="text-[11px] text-violet-ink">◇ {{ m!.name }}:{{ m!.text }}</p>
@@ -57,15 +55,14 @@
         </div>
       </template>
       <template v-else>
-        <p class="text-[11px] leading-relaxed text-ink-faint">天道无常,规则无定。窥探本次变数,再决定是否应战——{{ cnNumber(MUTATION_FIGHTS) }}连战,规则叠加。</p>
+        <p class="text-[11px] leading-relaxed text-ink-faint">{{ cnNumber(MUTATION_FIGHTS) }}连战 · 规则叠加</p>
         <button class="btn-ghost mt-2 w-full !py-2 !text-[12px]" @click="mutationDraw = rollMutators()">窥探变数</button>
       </template>
     </div>
   </section>
 
-  <!-- 天道试炼 -->
   <section>
-    <SectionTitle title="天道试炼" hint="极限构筑的证道之地" />
+    <SectionTitle title="天道试炼" />
     <div class="mt-2 space-y-2.5">
       <div v-for="trial in TRIALS" :key="trial.id" class="card-ink px-4 py-3">
         <p class="flex items-center gap-2">
@@ -101,12 +98,12 @@
 
   <!-- 天道挑战书:玩家定规则,天道定难度与赏格 -->
   <section>
-    <!-- 天界秘境:真仙起,道源代价,与远征/试炼并列的一阶一次性内容 -->
+    <!-- 天界秘境:真仙起,道源代价 -->
     <SecretRealmCard gate="celestial" />
 
-    <SectionTitle title="天道挑战书" hint="你定规则,天道定赏" />
+    <SectionTitle title="天道挑战书" />
     <div class="card-ink mt-2 px-4 py-3">
-      <p class="text-[11px] text-ink-faint">选界 · 叠变数(至多 {{ CHALLENGE_MAX_MUTATORS }} 条)· 立契 · 命名。天道观你出题之难,赏格随之而定,绝无虚价。</p>
+      <p class="text-[11px] text-ink-faint">变数至多 {{ CHALLENGE_MAX_MUTATORS }} 条</p>
       <div class="mt-2 flex flex-wrap gap-1.5">
         <button
           v-for="w in CELESTIAL_WORLDS"
@@ -162,7 +159,7 @@
         v-model="draft.name"
         maxlength="8"
         class="mt-2 w-full rounded-md border border-ink/20 bg-paper-deep/60 px-3 py-1.5 font-kai text-[13px] tracking-widest text-ink outline-none focus:border-cinnabar/50"
-        placeholder="为此挑战书命名(如《无盾求生》)"
+        placeholder="挑战书名"
       />
       <div
         v-if="challengeVerdict"
@@ -170,7 +167,7 @@
         :class="challengeVerdict.ok ? 'bg-paper-deep/70' : 'bg-cinnabar/10'"
       >
         <p v-if="challengeVerdict.ok" class="flex items-center justify-between text-[11px]">
-          <span class="text-ink-soft">天道受此约:{{ challengeVerdict.difficulty }} · 可行流派 {{ challengeVerdict.viable }}/{{ BUILD_PROFILES.length }}</span>
+          <span class="text-ink-soft">已受约 · {{ challengeVerdict.difficulty }} · 可行流派 {{ challengeVerdict.viable }}/{{ BUILD_PROFILES.length }}</span>
           <span class="tabular text-gold-ink">赏 道源 {{ challengeVerdict.reward }}</span>
         </p>
         <p v-else class="text-[11px] text-cinnabar">{{ challengeVerdict.reason }}</p>
@@ -303,7 +300,7 @@
   const busy = computed(() => endgameBusy(endgame.worldRun, usePlayerStore().secretRealm, useAdventureStore().session))
   const challengeBlockText = computed(() => {
     if (busy.value) return busy.value.reason
-    if (!challengeVerdict.value?.ok) return '先验约,天道受约后方可立约'
+    if (!challengeVerdict.value?.ok) return '未受约'
     if (endgame.daoSource < CHALLENGE_ENTRY_COST) {
       return `道源尚差 ${daoSourceShortText(CHALLENGE_ENTRY_COST, endgame.daoSource)}`
     }
@@ -317,7 +314,7 @@
           ? '立 约(历练在途)'
           : '立 约(身在秘境)'
     }
-    if (!challengeVerdict.value?.ok) return '立 约(先验约)'
+    if (!challengeVerdict.value?.ok) return '立 约(未受约)'
     if (endgame.daoSource < CHALLENGE_ENTRY_COST) {
       return `立 约(道源尚差 ${daoSourceShortText(CHALLENGE_ENTRY_COST, endgame.daoSource)} · 需 ${CHALLENGE_ENTRY_COST} · 余 ${formatNum(endgame.daoSource)})`
     }

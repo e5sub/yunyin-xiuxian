@@ -63,7 +63,7 @@ const LINKS: CausalLink[] = [
   {
     surface: '途中遇见一个人',
     cause: '每场战斗 6% 概率 + 本世地貌筛选候选',
-    evidence: ['提示语「途中遇见一人」'],
+    evidence: ['提示语「遇见 + 名字」'],
     footprints: 0,
     level: 'abrupt'
   },

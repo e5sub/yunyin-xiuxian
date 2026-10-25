@@ -19,16 +19,16 @@ import {
 } from '@/data/constants'
 import { formatPercent } from '@/utils/format'
 
-/** 首领本相 —— 一句话点破它的打法核心 */
+/** 首领本相 */
 const ARCHETYPE_NOTES: Record<BossArchetype, string> = {
-  berserk: '越战越狂——拖得越久它越凶',
-  counter: '你多段出手,它便回敬',
-  truedmg: '有一记绕过一切护体的杀招',
-  antiheal: '压治疗——你回的血在它面前不值钱',
-  spellbane: '吞法——你法门越多,它反倒越硬',
+  berserk: '伤重反扑,出手更狠',
+  counter: '受你一击,便伺机还手',
+  truedmg: '有一记杀招,护盾与减伤都挡不住',
+  antiheal: '吸你气血,补它伤势',
+  spellbane: '你的攻势,先被它吞去一截',
   evasive: '身形飘忽,不容易打实',
-  attrition: '自愈不止,久战反而是它的场',
-  threshold: '开战即有罡盾,破不开便伤不着它'
+  attrition: '自愈不止',
+  threshold: '凝盾护身,破不开便伤不着它'
 }
 
 export interface EnemySkillNote {

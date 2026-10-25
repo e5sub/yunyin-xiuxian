@@ -18,7 +18,7 @@ export const BUILDINGS: BuildingDef[] = [
     unlockRealm: 0,
     costBase: 200,
     costOre: 20,
-    effectText: lv => `离线收益上限 ${OFFLINE_CAP_HOURS[Math.min(lv, OFFLINE_CAP_HOURS.length - 1)]} 小时;洞府每升一级其余建筑等级上限 +5,各建筑另有品类上限`,
+    effectText: lv => `离线收益上限 ${OFFLINE_CAP_HOURS[Math.min(lv, OFFLINE_CAP_HOURS.length - 1)]} 小时;洞府每升一级其余建筑等级上限 +5`,
     mods: (lv): StatMods => ({ cultivationSpeed: lv * 0.04 })
   },
   {
@@ -42,9 +42,8 @@ export const BUILDINGS: BuildingDef[] = [
     unlockRealm: 0,
     costBase: 100,
     costOre: 10,
-    // Phase 32.3: recipes are not gated by furnace level. The stove only
-    // adds alchemyYield (second-pill chance); success still comes from lore.
-    effectText: () => '只加双枚成丹的概率,成与不成看你懂多少',
+    // 丹方不受丹炉等级门槛;丹炉只加 alchemyYield,成功率来自认知
+    effectText: () => '只加双枚成丹概率',
     mods: (lv): StatMods => ({ alchemyYield: lv * 0.05 })
   },
   {
@@ -80,9 +79,9 @@ export const BUILDINGS: BuildingDef[] = [
     unlockRealm: 1,
     costBase: 120,
     costOre: 12,
-    // 钻研丹方是藏经阁的第三桩职能(见 core/loreService.ts studyTick),不写出来玩家无从得知
+    // 钻研丹方是藏经阁的第三桩职能(见 core/loreService.ts studyTick),须写进文案
     effectText: lv =>
-      `每小时产悟道点 ${(lv * LIBRARY_WUDAO_PER_HOUR).toFixed(1)},辅修栏 ${1 + Math.floor(lv / 3)} 个;日夜翻检,读熟手上丹方,进而翻出新方`,
+      `每小时产悟道点 ${(lv * LIBRARY_WUDAO_PER_HOUR).toFixed(1)},辅修栏 ${1 + Math.floor(lv / 3)} 个;读熟丹方,翻出新方`,
     mods: (lv): StatMods => ({ expGain: lv * 0.03 })
   },
   {

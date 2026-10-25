@@ -53,76 +53,76 @@ export const ELEMENT_AFFINITY: Record<ElementId, ElementAffinity> = {
     fortuneWeight: 2.5,
     kind: 'ironbody',
     relief: { shieldRestore: 0.5 },
-    tendency: '锋锐外显,剑器之属亲近你;铁躯钝压之下,护体灵光仍立得住'
+    tendency: '同源功法易得 · 铁躯劫:护盾少减'
   },
   wood: {
     gongfaWeight: 2.2,
     fortuneWeight: 2.5,
     kind: 'counterflow',
     relief: { healRestore: 0.5 },
-    tendency: '生机绵长,草木丹方亲近你;灵气逆乱之中,你的生机不易断绝'
+    tendency: '同源功法易得 · 逆流劫:恢复少减'
   },
   water: {
     gongfaWeight: 2.2,
     fortuneWeight: 2.5,
     kind: 'heavyrush',
     relief: { frontLoadEase: 0.35 },
-    tendency: '柔而不折,水行之法亲近你;重压当头,你懂得以柔卸力'
+    tendency: '同源功法易得 · 重压劫:起手减轻'
   },
   fire: {
     gongfaWeight: 2.2,
     fortuneWeight: 2.5,
     kind: 'soulrend',
     relief: { burstTierBonus: 1 },
-    tendency: '气性刚烈,炎法亲近你;裂魂劫下,你的攻势更能削去劫威'
+    tendency: '同源功法易得 · 裂魂劫:爆发更能削劫'
   },
   earth: {
     gongfaWeight: 2.2,
     fortuneWeight: 2.5,
     kind: 'thunder',
     relief: { reductionToResist: 0.35 },
-    tendency: '厚重载物,土行之法亲近你;雷鸣加身,厚土可分担几分天罚'
+    tendency: '同源功法易得 · 雷鸣劫:天罚稍减'
   },
   wind: {
     gongfaWeight: 2.6,
     fortuneWeight: 2.8,
     kind: 'heavyrush',
     relief: { frontLoadEase: 0.4 },
-    tendency: '身法飘忽,风行之法亲近你;重压起手,你避得开最锋利的那一击'
+    tendency: '同源功法易得 · 重压劫:起手减轻'
   },
   thunder: {
     gongfaWeight: 2.6,
     fortuneWeight: 2.8,
     kind: 'thunder',
     relief: { reductionToResist: 0.45 },
-    tendency: '同源引雷,雷法亲近你;天雷之下,你比旁人多懂几分雷性'
+    tendency: '同源功法易得 · 雷鸣劫:天罚稍减'
   },
   ice: {
     gongfaWeight: 2.6,
     fortuneWeight: 2.8,
     kind: 'counterflow',
     relief: { healRestore: 0.4 },
-    tendency: '冰封灵台,冰法亲近你;灵气逆乱时,你的心神反而更定'
+    tendency: '同源功法易得 · 逆流劫:恢复少减'
   },
   light: {
     gongfaWeight: 2.6,
     fortuneWeight: 2.8,
     kind: 'soulrend',
     relief: { burstTierBonus: 1 },
-    tendency: '神魂光耀,光法亲近你;裂魂之劫难撼你的神台'
+    tendency: '同源功法易得 · 裂魂劫:爆发更能削劫'
   },
   dark: {
     gongfaWeight: 2.6,
     fortuneWeight: 2.8,
     kind: 'ironbody',
     relief: { shieldRestore: 0.45 },
-    tendency: '幽微难测,暗法亲近你;钝压绵密,你自有一层看不见的遮护'
+    tendency: '同源功法易得 · 铁躯劫:护盾少减'
   },
   chaos: {
     gongfaWeight: 3.0,
     fortuneWeight: 3.2,
     kind: null,
     relief: { shieldRestore: 0.3, healRestore: 0.3, frontLoadEase: 0.22, burstTierBonus: 1, reductionToResist: 0.22 },
-    tendency: '万法归一,诸道皆亲;五劫之下俱有一线生机,却无一门登峰造极'
+    tendency: '同源功法易得 · 五劫:皆稍缓解'
   }
 }

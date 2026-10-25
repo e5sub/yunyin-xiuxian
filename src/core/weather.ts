@@ -73,7 +73,7 @@ export const WEATHERS: WeatherDef[] = [
   {
     id: 'qinghe',
     name: '清和',
-    desc: '风和日丽,四时清和。',
+    desc: '风和日丽。',
     mods: {},
     tribulationMult: 1
   }
@@ -99,7 +99,7 @@ export const WORLD_WEATHERS: Record<Exclude<WorldId, 'mortal'>, WeatherDef[]> = 
     {
       id: 'xianjie',
       name: '仙劫日',
-      desc: '天门震动,仙劫将至——渡劫更险,锋芒却更利。',
+      desc: '天门震动,仙劫将至。渡劫更险,锋芒却更利。',
       mods: { attackPct: 0.08, tribulationResist: -0.08 },
       tribulationMult: 1.1
     }

@@ -11,7 +11,6 @@
       <p v-if="identity.roots.fortunes.length" class="text-[11px] text-ink-faint">
         机缘印记:{{ identity.roots.fortunes.map(f => f.title).join(' · ') }}
       </p>
-      <p class="text-[10px] leading-relaxed text-ink-faint">画像基于真实选择归纳——你玩成了什么样,它便描述什么。</p>
     </div>
     <template #footer>
       <button class="btn-seal w-full" @click="emit('close')">收 卷</button>
@@ -34,8 +33,8 @@
   const identityRoots = computed(() => {
     const r = identity.value?.roots
     return [
-      { label: '师承', value: r?.mentor?.name ?? '未定' },
-      { label: '道途', value: r?.daoPath ?? '未立' },
+      { label: '师承', value: r?.mentor?.name ?? '未拜师' },
+      { label: '道途', value: r?.daoPath ?? '未择' },
       { label: '流派', value: r?.build ?? '未成' },
       { label: '悟道', value: r?.branches.join('、') || '未定' }
     ]

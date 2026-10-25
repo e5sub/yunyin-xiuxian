@@ -1,8 +1,5 @@
-/**
- * 离线结算 —— 「归来」系统
- * 与在线 Tick 共用同一套公式,按封顶时长折算收益
- */
-import type { EventDef, OfflineSummary } from '@/types'
+/** 离线结算:与在线 Tick 共用同一套公式,按封顶时长折算收益 */
+import type { EventDef, NemesisRecord, OfflineSummary } from '@/types'
 import { add, gn, gnZero, isZero, mulN, sub } from '@/utils/gnum'
 import { formatDuration, formatGN } from '@/utils/format'
 import { offlineAgeNote, offlineArtifactNote, offlineBossNoteText } from '@/ui/offlineText'
@@ -98,10 +95,13 @@ export function offlineMaterialGain(
   }
 }
 
-/**
- * 结算离线收益
- * @param nowMs 当前时间戳
- */
+/** 成宿敌的卷轴行:次数取入账后的实际败绩,离线一整批可一次越过门槛 */
+function nemesisNote(list: readonly NemesisRecord[], foe: { id: string; name: string }): string {
+  const lossCount = list.find(n => n.enemyId === foe.id)?.lossCount ?? NEMESIS_THRESHOLD
+  return `【宿敌】${foe.name} · 败北${lossCount}次`
+}
+
+/** 结算离线收益 */
 export function settleOffline(nowMs: number): OfflineSummary | null {
   const game = useGameStore()
   const player = usePlayerStore()
@@ -174,30 +174,21 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
     const names = suppressYield.revived.map(id => regionDef(id)?.name ?? id)
     const head = names.slice(0, 3).join('、')
     const tail = names.length > 3 ? ` 等 ${names.length} 处` : ''
-    notes.push(`妖气复聚:${head}${tail}的旧主归来 —— 再历一程即可复靖`)
+    notes.push(`妖气复聚:${head}${tail}旧主归来`)
   }
-  /**
-   * 镇压被妖气松开也要写进卷轴,而且它比「旧主归来」更常发生。
-   *
-   * 只镇压、从不靖平的地界(最常见的形态:靠胜场压制,不去打首领)满 72 小时后
-   * 同样复聚 —— 而 `settleRegionRevivals` 从前只回报 `returned`,这一类于是
-   * 只走一条 toast,离线归来时它早飘过去了。玩家回来只看见产出条不见了、
-   * 按钮从「停取收益」变成「转为镇压收益」:收益为什么停了、还能不能接回来,
-   * 卷轴上一个字都没有。这里补上,并顺手给出解法(资格仍在,一键接回)。
-   */
+  // 镇压松开(只镇压、未靖平的地界复聚)同样写进卷轴
   if (suppressYield && suppressYield.loosened.length > 0) {
     const names = suppressYield.loosened.map(id => regionDef(id)?.name ?? id)
     const head = names.slice(0, 3).join('、')
     const tail = names.length > 3 ? ` 等 ${names.length} 处` : ''
-    notes.push(`妖气复聚:${head}${tail}的镇压松开,此地重新成为历练之地 —— 镇压资格仍在,一键即可接回收益`)
+    notes.push(`妖气复聚:${head}${tail}镇压松开 · 资格仍在`)
   }
   if (suppressYield && !isZero(suppressYield.stone)) {
     const extra = suppressYield.resources.map(r => `${r.name} +${r.amount}`).join(' · ')
     const dao = isZero(suppressYield.expGain) ? '' : ` · 道韵修为 +${formatGN(suppressYield.expGain)}`
-    notes.push(`镇压诸域仍有余韵:灵石 +${formatGN(suppressYield.stone)}${extra ? ` · ${extra}` : ''}${dao}`)
+    notes.push(`镇压收益:灵石 +${formatGN(suppressYield.stone)}${extra ? ` · ${extra}` : ''}${dao}`)
   }
 
-  // ---- 历练挂机 ----
   let battles = 0
   let wins = 0
   let events = 0
@@ -234,9 +225,9 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
         if (inventory.equippedArtifacts.length > 0) {
           const vowBefore = vowResult()
           noteTaboo('artifact')
-          // 归来卷轴再说一声:破题 toast 在结算途中就飘过去了,玩家多半没看见
+          // 破题也写进卷轴,不只靠 toast
           if (vowBefore !== 'broken' && vowResult() === 'broken') {
-            notes.push('【破题】离线这一程祭着法宝出手,「独行」之誓没能说到底')
+            notes.push('【破题】「独行」')
           }
         }
         // 与在线同源:敌群取自本世路线节点
@@ -294,20 +285,12 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
         }
         trip.items += realCount
         if (equipCount > realCount) {
-          // 溢出件数本应是「这批新掉落被分解」的尘 —— 与在线 afterWin 同一把尺:
-          // 在线每件掉落经 acquireInto→salvageOf 化尘(底材,按品质阶),离线按同层级的
-          // 平均分解尘 avgDustPerDrop(tier) 折算(单源取 economySim 的采样口径)。
-          // 旧固定 4 尘只在中阶(约 tier 12)碰巧对得上,低阶多发、高阶却少给近一个数量级,
-          // 与「离线≈在线 N 场」不变量相背。
+          // 溢出件折尘对齐在线化尘(salvageOf):按同层均值 avgDustPerDrop(tier),不用固定 4 尘
           const overflowDust = Math.round((equipCount - realCount) * avgDustPerDrop(region.tier))
           resources.addSmall('dust', overflowDust)
-          notes.push(`另有 ${equipCount - realCount} 件寻常之物,已折作器灵尘`)
+          notes.push(`另有 ${equipCount - realCount} 件折作器灵尘`)
         }
-        // 丹药 —— 补上离线普通战漏掉的掉落通道,与在线 afterWin 同源:
-        // 在线每战按 PILL_DROP_CHANCE × 模式 × 区域事件加丰掷一枚(福缘翻倍不作用于丹药,
-        // 在线也是掷在 doubled 循环之外);离线首领战后文直接复用 afterWin 因而会掉,
-        // 普通战此前却只算石头/修为/材料/装备、独漏丹药,与「离线≈在线 N 场」守恒不符。
-        // 单场概率夹在线那道封顶,离线按期望值结算:胜场 × 单场概率即丹药枚数。
+        // 丹药与在线 afterWin 同源:概率 × 模式 × 加丰,夹封顶,按期望计;福缘翻倍不作用于丹药
         const pillChance = capChance(PILL_DROP_CHANCE * modeDef.rewardMult * regionEventReward)
         const pillCount = Math.round(wins * pillChance)
         for (let i = 0; i < pillCount; i += 1) {
@@ -318,19 +301,10 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
           trip.items += 1
         }
         if (pillCount > 0) {
-          notes.push(`途中拾得丹药 ${pillCount} 枚`)
+          notes.push(`拾得丹药 ${pillCount} 枚`)
         }
-        /**
-         * 法宝 —— 与在线 afterWin 同源的最后一条掉落通道。
-         *
-         * 在线每胜一场按 `ARTIFACT_DROP_CHANCE ×(1+luck)` 掷一次(概率先归到 [0,1]);
-         * 离线此前只补了丹药与装备,法宝这一条整段缺席 —— 挂一夜的期望法宝数恒为 0,
-         * 而同样时长在线打下来是 `wins × 1.5% × (1+luck)`。
-         *
-         * 按期望折算成「这一趟出几件」:与丹药同一纪律,福缘翻倍不作用于法宝
-         * (在线也掷在 doubled 循环之外);概率同样先夹在线那道封顶。
-         * 只入囊、不自动祭上 —— 祭炼由玩家亲手决定(见本世逆命契的同一原则)。
-         */
+        // 法宝与在线 afterWin 同源:ARTIFACT_DROP_CHANCE ×(1+luck),夹封顶,按期望计,福缘翻倍不作用
+        // 只入囊、不自动祭上:祭炼由玩家决定
         const artifactChance = capChance(ARTIFACT_DROP_CHANCE * (1 + modOf(mods, 'luck') + personalityEffects(player.petId).dropLuck))
         const artifactCount = Math.round(wins * artifactChance)
         /** 按 defId 聚合:同件只报一行,重复件折悟道点并入(见 offlineArtifactNote) */
@@ -350,27 +324,12 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
           trip.items += 1
         }
         if (artifactTally.size > 0) notes.push(offlineArtifactNote([...artifactTally.values()]))
-        if (wins < battles) {
-          notes.push(`有 ${battles - wins} 战失利,幸而全身而退`)
-        }
-        /**
-         * 连胜与在线同源:在线逐场 recordWin/recordLoss,跨过 3/5/10 档即发赏格、
-         * 败一场归零。离线整段结算从前完全不碰 `winStreak` —— 挂一夜连胜数字纹丝不动,
-         * 赏格也从不发放,战斗页那句「再连胜 N 场可得…」在离线时成了空话。
-         * 这里按「胜场接上、败场收尾」的同一顺序整批结算。
-         */
+        // 连胜与在线同源(逐场 recordWin/recordLoss):整批按「胜场接上、败场收尾」结算
         for (const reward of recordWinStreakBatch(wins, battles - wins)) {
-          notes.push(`途中${streakRewardText(reward.streak, reward.stone, reward.wudao)}`)
+          notes.push(streakRewardText(reward.streak, reward.stone, reward.wudao))
         }
-        /**
-         * 道侣机会点与在线同源:在线每个历练情境走一次 `offerBondEvent`
-         * (首胜一次、败北一次;败一场这趟历练就中止),由它把机会点 +1。
-         * 离线整段从前一个都不攒 —— 「走得多才有机会」在挂机时成了空话。
-         *
-         * 这里只补**记账**:不抽事件、不碰缘分/信任/契合 —— 关系怎么走
-         * 必须由玩家亲手选。次数按在线情境数封顶(胜一次 + 败一次最多两回),
-         * 不按胜场数放大,免得挂一夜攒出几十个机会点。
-         */
+        // 道侣机会点与在线 offerBondEvent 同源:只记账,不抽事件、不碰缘分/信任/契合
+        // 次数按情境封顶(首胜一次 + 败北一次),不随胜场放大
         gainBondOpportunities((wins > 0 ? 1 : 0) + (battles > wins ? 1 : 0))
         track('kills', wins)
         track('battles', battles)
@@ -388,20 +347,16 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
           )
           player.setNemeses(list)
           if (becameNemesis) {
-            notes.push(`【宿敌】你已在${mobDef.name}手下败北${NEMESIS_THRESHOLD}次——此敌已成你的宿敌!`)
+            notes.push(nemesisNote(list, mobDef))
           }
         }
-        /**
-         * 雪耻与在线同源:在线打赢一位仍在账上的宿敌,当场清账并播报。
-         * 离线整段结算里这一段净胜为正,就等于在它手下赢过。
-         * 从前只补败北不补雪耻,挂机把它打回去几十次,征战录仍写着「尚为宿敌」。
-         */
+        // 雪耻与在线同源:本段有胜场即算赢过宿敌
         if (mobDef && wins > 0 && isNemesis(player.nemeses, mobDef.id)) {
           player.setNemeses(markAvenged(player.nemeses, mobDef.id, nowMs))
-          notes.push(`【雪耻】宿敌${mobDef.name}已被斩于剑下!`)
+          notes.push(`【雪耻】宿敌${mobDef.name}`)
         }
         if (wins > 0 && mobDef) {
-          // 抽一场代表战取回合数/受伤比(与在线 checkSuppression 吃同一份数据)
+          // 抽一场代表战取回合数/受伤比(与在线 checkSuppression 同一份数据)
           const sampleFight = resolveCombat(
             buildPlayerSnap(),
             makeEnemySnap(mobDef, region.tier, dangerFactor),
@@ -417,10 +372,8 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
           if (checkSuppression(player, region.id) && !player.suppressQualified.includes(region.id)) {
             player.markSuppressQualified(region.id)
             player.suppressRegion(region.id)
-            // 与在线达成回执同一份产出账(suppressRateLine 单源),普通战/首领战两处同口径
-            notes.push(
-              `你已彻底镇压${region.name},此后将自动产出:${suppressRateLine(region.id, regionRecallFor(region.id).prosperity)}`
-            )
+            // 回执与在线同走 suppressRateLine,普通战/首领战两处同口径
+            notes.push(`已镇压${region.name} · ${suppressRateLine(region.id, regionRecallFor(region.id).prosperity)}`)
           }
         }
       }
@@ -465,30 +418,23 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
             track('bossKills')
             wins += 1
             sessionWins += 1
-            // 首领胜也是一场胜:连胜照推,跨过赏格档照发(与在线 runBattle 同一本账)
+            // 首领胜计入连胜(与在线 runBattle 同一本账)
             for (const reward of recordWinStreakBatch(1, 0)) {
-              notes.push(`斩将之后${streakRewardText(reward.streak, reward.stone, reward.wudao)}`)
+              notes.push(streakRewardText(reward.streak, reward.stone, reward.wudao))
             }
             player.updateRegionStats(region.id, true, bossResult.rounds, Math.max(0, 1 - bossResult.playerHpPct))
             player.recordRegionWin(region.id)
             if (checkSuppression(player, region.id) && !player.suppressQualified.includes(region.id)) {
               player.markSuppressQualified(region.id)
               player.suppressRegion(region.id)
-              // 与在线达成回执同一份产出账(suppressRateLine 单源),普通战/首领战两处同口径
-              notes.push(
-                `你已彻底镇压${region.name},此后将自动产出:${suppressRateLine(region.id, regionRecallFor(region.id).prosperity)}`
-              )
+              notes.push(`已镇压${region.name} · ${suppressRateLine(region.id, regionRecallFor(region.id).prosperity)}`)
             }
             clearRegionAndUnlockNext(region.id)
             notes.push(offlineBossNoteText(bossDef.name))
-            /**
-             * 首领战也是「打赢一场」:在线 runBattle 的取胜分支里,不论对手是不是首领,
-             * 只要账上仍记着这个宿敌就当场 markAvenged。离线普通战已补(见上),
-             * 首领这一场却漏着 —— 整趟只赢在首领头上时,征战录仍写「尚为宿敌」。
-             */
+            // 首领胜同样雪耻(与在线 runBattle 取胜分支同源)
             if (isNemesis(player.nemeses, bossDef.id)) {
               player.setNemeses(markAvenged(player.nemeses, bossDef.id, nowMs))
-              notes.push(`【雪耻】宿敌${bossDef.name}已被斩于剑下!`)
+              notes.push(`【雪耻】宿敌${bossDef.name}`)
             }
           } else {
             sessionLosses += 1
@@ -505,16 +451,16 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
             )
             player.setNemeses(list)
             if (becameNemesis) {
-              notes.push(`【宿敌】你已在${bossDef.name}手下败北${NEMESIS_THRESHOLD}次——此敌已成你的宿敌!`)
+              notes.push(nemesisNote(list, bossDef))
             }
-            notes.push(`曾遭遇区域之主【${bossDef.name}】,惜败而退,需再蓄力`)
+            notes.push(`败于【${bossDef.name}】`)
           }
         }
       }
       if (simSec >= remainSec) {
         adventure.setSession(null)
         track('explores')
-        notes.push(`${region.name}之行圆满结束`)
+        notes.push(`${region.name}历练完成`)
       } else {
         adventure.setSession({
           ...session,
@@ -565,32 +511,16 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
   if (player.expFull && !player.atMaxRealm) notes.push(breakthroughReadyNote(breakthroughInfo().needTribulation))
   if (summary.ageYears > 0) notes.push(offlineAgeNote(summary.ageYears))
 
-  /**
-   * 在途的一次性内容**原样冻结** —— 这一点玩家看不见,得说一句。
-   *
-   * 秘境与远征都不会在缺席期间偷偷推进(见 offlineScope.spec:离线只动 exp/age/bond),
-   * 但玩家回来只看到一屏资源,很容易以为「我不在的时候那趟远征是不是黄了」。
-   * 故凡有在途内容,归来卷轴上就明说一句:它还等着你。
-   */
+  // 秘境与远征离线原样冻结(见 offlineScope.spec),在途时卷轴写明
   const inFlight = player as unknown as { secretRealm?: unknown }
-  if (inFlight.secretRealm) notes.push('秘境之行原样留着 —— 层数、气血与规则都未变,回来接着走')
-  if (endgameStore.worldRun) notes.push('那趟远征仍在途 —— 层数与战绩原样留着,回来接着走')
-  /**
-   * 被离线上限截断的历练会话也要说一句。
-   *
-   * 8h / 16h 两档长线行程配低阶洞府时,离线只结到洞府上限(0 级 8h),
-   * 会话不结束、`nextBattleAt` 照旧排在未来 —— 玩家回来看到历练还在跑,
-   * 却不知道为什么只结算了一半。秘境与远征都有「仍在途」那句,历练被 cap
-   * 截断时偏偏没有,于是这半程成了一个要自己去翻会话面板才明白的哑谜。
-   *
-   * 判据看**会话自己**还剩多久,不拿 `dtSec > capSec` 当代理:离线时长正好等于
-   * 上限(离线 8h、洞府 0 级 cap 8h、行程 16h)时那个代理判假,而这正是「结了一半」
-   * 最不该沉默的一格 —— 实测归来卷轴 13 行,没有一句提到这程还在走。
-   */
+  if (inFlight.secretRealm) notes.push('身在秘境 · 原样保留')
+  if (endgameStore.worldRun) notes.push('远征在途 · 原样保留')
+  // 历练会话仍在途时报剩余时长
+  // 判据看会话自身剩余,不用 dtSec > capSec 代理:离线时长恰等于上限时它判假
   if (adventure.session) {
     const left = Math.max(0, (adventure.session.endsAt - nowMs) / 1000)
     if (left > 0) {
-      notes.push(`这一程还没走完 —— 离线只结到 ${formatDuration(capSec)}(洞府上限),尚余 ${formatDuration(left)}`)
+      notes.push(`历练在途 · 尚余 ${formatDuration(left)}`)
     }
   }
 

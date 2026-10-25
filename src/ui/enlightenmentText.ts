@@ -5,7 +5,7 @@ import { formatChoiceSpan } from '@/utils/format'
 import { modsText } from '@/data/statNames'
 
 export function enlightenmentOptionText(opt: EnlightenmentOption): string {
-  if (opt.reward?.type === 'wudao') return `立即获得 ${opt.reward.value} 悟道点`
+  if (opt.reward?.type === 'wudao') return `悟道点 +${opt.reward.value}`
   if (opt.buffId) {
     const buff = buffDef(opt.buffId)
     if (buff) {

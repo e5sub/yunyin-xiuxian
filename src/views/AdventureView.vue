@@ -18,21 +18,19 @@
 
       <SecretRealmCard />
 
-      <SectionTitle title="历练" hint="行万里路,炼一颗心" />
+      <SectionTitle title="历练" />
       <p class="text-[10px] leading-relaxed text-violet-ink">
-        今日星象:{{ mansionLine }} —— 利
-        <span class="text-gold-ink">{{ favoredWorldName }}</span
-        >,在其地历练际遇<span class="tabular" title="秘境等其他活动不受此加成">+{{ mansionLuckPct }}%</span>(他处不加)。
+        今日星象:{{ mansionName }} · 利<span class="text-gold-ink">{{ favoredWorldName }}</span> · 历练际遇
+        <span class="tabular">+{{ mansionLuckPct }}%</span>
       </p>
       <p class="mt-1 flex items-center gap-2 text-[10px]">
-        <button class="chip-ink min-h-[28px] text-azure" aria-label="星象值日定向" @click="mansionRedirectOpen = !mansionRedirectOpen">
+        <button class="chip-ink min-h-[28px] text-azure" aria-label="星象定向" @click="mansionRedirectOpen = !mansionRedirectOpen">
           星象定向{{ redirectActiveText }} ▾
         </button>
       </p>
       <div v-if="mansionRedirectOpen" class="mt-1.5 rounded border border-ink/10 bg-ink/4 p-2">
         <p class="text-[9px] leading-relaxed text-ink-faint">
-          把今日所利界域定向到所选(每次耗 {{ redirectCostText }} 灵石;今日限 {{ mansionRedirectMax }} 次,
-          达上限当日不再允许继续改向,已定向之界保持生效——付费不白费)。
+          每次 {{ redirectCostText }} 灵石 · 今日限 {{ mansionRedirectMax }} 次
         </p>
         <div class="mt-1.5 flex flex-wrap gap-2">
           <button
@@ -43,39 +41,29 @@
               ? 'cursor-not-allowed border-ink/15 bg-ink/5 text-ink-faint'
               : w.id === effectiveWorldId ? 'text-gold-ink' : 'text-azure'"
             :disabled="redirectReason(w.id) !== null"
-            :title="redirectReason(w.id) ?? `今日定向到「${w.name}」`"
-            :aria-label="redirectReason(w.id) ? `${w.name} · ${redirectReason(w.id)}` : `今日定向到「${w.name}」`"
+            :title="redirectReason(w.id) ?? `定向至${w.name}`"
+            :aria-label="redirectReason(w.id) ? `${w.name} · ${redirectReason(w.id)}` : `定向至${w.name}`"
             @click="redirectTo(w.id)"
           >{{ w.name }}{{ w.id === effectiveWorldId ? ' ·' : '' }}</button>
         </div>
       </div>
       <p v-if="player.suppressedRegions.length > 0" class="text-[10px] text-gold-ink">
-        镇压收益中 {{ player.suppressedRegions.length }} 处 —— 与历练互不冲突,可同时收取;一次只能历练一处。
-        <!-- 镇守道韵与灵石/物产同一条产出账:只说「几处」不说「这几处换来什么」,等于让玩家自己去猜 -->
-        <span class="text-ink-faint">另有 {{ suppressDaoText(player.suppressedRegions.length) }}(与挂机同源,封顶 +{{ Math.round(SUPPRESS_EXP_MAX * 100) }}%)。</span>
+        已镇压 {{ player.suppressedRegions.length }} 处
+        <span class="text-ink-faint">· {{ suppressDaoText(player.suppressedRegions.length) }}</span>
       </p>
-      <!--
-        途中档位:际遇 / 奇缘 / 机缘。
-        从前它们在弹窗里长得一模一样(标题都叫「际遇」),低概率的机缘等于白设了稀有度。
-        这几枚胶囊把档位、稀有度与一句话摆在**出发之前**,名字、档数与概率全部取自 core/eventTier,
-        与事件引擎真正掷的那条乘法链同源(见 data/constants 那段)。
-      -->
+      <!-- 途中档位:名字、档数与概率取自 core/eventTier,与事件引擎同源(见 data/constants) -->
       <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px]">
         <span class="text-ink-faint">途中{{ cnNumber(EVENT_TIERS.length) }}档:</span>
         <span v-for="t in EVENT_TIERS" :key="t.id" class="chip-ink text-[10px]" :style="{ color: t.color }">
           {{ t.name }} · {{ tierOddsText(t.id, chainPending, exploreEventChance(adventure.session?.regionId ?? '', player.finalStats.mods)) }}
         </span>
       </p>
-      <!--
-        镇压规则压成一行:地界行里已经逐项写着「当前值 / 需≤阈值」,
-        这里只交代一句总纲(四条长句堆在列表前面就是一堵文字墙)。
-      -->
+      <!-- 镇压规则只留一行总纲,逐项「当前值 / 需≤阈值」在地界行 -->
       <p class="text-[10px] leading-relaxed text-ink-faint">
-        镇压门槛:胜 {{ SUPPRESS_THRESHOLDS.minWins }} 场 · 均
-        {{ SUPPRESS_THRESHOLDS.maxAvgRounds }} 回合 · 受伤 ≤{{ Math.round(SUPPRESS_THRESHOLDS.maxAvgDamageTaken * 100) }}%;
-        资格本世永久、转世随皮囊散去,守满 {{ REVIVE_AFTER_HOURS }} 小时妖气复聚;镇守另给道韵修为(每区
-        +{{ Math.round(SUPPRESS_EXP_PER_REGION * 100) }}%,封顶 +{{ Math.round(SUPPRESS_EXP_MAX * 100) }}%),
-        守得越久掉出的装备越易出稀品。
+        镇压门槛:胜 {{ SUPPRESS_THRESHOLDS.minWins }} 场 · 均 ≤{{ SUPPRESS_THRESHOLDS.maxAvgRounds }} 回合 ·
+        受伤 ≤{{ Math.round(SUPPRESS_THRESHOLDS.maxAvgDamageTaken * 100) }}%;资格限本世 ·
+        {{ REVIVE_AFTER_HOURS }} 时后妖气复聚 · 道韵修为每区 +{{ Math.round(SUPPRESS_EXP_PER_REGION * 100) }}%,封顶
+        +{{ Math.round(SUPPRESS_EXP_MAX * 100) }}%
       </p>
       <div class="space-y-2.5">
         <template v-for="group in groupedRows" :key="group.world.id">
@@ -114,7 +102,7 @@
   import RegionCard from '@/components/adventure/RegionCard.vue'
   import ExploreModeDialog from '@/components/adventure/ExploreModeDialog.vue'
   import CombatPanel from '@/components/adventure/CombatPanel.vue'
-  import { effectiveFavoredWorld, todayMansionLine, mansionLuckPercent, currentGameDay } from '@/core/astronomy'
+  import { effectiveFavoredWorld, todayMansion, mansionLuckPercent, currentGameDay } from '@/core/astronomy'
   import { mansionRedirectCheck } from '@/core/mansionRedirect'
   import { worldDef } from '@/data/realms'
   import { worldView } from '@/core/mortalWorldService'
@@ -149,16 +137,15 @@
   /** 有没有缘在续:三档此刻的稀度取决于它(引擎先掷奇缘、再掷机缘,剩下才是际遇) */
   const chainPending = computed(() => pendingChainStages(player.major).length > 0)
 
-  /** 顶部链接的一句话:说清这一世是什么世界 */
   const worldBrief = computed(() => {
     const w = adventure.mortalWorld
-    if (!w) return '此世气象未明,一观便知'
+    if (!w) return '此世未成'
     const view = worldView(w, id => id)
     return view.title
   })
 
-  /** 今日星象:值日之宿所利界域,由此知今日该往哪一片地界走 */
-  const mansionLine = computed(() => todayMansionLine())
+  /** 今日值日之宿:只报宿名(方位 / 分野 / 所宜整句在界域志) */
+  const mansionName = computed(() => todayMansion().fullName)
   /** 今日所利界域(有效口径):有生效定向走定向,否则随值日之宿 */
   const effectiveWorldId = computed(() => effectiveFavoredWorld())
   const favoredWorldName = computed(() => worldDef(effectiveWorldId.value).name)
@@ -175,10 +162,9 @@
   function redirectTo(id: WorldId): void {
     const ok = player.redirectFavoredWorld(id)
     const name = worldDef(id).name
-    ui.toast(ok ? `今日定向到「${name}」` : redirectReason(id) ?? '今日定向未成', ok ? 'info' : 'warn')
+    ui.toast(ok ? `已定向至${name}` : redirectReason(id) ?? '定向未成', ok ? 'info' : 'warn')
   }
-  /** 该界此刻能否定向:不能则给出一句原因。判据与 redirectFavoredWorld 同一套(见 player.ts),
-   *  但改在点击前置灰标出 —— 灵石不足/次数已尽/已定向此界不该缩成一个点了没反应的死按钮。 */
+  /** 该界此刻能否定向,不能则给原因;判据与 redirectFavoredWorld 同一套(见 player.ts) */
   function redirectReason(w: WorldId): string | null {
     return mansionRedirectCheck(currentGameDay(), player.mansionRedirect, w, resources.spiritStone).reason
   }
@@ -193,22 +179,13 @@
   })
 
   function chooseMode(region: RegionDef): void {
-    /*
-     * 闭关期间不许外出历练 —— 这条早该在这里说。
-     *
-     * 此前只由 startExploration 兜底:玩家点了「出发」,模式窗照开,三选一之后才被告知
-     * 「你正在闭关静修」——话是对的,但让人先白走一步。同一句拒绝,越早说越好。
-     */
+    // 闭关期间不许外出历练:开模式窗前就拒,startExploration 只兜底
     if (isRetreating()) {
-      ui.toast('你正在闭关静修,心无旁骛,暂勿外出历练', 'warn')
+      ui.toast('闭关中', 'warn')
       return
     }
-    /*
-     * 已有在途活动(远征/秘境)时同样早说 —— 与 core 的 endgameBusy 同一判据。
-     *
-     * 判据只此一份:核心拒绝与界面前置用的是同一句文案,不在这里另抄一遍。
-     * 历练会话不在此列(进得来本页就说明没在历练),故只问终局那一支。
-     */
+    // 在途远征/秘境:与 core 同一判据 endgameBusy,拒因不另抄。
+    // 历练会话不在此列:进得来本页就说明没在历练
     const busy = endgameBusy(endgame.worldRun, player.secretRealm, null)
     if (busy) {
       ui.toast(busy.reason, 'warn')
@@ -230,10 +207,10 @@
     const name = r?.name ?? '此地'
     if (player.suppressedRegions.includes(regionId)) {
       player.unsuppressRegion(regionId)
-      ui.toast(`${name}已停取镇压收益,重新成为历练之地`, 'info')
+      ui.toast(`${name}已停取收益`, 'info')
     } else {
       player.suppressRegion(regionId)
-      ui.toast(`你重掌${name}——镇压依旧,收益自取`, 'success')
+      ui.toast(`${name}已镇压`, 'success')
     }
   }
 </script>

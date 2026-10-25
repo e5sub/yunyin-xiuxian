@@ -9,9 +9,8 @@
           <span class="chip-ink text-[10px]" :style="{ color: tierDef.color }">{{ tierDef.name }}</span>
           <span class="text-[10px] tabular text-ink-faint">{{ tierOdds }}</span>
         </p>
-        <p class="mt-0.5 text-[10px] leading-relaxed text-ink-faint">{{ tierDef.brief }}</p>
       </div>
-      <!-- Phase 31.3 遗产回声:曾弃之缘,世界记得(叙事,无数值) -->
+      <!-- 遗产回声(叙事,无数值) -->
       <p v-if="narrative.echo" class="mb-2 rounded-md border border-azure/30 bg-azure/5 px-3 py-2 text-[12px] leading-relaxed text-azure">
         {{ narrative.echo.line }}
       </p>
@@ -38,7 +37,7 @@
     </template>
     <!-- 结果阶段 -->
     <template v-else-if="result">
-      <p class="mb-1.5 text-[10px] text-ink-faint">{{ tierDef.name }} · {{ tierDef.brief }}</p>
+      <p class="mb-1.5 text-[10px] text-ink-faint">{{ tierDef.name }}</p>
       <p class="text-[13px] leading-relaxed text-ink-soft animate-ink-pop">{{ result.outcomeText }}</p>
       <ul v-if="result.lines.length" class="mt-3 space-y-1.5">
         <li v-for="(line, i) in result.lines" :key="i" class="rounded bg-paper-deep/70 px-3 py-1.5 text-[12px] text-ink tabular">

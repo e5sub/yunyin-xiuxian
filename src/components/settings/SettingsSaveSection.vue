@@ -3,32 +3,18 @@
     <p class="text-[11px] text-ink-faint tabular">
       存档版本 v{{ SAVE_VERSION }} · 修行时长 {{ formatDuration(game.totalPlaySec) }}
     </p>
-    <!--
-      备份这件事没人提醒就不会做,而它恰恰是丢档前唯一的保险 —— 故常驻一行;
-      备份旧了、这一档又确实攒了东西时,才把那句「建议导出一份」说出来(见 core/saveBackup.ts)。
-    -->
     <p class="text-[11px] tabular" :class="backupPrompt ? 'text-amber-ink' : 'text-ink-faint'">
       上次导出备份:{{ lastExportText }}
-      <span v-if="backupPrompt" class="leading-relaxed">
-        · 建议导出一份 —— 安卓清应用数据、iOS 七天不打开都会把进度带走
-      </span>
     </p>
-    <!-- 写盘失败时这里必须说话:玩家可能正玩得兴起,却不知道进度没进档 -->
     <p v-if="saveFailed" class="rounded-md border border-cinnabar/40 bg-cinnabar/8 px-2 py-1.5 text-[11px] leading-relaxed text-cinnabar">
-      上次存档没能存下 —— 本机容量可能已满。请先「导出存档」留一份,再清理本机空间或换设备导入。
+      存档写入失败
     </p>
-    <!--
-      坏掉的分片只说一次(启动时一条 2.4 秒的提示)是不够的:
-      玩家多半是先发现「我的灵石怎么没了」,再回来找原因。
-      故这里常驻一条:哪一片坏了、原档还在哪儿、以及最该做的那件事(导入备份)。
-    -->
+    <!-- 坏档分片须常驻一条:启动提示只有 2.4 秒 -->
     <p
       v-if="corruptedNotice.length"
       class="rounded-md border border-cinnabar/40 bg-cinnabar/8 px-2 py-1.5 text-[11px] leading-relaxed text-cinnabar"
     >
-      启动时发现有档案未能读全,已尽力修复,损失的只是未能同步的那一段:{{
-        corruptedNotice.map(id => STORE_NAMES[id] ?? id).join('、')
-      }}。原档并未删除,仍留在本机 —— 若有导出备份,可在下方导入复原。
+      存档损坏:{{ corruptedNotice.map(id => STORE_NAMES[id] ?? id).join('、') }} · 原档留在本机
       <button class="mt-1 block text-ink-faint underline" @click="ui.corruptedNotice = []">知道了</button>
     </p>
     <div class="grid grid-cols-2 gap-2">
@@ -38,32 +24,25 @@
       <input ref="fileInput" type="file" accept="application/octet-stream,.save" class="hidden" @change="onFilePicked" />
     </div>
     <button class="btn-ghost w-full !border-cinnabar/40 !text-[12px] !text-cinnabar" @click="openReset">
-      散尽修为,重入轮回(清空存档)
+      清空存档
     </button>
 
-    <!-- 重置确认(弹窗期间引擎暂停) -->
-    <BaseModal :open="resetConfirm" title="重置游戏" @close="closeReset">
+    <BaseModal :open="resetConfirm" title="清空存档" @close="closeReset">
       <p class="text-[13px] leading-relaxed text-ink-soft">
-        此举将
-        <span class="text-cinnabar">彻底抹去</span>
-        本机的一切修行痕迹,包括转世收获,且无法恢复。
+        <span class="text-cinnabar">清空</span>本机全部存档 · 含转世收获 · 不可逆
       </p>
       <template #footer>
         <div class="flex gap-2">
           <button class="btn-ghost flex-1" @click="closeReset">再想想</button>
-          <button class="btn-seal flex-1 !bg-cinnabar-deep" @click="confirmReset">道心已决</button>
+          <button class="btn-seal flex-1 !bg-cinnabar-deep" @click="confirmReset">确认清空</button>
         </div>
       </template>
     </BaseModal>
 
-    <!-- 导入确认(弹窗期间引擎暂停;与重置同级破坏,给一次反悔机会) -->
     <BaseModal :open="importConfirm" title="导入存档" @close="closeImport">
       <p class="text-[13px] leading-relaxed text-ink-soft">
-        导入「{{ importName || '所选备份' }}」会
-        <span class="text-cinnabar">整体覆盖</span>
-        本机当前存档,且不可回退。旧档若无备份将不复存在 —— 建议先导出存档留底。
+        「{{ importName || '所选备份' }}」将<span class="text-cinnabar">整体覆盖</span>本机当前存档 · 不可逆
       </p>
-      <!-- 备份是谁的、什么版本、什么时间导的:整体覆盖前先摊个底细(决策前摊数字) -->
       <div v-if="importInspect" class="mt-3 rounded-md bg-paper-deep/60 px-3 py-2 text-[11px] leading-relaxed">
         <p class="flex flex-wrap items-baseline gap-x-2 text-ink">
           <span class="font-kai text-[14px]">{{ importInspect.name }}</span>
@@ -72,7 +51,7 @@
         <p class="mt-0.5 flex flex-wrap gap-x-2 tabular text-[10px]" :class="importInspect.tooNew ? 'text-cinnabar' : 'text-ink-faint'">
           <span>备份 v{{ importInspect.version }}</span>
           <span>导出 {{ formatClock(importInspect.exportedAt) }}</span>
-          <span v-if="importInspect.tooNew">高于当前 v{{ SAVE_VERSION }},无法导入</span>
+          <span v-if="importInspect.tooNew">高于当前 v{{ SAVE_VERSION }}</span>
         </p>
       </div>
       <template #footer>
@@ -83,7 +62,7 @@
             :disabled="importInspect?.tooNew === true"
             @click="confirmImport"
           >
-            {{ importInspect?.tooNew === true ? '无法导入(版本过高)' : '覆盖导入' }}
+            {{ importInspect?.tooNew === true ? '无法导入' : '确认导入' }}
           </button>
         </div>
       </template>
@@ -151,10 +130,9 @@
       .then(err => {
         if (!err) settings.lastExportAt = Date.now()
       })
-      .catch(() => ui.toast('导出没能完成,请稍后再试', 'warn'))
+      .catch(() => ui.toast('导出失败', 'warn'))
   }
 
-  // ---- 重置流程:弹窗期间暂停心跳,取消则恢复 ----
   function openReset(): void {
     resetConfirm.value = true
     engine.pause()
@@ -181,11 +159,9 @@
       if (unmounted) return
       saveRead = null
       if (!text.trim()) {
-        ui.toast('这个文件是空的,换一个再试', 'warn')
+        ui.toast('文件为空', 'warn')
         return
       }
-      // 先只读进内存,不落地:等玩家在确认弹窗点头,才真正覆盖当前存档。
-      // 导入与「散尽修为」同级破坏 —— 一选文件就写盘,旧档连反悔的机会都没有。
       importText.value = text
       importName.value = file.name
       importInspect.value = inspectImportText(text)
@@ -194,7 +170,7 @@
     }, () => {
       if (unmounted) return
       saveRead = null
-      ui.toast('这个文件读不出来,换一个再试', 'warn')
+      ui.toast('文件无法读取', 'warn')
     })
     // 清空 input,允许重复选择同一文件
     if (fileInput.value) fileInput.value.value = ''
@@ -219,11 +195,11 @@
     const err = importSaveText(text)
     if (err) {
       ui.toast(err, 'warn')
-      engine.resume() // 导入失败时恢复引擎
+      engine.resume()
       return
     }
-    ui.toast('存档导入成功,即将重新入定', 'success')
-    // 导入已写盘,立即封存:阻止 persist 插件把旧内存回写覆盖
+    ui.toast('导入成功', 'success')
+    // 已写盘,立即封存:阻止 persist 插件把旧内存回写覆盖
     sealStorageWrites()
     setTimeout(reloadGame, 800)
   }

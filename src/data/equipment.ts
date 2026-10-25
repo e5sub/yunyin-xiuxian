@@ -81,7 +81,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   t('w_zhuqing', '青竹剑', 'weapon', 1, { attack: 10 }, '山后砍来的竹子削成,胜在趁手'),
   t('h_muzan', '桃木簪', 'head', 1, { defense: 4, maxHp: 15 }, '一支素簪,聊胜于无'),
   t('b_mabu', '麻布道袍', 'body', 1, { defense: 7, maxHp: 30 }, '浆洗得发白的旧道袍'),
-  t('wr_tengwen', '藤纹护腕', 'wrist', 1, { attack: 3, defense: 3 }, '古藤编织,韧性十足'),
+  t('wr_tengwen', '藤纹护腕', 'wrist', 1, { attack: 3, defense: 3 }, '古藤编织,扯不断'),
   t('bl_cubu', '粗布腰带', 'belt', 1, { defense: 3, maxHp: 25 }, '寻常布带,束衣而已'),
   t('bo_caoxie', '芒鞋', 'boots', 1, { defense: 3, maxHp: 12 }, '踏遍青山人未老'),
   t('n_muzhu', '木珠串', 'necklace', 1, { maxHp: 20 }, '老山木所制念珠,凝神静气'),
@@ -117,7 +117,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   t('tl_juqi', '聚风符', 'talisman', 3, { maxHp: 18 }, '符成引风,风过处气机自聚', { fixedMods: { qiRegen: 0.08 } }),
 
   // ---- 4 阶 · 寒潭幽窟 ----
-  t('w_hanfeng', '寒锋剑', 'weapon', 4, { attack: 13, maxHp: 8 }, '剑出如霜,寒意逼人'),
+  t('w_hanfeng', '寒锋剑', 'weapon', 4, { attack: 13, maxHp: 8 }, '剑出如霜'),
   t('h_xuantie', '玄铁冠', 'head', 4, { defense: 5, maxHp: 20 }, '沉重却牢靠', { set: 's_tiebi' }),
   t('b_hantan', '寒潭甲', 'body', 4, { defense: 8, maxHp: 36 }, '潭底寒铁打的甲,入水不沉', { fixedMods: { defensePct: 0.03 } }),
   t('wr_shuangwen', '霜纹护腕', 'wrist', 4, { attack: 3, defense: 3 }, '腕上凝着霜纹,触之生寒', { fixedMods: { attackPct: 0.03 } }),
@@ -135,15 +135,15 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   t('h_yaoyu', '妖羽冠', 'head', 5, { defense: 5, maxHp: 20 }, '冠上插着一支妖鸟翎羽', { fixedMods: { critRate: 0.02 } }),
   t('b_yaopi', '妖皮软甲', 'body', 5, { defense: 8, maxHp: 36 }, '妖皮鞣的软甲,轻而有韧', { fixedMods: { dodgeRate: 0.02 } }),
   t('wr_tiebi', '妖筋护腕', 'wrist', 5, { attack: 4, defense: 4 }, '妖兽之筋缠成,越用力绷得越紧'),
-  t('bl_shoupi', '兽皮腰带', 'belt', 5, { defense: 4, maxHp: 32 }, '妖兽之皮鞣制,坚韧异常'),
+  t('bl_shoupi', '兽皮腰带', 'belt', 5, { defense: 4, maxHp: 32 }, '妖兽之皮鞣制,刀划不破'),
   t('bo_shouzong', '兽踪靴', 'boots', 5, { defense: 4, maxHp: 15 }, '靴底纹路照着妖兽脚印刻的', { fixedMods: { explorationSpeed: 0.06 } }),
   t('n_yaoya', '妖牙串', 'necklace', 5, { maxHp: 26 }, '一串妖兽牙齿,猎人挂在颈上', { fixedMods: { attackPct: 0.03 } }),
   t('r_shouya', '兽牙戒', 'ring', 5, { attack: 4 }, '兽牙磨成的戒指,据说避邪', { fixedMods: { critDamage: 0.06 } }),
   t('tl_quyao', '驱妖符', 'talisman', 5, { maxHp: 18 }, '朱砂画的驱妖纹,妖气近身自退', { fixedMods: { damageBonus: 0.03 } }),
 
   // ---- 6 阶 · 古战场遗迹 ----
-  t('w_chiyan', '战痕刀', 'weapon', 6, { attack: 14 }, '缺口累累的刀,每一道痕都是一场仗', { icon: 'axe', fixedMods: { damageBonus: 0.04 } }),
-  t('h_tieji', '铁脊冠', 'head', 6, { defense: 6, maxHp: 22 }, '铁脊锻成的冠,沉是沉了些,却压得住心神'),
+  t('w_chiyan', '战痕刀', 'weapon', 6, { attack: 14 }, '古战场里刨出的刀,缺口累累', { icon: 'axe', fixedMods: { damageBonus: 0.04 } }),
+  t('h_tieji', '铁脊冠', 'head', 6, { defense: 6, maxHp: 22 }, '铁脊锻成的冠,分量压得住心神'),
   t('b_xuanwu', '玄武甲', 'body', 6, { defense: 10, maxHp: 42 }, '仿玄武之甲铸成,厚重难破', {
     fixedMods: { damageReduction: 0.04 },
     set: 's_tiebi'
@@ -167,7 +167,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   t('wr_yantie', '炎铁护腕', 'wrist', 7, { attack: 4, defense: 4 }, '炎铁打成,烫手却趁手', { fixedMods: { attackPct: 0.04 } }),
   t('bl_chiyan', '赤炎带', 'belt', 7, { defense: 4, maxHp: 32 }, '带身赤红,像刚从炉里取出来', { fixedMods: { maxHpPct: 0.04 } }),
   t('bo_tahuo', '踏火履', 'boots', 7, { defense: 4, maxHp: 15 }, '踩着余烬走,鞋底不焦', { fixedMods: { speed: 0.05 } }),
-  t('n_huosui', '火髓坠', 'necklace', 7, { maxHp: 26 }, '一滴火髓凝在石里,恒温不冷', { fixedMods: { qiRegen: 0.06 } }),
+  t('n_huosui', '火髓坠', 'necklace', 7, { maxHp: 26 }, '一滴火髓凝在石里,四时不冷', { fixedMods: { qiRegen: 0.06 } }),
   t('r_juling', '炎心戒', 'ring', 7, { attack: 4, maxHp: 15 }, '戒里嵌着一粒火心,越戴越暖', { fixedMods: { cultivationSpeed: 0.04 } }),
   t('tl_bihuo', '避火符', 'talisman', 7, { maxHp: 22, defense: 3 }, '符上有水纹,火气难侵', { fixedMods: { damageReduction: 0.04 } }),
 
@@ -186,7 +186,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   }),
   t('bl_youchao', '幽潮带', 'belt', 8, { defense: 4, maxHp: 32 }, '带面会自己渗出潮气', { fixedMods: { qiRegen: 0.06 } }),
   t('bo_tayun', '踏浪靴', 'boots', 8, { defense: 5, maxHp: 18 }, '踏浪而行的靴,海水渗不进去', { fixedMods: { explorationSpeed: 0.06 } }),
-  t('n_xingsui', '潮生珠链', 'necklace', 8, { maxHp: 32 }, '珠子随潮涨落明灭,像海在呼吸', { fixedMods: { cultivationSpeed: 0.05 } }),
+  t('n_xingsui', '潮生珠链', 'necklace', 8, { maxHp: 32 }, '珠子随潮涨落明灭', { fixedMods: { cultivationSpeed: 0.05 } }),
   t('r_youmingjie', '幽冥戒', 'ring', 8, { attack: 4, maxHp: 15 }, '戴久了,指尖泛出一点青色', { fixedMods: { lifesteal: 0.02 } }),
   t('tl_zhenhai', '镇海符', 'talisman', 8, { maxHp: 22, defense: 3 }, '压住海中妖气的旧符', { fixedMods: { damageReduction: 0.04 } }),
 
@@ -236,7 +236,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   t('b_xueling', '雪岭裘', 'body', 12, { defense: 11, maxHp: 48 }, '雪岭兽裘缝的道袍,暖而不重', { fixedMods: { maxHpPct: 0.05 } }),
   t('wr_xueling', '冰骨护腕', 'wrist', 12, { attack: 5, defense: 5 }, '雪兽骨裹着冰丝编成,冷得刺骨', { fixedMods: { defensePct: 0.04 } }),
   t('bl_kunlun', '昆仑带', 'belt', 12, { defense: 5, maxHp: 40 }, '昆仑石做的带扣,沉手', { fixedMods: { maxHpPct: 0.06 } }),
-  t('bo_zhuixing', '踏雪履', 'boots', 12, { defense: 6, maxHp: 22 }, '履底不留脚印,雪上走过像没来过', { fixedMods: { speed: 0.06 } }),
+  t('bo_zhuixing', '踏雪履', 'boots', 12, { defense: 6, maxHp: 22 }, '雪上走过,不留脚印', { fixedMods: { speed: 0.06 } }),
   t('n_longhun', '冰髓坠', 'necklace', 12, { maxHp: 38, attack: 3 }, '一滴冰髓封在玉里,千年不化', { fixedMods: { attackPct: 0.04 } }),
   t('r_liuli', '寒魄戒', 'ring', 12, { attack: 6 }, '寒魄凝成的戒,戴上手指先凉一下', { fixedMods: { accuracy: 0.06 } }),
   t('tl_jinguang', '寒光符', 'talisman', 12, { maxHp: 30 }, '符上是雪岭的反光,看一眼都刺眼', { fixedMods: { damageReduction: 0.05 } }),
@@ -261,11 +261,11 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   t('w_chensha', '沉沙剑', 'weapon', 14, { attack: 17 }, '从沙底挖出的剑,剑鞘早烂了', { fixedMods: { critRate: 0.03 } }),
   t('h_gucheng', '古城冠', 'head', 14, { defense: 7, maxHp: 28 }, '古城王的冠,金子掺了沙', { fixedMods: { breakthroughRate: 0.015 } }),
   t('b_xingluo', '星罗法衣', 'body', 14, { defense: 12, maxHp: 55 }, '衣上星图与周天同转', { fixedMods: { qiRegen: 0.08 }, set: 's_xingdou' }),
-  t('wr_shawen', '沙纹护腕', 'wrist', 14, { attack: 5, defense: 5 }, '沙纹护腕,沙粒钻不进去', { fixedMods: { counterRate: 0.05 } }),
+  t('wr_shawen', '沙纹护腕', 'wrist', 14, { attack: 5, defense: 5 }, '纹路细密,沙粒钻不进去', { fixedMods: { counterRate: 0.05 } }),
   t('bl_gusha', '古沙带', 'belt', 14, { defense: 5, maxHp: 42 }, '带里缝着一层细沙,据说是古城的土', { fixedMods: { maxHpPct: 0.06 } }),
   t('bo_tasha', '踏沙靴', 'boots', 14, { defense: 6, maxHp: 22 }, '走过流沙的靴,脚下扎实', { fixedMods: { explorationSpeed: 0.08 } }),
-  t('n_chensha', '沉沙坠', 'necklace', 14, { maxHp: 38 }, '坠子里的沙一直在慢慢下沉', { fixedMods: { qiRegen: 0.08 } }),
-  t('r_qianji', '千机戒', 'ring', 14, { attack: 6, defense: 3 }, '千机暗藏,变化无穷', { fixedMods: { dropRate: 0.06 } }),
+  t('n_chensha', '沉沙坠', 'necklace', 14, { maxHp: 38 }, '坠子里的沙一直在下沉', { fixedMods: { qiRegen: 0.08 } }),
+  t('r_qianji', '千机戒', 'ring', 14, { attack: 6, defense: 3 }, '戒身藏着细小机括,一拨一变', { fixedMods: { dropRate: 0.06 } }),
   t('tl_gucheng', '古城符', 'talisman', 14, { maxHp: 30 }, '古城墙缝里抠出来的一枚旧符', { fixedMods: { damageReduction: 0.05 } }),
 
   // ---- 15 阶 · 蜃楼幻海 ----
@@ -273,7 +273,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   t('h_shenguang', '蜃光冠', 'head', 15, { defense: 7, maxHp: 28 }, '冠上时有幻影流转,看着晃眼', { fixedMods: { accuracy: 0.04 } }),
   t('b_shenying', '蜃影衣', 'body', 15, { defense: 12, maxHp: 55 }, '衣色随光而变,远远看去像没人', { fixedMods: { dodgeRate: 0.04 } }),
   t('wr_xianjin', '海市护臂', 'wrist', 15, { attack: 6, defense: 6 }, '护臂上浮着一座海市,一晃就散', { fixedMods: { attackPct: 0.05 } }),
-  t('bl_qiankun', '幻潮绦', 'belt', 15, { defense: 6, maxHp: 46 }, '绦上有潮声,系上便听见海', { fixedMods: { shieldOnStart: 0.06 } }),
+  t('bl_qiankun', '幻潮绦', 'belt', 15, { defense: 6, maxHp: 46 }, '系上便听见潮声', { fixedMods: { shieldOnStart: 0.06 } }),
   t('bo_taxu', '踏虚履', 'boots', 15, { defense: 6, maxHp: 22 }, '踩在蜃楼上,虚实难分', { fixedMods: { speed: 0.06 } }),
   t('n_shenzhu', '蜃珠坠', 'necklace', 15, { maxHp: 38 }, '珠里映着一座不存在的城', { fixedMods: { eventLuck: 0.08 } }),
   t('r_huanhai', '幻海戒', 'ring', 15, { attack: 6, defense: 3 }, '戴上看东西会慢半拍', { fixedMods: { accuracy: 0.05 } }),
@@ -300,23 +300,23 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   }),
   t('h_xingyun', '星陨冠', 'head', 17, { defense: 8, maxHp: 32 }, '冠上嵌满陨星碎屑', { fixedMods: { cultivationSpeed: 0.06 } }),
   t('b_yuntie', '陨铁甲', 'body', 17, { defense: 12, maxHp: 55 }, '陨铁打的甲,分量压人', { fixedMods: { defensePct: 0.06 } }),
-  t('wr_yuntie', '陨铁护腕', 'wrist', 17, { attack: 6, defense: 6 }, '陨铁护腕上留着烧灼的纹', { fixedMods: { attackPct: 0.06 } }),
+  t('wr_yuntie', '陨铁护腕', 'wrist', 17, { attack: 6, defense: 6 }, '护腕上留着烧灼的纹', { fixedMods: { attackPct: 0.06 } }),
   t('bl_xingyun', '星陨带', 'belt', 17, { defense: 6, maxHp: 46 }, '带扣是整块陨石磨的', { fixedMods: { maxHpPct: 0.07 } }),
   t('bo_yunxing', '陨行靴', 'boots', 17, { defense: 7, maxHp: 26 }, '踏在荒原上,落地有声', { fixedMods: { attackPct: 0.06 } }),
   t('n_yunxingzhu', '陨星坠', 'necklace', 17, { maxHp: 45 }, '坠子里封着一粒还温的星尘', { fixedMods: { qiRegen: 0.1 } }),
-  t('r_yuntie', '陨铁戒', 'ring', 17, { attack: 6, defense: 3 }, '陨铁戒,越戴越亮', { fixedMods: { critRate: 0.04 } }),
+  t('r_yuntie', '陨铁戒', 'ring', 17, { attack: 6, defense: 3 }, '戒面坑洼,越戴越亮', { fixedMods: { critRate: 0.04 } }),
   t('tl_xingyun', '星陨符', 'talisman', 17, { maxHp: 35 }, '符上画着一条下坠的星轨', { fixedMods: { breakthroughRate: 0.02 } }),
 
   // ---- 18 阶 · 天外天 ----
-  t('w_hongmeng', '鸿蒙剑', 'weapon', 18, { attack: 20 }, '开天辟地之气所化,剑意通神', { fixedMods: { damageBonus: 0.1 } }),
-  t('h_tianwai', '天外冠', 'head', 18, { defense: 8, maxHp: 32 }, '天外之冠,戴之如置身星海', { fixedMods: { cultivationSpeed: 0.07 } }),
+  t('w_hongmeng', '鸿蒙剑', 'weapon', 18, { attack: 20 }, '开天辟地之气所化', { fixedMods: { damageBonus: 0.1 } }),
+  t('h_tianwai', '天外冠', 'head', 18, { defense: 8, maxHp: 32 }, '戴之如置身星海', { fixedMods: { cultivationSpeed: 0.07 } }),
   t('b_zifu', '紫府道衣', 'body', 18, { defense: 14, maxHp: 62 }, '无形无相,劫火难焚', { fixedMods: { damageReduction: 0.08 } }),
   t('wr_tianwai', '天外护臂', 'wrist', 18, { attack: 6, defense: 6 }, '护臂上一道道云纹,像天外的风', { fixedMods: { attackPct: 0.06 } }),
-  t('bl_tianwai', '天外绦', 'belt', 18, { defense: 6, maxHp: 46 }, '系上它,心里就静', { fixedMods: { maxHpPct: 0.07 } }),
+  t('bl_tianwai', '天外绦', 'belt', 18, { defense: 6, maxHp: 46 }, '一根素绦,风吹不动', { fixedMods: { maxHpPct: 0.07 } }),
   t('bo_tianwai', '天外履', 'boots', 18, { defense: 7, maxHp: 26 }, '履下无尘,像踩在云底', { fixedMods: { dodgeRate: 0.05 } }),
   t('n_tianwai', '天外坠', 'necklace', 18, { maxHp: 45 }, '坠子望进去是一整片天', { fixedMods: { qiRegen: 0.12 } }),
   t('r_xuanyuan', '玄元戒', 'ring', 18, { attack: 7, maxHp: 20 }, '古修随手所铸,指间长留一线真元', { fixedMods: { breakthroughRate: 0.03 } }),
-  t('tl_dadao', '大道符', 'talisman', 18, { maxHp: 40 }, '符纹即道纹,观之可悟道', { fixedMods: { cultivationSpeed: 0.08 } }),
+  t('tl_dadao', '大道符', 'talisman', 18, { maxHp: 40 }, '符纹即道纹', { fixedMods: { cultivationSpeed: 0.08 } }),
 
   // ---- 19 阶 · 仙人遗府 ----
   t('w_yifu', '遗府剑', 'weapon', 19, { attack: 20 }, '仙人遗府里取出的剑,剑上无尘', { fixedMods: { damageBonus: 0.08 } }),
@@ -325,9 +325,9 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   t('wr_yifu', '遗府腕甲', 'wrist', 19, { attack: 6, defense: 6 }, '腕甲内侧刻着仙篆', { fixedMods: { attackPct: 0.06 } }),
   t('bl_yifu', '遗府绦', 'belt', 19, { defense: 6, maxHp: 46 }, '绦带上串着几枚仙玉', { fixedMods: { maxHpPct: 0.08 } }),
   t('bo_yifu', '遗府履', 'boots', 19, { defense: 7, maxHp: 26 }, '履面不染一点灰', { fixedMods: { speed: 0.07 } }),
-  t('n_yifu', '遗府玉坠', 'necklace', 19, { maxHp: 45 }, '一枚温润的旧玉,握着安心', { fixedMods: { qiRegen: 0.12 } }),
+  t('n_yifu', '遗府玉坠', 'necklace', 19, { maxHp: 45 }, '一枚温润的旧玉', { fixedMods: { qiRegen: 0.12 } }),
   t('r_yifu', '遗府仙戒', 'ring', 19, { attack: 7, maxHp: 20 }, '仙人的指环,内圈磨得发亮', { fixedMods: { luck: 0.06 } }),
-  t('tl_yifu', '遗府符', 'talisman', 19, { maxHp: 40 }, '符还在,只是画符的人早已不在', { fixedMods: { breakthroughRate: 0.02 } }),
+  t('tl_yifu', '遗府符', 'talisman', 19, { maxHp: 40 }, '画符的人早已不在', { fixedMods: { breakthroughRate: 0.02 } }),
 
   // ---- 20 阶 · 鸿蒙裂隙 ----
   t('w_jiujie', '九劫剑', 'weapon', 20, { attack: 20 }, '历九重雷劫而不损,剑脊上犹有焦痕', { fixedMods: { armorPen: 0.06 } }),
@@ -352,7 +352,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   t('wr_yunying', '云英护腕', 'wrist', 21, { attack: 6, defense: 6 }, '腕上云英相击,出招先闻仙音', { fixedMods: { speed: 0.05 } }),
   t('bl_qingyun', '青云仙绦', 'belt', 21, { defense: 6, maxHp: 46 }, '一绦青气,系住初飞升时不肯散的道基', { fixedMods: { maxHpPct: 0.05 } }),
   t('bt_yunyou', '云游履', 'boots', 21, { defense: 7, maxHp: 26 }, '履下云生,行止皆随心意', { fixedMods: { explorationSpeed: 0.12 } }),
-  t('n_yaochi', '瑶池玉坠', 'necklace', 21, { maxHp: 45 }, '瑶池水磨出的一枚玉,佩之如饮甘露', { fixedMods: { qiRegen: 0.1 } }),
+  t('n_yaochi', '瑶池玉坠', 'necklace', 21, { maxHp: 45 }, '瑶池水磨出的一枚玉', { fixedMods: { qiRegen: 0.1 } }),
   t('r_xingshu', '星枢戒', 'ring', 21, { attack: 7, maxHp: 20 }, '星枢一转,凶吉先知', { fixedMods: { luck: 0.06 } }),
   t('tl_guoguan', '过关仙篆', 'talisman', 21, { maxHp: 40 }, '篆上是仙门的通关字样,过此门者方称仙人', { fixedMods: { breakthroughRate: 0.03 } }),
 
@@ -361,7 +361,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   t('h_yuque', '玉阙冠', 'head', 22, { defense: 8, maxHp: 32 }, '金阙里颁下的冠,规矩森严', { fixedMods: { damageReduction: 0.04 } }),
   t('b_xingyunxian', '星陨仙甲', 'body', 22, { defense: 14, maxHp: 62 }, '金阙天兵的甲,一片玉一片金', { fixedMods: { defensePct: 0.08 } }),
   t('wr_yujing', '玉京腕甲', 'wrist', 22, { attack: 6, defense: 6 }, '腕甲上錾着天兵的番号', { fixedMods: { attackPct: 0.06 } }),
-  t('bl_xingyundai', '星陨玉带', 'belt', 22, { defense: 6, maxHp: 46 }, '玉带一系,气度自生', { fixedMods: { maxHpPct: 0.07 } }),
+  t('bl_xingyundai', '星陨玉带', 'belt', 22, { defense: 6, maxHp: 46 }, '带扣嵌着一粒陨星', { fixedMods: { maxHpPct: 0.07 } }),
   t('bo_yujing', '玉京履', 'boots', 22, { defense: 7, maxHp: 26 }, '踏过玉京长阶的履', { fixedMods: { speed: 0.07 } }),
   t('n_xingtai', '星台坠', 'necklace', 22, { maxHp: 45 }, '仙台上拾的一枚陨星核', { fixedMods: { qiRegen: 0.12 } }),
   t('r_yujing', '玉京戒', 'ring', 22, { attack: 7, maxHp: 20 }, '戒面刻着玉京的方位', { fixedMods: { critRate: 0.04 } }),
@@ -378,7 +378,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     set: 's_xianjia'
   }),
   t('wr_xianlin', '仙鳞腕甲', 'wrist', 23, { attack: 6, defense: 6 }, '应龙脱鳞所制,坚而有灵', { fixedMods: { attackPct: 0.05 } }),
-  t('bl_suiyu', '碎玉仙绦', 'belt', 23, { defense: 6, maxHp: 46 }, '万千仙玉碎而复合,束之如渊', { fixedMods: { maxHpPct: 0.06 } }),
+  t('bl_suiyu', '碎玉仙绦', 'belt', 23, { defense: 6, maxHp: 46 }, '万千仙玉碎而复合', { fixedMods: { maxHpPct: 0.06 } }),
   t('bt_xianyun', '踏云履', 'boots', 23, { defense: 7, maxHp: 26 }, '足不沾地,行于云上', { fixedMods: { explorationSpeed: 0.12 } }),
   t('n_xingmang', '星芒仙坠', 'necklace', 23, { maxHp: 45 }, '一颗小星坠在颈间,夜夜微光', { fixedMods: { qiRegen: 0.1 } }),
   t('r_xianji', '仙机戒', 'ring', 23, { attack: 7, maxHp: 20 }, '仙机流转,掐指知凶吉', { fixedMods: { luck: 0.06 } }),
@@ -390,7 +390,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   t('b_leizepao', '雷池道袍', 'body', 24, { defense: 14, maxHp: 62 }, '雷池边晾过的道袍,不惹尘', { fixedMods: { dodgeRate: 0.05 } }),
   t('wr_leichi', '雷池腕甲', 'wrist', 24, { attack: 6, defense: 6 }, '腕甲里封着一滴雷池水', { fixedMods: { tribulationResist: 0.1 } }),
   t('bl_taiyiyu', '太乙玉绦', 'belt', 24, { defense: 6, maxHp: 46 }, '绦上串着九枚玉筹', { fixedMods: { maxHpPct: 0.08 } }),
-  t('bo_xuanxu', '玄虚履', 'boots', 24, { defense: 7, maxHp: 26 }, '踏玄虚步的履,走位难测', { fixedMods: { dodgeRate: 0.06 } }),
+  t('bo_xuanxu', '玄虚履', 'boots', 24, { defense: 7, maxHp: 26 }, '踏玄虚步的履,进退难测', { fixedMods: { dodgeRate: 0.06 } }),
   t('n_leichi', '雷池珠', 'necklace', 24, { maxHp: 45 }, '珠里一道雷,睡时听得见轻响', { fixedMods: { qiRegen: 0.12 } }),
   t('r_xuanxu', '玄虚戒', 'ring', 24, { attack: 7, maxHp: 20 }, '戒上机关一转,便知凶吉', { fixedMods: { accuracy: 0.08 } }),
   t('tl_taiyizhuan', '太乙符篆', 'talisman', 24, { maxHp: 40 }, '太乙救苦的符篆,一笔未断', { fixedMods: { breakthroughRate: 0.03 } }),
@@ -413,7 +413,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   t('h_yunshen', '陨神盔', 'head', 26, { defense: 8, maxHp: 32 }, '从陨神战场捡回的盔,战意至今未散', { fixedMods: { damageReduction: 0.05 } }),
   t('b_shenwen', '神纹甲', 'body', 26, { defense: 14, maxHp: 62 }, '甲上神纹是法则刻的,刀兵落下如落虚处', { fixedMods: { damageReduction: 0.08 } }),
   t('wr_shenjun', '神军护腕', 'wrist', 26, { attack: 6, defense: 6 }, '神军制式护腕,列阵时千具同鸣', { fixedMods: { attackPct: 0.05 } }),
-  t('bl_shenwangdai', '神王玉带', 'belt', 26, { defense: 6, maxHp: 46 }, '神王殿里取出的玉带,系之则威仪自生', { fixedMods: { maxHpPct: 0.06 } }),
+  t('bl_shenwangdai', '神王玉带', 'belt', 26, { defense: 6, maxHp: 46 }, '神王殿里取出的玉带', { fixedMods: { maxHpPct: 0.06 } }),
   t('bt_yunshen', '陨神战靴', 'boots', 26, { defense: 7, maxHp: 26 }, '踏过的战场,没有第二个活人', { fixedMods: { speed: 0.08 } }),
   t('n_xianghuo', '香火神坠', 'necklace', 26, { maxHp: 45 }, '万神殿堂的香火凝成一坠,戴上便有一分信力', { fixedMods: { qiRegen: 0.1 } }),
   t('r_shenyin', '神印戒', 'ring', 26, { attack: 7, maxHp: 20 }, '一枚神印缩在指上,印之所指即是法度', { fixedMods: { attackPct: 0.06 } }),
@@ -446,7 +446,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   t('bl_faze', '法则带', 'belt', 28, { defense: 6, maxHp: 46 }, '一条法则凝成的带,系则不坠', { fixedMods: { shieldOnStart: 0.1 } }),
   t('bt_shenxing', '神行靴', 'boots', 28, { defense: 7, maxHp: 26 }, '踏地生雷,万里一瞬', { fixedMods: { speed: 0.08 } }),
   t('n_shenxin', '神心坠', 'necklace', 28, { maxHp: 45 }, '一神陨落之心,至今犹温', { fixedMods: { maxHpPct: 0.08 } }),
-  t('r_shenquan', '神权戒', 'ring', 28, { attack: 7, maxHp: 20 }, '戴上它,你便握有一分神权', { fixedMods: { attackPct: 0.06 } }),
+  t('r_shenquan', '神权戒', 'ring', 28, { attack: 7, maxHp: 20 }, '戒里封着一分神权', { fixedMods: { attackPct: 0.06 } }),
   t('tl_shenzhao', '神诏', 'talisman', 28, { maxHp: 40 }, '一纸神诏,天地共遵', { fixedMods: { breakthroughRate: 0.035 } }),
 
   // ---- 29 阶 · 神帝天宫 / 帝阙天阶 ----
@@ -466,7 +466,7 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   t('w_hongmengren', '鸿蒙断刃', 'weapon', 30, { attack: 20 }, '开天那一斧余下的一截,一划便是生死界', { fixedMods: { damageBonus: 0.12 } }),
   t('h_zhenling', '真灵冠', 'head', 30, { defense: 8, maxHp: 32 }, '冠中一点真灵不昧,万劫不迷', { fixedMods: { cultivationSpeed: 0.08 } }),
   t('b_benyuan', '本源道袍', 'body', 30, { defense: 14, maxHp: 62 }, '以本源丝织成,刀兵加身如入无物', { fixedMods: { maxHpPct: 0.1 } }),
-  t('wr_zhenling', '真灵腕环', 'wrist', 30, { attack: 6, defense: 6 }, '腕环转动时,自身真灵随之稳如磐石', { fixedMods: { attackPct: 0.06 } }),
+  t('wr_zhenling', '真灵腕环', 'wrist', 30, { attack: 6, defense: 6 }, '腕环一转,真灵便定', { fixedMods: { attackPct: 0.06 } }),
   t('bl_kaidao', '开天道绦', 'belt', 30, { defense: 6, maxHp: 46 }, '开天之后余下的一缕道气,束之不觉其重', { fixedMods: { shieldOnStart: 0.1 } }),
   t('bt_shenmo', '神魔战靴', 'boots', 30, { defense: 7, maxHp: 26 }, '神魔一体的余威踏过,大地犹在震颤', { fixedMods: { speed: 0.08 } }),
   t('n_hundunzhu', '混沌珠坠', 'necklace', 30, { maxHp: 45 }, '珠里是一团未开的混沌', { fixedMods: { qiRegen: 0.14 } }),
@@ -482,14 +482,14 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     fixedMods: { cultivationSpeed: 0.08 },
     set: 's_hundunjia'
   }),
-  t('b_hundunyi', '混沌玄衣', 'body', 31, { defense: 14, maxHp: 62 }, '玄衣如虚,刀兵加身如入无物', {
+  t('b_hundunyi', '混沌玄衣', 'body', 31, { defense: 14, maxHp: 62 }, '玄衣如虚,刀兵无处着力', {
     fixedMods: { damageReduction: 0.1 },
     set: 's_hundunjia'
   }),
   t('wr_hundunhuan', '混沌环', 'wrist', 31, { attack: 6, defense: 6 }, '环内自成一界,盈虚不定', { fixedMods: { attackPct: 0.06 } }),
   t('bl_daoyun', '道韵绦', 'belt', 31, { defense: 6, maxHp: 46 }, '一绦道韵,系住将散的本源', { fixedMods: { maxHpPct: 0.09 } }),
-  t('bt_wuji', '无极履', 'boots', 31, { defense: 7, maxHp: 26 }, '履下无路,却处处是路', { fixedMods: { dodgeRate: 0.06 } }),
-  t('n_benyuan', '本源坠', 'necklace', 31, { maxHp: 45 }, '一滴本源凝成的坠,望之如望万界之初', { fixedMods: { qiRegen: 0.14 } }),
+  t('bt_wuji', '无极履', 'boots', 31, { defense: 7, maxHp: 26 }, '落足处便是路', { fixedMods: { dodgeRate: 0.06 } }),
+  t('n_benyuan', '本源坠', 'necklace', 31, { maxHp: 45 }, '一滴本源凝成的坠', { fixedMods: { qiRegen: 0.14 } }),
   t('r_hundun', '混沌戒', 'ring', 31, { attack: 7, maxHp: 20 }, '戒指内里,是一方尚未演化的天地', { fixedMods: { luck: 0.08 } }),
   t('tl_daowen', '道文符', 'talisman', 31, { maxHp: 40 }, '符上是比道更早的那一笔', { fixedMods: { cultivationSpeed: 0.1 } }),
 
@@ -499,10 +499,10 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
     fixedMods: { cultivationSpeed: 0.09 }
   }),
   t('b_benyuanshen', '本源神袍', 'body', 32, { defense: 14, maxHp: 62 }, '袍成于天地未分之时,不增不减', { fixedMods: { maxHpPct: 0.11 } }),
-  t('wr_benyuan', '本源腕环', 'wrist', 32, { attack: 6, defense: 6 }, '腕环里盘着一缕本源,安静得没有声音', {
+  t('wr_benyuan', '本源腕环', 'wrist', 32, { attack: 6, defense: 6 }, '腕环里盘着一缕本源,一声不响', {
     fixedMods: { attackPct: 0.07 }
   }),
-  t('bl_benyuan', '本源绦', 'belt', 32, { defense: 6, maxHp: 46 }, '束上它,散与不散都由你', { fixedMods: { maxHpPct: 0.1 } }),
+  t('bl_benyuan', '本源绦', 'belt', 32, { defense: 6, maxHp: 46 }, '束紧则聚,放开则散', { fixedMods: { maxHpPct: 0.1 } }),
   t('bo_benyuan', '本源履', 'boots', 32, { defense: 7, maxHp: 26 }, '履下无路无尘,只有最初的那一步', { fixedMods: { dodgeRate: 0.07 } }),
   t('n_hongmengzhu', '鸿蒙珠坠', 'necklace', 32, { maxHp: 45 }, '珠里鸿蒙未判,连光都还没有', { fixedMods: { qiRegen: 0.16 } }),
   t('r_daozu', '道祖印戒', 'ring', 32, { attack: 7, maxHp: 20 }, '悟道崖下捡的一枚旧印,落印处皆是道', { fixedMods: { attackPct: 0.07 } }),

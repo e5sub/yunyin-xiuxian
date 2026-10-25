@@ -42,7 +42,7 @@
       <p v-for="(entry, i) in displayed" :key="i" class="py-0.5 text-[11px] leading-relaxed" :class="KIND_COLOR[entry.t]">
         {{ entry.text }}
       </p>
-      <p v-if="displayed.length === 0" class="py-2 text-center text-[11px] text-ink-faint">此战无录</p>
+      <p v-if="displayed.length === 0" class="py-2 text-center text-[11px] text-ink-faint">暂无战报</p>
     </div>
 
     <!-- 播放控制 -->

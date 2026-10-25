@@ -1,19 +1,22 @@
 /**
  * 历练 —— 战斗与中断路径
- *
- * 聚焦 Phase 31.0 S4 灵兽性格的「败北保护」:
- * 慢稳/谨慎的灵兽带 lossReduction(降低失败率),败北时低概率护住玩家,
- * 免于重伤、不计败绩、历练继续。此前 lossReduction 只在 petPersonality 里
- * 定义了数值,从未接入 runBattle —— 描述即承诺,不生效就是欺骗。
+ * 含灵兽性格「败北保护」:lossReduction 须接入 runBattle,败北时低概率护住(不重伤、不计败绩、历练继续)。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createPinia, setActivePinia } from 'pinia'
+import { createPinia, setActivePinia, type Pinia } from 'pinia'
+import { createSSRApp } from 'vue'
+import { renderToString } from 'vue/server-renderer'
 import { usePlayerStore } from '@/stores/player'
-import { useAdventureStore } from '@/stores/adventure'
+import { useAdventureStore, type LastBattleView } from '@/stores/adventure'
 import { useCultivationStore } from '@/stores/cultivation'
+import { useLoreStore } from '@/stores/lore'
 import { gnZero, sub, toNum } from '@/utils/gnum'
 import { useResourcesStore } from '@/stores/resources'
 import { EXPLORE_BOSS_AFTER_WINS, EVENT_AUTO_RESOLVE_SECONDS } from '@/data/constants'
+import { enemyDef } from '@/data/enemies'
+import { enemyTraits, TRAIT_NAMES } from './buildAdvisor'
+import { noteEnemy } from './loreService'
+import CombatPanel from '@/components/adventure/CombatPanel.vue'
 import {
   tickExploration,
   startExploration,
@@ -33,12 +36,12 @@ import { endgameBusy } from './endgameActivity'
  */
 const CAUTIOUS_LOSS_REDUCTION = 0.04
 
-const { protect, combatWin, combatHpPct } = vi.hoisted(() => ({
+const { protect, combatWin, combatHpPct, forceBuild } = vi.hoisted(() => ({
   protect: { value: false },
   combatWin: { value: false },
-  // 默认身死(气血耗尽,playerHpPct=0):败北保护/连胜用例要的是「真正的败北」;
-  // 遁走(回合耗尽,hp>0)由「遁走≠身死」describe 专门显式置值
-  combatHpPct: { value: 0 }
+  // 默认身死(playerHpPct=0);遁走用例显式置值
+  combatHpPct: { value: 0 },
+  forceBuild: { value: false }
 }))
 
 vi.mock('@/utils/random', async importOriginal => {
@@ -71,9 +74,21 @@ vi.mock('./combat', async importOriginal => {
   }
 })
 
-function forgeSession(now: number): void {
+// 半卡星级要有流派才出;forceBuild 只在渲染时打开,战斗结算仍走真识别
+vi.mock('./buildDetect', async importOriginal => {
+  const mod = await importOriginal<typeof import('./buildDetect')>()
+  return {
+    ...mod,
+    detectBuild: (mods: Parameters<typeof mod.detectBuild>[0]) =>
+      forceBuild.value
+        ? { style: mod.BUILD_STYLES[0]!, affinity: 1, stageName: '', coreValues: [], displayName: '' }
+        : mod.detectBuild(mods)
+  }
+})
+
+function forgeSession(now: number, regionId = 'qingyun'): void {
   useAdventureStore().setSession({
-    regionId: 'qingyun',
+    regionId,
     mode: 'normal',
     startedAt: now - 5000,
     endsAt: now + 60000,
@@ -85,6 +100,13 @@ function forgeSession(now: number): void {
     expGain: gnZero(),
     itemGain: 0
   })
+}
+
+/** 会话还在时同刻再打一场 */
+function fightAgain(now: number): void {
+  const adventure = useAdventureStore()
+  adventure.setSession({ ...adventure.session!, nextBattleAt: now - 1 })
+  tickExploration(now)
 }
 
 describe('灵兽性格 · 败北保护(lossReduction 接入 runBattle)', () => {
@@ -134,7 +156,7 @@ describe('灵兽性格 · 败北保护(lossReduction 接入 runBattle)', () => {
     const now = Date.now()
     forgeSession(now)
 
-    protect.value = true // 即使放行掷点,0 的概率也恒不护
+    protect.value = true // 放行掷点,概率 0 仍不护
 
     tickExploration(now)
 
@@ -172,7 +194,7 @@ describe('连胜(TASK-022 接线 · runBattle 胜负驱动 player.winStreak)', (
     const now = Date.now()
     forgeSession(now)
 
-    protect.value = true // 败北被护住:不算败 → 连胜保留
+    protect.value = true // 被护住不算败,连胜保留
     tickExploration(now)
     expect(player.winStreak).toBe(3)
     expect(useAdventureStore().session).not.toBeNull()
@@ -228,7 +250,7 @@ describe('收尾总结 · 战绩报胜负两本账', () => {
     sessionWith(1, 2)
     stopExploration('defeat')
     expect(lastToast()).toContain('胜 1 场 · 负 2 场')
-    expect(lastToast()).toContain('得灵石')
+    expect(lastToast()).toContain('灵石 +')
   })
 
   it('全胜时只说胜场(没有败场就不摆一行「负 0 场」)', () => {
@@ -249,7 +271,7 @@ describe('回合耗尽·遁走 ≠ 身死·败北(处置分开)', () => {
   })
 
   it('遁走(满血无功而返):不加重伤、不计宿敌败绩、连胜照清、中止历练', () => {
-    combatHpPct.value = 0.4 // 敌遁走,你未死
+    combatHpPct.value = 0.4 // 遁走,未死
     const player = usePlayerStore()
     player.initCharacter('拖佬', { roots: [] } as never)
     player.winStreak = 3
@@ -458,7 +480,7 @@ describe('首领门槛 · 界面提示与战斗判定同源', () => {
         chain: [{ nodeId: 'n1_qingyun', fromId: regionId, name: '落霞谷', tier: 1, enemies: [], boss: 'b', archetype: 'a', eventTags: [] }]
       } as never,
       mortalCleared: ['n1_qingyun'],
-      cleared: [] // 旧链没清 —— 老视图逻辑会误判「还差 N 胜」
+      cleared: [] // 旧链未清
     })
     expect(adventure.cleared.includes(regionId), '构型前提:旧链没清').toBe(false)
     expect(regionBossCleared(regionId), '本世节点已通,界面该报首领已靖,不再差胜').toBe(true)
@@ -491,7 +513,7 @@ describe('历练 · 待决事件超时自动结算', () => {
     adv.setPendingEvent('ft_sword_remnant', now - 119_000) // 差 1 秒不到 120s
     tickExploration(now)
     expect(adv.pendingEventId, '未超时不该自己了结').toBe('ft_sword_remnant')
-    expect(adv.session!.events).toBe(0) // 事件数没动
+    expect(adv.session!.events).toBe(0)
   })
 
   it('已超时(> 120s):按默认选项自动结清 —— 清待决、事件 +1、重排下一战', () => {
@@ -505,7 +527,7 @@ describe('历练 · 待决事件超时自动结算', () => {
     expect(adv.pendingEventSince).toBe(0)
     const s = adv.session!
     expect(s.events).toBe(1)
-    expect(s.nextBattleAt).toBeGreaterThan(beforeBattle) // 下一战重排到未来
+    expect(s.nextBattleAt).toBeGreaterThan(beforeBattle)
   })
 
   it('结清后再 tick:不重复结算(事件数不再 +1)', () => {
@@ -515,7 +537,7 @@ describe('历练 · 待决事件超时自动结算', () => {
     adv.setPendingEvent('ft_sword_remnant', now - EVENT_AUTO_RESOLVE_SECONDS * 1000 - 1000)
     tickExploration(now)
     expect(adv.session!.events).toBe(1)
-    tickExploration(now) // 待决已清,同刻再 tick
+    tickExploration(now)
     expect(adv.pendingEventId).toBeNull()
     expect(adv.session!.events, '不该重复结算成 2').toBe(1)
   })
@@ -531,5 +553,170 @@ describe('区域事件 eventMult 真算进际遇率', () => {
     } finally {
       player.regionEvent = null
     }
+  })
+})
+
+/**
+ * 第一次照面不露特性与星级:战报带开打那一刻的认知快照。
+ * runBattle 同步入账认知、界面随后才渲染,读当前认知时首战已「眼熟」。
+ */
+describe('开打认知快照 · 第一次照面算未识', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    protect.value = false
+    combatWin.value = true
+    combatHpPct.value = 0
+  })
+
+  it('普通敌首战得胜:快照未识(本战已入账也不算);同一敌第二场才眼熟', () => {
+    usePlayerStore().initCharacter('初见', { roots: [] } as never)
+    const adventure = useAdventureStore()
+    const now = Date.now()
+    forgeSession(now)
+    tickExploration(now)
+
+    const first = adventure.lastBattle!
+    expect(first.isBoss, '构型前提:普通敌').toBe(false)
+    expect(useLoreStore().enemyLoreOf(first.enemyId!), '构型前提:本战已入账,当前认知已是眼熟').toBe(1)
+    expect(first.foeKnown, '第一次照面该算未识').toBe(false)
+
+    fightAgain(now)
+    expect(adventure.lastBattle!.enemyId, '构型前提:同一敌').toBe(first.enemyId)
+    expect(adventure.lastBattle!.foeKnown, '交过一场手,第二场该眼熟').toBe(true)
+  })
+
+  it('首领首战得胜:快照未识', () => {
+    usePlayerStore().initCharacter('斩首', { roots: [] } as never)
+    const adventure = useAdventureStore()
+    const now = Date.now()
+    forgeSession(now)
+    adventure.setSession({ ...adventure.session!, wins: EXPLORE_BOSS_AFTER_WINS })
+    tickExploration(now)
+
+    expect(adventure.lastBattle!.isBoss, '构型前提:这一战是首领').toBe(true)
+    expect(adventure.lastBattle!.foeKnown).toBe(false)
+  })
+
+  // 首领胜一记还不到倍算门槛,上一例分不出快照早晚;败绩记三、本战即到眼熟,这一例才分得出
+  it('首领首战败北:本战已记到眼熟,快照仍未识', () => {
+    combatWin.value = false
+    usePlayerStore().initCharacter('折戟', { roots: [] } as never)
+    const adventure = useAdventureStore()
+    const now = Date.now()
+    forgeSession(now)
+    adventure.setSession({ ...adventure.session!, wins: EXPLORE_BOSS_AFTER_WINS })
+    tickExploration(now)
+
+    const b = adventure.lastBattle!
+    expect(b.isBoss, '构型前提:这一战是首领').toBe(true)
+    expect(useLoreStore().enemyLoreOf(b.enemyId!), '构型前提:本战败绩已把首领记到眼熟').toBe(1)
+    expect(b.foeKnown).toBe(false)
+  })
+
+  it('首战败北:会话收兵、战报留到下趟,快照仍是未识', () => {
+    combatWin.value = false
+    usePlayerStore().initCharacter('初败', { roots: [] } as never)
+    const adventure = useAdventureStore()
+    const now = Date.now()
+    forgeSession(now)
+    tickExploration(now)
+
+    expect(adventure.session, '构型前提:败北收兵').toBeNull()
+    const b = adventure.lastBattle!
+    expect(useLoreStore().enemyLoreOf(b.enemyId!), '构型前提:败绩已入账').toBeGreaterThanOrEqual(1)
+    expect(b.foeKnown).toBe(false)
+  })
+
+  it('旧战报缺 foeKnown:修形不报错、字段留空;非布尔不放行', () => {
+    const adventure = useAdventureStore()
+    const legacy = {
+      enemyName: '三尾灵狐',
+      enemyIcon: 'paw',
+      enemyId: 'e_fox',
+      isBoss: false,
+      result: { win: true, log: [], rounds: 3, playerHpPct: 1 },
+      at: 1
+    }
+    adventure.lastBattle = legacy
+    expect(() => adventure.sanitize()).not.toThrow()
+    expect(adventure.lastBattle, '缺一栏不该整份作废').not.toBeNull()
+    expect(adventure.lastBattle!.foeKnown).toBeUndefined()
+
+    adventure.lastBattle = { ...legacy, foeKnown: 'yes' } as unknown as LastBattleView
+    adventure.sanitize()
+    expect(adventure.lastBattle!.foeKnown, '坏值不该当成已眼熟').toBeUndefined()
+
+    adventure.lastBattle = { ...legacy, foeKnown: false }
+    adventure.sanitize()
+    expect(adventure.lastBattle!.foeKnown).toBe(false)
+  })
+})
+
+/** 战斗页敌方半卡:服务端渲染真组件(不跑 onMounted 回放),特性与星级跟开打快照走 */
+describe('战斗页敌方半卡 · 特性与星级读开打快照', () => {
+  /** 假 rng 的 pick 取敌表首位:万妖林首位是三尾灵狐 */
+  const REGION = 'wanyao'
+  const FOE = 'e_fox'
+  const traitNames = enemyTraits(enemyDef(FOE)!).map(t => TRAIT_NAMES[t])
+  const STARS = /[★☆]/
+  let pinia: Pinia
+
+  beforeEach(() => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    protect.value = false
+    combatWin.value = true
+    combatHpPct.value = 0
+    forceBuild.value = false
+  })
+
+  /** 星级的 title 也写着特性名:特性断言须用不带流派的渲染,否则标签丢了也照样过 */
+  async function renderPanel(withBuild = false): Promise<string> {
+    const app = createSSRApp(CombatPanel)
+    app.use(pinia)
+    forceBuild.value = withBuild
+    try {
+      return await renderToString(app)
+    } finally {
+      forceBuild.value = false
+    }
+  }
+
+  it('首战得胜:半卡不出特性与星级;第二场才出', async () => {
+    expect(traitNames.length, '构型前提:此敌须带特性').toBeGreaterThan(0)
+    usePlayerStore().initCharacter('照面', { roots: [] } as never)
+    const now = Date.now()
+    forgeSession(now, REGION)
+    tickExploration(now)
+    expect(useAdventureStore().lastBattle?.enemyId, '构型前提:遇上的就是此敌').toBe(FOE)
+
+    const first = await renderPanel()
+    for (const name of traitNames) expect(first, `第一次照面露了「${name}」`).not.toContain(name)
+    expect(await renderPanel(true), '第一次照面露了星级').not.toMatch(STARS)
+
+    fightAgain(now)
+    const second = await renderPanel()
+    for (const name of traitNames) expect(second, `交过手该见「${name}」`).toContain(name)
+    expect(await renderPanel(true), '交过手该见星级').toMatch(STARS)
+  })
+
+  it('旧战报无快照:按当前认知,未识不出、眼熟才出', async () => {
+    usePlayerStore().initCharacter('旧档', { roots: [] } as never)
+    useAdventureStore().lastBattle = {
+      enemyName: '三尾灵狐',
+      enemyIcon: 'paw',
+      enemyId: FOE,
+      isBoss: false,
+      result: { win: true, log: [], rounds: 3, playerHpPct: 1 },
+      at: 1
+    }
+    const unknown = await renderPanel()
+    for (const name of traitNames) expect(unknown, `未识就露了「${name}」`).not.toContain(name)
+    expect(await renderPanel(true), '未识就露了星级').not.toMatch(STARS)
+
+    noteEnemy(FOE, true)
+    const known = await renderPanel()
+    for (const name of traitNames) expect(known, `眼熟后该见「${name}」`).toContain(name)
+    expect(await renderPanel(true), '眼熟后该见星级').toMatch(STARS)
   })
 })

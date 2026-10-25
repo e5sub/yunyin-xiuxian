@@ -27,7 +27,7 @@ export const SOUL_TYPES: SoulTypeDef[] = [
     id: 'fengmang',
     name: '锋魂',
     seal: '锋',
-    desc: '此器生来向前,不曾回头——形意里只剩一往无前的那一分锐',
+    desc: '此器生来向前,不曾回头,形意里只剩那一分锐',
     mods: { critRate: 0.04, fullHpDamage: 0.09, firstStrike: 0.08 },
     judgeKeys: ['critRate', 'critDamage', 'fullHpDamage', 'firstStrike']
   },

@@ -1,32 +1,31 @@
-/**
- * 行囊提示 —— 法宝位、化尘、构筑。
- *
- * 件数、尘石、阙件仍报清。写成「分解」「替换」「切换」太硬。
- */
+/** 行囊提示(法宝位、化尘、构筑):只报结果;件数、尘石、阙件照实报。 */
+import { batchDecomposeToast } from './forgeText'
+
 export function artifactSlotReplacedToast(evicted: readonly string[] = []): string {
-  if (evicted.length === 0) return '法宝之位已满,替下最早祭炼的一件'
-  if (evicted.length === 1) return `法宝之位已满,替下「${evicted[0]}」`
-  return `法宝之位已满,替下${evicted.join('、')}`
+  if (evicted.length === 0) return '已替下最早祭炼的一件'
+  if (evicted.length === 1) return `已替下「${evicted[0]}」`
+  return `已替下${evicted.join('、')}`
 }
 
 export function decomposeEmptyToast(): string {
-  return '行囊中无可化尘之物'
+  return '无可化尘'
 }
 
+/** 清理行囊的回执:与一键分解的总账同一句 */
 export function smartCleanToast(count: number, yieldText: string): string {
-  if (count <= 0) return '行囊中皆是有缘之物'
-  return `收纳既毕,${count} 件无缘之物化尘,${yieldText}`
+  if (count <= 0) return decomposeEmptyToast()
+  return batchDecomposeToast(count, yieldText)
 }
 
 export function loadoutFullToast(max: number): string {
-  return `构筑至多 ${max} 套,先卸去一套再存`
+  return `快照已满 · 上限 ${max} 套`
 }
 
 export function loadoutSavedToast(name: string): string {
-  return `构筑「${name}」已存入行囊`
+  return `构筑「${name}」已保存`
 }
 
-/** 改名与保存是两回事:只动名号,不装包 —— 文案得分得开,免得「已存入行囊」撒谎 */
+/** 改名回执:文案须与「已保存」分开 */
 export function loadoutRenamedToast(name: string): string {
   return `构筑「${name}」已改名`
 }
@@ -42,13 +41,10 @@ export function loadoutApplyToast(
   slotLimited = false
 ): string {
   if (missing <= 0) return `已换上「${name}」`
+  const head = `已换上「${name}」,阙 ${missing} 件${slotLimited ? '(槽位不足)' : ''}`
   if (missingNames.length > 0) {
     const list = [...new Set(missingNames)].slice(0, 3).join('、')
-    return slotLimited
-      ? `已换上「${name}」,阙 ${missing} 件(槽位不足,升级藏经阁/提高境界):${list}`
-      : `已换上「${name}」,阙 ${missing} 件:${list}`
+    return `${head}:${list}`
   }
-  return slotLimited
-    ? `已换上「${name}」,阙 ${missing} 件(槽位不足,升级藏经阁/提高境界)`
-    : `已换上「${name}」,阙 ${missing} 件`
+  return head
 }

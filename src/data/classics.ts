@@ -34,7 +34,7 @@ export const CLASSICS: ClassicDef[] = [
     title: '悟真篇',
     source: '北宋 · 张伯端',
     school: '丹道',
-    gist: '以诗词丹诀述内丹,以「金丹」为药、性命双修 —— 金丹一境的直系出处。',
+    gist: '以诗词丹诀述内丹,以「金丹」为药、性命双修,金丹一境即出于此。',
     realms: ['jindan']
   },
   {
@@ -50,7 +50,7 @@ export const CLASSICS: ClassicDef[] = [
     title: '云笈七签',
     source: '北宋 · 张君房',
     school: '道教',
-    gist: '道教类书,收雷法与劫运之说 —— 「九重雷海、向死而生」的渡劫想象多源于此类典籍。',
+    gist: '道教类书,收雷法与劫运之说;「九重雷海、向死而生」的渡劫想象多源于此类典籍。',
     realms: ['dujie']
   },
   {
@@ -66,7 +66,7 @@ export const CLASSICS: ClassicDef[] = [
     title: '道德经',
     source: '春秋 · 老子',
     school: '道家',
-    gist: '「玄之又玄」「道生一」——玄仙之「玄」、道祖之「道」皆本于此。',
+    gist: '「玄之又玄」「道生一」:玄仙之「玄」、道祖之「道」皆本于此。',
     realms: ['xuanxian', 'hundundaozu']
   },
   {
@@ -74,7 +74,7 @@ export const CLASSICS: ClassicDef[] = [
     title: '庄子 · 逍遥游',
     source: '战国 · 庄周',
     school: '道家',
-    gist: '「藐姑射之山,有神人居焉」——超脱形骸、不食五谷的最初神人形象,故神界之首为神人。',
+    gist: '「藐姑射之山,有神人居焉」:超脱形骸、不食五谷的最初神人形象,故神界之首为神人。',
     realms: ['shenren']
   },
   {
@@ -82,7 +82,7 @@ export const CLASSICS: ClassicDef[] = [
     title: '三五历纪',
     source: '三国 · 徐整',
     school: '道家',
-    gist: '「天地混沌如鸡子,盘古生其中」——开天辟地的宇宙生成传说,混沌真灵与混沌神魔由此取名。',
+    gist: '「天地混沌如鸡子,盘古生其中」:开天辟地的宇宙生成传说,混沌真灵与混沌神魔由此取名。',
     realms: ['hundunling', 'hundunshenmo']
   },
   {
@@ -90,7 +90,7 @@ export const CLASSICS: ClassicDef[] = [
     title: '抱朴子',
     source: '东晋 · 葛洪',
     school: '道教',
-    gist: '论神仙可学、金丹可成 —— 「凡人可以修仙」最早的体系化主张,整条修行路的底气。',
+    gist: '论神仙可学、金丹可成,是「凡人可以修仙」最早的体系化主张。',
     realms: []
   },
   {
@@ -106,7 +106,7 @@ export const CLASSICS: ClassicDef[] = [
     title: '网文仙阶(无原典)',
     source: '当代网络文学',
     school: '网文',
-    gist: '玄仙、金仙、太乙、大罗,以及神将、神王、神帝诸阶,是当代仙侠最常用的阶位序列 —— 取自约定俗成,不攀经书。',
+    gist: '玄仙、金仙、太乙、大罗,以及神将、神王、神帝诸阶,是当代仙侠约定俗成的阶位序列。',
     realms: ['jinxian', 'taiyi', 'daluo', 'shenjiang', 'shenwang', 'shendi']
   }
 ]

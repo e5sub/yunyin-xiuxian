@@ -50,28 +50,28 @@ export const PROGRESSION_AXES: ProgressionAxis[] = [
     name: '修为需求',
     mortal: EXP_MAJOR_GROWTH,
     outer: LATE_EXP_GROWTH,
-    note: '突破所需修为。越过需求的部分存为积余,突破时随境界带走'
+    note: '突破所需修为'
   },
   {
     id: 'qiCap',
     name: '灵气容量',
     mortal: QI_CAP_MAJOR_GROWTH,
     outer: LATE_QI_CAP_GROWTH,
-    note: `标称容量。灵气可积到容量的 ${QI_BANK_MULT} 倍,不为卡境而空耗`
+    note: '标称容量'
   },
   {
     id: 'qiRegen',
     name: '灵气回复',
     mortal: QI_REGEN_MAJOR_GROWTH,
     outer: LATE_QI_REGEN_GROWTH,
-    note: '回复速率略慢于容量,故越往上越要「存」而不是「等」'
+    note: '增速略慢于容量'
   },
   {
     id: 'attack',
     name: '战力(攻击/防御/生命)',
     mortal: COMBAT_MAJOR_GROWTH,
     outer: LATE_COMBAT_GROWTH,
-    note: '与同期内容同速成长,只与「境界 + 构筑」对齐,不单方面膨胀'
+    note: '与同期内容同速成长'
   }
 ]
 
@@ -88,12 +88,12 @@ export interface CostCurve {
   note: string
 }
 
-/** 各处花费同样是复利(不是线性),由 progressionDoc.spec 对着公式复核 */
+/** 各处花费的复利倍率 */
 export const COST_CURVES: CostCurve[] = [
-  { id: 'building', name: '洞府建筑升级', growth: BUILDING_COST_GROWTH, unit: '等级', note: '每升一级,灵石开销 ×该倍率' },
-  { id: 'gongfa', name: '功法参悟', growth: GONGFA_UP_GROWTH, unit: '等级', note: '每上一层,悟道点开销 ×该倍率' },
-  { id: 'equipLevel', name: '装备强化', growth: UPGRADE_DUST_GROWTH, unit: '等级', note: '每强化一级,器灵尘开销 ×该倍率(灵石按层级另计)' },
-  { id: 'stoneTier', name: '灵石掉落', growth: STONE_TIER_GROWTH, unit: '层级', note: '每上一层地界,灵石产出 ×该倍率,与花费同速' }
+  { id: 'building', name: '洞府建筑升级', growth: BUILDING_COST_GROWTH, unit: '等级', note: '灵石开销' },
+  { id: 'gongfa', name: '功法参悟', growth: GONGFA_UP_GROWTH, unit: '等级', note: '悟道点开销' },
+  { id: 'equipLevel', name: '装备强化', growth: UPGRADE_DUST_GROWTH, unit: '等级', note: '器灵尘开销;灵石按层级另计' },
+  { id: 'stoneTier', name: '灵石掉落', growth: STONE_TIER_GROWTH, unit: '层级', note: '每层地界灵石产出' }
 ]
 
 export interface LifespanCurve {
@@ -116,9 +116,9 @@ export const PROGRESSION_NOTES = {
   worldBreakMajor: WORLD_BREAK_MAJOR,
   tribulationCapMajor: TRIBULATION_DIFFICULTY_CAP_MAJOR,
   banking: [
-    '修为不封顶:卡在某一境(等突破、等灵气、渡劫失败)时,修为仍继续增长',
-    '突破只扣「刚走完那一境」的需求,积余带入下一境 —— 等待不是浪费',
-    `灵气可越过标称容量,积到容量的 ${QI_BANK_MULT} 倍;负伤时还能耗灵气当场疗伤(修复)`
+    '修为不封顶:卡境时照常增长',
+    '突破只扣当境需求,积余带入下一境',
+    `灵气可积到标称容量的 ${QI_BANK_MULT} 倍;负伤时可耗灵气疗伤`
   ],
   basis: [
     '人间界九境取内丹术与佛道之序:炼气、筑基、金丹、元婴、化神、炼虚、合体、大乘、渡劫',
@@ -127,12 +127,12 @@ export const PROGRESSION_NOTES = {
     '混沌海三境取道家宇宙论:混沌真灵、混沌神魔、混沌道祖'
   ],
   breakthrough: [
-    '小进阶的成功率不随境界无限下降 —— 那是惩罚,不是难度;难度体现在修为需求与天劫上',
-    `大关须渡天劫:成败看劫型与你的解法空间(护持/续航/抗性/爆发),天劫难度在「${
+    '小进阶成功率不随境界无限下降',
+    `大关须渡天劫:成败看劫型与护持/续航/抗性/爆发,天劫难度在「${
       REALMS[WORLD_BREAK_MAJOR]!.name
     }」处封顶`,
-    '飞升不例外:真仙、神人、混沌真灵三个跨界入口同样是天劫 —— 大关没有免劫的先例',
-    '突破失败损失部分修为(可被「护道」类词条减免),但已积余的部分仍留在账上'
+    '真仙、神人、混沌真灵三个跨界入口同样须渡天劫',
+    '突破失败损失部分修为(「护道」类词条可减免),积余不失'
   ]
 }
 
@@ -151,40 +151,35 @@ export const SORCERY_LAYERS: SorceryLayer[] = [
   {
     id: 'gong',
     name: '周易 · 问卦',
-    cadence: `一时之机 · 卦管 ${CHANGING_TIERS[0]!.minutes}~${CHANGING_TIERS[CHANGING_TIERS.length - 1]!.minutes} 分钟`,
+    cadence: `卦管 ${CHANGING_TIERS[0]!.minutes}~${CHANGING_TIERS[CHANGING_TIERS.length - 1]!.minutes} 分钟`,
     cost: `悟道点 ${DIVINATION_COST} · 一事不二卜`,
-    note: `${TRIGRAMS.length} 卦为体、${HEXAGRAMS.length} 卦为用;动爻越多,卦力越盛而时限越短`
+    note: `${TRIGRAMS.length} 卦为体、${HEXAGRAMS.length} 卦为用;动爻越多,卦力越盛、时限越短`
   },
   {
     id: 'ming',
     name: '紫微 · 命格',
-    cadence: '一世之格 · 常驻',
-    cost: '免费(转世重掷灵根即重排)',
-    note: `${PALACES.length} 宫 ${STARS.length} 主星定底色;力薄而常驻,不受时限,也不与卦叠加同类效果`
+    cadence: '一世常驻',
+    cost: '免费 · 转世重排',
+    note: `${PALACES.length} 宫 ${STARS.length} 主星;力薄、无时限,不与卦叠加同类效果`
   },
   {
     id: 'xiang',
     name: '星象 · 值日',
     cadence: `${MANSIONS.length} 日一轮 · ${IMAGES.length} 象配四界`,
     cost: '免费、被动',
-    note: `只利所配界域:其地际遇 +${Math.round(MANSION_EVENT_LUCK * 100)}%,他处不加`
+    note: `仅所配界域:际遇 +${Math.round(MANSION_EVENT_LUCK * 100)}%`
   },
   {
     id: 'men',
     name: '奇门 · 择门',
     cadence: '一趟远征一择',
     cost: '免费',
-    note: `${GATES.length} 门各有打法(续航/抢攻/守拙/速决);不碰道源倍数 —— 那是天道契约的事`
+    note: `${GATES.length} 门各有打法(续航/抢攻/守拙/速决);不改道源倍数`
   }
 ]
 
 /**
- * 术数四门的分工一句话(展示层用,避免把四层说成一锅加成)。
- *
- * 个数从 `SORCERY_LAYERS` 现算:从前这句写死「五层」,而表里只有四层
- * (问卦/命格/值日/择门)—— 多出来的那一层「天时」是天气(`core/weather`),
- * 它并入 `finalStats.mods`,不走术数这一套「各占一层、互不顶替」的时机分层,
- * 摆在这里只会让玩家以为还有第五种要操心的节奏。说明页上数字与表对不上,
- * 而没有任何东西会因此报错。
+ * 术数四门的分工一句话(展示用)。层数从 `SORCERY_LAYERS` 现算,不写死;
+ * 天气(`core/weather`)并入 `finalStats.mods`,不属术数分层,不计入。
  */
-export const SORCERY_SUMMARY = `问卦管自己一时的机,命格定一世之格,值日管一方界域,择门定一趟的打法 —— ${cnNumber(SORCERY_LAYERS.length)}层各占一层,互不顶替。`
+export const SORCERY_SUMMARY = `问卦、命格、值日、择门,${cnNumber(SORCERY_LAYERS.length)}层各占一层,互不顶替`

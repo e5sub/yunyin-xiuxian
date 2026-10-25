@@ -131,12 +131,12 @@ describe('savePlatform(Web 分支)', () => {
     const result = await exportSaveToDevice()
 
     expect(result, '未知回包不是持久备份,也不能甩锅给玩家').toContain('无法识别的结果')
-    expect(useUiStore().toasts).toContainEqual(
-      expect.objectContaining({ text: expect.stringContaining('无法识别的结果'), kind: 'warn' })
+    expect(useUiStore().toasts, '玩家只看到失败状态,不念协议细节').toContainEqual(
+      expect.objectContaining({ text: '导出失败', kind: 'warn' })
     )
   })
 
-  it('Android 原生写入失败:把真实原因带给玩家,不冒充已导出', async () => {
+  it('Android 原生写入失败:toast 只报导出失败,真实原因留在返回值', async () => {
     mocks.isNativePlatform.mockReturnValue(true)
     mocks.getPlatform.mockReturnValue('android')
     mocks.saveTransfer.mockRejectedValue(new Error('目标文件不可写'))
@@ -147,9 +147,8 @@ describe('savePlatform(Web 分支)', () => {
 
     expect(result).toContain('存档导出失败')
     expect(result).toContain('目标文件不可写')
-    expect(useUiStore().toasts).toContainEqual(
-      expect.objectContaining({ text: expect.stringContaining('目标文件不可写'), kind: 'warn' })
-    )
+    expect(useUiStore().toasts).toContainEqual(expect.objectContaining({ text: '导出失败', kind: 'warn' }))
+    expect(useUiStore().toasts.map(t => t.text).join(), '原生报错原文不进 toast').not.toContain('目标文件不可写')
   })
 
   it('其他原生端存储权限被拒:不写盘,并给玩家明确警告回执', async () => {
@@ -161,10 +160,10 @@ describe('savePlatform(Web 分支)', () => {
     const { useUiStore } = await import('@/stores/ui')
     const result = await exportSaveToDevice()
 
-    expect(result, '失败原因仍要返回,设置页据此不记「上次导出」').toBe('存储权限被拒绝,无法导出存档')
+    expect(result, '失败原因仍要返回,设置页据此不记「上次导出」').toBe('存储权限被拒绝')
     expect(mocks.writeFile, '权限被拒时不该继续尝试写 Documents').not.toHaveBeenCalled()
     expect(useUiStore().toasts, '玩家点了导出后必须看到为什么没成').toContainEqual(
-      expect.objectContaining({ text: '存储权限被拒绝,无法导出存档', kind: 'warn' })
+      expect.objectContaining({ text: '存储权限被拒绝', kind: 'warn' })
     )
     expect(mocks.saveTransfer, '非 Android 不该调用 Android SAF 桥').not.toHaveBeenCalled()
   })

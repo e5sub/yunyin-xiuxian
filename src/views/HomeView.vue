@@ -1,13 +1,9 @@
 <template>
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
-    <!--
-      iOS 上「加进主屏幕」这件事得主动说一次:不说,玩家不会知道七天不打开就会丢档。
-      只在 iOS 且未安装时出现,「知道了」之后永不再露(设置页里还留着一份常驻的,随时可查)。
-    -->
+    <!-- iOS 七天不打开会丢档:只在 iOS 且未安装时出现,「知道了」之后不再露(设置页另留常驻一份) -->
     <InstallToHomeNotice />
 
-    <!-- 人物水墨主视觉 -->
-      <div class="card-ink relative overflow-hidden px-4 pb-4 pt-5">
+    <div class="card-ink relative overflow-hidden px-4 pb-4 pt-5">
       <div class="relative z-10 flex items-start justify-between">
         <div class="min-w-0 flex-1">
           <p class="text-[11px]" :class="player.lifespanRatio < LIFESPAN_WARN_RATIO ? 'text-cinnabar' : 'text-ink-faint'">
@@ -30,24 +26,6 @@
       </div>
     </div>
 
-    <!--
-      第一步(只在开局这一段出现,见 core/firstStep):目标 / 主线 / 每日三块各指一个页签,
-      却没人告诉新玩家先点哪儿 —— 这张卡把「历练 → 修为 → 突破」这条线说出来,并把入口递到手上。
-    -->
-    <RouterLink
-      v-if="firstStep"
-      :to="firstStep.to"
-      class="card-ink flex items-center gap-3 border-cinnabar/40 px-4 py-3 active:scale-98"
-    >
-      <GameIcon name="footprints" :size="14" class="shrink-0 text-cinnabar" />
-      <span class="min-w-0 flex-1">
-        <span class="block font-kai text-[14px] tracking-wider text-ink">{{ firstStep.text }}</span>
-        <span class="mt-0.5 block text-[10px] leading-relaxed text-ink-faint">{{ firstStep.hint }}</span>
-      </span>
-      <span class="shrink-0 text-[11px] text-cinnabar">{{ firstStep.label }} →</span>
-    </RouterLink>
-
-    <!-- Phase 29 修行目标:只给方向,不替玩家做决定(goal.ts 此前零展示,接线摆上主页) -->
     <div v-if="currentGoal" class="card-ink flex items-center gap-3 px-4 py-3">
       <GameIcon name="scroll" :size="14" class="shrink-0 text-jade" />
       <div class="min-w-0 flex-1">
@@ -61,137 +39,110 @@
       </div>
     </div>
 
-    <!-- 天界入口(真仙) -->
-    <RouterLink
-      v-if="player.major >= WORLD_BREAK_MAJOR"
-      to="/celestial"
-      class="card-ink flex items-center gap-3 border-cinnabar/40 px-4 py-3 active:scale-98"
-    >
-      <span class="grid h-9 w-9 place-items-center rounded-md bg-cinnabar/90 font-kai text-[17px] text-paper animate-breathe">天</span>
-      <span class="min-w-0 grow">
-        <span class="block font-kai text-[14px] tracking-[0.25em] text-ink">天界已开</span>
-        <span class="block text-[10px] text-ink-faint">道途 · 特殊世界 · 天道熔炉 · 试炼 · 道痕</span>
-      </span>
-      <span class="text-[11px] text-cinnabar">踏天 →</span>
-    </RouterLink>
+    <!-- 入口宫格:三列,内容顶对齐;不到 320px(200% 缩放)改两列,图标放得下 -->
+    <div class="stagger-in grid grid-cols-2 gap-2.5 min-[320px]:grid-cols-3">
+      <RouterLink v-if="firstStep" :to="firstStep.to" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-cinnabar/10 text-cinnabar"><GameIcon name="footprints" :size="18" /></span>
+        <span class="font-kai text-[13px] tracking-widest text-ink">第一步</span>
+        <span class="text-[10px] leading-tight text-cinnabar">{{ firstStep.label }}</span>
+      </RouterLink>
 
-    <!-- 本世之界:这一世的「名」散落在历练深处,主页却只在洞府/天界处开了门 —— 舆图该在门面首层 -->
-    <RouterLink to="/world" class="card-ink flex items-center gap-3 border-azure/30 px-4 py-3 active:scale-98">
-      <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-azure/15 text-azure">
-        <GameIcon name="cloud" :size="18" />
-      </span>
-      <span class="min-w-0 grow">
-        <span class="block font-kai text-[14px] tracking-widest text-ink">本世之界</span>
-        <span class="block truncate text-[10px] leading-relaxed text-ink-faint">{{ worldBrief }}</span>
-      </span>
-      <span class="shrink-0 text-[11px] text-azure">观 象 →</span>
-    </RouterLink>
+      <RouterLink v-if="player.major >= WORLD_BREAK_MAJOR" to="/celestial" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
+        <span class="seal-face grid h-10 w-10 shrink-0 place-items-center rounded-md bg-cinnabar/90 font-kai text-[17px] animate-breathe">天</span>
+        <span class="font-kai text-[13px] tracking-widest text-ink">天界</span>
+      </RouterLink>
 
-    <!-- 坊市:灵石换机缘的地界,洞府门面给一个常驻入口 -->
-    <RouterLink to="/market" class="card-ink flex items-center gap-3 border-gold-ink/30 px-4 py-3 active:scale-98">
-      <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-gold-ink/10 text-gold-ink">
-        <GameIcon name="store" :size="18" />
-      </span>
-      <span class="min-w-0 grow">
-        <span class="block font-kai text-[14px] tracking-widest text-ink">坊市</span>
-        <span class="block truncate text-[10px] text-ink-faint">历练战获 · 售物入账 · 换丹药续料与趁手兵刃</span>
-      </span>
-      <span class="shrink-0 text-[11px] text-gold-ink">购置 →</span>
-    </RouterLink>
+      <RouterLink to="/world" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-azure/15 text-azure"><GameIcon name="cloud" :size="18" /></span>
+        <span class="font-kai text-[13px] tracking-widest text-ink">本世之界</span>
+        <span class="w-full truncate text-[9px] leading-tight text-ink-faint">{{ worldBrief }}</span>
+      </RouterLink>
 
-    <!-- 道童:遣其跑腿,后台自长 —— 洞府门面第二个常驻入口 -->
-    <RouterLink to="/apprentice" class="card-ink flex items-center gap-3 border-jade/30 px-4 py-3 active:scale-98">
-      <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-jade/15 text-jade">
-        <GameIcon name="users" :size="18" />
-      </span>
-      <span class="min-w-0 grow">
-        <span class="block font-kai text-[14px] tracking-widest text-ink">道童</span>
-        <span class="block truncate text-[10px] text-ink-faint">遣道童采药 · 历练 · 寻机缘,归来带回资材</span>
-      </span>
-      <span class="shrink-0 text-[11px] text-jade">遣派 →</span>
-    </RouterLink>
+      <RouterLink to="/market" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-gold-ink/10 text-gold-ink"><GameIcon name="store" :size="18" /></span>
+        <span class="font-kai text-[13px] tracking-widest text-ink">坊市</span>
+      </RouterLink>
 
-    <!-- 修行志(任务);日课按本地午夜重排,未成即作罢 —— 规则得摆在台面上,不然玩家会以为昨天差一步的日课还欠着 -->
-    <section>
-      <SectionTitle title="修行志" hint="午夜更替 · 未成作罢" />
-      <div class="card-ink mt-2 px-4 py-3">
-        <!-- 更替时刻摆成活数:不只说「未成作罢」的规矩,还报还剩几时 —— 与 SectionTitle 的 hint 同面日历 -->
-        <div class="mb-2 flex items-center justify-between">
-          <span class="text-[9px] text-ink-faint">距午夜更替</span>
-          <span class="countdown-slot text-[10px] text-amber-ink tabular">{{ tilRollover }}</span>
-        </div>
-        <template v-if="mainQuest">
-          <p class="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
-            <span class="font-kai text-[13px] tracking-wider text-ink">{{ mainQuest.name }}</span>
-            <!--
-              右侧这一簇(进度 · 主线 n/N · 去办箭头)在 200% 缩放下会顶出右缘:
-              字号放大一倍后布局视口只剩 195px,`shrink-0` 让它既不缩也不换行,
-              三个读数连着箭头一路冲出屏幕(layout-check 的越界元素点名了这一段)。
-              允许换行后,窄视口下这一簇落到第二行,宽视口下仍是同一行 —— 排布不变,
-              只是不再硬顶边界。箭头那枚 min-h/min-w 保底 28px,换行后照样点得着。
-            -->
-            <span class="flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0.5">
-              <span
-                v-if="mainProgress"
-                class="tabular text-[10px]"
-                :class="mainProgress.done ? 'text-jade' : 'text-azure'"
-                >{{ mainProgress.text }}</span
-              >
-              <span class="text-[10px] text-ink-faint">主线 {{ quests.mainIdx + 1 }}/{{ MAIN_QUESTS.length }}</span>
-              <!-- 拿得准去哪办,就给一枚走往的箭头;拿不准的不摆,免得摆着指错路 -->
-              <RouterLink
-                v-if="mainNav"
-                :to="mainNav"
-                class="-my-1 -mr-1 p-2 text-[13px] leading-none text-ink-faint active:text-azure"
-                :aria-label="`去办:${mainQuest.name}`"
-                >›</RouterLink
-              >
+      <RouterLink to="/apprentice" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-jade/15 text-jade"><GameIcon name="users" :size="18" /></span>
+        <span class="font-kai text-[13px] tracking-widest text-ink">道童</span>
+      </RouterLink>
+
+      <button type="button" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98" aria-haspopup="dialog" @click="questsOpen = true">
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-amber-ink/10 text-amber-ink"><GameIcon name="book" :size="18" /></span>
+        <span class="font-kai text-[13px] tracking-widest text-ink">修行志</span>
+      </button>
+
+      <RouterLink to="/dongfu" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-violet-ink/10 text-violet-ink"><GameIcon name="home" :size="18" /></span>
+        <span class="font-kai text-[13px] tracking-widest text-ink">洞府营造</span>
+        <span class="flex flex-col items-center text-[9px] leading-snug tabular">
+          <span class="text-gold-ink">离线 {{ offlineHrs }} 时</span>
+          <span class="text-ink-faint">已启 {{ builtCount }}/{{ BUILDINGS.length }}</span>
+        </span>
+      </RouterLink>
+    </div>
+
+    <!-- 日课按本地午夜重置,未成即作罢 -->
+    <BaseModal :open="questsOpen" title="修行志" @close="questsOpen = false">
+      <div class="mb-2 flex items-center justify-between">
+        <span class="text-[10px] text-ink-faint">距重置</span>
+        <span class="countdown-slot text-[11px] text-amber-ink tabular">{{ tilRollover }}</span>
+      </div>
+      <template v-if="mainQuest">
+        <p class="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
+          <span class="font-kai text-[13px] tracking-wider text-ink">{{ mainQuest.name }}</span>
+          <!-- 这一簇须允许换行,不用 `shrink-0`:200% 缩放下会顶出右缘(layout-check 越界) -->
+          <span class="flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0.5">
+            <span
+              v-if="mainProgress"
+              class="tabular text-[10px]"
+              :class="mainProgress.done ? 'text-jade' : 'text-azure'"
+              >{{ mainProgress.text }}</span
+            >
+            <span class="text-[10px] text-ink-faint">主线 {{ quests.mainIdx + 1 }}/{{ MAIN_QUESTS.length }}</span>
+            <RouterLink
+              v-if="mainNav"
+              :to="mainNav"
+              class="-my-1 -mr-1 p-2 text-[13px] leading-none text-ink-faint active:text-azure"
+              :aria-label="`去办:${mainQuest.name}`"
+              @click="questsOpen = false"
+              >›</RouterLink
+            >
+          </span>
+        </p>
+        <p class="mt-0.5 text-[11px] text-ink-faint">{{ mainQuest.desc }}</p>
+        <p v-if="rewardPreview(mainQuest.reward)" class="mt-0.5 text-[10px] tabular text-azure">
+          {{ rewardPreview(mainQuest.reward) }}
+        </p>
+      </template>
+      <p v-else class="text-[12px] text-ink-faint">主线已尽</p>
+      <div class="ink-divider my-2.5" />
+      <div class="space-y-1.5">
+        <!-- 放不下时进度簇折到下一行:弹窗正文窄(200% 缩放约 113px),并排会把「1 枚」拆开 -->
+        <div v-for="t in dailyRows" :key="t.id" class="flex flex-wrap items-start justify-between gap-x-2 gap-y-0.5 text-[12px]">
+          <span class="min-w-0">
+            <span :class="t.done ? 'text-ink-faint line-through' : 'text-ink-soft'">{{ t.desc }}</span>
+            <span v-if="!t.done && rewardPreview(t.reward)" class="mt-0.5 block text-[10px] tabular text-azure">
+              {{ rewardPreview(t.reward) }}
             </span>
-          </p>
-          <p class="mt-0.5 text-[11px] text-ink-faint">{{ mainQuest.desc }}</p>
-          <p v-if="rewardPreview(mainQuest.reward)" class="mt-0.5 text-[10px] tabular text-azure">
-            达成即得 {{ rewardPreview(mainQuest.reward) }}
-          </p>
-        </template>
-        <p v-else class="text-[12px] text-ink-faint">主线已尽,前路由你自己书写。</p>
-        <div class="ink-divider my-2.5" />
-        <div class="space-y-1.5">
-          <div v-for="t in dailyRows" :key="t.id" class="flex items-start justify-between gap-2 text-[12px]">
-            <span class="min-w-0">
-              <span :class="t.done ? 'text-ink-faint line-through' : 'text-ink-soft'">{{ t.desc }}</span>
-              <span v-if="!t.done && rewardPreview(t.reward)" class="mt-0.5 block text-[10px] tabular text-azure">
-                {{ rewardPreview(t.reward) }}
-              </span>
+          </span>
+          <span class="ml-auto flex shrink-0 items-center gap-0.5">
+            <span class="tabular text-[11px]" :class="t.done ? 'text-jade' : 'text-ink-faint'">
+              {{ t.done ? '已成' : `${t.progress}/${t.target}` }}
             </span>
-            <span class="flex shrink-0 items-center gap-0.5">
-              <span class="tabular text-[11px]" :class="t.done ? 'text-jade' : 'text-ink-faint'">
-                {{ t.done ? '已成' : `${t.progress}/${t.target}` }}
-              </span>
-              <RouterLink
-                v-if="!t.done && t.nav"
-                :to="t.nav"
-                class="-my-1 -mr-1 p-2 text-[13px] leading-none self-center text-ink-faint active:text-azure"
-                :aria-label="`去办:${t.desc}`"
-                >›</RouterLink
-              >
-            </span>
-          </div>
+            <RouterLink
+              v-if="!t.done && t.nav"
+              :to="t.nav"
+              class="-my-1 -mr-1 p-2 text-[13px] leading-none self-center text-ink-faint active:text-azure"
+              :aria-label="`去办:${t.desc}`"
+              @click="questsOpen = false"
+              >›</RouterLink
+            >
+          </span>
         </div>
       </div>
-    </section>
-
-    <!-- 洞府入口(灵脉已统合进洞府页,入口副题带上一句免得找不到);右侧带实况:离线可攒 + 已营座数 -->
-    <RouterLink to="/dongfu" class="card-ink flex items-center justify-between gap-3 px-4 py-3 active:scale-98">
-      <span class="min-w-0 flex-1">
-        <span class="block font-kai text-[14px] tracking-widest text-ink">洞府营造</span>
-        <span class="block truncate text-[10px] leading-relaxed text-ink-faint">灵脉 · 经营家业,道途更稳</span>
-      </span>
-      <span class="flex shrink-0 flex-col items-end gap-0.5 text-[10px]">
-        <span class="tabular text-gold-ink">离线 {{ offlineHrs }} 时</span>
-        <span class="tabular text-ink-faint">已营 {{ builtCount }}/{{ BUILDINGS.length }}</span>
-      </span>
-      <span class="shrink-0 text-[12px] text-ink-faint">›</span>
-    </RouterLink>
+    </BaseModal>
   </div>
 </template>
 
@@ -220,10 +171,10 @@
   import { generateCurrentGoal, type Goal } from '@/core/goal'
   import { currentMainQuestProgress } from '@/core/questProgress'
   import { currentFirstStep } from '@/core/firstStep'
-  import SectionTitle from '@/components/common/SectionTitle.vue'
   import GameIcon from '@/components/common/GameIcon.vue'
   import CultivationOrb from '@/components/common/CultivationOrb.vue'
   import InstallToHomeNotice from '@/components/common/InstallToHomeNotice.vue'
+  import BaseModal from '@/components/common/BaseModal.vue'
 
   const player = usePlayerStore()
   const dongfu = useDongfuStore()
@@ -249,10 +200,10 @@
   const offlineHrs = computed(() => dongfu.offlineCapHours)
   const builtCount = computed(() => BUILDINGS.filter(b => (dongfu.levels[b.id] ?? 0) > 0).length)
 
-  /** 本世之界入口的一句话 —— 与历练页同一条 worldView,只是标题 */
+  /** 本世之界入口的一句话:与历练页同一条 worldView;未凝成时与本世之界页空态同词 */
   const worldBrief = computed(() => {
     const w = adventure.mortalWorld
-    if (!w) return '此世气象未明,一观便知'
+    if (!w) return '此世未成'
     return worldView(w, id => id).title
   })
 
@@ -278,6 +229,7 @@
   const weather = computed(() => todayWeather())
   const weatherLine = computed(() => weatherEffectText(weather.value))
 
+  const questsOpen = ref(false)
   const mainQuest = computed(() => MAIN_QUESTS[quests.mainIdx])
   /** 主线的「去办」落点:拿得准才给箭头(判据见 questNav) */
   const mainNav = computed(() => (mainQuest.value ? mainQuestNav(mainQuest.value.cond) : null))

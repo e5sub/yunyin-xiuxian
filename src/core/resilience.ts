@@ -53,9 +53,9 @@ export function measureResilience(snap: CombatantSnap, runs = RESILIENCE_SAMPLE_
   }
 }
 
-/** 韧性评语:给玩家的是解读,不是指令 */
+/** 韧性档位:按保持度分三档,只报档名 */
 export function resilienceText(r: ResilienceReport): string {
-  if (r.retention >= 0.75) return '道基浑厚——主派被封仍有战力,逆命契于你是机会'
-  if (r.retention >= 0.45) return '尚有余地——副体系撑得起半边天,逆命契需谨慎'
-  return '孤注一掷——此构筑极度依赖主派核心,逆命契近乎自缚'
+  if (r.retention >= 0.75) return '道基浑厚'
+  if (r.retention >= 0.45) return '尚有余地'
+  return '孤注一掷'
 }

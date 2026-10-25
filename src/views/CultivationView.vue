@@ -18,65 +18,37 @@
       </div>
       <div class="mt-4">
         <div class="mb-1 flex justify-between text-[11px] text-ink-faint tabular">
-          <button class="-my-1 py-1.5 text-left active:opacity-60" @click="showCultBreakdown = !showCultBreakdown">
+          <button class="-my-1 py-1.5 text-left active:opacity-60" @click="showCultBreakdown = true">
             修为 +{{ formatRate(player.cultPerSec) }}
-            <!--
-              灵气充盈正在进行时:这档加成此前只在点开来路才偶然看见。
-              现在修为行自己亮一枚小章 —— 与「灵气充盈约 X」那行互斥,
-              一个报「还没到」,一个标「已经到了」(判据同 player.qiRich)
-            -->
+            <!-- 与「灵气充盈约 X」那行互斥:一个报「还没到」,一个标「已经到了」(判据同 player.qiRich) -->
             <span v-if="player.qiRich" class="ml-1 rounded bg-jade/10 px-1 py-0.5 align-middle text-[9px] leading-none text-jade">
               灵气充盈
             </span>
-            <span class="ml-0.5 text-[9px] text-ink-faint">{{ showCultBreakdown ? '▾' : '▸' }}来路</span>
+            <span class="ml-0.5 text-[9px] text-ink-faint">来路 →</span>
           </button>
           <span>
             {{ formatGN(player.expFull ? player.expReq : player.exp) }} / {{ formatGN(player.expReq) }}
             <span v-if="player.expFull && player.expOverflow.m > 0" class="text-jade">
-              · 积 +{{ formatGN(player.expOverflow) }}
+              · 积余 {{ formatGN(player.expOverflow) }}
             </span>
           </span>
         </div>
-        <!--
-          积余给谁看?突破扣的只是这一境所需(advanceRealm 只减 expReq),
-          多出来的修为带着走 —— 不然玩家会以为圆满后多修的全白攒了。
-        -->
+        <!-- 突破只扣这一境所需(advanceRealm 只减 expReq),积余带着走 -->
         <p v-if="player.expFull && player.expOverflow.m > 0" class="mt-0.5 text-right text-[9px] text-ink-faint">
-          突破只扣这一境所需,余下修为带着走
+          积余突破后保留
         </p>
         <div :class="player.expFull ? 'bar-charged' : ''">
         <ProgressBar :value="player.expProgress" color="var(--color-cinnabar)" :height="8" />
       </div>
-      <!--
-        进度条只能看出「多少」,看不出「多久」—— 挂机游戏的第二问从来是「还得熬几时」。
-        估算是同源除法(缺口 ÷ 现速,见 core/progress.expEtaSec):只报约数,词的落点是现速。
-      -->
       <p v-if="!player.expFull && expEtaText" class="mt-1 text-right text-[10px] text-ink-faint tabular">
-        按现速,修为圆满约 {{ expEtaText }}
+        修为圆满约 {{ expEtaText }}
       </p>
-      <!-- 修炼速度是玩家最常盯的数,故在它自己那一行就地摊开:基础 × (1 + 各来源) -->
-      <div v-if="showCultBreakdown" class="mt-2 rounded-md bg-paper-deep/60 px-2.5 py-2 text-[10px]">
-        <p class="text-ink-soft">
-          基础 {{ formatRate(cultBase) }}({{ player.realm.name }}{{ player.subName }}{{ player.linggen ? `·${player.linggen.gradeName}` : '' }})
-          × (1 + <span class="tabular text-azure">{{ formatPercent(cultMultiplier) }}</span>)
-          = <span class="tabular text-cinnabar">{{ formatRate(player.cultPerSec) }}</span>
-        </p>
-        <p v-for="row in cultSources" :key="row.name" class="mt-0.5 flex justify-between">
-          <span class="text-ink-faint">{{ row.name }}</span>
-          <span class="tabular" :class="row.value > 0 ? 'text-azure' : 'text-cinnabar'">
-            {{ signedPercent(row.value) }}
-          </span>
-        </p>
-        <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
-          这些都是修炼速度的百分比加成,相加后乘在基础上 —— 人物页明细与之一致。
-        </p>
-      </div>
       </div>
       <div class="mt-3">
         <div class="mb-1 flex justify-between text-[11px] text-ink-faint tabular">
-          <button class="-my-1 py-1.5 text-left active:opacity-60" @click="showQiBreakdown = !showQiBreakdown">
+          <button class="-my-1 py-1.5 text-left active:opacity-60" @click="showQiBreakdown = true">
             灵气 +{{ formatRate(player.qiRegenPerSec) }}
-            <span class="ml-0.5 text-[9px] text-ink-faint">{{ showQiBreakdown ? '▾' : '▸' }}来路</span>
+            <span class="ml-0.5 text-[9px] text-ink-faint">来路 →</span>
           </button>
           <span title="灵气">
             {{ formatNum(Math.floor(Math.min(resources.qi, player.qiCapValue))) }} / {{ formatNum(player.qiCapValue) }}
@@ -90,38 +62,17 @@
           color="var(--color-azure)"
           :height="8"
         />
-        <!--
-          灵气上限与恢复速度同修为行一样讲「从哪来」:上限 = 本境基础 × 聚灵阵 × (1+其余词条),
-          回复 = 本境基础 × (1+词条)。与面板读同一份数(qiCap / qiCapMult / finalStats.mods),
-          聚灵阵 0 级或词条为空时对应因子不出现,乘法仍重组得上。
-        -->
-        <div v-if="showQiBreakdown" class="mt-2 rounded-md bg-paper-deep/60 px-2.5 py-2 text-[10px]">
-          <p class="text-ink-soft">
-            上限:本境基础 {{ formatNum(qiBase) }}({{ player.realm.name }}{{ player.subName }})
-            <span v-if="qiArrayPct"> × 聚灵阵 +{{ qiArrayPct }}%</span>
-            <span v-if="qiCapPct"> × 其余加成 +{{ formatPercent(qiCapPct) }}</span>
-            = <span class="tabular text-azure">{{ formatNum(player.qiCapValue) }}</span>
-          </p>
-          <p class="mt-1 text-ink-soft">
-            回复:基础 {{ formatRate(qiRegenBase) }} × (1 + <span class="tabular text-azure">{{ formatPercent(qiRegenMult) }}</span>) = <span class="tabular text-cinnabar">{{ formatRate(player.qiRegenPerSec) }}</span>
-          </p>
-          <p class="mt-1 text-[9px] leading-relaxed text-ink-faint">聚灵阵与其余加成乘在上限上,灵气条所示即此数。</p>
-        </div>
-        <!--
-          与修为那句同一份估算,分两档:未过灵气充盈线时报「充盈」—— 那是修为要跳一档的时刻,
-          那句「修为 +X%」随手可得(qiRich / QI_RICH_BONUS 同源);过了半才报回满。两行互斥,不打架。
-        -->
+        <!-- 未过灵气充盈线时报「充盈」(qiRich / QI_RICH_BONUS 同源),过了才报回满;两行互斥 -->
         <p v-if="qiRichEtaText" class="mt-1 text-right text-[10px] text-ink-faint tabular">
-          按现速,灵气充盈约 {{ qiRichEtaText }}<span class="text-ink-soft">(修为 +{{ qiRichBonusPct }})</span>
+          灵气充盈约 {{ qiRichEtaText }}<span class="text-ink-soft">(修为 +{{ qiRichBonusPct }})</span>
         </p>
         <p v-else-if="resources.qi < player.qiCapValue && qiEtaText" class="mt-1 text-right text-[10px] text-ink-faint tabular">
-          按现速,灵气回满约 {{ qiEtaText }}
+          灵气回满约 {{ qiEtaText }}
         </p>
-        <!-- 积余段(灵气越过标称容量):「回满」的说法已不适用,答的是蓄满积余还要多久 -->
+        <!-- 积余段:灵气越过标称容量 -->
         <p v-else-if="qiBankEtaText" class="mt-1 text-right text-[10px] text-ink-faint tabular">
-          按现速,积余蓄满约 {{ qiBankEtaText }}
+          积余蓄满约 {{ qiBankEtaText }}
         </p>
-        <!-- 以灵气疗伤(修复):灵气积余的用途,代价随境界指数增长 -->
         <button
           v-if="repair.injured"
           type="button"
@@ -163,10 +114,10 @@
           <span class="countdown-slot">{{ formatCountdown(b.remain) }}</span>
         </button>
       </div>
-      <!-- 空态:什么状态都没有时,告诉玩家这个区域存在、以及怎么点亮它 -->
+      <!-- 无状态时只报状态词,区域不整段消失 -->
       <div v-else class="mt-2 flex items-center gap-2 rounded-md border border-dashed border-ink/15 bg-ink/4 px-3 py-2">
         <GameIcon name="sparkles" :size="12" class="shrink-0 text-ink-faint" />
-        <span class="text-[10px] leading-relaxed text-ink-faint">暂无增益加身 —— 服丹药 · 修功法 · 遇奇缘,都会为这段道途续上状态。</span>
+        <span class="text-[10px] leading-relaxed text-ink-faint">暂无状态</span>
       </div>
     </section>
 
@@ -179,7 +130,7 @@
           class="card-ink flex items-center gap-2 px-3 py-2 text-left active:scale-98"
           :style="{ borderLeft: `2px solid ${pillQualityColor(p.def!)}` }"
           :disabled="p.overflow === 'full'"
-          :aria-label="p.overflow === 'full' ? `${p.def!.name},药力已顶满,再服白费` : undefined"
+          :aria-label="p.overflow === 'full' ? `${p.def!.name} · 药力已顶满` : undefined"
           @click="usePill(p.def!.id)"
         >
           <GameIcon :name="p.def!.icon" :size="16" :style="{ color: pillQualityColor(p.def!) }" />
@@ -198,6 +149,36 @@
 
     <GongfaDialog />
     <BuffDialog />
+
+    <BaseModal :open="showCultBreakdown" title="修为 · 来路" @close="showCultBreakdown = false">
+      <div class="rounded-md bg-paper-deep/60 px-2.5 py-2 text-[11px]">
+        <p class="text-ink-soft">
+          基础 <span class="whitespace-nowrap">{{ formatRate(cultBase) }}</span>({{ player.realm.name }}{{ player.subName }}{{ player.linggen ? `·${player.linggen.gradeName}` : '' }})
+          × (1 + <span class="tabular text-azure">{{ formatPercent(cultMultiplier) }}</span>)
+          = <span class="whitespace-nowrap tabular text-cinnabar">{{ formatRate(player.cultPerSec) }}</span>
+        </p>
+        <p v-for="row in cultSources" :key="row.name" class="mt-0.5 flex justify-between">
+          <span class="text-ink-faint">{{ row.name }}</span>
+          <span class="tabular" :class="row.value > 0 ? 'text-azure' : 'text-cinnabar'">
+            {{ signedPercent(row.value) }}
+          </span>
+        </p>
+      </div>
+    </BaseModal>
+
+    <BaseModal :open="showQiBreakdown" title="灵气 · 来路" @close="showQiBreakdown = false">
+      <div class="rounded-md bg-paper-deep/60 px-2.5 py-2 text-[11px]">
+        <p class="text-ink-soft">
+          上限:基础 <span class="whitespace-nowrap">{{ formatNum(qiBase) }}</span>({{ player.realm.name }}{{ player.subName }})
+          <span v-if="qiArrayPct"> × 聚灵阵 +{{ qiArrayPct }}%</span>
+          <span v-if="qiCapPct"> × 其余加成 +{{ formatPercent(qiCapPct) }}</span>
+          = <span class="whitespace-nowrap tabular text-azure">{{ formatNum(player.qiCapValue) }}</span>
+        </p>
+        <p class="mt-1 text-ink-soft">
+          回复:基础 <span class="whitespace-nowrap">{{ formatRate(qiRegenBase) }}</span> × (1 + <span class="tabular text-azure">{{ formatPercent(qiRegenMult) }}</span>) = <span class="whitespace-nowrap tabular text-cinnabar">{{ formatRate(player.qiRegenPerSec) }}</span>
+        </p>
+      </div>
+    </BaseModal>
   </div>
 </template>
 
@@ -234,6 +215,7 @@
   import GongfaSection from '@/components/cultivation/GongfaSection.vue'
   import BuffDialog from '@/components/cultivation/BuffDialog.vue'
   import RetreatCard from '@/components/cultivation/RetreatCard.vue'
+  import BaseModal from '@/components/common/BaseModal.vue'
 
   const player = usePlayerStore()
   const resources = useResourcesStore()

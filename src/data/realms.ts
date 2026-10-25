@@ -17,20 +17,13 @@ export interface WorldDef {
 }
 
 export const WORLDS: WorldDef[] = [
-  { id: 'mortal', name: '人间界', desc: '凡尘俗世,修士自此处引气入体,一步步叩问长生', start: 0, end: 8 },
+  { id: 'mortal', name: '人间界', desc: '凡尘俗世,修士自此一步步叩问长生', start: 0, end: 8 },
   { id: 'immortal', name: '仙界', desc: '飞升之地,仙灵之气充盈,一步一登天', start: 9, end: 13 },
-  { id: 'god', name: '神界', desc: '神域之中,法则凝形,言出法随', start: 14, end: 17 },
-  { id: 'chaos', name: '混沌海', desc: '万界之始,大道本源,与混沌同寿', start: 18, end: 20 }
+  { id: 'god', name: '神界', desc: '神域之中,法则凝形', start: 14, end: 17 },
+  { id: 'chaos', name: '混沌海', desc: '万界之始,大道本源', start: 18, end: 20 }
 ]
 
-/**
- * 寿元:界域内按固定倍率复利,跨界为一次「大跃」。
- *
- * 凡人肉身每进一步都难:人间界每境约 ×3。渡劫飞升是唯一一次脱去凡尘的大跃
- * (渡劫 98 万载 → 真仙 1 亿载,约 ×102);其后仙/神/混沌各有自己的复利
- * (仙界 ×3.2、神界与混沌海 ×4.5),再由破界/归返各跃一档。
- * 由 realms.spec 守着「每境至少翻倍」与「飞升必为唯一大跃」。
- */
+/** 寿元:界域内按固定倍率复利,跨界一次大跃;spec 钉:realms.spec(单调、每境至少翻倍、飞升为唯一大跃) */
 export const LIFESPAN_WORLDS: Record<WorldId, { base: number; growth: number; start: number }> = {
   mortal: { base: 150, growth: 3.0, start: 0 },
   immortal: { base: 100_000_000, growth: 3.2, start: 9 },
@@ -54,34 +47,33 @@ export function ascensionLeap(): number {
 }
 
 export const REALMS: RealmDef[] = [
-  // 大关皆劫:凡可作目标的大境界(筑基起,含真仙/神人/混沌真灵三个跨界入口)
-  // 一律渡天劫,故境界数据上不再挂 per-realm 的开关 —— 曾经的唯一例外是真仙
-  // (旧设计当它是"飞升之赏"),那条例外让进阶成功率的作用域说不清,见 core/breakthrough。
+  // 大关皆劫:筑基起每个大境界(含真仙/神人/混沌真灵三个跨界入口)一律渡天劫,
+  // 境界数据不设 per-realm 的 `tribulation` 开关;见 core/breakthrough、core/tribulationDecision。
   // ---- 人间界 ----
-  { id: 'lianqi', name: '炼气', world: 'mortal', lifespanYears: lifespanOf(0), desc: '引气入体,踏上仙途', lore: '起点取网文最常见的「炼气」——吐纳导引、引气入体,对应道家「服气」之说;凡人由此入道,故名。', basis: '内丹' },
-  { id: 'zhuji', name: '筑基', world: 'mortal', lifespanYears: lifespanOf(1), desc: '筑道之基,凡躯渐蜕', lore: '承炼气。《周易参同契》讲「筑基炼己」,先把道基夯实,才谈得上结丹;故曰筑基。', basis: '内丹' },
-  { id: 'jindan', name: '金丹', world: 'mortal', lifespanYears: lifespanOf(2), desc: '丹成一粒,吞吐天地', lore: '承筑基。内丹术中「金丹」为药,张伯端《悟真篇》以金丹喻道;一粒丹成,可吞吐天地。', basis: '内丹' },
-  { id: 'yuanying', name: '元婴', world: 'mortal', lifespanYears: lifespanOf(3), desc: '婴现顶门,神游太虚', lore: '承金丹。《性命圭旨》述「婴儿现形」,金丹化婴、顶门出窍,是为元婴。', basis: '内丹' },
-  { id: 'huashen', name: '化神', world: 'mortal', lifespanYears: lifespanOf(4), desc: '神念化形,言出法随', lore: '承元婴。《性命圭旨》「炼气化神」,神念离体而化形,言出法随。', basis: '内丹' },
-  { id: 'lianxu', name: '炼虚', world: 'mortal', lifespanYears: lifespanOf(5), desc: '炼神返虚,窥见大道', lore: '承化神。《性命圭旨》「炼神还虚」,即炼虚;形神渐与大道相通。', basis: '内丹' },
-  { id: 'heti', name: '合体', world: 'mortal', lifespanYears: lifespanOf(6), desc: '身道相合,举念移山', lore: '承炼虚。内丹谓「形神俱妙」,身与道合、举念移山,是为合体。', basis: '内丹' },
-  { id: 'dacheng', name: '大乘', world: 'mortal', lifespanYears: lifespanOf(7), desc: '大道将成,静候天命', lore: '承合体。取佛教「大乘」之名,大道将成、静候天命;世称大乘。', basis: '佛道' },
-  { id: 'dujie', name: '渡劫', world: 'mortal', lifespanYears: lifespanOf(8), desc: '九重雷海,向死而生', lore: '承大乘。《云笈七签》有雷劫之说,修至尽头须历九重雷海,向死而生,故曰渡劫。', basis: '佛道' },
+  { id: 'lianqi', name: '炼气', world: 'mortal', lifespanYears: lifespanOf(0), desc: '引气入体,踏上仙途', lore: '起点取网文最常见的「炼气」,即吐纳导引,对应道家「服气」之说。', basis: '内丹' },
+  { id: 'zhuji', name: '筑基', world: 'mortal', lifespanYears: lifespanOf(1), desc: '筑道之基,凡躯渐蜕', lore: '承炼气。《周易参同契》讲「筑基炼己」,基成方可结丹。', basis: '内丹' },
+  { id: 'jindan', name: '金丹', world: 'mortal', lifespanYears: lifespanOf(2), desc: '丹成一粒,吞吐天地', lore: '承筑基。内丹术中「金丹」为药,张伯端《悟真篇》以金丹喻道。', basis: '内丹' },
+  { id: 'yuanying', name: '元婴', world: 'mortal', lifespanYears: lifespanOf(3), desc: '婴现顶门,神游太虚', lore: '承金丹。《性命圭旨》述「婴儿现形」,金丹化婴,是为元婴。', basis: '内丹' },
+  { id: 'huashen', name: '化神', world: 'mortal', lifespanYears: lifespanOf(4), desc: '神念化形,言出法随', lore: '承元婴。《性命圭旨》「炼气化神」,神念离体。', basis: '内丹' },
+  { id: 'lianxu', name: '炼虚', world: 'mortal', lifespanYears: lifespanOf(5), desc: '炼神返虚,窥见大道', lore: '承化神。《性命圭旨》「炼神还虚」,即炼虚。', basis: '内丹' },
+  { id: 'heti', name: '合体', world: 'mortal', lifespanYears: lifespanOf(6), desc: '身道相合,举念移山', lore: '承炼虚。内丹谓「形神俱妙」,是为合体。', basis: '内丹' },
+  { id: 'dacheng', name: '大乘', world: 'mortal', lifespanYears: lifespanOf(7), desc: '大道将成,静候天命', lore: '承合体。取佛教「大乘」之名。', basis: '佛道' },
+  { id: 'dujie', name: '渡劫', world: 'mortal', lifespanYears: lifespanOf(8), desc: '九重雷海,向死而生', lore: '承大乘。《云笈七签》有雷劫之说,修至尽头须渡此劫。', basis: '佛道' },
   // ---- 仙界 ----
-  { id: 'zhenxian', name: '真仙', world: 'immortal', lifespanYears: lifespanOf(9), desc: '超脱轮回,与道同存', lore: '承渡劫。《钟吕传道集》分仙为五等,天仙之上为真仙;飞升入天,与道同存。', basis: '道教仙阶' },
-  { id: 'xuanxian', name: '玄仙', world: 'immortal', lifespanYears: lifespanOf(10), desc: '仙体玄妙,一念山河', lore: '承真仙。取其「玄」字(《道德经》「玄之又玄」),仙体玄妙,一念山河。', basis: '道教仙阶' },
-  { id: 'jinxian', name: '金仙', world: 'immortal', lifespanYears: lifespanOf(11), desc: '金性不朽,历劫不磨', lore: '承玄仙。道教称「金仙」为历劫不磨之仙,金性不朽,故名。', basis: '道教仙阶' },
-  { id: 'taiyi', name: '太乙', world: 'immortal', lifespanYears: lifespanOf(12), desc: '太乙近道,万法归流', lore: '承金仙。取道教「太乙」(太乙救苦天尊)与网文近道之阶,谓太乙近道、万法归流。', basis: '道教仙阶' },
-  { id: 'daluo', name: '大罗', world: 'immortal', lifespanYears: lifespanOf(13), desc: '大罗金仙,逍遥三界', lore: '承太乙。道教以「大罗天」为最高天界,居其上者为大罗金仙;逍遥三界,故名大罗。', basis: '道教仙阶' },
+  { id: 'zhenxian', name: '真仙', world: 'immortal', lifespanYears: lifespanOf(9), desc: '超脱轮回,与道同存', lore: '承渡劫。《钟吕传道集》分仙为五等,天仙之上为真仙。', basis: '道教仙阶' },
+  { id: 'xuanxian', name: '玄仙', world: 'immortal', lifespanYears: lifespanOf(10), desc: '仙体玄妙,一念山河', lore: '承真仙。取其「玄」字(《道德经》「玄之又玄」)。', basis: '道教仙阶' },
+  { id: 'jinxian', name: '金仙', world: 'immortal', lifespanYears: lifespanOf(11), desc: '金性不朽,历劫不磨', lore: '承玄仙。道教称「金仙」为历劫不磨之仙。', basis: '道教仙阶' },
+  { id: 'taiyi', name: '太乙', world: 'immortal', lifespanYears: lifespanOf(12), desc: '太乙近道,万法归流', lore: '承金仙。取道教「太乙」(太乙救苦天尊)与网文近道之阶。', basis: '道教仙阶' },
+  { id: 'daluo', name: '大罗', world: 'immortal', lifespanYears: lifespanOf(13), desc: '大罗金仙,逍遥三界', lore: '承太乙。道教以「大罗天」为最高天界,居其上者为大罗金仙。', basis: '道教仙阶' },
   // ---- 神界 ----
-  { id: 'shenren', name: '神人', world: 'god', lifespanYears: lifespanOf(14), desc: '神光照世,超脱仙凡', lore: '承大罗。《庄子·逍遥游》「藐姑射之山,有神人居焉」——超脱仙身、入神界之始,故名神人。', basis: '道家本源' },
-  { id: 'shenjiang', name: '神将', world: 'god', lifespanYears: lifespanOf(15), desc: '执掌神兵,代天行罚', lore: '承神人。神界阶位常见「神将」,执掌神兵、代天行罚。', basis: '网文' },
-  { id: 'shenwang', name: '神王', world: 'god', lifespanYears: lifespanOf(16), desc: '神域之主,言出法随', lore: '承神将。神域之主为神王,言出法随,一方神域皆循其名。', basis: '网文' },
-  { id: 'shendi', name: '神帝', world: 'god', lifespanYears: lifespanOf(17), desc: '神帝临尘,众神俯首', lore: '承神王。众神之极曰神帝,神帝临尘,众神俯首。', basis: '网文' },
+  { id: 'shenren', name: '神人', world: 'god', lifespanYears: lifespanOf(14), desc: '神光照世,超脱仙凡', lore: '承大罗。《庄子·逍遥游》「藐姑射之山,有神人居焉」。', basis: '道家本源' },
+  { id: 'shenjiang', name: '神将', world: 'god', lifespanYears: lifespanOf(15), desc: '执掌神兵,代天行罚', lore: '承神人。神界阶位常见「神将」。', basis: '网文' },
+  { id: 'shenwang', name: '神王', world: 'god', lifespanYears: lifespanOf(16), desc: '神域之主,言出法随', lore: '承神将。一方神域之主为神王。', basis: '网文' },
+  { id: 'shendi', name: '神帝', world: 'god', lifespanYears: lifespanOf(17), desc: '神帝临尘,众神俯首', lore: '承神王。众神之极曰神帝。', basis: '网文' },
   // ---- 混沌海 ----
-  { id: 'hundunling', name: '混沌真灵', world: 'chaos', lifespanYears: lifespanOf(18), desc: '混沌初开,一点真灵不昧', lore: '承神帝。《三五历纪》「天地混沌如鸡子」——混沌初开,一点真灵不昧,故名混沌真灵。', basis: '道家本源' },
-  { id: 'hundunshenmo', name: '混沌神魔', world: 'chaos', lifespanYears: lifespanOf(19), desc: '神魔一体,开天辟地', lore: '承混沌真灵。开天辟地之象:神魔一体,以身开界,故名混沌神魔。', basis: '道家本源' },
-  { id: 'hundundaozu', name: '混沌道祖', world: 'chaos', lifespanYears: lifespanOf(20), desc: '万道之祖,与混沌同寿', lore: '承混沌神魔。《道德经》「道生一」——万道之祖,与混沌同寿,是为混沌道祖,亦为全境之极。', basis: '道家本源' }
+  { id: 'hundunling', name: '混沌真灵', world: 'chaos', lifespanYears: lifespanOf(18), desc: '混沌初开,一点真灵不昧', lore: '承神帝。《三五历纪》「天地混沌如鸡子」。', basis: '道家本源' },
+  { id: 'hundunshenmo', name: '混沌神魔', world: 'chaos', lifespanYears: lifespanOf(19), desc: '神魔一体,开天辟地', lore: '承混沌真灵。神魔以身开界。', basis: '道家本源' },
+  { id: 'hundundaozu', name: '混沌道祖', world: 'chaos', lifespanYears: lifespanOf(20), desc: '万道之祖,与混沌同寿', lore: '承混沌神魔,为全境之极。《道德经》「道生一」。', basis: '道家本源' }
 ]
 
 export const MAX_MAJOR = REALMS.length - 1

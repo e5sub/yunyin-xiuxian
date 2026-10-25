@@ -16,7 +16,6 @@ import { enemyGearFactor, powerScale } from './formulas'
 import { makeEnemySnap, mortalFoeOrigin, mortalFoeOriginFromParts, resolveCombat } from './combat'
 import { dangerFactorFor, explorationFoeDanger, regionFoeOrigin } from './exploration'
 import {
-  JUDGEMENT_DIRECTION,
   celestialAnchor,
   celestialFoeOrigin,
   celestialJudgement,
@@ -142,7 +141,7 @@ describe('凡界:敌人的加成来源必修写明', () => {
     const under = mortalFoeOrigin(1, 1)
     expect(under.ratio).toBeCloseTo(enemyGearFactor(1), 9)
     expect(under.ratio).toBeLessThan(1)
-    expect(under.note).toContain('占着便宜')
+    expect(under.note).toContain('弱于本层')
   })
 })
 
@@ -153,7 +152,7 @@ const NEUTRAL: FoeOrigin = {
   damageBonus: 0,
   damageReduction: 0,
   parts: [],
-  note: '这一界对你没有额外判定 —— 胜败只由三维与构筑形状决定。'
+  note: '无额外判定'
 }
 
 describe('天界:判定同样要报账', () => {
@@ -186,15 +185,15 @@ describe('天界:判定同样要报账', () => {
     expect(one.origin!.parts.map(p => p.label)).not.toContain('连战加码')
   })
 
-  it('中性判定照实说「没有判定」,并给出方向语', () => {
+  it('中性判定照实说「无额外判定」;有判定时只报账,不附方向语', () => {
     const j = celestialJudgement({}, MAX_MAJOR, 22)
     const o = celestialFoeOrigin(j)
     expect(o.ratio).toBe(1)
     expect(o.parts).toEqual([])
-    expect(o.note).toContain('没有额外判定')
-    // 有判定时,「怎么办」与战前预估共用同一句 —— 两处各写一句,迟早分叉
+    expect(o.note).toBe('无额外判定')
+    // 有判定时 note 留空:账目已在 parts 与增伤减伤里
     const heavy = celestialJudgement({ damageBonus: 3, critRate: 3 }, MAX_MAJOR, 22)
-    expect(celestialFoeOrigin(heavy).note).toBe(JUDGEMENT_DIRECTION)
+    expect(celestialFoeOrigin(heavy).note).toBe('')
   })
 })
 
@@ -223,7 +222,7 @@ describe('战报把来源带走,分析照着讲', () => {
     expect(r.foeOrigin).toEqual(enemy.origin)
   })
 
-  it('败北时,敌人的加成必须被点名(含「怎么办」的方向语)', () => {
+  it('败北时,敌人的加成必须被点名', () => {
     const r = {
       win: false,
       rounds: 20,
@@ -236,8 +235,8 @@ describe('战报把来源带走,分析照着讲', () => {
     const hit = a.findings.find(f => f.text.includes('敌之加成'))
     expect(hit, '敌人有额外加成却不报,玩家只能猜').toBeDefined()
     expect(hit!.text).toContain('层级补偿')
-    // 报了病因也要给方向:note 必须落在屏幕上
-    expect(hit!.text).toContain('换更浅的出行方式')
+    // 不附劝导语
+    expect(hit!.text).not.toContain('换更浅的出行方式')
   })
 
   it('数据行胜败都有:加成是个数,不是情绪', () => {

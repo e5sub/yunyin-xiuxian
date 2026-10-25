@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cnNumber, formatClock, formatCountdown, formatDuration, formatGN, formatPercent } from './format'
+import { cnNumber, formatClock, formatCountdown, formatDuration, formatGN, formatPercent, roundToSum } from './format'
 import { gn, powN } from './gnum'
 
 describe('数值格式化', () => {
@@ -148,5 +148,27 @@ describe('时钟时刻(倒计时那句「约几时归」的落点)', () => {
     expect(formatClock(new Date(2026, 9, 5, 14, 32).getTime())).toBe('14:32')
     expect(formatClock(new Date(2026, 9, 5, 9, 4).getTime())).toBe('09:04')
     expect(formatClock(new Date(2026, 9, 5, 0, 0).getTime())).toBe('00:00')
+  })
+})
+
+describe('明细取整对账(显示出来的各行相加等于合计)', () => {
+  const UNIT = 0.001
+  const units = (xs: number[]): number[] => xs.map(x => Math.round(x / UNIT))
+
+  it('一位小数的百分比:各行取整后相加正好是合计取整', () => {
+    // 基础 95% · 气运 0.25% · 聚气丹 5% · 封顶 -2.25%,原值合计 98%
+    const shown = roundToSum([0.95, 0.0025, 0.05, -0.0225], UNIT)
+    expect(units(shown).reduce((a, b) => a + b, 0)).toBe(980)
+    shown.forEach((v, i) => expect(Math.abs(v - [0.95, 0.0025, 0.05, -0.0225][i]!)).toBeLessThan(UNIT))
+  })
+
+  it('合计按原值取整,差额补给余数最大的一行', () => {
+    // 80% + 0.25% = 80.25%:合计取 80.3%,补到 0.25% 那行
+    expect(units(roundToSum([0.8, 0.0025], UNIT))).toEqual([800, 3])
+  })
+
+  it('浮点尾差不改变取整结果', () => {
+    // 0.95 - 3 × 0.03 在浮点里是 0.8599999999999999
+    expect(units(roundToSum([0.95 - 3 * 0.03], UNIT))).toEqual([860])
   })
 })

@@ -27,10 +27,10 @@ export function askDivination(rand: RandomService = rng): DivinationOutcome {
   // 以此刻直接判断,不读 activeDivination 的缓存:后者挂在 5 秒修行心跳上,
   // 卦刚过期的那几秒会把「可以再问」误判成「卦仍在身」。
   if (divinationActiveAt(player.divination, now)) {
-    return { ok: false, reason: '卦在身,一事不二卜 —— 待此卦自过。' }
+    return { ok: false, reason: '卦在身' }
   }
   if (!resources.hasSmall('wudao', DIVINATION_COST)) {
-    return { ok: false, reason: `悟道点不足(需 ${DIVINATION_COST} 点)。` }
+    return { ok: false, reason: '悟道点不足' }
   }
   resources.spendSmall('wudao', DIVINATION_COST)
   const reading = drawHexagram(rand)

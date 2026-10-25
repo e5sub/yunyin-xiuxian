@@ -35,7 +35,7 @@
       <div class="ink-divider my-2.5" />
       <!-- 择路 -->
       <template v-if="run.layer < EXPEDITION_ROUTE_LAYERS && currentNodes">
-        <p class="mb-1.5 text-[11px] text-ink-faint">第 {{ run.layer + 1 }} 重 · 两径择一(层间可回凡界换构筑)</p>
+        <p class="mb-1.5 text-[11px] text-ink-faint">第 {{ run.layer + 1 }} 重 · 两径择一</p>
         <div class="stagger-in grid grid-cols-2 gap-2">
           <button
             v-for="(node, i) in currentNodes"
@@ -53,7 +53,7 @@
       </template>
       <!-- 界主 -->
       <template v-else-if="run.layer === EXPEDITION_GUARDIAN_LAYER">
-        <p class="mb-1.5 text-[11px] text-ink-faint">{{ cnNumber(EXPEDITION_ROUTE_LAYERS) }}重已过,界主临阵。可先回凡界整备,再来决战。</p>
+        <p class="mb-1.5 text-[11px] text-ink-faint">界主临阵</p>
         <p v-if="guardianPreview" class="mb-1.5 text-[10px] text-violet-ink">
           天机:{{ guardianPreview.winText }} · {{ guardianPreview.skillLines.join(' / ') }}
         </p>
@@ -79,7 +79,7 @@
 
   <!-- 特殊世界 -->
   <section>
-    <SectionTitle title="特殊规则世界" hint="择契而入,逐层择路" />
+    <SectionTitle title="特殊规则世界" />
     <div class="mt-2 space-y-2.5">
       <div v-for="world in CELESTIAL_WORLDS" :key="world.id" class="card-ink px-4 py-3">
         <p class="flex items-center gap-2">
@@ -92,14 +92,10 @@
           </span>
           <span class="ml-auto tabular text-[11px] text-ink-faint">入界+{{ cnNumber(EXPEDITION_ROUTE_LAYERS) }}重+界主</span>
         </p>
-        <!--
-          这一界「该有的境界」:敌人按本界锚点层级定标(见 gauntlet.celestialAnchor),
-          未至此境者会被**境界压制**(守关者额外增伤)。名字从境界表取,不手写 ——
-          哪天梯子挪了,这句自己跟上。
-        -->
+        <!-- 敌人按本界锚点层级定标(见 gauntlet.celestialAnchor),未至此境受境界压制(守关者额外增伤) -->
         <p class="mt-0.5 text-[10px]" :class="player.major < anchorMajorOf(world.anchorTier) ? 'text-cinnabar' : 'text-ink-faint'">
           此界宜 {{ REALMS[anchorMajorOf(world.anchorTier)]?.name ?? '' }} 及以上
-          <template v-if="player.major < anchorMajorOf(world.anchorTier)"> · 你尚在此境之下,受境界压制</template>
+          <template v-if="player.major < anchorMajorOf(world.anchorTier)"> · 受境界压制</template>
         </p>
         <p class="mt-1.5 text-[11px] leading-relaxed text-ink-faint">{{ world.desc }}</p>
         <p class="mt-1 flex flex-wrap gap-x-3 text-[10px] text-violet-ink">
@@ -155,9 +151,6 @@
           </div>
         </template>
         <template v-else>
-          <p class="mt-1.5 text-[11px] leading-relaxed text-ink-faint">
-            天道以变数织界:随机规则、随机敌阵、随机路线,经天机推演过审方能成形——每一座虚界都独一无二。
-          </p>
           <button
             class="btn-ghost mt-2.5 w-full !py-2 !text-[12px]"
             :disabled="busy !== null || endgame.daoSource < VOID_REROLL_COST"
@@ -174,9 +167,7 @@
   <!-- 远征准备:择契 -->
   <BaseModal :open="prepWorld !== null" :title="prepWorld ? `远征 · ${prepWorld.name}` : ''" @close="prepWorldId = null">
     <template v-if="prepWorld">
-      <p class="text-[11px] leading-relaxed text-ink-faint">
-        入界一战 → {{ cnNumber(EXPEDITION_ROUTE_LAYERS) }}重择路(沿途道源)→ 界主。层间可回凡界换构筑。启程前,可与天道立契——风险换道源。
-      </p>
+      <p class="text-[11px] leading-relaxed text-ink-faint">立契</p>
       <div class="mt-2 space-y-1.5">
         <button
           class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left"
@@ -200,10 +191,8 @@
           </span>
         </button>
       </div>
-      <!-- 奇门遁甲:择门入界(免费,换的是打法,不碰道源倍数) -->
-      <p class="mt-3 text-[11px] leading-relaxed text-ink-faint">
-        奇门 · 择门入界 —— 立契是与天道做交易,择门是选这一趟从哪一门进:免费,改的是打法。
-      </p>
+      <!-- 奇门遁甲:择门免费,不碰道源倍数 -->
+      <p class="mt-3 text-[11px] leading-relaxed text-ink-faint">奇门 · 择门入界 · 免费</p>
       <div class="mt-1.5 grid grid-cols-4 gap-1.5">
         <button
           class="rounded-md px-1 py-1.5 text-center text-[11px]"
@@ -242,15 +231,12 @@
         </p>
         <p class="mt-0.5 flex items-center justify-between text-[10px] text-ink-faint">
           <span>
-            当前构筑相性
+            构筑相性
             <span class="text-gold-ink">{{ prepForecast.stars }}</span>
           </span>
-          <span>预计可行流派 {{ prepForecast.viableStyles }}/{{ BUILD_PROFILES.length }}</span>
+          <span>可行流派 {{ prepForecast.viableStyles }}/{{ BUILD_PROFILES.length }}</span>
         </p>
-        <!--
-          敌人一侧的判定(道之理解 / 境界压制):这是"为什么这一界对我更难"的答案。
-          判定的文案与数值同源(core/gauntlet.celestialJudgementLines),界面不再另编一套说法。
-        -->
+        <!-- 敌方判定(道之理解 / 境界压制):文案与数值同源 core/gauntlet.celestialJudgementLines,界面不另编 -->
         <p v-for="(line, i) in prepForecast.judgementLines" :key="i" class="mt-0.5 text-[10px] leading-relaxed text-cinnabar">
           {{ line }}
         </p>

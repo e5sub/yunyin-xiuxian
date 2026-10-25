@@ -100,8 +100,7 @@ describe('界面分层 · 浮层只有一个出处', () => {
     expect(inv!.src, '丹药顶满要置灰(判据 currentPillOverflow)').toContain(
       ':disabled="currentPillOverflow === \'full\'"'
     )
-    expect(inv!.src, '丹药顶满拦因要就地摊(白费)').toContain('药力已顶满——这一颗将白费')
-    // 顶满判据读游戏时钟:药效到期后按钮要自己亮回来,暂停时又要与结算一起冻住。
+    expect(inv!.src, '丹药顶满拦因要就地摊').toContain("text: '药力已顶满'")
     expect(inv!.src, '顶满判据要随游戏时钟刷新').toContain('const now = useNow()')
     expect(inv!.src, '顶满判据不得读暂停仍走的墙钟').not.toContain('useWallNow')
     expect(inv!.src, '顶满判据读 now.value,不读一次性 Date.now()').toContain(
@@ -117,7 +116,7 @@ describe('界面分层 · 浮层只有一个出处', () => {
     const rebirth = FILES.find(f => f.path === 'components/character/RebirthDialog.vue')
     expect(rebirth, 'RebirthDialog 不见了').toBeDefined()
     expect(rebirth!.src, '兵解未达境要置灰(canRebirth)').toContain(':disabled="!canRebirth"')
-    expect(rebirth!.src, '兵解置灰要列门槛境名,不许只有定性').toContain('境方可自行兵解')
+    expect(rebirth!.src, '兵解置灰要列门槛境名,不许只有定性').toContain('兵解需${REALMS[MANUAL_REBIRTH_MIN_MAJOR]?.name')
   })
 
   it('问卦与点化付不起就置灰列差 —— 缺哪样、直说,不许点了才弹', () => {
@@ -126,7 +125,7 @@ describe('界面分层 · 浮层只有一个出处', () => {
     expect(codex, 'RealmCodexView 不见了').toBeDefined()
     expect(codex!.src, '问卦置灰要合成「卦在身或不足」').toContain(':disabled="askDisabled"')
     expect(codex!.src, '问卦差额与置灰同源').toContain('const askShort = computed(')
-    expect(codex!.src, '问卦按钮要直说差几枚悟道').toContain('尚差 ${askShort.value} 悟道点')
+    expect(codex!.src, '问卦按钮要直说差几枚悟道').toContain('悟道点尚差 ${askShort.value}')
     expect(codex!.src, '点化付不起要置灰(已显化那枚仍保留)').toContain(
       ':disabled="player.fateFocus !== s.id && focusShort > 0"'
     )
@@ -151,7 +150,7 @@ describe('界面分层 · 浮层只有一个出处', () => {
   })
 
   it('存档导入读取失败要当场回执 —— 两处入口同一条退路', () => {
-    const RECEIPT = "ui.toast('这个文件读不出来,换一个再试', 'warn')"
+    const RECEIPT = "ui.toast('文件无法读取', 'warn')"
     for (const path of ['views/WelcomeView.vue', 'components/settings/SettingsSaveSection.vue']) {
       const f = FILES.find(x => x.path === path)
       expect(f, `${path} 不见了`).toBeDefined()
@@ -250,10 +249,10 @@ describe('界面分层 · 块级空态只有一个出处', () => {
 
   it('已知的块级空态都挂上了 empty-note', () => {
     const SITES: [string, string][] = [
-      ['views/BuildView.vue', '道途尚未成路'],
-      ['views/BuildView.vue', '尚无快照'],
-      ['views/MortalWorldView.vue', '此世气象尚未凝成'],
-      ['components/adventure/SecretRealmCard.vue', '尚无秘境可探']
+      ['views/BuildView.vue', '未成流派'],
+      ['views/BuildView.vue', '暂无快照'],
+      ['views/MortalWorldView.vue', '此世未成'],
+      ['components/adventure/SecretRealmCard.vue', '暂无秘境']
     ]
     const missing: string[] = []
     for (const [path, phrase] of SITES) {

@@ -30,11 +30,11 @@ describe('妖气复聚(regionRevival)', () => {
     const id = REGIONS[0]!.id
     adventure.markCleared(id) // 已靖起钟 = T0
 
-    vi.setSystemTime(T0 + (REVIVE_AFTER_HOURS + 1) * H) // 73 小时后
+    vi.setSystemTime(T0 + (REVIVE_AFTER_HOURS + 1) * H)
     const { returned } = settleRegionRevivals(Date.now())
 
     expect(returned).toContain(id)
-    expect(adventure.cleared.includes(id)).toBe(false) // 旧主归来,不再已靖
+    expect(adventure.cleared.includes(id)).toBe(false)
     expect(adventure.revived.includes(id)).toBe(true)
   })
 
@@ -44,10 +44,10 @@ describe('妖气复聚(regionRevival)', () => {
     const id = REGIONS[0]!.id
     adventure.markCleared(id)
 
-    vi.setSystemTime(T0 + 1 * H) // 1 小时后
+    vi.setSystemTime(T0 + 1 * H)
     expect(settleRegionRevivals(Date.now())).toEqual({ returned: [], loosened: [] })
     expect(adventure.revived.includes(id)).toBe(false)
-    expect(adventure.cleared.includes(id)).toBe(true) // 仍已靖
+    expect(adventure.cleared.includes(id)).toBe(true)
   })
 
   it('旧主已归来的地界不重复复聚', () => {
@@ -56,10 +56,10 @@ describe('妖气复聚(regionRevival)', () => {
     const id = REGIONS[0]!.id
     adventure.markCleared(id)
     vi.setSystemTime(T0 + (REVIVE_AFTER_HOURS + 1) * H)
-    expect(settleRegionRevivals(Date.now()).returned).toContain(id) // 第一次复聚
+    expect(settleRegionRevivals(Date.now()).returned).toContain(id)
 
-    vi.setSystemTime(T0 + (REVIVE_AFTER_HOURS + 3) * H) // 再熬更久
-    expect(settleRegionRevivals(Date.now()).returned).toEqual([]) // 不重复(已归来,待再靖)
+    vi.setSystemTime(T0 + (REVIVE_AFTER_HOURS + 3) * H)
+    expect(settleRegionRevivals(Date.now()).returned).toEqual([])
   })
 
   it('再靖一次即复位:revived 收掉,待下一次复聚', () => {
@@ -68,11 +68,11 @@ describe('妖气复聚(regionRevival)', () => {
     const id = REGIONS[0]!.id
     adventure.markCleared(id)
     vi.setSystemTime(T0 + (REVIVE_AFTER_HOURS + 1) * H)
-    settleRegionRevivals(Date.now()) // 复聚
+    settleRegionRevivals(Date.now())
     expect(adventure.revived.includes(id)).toBe(true)
 
-    adventure.markCleared(id) // 再靖
-    expect(adventure.revived.includes(id)).toBe(false) // 复位
+    adventure.markCleared(id)
+    expect(adventure.revived.includes(id)).toBe(false)
     expect(adventure.cleared.includes(id)).toBe(true)
   })
 
@@ -81,11 +81,11 @@ describe('妖气复聚(regionRevival)', () => {
     const adventure = useAdventureStore()
     const player = usePlayerStore()
     const id = REGIONS[0]!.id
-    adventure.markCleared(id) // 早就靖了(起钟 T0)
+    adventure.markCleared(id)
     const now = T0 + (REVIVE_AFTER_HOURS + 1) * H
-    player.suppressedSince = { [id]: now - 1 * H } // 但 1 小时前才镇压
+    player.suppressedSince = { [id]: now - 1 * H }
 
-    // touchedAt = max(clearedAt=旧, suppressedSince=新) = suppressedSince ⇒ 只过 1h,未满钟
+    // touchedAt = max(clearedAt, suppressedSince)
     expect(settleRegionRevivals(now)).toEqual({ returned: [], loosened: [] })
     expect(adventure.revived.includes(id)).toBe(false)
     expect(adventure.cleared.includes(id)).toBe(true)
@@ -97,24 +97,17 @@ describe('妖气复聚(regionRevival)', () => {
     const player = usePlayerStore()
     const id = REGIONS[0]!.id
     adventure.markCleared(id)
-    vi.setSystemTime(T0 + (REVIVE_AFTER_HOURS + 1) * H) // 73 小时后,始终没镇压过
+    vi.setSystemTime(T0 + (REVIVE_AFTER_HOURS + 1) * H)
 
-    expect(player.suppressedRegions).toEqual([]) // 一份镇压都没有
-    settleSuppressedRegions(60) // 在线每 tick 同走这一处;复聚在「无镇压直接返回」之前结算
+    expect(player.suppressedRegions).toEqual([])
+    settleSuppressedRegions(60) // 复聚在「无镇压直接返回」之前结算
 
-    expect(adventure.revived.includes(id)).toBe(true) // 旧主归来
+    expect(adventure.revived.includes(id)).toBe(true)
     expect(adventure.cleared.includes(id)).toBe(false)
   })
 
-  /**
-   * 既已靖又镇压的地界够钟时只是**一桩事**:旧主归来,镇压随之松开。
-   *
-   * 镇压那一半从前由 suppress.settleSuppressedRegions 自己按 suppressedSince
-   * 单独判「满 72 小时」并弹一条「镇压松动」,已靖那一半由这里按 regionTouchedAt
-   * 判、弹一条「旧主归来」—— 两把钟各判各的,同一个 tick 弹两条,把一次复聚
-   * 说成两桩事。故障注入:把松闸那段搬回 suppress.ts 各弹一条 → 本条红。
-   */
-  it('已靖且镇压同时够钟:只报一条,旧主归来与镇压松动一并说清', () => {
+  // 故障注入:把松闸那段搬回 suppress.ts 各弹一条 → 本条红
+  it('已靖且镇压同时够钟:只报一条,旧主归来与镇压松开一并说清', () => {
     vi.setSystemTime(T0)
     const adventure = useAdventureStore()
     const player = usePlayerStore()
@@ -129,6 +122,7 @@ describe('妖气复聚(regionRevival)', () => {
 
     expect(ui.toasts, '同一次复聚只该弹一条').toHaveLength(1)
     expect(ui.toasts[0]!.text).toContain('旧主归来')
+    expect(ui.toasts[0]!.text).toContain('镇压松开')
     expect(player.suppressedRegions, '妖气都聚起来了,镇压该松').not.toContain(id)
     expect(adventure.revived).toContain(id)
     expect(adventure.cleared).not.toContain(id)
@@ -148,7 +142,7 @@ describe('妖气复聚(regionRevival)', () => {
       avgRounds: 2,
       avgDamageTakenPct: 0.05,
       consecutiveWins: 20,
-      lastUpdateAt: now - 1 * H // 一小时前还在这片打过
+      lastUpdateAt: now - 1 * H
     }
 
     expect(settleRegionRevivals(now)).toEqual({ returned: [], loosened: [] })
@@ -168,13 +162,13 @@ describe('妖气复聚(regionRevival)', () => {
       } as never,
       cleared: [] as string[]
     } as never)
-    adventure.markCleared(regionId) // 首领被靖:旧链 cleared 与起钟都在这一刻
-    adventure.markNodeCleared('n1_qingyun') // 本世路线推进
+    adventure.markCleared(regionId)
+    adventure.markNodeCleared('n1_qingyun')
     expect(regionBossCleared(regionId), '构型前提:首领已靖').toBe(true)
     expect(winsUntilRegionBoss(0, regionBossCleared(regionId))).toBeNull()
 
     vi.setSystemTime(T0 + (REVIVE_AFTER_HOURS + 1) * H)
-    expect(settleRegionRevivals(Date.now()).returned).toContain(regionId) // 旧主归来
+    expect(settleRegionRevivals(Date.now()).returned).toContain(regionId)
 
     expect(adventure.mortalCleared, '路线节点照旧留着 —— 撤掉会把整条路线重新锁死').toContain('n1_qingyun')
     expect(regionBossCleared(regionId), '归来即不再已靖,首领该复出').toBe(false)

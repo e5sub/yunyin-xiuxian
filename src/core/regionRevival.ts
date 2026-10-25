@@ -49,15 +49,15 @@ export function settleRegionRevivals(
   }
 
   if (doubled.length > 0) {
-    useUiStore().toast(`${litany(doubled)}妖气复聚 —— 旧主归来、镇守松动,再历一程即可复靖`, 'info')
+    useUiStore().toast(`${litany(doubled)}旧主归来 · 镇压松开`, 'info')
   }
   const returnedOnly = returned.filter(id => !doubled.includes(id))
   const loosenedOnly = loosened.filter(id => !doubled.includes(id))
   if (returnedOnly.length > 0) {
-    useUiStore().toast(`${litany(returnedOnly)}的旧主归来 —— 再历一程即可复靖`, 'info')
+    useUiStore().toast(`${litany(returnedOnly)}旧主归来`, 'info')
   }
   if (loosenedOnly.length > 0) {
-    useUiStore().toast(`${litany(loosenedOnly)}妖气复聚,镇压松动——此地重新成为历练之地`, 'info')
+    useUiStore().toast(`${litany(loosenedOnly)}镇压松开`, 'info')
   }
   return { returned, loosened }
 }

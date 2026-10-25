@@ -28,7 +28,6 @@ import { useUiStore } from '@/stores/ui'
 import {
   reforgeDoneToast,
   reforgeEmptyToast,
-  reforgeSealedNote,
   reforgeShortToast,
   sealDoneToast,
   sealMustLeaveToast,
@@ -168,11 +167,10 @@ export function reforgeEquipment(uid: string, quiet = false): boolean {
   noteSmithingUsed(inst.tier, true)
   useLoreStore().addSkillExp('inscribe', 10 * (1 + inst.tier * 0.2))
 
-  const sealedNote = reforgeSealedNote(kept.length)
   const countNote = before === affixes.length ? `${affixes.length} 条` : `${before} → ${affixes.length} 条`
   if (!quiet) {
     playSfx('success')
-    ui.toast(reforgeDoneToast(countNote, sealedNote), 'success')
+    ui.toast(reforgeDoneToast(countNote), 'success')
   }
   return true
 }
@@ -286,10 +284,8 @@ export interface AutoReforgeOutcome {
   stop: AutoReforgeStop
   /** stop === 'broke' 时缺的是哪一样 */
   short?: 'stone' | 'dust'
-  /** 命中目标的那一条(null = 没洗到,撞了预算/没钱/无位可洗) */
+  /** 命中目标的那一条;没洗到为 null */
   hit: { id: string; roll: number } | null
-  /** 收手时这件装备的词条 id 全表 */
-  affixIds: string[]
 }
 
 /**
@@ -300,41 +296,32 @@ export function autoReforge(uid: string, targets: readonly ReforgeTarget[], maxR
   const inventory = useInventoryStore()
   let stone = gnZero()
   let dust = 0
-  // 一个目标都没给:收手,不烧预算 —— 面板上按钮禁用只是挡层,服务本身不当
+  // 无目标:收手,不烧预算(服务层自守,不靠面板禁用按钮)
   if (targets.length === 0) {
-    return { rolls: 0, stone, dust, stop: 'budget', hit: null, affixIds: [] }
+    return { rolls: 0, stone, dust, stop: 'budget', hit: null }
   }
-  // 装备已含目标词条:分文不动,直接收手 —— 别花一次重铸把已到手的条件洗没
   const initial = inventory.findItem(uid)
   if (initial) {
     const hit = refRoleMatches(initial, targets)
-    if (hit) return { rolls: 0, stone, dust, stop: 'target', hit, affixIds: initial.affixes.map(a => a.id) }
+    if (hit) return { rolls: 0, stone, dust, stop: 'target', hit }
   }
   for (let i = 0; i < maxRolls; i += 1) {
     const inst = inventory.findItem(uid)
     const cost = inst && reforgeCost(inst)
-    if (!inst || !cost) return { rolls: i, stone, dust, stop: 'frozen', hit: null, affixIds: [] }
+    if (!inst || !cost) return { rolls: i, stone, dust, stop: 'frozen', hit: null }
     const short = reforgeShort(cost)
     if (short) {
-      return { rolls: i, stone, dust, stop: 'broke', short, hit: null, affixIds: inst.affixes.map(a => a.id) }
+      return { rolls: i, stone, dust, stop: 'broke', short, hit: null }
     }
     if (!reforgeEquipment(uid, true)) {
-      return { rolls: i, stone, dust, stop: 'frozen', hit: null, affixIds: inst.affixes.map(a => a.id) }
+      return { rolls: i, stone, dust, stop: 'frozen', hit: null }
     }
     stone = add(stone, cost.stone)
     dust += cost.dust
     const after = inventory.findItem(uid)
-    if (!after) return { rolls: i + 1, stone, dust, stop: 'frozen', hit: null, affixIds: [] }
+    if (!after) return { rolls: i + 1, stone, dust, stop: 'frozen', hit: null }
     const hit = refRoleMatches(after, targets)
-    if (hit) return { rolls: i + 1, stone, dust, stop: 'target', hit, affixIds: after.affixes.map(a => a.id) }
+    if (hit) return { rolls: i + 1, stone, dust, stop: 'target', hit }
   }
-  const last = inventory.findItem(uid)
-  return {
-    rolls: maxRolls,
-    stone,
-    dust,
-    stop: 'budget',
-    hit: null,
-    affixIds: last ? last.affixes.map(a => a.id) : []
-  }
+  return { rolls: maxRolls, stone, dust, stop: 'budget', hit: null }
 }

@@ -24,7 +24,7 @@
       </div>
     </div>
     <div class="flex shrink-0 items-center gap-3 text-[11px] text-ink-soft tabular short:gap-2">
-      <span class="flex items-center gap-1 whitespace-nowrap" title="灵石 · 历练战获与坊市售物可得">
+      <span class="flex items-center gap-1 whitespace-nowrap" title="灵石">
         <GameIcon name="gem" :size="13" class="text-gold-ink" />
         {{ formatGN(resources.spiritStone) }}
       </span>

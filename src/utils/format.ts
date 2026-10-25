@@ -55,8 +55,27 @@ export function formatRate(v: GNum | number): string {
   return `${formatGN(v)}/秒`
 }
 
-/** 数值非法时的统一占位(避免界面出现 NaN%/Infinity%) */
+/** 数值非法时的统一占位 */
 const NOT_AVAILABLE = '--'
+
+/**
+ * 明细按显示精度取整并对账:先各自向下取整,差额按余数从大到小补齐,
+ * 显示出来的各行相加正好等于原值合计的取整。unit 为最小显示单位(百分比一位小数即 0.001)。
+ */
+export function roundToSum(values: readonly number[], unit: number): number[] {
+  // 先抹浮点尾差:0.8599999999999999 / 0.001 不该落到 859
+  const scaled = values.map(v => Math.round((v / unit) * 1e6) / 1e6)
+  const target = Math.round(scaled.reduce((a, b) => a + b, 0))
+  const out = scaled.map(v => Math.floor(v))
+  let short = target - out.reduce((a, b) => a + b, 0)
+  const byRemainder = scaled.map((v, i) => ({ i, r: v - Math.floor(v) })).sort((a, b) => b.r - a.r)
+  for (const { i } of byRemainder) {
+    if (short <= 0) break
+    out[i] = (out[i] ?? 0) + 1
+    short -= 1
+  }
+  return out.map(n => n * unit)
+}
 
 /** 百分比:0.125 → 12.5%;非法值(NaN/Infinity)显示 -- */
 export function formatPercent(x: number, dp = 1): string {

@@ -20,23 +20,14 @@
       </div>
       <p class="mt-2 text-[12px] leading-relaxed text-ink-faint">{{ template.desc }}</p>
       <EquipNotePanel />
-      <!--
-        共鸣是机制而非数值,但装备卡片此前一个字都不提:玩家在「要不要换掉这件」时,
-        看不到它身上拴着一条会断的机制(见 core/equipSet)。
-      -->
       <p v-if="setInfo" class="mt-1.5 text-[11px] leading-relaxed">
         <span class="font-kai" :class="setInfo.active ? 'text-jade' : 'text-violet-ink'">
-          共鸣「{{ setInfo.def.name }}」{{ setInfo.count }}/{{ setInfo.def.required }}
+          {{ setInfo.def.name }} {{ setInfo.count }}/{{ setInfo.def.required }}
         </span>
         <span class="ml-1 text-ink-faint">{{ setInfo.def.effectDesc }}</span>
       </p>
       <div class="ink-divider my-3" />
-      <p v-if="compareTarget" class="mb-1.5 text-[10px] text-ink-faint tabular">对比当前佩戴:「{{ compareTarget.name }}」(绿升红降)</p>
-      <!--
-        攻防血一格格比,不如先给一个合笔口径 —— 正是「一键换装」照它抽最强的那把尺
-        (equippablePower:基础平铺 + 词条战力,与 toast「按真实战力挑」同一口径)。
-        它不是面板「战力」,是这套装备的取舍值;分得清,玩家才不会被两个 战力 弄混。
-      -->
+      <p v-if="compareTarget" class="mb-1.5 text-[10px] text-ink-faint tabular">对比当前佩戴「{{ compareTarget.name }}」</p>
       <p v-if="powerCompare" class="mb-1.5 flex items-baseline justify-between text-[11px] tabular">
         <span class="text-ink-faint">{{ powerCompareLabel() }}</span>
         <span class="text-ink">
@@ -63,29 +54,10 @@
       </div>
       <template v-if="resolved.affixLines.length">
         <div class="ink-divider my-3" />
-        <!--
-          条数上限按品质档 rank + 1 现算(见下方 affixCap,与 qualityDef 同源,
-          不手抄「凡品几条 · 神品几条」—— 那一版会和 data/qualities 漂移)。
-          这是玩家最该看见的一件事:一件装备的"上限"就在它的品质里,而重铸可以
-          重掷条数 —— 只有把它摊在明面上,「要不要为这件洗下去」才算得清。
-        -->
         <p class="mb-1.5 flex items-baseline justify-between font-kai text-[12px] tracking-[0.3em] text-ink-faint">
           <span>词 条</span>
-          <span class="text-[10px] tracking-normal tabular">
-            {{ inst.affixes.length }} / {{ affixCap }} 条
-            <span class="ml-1 text-ink-faint">({{ qualityName }}上限)</span>
-          </span>
+          <span class="text-[10px] tracking-normal tabular">{{ inst.affixes.length }} / {{ affixCap }} 条</span>
         </p>
-        <!--
-          词条一条一行:名目与稀有度在左、效果在右、**数值单独加粗**(见 resolveEquipStats
-          的 before/value/after)。一件神品能挂九条,所以这一列要能扫:
-          左边一列名目对齐、右边一列数字对齐,行与行之间不夹长度不一的句子。
-
-          分成九行之后,原来「一条一个色块」的排法会把整张卡片压塌 ——
-          色块摞起来,装备本身的层次反而看不见。改成整体一块底 + 行间细分隔线,
-          稀有度交给左侧那道色边(与名目同色):一眼看得出哪条是撞上的大运,
-          又不至于九块颜色抢戏。
-        -->
         <ul class="overflow-hidden rounded-md bg-violet-ink/6">
           <li
             v-for="(line, i) in resolved.affixLines"
@@ -107,9 +79,6 @@
             <EquipSealPanel :affix-id="line.id" :name="line.name" />
           </li>
         </ul>
-        <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
-          这条儿按珍贵而排,左侧色边即品级;「浮 X%」是这条掷到了上下限间的几成
-        </p>
       </template>
       <template v-if="buildPreview">
         <div class="ink-divider my-3" />
@@ -119,7 +88,7 @@
             <template v-if="buildPreview.before">
               <span class="text-ink-soft">{{ buildPreview.before.displayName }} {{ Math.round(buildPreview.before.affinity * 100) }}%</span>
             </template>
-            <template v-else><span class="text-ink-faint">未成路</span></template>
+            <template v-else><span class="text-ink-faint">未成流派</span></template>
             <span class="mx-1 text-ink-faint">→</span>
             <template v-if="buildPreview.after">
               <span
@@ -129,7 +98,7 @@
                 {{ buildPreview.after.displayName }} {{ Math.round(buildPreview.after.affinity * 100) }}%
               </span>
             </template>
-            <template v-else><span class="text-cinnabar">流派散去</span></template>
+            <template v-else><span class="text-cinnabar">未成流派</span></template>
           </span>
         </p>
       </template>
@@ -233,11 +202,11 @@
   const template = computed(() => (inst.value ? equipmentTemplate(inst.value.templateId) : undefined))
   const resolved = computed(() => (inst.value ? resolveEquipStats(inst.value) : null))
   const isEquipped = computed(() => (inst.value && template.value ? inventory.equipped[template.value.slot] === inst.value.uid : false))
-  /** 分解禁用缘由:禁用不该是猜谜(约定「禁用即给原因」)。佩戴/上锁各明示一条。 */
+  /** 约定「禁用即给原因」 */
   const decomposeReason = computed(() => {
-    if (isEquipped.value && inst.value) return '先卸下此件,方可分解'
-    if (inst.value?.locked) return '已上锁:先在行囊解锁,方可分解'
-    return '分解这件装备'
+    if (isEquipped.value && inst.value) return '分解(已装备)'
+    if (inst.value?.locked) return '分解(已上锁)'
+    return '分解'
   })
   const upCost = computed(() => (inst.value ? equipUpgradeCost(inst.value.uid) : null))
   const upShort = computed(() => (upCost.value ? upgradeShort(upCost.value) : null))
@@ -254,11 +223,10 @@
     return { def, count, active: count >= def.required }
   })
 
-  /** 这一件按品质能有多少条词条:上限来自品质表,不在界面里另写一份 */
+  /** 词条条数上限:取品质表,不在界面另写 */
   const affixCap = computed(() => (inst.value ? qualityDef(inst.value.quality).affixes[1] : 0))
-  const qualityName = computed(() => (inst.value ? qualityDef(inst.value.quality).name : ''))
 
-  // ---- 词条转移(议题 #22):本件作源件,挑一条转到另一件上 ----
+  // ---- 词条转移(议题 #22):本件作源件 ----
   const transferOpen = ref(false)
   const transfer = useAffixTransfer(() => (transferOpen.value ? (inst.value?.uid ?? null) : null))
   const canTransferOut = computed(() => (inst.value?.affixes.length ?? 0) > 0)
@@ -289,6 +257,13 @@
   watch(
     [() => transferOpen.value, () => inst.value?.uid],
     () => void nextTick(() => modalRef.value?.scrollToTop())
+  )
+  // 被后开的窗(如离线卷轴)盖着时换件:叠回最上层
+  watch(
+    () => inst.value?.uid,
+    (uid, prev) => {
+      if (uid && prev) modalRef.value?.raise()
+    }
   )
 
   /** 换装流派预览:契合度 当前 → 装备后 */

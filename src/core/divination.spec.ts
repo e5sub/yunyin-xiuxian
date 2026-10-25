@@ -1,16 +1,11 @@
-/* eslint-disable no-console -- 卦象与卦力是过程性验收,打印摇卦轨迹 */
+/* eslint-disable no-console -- 打印摇卦轨迹 */
 /**
- * 问卦验收(Phase 34.3)
- *
- * 界域志里的「周易」原先只写着"未实装"。本轮把它接成一条真链路:
- *
- *   摇卦(三钱六爻)→ 本卦与之卦(八八相叠)→ 卦力(下卦为己、上卦为境)
- *   → 并入最终属性 → 时限一到自散
- *
- * 三条不变量必须成立,否则就是又一个"看得见拿不到":
- *   一 六十四卦是八八之全(不多不少,不重不漏);
- *   二 卦力由上下卦推出,不手写 64 套数值(手写必与卦义打架);
- *   三 卦真的进了 finalStats —— 不是只在界面上画了个卦。
+ * 问卦验收
+ * 链路:摇卦(三钱六爻)→ 本卦与之卦(八八相叠)→ 卦力(下卦为己、上卦为境)→ 并入最终属性 → 时限一到自散
+ * 不变量:
+ *   一 六十四卦是八八之全,不重不漏;
+ *   二 卦力由上下卦推出,不手写 64 套数值;
+ *   三 卦力真的进了 finalStats。
  */
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -223,7 +218,7 @@ describe('问卦 · 真的进了属性汇总', () => {
     expect(askDivination(seeded(3)).ok).toBe(true)
     const again = askDivination(seeded(4))
     expect(again.ok).toBe(false)
-    expect(again.reason).toContain('一事不二卜')
+    expect(again.reason).toContain('卦在身')
     expect(useResourcesStore().wudao).toBe(DIVINATION_COST * 2)
   })
 

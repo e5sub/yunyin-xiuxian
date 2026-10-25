@@ -1,9 +1,5 @@
 <template>
-  <!-- 天道熔炉 -->
   <BaseModal :open="open" title="天道熔炉" @close="emit('close')">
-    <p class="mb-2 text-[11px] leading-relaxed text-ink-faint">
-      前尘俗物,皆可熔作道源。灵草唯仙品以上可入炉(凡/灵品只走坊市换灵石)。
-    </p>
     <div class="card-ink divide-y divide-ink/6 px-4">
       <div v-for="row in furnaceRows" :key="row.rate.resource" class="py-2.5">
         <div class="flex items-center justify-between gap-2">
@@ -26,16 +22,14 @@
           class="mt-1.5 rounded-md bg-cinnabar/5 px-3 py-2"
         >
           <p class="text-[10px] leading-relaxed text-cinnabar">
-            将以
             <span class="tabular"
               >{{ row.rate.name }} ×{{ formatNum(furnacePreview(row.rate) * row.rate.per) }}</span
             >
-            熔作
-            <span class="tabular">+{{ furnacePreview(row.rate) }}</span> 缕道源,余
+            → 道源 <span class="tabular">+{{ furnacePreview(row.rate) }}</span> · 余
             <span class="tabular">{{
               formatNum(row.have - furnacePreview(row.rate) * row.rate.per)
             }}</span>
-            保留 —— 此举不可逆,所熔资源再无炼丹/锻造/参悟之途。
+            · 不可逆
           </p>
           <div class="mt-1.5 flex justify-end gap-2">
             <button class="btn-ghost !px-3 !py-2 !text-[11px]" @click="furnaceConfirm = null">
@@ -92,8 +86,7 @@
     </template>
   </BaseModal>
 
-  <!-- 首次凝道果:把「跨世保留的到底是什么」讲一次 -->
-  <BaseModal :open="fruitDialogOpen" title="道果" @close="fruitDialogOpen = false">
+  <BaseModal :open="fruitDialogOpen" title="道果" @close="closeFruitDialog()">
     <div class="space-y-2.5 text-[12px] leading-relaxed">
       <p class="text-ink-soft">{{ fruitDialog.intro }}</p>
       <div>
@@ -101,7 +94,7 @@
         <p class="text-ink-faint">{{ fruitDialog.usages.join(" · ") }}</p>
       </div>
       <div>
-        <p class="font-kai text-[12px] tracking-wider text-ink">来处</p>
+        <p class="font-kai text-[12px] tracking-wider text-ink">获取</p>
         <p class="text-ink-faint">{{ fruitDialog.gains.join(" · ") }}</p>
       </div>
       <p class="border-l-2 border-violet-ink/60 pl-2 text-[11px] text-violet-ink">
@@ -109,7 +102,7 @@
       </p>
     </div>
     <template #footer>
-      <button class="btn-seal w-full" @click="fruitDialogOpen = false">知道了</button>
+      <button class="btn-seal w-full" @click="closeFruitDialog()">知道了</button>
     </template>
   </BaseModal>
 </template>
@@ -134,9 +127,9 @@ import {
 } from '@/core/endgameService'
 import {
   daoFruitDialog,
+  dismissFruitTutorial,
   fruitCountLabel,
   fruitMarginalInfo,
-  markFruitTutorialSeen,
   shouldShowFruitTutorial
 } from '@/core/resourceGuidance'
 import { formatGN, formatNum } from '@/utils/format'
@@ -182,25 +175,20 @@ const stoneShort = computed(() => {
   return resources.hasStone(cost) ? gnZero() : subClamp(cost, resources.spiritStone)
 })
 
-/**
- * 凝道果 —— 首次成功时把「道果是什么」讲一次。
- *
- * shouldShowFruitTutorial / daoFruitDialog 写好了却无人调用:
- * 玩家第一次凝出道果(整套轮回经济的核心货币)时,没有任何解释。
- */
+/** 凝道果:道果说明关掉前,凝成即弹 */
 const fruitDialogOpen = ref(false)
 const fruitDialog = computed(() => daoFruitDialog())
+let fruitOpenedAt = -Infinity
 function doCondense(): void {
   const before = player.reincarnation.daoFruit
-  // 标志序陷阱:condenseDaoFruit 首次成功时自己就置 daoFruitTutorialSeen=true,
-  // 若在它之后才读 shouldShowFruitTutorial(),判定恒为假 —— 这条「首次凝道果」
-  // 教学弹窗就永不弹出。必须先于凝果采样。
-  const firstFruit = shouldShowFruitTutorial()
   condenseDaoFruit()
-  if (player.reincarnation.daoFruit === before) return
-  if (firstFruit) {
-    fruitDialogOpen.value = true
-    markFruitTutorialSeen()
-  }
+  if (player.reincarnation.daoFruit === before || !shouldShowFruitTutorial()) return
+  fruitOpenedAt = performance.now()
+  fruitDialogOpen.value = true
+}
+/** 道果说明的一切关闭都走这里 */
+function closeFruitDialog(): void {
+  if (!dismissFruitTutorial(fruitOpenedAt, performance.now())) return
+  fruitDialogOpen.value = false
 }
 </script>

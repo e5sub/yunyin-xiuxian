@@ -70,10 +70,8 @@ export function perfectRolls(item: EquipmentInstance): boolean {
 export function keepVerdict(item: EquipmentInstance): KeepVerdict {
   const cfg = useSettingsStore().smartKeep
   const q = qualityDef(item.quality)
-  // 先于品质:练过的件不属于「自动裁决」的管辖范围
-  if (hasInvestment(item)) return { keep: true, reason: '已淬养,留待你自己定夺' }
-  // 两条阈值线是「且」:品质(rank 达线)与阶级(tier 达线)双双达标才留。
-  // 阶级线未设(0)按「通过」放行 —— 单设品质线时行为与从前一致,阶数不掺和
+  // 先于品质判:练过的件不归自动裁决
+  if (hasInvestment(item)) return { keep: true, reason: '已淬养' }
   const tierMet = cfg.keepMinTier <= 0 || item.tier >= cfg.keepMinTier
   const qMet = q.rank >= cfg.minQuality
   if (qMet && tierMet) {
@@ -87,7 +85,7 @@ export function keepVerdict(item: EquipmentInstance): KeepVerdict {
   if (cfg.keepPerfectRolls && perfectRolls(item)) return { keep: true, reason: '词条近满' }
 
   const build = detectBuild(usePlayerStore().finalStats.mods)
-  if (!build) return { keep: false, reason: '道途未成,唯品质论' }
+  if (!build) return { keep: false, reason: '未成流派' }
   const mods = resolveEquipStats(item).mods
 
   if (cfg.keepCoreAffix) {

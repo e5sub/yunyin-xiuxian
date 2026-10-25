@@ -1,22 +1,12 @@
 /* eslint-disable no-console -- 离线对账表是给人看的 */
 /**
- * 离线总结不许漏账 —— 变动了多少,就得说出多少
- *
- * 「归来」那个弹窗是玩家唯一一次看到离线期间发生了什么的机会。它漏掉一项,
- * 玩家就永远不知道自己拿到过(或失去过)什么:此前它报了修为/灵石/灵草/玄铁/
- * 悟道点/战斗/际遇/回收化尘,却没提**灵气回充**与**寿元流逝** —— 前者是白得的,
- * 后者是要命的(寿元归零就死了,而玩家只会发现「怎么忽然老了」)。
- *
- * 这里不重抄一份清单,而是**看真实差额**:跑一次 60 小时离线结算,
- * 拿每个资源的前后差去对摘要里报的数(灵气受上限约束,故对的是实际差额),
- * 再要求「凡变动过的东西,摘要里都有交代」。
- *
- * 故障注入:把 summary.qi / summary.ageYears 去掉,或把 ageYears 记成 0,本文件立刻红。
+ * 离线总结不许漏账:跑 60 小时离线结算,拿各资源前后差对摘要报数(灵气受上限约束,对实际差额)。
+ * 故障注入:把 summary.qi / summary.ageYears 去掉,或把 ageYears 记成 0,本文件红。
  */
-import { describe, expect, it, beforeEach, vi } from 'vitest'
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
-/** 记下每一次入账的结果:腾位那条用例要拿它对账(透传,不改行为) */
+/** 记录每次入账结果,供腾位用例对账(透传,不改行为) */
 const acquired = vi.hoisted(() => [] as { bagged: boolean; evicted: boolean; dust: number }[])
 vi.mock('./loot', async orig => {
   const mod = await orig<typeof import('./loot')>()
@@ -30,7 +20,23 @@ vi.mock('./loot', async orig => {
   }
 })
 
+/** 离线采样胜率:宿敌用例钉 0 才能整批连败;null 时透传真实采样 */
+const forcedWinRate = vi.hoisted(() => ({ value: null as number | null }))
+vi.mock('./combat', async orig => {
+  const mod = await orig<typeof import('./combat')>()
+  return {
+    ...mod,
+    sampleWinRate: (...args: Parameters<typeof mod.sampleWinRate>) => forcedWinRate.value ?? mod.sampleWinRate(...args)
+  }
+})
+
+import type { OfflineSummary } from '@/types'
 import { settleOffline } from './offline'
+import { exploreBattleGapSec, exploreEventChance } from './exploration'
+import { placeContent } from './mortalWorldService'
+import { modOf } from './statsCalc'
+import { recordLossBatch } from './worldMemory'
+import { enemyDef } from '@/data/enemies'
 import { salvageOf } from './salvage'
 import { useSettingsStore } from '@/stores/settings'
 import { useGameStore } from '@/stores/game'
@@ -226,10 +232,10 @@ describe('离线总结 · 变动了多少就报多少', () => {
     expect(summary.ageYears, '寿元流逝没报').toBeCloseTo(delta.age, 0)
     expect(summary.ageYears, '这一档离开 60 小时,寿元不该一点没动').toBeGreaterThan(50)
     expect(
-      summary.notes.some(n => n.startsWith('此去寿元流逝')),
-      '寿元说明应写「此去」,别冒充闭关'
+      summary.notes.some(n => n.startsWith('寿元流逝')),
+      '寿元说明应写「寿元流逝」,别冒充闭关'
     ).toBe(true)
-    // 三 凡变动过的,摘要里都得有交代 —— 不许有「悄悄动了」的资源
+    // 凡变动过的,摘要都须有交代
     if (delta.qi > 0) expect(summary.qi, '灵气涨了但摘要没这一项').toBeGreaterThan(0)
     if (delta.qi > 0) expect(summary.notes.some(n => n.includes('寿元流逝')), '寿元流逝该有一句说明').toBe(true)
   })
@@ -244,5 +250,95 @@ describe('离线总结 · 变动了多少就报多少', () => {
     expect(summary.capped, '洞府 0 级时 60h 缺席应当被封顶').toBe(true)
     expect(summary.herb, '摘要报的灵草数 = 实际进账数').toBe(resources.herb - herbBefore)
     expect(summary.qi, '摘要报的灵气数 = 实际进账数').toBeCloseTo(resources.qi, -1)
+  })
+})
+
+/**
+ * 宿敌行报入账后的实际败绩:离线一整批可从 0 直接累过门槛,不能写死门槛次数。
+ * 故障注入:offline.ts 宿敌行改回 `败北${NEMESIS_THRESHOLD}次`,两条「5 次」红。
+ */
+describe('离线总结 · 宿敌行报实际败北次数', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    forcedWinRate.value = 0
+  })
+  afterEach(() => {
+    forcedWinRate.value = null
+  })
+
+  /** 青云山麓缺席到恰好打 n 场;胜率钉 0,场场皆败 */
+  function settleLosingTrip(n: number): OfflineSummary {
+    const now = Date.now()
+    const game = useGameStore()
+    const adventure = useAdventureStore()
+    game.markStarted()
+    // 场次 = 遇敌 − round(遇敌 × 际遇率),与 settleOffline 同一份口径;逐个加遇敌数到恰好 n 场
+    // 上限防死循环:际遇率趋近 1 时凑不出,交给下面的夹具断言报红
+    const mods = usePlayerStore().finalStats.mods
+    const gapSec = exploreBattleGapSec(modOf(mods, 'explorationSpeed'))
+    const chance = exploreEventChance('qingyun', mods)
+    let encounters = n
+    while (encounters - Math.round(encounters * chance) < n && encounters < n * 10) encounters += 1
+    // 多给半个间隔:遇敌数向下取整,不能落在整除边界上
+    game.lastActiveAt = now - (encounters + 0.5) * gapSec * 1000
+    adventure.session = {
+      regionId: 'qingyun',
+      mode: 'normal',
+      startedAt: game.lastActiveAt,
+      endsAt: now + 999 * HOUR_MS,
+      nextBattleAt: 0,
+      wins: 0,
+      losses: 0,
+      events: 0,
+      stoneGain: gn(0),
+      expGain: gn(0),
+      itemGain: 0
+    }
+    const summary = settleOffline(now)!
+    expect([summary.battles, summary.wins], `夹具须恰好连败 ${n} 场`).toEqual([n, 0])
+    return summary
+  }
+
+  /** 本区每个可能遇上的敌手都预记败绩:离线敌群随机取一,逐个记才不赌抽签 */
+  function seedLosses(times: number): void {
+    const player = usePlayerStore()
+    const ids = [...new Set(placeContent('qingyun').enemies)]
+    player.setNemeses(
+      ids.reduce(
+        (list, id) => recordLossBatch(list, id, enemyDef(id)!.name, 'qingyun', Date.now() - HOUR_MS, times).list,
+        player.nemeses
+      )
+    )
+  }
+
+  const nemesisNotes = (summary: OfflineSummary): string[] => summary.notes.filter(n => n.startsWith('【宿敌】'))
+
+  it('一批连败 5 次:卷轴报「败北5次」', () => {
+    const summary = settleLosingTrip(5)
+    const nemeses = usePlayerStore().nemeses
+    expect(nemeses.map(n => n.lossCount), '5 败整批入账').toEqual([5])
+    expect(nemesisNotes(summary)).toEqual([`【宿敌】${nemeses[0]!.enemyName} · 败北5次`])
+  })
+
+  it('在线已败 2 次、离线再连败 3 次:报累计「败北5次」,不报本批场数', () => {
+    seedLosses(2)
+    const summary = settleLosingTrip(3)
+    const hit = usePlayerStore().nemeses.filter(n => n.lossCount !== 2)
+    expect(hit.map(n => n.lossCount), '抽中的敌手 2 + 3 败').toEqual([5])
+    expect(nemesisNotes(summary)).toEqual([`【宿敌】${hit[0]!.enemyName} · 败北5次`])
+  })
+
+  it('恰好连败 3 次:报「败北3次」', () => {
+    const summary = settleLosingTrip(3)
+    const nemeses = usePlayerStore().nemeses
+    expect(nemeses.map(n => n.lossCount), '3 败整批入账').toEqual([3])
+    expect(nemesisNotes(summary)).toEqual([`【宿敌】${nemeses[0]!.enemyName} · 败北3次`])
+  })
+
+  it('已是宿敌的再败不重复报', () => {
+    seedLosses(3)
+    const summary = settleLosingTrip(3)
+    expect(usePlayerStore().nemeses.map(n => n.lossCount), '抽中的宿敌照样记败').toContain(6)
+    expect(nemesisNotes(summary), '已成宿敌不再报').toEqual([])
   })
 })

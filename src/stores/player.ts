@@ -29,7 +29,7 @@ import { todayWeather } from '@/core/weather'
 import { divinationActiveAt, readingFromState, readingMods } from '@/core/divination'
 import { gameNow } from '@/core/enginePause'
 import { asArray, asCarriedHpPct, asFiniteNumber, asNumberRecord, asRecord, asStringArray } from '@/utils/saveShape'
-import { SECRET_LAYERS, SECRET_MAX_LOSSES, SECRET_REALMS, SECRET_RULES } from '@/data/secretRealms'
+import { SECRET_LAYERS, SECRET_MAX_LOSSES, SECRET_REALMS, secretRuleByText } from '@/data/secretRealms'
 import { DAOLU, ENDING_NAMES, STAGE_NAMES, STAGE_ORDER, type BondEnding, type BondStage } from '@/data/daolu'
 import { lifeThemeDef } from '@/data/lifeThemes'
 import { bondEventDef } from '@/data/bondEvents'
@@ -101,12 +101,11 @@ export const usePlayerStore = defineStore(
     /** 这一世的关系(历史在 reincarnation.bonds);转世时清空 */
     const bond = ref<import('@/core/daoluService').BondState | null>(null)
 
-    // Phase 28 前期玩法状态
     const eventChains = ref<import('@/types').EventChainState>({}) // 奇遇连锁进度(链路实装见 RIL)
-    const winStreak = ref(0) // 当前连胜数
+    const winStreak = ref(0)
     const lastCaveEventDay = ref(0) // 上次洞府巡游日期
 
-    // Phase 30 区域镇压(每个区域独立统计)
+    // 区域镇压
     const regionStats = ref<Record<string, import('@/core/suppress').RegionStats>>({})
     const suppressedRegions = ref<string[]>([])
     /**
@@ -740,7 +739,8 @@ export const usePlayerStore = defineStore(
             wins: Math.floor(asFiniteNumber(sr.wins, 0, 0)),
             losses: Math.min(SECRET_MAX_LOSSES, Math.floor(asFiniteNumber(sr.losses, 0, 0))),
             spoils: asStringArray(sr.spoils),
-            rules: asStringArray(sr.rules).filter(t => SECRET_RULES.some(r => r.text === t)),
+            // 旧说法归一为现行说法并去重
+            rules: [...new Set(asStringArray(sr.rules).flatMap(t => secretRuleByText(t)?.text ?? []))],
             carriedHpPct: asCarriedHpPct(sr.carriedHpPct),
             finished: sr.finished === true
           }
@@ -791,7 +791,7 @@ export const usePlayerStore = defineStore(
         const chainNext: Record<string, number> = {}
         for (const [chainId, stage] of Object.entries(eventChains.value)) {
           const chain = CHAINS.find(c => c.id === chainId)
-          if (!chain) continue // 认不出的链:整条清掉
+          if (!chain) continue
           chainNext[chainId] = Math.min(chain.stages.length, Math.max(0, Math.floor(asFiniteNumber(stage, 0, 0))))
         }
         eventChains.value = chainNext

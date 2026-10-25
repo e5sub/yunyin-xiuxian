@@ -3,29 +3,21 @@
     <InkTabs v-model="tab" :tabs="tabs" />
 
     <template v-if="tab === 'equip'">
-      <!--
-        装备共鸣:机制是活的,玩家却看不见 —— 凑齐该套所要件数即共鸣,（N/所需）亮起。
-        件数不写死「两件」:饰品三件套(妖庭共鸣)要的是三件,写死两件的那行
-        对它就是一句假话。
-      -->
+      <!-- 小标题不写件数(有三件套),件数只走逐行 N/所需 -->
       <div v-if="setRows.length" class="card-ink mt-3 px-4 py-2.5">
-        <p class="text-[10px] text-ink-faint">装备共鸣(凑齐该套所要件数即共鸣,机制不叠数值)</p>
+        <p class="text-[10px] text-ink-faint">装备共鸣</p>
         <p v-for="s in setRows" :key="s.def.id" class="mt-1 flex items-center gap-2 text-[11px]">
           <span class="font-kai shrink-0" :class="s.active ? 'text-jade' : 'text-ink-soft'">{{ s.def.name }}</span>
           <span class="tabular shrink-0" :class="s.active ? 'text-jade' : 'text-ink-faint'">{{ s.count }}/{{ s.def.required }}</span>
           <span class="min-w-0 grow text-[10px] leading-relaxed text-ink-faint">{{ s.def.effectDesc }}</span>
-          <!--
-            玩家反馈「穿套装」:一键穿齐该套已持有的件,已穿更强的则不换。
-            触控靶面:纯 10px 文字行高 15px,拇指点不中(layout-check 报 27px < 28);
-            负外边距配正内边距同升到 8px,盒高 31px 达标,流中占位仍只 15px 行高(同页收纳/分解同法)。
-          -->
+          <!-- 触控靶面:负外边距配正内边距,盒高 31px 过 layout-check(≥28),流中仍占 15px 行高;同页收纳/分解同法 -->
           <button class="-my-2 shrink-0 px-1 py-2 text-[10px] text-azure active:opacity-60" @click="onEquipSet(s.def.id)">
-            穿齐 →({{ s.preview > 0 ? `换 ${s.preview}` : '已齐' }})
+            穿齐 →({{ s.preview > 0 ? `换 ${s.preview}` : '无可换' }})
           </button>
         </p>
       </div>
       <div class="mt-3 flex items-center justify-between px-1">
-        <span class="text-[11px] text-ink-faint tabular">藏品 {{ inventory.bagItems.length }} · 器灵尘 {{ resources.dust }}</span>
+        <span class="text-[11px] text-ink-faint tabular">行囊 {{ inventory.bagItems.length }} · 器灵尘 {{ resources.dust }}</span>
         <span class="flex gap-3">
           <button class="-my-1.5 py-1.5 text-[11px] text-azure active:opacity-60" @click="smartOpen = true">
             收纳{{ settings.smartKeep.enabled ? '·启' : '' }}
@@ -38,14 +30,13 @@
           v-for="row in slotRows"
           :key="row.slot"
           class="card-ink relative flex flex-col items-center gap-1 px-2 py-2.5 active:scale-98"
-          :aria-label="`${row.name}${row.upgradeable ? ',行囊里有更强的一件' : ''}`"
+          :aria-label="`${row.name}${row.upgradeable ? ',可换' : ''}`"
           @click="pickerSlot = row.slot"
         >
-          <!-- 行囊里有更强的:槽卡上一枚小章 —— 与一键换装同一把 bestEquipFor,不比它看得少 -->
           <span
             v-if="row.upgradeable"
             role="img"
-            :aria-label="`${row.name}栏,行囊里有更强的一件`"
+            aria-label="可换"
             class="absolute right-1 top-1 rounded-sm bg-gold-ink/20 px-1 font-kai text-[8px] leading-[12px] text-gold-ink"
           >可换</span>
           <span class="text-[9px] text-ink-faint">
@@ -62,42 +53,29 @@
           </template>
           <template v-else>
             <span class="grid h-4 w-4 place-items-center text-ink-faint">·</span>
-            <span class="text-[10px] text-ink-faint">空悬</span>
+            <span class="text-[10px] text-ink-faint">未装备</span>
           </template>
         </button>
       </div>
-      <!-- 角上那枚「可换」得有人解释:新玩家看见金点子,该知道它是行囊里有更强的牌子 -->
-      <p v-if="hasUpgradeableSlot" class="text-center text-[9px] text-ink-faint">
-        角上点金 = 行囊里有更强的候补,点开该槽即可换上
-      </p>
-      <p class="mt-2 text-center text-[10px] text-ink-faint">点击部位查看候选,行囊满时新掉落自动折作器灵尘</p>
-      <!-- 玩家反馈「一键装备最高阶级品质装备快捷键」:每槽换上当前最强,已是则不动 -->
-      <!-- 点下去会动几件,先给个数:与结算同一把 bestEquipFor;一件不换时明说「已是最强」 -->
       <button class="btn-ghost mt-2 w-full !py-1.5 !text-[11px]" @click="onEquipAllBest">
-        一键 · 各部位换上当前最强{{ bestSwapPreview }}
+        一键换装{{ bestSwapPreview }}
       </button>
-      <!--
-        空一身:与一键换装成对的反向出口 —— 已佩戴的件不参加分解/收纳,
-        想清一口袋破烂,得先把身上的部位格脱干净。只脱不毁,件全回行囊
-      -->
       <button
         v-if="equippedCount > 0"
         class="btn-ghost mt-2 w-full !py-1.5 !text-[11px] !text-ink-faint"
         @click="onUnequipAll"
-      >空一身 · 卸下全部 {{ equippedCount }}/{{ SLOTS.length }} 格</button>
+      >卸下全部 {{ equippedCount }}/{{ SLOTS.length }} 格</button>
 
-      <!-- 全部藏品(含佩戴中):部位槽之下的完整清单 -->
+      <!-- hint「满包掉落化尘」:不可逆后果(见 core/loot),事前只此一处 -->
       <div v-if="allItems.length" class="mt-4">
-        <SectionTitle title="全部藏品" :hint="`${allItems.length} 件 · 行囊 ${inventory.bagItems.length}/${BAG_CAPACITY}`" />
-        <!-- 方格背包:五列格子 + 空槽占位,一眼看出还剩多少地方 -->
+        <SectionTitle title="全部藏品" :hint="`${allItems.length} 件 · 行囊 ${inventory.bagItems.length}/${BAG_CAPACITY} · 满包掉落化尘`" />
         <div class="mt-2 grid grid-cols-5 gap-1.5">
           <EquipmentCard v-for="row in allItems" :key="row.item.uid" :item="row.item" :equipped="row.equipped" @open="openDetail" />
         </div>
       </div>
-      <p v-else class="mt-8 text-center text-[12px] text-ink-faint">行囊空空,去历练中寻些机缘吧</p>
+      <p v-else class="mt-8 text-center text-[12px] text-ink-faint">暂无藏品</p>
     </template>
 
-    <!-- 丹药 -->
     <template v-else-if="tab === 'pill'">
       <button
         class="card-ink mt-3 flex w-full items-center justify-between gap-3 px-4 py-3 text-left active:scale-98"
@@ -107,7 +85,7 @@
         <span class="min-w-0 flex-1">
           <span class="block font-kai text-[14px] tracking-widest text-ink">开炉炼丹</span>
           <span class="block truncate text-[10px] leading-relaxed text-ink-faint">
-            {{ recipes.length > 0 ? `已知丹方 ${recipes.length} 种 · ${HERB_GRADE_SHORT[herbGrade]}灵草×${formatNum(resources.herbOf(herbGrade))}` : '尚不知任何丹方' }}
+            {{ recipes.length > 0 ? `已知丹方 ${recipes.length} 种 · ${HERB_GRADE_SHORT[herbGrade]}灵草×${formatNum(resources.herbOf(herbGrade))}` : '暂无丹方' }}
           </span>
         </span>
         <span class="shrink-0 text-[12px] text-ink-faint">›</span>
@@ -136,14 +114,9 @@
           <span class="absolute bottom-0.5 right-1 text-[9px] leading-none text-ink-soft tabular">×{{ row.count }}</span>
         </button>
       </div>
-      <p v-else class="mt-10 text-center text-[12px] text-ink-faint">
-        丹匣空空
-        <br />
-        <span class="text-[11px]">丹药多出于历练掉落、途中际遇与开炉炼丹</span>
-      </p>
+      <p v-else class="mt-10 text-center text-[12px] text-ink-faint">暂无丹药</p>
     </template>
 
-    <!-- 材料 -->
     <template v-else-if="tab === 'material'">
       <div class="mt-3 grid grid-cols-4 gap-1.5">
         <button
@@ -223,7 +196,7 @@
           </span>
           <div class="min-w-0">
             <p class="font-kai text-[15px] text-ink tabular">{{ currentMaterial.full }}</p>
-            <p class="text-[10px] text-ink-faint">现有</p>
+            <p class="text-[10px] text-ink-faint">持有</p>
           </div>
         </div>
         <p class="mt-3 text-[12px] leading-relaxed text-ink-soft">{{ currentMaterial.desc }}</p>
@@ -322,10 +295,7 @@
       .sort((a, b) => Number(b.active) - Number(a.active) || b.count - a.count)
   })
 
-  /** 已佩戴的槽位数 —— 「空一身」按钮的计数(身上没件时不出现,免得摆个 0 的按钮) */
   const equippedCount = computed(() => SLOTS.filter(slot => inventory.equipped[slot]).length)
-  /** 至少一个槽位有更强候补时,槽卡下方的图例才值得出现 */
-  const hasUpgradeableSlot = computed(() => slotRows.value.some(r => r.upgradeable))
 
   const slotRows = computed(() =>
     SLOTS.map(slot => {
@@ -372,9 +342,9 @@
   /** 逐品灵草存量,不报总和 */
   const herbStash = computed(() => herbStashText(g => resources.herbOf(g), formatNum))
 
-  /** 材料行:灵草的量是「当前品」的可炼数,`full` 留给详情弹窗逐品陈列(其它料本就单标量) */
+  /** 灵草的量取当前品,`full` 留给详情弹窗逐品陈列 */
   const materialRows = computed(() => [
-    { icon: 'leaf', name: `${HERB_GRADE_SHORT[herbGrade.value]}灵草`, desc: '炼丹的根本(格子数是当前品,逐品见详情)', value: resources.herbOf(herbGrade.value), full: `逐品:${herbStash.value}` },
+    { icon: 'leaf', name: `${HERB_GRADE_SHORT[herbGrade.value]}灵草`, desc: '炼丹的根本', value: resources.herbOf(herbGrade.value), full: `逐品:${herbStash.value}` },
     { icon: 'mountain', name: '玄铁', desc: '筑造与炼器之材', value: resources.ore, full: String(resources.ore) },
     { icon: 'scroll', name: '功法残页', desc: '集残页可参悟功法', value: resources.page, full: String(resources.page) },
     { icon: 'sparkles', name: '器灵尘', desc: '强化装备的灵性之尘', value: resources.dust, full: String(resources.dust) },
@@ -421,8 +391,8 @@
 
   const currentPillHint = computed<{ text: string; tone: 'cinnabar' | 'amber' } | null>(() => {
     const overflow = currentPillOverflow.value
-    if (overflow === 'full') return { text: '药力已顶满——这一颗将白费', tone: 'cinnabar' }
-    if (overflow === 'partial') return { text: '药力将触上限——这一颗只续到顶', tone: 'amber' }
+    if (overflow === 'full') return { text: '药力已顶满', tone: 'cinnabar' }
+    if (overflow === 'partial') return { text: '药力将顶满', tone: 'amber' }
     return null
   })
 
@@ -444,45 +414,37 @@
     if (!pillRows.value.some(r => r.def?.id === id)) pillDetail.value = null
   }
 
-  /** 一键换装:每槽换上当前最强,报一句换了多少 */
   function onEquipAllBest(): void {
     const changed = equipAllBest()
-    ui.toast(changed > 0 ? `已自动换上 ${changed} 件当下最能打的(按真实战力挑)` : '已是更能打的一身', changed > 0 ? 'success' : 'info')
+    ui.toast(changed > 0 ? `已换上 ${changed} 件` : '已是最强', changed > 0 ? 'success' : 'info')
   }
-  /** 点前的预告:还有几个部位会真的换(与 onEquipAllBest 同一把 bestEquipFor 判据) */
+  /** 一键换装的预告件数,与 onEquipAllBest 同一把 bestEquipFor */
   const bestSwapPreview = computed(() => {
     const n = EQUIP_SLOTS.filter(slot => {
       const best = bestEquipFor(slot)
       return !!best && inventory.equipped[slot] !== best.uid
     }).length
-    return n > 0 ? `(将换 ${n} 件)` : '(已是最强)'
+    return n > 0 ? `(换 ${n} 件)` : '(已是最强)'
   })
 
-  /** 空一身:卸下全部已佩戴,件回到行囊 —— 以便清理/换血(只脱不毁) */
   function onUnequipAll(): void {
     const removed = unequipAllEquipped()
-    ui.toast(removed > 0 ? `已卸下 ${removed} 件,尽数回到行囊` : '身上已无佩戴', removed > 0 ? 'success' : 'info')
+    ui.toast(removed > 0 ? `已卸下 ${removed} 件` : '未装备', removed > 0 ? 'success' : 'info')
   }
 
-  /** 一键穿齐套装:换上该套已持有的件,已穿更强的则不换 */
   function onEquipSet(setId: string): void {
     const changed = equipSetCombo(setId)
-    ui.toast(changed > 0 ? `穿齐该套:换上 ${changed} 件(更强的没动)` : '该套已穿齐,或没有更合适的件', changed > 0 ? 'success' : 'info')
+    ui.toast(changed > 0 ? `已换上 ${changed} 件` : '无可换', changed > 0 ? 'success' : 'info')
   }
 
-  /**
-   * 丹方读到几分熟 —— 与图鉴的「已得方/通晓」同一份状态(lore.recipeLore)。
-   * 无方之丹没有这一行:它本就炼不出来(见 ui/itemText.pillSourceText)。
-   */
+  /** 丹方读到几分熟,与图鉴「已得方/通晓」同源(lore.recipeLore);只报读数,不列熟练来路 */
   function pillMasteryText(id: string): string {
     const def = pillDef(id)
     if (!def?.recipe) return ''
     const m = lore.recipeMastery(id)
-    if (m <= 0) return '此方尚未到手 —— 去藏经阁翻书,或向师长讨教'
-    if (m >= 1) return '此方已通晓:火候节点烂熟于心'
-    // 成功开炉 +0.01、炸炉 +0.02、藏经阁被动钻研都会积累熟练。
-    // 三路都说清,免得玩家误以为只有某一条来路(dataTextAudit 钉着)。
-    return `此方已得,熟练 ${Math.round(m * 100)}% —— 开炉、藏经阁钻研与炸炉都会长记性`
+    if (m <= 0) return '未得方'
+    if (m >= 1) return '已通晓'
+    return `熟练 ${Math.round(m * 100)}%`
   }
 
 </script>

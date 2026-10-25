@@ -178,7 +178,7 @@ export const GONGFA: GongfaDef[] = [
     'main',
     'profound',
     5,
-    '炼神返虚,虚室生白 —— 神全则形不敝',
+    '炼神返虚,虚室生白',
     { cultivationSpeed: 0.2, defensePct: 0.12, qiRegen: 0.1 },
     { cultivationSpeed: 0.03, defensePct: 0.014 },
     { skill: { name: '炼神返虚', mult: 2.4, rate: 0.24 } }
@@ -189,7 +189,7 @@ export const GONGFA: GongfaDef[] = [
     'main',
     'heaven',
     7,
-    '取无量寿之意,光所照处,寿与道同长',
+    '光所照处,寿与道同长',
     { cultivationSpeed: 0.32, maxHpPct: 0.2, lifespanPct: 0.08 },
     { cultivationSpeed: 0.04, maxHpPct: 0.02, lifespanPct: 0.01 },
     { element: 'light', skill: { name: '无量寿光', mult: 2.9, rate: 0.25 } }
@@ -304,7 +304,7 @@ export const GONGFA: GongfaDef[] = [
     'sub',
     'heaven',
     6,
-    '身与道合,伤处自弥 —— 形神从此不再两分',
+    '身与道合,伤处自弥',
     { maxHpPct: 0.2, defensePct: 0.12, regenPerRound: 0.012 },
     { maxHpPct: 0.022, defensePct: 0.014 }
   ),
@@ -314,7 +314,7 @@ export const GONGFA: GongfaDef[] = [
     'sub',
     'heaven',
     7,
-    '心如明镜台,时时勤拂拭 —— 悟得快,劫也渡得稳',
+    '心如明镜台,时时勤拂拭',
     { expGain: 0.12, breakthroughRate: 0.02, luck: 0.06 },
     { expGain: 0.018, breakthroughRate: 0.003, luck: 0.008 }
   ),
@@ -387,7 +387,7 @@ export const GONGFA: GongfaDef[] = [
     'secret',
     'heaven',
     8,
-    '把九重雷劫缩成一枚印 —— 劫来则印出,以劫淬身',
+    '九重雷劫缩为一印',
     { tribulationResist: 0.2, damageReduction: 0.06, breakthroughRate: 0.03 },
     { tribulationResist: 0.05, breakthroughRate: 0.008 }
   ),
@@ -480,7 +480,7 @@ export const GONGFA: GongfaDef[] = [
     'main',
     'divine',
     18,
-    '混元一体,无极而生,万法归一',
+    '混元一体,无极而生',
     { cultivationSpeed: 0.5, attackPct: 0.24, defensePct: 0.22, maxHpPct: 0.22 },
     { cultivationSpeed: 0.06, attackPct: 0.025, defensePct: 0.021 },
     { element: 'chaos', skill: { name: '混元一炁', mult: 3.8, rate: 0.28 } }
@@ -532,7 +532,7 @@ export const GONGFA: GongfaDef[] = [
     'main',
     'immortal',
     10,
-    '御气而行,一息千里 —— 玄仙之「玄」,玄在气机不竭',
+    '御气而行,气机不竭',
     { cultivationSpeed: 0.36, qiRegen: 0.18, defensePct: 0.14 },
     { cultivationSpeed: 0.045, defensePct: 0.015 },
     { skill: { name: '玄仙一气', mult: 3.1, rate: 0.26 } }
@@ -597,7 +597,7 @@ export const GONGFA: GongfaDef[] = [
     'main',
     'divine',
     16,
-    '神域之主,御极临下,言出法随',
+    '神域之主,御极临下',
     { attackPct: 0.26, maxHpPct: 0.22, executeDamage: 0.1 },
     { attackPct: 0.028, maxHpPct: 0.022 },
     { skill: { name: '神王御极', mult: 3.6, rate: 0.27 } }
@@ -608,7 +608,7 @@ export const GONGFA: GongfaDef[] = [
     'main',
     'divine',
     17,
-    '神帝临尘,众神俯首 —— 一念即法度',
+    '神帝临尘,众神俯首',
     { attackPct: 0.28, speed: 0.08, stunRate: 0.04 },
     { attackPct: 0.03, speed: 0.008 },
     { skill: { name: '神帝临尘', mult: 3.7, rate: 0.28 } }
@@ -620,7 +620,7 @@ export const GONGFA: GongfaDef[] = [
     'sub',
     'divine',
     18,
-    '混沌初开,一点真灵不昧;守着它,万劫不迷',
+    '混沌初开,一点真灵不昧',
     { cultivationSpeed: 0.34, breakthroughRate: 0.05, luck: 0.08 },
     { cultivationSpeed: 0.045, breakthroughRate: 0.012 }
   ),
@@ -630,7 +630,7 @@ export const GONGFA: GongfaDef[] = [
     'main',
     'divine',
     19,
-    '神魔一体,以身开界 —— 打的是命,换的是界',
+    '神魔一体,以身开界',
     { attackPct: 0.3, maxHpPct: 0.24, lifesteal: 0.03 },
     { attackPct: 0.03, maxHpPct: 0.022 },
     { element: 'chaos', skill: { name: '开天一击', mult: 3.9, rate: 0.28 } }
@@ -641,7 +641,7 @@ export const GONGFA: GongfaDef[] = [
     'main',
     'divine',
     20,
-    '道生一,一生万 —— 这部经从头到尾只讲一个字',
+    '道生一,一生万',
     { cultivationSpeed: 0.5, attackPct: 0.26, defensePct: 0.24, maxHpPct: 0.24 },
     { cultivationSpeed: 0.06, attackPct: 0.026, defensePct: 0.022 },
     { element: 'chaos', skill: { name: '本源一炁', mult: 4.0, rate: 0.29 } }

@@ -20,15 +20,15 @@ export function refineEquipment(uid: string): boolean {
   const inst = inventory.findItem(uid)
   if (!inst) return false
   if (inst.locked) {
-    ui.toast('此器已锁,先解锁再凝', 'warn')
+    ui.toast('此器已上锁', 'warn')
     return false
   }
   if (Object.values(inventory.equipped).includes(uid)) {
-    ui.toast('身上之物无法入炉,先卸下', 'warn')
+    ui.toast('此器已装备', 'warn')
     return false
   }
   if (!canRefine(inst)) {
-    ui.toast('此器平平无奇,无形意可存', 'warn')
+    ui.toast('此器无形意', 'warn')
     return false
   }
   const short = daoSourceShortfall(SOUL_REFINE_COST, endgame.daoSource)
@@ -47,7 +47,7 @@ export function refineEquipment(uid: string): boolean {
   endgame.addSoul(soul)
   track('soulsRefined')
   const t = equipmentTemplate(inst.templateId)
-  ui.toast(`「${t?.name}」形销而意存,凝作${soulName(soul)}`, 'rare')
+  ui.toast(`「${t?.name}」凝作${soulName(soul)}`, 'rare')
   return true
 }
 
@@ -56,11 +56,10 @@ export function wearSoul(uid: string): boolean {
   const endgame = useEndgameStore()
   const ui = useUiStore()
   if (endgame.activeSouls.length >= SOUL_SLOTS && !endgame.activeSouls.some(s => s.uid === uid)) {
-    ui.toast(`神魂只容得下 ${SOUL_SLOTS} 缕形意,先散去一缕`, 'warn')
+    ui.toast(`装配已满(${SOUL_SLOTS} 缕)`, 'warn')
     return false
   }
-  // equipSoul 的槽位判定已按「有效装配」(滤掉 ghost)算,幽灵槽不再让它静默失败;
-  // 剩余失败(已装配/不在持有池)按原语义静默返回
+  // equipSoul 按有效装配(滤掉 ghost)判槽位;已装配/不在持有池时静默返回
   return endgame.equipSoul(uid)
 }
 
@@ -75,7 +74,7 @@ export function dissolveSoul(uid: string): void {
   const soul = endgame.soulList.find(s => s.uid === uid)
   if (!soul) return
   endgame.dissolveSoul(uid)
-  ui.toast(`${soulName(soul)}散入天地`, 'info')
+  ui.toast(`${soulName(soul)}已散去`, 'info')
 }
 
 export { previewSoul, canRefine }

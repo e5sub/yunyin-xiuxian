@@ -25,7 +25,7 @@ describe('主页状态行', () => {
   })
 
   it('修为圆满单独成句,避免和闭关混成一句', () => {
-    expect(homeStatusText(presence({ expFull: true }))).toBe('修为已满')
+    expect(homeStatusText(presence({ expFull: true }))).toBe('修为已至圆满')
   })
 
   it('疗伤优先于闭关:伤势比封洞更需要看见', () => {
@@ -33,17 +33,17 @@ describe('主页状态行', () => {
   })
 
   it('历练带上地界名', () => {
-    expect(homeStatusText(presence({ adventuring: true, regionName: '青云山麓' }))).toBe('历练中 · 青云山麓')
+    expect(homeStatusText(presence({ adventuring: true, regionName: '青云山麓' }))).toBe('历练在途 · 青云山麓')
   })
 
-  it('身在秘境写探秘中,不写修炼中', () => {
-    expect(homeStatusText(presence({ exploringSecret: true }))).toBe('探秘中')
+  it('秘境里写「身在秘境」,不写修炼中', () => {
+    expect(homeStatusText(presence({ exploringSecret: true }))).toBe('身在秘境')
   })
 
-  it('远征在外写远征中,且比历练会话优先', () => {
+  it('远征在外写远征在途,且比历练会话优先', () => {
     expect(
       homeStatusText(presence({ expedition: true, adventuring: true, regionName: '青云山麓' }))
-    ).toBe('远征中')
+    ).toBe('远征在途')
   })
 
   it('陨落压过其余一切', () => {

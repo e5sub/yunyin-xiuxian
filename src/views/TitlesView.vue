@@ -37,11 +37,6 @@
           :key="row.def.id"
           class="card-ink flex items-center gap-2.5 px-4 py-2.5"
         >
-          <!-- 灵兽印章:从一行小图标长成一块色底印章;相伴时转玉色光晕 -->
-          <span
-            class="grid h-10 w-10 shrink-0 place-items-center rounded-md transition-colors"
-            :class="row.active ? 'bg-jade/10 text-jade' : 'bg-ink/5 text-ink-soft'"
-          ><GameIcon :name="beastIcon(row.def.family)" :size="20" /></span>
           <div class="min-w-0 grow">
             <p class="flex flex-wrap items-center gap-1.5">
               <span class="truncate font-kai text-[13px]" :style="{ color: qualityDef(row.def.quality).color }">{{ row.def.name }}</span>
@@ -62,12 +57,7 @@
       </div>
       <p v-else class="card-ink px-4 py-6 text-center">
         <span class="empty-seal" aria-hidden="true">兽</span>
-        <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">尚无灵兽相伴</span>
-        <span class="mt-1 block text-[10px] leading-relaxed text-ink-faint">灵兽多在历练际遇中结缘</span>
-      </p>
-      <!-- 集齐路上的念想:还差几只、去哪找,一句带过 -->
-      <p v-if="petRows.length > 0 && petRows.length < PETS.length" class="mt-2.5 text-center text-[10px] text-ink-faint">
-        尚有 {{ PETS.length - petRows.length }} 只灵兽散落于历练际遇 —— 结缘即归此册
+        <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">暂无灵兽</span>
       </p>
     </template>
   </div>
@@ -82,14 +72,12 @@
   import { ACHIEVEMENTS } from '@/data/achievements'
   import { achievementDirection } from '@/ui/achievementHint'
   import { petDef, PETS } from '@/data/pets'
-  import { beastIcon } from '@/data/beastFamilies'
   import { PERSONALITY_NAMES, personalityDesc } from '@/core/petPersonality'
   import { petTraitText } from '@/ui/itemText'
   import { qualityDef } from '@/data/qualities'
   import { modsText } from '@/data/statNames'
   import SectionTitle from '@/components/common/SectionTitle.vue'
   import InkTabs from '@/components/common/InkTabs.vue'
-  import GameIcon from '@/components/common/GameIcon.vue'
   import ProgressBar from '@/components/common/ProgressBar.vue'
 
   const player = usePlayerStore()
@@ -126,11 +114,9 @@
     const def = TITLES.find(t => t.id === id)
     const wearing = player.titleId === id
     player.setTitle(wearing ? null : id)
-    // 佩戴/卸下都得有回响:顶栏只换了个名,名号还得当场说一句(与唤来灵兽对称)
-    if (def) ui.toast(wearing ? `收下「${def.name}」——名号藏锋` : `佩上「${def.name}」`, 'info')
+    if (def) ui.toast(wearing ? `卸下「${def.name}」` : `佩上「${def.name}」`, 'info')
   }
 
-  // ---- 灵兽 ----
   const petRows = computed(() =>
     quests.collections.pet
       .map(id => petDef(id))
@@ -151,10 +137,6 @@
     const def = petDef(id)
     const active = player.petId === id
     player.setPet(active ? null : id)
-    // 唤来要听得见回响:顶栏只换了个名,性格那句跟脚(它管历练怎么表现)得当场说一句
-    if (def) {
-      if (active) ui.toast(`「${def.name}」已暂别 —— 它在灵兽园里等你`, 'info')
-      else ui.toast(`唤来「${def.name}」——${personalityDesc(def.personality)}`, 'info')
-    }
+    if (def) ui.toast(active ? `「${def.name}」已暂别` : `唤来「${def.name}」`, 'info')
   }
 </script>

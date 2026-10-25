@@ -7,16 +7,15 @@
       class="mb-2 flex items-center justify-between gap-3 rounded border border-gold-ink/30 bg-gold-ink/5 px-3 py-2"
     >
       <div class="min-w-0">
-        <p class="text-[11px] text-ink">灵石 → 悟道 · 后期限量</p>
+        <p class="text-[11px] text-ink">灵石 → 悟道</p>
         <p class="mt-0.5 text-[10px] leading-relaxed text-ink-faint">
-          今日已兑 {{ player.wudaoExchangeToday }} / {{ WUDAO_EXCHANGE_PER_DAY }} 次 · 次耗
-          {{ formatGN(gn(WUDAO_EXCHANGE_PRICE_BASE)) }} 灵石得 {{ WUDAO_EXCHANGE_GAIN }} 点
+          每次 {{ formatGN(gn(WUDAO_EXCHANGE_PRICE_BASE)) }} 灵石得 {{ WUDAO_EXCHANGE_GAIN }} 点 · 今日
+          {{ player.wudaoExchangeToday }}/{{ WUDAO_EXCHANGE_PER_DAY }}
         </p>
       </div>
       <button
         class="chip-ink shrink-0 !text-[10px]"
         :disabled="!player.canExchangeWudao"
-        :title="player.canExchangeWudao ? undefined : exchangeBlockedText"
         @click="doExchange"
       >
         {{ player.canExchangeWudao ? '兑换' : exchangeBlockedText }}
@@ -82,16 +81,11 @@
         </button>
       </div>
 
-      <!--
-        逐门参悟池余量:藏经阁是「花残页赌一部没见过的」,只报全局余量时,
-        玩家分不清想补的那一门到底还剩几部 —— 与 comprehendGongfa 同一池条件。
-      -->
       <p class="px-1 text-[10px] leading-relaxed text-ink-faint">
-        <template v-if="poolLeft > 0">此门已习 {{ activeGongfaItems.length }} 部 · 参悟池尚余 {{ poolLeft }} 部</template>
-        <template v-else>此门此境已收全,待更高境界再探</template>
+        <template v-if="poolLeft > 0">此门尚余 {{ poolLeft }} 部</template>
+        <template v-else>此门此境已收全</template>
       </p>
 
-      <!-- 选中门类的已习得列表:单类一屏,栏内按品质降序 -->
       <div
         :id="`gongfa-cat-panel-${gongfaCat}`"
         class="card-ink max-h-80 divide-y divide-ink/6 overflow-y-auto px-1"
@@ -119,21 +113,14 @@
             {{ equipStateOf(def.id) || '未装配' }}
           </span>
         </button>
-        <p v-if="activeGongfaItems.length === 0" class="px-2.5 py-5 text-center text-[10px] text-ink-faint">
-          {{ learnedCount === 0 ? '尚无一部习得之法 —— 于下方藏经阁参悟,点亮道途' : '此门尚无习得功法 —— 参悟或将它转为此门,功法便在此现身。' }}
-        </p>
+        <p v-if="activeGongfaItems.length === 0" class="px-2.5 py-5 text-center text-[10px] text-ink-faint">暂无功法</p>
       </div>
 
-      <!--
-        参悟池还剩几部也报出来:藏经阁是「花残页赌一部没见过的」,
-        玩家看不到池子还有多大,就无从判断这一注值不值。
-        付不起残页时置灰并写差多少 —— 点下去只换来一句 toast,不如按前就说清。
-      -->
       <button class="btn-ghost w-full" :disabled="!canComprehend" @click="comprehendGongfa()">
-        于藏经阁参悟功法(残页×{{ COMPREHEND_PAGE_COST }})
+        参悟功法(残页×{{ COMPREHEND_PAGE_COST }})
         <span v-if="comprehendLeft === 0" class="ml-1 text-[10px] text-ink-faint">· {{ gongfaAllLearnedToast() }}</span>
-        <span v-else-if="pageShort > 0" class="ml-1 text-[10px] text-ink-faint">· 尚差 {{ pageShort }} 残页</span>
-        <span v-else class="ml-1 text-[10px] text-ink-faint">· 池中尚有 {{ comprehendLeft }} 部未参</span>
+        <span v-else-if="pageShort > 0" class="ml-1 text-[10px] text-ink-faint">· 尚差 {{ pageShort }} 页</span>
+        <span v-else class="ml-1 text-[10px] text-ink-faint">· 尚余 {{ comprehendLeft }} 部</span>
       </button>
     </div>
   </section>
@@ -200,9 +187,8 @@
   const activeGongfaItems = computed(
     () => gongfaCategories.value.find(g => g.type === gongfaCat.value)?.items ?? []
   )
-  const learnedCount = computed(() => gongfaCategories.value.reduce((n, g) => n + g.items.length, 0))
 
-  /** 门类小印章的配色(非激活态;与主修卡「主」字同一块语言) */
+  /** 门类印章配色(非激活态) */
   function gongfaCatSeal(type: GongfaType): string {
     return type === 'secret'
       ? 'bg-violet-ink/15 text-violet-ink'
@@ -229,10 +215,10 @@
       case 'ArrowRight': idx += 1; break
       case 'Home': idx = 0; break
       case 'End': idx = GONGFA_CAT_ORDER.length - 1; break
-      default: return // 其它键不干预
+      default: return
     }
-    idx = (idx + GONGFA_CAT_ORDER.length) % GONGFA_CAT_ORDER.length // 左右键到两端回绕
-    e.preventDefault() // 别让方向键顺带滚动页面
+    idx = (idx + GONGFA_CAT_ORDER.length) % GONGFA_CAT_ORDER.length
+    e.preventDefault() // 别让方向键滚动页面
     const target = GONGFA_CAT_ORDER[idx]
     if (target === undefined) return
     gongfaCat.value = target

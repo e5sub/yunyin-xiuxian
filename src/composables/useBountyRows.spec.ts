@@ -38,7 +38,7 @@ describe('悬赏板 · 不足时写出实际差量', () => {
   it('募矿与募丹分别报块数与枚数', () => {
     const res = useResourcesStore()
     res.ore = 7
-    expect(renderBounty(slot({ kind: 'ore', kindId: 'ore' })).shortText).toBe('尚差 23 块玄铁')
+    expect(renderBounty(slot({ kind: 'ore', kindId: 'ore' })).shortText).toBe('尚差 23 块')
 
     useInventoryStore().pills = { 'qi_pill': 1 }
     expect(

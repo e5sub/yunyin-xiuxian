@@ -28,10 +28,8 @@
     </div>
     <p v-else class="py-6 text-center">
       <span class="empty-seal" aria-hidden="true">空</span>
-      <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">此部位尚无藏品</span>
-      <span class="mt-1 block text-[10px] leading-relaxed text-ink-faint">去历练中寻些机缘吧</span>
+      <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">暂无藏品</span>
     </p>
-    <p class="mt-2 text-center text-[10px] text-ink-faint">点名称可查看详情与对比</p>
   </BaseModal>
 </template>
 

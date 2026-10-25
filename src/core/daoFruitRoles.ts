@@ -91,11 +91,11 @@ export const FRUIT_CONSUMERS: FruitConsumer[] = [
   {
     id: 'guide',
     name: '资源引导',
-    site: 'resourceGuidance.daoFruitDialog / endgame.daoFruitTutorialSeen',
+    site: 'resourceGuidance.daoFruitDialog / dismissFruitTutorial → endgame.daoFruitTutorialSeen',
     role: 'display',
     necessity: null,
     loop: 'none',
-    evidence: '首次获得时的说明弹窗与已读标记,不改变数值'
+    evidence: '熔炉凝果时的说明弹窗,玩家关掉才记已读;不改变数值'
   },
   {
     id: 'sim',

@@ -1,15 +1,8 @@
 <template>
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
-    <!-- 未至真仙 -->
     <div v-if="!unlocked" class="card-ink px-6 py-16 text-center">
       <p class="font-kai text-[22px] tracking-[0.4em] text-ink">器 魂</p>
-      <p class="mt-4 text-[12px] leading-relaxed text-ink-faint">
-        凡器未历天道,何来形意。
-        <br />
-        修至
-        <span class="text-cinnabar">真仙境</span>
-        ,方知此理。
-      </p>
+      <p class="mt-4 text-[12px] leading-relaxed text-ink-faint">需<span class="text-cinnabar">真仙境</span></p>
     </div>
 
     <template v-else>
@@ -23,19 +16,10 @@
         </div>
       </div>
 
-      <!-- 何谓器魂 -->
       <section>
-        <SectionTitle title="何谓器魂" hint="形销而意存,多一条路数" />
+        <SectionTitle title="何谓器魂" />
         <div class="card-ink mt-2 px-4 py-3">
-          <p class="text-[11px] leading-relaxed text-ink-faint">
-            凡人的法器到了天界,锋芒会被天道磨去几分,却并非抹平 —— 它记得这件法器是何路数,那份记忆便是
-            <span class="text-gold-ink">器魂</span>
-            。器魂**叠加**在你身上:攻防血这些基础属性照常作数,器魂是在其上多给一条路数。
-          </p>
-          <p class="mt-1.5 text-[11px] leading-relaxed text-ink-faint">
-            以凡器入炉,形销而意存,得器魂一缕。神魂只容 {{ SOUL_SLOTS }} 缕——取舍便是构筑。
-            <span class="text-ink-faint">至于堆叠本身,天道自有应对:构筑越厚,守关者的道之理解越深;境界未及此界者,还会被境界压制。</span>
-          </p>
+          <p class="text-[11px] leading-relaxed text-ink-faint"><span class="text-gold-ink">器魂</span>:叠加于基础属性之上</p>
         </div>
       </section>
 
@@ -76,7 +60,7 @@
           <span class="min-w-0 flex-1">
             <span class="block font-kai text-[14px] tracking-widest text-ink">散置形意</span>
             <span class="block truncate text-[10px] leading-relaxed text-ink-faint">
-              {{ idleSouls.length > 0 ? `${idleSouls.length} 缕待用 · 装配或散去` : '暂无闲置器魂' }}
+              {{ idleSouls.length > 0 ? `${idleSouls.length} 缕闲置` : '暂无闲置器魂' }}
             </span>
           </span>
           <span class="shrink-0 text-[12px] text-ink-faint">›</span>
@@ -90,7 +74,7 @@
           <span class="min-w-0 flex-1">
             <span class="block font-kai text-[14px] tracking-widest text-ink">凝炼台</span>
             <span class="block truncate text-[10px] leading-relaxed text-ink-faint">
-              {{ refinable.length > 0 ? `${refinable.length} 件可凝 · 道源 ${SOUL_REFINE_COST}/枚` : '行囊中无可凝之器' }}
+              {{ refinable.length > 0 ? `${refinable.length} 件可凝 · 道源 ${SOUL_REFINE_COST}/枚` : '暂无可凝法器' }}
             </span>
           </span>
           <span class="shrink-0 text-[12px] text-ink-faint">›</span>
@@ -120,11 +104,7 @@
           </div>
         </div>
       </div>
-      <p v-else class="px-4 py-6 text-center text-[11px] leading-relaxed text-ink-faint">
-        并无闲置形意。
-        <br />
-        <span class="text-[10px]">凝出的器魂若已尽数装配,此处便空着</span>
-      </p>
+      <p v-else class="px-4 py-6 text-center text-[11px] leading-relaxed text-ink-faint">暂无闲置器魂</p>
       <template #footer>
         <button class="btn-seal w-full" @click="idleOpen = false">收 起</button>
       </template>
@@ -165,11 +145,7 @@
           </div>
         </div>
       </div>
-      <p v-else class="px-4 py-6 text-center text-[11px] leading-relaxed text-ink-faint">
-        行囊中无可凝之器。
-        <br />
-        <span class="text-[10px]">已穿戴、已上锁、或无任何词条的法器都入不得炉</span>
-      </p>
+      <p v-else class="px-4 py-6 text-center text-[11px] leading-relaxed text-ink-faint">暂无可凝法器</p>
       <template #footer>
         <button class="btn-seal w-full" @click="forgeOpen = false">收 炉</button>
       </template>

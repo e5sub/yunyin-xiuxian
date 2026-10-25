@@ -1,11 +1,7 @@
 <template>
-  <!-- 悬赏板:商号收购订单,交货得灵石 -->
   <section class="space-y-4">
-    <p class="card-ink flex items-center justify-between px-3 py-2 text-[10px] text-ink-faint">
-      <span>商号悬赏收购,交货即结。价比摆摊售出更丰。</span>
-      <span class="tabular" :class="bountyRemaining <= 0 ? 'text-cinnabar' : ''">
-        {{ bountyRemaining <= 0 ? '正在换新单…' : `换新单还差 ${formatCountdown(bountyRemaining)}` }}
-      </span>
+    <p class="card-ink px-3 py-2 text-right text-[10px] tabular" :class="bountyRemaining <= 0 ? 'text-cinnabar' : 'text-ink-faint'">
+      {{ bountyRemaining <= 0 ? '刷新中…' : `刷新 ${formatCountdown(bountyRemaining)}` }}
     </p>
     <div class="space-y-2">
       <div v-for="b in bountyRows" :key="b.idx" class="card-ink p-3" :class="b.claimed ? 'opacity-50' : ''">
@@ -13,7 +9,7 @@
           <span class="grid h-9 w-9 shrink-0 place-items-center rounded-md font-kai text-[14px]" :class="b.tagCls">{{ b.tag }}</span>
           <div class="min-w-0 grow">
             <p class="truncate font-kai text-[13px] text-ink">{{ b.title }}</p>
-            <p class="text-[10px] text-ink-faint">{{ b.desc }}</p>
+            <p v-if="b.desc" class="text-[10px] text-ink-faint">{{ b.desc }}</p>
           </div>
         </div>
         <div class="mt-2 flex items-center justify-between">
@@ -32,10 +28,8 @@
           v-if="b.kind === 'equip' && openEquipOrder === b.idx"
           class="mt-2 max-h-52 space-y-1 overflow-y-auto rounded-md bg-paper-deep/60 p-1.5"
         >
-          <p class="px-2 pb-1 text-[10px] text-ink-faint">点选一件即交货,不可撤回;价随所交之品的品质。</p>
-          <p v-if="equipCandidates(b.idx).length === 0" class="px-2 py-3 text-center text-[11px] text-ink-faint">
-            行囊里没有够格的兵刃。
-          </p>
+          <p class="px-2 pb-1 text-[10px] text-ink-faint">点选即交 · 不可逆</p>
+          <p v-if="equipCandidates(b.idx).length === 0" class="px-2 py-3 text-center text-[11px] text-ink-faint">暂无够格兵刃</p>
           <button
             v-for="c in equipCandidates(b.idx)"
             :key="c.uid"
@@ -78,13 +72,13 @@
     const view = bountyRows.value.find(b => b.idx === idx)
     const result = bounty.claim(idx)
     const label = view ? `「${view.title}」` : ''
-    if (result === 'ok') ui.toast(`悬赏 ${label} 已交货,灵石入账`, 'success')
-    else if (result === 'insufficient') ui.toast(`${label}${view?.shortText ?? '存货不足'},凑齐再来`, 'warn')
-    else if (result === 'nobag') ui.toast('行囊里没有够格的兵刃', 'warn')
-    else if (result === 'expired') ui.toast('悬赏已换新单,请按新单再交', 'warn')
+    if (result === 'ok') ui.toast(`${label}已交货`, 'success')
+    else if (result === 'insufficient') ui.toast(`${label}${view?.shortText ?? '存货不足'}`, 'warn')
+    else if (result === 'nobag') ui.toast('暂无够格兵刃', 'warn')
+    else if (result === 'expired') ui.toast('悬赏已刷新', 'warn')
   }
 
-  /** 某一纸贡兵刃悬赏可交付的行囊兵刃(≥门槛阶),含各自实交收益;点选再交,不再自动取第一件 */
+  /** 贡兵刃单可交的行囊兵刃(≥门槛阶)及各自实交收益 */
   function equipCandidates(idx: number): Array<{ uid: string; name: string; color: string; qualityName: string; tier: number; stone: GNum; dust: number }> {
     const slot = bounty.orders.find(s => s.idx === idx)
     if (!slot || slot.kind !== 'equip') return []
@@ -110,12 +104,12 @@
     const result = bounty.claimEquip(b.idx, c.uid)
     if (result === 'ok') {
       openEquipOrder.value = null
-      ui.toast(`悬赏 「${b.title}」 已交货,灵石入账`, 'success')
-    } else if (result === 'insufficient') ui.toast('这件兵刃不够门槛', 'warn')
-    else if (result === 'missing') ui.toast('行囊里找不到这件兵刃', 'warn')
+      ui.toast(`「${b.title}」已交货`, 'success')
+    } else if (result === 'insufficient') ui.toast('阶位不足', 'warn')
+    else if (result === 'missing') ui.toast('未找到兵刃', 'warn')
     else if (result === 'expired') {
       openEquipOrder.value = null
-      ui.toast('悬赏已换新单,请按新单再交', 'warn')
+      ui.toast('悬赏已刷新', 'warn')
     }
   }
 

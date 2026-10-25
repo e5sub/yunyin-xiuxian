@@ -78,9 +78,9 @@ describe('转世不残留产出型镇压', () => {
     player.sanitize()
     expect(player.suppressedRegions).toEqual([far.id])
     expect(player.suppressQualified).toEqual([far.id])
-    // 但老档里「境界之下也不可能的」(minRealm 9+)还是清 —— 那批档分不出本世/旧世,取保守
+    // minRealm > 8 的仍清:老档分不出本世/旧世
     const impossibleId = REGIONS.filter(r => r.minRealm > 8)[0]!.id
-    player.suppressLife = -1 // 重新摆成老档哨兵:这条判据只在没有世号时走
+    player.suppressLife = -1 // 复位老档哨兵:境界判据只在无世号时走
     player.suppressedRegions = [far.id, impossibleId]
     player.suppressedSince = { [far.id]: 1, [impossibleId]: 2 }
     player.sanitize()
@@ -112,19 +112,15 @@ describe('转世不残留产出型镇压', () => {
   })
 
   /**
-   * 历练页的总纲从前写着「资格永久」,而 rebirth() 连 `suppressQualified` 一并清空:
-   * 文案承诺的是跨世的那枚令,实际给的是本世内不再失效 —— 转世一次就当场分叉。
-   * 这不只是措辞问题:玩家照这句话会以为新世炼气也能一键把旧世远境切回收益,
-   * 而那正是数值爆炸的入口,代码刻意堵死了。
-   *
-   * 故障注入:把文案改回「资格永久,守满…」→ 本条红。
+   * rebirth() 清空 suppressQualified,历练页文案须写资格限本世。
+   * 故障注入:把文案改回「资格永久,守满…」,本条红。
    */
-  it('历练页不再承诺「资格永久」,并写明转世会散去', () => {
+  it('历练页不再承诺「资格永久」,并写明资格限本世', () => {
     const view = readFileSync(resolve(__dirname, '../views/AdventureView.vue'), 'utf8')
-    expect(view, '资格只在本世内永久,必须点明转世').toContain('资格本世永久、转世随皮囊散去')
+    expect(view, '资格只在本世内有效,必须点明限于本世').toContain('资格限本世')
     expect(view, '不许再对玩家承诺跨世的「资格永久」').not.toContain('资格永久,守满')
 
-    // 正对照:行为确实是「本世保留、转世清空」,文案不是凭空的
+    // 正对照:本世保留、转世清空
     const player = usePlayerStore()
     player.markSuppressQualified('qingyun')
     player.suppressRegion('qingyun')

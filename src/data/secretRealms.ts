@@ -13,20 +13,26 @@ export const SECRET_MAX_LOSSES = 2
 export interface SecretRule {
   /** 给玩家看的说法 */
   text: string
+  /** 旧版说法:旧会话存的是它,读档归一到 text */
+  legacyTexts?: readonly string[]
   /** 真正并入战斗的规则 */
   rules: CombatRules
 }
 
-/** 随机规则池 —— 每条都能落到既有的 CombatRules 上 */
 export const SECRET_RULES: SecretRule[] = [
   { text: '治疗减半', rules: { healMult: 0.5 } },
-  { text: '敌方多一段追击', rules: { enemyExtraMods: { counterRate: 0.15 } } },
+  { text: '敌方反击概率 +15%', legacyTexts: ['敌方多一段追击'], rules: { enemyExtraMods: { counterRate: 0.15 } } },
   { text: '回合上限 20', rules: { maxRounds: 20 } },
   { text: '妖兽狂化(攻击 +20%)', rules: { enemyAtkMult: 1.2 } },
   { text: '不得使用护盾', rules: { shieldCapRatio: 0 } },
   { text: '妖血更厚(气血 +25%)', rules: { enemyHpMult: 1.25 } },
   { text: '此地凶险(敌方攻防各 +10%)', rules: { enemyAtkMult: 1.1, enemyExtraMods: { defensePct: 0.1 } } }
 ]
+
+/** 按说法认规则,旧说法也认 */
+export function secretRuleByText(text: string): SecretRule | undefined {
+  return SECRET_RULES.find(r => r.text === text || (r.legacyTexts?.includes(text) ?? false))
+}
 
 export interface SecretRealmDef {
   id: string
@@ -77,7 +83,7 @@ export const SECRET_REALMS: SecretRealmDef[] = [
     id: 'sr_kuye',
     gate: 'mortal',
     name: '苦海渡舟',
-    desc: '一叶渡苦海。回气极慢,但彼岸的东西格外丰厚。',
+    desc: '一叶渡苦海。回气极慢,但彼岸所得格外丰厚。',
     minMajor: 4,
     cost: { stone: 80 },
     rules: {},
@@ -100,7 +106,7 @@ export const SECRET_REALMS: SecretRealmDef[] = [
     id: 'sr_guixu',
     gate: 'celestial',
     name: '归墟之眼',
-    desc: '万流归墟,视之如渊。此地最凶,也最肥 —— 入者未必能再睁眼。',
+    desc: '万流归墟,视之如渊。此地最凶,所得也最丰。',
     minMajor: 9,
     cost: { daoSource: 50 },
     rules: { playerAtkMult: 1.25, enemyHpMult: 1.2, maxRounds: 25 },

@@ -60,13 +60,11 @@ export function getCurrentEnlightenment(): EnlightenmentEvent | null {
 export function mayTriggerEnlightenment(): void {
   const player = usePlayerStore()
   const now = gameNow()
-  if (now - player.enlightenmentAt < 300000) return // 5分钟冷却
-  // EARLY_EVENT_DECAY:顿悟是"前期玩法",境界越高存在感越低,真仙后完全退出
+  if (now - player.enlightenmentAt < 300000) return
   const presence = earlyEventDecay('enlightenment', player.major)
   if (presence <= 0) return
-  if (Math.random() > 0.08 * presence) return // 8% × 当前境界存在感
+  if (Math.random() > 0.08 * presence) return
 
-  // 随机选3个不同类型的选项
   const pool = [...ENLIGHTENMENT_OPTIONS]
   const options: EnlightenmentOption[] = []
   const usedTypes = new Set<string>()
@@ -85,7 +83,7 @@ export function mayTriggerEnlightenment(): void {
     id: `enlighten_${now}`,
     options,
     triggeredAt: now,
-    expiresAt: now + 60000 // 60秒窗口
+    expiresAt: now + 60000
   }
   player.setEnlightenmentAt(now)
   telemetry().record('enlightenment', 'modal', '悟道顿悟浮现')
@@ -104,11 +102,10 @@ export function chooseEnlightenment(optionIndex: number): void {
   const ui = useUiStore()
   const now = gameNow()
 
-  // 即时奖励(如灵机一动直接给悟道点)或挂 buff;buff 未注册时 addBuff 会静默……
-  // 但那不再是"选项该有的样子"——守卫在这里兜住,让漏注册显式为错误而不是静默空转
+  // buff 未注册时 addBuff 静默空转
   if (opt.reward) {
     useResourcesStore().addSmall('wudao', opt.reward.value)
-    ui.toast(`灵机一动,悟道点 +${opt.reward.value}`, 'success')
+    ui.toast(`悟道点 +${opt.reward.value}`, 'success')
   } else if (opt.buffId) {
     cult.addBuff(opt.buffId, now)
     ui.toast(enlightenmentOptionText(opt), 'success')
@@ -126,17 +123,15 @@ export function dismissEnlightenment(): void {
 
 /**
  * 开始闭关(5分钟,修炼+150%,禁止历练)。
- *
- * 真相源是持久化的 retreat buff 本身(时长由 buffs.ts 的 durationSec=300 承载):
- * 模块计时器刷新即失,改成 buff 后闭关状态与剩余秒数在重载/离线后依旧可信。
- * 历练途中不可闭关 —— 与 startExploration 的闭关禁令互斥,避免 +150% 叠加在历练上
+ * 真相源是持久化的 retreat buff(时长由 buffs.ts 的 durationSec=300 承载);模块计时器刷新即失。
+ * 与 startExploration 的闭关禁令互斥:历练途中不可闭关。
  */
 export function startRetreat(): boolean {
-  if (isRetreating()) return false // 已在闭关(幂等,不刷新时长)
+  if (isRetreating()) return false // 幂等,不刷新时长
 
   const adventure = useAdventureStore()
   if (adventure.session) {
-    useUiStore().toast('你正在历练途中,先了结眼下这一程', 'warn')
+    useUiStore().toast('历练在途', 'warn')
     return false
   }
 
@@ -158,11 +153,11 @@ export function getRetreatRemainingSec(at: number = gameNow()): number {
   return Math.max(0, Math.ceil((inst.endsAt - at) / 1000))
 }
 
-/** 突破准备(静坐/服丹)——数值与药价全部取自 BREAKTHROUGH_PREP_OPTIONS,逻辑不持有第二份魔法数 */
+/** 突破准备(静坐/服丹);数值与药价全部取自 BREAKTHROUGH_PREP_OPTIONS */
 export function prepareBreakthrough(optionId: string): boolean {
   const opt = BREAKTHROUGH_PREP_OPTIONS.find(o => o.id === optionId)
-  if (!opt || opt.bonusRate <= 0) return false // direct/未知项 = 不是准备动作,不产生加成
-  // 准备是一次性的:静坐未完或加成已就绪时再点另一项,只会白扣灵石并覆盖现有加成
+  if (!opt || opt.bonusRate <= 0) return false // direct/未知项不是准备动作
+  // 一次性:静坐未完或加成已就绪时再点,会白扣灵石并覆盖现有加成
   if (usePlayerStore().breakthroughPrep !== null) return false
 
   const resources = useResourcesStore()
@@ -281,14 +276,13 @@ export function recordWinStreakBatch(wins: number, losses: number): StreakBatchR
 
 /** 触发洞府巡游(每日一次) */
 export function mayTriggerCaveEvent(): CaveEvent | null {
-  if (caveEvent) return caveEvent // 已有未处理事件
+  if (caveEvent) return caveEvent
 
   const player = usePlayerStore()
   const today = todayLocalNum()
-  if (player.lastCaveEventDay === today) return null // 今日已触发
+  if (player.lastCaveEventDay === today) return null
 
-  // EARLY_EVENT_DECAY:巡游是"前期活跃",元婴后让位给更重要的系统(存在感归零完全退出)。
-  // 掷签失败即视为今日让位,否则 30s 轮询会把"今日未出"变成反复重掷,存在感被稀释
+  // 掷签失败也记今日,否则 30s 轮询会反复重掷
   const presence = earlyEventDecay('cavePatrol', player.major)
   if (presence <= 0) return null
   if (Math.random() > presence) {

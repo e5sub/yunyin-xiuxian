@@ -105,13 +105,13 @@ export function daoNarrative(daoId: DaoPathId | null, marks: DaoMark[], currentL
 
   switch (daoId) {
     case 'sword':
-      return builds.size > 2 ? `这一世你已换过 ${builds.size} 条路数——你的剑心并不执着于一途。` : '一剑一世,道心如铁。'
+      return builds.size > 2 ? `这一世你已换过 ${builds.size} 条路数,剑心不拘一途。` : '一剑一世,道心如铁。'
     case 'longevity':
-      return canPacts.length >= 2 ? `你曾 ${canPacts.length} 次以残躯血契求胜——所谓长生,似乎并非你唯一所求。` : '你惜身如玉,确是长生之相。'
+      return canPacts.length >= 2 ? `你曾 ${canPacts.length} 次以残躯血契求胜,所求不止长生。` : '你惜身如玉,确是长生之相。'
     case 'slaughter':
       return heavyPacts.length >= 2 ? `你曾 ${heavyPacts.length} 次主动接下天道重注,杀伐之名不虚。` : '此世杀伐尚温,刀锋未尽出鞘。'
     case 'fate':
-      return pacted.length === 0 ? '你很少凭未知下注——天机在手,何必赌运。' : '窥天机而行险,亦是一种道。'
+      return pacted.length === 0 ? '天机在手,你从不凭未知下注。' : '窥得天机,仍去行险。'
   }
   return null
 }

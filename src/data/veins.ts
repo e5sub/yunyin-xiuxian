@@ -17,28 +17,28 @@ export const VEINS: VeinDef[] = [
     id: 'gather',
     name: '青木灵脉',
     seal: '聚',
-    desc: '灵气汇流,修行事半功倍',
+    desc: '修炼加速',
     perPoint: { cultivationSpeed: 0.004 }
   },
   {
     id: 'craft',
     name: '赤炎灵脉',
     seal: '炼',
-    desc: '地火淬器,强化耗材更省',
+    desc: '强化耗材更省',
     perPoint: { forgeDiscount: 0.003 }
   },
   {
     id: 'alchemy',
     name: '玉髓灵脉',
     seal: '丹',
-    desc: '药气氤氲,炉中常出双丹',
+    desc: '炉中常出双丹',
     perPoint: { alchemyYield: 0.005 }
   },
   {
     id: 'insight',
     name: '寒冥灵脉',
     seal: '悟',
-    desc: '静水映月,参悟功法所费更少',
+    desc: '参悟功法所费更少',
     perPoint: {}
   }
 ]

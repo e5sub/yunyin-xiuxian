@@ -154,7 +154,7 @@ function checkMainQuest(): void {
     const current = MAIN_QUESTS[quests.mainIdx]
     if (!current || !evalCond(current.cond)) break
     const lines = grantReward(current.reward, true)
-    ui.toast(withReward(`任务完成「${current.name}」`, lines), 'success')
+    ui.toast(withReward(`主线已成「${current.name}」`, lines), 'success')
     quests.advanceMain()
   }
 }
@@ -240,18 +240,15 @@ export function retreatGainText(): string {
   const perSec = retreatGainPerSec()
   if (!def || !(perSec > 0)) return ''
   const total = perSec * def.durationSec
-  return total > 0 ? `此行约多得修为 ${formatGN(total)}` : ''
+  return total > 0 ? `约多得修为 ${formatGN(total)}` : ''
 }
 
-/**
- * 闭关已过 elapsed 秒「已多得/多得的」修为 —— 与预览行同一份每多得速率,
- * 闭关中的活数(elapsed 由调用方按 buff 已走时长给,不在此手抄 300)。
- */
+/** 闭关中「已多得」修为的活数,与预览同一速率;elapsedSec 由调用方按 buff 已走时长给 */
 export function retreatGainedText(elapsedSec: number): string {
   const perSec = retreatGainPerSec()
   if (!(perSec > 0) || !(elapsedSec > 0)) return ''
   const gained = perSec * elapsedSec
-  return gained > 0 ? `此行已多得修为 ${formatGN(gained)}` : ''
+  return gained > 0 ? `已多得修为 ${formatGN(gained)}` : ''
 }
 
 /**

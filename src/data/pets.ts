@@ -26,7 +26,7 @@ export const PETS: PetDef[] = [
   {
     id: 'pet_xuegui',
     name: '雪背小龟',
-    desc: '背驮微型山岳,稳如泰山',
+    desc: '背驮一座小小山岳,步步极稳',
     family: 'chelonian',
     quality: 'excellent',
     mods: { defensePct: 0.08, maxHpPct: 0.05 },
@@ -99,7 +99,7 @@ export const PETS: PetDef[] = [
   {
     id: 'pet_qilin',
     name: '麒麟',
-    desc: '仁兽现世,祥瑞所至,福泽自生',
+    desc: '仁兽现世,福泽自生',
     family: 'dragon',
     quality: 'immortal',
     mods: { luck: 0.15, dropRate: 0.12, defensePct: 0.12 },

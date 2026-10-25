@@ -1,28 +1,22 @@
 <template>
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
-    <!-- 门面:灵石余额 + 左侧货架倒计时(只对「购」一栏有效) -->
     <div class="card-ink flex items-center justify-between px-4 py-3">
-      <div>
-        <p class="font-kai text-[14px] tracking-widest text-ink">坊市</p>
-        <p class="text-[10px] text-ink-faint">灵石换机缘 · 时换时新</p>
-      </div>
+      <p class="font-kai text-[14px] tracking-widest text-ink">坊市</p>
       <div class="text-right">
         <p class="flex items-center justify-end gap-1 tabular text-[13px] text-gold-ink">
           <GameIcon name="gem" :size="14" />
           {{ formatGN(resources.spiritStone) }}
         </p>
         <p v-if="tab === 'buy'" class="mt-0.5 text-[10px] tabular" :class="remainingSec <= 0 ? 'text-cinnabar' : 'text-ink-faint'">
-          {{ remainingSec <= 0 ? '新货上架中…' : `刷新还差 ${formatCountdown(remainingSec)}` }}
+          {{ remainingSec <= 0 ? '刷新中…' : `刷新 ${formatCountdown(remainingSec)}` }}
         </p>
       </div>
     </div>
 
     <InkTabs v-model="tab" :tabs="tabs" />
 
-    <!-- 购入货架:深链续草的高亮与滚动随货架段本体 -->
-    <MarketShelfSection v-if="tab === 'buy'" />
+    <MarketShelfSection v-if="tab === 'buy'" v-model:focused-stock-at="herbFocusedAt" />
 
-    <!-- 售出:寄卖计时与逐品定价随 MarketSellSection 本体 -->
     <MarketSellSection v-else-if="tab === 'sell'" />
 
     <BountyBoardSection v-else />
@@ -53,17 +47,18 @@
   const { bountyRows } = useBountyRows()
 
   const tab = ref<'buy' | 'sell' | 'bounty'>('buy')
+  /** 续草落点所在那一架:货架段切签即卸载,记在宿主 */
+  const herbFocusedAt = ref<number | null>(null)
   const now = ref(Date.now())
   let timer: ReturnType<typeof setInterval> | undefined
 
   const remainingSec = computed(() => marketRemainingSec(market.stockedAt, now.value))
-  /** 收割已售出的寄卖,报一声卖了什么 */
   function reapConsign(): void {
     const sold = market.collectConsign(now.value)
-    for (const name of sold) ui.toast(`寄卖「${name}」已售,灵石入账`, 'success')
+    for (const name of sold) ui.toast(`寄卖「${name}」已售出`, 'success')
   }
 
-  // 逛「购/售」时有一单可交,「悬赏」签就该亮圆点(与 BountyBoardSection 的 ready 同源)
+  // 悬赏签圆点:与 BountyBoardSection 的 ready 同源
   const tabs = computed<readonly { id: 'buy' | 'sell' | 'bounty'; label: string; dot?: boolean }[]>(() => {
     const ready = bountyRows.value.some(b => !b.claimed && b.ready)
     return [

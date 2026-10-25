@@ -1,22 +1,5 @@
-/* eslint-disable no-console -- 净念一例是"多少回合被救回来"的读数,打印出来便于复核 */
-/**
- * 法宝效果的三个承诺 —— 词汇表不虚设,震慑真打断,净念真能挣脱
- *
- * 一、**声明即承诺**:ArtifactEffect 联合里写下的每种效果,都得有法宝在用。
- *     高界法宝此前一律是 damage/heal/shield/weaken 四种的数值放大(32 件里没有
- *     一件是别的手艺),于是「更高境界的法宝」只是打得更疼 —— 与「纯数值阶梯」
- *     是同一个毛病。本轮新增 { type: 'stun' },这条判据守着它别成为一纸空文。
- *
- * 二、**效果要真的发生**:震慑不是文案 —— 它在敌人该出手时把那一手掐掉。
- *     故这里真打一场(仙琴每 4 回合摄神),数敌人的「被打断回合」。
- *
- * 三、**防身型效果也要真的发生**:{ type: 'purge' } 是第一条「我扛得住你的阴招」。
- *     此前玩家对震慑毫无还手之力:十三种敌人会摄魂,中了白丢一回合,而战后分析
- *     只会说「N 个回合被震慑打断,节奏尽失」。故这里放一只必摄魂的敌人,
- *     同一批种子跑两遍(带/不带无相念珠),数玩家自己被跳过的回合数。
- *
- * 故障注入:把仙琴的 stun 换回 weaken、把 tryStun 的挣脱判定掏空,对应判据即红。
- */
+/* eslint-disable no-console -- 净念读数供复核 */
+/** 故障注入:把仙琴的 stun 换回 weaken、把 tryStun 的挣脱判定掏空,对应判据即红。 */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { readFileSync } from 'node:fs'
@@ -319,19 +302,13 @@ describe('法宝说明 · 数字随品阶与祭炼等级走', () => {
   })
 })
 
-/**
- * 祭炼下一重的账 —— 「值不值」要在按下之前答得出来。
- *
- * 炼化按钮原先只报代价(悟道点 × 灵石),收益留给玩家自己按 ×1.08 心算。
- * 这里把下一重逐项算好(被动、神通主体、吸命回补),顶上封顶的标出来 ——
- * 判据是**逐项对得上独立复算**,且不会出现「越炼越弱」或「到顶还劝你炼」。
- */
+/** 下一重逐项(被动、神通主体、吸命回补)须对得上独立复算;不越炼越弱;顶上封顶的标出来 */
 describe('法宝说明 · 下一重给多少', () => {
-  const sutra = artifactDef('af_shenbian')! // 破甲 30%,有 50% 上限(玄品:零重就已经在顶)
-  const ling = artifactDef('af_shehun')! // 削弱 30%,有 50% 上限(凡品:零重 30%,炼得上去)
-  const nianzhu = artifactDef('af_wuxiangzhu')! // 净念 70%,有 90% 上限
+  const sutra = artifactDef('af_shenbian')! // 破甲 30%,上限 50%(玄品:零重已在顶)
+  const ling = artifactDef('af_shehun')! // 削弱 30%,上限 50%(凡品:零重未到顶)
+  const nianzhu = artifactDef('af_wuxiangzhu')! // 净念 70%,上限 90%
   const qin = artifactDef('af_xianqin')! // 震慑:没有数值
-  const drum = artifactDef('af_yunshengu')! // 吸命:伤害 + 回补,回补有 100% 上限
+  const drum = artifactDef('af_yunshengu')! // 吸命:伤害 + 回补,回补上限 100%
 
   it('已至满重就没有「下一重」这一说', () => {
     expect(artifactNextLevelGain(qin, 9)).toBeNull()
@@ -367,10 +344,9 @@ describe('法宝说明 · 下一重给多少', () => {
     expect(n8.active!.capped).toBe(true)
   })
 
-  it('震慑这类没有数值的神通,如实说「不随祭炼变」', () => {
+  it('震慑这类没有数值的神通,如实说「神通不变」', () => {
     const gain = artifactNextLevelGain(qin, 3)!
     expect(gain.active).toBeNull()
-    // 但它仍有被动可涨 —— 否则这件法宝炼了等于没炼,那是另一个 bug
     expect(gain.passive.length).toBeGreaterThan(0)
   })
 

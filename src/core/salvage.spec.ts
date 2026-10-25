@@ -155,17 +155,17 @@ describe('分解返还 · 强化投入的八成随件退回', () => {
     for (const t of [...ui.toasts]) ui.dismissToast(t.id)
     const targets = [mk('h1', 'fine', 2, 6), mk('h2', 'fine', 0, 6), mk('h3', 'fine', 4, 6)]
     for (const it of targets) inventory.addEquipment(it)
-    inventory.addEquipment(mk('keep', 'heaven', 3, 6)) // 没勾选的档,动不得
+    inventory.addEquipment(mk('keep', 'heaven', 3, 6)) // 没勾选的档
     const want = targets.reduce((sum, it) => sum + salvageOf(it).dust, 0)
     const dustBefore = resources.dust
     expect(decomposeByRanks([qualityDef('fine').rank])).toBe(3)
     expect(resources.dust - dustBefore).toBe(want)
     expect(inventory.findItem('keep')).toBeDefined()
-    // 逐件弹提示只会互相顶掉(提示窗只留 5 条),批量只报一条总账
-    expect(ui.toasts.filter(t => /此器化尘/.test(t.text))).toHaveLength(0)
-    const ledger = ui.toasts.find(t => /炉中化去 3 件,得器灵尘×\d+/.test(t.text))
+    // 批量只报一条总账(提示窗只留 5 条)
+    expect(ui.toasts.filter(t => /^已化尘 · /.test(t.text))).toHaveLength(0)
+    const ledger = ui.toasts.find(t => /已化尘 3 件 · 得器灵尘×\d+/.test(t.text))
     expect(ledger).toBeDefined()
-    // 总账报了实物所得,按正结果播报(success);写 info 时配色与提示音都停在「中性」档
+    // 总账按正结果播报(success)
     expect(ledger?.kind).toBe('success')
   })
 })

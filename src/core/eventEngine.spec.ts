@@ -1,25 +1,20 @@
-/**
- * 事件结算 · 灵石代价守恒
- *
- * 两条账目规则:
- *   O 选项声明了灵石门槛(cond),结算就真扣 —— 门槛不是免费取货券,
- *     凝本源为一丹「300 灵石」的代价必须真的从余额里扣掉;
- *   X 入不敷出的支出不许把整份余额清零 —— 负灵石支出付不起时就该拒绝,
- *     而不是「把余额全数奉上」(spendStone 传余额拷贝的写法会让 gte 恒真、
- *     subClamp 归零,一次越支 = 清零)。
- */
+/** 事件结算灵石守恒:声明的灵石门槛(cond)真扣;付不起的支出被拒,不清零余额 */
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import type { EventDef } from '@/types'
+import type { EventDef, EventEffect } from '@/types'
 import { add, gn, gte, mulN, sub, toNum } from '@/utils/gnum'
 import { useResourcesStore } from '@/stores/resources'
 import { useInventoryStore } from '@/stores/inventory'
 import { usePlayerStore } from '@/stores/player'
 import { useAdventureStore } from '@/stores/adventure'
+import { useLoreStore } from '@/stores/lore'
+import { useQuestsStore } from '@/stores/quests'
+import { MATERIALS, type MaterialBucket, type MaterialDef } from '@/data/materials'
 import { eventDef } from '@/data/events'
 import { rng } from '@/utils/random'
 import { autoResolveEvent, resolveEventChoice } from './eventEngine'
 import { stoneByTier } from './formulas'
+import { rollFieldMaterial } from './loreService'
 
 describe('事件结算 · 灵石代价守恒', () => {
   beforeEach(() => {
@@ -49,7 +44,7 @@ describe('事件结算 · 灵石代价守恒', () => {
     const inventory = useInventoryStore()
     resources.addStone(gn(1_000_000_000))
     const def = eventDef('ev_hongmeng_benyuan')!
-    const tier = 20 // 该事件 minRealm=20,取真实可达档位
+    const tier = 20 // 该事件 minRealm=20
     const before = resources.spiritStone
     resolveEventChoice(def, 1, tier) // 「凝本源为一丹」
     const cost = stoneByTier(tier, 300)
@@ -81,7 +76,7 @@ describe('事件结算 · 灵石代价守恒', () => {
 })
 
 describe('际遇 haul(事件所得并入会话账目)', () => {
-  it('历练途中事件修为并入 session.expGain(总结「得修为」不再漏计际遇)', () => {
+  it('历练途中事件修为并入 session.expGain(总结「修为 +」不再漏计际遇)', () => {
     const adventure = useAdventureStore()
     const player = usePlayerStore()
     adventure.setSession({
@@ -113,7 +108,7 @@ describe('自动结算不替玩家祭法宝', () => {
   it('autoResolveEvent 掉出法宝时只入囊,不占空着的随身位', () => {
     const inventory = useInventoryStore()
     const player = usePlayerStore()
-    player.major = 5 // 法宝位已开,而随身那一格还空着 —— 自动祭上就是在这条缝里发生的
+    player.major = 5 // 法宝位已开
     expect(inventory.equippedArtifacts, '前置:随身那一格得是空的').toEqual([])
 
     const wine = eventDef('ev_wine_immortal')!
@@ -169,5 +164,109 @@ describe('自动结算不替玩家祭法宝', () => {
     }
     expect(run(true), '玩家不在场:空手也不该被他手祭上').toEqual([])
     expect(run(false), '亲手在场:空手照旧自动祭上').toHaveLength(1)
+  })
+})
+
+/**
+ * 事件发灵草/玄铁、灵兽撞重折草都计照面,每次各 1 回;数量照旧入账。
+ * 故障注入:删掉 applyEffect 里任一处 harvestMaterials,对应用例红;任一处层级传错,层级那条红。
+ */
+describe('事件所得灵材计照面', () => {
+  const TIER = 6
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  function seenIn(bucket: MaterialBucket): number {
+    const lore = useLoreStore()
+    return MATERIALS.filter(m => m.bucket === bucket).reduce((n, m) => n + lore.seenOf(m.id), 0)
+  }
+
+  function eventOf(...effects: EventEffect[]): EventDef {
+    return {
+      id: 'ev_test_lore',
+      title: '',
+      text: '',
+      tags: ['general'],
+      weight: 1,
+      choices: [{ label: '取', outcomes: [{ weight: 1, text: '得', effects }] }]
+    }
+  }
+
+  /** 新 pinia 里结算一件事件,返回灵草/玄铁增量与两类照面数 */
+  function settle(def: EventDef): { herb: number; ore: number; seenHerb: number; seenOre: number } {
+    setActivePinia(createPinia())
+    const resources = useResourcesStore()
+    const herb0 = resources.herb
+    const ore0 = resources.ore
+    resolveEventChoice(def, 0, TIER)
+    return { herb: resources.herb - herb0, ore: resources.ore - ore0, seenHerb: seenIn('herb'), seenOre: seenIn('ore') }
+  }
+
+  it('发灵草、玄铁各计 1 回照面,数量照旧;残页等不计', () => {
+    const base = settle(
+      eventOf({ type: 'material', id: 'page', amount: 5 }, { type: 'material', id: 'dust', amount: 5 }, { type: 'material', id: 'wudao', amount: 5 })
+    )
+    const got = settle(eventOf({ type: 'material', id: 'herb', amount: 5 }, { type: 'material', id: 'ore', amount: 5 }))
+    expect(base.seenHerb + base.seenOre, '残页、器灵尘、悟道点不是灵材').toBe(0)
+    expect(got.seenHerb, '灵草计照面').toBe(1)
+    expect(got.seenOre, '玄铁计照面').toBe(1)
+    expect(got.herb - base.herb, '灵草数照旧').toBe(5)
+    expect(got.ore - base.ore, '玄铁数照旧').toBe(5)
+  })
+
+  it('自动结算(离线 / 勿扰 / 超时)同一出口,照样计照面', () => {
+    const def = eventDef('ev_herb_garden')!
+    const outcomes = def.choices.find(c => c.isDefault)!.outcomes
+    expect(outcomes, '前置:默认选项只一种结局').toHaveLength(1)
+    const herb = outcomes[0]!.effects.find(
+      (e): e is Extract<EventEffect, { type: 'material' }> => e.type === 'material' && e.id === 'herb'
+    )
+    expect(herb, '前置:默认结局发灵草').toBeDefined()
+    const resources = useResourcesStore()
+    const herb0 = resources.herb
+    autoResolveEvent(def.id, TIER)
+    expect(resources.herb - herb0, '灵草数照旧').toBe(herb!.amount)
+    expect(seenIn('herb')).toBe(1)
+    expect(seenIn('ore')).toBe(0)
+  })
+
+  it('灵兽撞重折作灵草,同样计 1 回照面', () => {
+    useQuestsStore().collect('pet', 'pet_qingyu')
+    const resources = useResourcesStore()
+    const herb0 = resources.herb
+    const res = resolveEventChoice(eventOf({ type: 'pet', id: 'pet_qingyu' }), 0, TIER)
+    expect(res.lines.some(l => l.includes('灵草 +10')), '前置:撞重折草').toBe(true)
+    expect(resources.herb - herb0, '灵草数照旧').toBe(10)
+    expect(seenIn('herb')).toBe(1)
+  })
+
+  it('照面的是该区域层级的灵材:发草、发铁、折草都按事件层级抽', () => {
+    // 灵材池一律取最末(最高阶)那味,其余照常掷:照面落在哪味,就钉住了按哪个层级抽
+    const weighted = rng.weighted.bind(rng)
+    const spy = vi
+      .spyOn(rng, 'weighted')
+      .mockImplementation((items, weightOf) =>
+        items.length > 0 && items.every(x => MATERIALS.includes(x as MaterialDef)) ? items[items.length - 1]! : weighted(items, weightOf)
+      )
+    try {
+      const herbTop = rollFieldMaterial(TIER, 'herb')!
+      const oreTop = rollFieldMaterial(TIER, 'ore')!
+      expect(herbTop.id, '前置:层级不同,抽中的不同').not.toBe(rollFieldMaterial(1, 'herb')!.id)
+      expect(oreTop.id, '前置:层级不同,抽中的不同').not.toBe(rollFieldMaterial(1, 'ore')!.id)
+      useQuestsStore().collect('pet', 'pet_qingyu')
+      resolveEventChoice(
+        eventOf({ type: 'material', id: 'herb', amount: 5 }, { type: 'material', id: 'ore', amount: 5 }, { type: 'pet', id: 'pet_qingyu' }),
+        0,
+        TIER
+      )
+      const lore = useLoreStore()
+      expect(lore.seenOf(herbTop.id), '发草、折草各 1 回').toBe(2)
+      expect(lore.seenOf(oreTop.id)).toBe(1)
+      expect(seenIn('herb') + seenIn('ore'), '别的灵材不计').toBe(3)
+    } finally {
+      spy.mockRestore()
+    }
   })
 })

@@ -19,13 +19,13 @@
           <p class="text-[10px] text-ink-faint">
             连升至 <span class="font-kai text-[12px] text-cinnabar">+{{ inst.level + batchPlan.levels }}</span> 级
           </p>
-          <p class="mt-0.5 text-[9px] text-ink-faint tabular">共 器灵尘×{{ batchPlan.dust }} · 灵石 {{ formatGN(batchPlan.stone) }}</p>
+          <p class="mt-0.5 text-[9px] text-ink-faint tabular">共耗 器灵尘×{{ batchPlan.dust }} · 灵石 {{ formatGN(batchPlan.stone) }}</p>
         </div>
         <button class="btn-ghost shrink-0 !px-3 !py-2 !text-[11px]" @click="batchConfirm = inst.uid">连 升</button>
       </template>
       <template v-else>
         <p class="min-w-[5rem] flex-1 text-[10px] leading-relaxed text-cinnabar">
-          一步连升 {{ batchPlan.levels }} 级,花上面那笔总账 —— 仍要?
+          连升 {{ batchPlan.levels }} 级 · 器灵尘×{{ batchPlan.dust }} · 灵石 {{ formatGN(batchPlan.stone) }}
         </p>
         <button class="btn-ghost shrink-0 !px-2.5 !py-2 !text-[11px]" @click="batchConfirm = null">再想想</button>
         <button class="btn-seal shrink-0 !px-2.5 !py-2 !text-[11px]" @click="runBatchUpgrade">连 升</button>

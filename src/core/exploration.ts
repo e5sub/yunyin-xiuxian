@@ -4,6 +4,7 @@ import { rng } from '@/utils/random'
 import { add, gnZero } from '@/utils/gnum'
 import { formatGN } from '@/utils/format'
 import { sessionRecordText } from '@/ui/adventureText'
+import { enemyLoreView } from '@/ui/enemyLore'
 import { enemyDef } from '@/data/enemies'
 import { beastIcon } from '@/data/beastFamilies'
 import { regionDef, REGIONS } from '@/data/regions'
@@ -70,40 +71,31 @@ export function startExploration(regionId: string, mode: ExploreMode): boolean {
   const ui = useUiStore()
   const region = regionDef(regionId)
   if (!region || player.dead) return false
-  // Phase 28 闭关禁令:闭关期间不得外出历练(与 startRetreat 的互斥守卫配对,双向互斥)
+  // 闭关与历练双向互斥(另一半在 startRetreat)
   if (isRetreating()) {
-    ui.toast('你正在闭关静修,心无旁骛,暂勿外出历练', 'warn')
+    ui.toast('闭关中', 'warn')
     return false
   }
-  // 拒绝必须让玩家看见 —— 静默 return false 在界面上等同于「点了没反应」
+  // 拒绝须有 toast,不得静默 return false
   if (adventure.session) {
-    ui.toast('你正在历练途中,先了结眼下这一程', 'warn')
+    ui.toast('历练在途', 'warn')
     return false
   }
-  // 秘境与历练互斥:身处秘境者不许再开一程历练,免得两段「在途」同跑
   if (player.secretRealm) {
-    ui.toast('你正身处秘境之中,先出了秘境再行历练', 'warn')
+    ui.toast('身在秘境', 'warn')
     return false
   }
-  /**
-   * 远征在途时同样不许再开一程历练。
-   *
-   * 反方向的守卫早已就位(远征启程、秘境入门、挑战书/试炼/变数/重写都查
-   * `endgameBusy`),唯独这里一直漏着:远征途中点「出发」照旧放行,于是
-   * 历练心跳与远征 `runSnap` 的携带气血/道途规则同跑,两段「在途」互相串线
-   * (正是 332 轮修的那一类)。判据与拒绝文案取同一份 endgameBusy,不再手抄。
-   * 实参只传 worldRun:历练会话本函数开头已单独拒绝,这里只补远征这一支。
-   */
+  // 远征在途不许开历练;判据与拒因取 endgameBusy,不手抄。
+  // 只传 worldRun:历练会话已在上方单独拒绝。
   const busy = endgameBusy(useEndgameStore().worldRun, null, null)
   if (busy) {
     ui.toast(busy.reason, 'warn')
     return false
   }
   if (!routeAllows(regionId)) {
-    ui.toast(entryBlockReason(regionId) ?? `${region.name}此时去不得`, 'warn')
+    ui.toast(entryBlockReason(regionId) ?? `${region.name}未解锁`, 'warn')
     return false
   }
-  // 踏入一处新地界 —— 眼前是没走过的路,她可能有话要说
   offerBondEvent('enterPlace')
   const now = Date.now()
   const modeDef = EXPLORE_MODES[mode]
@@ -122,14 +114,14 @@ export function startExploration(regionId: string, mode: ExploreMode): boolean {
     itemGain: 0
   }
   adventure.setSession(session)
-  ui.toast(`你动身前往${region.name},开始${modeDef.name}`, 'info')
-  // Phase 31 A2:出发时低频判定区域事件(妖潮等,30~120 分钟)
+  ui.toast(`前往${region.name} · ${modeDef.name}`, 'info')
+  // 出发时低频判定区域事件(妖潮等,30~120 分钟)
   const ev = rollRegionEvent(region)
   if (ev) {
     const def = regionEventDef(ev.eventId)
-    ui.toast(`${region.name}风云突变——${def?.name ?? '异象'}!`, 'warn')
+    ui.toast(`${region.name} · ${def?.name ?? '异象'}`, 'warn')
   }
-  // Phase 31.4 区域凭吊:重访已镇压之地,低概率世界说起你的旧事
+  // 区域凭吊
   if (player.suppressedRegions.includes(region.id) && rng.chance(MEMORIAL_CHANCE)) {
     const line = memorialLine(region.id, player)
     if (line) ui.toast(line, 'info')
@@ -148,21 +140,19 @@ export function stopExploration(reason: 'manual' | 'defeat' | 'complete' | 'retr
   if (s.wins + s.losses >= 3 || reason === 'complete') {
     track('explores')
   }
-  // 总结带上这一趟的实际所得(会话账目即 afterWin 的真实入账)。
-  // 战绩报「胜/负」两本账:只报胜场时,「胜 2 场」分不出是两战全胜还是九战两胜,
-  // 而这恰恰是「这趟值不值得再来」与「胜+负 ≥3 算不算走过一趟」要看的数。
+  // 战绩须报胜、负两本账
   const record = sessionRecordText(s)
-  const haul = `得灵石 ${formatGN(s.stoneGain)}、修为 ${formatGN(s.expGain)}${
-    s.itemGain > 0 ? `、拾获 ${s.itemGain} 件` : ''
+  const haul = `灵石 +${formatGN(s.stoneGain)} · 修为 +${formatGN(s.expGain)}${
+    s.itemGain > 0 ? ` · 拾获 ${s.itemGain} 件` : ''
   }`
   if (reason === 'complete') {
-    ui.toast(`此行${region?.name ?? ''}历练圆满,${record},际遇 ${s.events} 次;${haul}`, 'success')
+    ui.toast(`${region?.name ?? ''}历练完成 · ${record} · 际遇 ${s.events} 次 · ${haul}`, 'success')
   } else if (reason === 'defeat') {
-    ui.toast(`你身负重伤,不得不中断历练归来疗伤;此行${record},${haul}`, 'warn')
+    ui.toast(`重伤 · 历练中断 · ${record} · ${haul}`, 'warn')
   } else if (reason === 'retreat') {
-    ui.toast(`你与此敌鏖战多时难分胜负,对方遁走,你无功而返;此行${record},${haul}`, 'info')
+    ui.toast(`敌遁走 · 历练中断 · ${record} · ${haul}`, 'info')
   } else {
-    ui.toast(`你收拾行囊,提前结束了这次历练;此行${record},${haul}`, 'info')
+    ui.toast(`历练结束 · ${record} · ${haul}`, 'info')
   }
 }
 
@@ -287,8 +277,10 @@ function runBattle(now: number): void {
   const { pEff, eEff } = applyCombatRuleSnap(pSnap, eSnap, rules)
   const enemyPower = snapPower(eEff)
   const playerPower = snapPower(pEff)
+  // 须在 noteEnemy 入账前取,否则首战也算「眼熟」
+  const foeKnown = (enemyLoreView(eDef.id)?.stage ?? 0) >= 1
   const result = resolveCombat(pSnap, eSnap, rng, rules)
-  // Phase 32.5:「独行」之誓看的是有没有真的祭出法宝,不是有没有法宝在身
+  // 「独行」之誓看是否祭出法宝,不看是否持有
   if (useInventoryStore().equippedArtifacts.length > 0) noteTaboo('artifact')
 
   maybeEncounter(s.regionId)
@@ -305,6 +297,7 @@ function runBattle(now: number): void {
     isBoss: Boolean(eDef.isBoss),
     enemyPower,
     playerPower,
+    foeKnown,
     result,
     at: now
   }
@@ -343,27 +336,21 @@ function runBattle(now: number): void {
     if (suppressed && !player.suppressQualified.includes(region.id)) {
       player.markSuppressQualified(region.id)
       player.suppressRegion(region.id)
-      ui.toast(
-        `你已彻底镇压${region.name},此后将自动产出:${suppressRateLine(region.id, regionRecallFor(region.id).prosperity)}`,
-        'rare'
-      )
+      ui.toast(`已镇压${region.name} · ${suppressRateLine(region.id, regionRecallFor(region.id).prosperity)}`, 'rare')
     }
 
-    // Phase 30.9 S2: 击中宿敌 → 雪耻
     if (isNemesis(player.nemeses, eDef.id)) {
       player.setNemeses(markAvenged(player.nemeses, eDef.id, now))
-      ui.toast(`【雪耻】宿敌${eDef.name}已被斩于剑下!`, 'rare')
+      ui.toast(`【雪耻】宿敌${eDef.name}`, 'rare')
     }
   } else {
-    // 回合耗尽而遁走(敌未死你亦未死)不是败亡:无功而返,但不重伤、不计宿敌败绩。
-    // 此前两种结局吃同一套死亡级惩罚 —— 满血「遁走」也被加 重伤、记一次宿敌败北,
-    // 战报说「遁走,你无功而返」、总结却说「身负重伤」,自相矛盾且账目被污染。
+    // 回合耗尽而遁走(双方都未死)不是败亡:不重伤、不计宿敌败绩
     const ui = useUiStore()
     const timeout = result.playerHpPct > 0
-    // Phase 31 S4:灵兽护主 —— 只在真正危急(身死)时低概率护住这一击
+    // 灵兽护主:仅身死时低概率触发
     if (!timeout && rng.chance(personalityEffects(player.petId).lossReduction)) {
       adventure.setSession({ ...s, nextBattleAt: nextBattleTime(now) })
-      ui.toast('灵兽机警,替你挡开了这一击,历练继续', 'info')
+      ui.toast('灵兽护主 · 历练继续', 'info')
       return
     }
     if (!timeout) cultivation.addBuff('injury', now)
@@ -376,7 +363,7 @@ function runBattle(now: number): void {
       const { list, becameNemesis } = recordLoss(player.nemeses, eDef.id, eDef.name, region.id, now)
       player.setNemeses(list)
       if (becameNemesis) {
-        ui.toast(`【宿敌】你已在${eDef.name}手下败北${NEMESIS_THRESHOLD}次——此敌已成你的宿敌!`, 'warn')
+        ui.toast(`【宿敌】${eDef.name} · 败北${NEMESIS_THRESHOLD}次`, 'warn')
       }
     }
     stopExploration(timeout ? 'retreat' : 'defeat')
@@ -419,24 +406,21 @@ function maybeEncounter(regionId: string): void {
 export function clearRegionAndUnlockNext(regionId: string): void {
   const adventure = useAdventureStore()
   const ui = useUiStore()
-  // 旧链记账与连锁解锁只在「首次清」时做;已清(如旧档全解锁)不重播
+  // 旧链记账与连锁解锁只在首次清时做;已清(如旧档全解锁)不重播
   if (adventure.markCleared(regionId)) {
     const region = regionDef(regionId)
-    ui.toast(`你击败了${region?.name ?? ''}之主!`, 'rare')
-    // 击破首领 —— 打开了本不该开的地方
+    ui.toast(`已击败${region?.name ?? ''}之主`, 'rare')
     offerBondEvent('bossDefeated')
-    // 也可能翻出与她未了之事有关的东西
     if (rng.chance(0.5)) sparkIntent('omen')
     for (const r of REGIONS) {
       if (r.requireCleared === regionId && adventure.unlock(r.id)) {
-        ui.toast(`新的历练之地已开放——${r.name}`, 'rare')
+        ui.toast(`新地开放:${r.name}`, 'rare')
       }
     }
   }
-  // 本世路线推进永远照跑(与旧链是否已含此区域无关):旧档已清的区域也得以把
-  // 本世节点推进 —— 此前 `if (!markCleared) return` 在旧档全清处把路线整个锁死
+  // 本世路线推进不受旧链是否已清影响;放进 markCleared 分支会让旧档全清处的路线锁死
   const nextPlace = advanceRoute(regionId)
-  if (nextPlace) ui.toast(`此世前路已明——${nextPlace}`, 'rare')
+  if (nextPlace) ui.toast(`前路已开:${nextPlace}`, 'rare')
 }
 
 function nextBattleTime(now: number): number {
@@ -513,16 +497,10 @@ export function tickExploration(now: number): void {
       }
       if (ev) {
         adventure.setPendingEvent(ev.id, now)
-        /**
-         * 三档各报各的名。
-         *
-         * 弹窗是从「际遇」这个入口弹出来的,机缘与奇缘若不吭声,玩家看到的
-         * 就只是又一次寻常遭遇 —— 千分之几的稀有度在体感上等于零。
-         * 档名与颜色取自 core/eventTier,不在这里另写一份判据。
-         */
+        // 机缘与奇缘另报档名;判据取自 core/eventTier,不在此另写
         const tier = eventTierDef(eventTierOf(ev.id))
-        if (tier.id === 'jiyuan') useUiStore().toast(`千载难逢 —— 机缘「${ev.title}」`, 'rare')
-        else if (tier.id === 'qiyuan') useUiStore().toast(`缘分再续 —— 「${ev.title}」`, 'info')
+        if (tier.id === 'jiyuan') useUiStore().toast(`机缘「${ev.title}」`, 'rare')
+        else if (tier.id === 'qiyuan') useUiStore().toast(`奇缘「${ev.title}」`, 'info')
         return
       }
     }

@@ -16,7 +16,7 @@ import {
   ARTIFACT_MAX_LEVEL,
   artifactNextLevelGain
 } from '@/data/artifacts'
-import { cnNumber, formatPercent } from '@/utils/format'
+import { formatPercent } from '@/utils/format'
 import { EQUIPMENT_TEMPLATES } from '@/data/equipment'
 import { PILLS, pillQualityColor } from '@/data/pills'
 import type { ArtifactDef, EquipmentTemplate, PillDef } from '@/types'
@@ -69,28 +69,24 @@ export function codexOwnedCount(ownedIds: string[], defs: { id: string }[]): num
   return defs.reduce((n, d) => (owned.has(d.id) ? n + 1 : n), 0)
 }
 
-/** 七类收藏册的来源说明(灵材谱与悟道录在各自构造函数里另给) */
+/** 七类收藏册的来源说明(灵材谱、悟道录在各自构造函数里给);codexSource.spec 对着真实 collect 调用点核 */
 export const CODEX_SOURCES: Record<CollectionCategory, string> = {
-  equip: '来源:历练掉落 —— 强敌与首领更易出',
-  gongfa: '来源:藏经阁参悟 —— 用功法残页逐部撞见',
-  // 三处:掉落(loot)、炼丹(pillService)、际遇赠丹(eventEngine)—— 由 codexSource.spec 对着 collect 点核
-  pill: '来源:三处 —— 历练掉落、丹房照方炼出,际遇里也有人赠',
-  artifact: '来源:历练掉落 —— 高阶地界才出得上品',
-  pet: '来源:历练际遇 —— 结缘而非猎取',
-  event: '来源:历练际遇与奇缘 —— 走到哪,遇见什么',
-  talent: '来源:转世择姿 —— 每一世选一个'
+  equip: '来源:历练掉落',
+  gongfa: '来源:藏经阁参悟',
+  // 三处收录:掉落(loot)、炼丹(pillService)、际遇赠丹(eventEngine)
+  pill: '来源:历练掉落、丹房炼制、际遇所赠',
+  artifact: '来源:历练掉落',
+  pet: '来源:历练际遇',
+  event: '来源:历练际遇、奇缘',
+  talent: '来源:转世择姿'
 }
 
 // ============ 灵材谱 ============
 
-/** 还差什么才更懂它 —— 索引即当前认知层 */
-const MATERIAL_HINTS = [
-  '尚未识得此物。',
-  '多照面几回,便摸得清它的性子。',
-  '须以它入方开炉 —— 上手用过,才谈得上通晓。'
-] as const
+/** 下一层的条件,索引即当前认知层(上手用过见 core/loreService.ts:noteMaterialUsed / noteSmithingUsed) */
+const MATERIAL_HINTS = ['需辨识', '需多次照面', '需上手用过'] as const
 
-/** 温性评语:正为热,负为寒。数值本身在"已知性"层一并给出,这里只做人话 */
+/** 温性评语:正为热,负为寒 */
 function thermalWord(v: number): string {
   if (v >= 30) return '大热'
   if (v >= 10) return '性温'
@@ -144,7 +140,7 @@ export function materialCodex(): CodexCat {
     key: 'material',
     name: '灵材谱',
     hint: `已辨识 ${known}/${MATERIALS.length} · 通晓 ${mastered}`,
-    source: '来源:采集、掉落,以及真把它用进一炉丹',
+    source: '来源:采集、掉落、炼丹',
     entries
   }
 }
@@ -154,9 +150,8 @@ export function materialCodex(): CodexCat {
 export const BRANCH_STAGE_NAMES = ['未见', '已见', '已择'] as const
 export const BRANCH_STAGE_MAX = 2
 
-const BRANCH_HINTS = ['此功尚未修至圆满,歧路未现。', '此道尚可择 —— 一经择定,不可更改。'] as const
+const BRANCH_HINTS = ['需功法圆满', '择定不可更改'] as const
 
-/** 已择的那条道用金色标出:它比品质更该被一眼看见,那是你自己走的路 */
 const PICKED_COLOR = 'var(--color-gold-ink)'
 
 /** 一条分支此刻处在哪一态:择了 A 之后 B 仍停在「已见」,不退回「未见」 */
@@ -200,7 +195,7 @@ export function branchCodex(): CodexCat {
     key: 'branch',
     name: '悟道录',
     hint: `已见 ${seen}/${GONGFA_BRANCHES.length} · 已择 ${picked}`,
-    source: '来源:把一部功法修至圆满,再择一条道走下去',
+    source: '来源:功法圆满后择道',
     entries
   }
 }
@@ -217,9 +212,9 @@ export const EQUIP_STAGE_MAX = 3
 const EQUIP_STAGE3_RANK = qualityDef('heaven').rank
 
 const EQUIP_HINTS = [
-  '尚未见过此物 —— 多在地界里走动。',
-  '见过形制了 —— 强化一件、或把它装上身,才算上手。',
-  '', // 用过了 —— 再往上看运气(stage-2 提示按模板阶封顶现算,见 equipStage2Hint)
+  '需获得',
+  '需强化或装备一件',
+  '', // 按模板阶封顶现算,见 equipStage2Hint
   ''
 ] as const
 
@@ -237,13 +232,13 @@ function maxReachableRankAtTier(tier: number): number {
 function equipStage2Hint(tier: number, seenQ: number): string {
   const ceilingRank = maxReachableRankAtTier(tier)
   const ceiling = qualityOfRank(ceilingRank).name
-  if (seenQ >= ceilingRank) return `用过了 —— 已到过此物随阶可见的最好成色:${ceiling}。`
+  if (seenQ >= ceilingRank) return `成色已至上限:${ceiling}`
   const topRank = Math.max(...QUALITIES.map(q => q.rank))
-  if (ceilingRank >= topRank) return `用过了 —— 再往上看运气:见一件${ceiling}(此物随阶可见的最高成色)。`
-  return `用过了 —— 再往上看运气:见一件${ceiling}以上的成色。`
+  if (ceilingRank >= topRank) return `需见一件${ceiling}`
+  return `需见一件${ceiling}以上`
 }
 
-/** 见闻记录:该模板见过的最高品质档、最高层级,以及是否亲手用过(u) */
+/** 该模板的见闻记录 */
 export interface EquipSeen {
   /** 最高品质 rank */
   q: number
@@ -300,25 +295,16 @@ function artifactHints(def: ArtifactDef): readonly string[] {
   const gain0 = artifactNextLevelGain(def, 0)
   const frozen = (x: { from: number; to: number } | null | undefined): boolean =>
     !!x && Math.abs(x.to - x.from) < 1e-9
-  // stun 那几件的 active 是 null —— 它没有数值,本就不该被这句承诺
+  // stun 那几件 active 为 null(没有数值)
   const activeFrozen = frozen(gain0?.active)
   const healFrozen = frozen(gain0?.heal)
+  const pct = formatPercent(ARTIFACT_LEVEL_BONUS)
   const gainLine = activeFrozen
-    ? `此宝神通零重已至上限,祭炼只涨被动(每重 ${formatPercent(ARTIFACT_LEVEL_BONUS)})。`
+    ? `神通零重已满 · 祭炼:只涨被动(每重 ${pct})`
     : healFrozen
-      ? `此宝回补零重已满,祭炼仍让被动与神通主体各强 ${formatPercent(ARTIFACT_LEVEL_BONUS)}。`
-      : `祭炼过后,被动与神通各强 ${formatPercent(ARTIFACT_LEVEL_BONUS)}。`
-  const midLine = activeFrozen
-    ? `此宝神通零重已至上限,往后每一重只买被动(每重 ${formatPercent(ARTIFACT_LEVEL_BONUS)})。`
-    : healFrozen
-      ? `此宝回补零重已满,往后每一重仍让被动与神通主体各强 ${formatPercent(ARTIFACT_LEVEL_BONUS)}。`
-      : `炼到${cnNumber(ARTIFACT_MAX_LEVEL)}重,才算把它用透。`
-  return [
-    '尚未见过此宝 —— 高阶地界才出得上品。',
-    `录在册上了,还没拿它炼过一重 —— ${gainLine}`,
-    `炼过几重了 —— ${midLine}`,
-    ''
-  ]
+      ? `回补零重已满 · 祭炼:被动与神通主体各强 ${pct}`
+      : `祭炼:被动与神通各强 ${pct}`
+  return ['需获得', gainLine, gainLine, '']
 }
 
 /** 某件法宝走到哪一层(等级取自玩家自己的那一件) */
@@ -350,19 +336,16 @@ export const PILL_STAGE_NAMES = ['未录', '已录', '已得方', '通晓'] as c
 export const PILL_STAGE_MAX = 3
 
 const PILL_HINTS = [
-  '尚未见过此丹。',
-  '见过成品,方子还没到手。',
-  '方子在手,开炉炼熟它。',
+  '需获得',
+  '需得丹方',
+  '', // 只差掌握度(行囊丹药详情里有数)
   ''
 ] as const
 
-/** 无方之丹(只掉不炼)的收尾话:免得玩家满世界找一本不存在的方子 */
-export const PILL_NO_RECIPE_HINT = '此丹本无方 —— 只在历练与际遇里偶得,炼不出来。'
+/** 无方之丹(只掉不炼)的提示 */
+export const PILL_NO_RECIPE_HINT = '无丹方 · 不可炼制'
 
-/**
- * 某味丹走到哪一层。
- * 无方之丹到「已录」即顶(阶段名照给,但上限只有 1)—— 界面上用 hint 说明缘由。
- */
+/** 某味丹走到哪一层;无方之丹上限为 1(「已录」) */
 export function pillStage(def: PillDef, collected: boolean, mastery: number): number {
   if (!collected) return 0
   if (!def.recipe) return 1
@@ -451,12 +434,9 @@ export function pillCodex(): CodexCat {
   }
 }
 
-/**
- * 收录时刻的人话。旧档里已收录的条目没有记录 —— 照实说「早年收录」,
- * 而不是编一个时间或显示 1970。
- */
+/** 收录时刻文案;旧档里已收录的条目没有记录,给「未记录」而非 1970 */
 export function collectedTimeText(ts: number | undefined): string {
-  if (ts === undefined || !Number.isFinite(ts)) return '早年收录,未记时日'
+  if (ts === undefined || !Number.isFinite(ts)) return '未记录'
   return new Date(ts).toLocaleString('zh-CN', {
     year: 'numeric',
     month: '2-digit',

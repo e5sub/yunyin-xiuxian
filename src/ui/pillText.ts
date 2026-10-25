@@ -4,7 +4,7 @@ export function pillGoneToast(): string {
 }
 
 export function pillTakenToast(name: string, effects: string): string {
-  return `服下「${name}」,${effects || '药力温养周身'}`
+  return effects ? `服下「${name}」,${effects}` : `服下「${name}」`
 }
 
 export interface CraftShortGap {
@@ -14,25 +14,20 @@ export interface CraftShortGap {
   stone?: string
 }
 
-/**
- * 开炉缺料话术。
- *
- * 不传 gap 时保留旧的总称,供「尚不知道缺哪一样」的兜底;调用方拿得到实际
- * 差额时必须传进来 —— 只缺石就不提草,只缺草就不提石。
- */
+/** 开炉缺料回执。不传 gap 为总称兜底;拿得到差额时须传入,只报缺的那样 */
 export function craftShortToast(gap?: CraftShortGap): string {
-  if (!gap) return '灵草或灵石未足,难开此炉'
+  if (!gap) return '灵草或灵石不足'
   const parts: string[] = []
   if ((gap.herb ?? 0) > 0) parts.push(`灵草尚差 ${gap.herb} 株`)
   if (gap.stone) parts.push(`灵石尚差 ${gap.stone}`)
-  return parts.length > 0 ? `${parts.join(' · ')},难开此炉` : '灵草或灵石未足,难开此炉'
+  return parts.length > 0 ? parts.join(' · ') : '灵草或灵石不足'
 }
 
-/** 方子压根不存在 / 没解析出配方 —— 与「知道方子但缺料」是两回事,分开说 */
+/** 方子不存在 / 没解析出配方;与缺料分开报 */
 export function craftUnknownToast(): string {
-  return '尚不知此方,无从开炉'
+  return '不知此方'
 }
 
 export function craftOkToast(name: string, extra: boolean): string {
-  return extra ? `一炉双丹,「${name}」品相极佳` : `炉开丹成,得「${name}」一枚`
+  return extra ? `双丹,得「${name}」两枚` : `丹成,得「${name}」一枚`
 }

@@ -82,15 +82,15 @@ export interface Adaptation {
 }
 
 const GOOD_COPY: Record<EcoTrait, string> = {
-  burst: '扛得住重锤',
+  burst: '耐重击',
   multi: '受击越多越强',
   pierce: '不依赖护盾',
   dodge: '不怕落空'
 }
 
 const BAD_COPY: Record<EcoTrait, string> = {
-  burst: '易被一锤定音',
-  multi: '连绵掉血难受',
+  burst: '怕重击',
+  multi: '怕多段',
   pierce: '护盾被无视',
   dodge: '招式易落空'
 }
@@ -113,8 +113,8 @@ export function styleAdaptation(styleId: string, eco: RegionEcology, facingBoss 
   if (facingBoss) {
     const b = STYLE_BOSS_AFFINITY[styleId] ?? 0
     delta += b
-    if (b >= 2) reasons.push('首领 → 久战缠斗所长')
-    if (b <= -2) reasons.push('首领 → 攻坚非其所长')
+    if (b >= 2) reasons.push('首领 → 擅久战')
+    if (b <= -2) reasons.push('首领 → 不擅攻坚')
   }
   const stars = Math.max(1, Math.min(5, Math.round(3 + delta)))
   return { stars, reasons: reasons.slice(0, 3) }

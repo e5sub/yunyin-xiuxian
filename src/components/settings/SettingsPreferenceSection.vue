@@ -46,7 +46,7 @@
         <input v-model="settings.dndEvents" type="checkbox" class="h-4 w-4 accent-cinnabar" />
       </label>
       <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
-        历练撞见际遇/机缘/奇缘不再弹窗,自动按默认好愿了结 —— 奖励照拿,只是不再卡手。
+        际遇/机缘/奇缘不弹窗,按默认好愿了结
       </p>
     </div>
     <div class="flex items-center justify-between py-3">

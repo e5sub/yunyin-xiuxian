@@ -74,13 +74,13 @@ describe('三档触发 · 概率模型', () => {
     }
   })
 
-  it('三档各自说得出「多久见一次」;奇缘无缘在续时说明它为何不来', () => {
+  it('三档各自说得出「多久见一次」;奇缘无缘在续时报「暂无」', () => {
     for (const t of EVENT_TIERS) {
       expect(tierOddsText(t.id, true)).toContain('程')
       expect(tierOddsText(t.id, false)).toBeTruthy()
     }
-    expect(tierOddsText('qiyuan', false)).toBe('缘起之后才来')
-    // 缘分状态真的会改变读数(而不是三个永远同时成立的数)
+    expect(tierOddsText('qiyuan', false)).toBe('暂无')
+    // 缘分状态会改变读数
     expect(tierOddsText('jingyu', false)).not.toBe(tierOddsText('jingyu', true))
     expect(tierOddsText('jiyuan', false)).not.toBe(tierOddsText('jiyuan', true))
   })
@@ -127,10 +127,9 @@ describe('三档触发 · 概率模型', () => {
     }
   })
 
-  it('三档的名字、说明、颜色各不相同(否则「区分度」只是嘴上说)', () => {
+  it('三档的名字、颜色各不相同(否则「区分度」只是嘴上说)', () => {
     expect(new Set(EVENT_TIERS.map(t => t.name)).size).toBe(3)
     expect(new Set(EVENT_TIERS.map(t => t.color)).size).toBe(3)
-    expect(new Set(EVENT_TIERS.map(t => t.brief)).size).toBe(3)
     expect(eventTierDef('qiyuan').name).toBe('奇缘')
     expect(eventTierDef('jiyuan').name).toBe('机缘')
     expect(eventTierDef('jingyu').name).toBe('际遇')

@@ -7,20 +7,12 @@
       <p class="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap font-kai text-[15px] tracking-[0.3em] text-ink">
         洞府营造
       </p>
-      <span class="text-[10px] text-ink-faint">经营家业,道途更稳</span>
     </div>
 
-    <!-- 新府初成:先修谁、升一级能怎样,不给抽象告诫只给具体路径 -->
     <div v-if="mansionLv === 0" class="rounded-md border border-amber-ink/25 bg-amber-ink/5 px-3 py-2.5">
-      <p class="font-kai text-[11px] tracking-wider text-amber-ink">新府初成</p>
-      <ul class="mt-1 space-y-0.5 text-[10px] leading-relaxed text-ink-faint">
-        <li>· 先修「洞府」本体 —— 其余建筑能造到多高、离线能存多久,都压在它身上。</li>
-        <li>· {{ offlineLaunchLine }}</li>
-        <li>· 洞府每上一层,其余建筑能建的层巅便抬高一程,各筑另有自己的尽头。</li>
-      </ul>
+      <p class="text-[10px] leading-relaxed text-ink-faint">{{ offlineLaunchLine }}</p>
     </div>
 
-    <!-- 洞府纪要:产出与上限一眼汇总(只读,不替代任何建筑卡的详情) -->
     <div class="rounded-md border border-ink/10 bg-paper-deep/50 px-3 py-2.5">
       <div class="flex items-center justify-between">
         <span class="font-kai text-[12px] tracking-wider text-ink-soft">洞府纪要</span>
@@ -72,62 +64,36 @@
       </div>
     </div>
 
-    <!-- 建筑:洞府是全局闸门,独自横贯一排;其余六座在其辖下成格 -->
     <section>
-      <SectionTitle title="营造" :hint="`已启 ${builtCount}/${BUILDINGS.length} · 各司其职`" />
+      <!-- 放不下时入口整枚折到下一行靠右(200% 缩放),不挤标题 -->
+      <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
+        <SectionTitle class="shrink-0" title="营造" :hint="`已启 ${builtCount}/${BUILDINGS.length}`" />
+        <!-- -my-1:触面 30px 不撑高标题行 -->
+        <button
+          v-if="veinsUnlocked"
+          type="button"
+          class="chip-ink -my-1 ml-auto shrink-0 !py-1.5 text-gold-ink active:scale-98"
+          aria-haspopup="dialog"
+          @click="veinOpen = true"
+        >
+          <GameIcon name="gem" :size="12" />
+          灵脉投资
+          <span class="tabular text-[10px] text-ink-faint">{{ dongfu.veinTotal }}/{{ VEIN_TOTAL_CAPACITY }}</span>
+        </button>
+        <span v-else class="ml-auto flex shrink-0 items-center gap-1 text-[10px] text-ink-faint">
+          <GameIcon name="gem" :size="12" class="text-gold-ink" />
+          灵脉 · 需{{ veinGateRealm }}境
+        </span>
+      </div>
       <BuildingCard :def="mansionDef" featured class="mt-2" />
       <div class="mt-2.5 grid grid-cols-1 gap-2.5 min-[320px]:grid-cols-2">
         <BuildingCard v-for="def in otherBuildings" :key="def.id" :def="def" />
       </div>
     </section>
 
-    <!-- 灵脉:全部统合在本页。信息量大(四脉·各注·投资/换向),默认折成一行摘要,点开才见详情 -->
-    <section class="space-y-2">
-      <button
-        v-if="veinsUnlocked"
-        type="button"
-        class="card-ink flex w-full items-center gap-2.5 px-4 py-3 text-left active:scale-98"
-        :aria-expanded="veinExpanded"
-        aria-controls="vein-panel"
-        @click="veinExpanded = !veinExpanded"
-      >
-        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-gold-ink/10 text-gold-ink"><GameIcon name="gem" :size="18" /></span>
-        <span class="min-w-0 grow">
-          <span class="block font-kai text-[14px] tracking-[0.25em] text-ink">灵脉投资</span>
-          <span class="mt-0.5 flex items-center gap-1.5">
-            <!-- 折叠态也带迷你容量条:不点开也知已投几成 -->
-            <span class="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-ink/6">
-              <span class="block h-full rounded-full bg-gold-ink/70" :style="{ width: foldPct + '%' }"></span>
-            </span>
-            <span class="min-w-0 truncate text-[10px] text-ink-faint tabular">{{ veinSummary }}</span>
-          </span>
-        </span>
-        <span class="shrink-0 text-[12px] text-gold-ink transition-transform" :class="veinExpanded ? 'rotate-90' : ''">›</span>
-      </button>
-      <!--
-        未达门槛:整块就是一句前瞻,没有可展开的内容。
-        开启境界不手抄「金丹」—— 与 veinsUnlocked 读同一枚 VEIN_UNLOCK_MAJOR,
-        倍数高些低些,这句前瞻自己跟着变(与 rebirthText 的「X境方可兵解」同法)
-      -->
-      <div v-if="!veinsUnlocked" class="flex items-center gap-2.5 rounded-md border border-dashed border-gold-ink/25 bg-gold-ink/4 px-3 py-2.5">
-        <GameIcon name="gem" :size="16" class="shrink-0 text-gold-ink" />
-        <p class="text-[10px] leading-relaxed text-ink-faint">
-          灵脉 —— 以灵石点化,洞府根基永固,诸般属性皆有增益。{{ veinGateRealm }}境方启此脉,届时自会在此与你相会。
-        </p>
-      </div>
-      <!--
-        展开/收起:高度 + 透明度过渡,不像生硬裁切。
-        v-show 而非 v-if:折叠时面板仍在 DOM 里(仅 display:none),折叠头的
-        aria-controls=vein-panel 任何时候都解析得到 —— v-if 会在默认折叠态
-        把目标元素整个卸掉,关联悬空(辅助技术与自动化都读不到)。
-      -->
-      <Transition name="vein-drop">
-        <div v-show="veinsUnlocked && veinExpanded" id="vein-panel" class="overflow-hidden">
-          <VeinInvestCard />
-        </div>
-      </Transition>
-    </section>
-
+    <BaseModal :open="veinOpen" title="灵脉投资" wide @close="veinOpen = false">
+      <div id="vein-panel"><VeinInvestCard /></div>
+    </BaseModal>
   </div>
 </template>
 
@@ -138,12 +104,12 @@
   import { BUILDINGS, ARRAY_QI_CAP_PER_LEVEL } from '@/data/buildings'
   import { REALMS } from '@/data/realms'
   import { FIELD_HERB_PER_HOUR, FIELD_ORE_PER_HOUR, LIBRARY_WUDAO_PER_HOUR, OFFLINE_CAP_HOURS, VEIN_TOTAL_CAPACITY, VEIN_UNLOCK_MAJOR } from '@/data/constants'
-  import { VEINS } from '@/data/veins'
   import { HERB_GRADE_SHORT, herbGradeOfMajor } from '@/data/herbGrades'
   import { useDongfuStore, fieldHerbGrade } from '@/stores/dongfu'
   import { usePlayerStore } from '@/stores/player'
   import SectionTitle from '@/components/common/SectionTitle.vue'
   import GameIcon from '@/components/common/GameIcon.vue'
+  import BaseModal from '@/components/common/BaseModal.vue'
   import BuildingCard from '@/components/dongfu/BuildingCard.vue'
   import VeinInvestCard from '@/components/dongfu/VeinInvestCard.vue'
 
@@ -153,28 +119,15 @@
 
   /** 洞府等级,作离线档位条的当前档(0..4) */
   const mansionLv = computed(() => dongfu.levels.mansion ?? 0)
-  /** 新府引导里的离线数字随 OFFLINE_CAP_HOURS 现算,不写死成 8 时/12 时 */
-  const offlineLaunchLine = computed(() => {
-    const now = OFFLINE_CAP_HOURS[0]
-    const next = OFFLINE_CAP_HOURS[1]
-    return `离线可攒现为 ${now} 时,洞府升至 1 级即 ${next} 时`
-  })
+  /** 洞府 0 级时那一行的下一档离线时数,随 OFFLINE_CAP_HOURS 现算 */
+  const offlineLaunchLine = computed(() => `洞府 1 级 · 离线可攒 ${OFFLINE_CAP_HOURS[1]} 时`)
 
-  /** 灵脉金丹解锁;未达门槛时只给一句前瞻,别让新人面对一整张禁用按钮 */
+  /** 未达门槛时只给一行开启境界 */
   const veinsUnlocked = computed(() => player.major >= VEIN_UNLOCK_MAJOR)
-  /** 前瞻里的开启境界名:取自 VEIN_UNLOCK_MAJOR 所在境,门槛动它跟着动 */
+  /** 开启境界名取自 VEIN_UNLOCK_MAJOR 所在境,与 veinsUnlocked 同源,不手抄 */
   const veinGateRealm = computed(() => REALMS[VEIN_UNLOCK_MAJOR]?.name ?? '更高')
-  /** 灵脉信息量大,默认折成一行;点开展开四脉详情 */
-  const veinExpanded = ref(false)
-  /** 折叠态摘要:已投点数 + 主脉名(未立主脉给提示) */
-  const veinSummary = computed(() => {
-    const main = dongfu.veinMain ? VEINS.find(v => v.id === dongfu.veinMain)?.name : undefined
-    return `已投 ${dongfu.veinTotal}/${VEIN_TOTAL_CAPACITY} · 主脉 ${main ?? '未立'}`
-  })
-  /** 折叠态迷你容量条宽度(百分比) */
-  const foldPct = computed(() => Math.round((dongfu.veinTotal / VEIN_TOTAL_CAPACITY) * 100))
+  const veinOpen = ref(false)
 
-  /** 已启用建筑数(等级 > 0),营造区标题旁报数 */
   const builtCount = computed(() => BUILDINGS.filter(b => (dongfu.levels[b.id] ?? 0) > 0).length)
   /** 洞府是全局闸门,单独横贯一排 */
   const mansionDef = computed(() => BUILDINGS.find(b => b.id === 'mansion')!)
@@ -203,22 +156,3 @@
     }
   })
 </script>
-
-<style scoped>
-  /* 灵脉展开/收起:max-height 爬坡 + 淡入淡出。上界取足,四条脉 + 图例撑不满 */
-  .vein-drop-enter-active,
-  .vein-drop-leave-active {
-    transition:
-      opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-      max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  .vein-drop-enter-from,
-  .vein-drop-leave-to {
-    opacity: 0;
-    max-height: 0;
-  }
-  .vein-drop-enter-to,
-  .vein-drop-leave-from {
-    max-height: 52rem;
-  }
-</style>

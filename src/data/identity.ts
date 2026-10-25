@@ -10,10 +10,10 @@ export interface MilestoneDef {
 }
 
 export const MILESTONE_DEFS: MilestoneDef[] = [
-  { id: 'first_immortal', name: '飞升仙界', desc: '首次踏破人间界,飞升入仙' },
+  { id: 'first_immortal', name: '飞升仙界', desc: '首次踏破人间界' },
   { id: 'first_god', name: '破界入神', desc: '首次自仙界踏入神界' },
-  { id: 'first_chaos', name: '归返混沌', desc: '首次踏入混沌海,重归大道本源' },
-  { id: 'first_dao', name: '初立道途', desc: '于天穹之下立誓,择一道而行' },
+  { id: 'first_chaos', name: '归返混沌', desc: '首次踏入混沌海' },
+  { id: 'first_dao', name: '初立道途', desc: '首次择定道途' },
   { id: 'first_world', name: '初破一界', desc: '首次踏破特殊规则世界' },
   { id: 'first_ni', name: '逆命破界', desc: '主流派核心尽封,仍以余技破界' },
   { id: 'first_wushang', name: '无伤全程', desc: '携无伤契走完全程,每战气血不失八成' },
@@ -22,7 +22,7 @@ export const MILESTONE_DEFS: MilestoneDef[] = [
   { id: 'first_custom', name: '自立天道', desc: '亲手写下挑战书,并将其完成' },
   { id: 'first_daily', name: '应时而战', desc: '首次完成今日天道' },
   { id: 'first_rewrite', name: '胜于旧我', desc: '重写自己的历史道痕,快过当年' },
-  { id: 'first_rebirth', name: '初入轮回', desc: '首次兵解转世,道果随神魂不灭' }
+  { id: 'first_rebirth', name: '初入轮回', desc: '首次兵解转世' }
 ]
 
 export function milestoneDef(id: string): MilestoneDef | undefined {

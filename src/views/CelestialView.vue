@@ -1,15 +1,8 @@
 <template>
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
-    <!-- 未至真仙 -->
     <div v-if="!unlocked" class="card-ink px-6 py-16 text-center">
       <p class="font-kai text-[22px] tracking-[0.4em] text-ink">天 界</p>
-      <p class="mt-4 text-[12px] leading-relaxed text-ink-faint">
-        天门紧闭,仙光垂落而不可及。
-        <br />
-        修至
-        <span class="text-cinnabar">真仙境</span>
-        ,方见此界真容。
-      </p>
+      <p class="mt-4 text-[12px] leading-relaxed text-ink-faint">需<span class="text-cinnabar">真仙境</span></p>
     </div>
 
     <template v-else>
@@ -17,9 +10,9 @@
         <p class="font-kai text-[15px] tracking-[0.3em] text-ink">天 界</p>
         <div class="flex items-center gap-2">
           <span class="chip-ink border-cinnabar/50 text-[9px] text-cinnabar">此世消耗</span>
-          <button class="group flex items-end gap-1 text-left active:scale-97 active:opacity-60" aria-label="道源,点开看用途与来处" @click="openDaoSourceDialog()">
+          <button class="group flex items-end gap-1 text-left active:scale-97 active:opacity-60" aria-label="道源说明" @click="openDaoSourceDialog()">
             <span>
-              <span class="block text-[10px] leading-tight text-ink-faint">叩问天道·试一试</span>
+              <span class="block text-[10px] leading-tight text-ink-faint">道源</span>
               <span class="block tabular font-kai text-[17px] leading-tight text-cinnabar">{{ formatNum(endgame.daoSource) }}</span>
             </span>
             <span class="mb-px text-[13px] leading-tight text-ink-faint transition-transform group-active:translate-x-0.5">›</span>
@@ -30,9 +23,8 @@
       <InkTabs v-model="celTab" :tabs="celTabRows" />
 
       <template v-if="celTab === 'dao'">
-        <!-- 道途 -->
         <section>
-          <SectionTitle title="道途" hint="此生一诺,来世另择" />
+          <SectionTitle title="道途" hint="一世一择" />
           <div v-if="currentDao" class="card-ink mt-2 px-4 py-3">
             <p class="flex items-center gap-3">
               <span class="grid h-10 w-10 place-items-center rounded-md bg-cinnabar/90 font-kai text-[20px] seal-face">
@@ -44,12 +36,12 @@
             <p v-for="(r, i) in currentDao.ruleText" :key="i" class="mt-0.5 text-[11px] text-azure">· {{ r }}</p>
             <p v-for="(r, i) in currentDao.deepText" :key="`d${i}`" class="mt-0.5 text-[11px] text-gold-ink">◈ {{ r }}</p>
             <p v-if="swordInfo" class="mt-1.5 text-[11px] text-violet-ink tabular">
-              当前剑意 {{ swordInfo.layers }}/{{ SWORD_PURITY_MAX_LAYERS }} 层({{
+              剑意 {{ swordInfo.layers }}/{{ SWORD_PURITY_MAX_LAYERS }} 层<template v-if="swordInfo.layers > 0">({{
                 swordInfo.checks
                   .filter(c => c.ok)
                   .map(c => c.name)
-                  .join('、') || '尚无一纯'
-              }})
+                  .join('、')
+              }})</template>
             </p>
             <p v-if="daoStory" class="mt-1.5 font-kai text-[11px] leading-relaxed text-ink-soft">「{{ daoStory }}」</p>
           </div>
@@ -76,7 +68,6 @@
             <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-cinnabar/85 font-kai text-[19px] seal-face">炉</span>
             <span class="min-w-0 flex-1">
               <span class="block font-kai text-[14px] tracking-widest text-ink">天道熔炉</span>
-              <span class="block truncate text-[10px] leading-relaxed text-ink-faint">前尘俗物,皆可熔作道源</span>
             </span>
             <span class="shrink-0 text-[12px] text-ink-faint">›</span>
           </button>
@@ -86,7 +77,7 @@
             <span class="min-w-0 flex-1">
               <span class="block font-kai text-[14px] tracking-widest text-ink">器 魂</span>
               <span class="block truncate text-[10px] leading-relaxed text-ink-faint">
-                凡器承不住天道,只余形意 · 已凝 {{ endgame.activeSouls.length }}/{{ SOUL_SLOTS }}
+                已凝 {{ endgame.activeSouls.length }}/{{ SOUL_SLOTS }}
               </span>
             </span>
             <span class="shrink-0 text-[12px] text-ink-faint">›</span>
@@ -115,12 +106,12 @@
         <p class="mt-1.5 text-[12px] leading-relaxed text-ink-soft">{{ pendingDao.desc }}</p>
         <p v-for="(r, i) in pendingDao.ruleText" :key="i" class="mt-0.5 text-[11px] text-azure">· {{ r }}</p>
         <p v-for="(r, i) in pendingDao.deepText" :key="`confirm-${i}`" class="mt-0.5 text-[11px] text-gold-ink">◈ {{ r }}</p>
-        <p class="mt-3 border-l-2 border-cinnabar/60 pl-2 text-[11px] text-cinnabar">道途既定,此世不再更改;误选须待兵解转世方能重择</p>
+        <p class="mt-3 border-l-2 border-cinnabar/60 pl-2 text-[11px] text-cinnabar">此世不可更改 · 转世可重择</p>
       </template>
       <template #footer>
         <div class="flex gap-2">
           <button class="btn-ghost flex-1" @click="pendingDaoId = null">再想想</button>
-          <button class="btn-seal flex-1 !bg-cinnabar-deep" @click="confirmDao">道心已定</button>
+          <button class="btn-seal flex-1 !bg-cinnabar-deep" @click="confirmDao">确认择道</button>
         </div>
       </template>
     </BaseModal>

@@ -35,10 +35,11 @@ describe('不可逆确认的两次点击各写什么', () => {
     ['components/equipment/EquipmentDetailDialog.vue', ['确认分解']],
     ['views/SoulsView.vue', ['确认散去', '确认凝炼']],
     ['components/celestial/ExpeditionPanel.vue', ['确认返还']],
-    // 道痕册拆出后判据随本体走:重写确认态在 MarksPanel
     ['components/celestial/MarksPanel.vue', ['确认重写']],
-    // 熔炉弹窗拆出后判据随本体走:确认态与「确认熔尽」都在 FurnaceDialog
-    ['components/celestial/FurnaceDialog.vue', ['确认熔尽']]
+    ['components/celestial/FurnaceDialog.vue', ['确认熔尽']],
+    // 确认词随第一步的动词(重铸词条 → 确认重铸 / 开 洗 → 确认开洗)
+    ['components/equipment/EquipReforgeFooter.vue', ['确认重铸']],
+    ['components/equipment/AutoReforgePanel.vue', ['确认开洗']]
   ]
   const CANCEL_BANNED = ['确 散', '凝 炼', '分解?', '确信删除', '>算了<', '>取 消<', '>取消<']
 

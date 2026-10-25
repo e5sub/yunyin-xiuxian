@@ -76,7 +76,7 @@ export const LIFE_THEMES: LifeThemeDef[] = [
     '这一世,先把丹结了再说别的。',
     '本世修至金丹',
     { kind: 'realm', major: 2 },
-    '你记得结丹那一刻气机是怎么盘拢的——往后每一世都少走一段弯路。'
+    '结丹时气机如何盘拢,你记住了。'
   ),
   t(
     'lt_lishi',
@@ -86,7 +86,7 @@ export const LIFE_THEMES: LifeThemeDef[] = [
     '这一世不急着冲境界,先把这方天地走一遍。',
     '本世历练 60 场',
     { kind: 'counter', key: 'explores', n: 60 },
-    '山川的形貌刻进了神魂,哪条谷通往哪片林,你再不会迷路。'
+    '哪条谷通往哪片林,都刻进了神魂。'
   ),
   t(
     'lt_shicai',
@@ -96,10 +96,10 @@ export const LIFE_THEMES: LifeThemeDef[] = [
     '这一世要弄清楚,采回来的到底是些什么。',
     '认得 10 味灵材',
     { kind: 'materialLore', stage: 1, n: 10 },
-    '草木的名字从此跟着你走,下一世睁眼便叫得出来。'
+    '草木的名字,下一世睁眼便叫得出来。'
   ),
 
-  // ---- 熟知凡间:开始给自己立规矩 ----
+  // ---- 熟知凡间 ----
   t(
     'lt_bugu',
     '不假外物',
@@ -108,7 +108,7 @@ export const LIFE_THEMES: LifeThemeDef[] = [
     '这一世不靠丹药,看看单凭自身能走到哪一步。',
     '整世未服一粒丹药,且修至元婴',
     { kind: 'realm', major: 3 },
-    '你摸清了自身气机的底：哪些坎是真的过不去,哪些只是被丹药糊弄过去了。',
+    '你摸清了自身气机的底。',
     'pill'
   ),
   t(
@@ -116,7 +116,7 @@ export const LIFE_THEMES: LifeThemeDef[] = [
     '丹道立言',
     1,
     38,
-    '这一世要把丹方一张张吃透,不再照方抓药。',
+    '这一世要把丹方一张张吃透。',
     '通晓 6 张丹方',
     { kind: 'recipeMastered', n: 6 },
     '方子背进了骨子里,炉前不必再翻书。'
@@ -141,7 +141,7 @@ export const LIFE_THEMES: LifeThemeDef[] = [
     '这一世要回去,把上一世没打赢的那一场打赢。',
     '本世雪耻一名宿敌',
     { kind: 'avenge', n: 1 },
-    '那道横在心里的坎平了。宿敌的招式你记了几世,如今它对你再无秘密。'
+    '宿敌的招式你记了几世,如今都拆得开。'
   ),
   t(
     'lt_yuedi',
@@ -151,7 +151,7 @@ export const LIFE_THEMES: LifeThemeDef[] = [
     '这一世不为杀,为看清楚它们到底怎么打。',
     '洞悉 8 种敌手',
     { kind: 'enemyLore', n: 8 },
-    '妖物的行止在你眼里成了可读之物:何时发狂、何时护身,一望即知。'
+    '妖物何时发狂、何时护身,你一望即知。'
   ),
   t(
     'lt_lianqi',
@@ -171,7 +171,7 @@ export const LIFE_THEMES: LifeThemeDef[] = [
     '这一世不借法宝之力,只以己身与所修之法应世。',
     '整世未祭一件法宝,且斩敌 400',
     { kind: 'counter', key: 'kills', n: 400 },
-    '不依外物的打法逼出了真本事,收招放招都比从前干净。',
+    '收招放招,都比从前干净。',
     'artifact'
   ),
 
@@ -184,7 +184,7 @@ export const LIFE_THEMES: LifeThemeDef[] = [
     '这一世要把几条路都走到尽头,亲自比一比。',
     '本世择定 3 条悟道之路',
     { kind: 'branch', n: 3 },
-    '几条道的分野你亲手验过,再择时不必犹疑。'
+    '几条道的分野你亲手验过。'
   ),
   t(
     'lt_tongyao',
@@ -194,7 +194,7 @@ export const LIFE_THEMES: LifeThemeDef[] = [
     '这一世要把每一味药的用法都试到底,不只是认得。',
     '通晓 8 味灵材的用法',
     { kind: 'materialLore', stage: 3, n: 8 },
-    '药性在你手里成了可拆可配的东西,而不是方子上一行照抄的字。'
+    '药性在你手里可拆可配。'
   ),
   t(
     'lt_dujie',
@@ -204,7 +204,7 @@ export const LIFE_THEMES: LifeThemeDef[] = [
     '这一世要迎着天劫上去,渡够为止。',
     '本世渡劫 4 次',
     { kind: 'counter', key: 'tribulations', n: 4 },
-    '劫云压顶时的那份镇定留了下来——你见过它,它吓不住你。'
+    '劫云压顶时的那份镇定,留了下来。'
   ),
   t(
     'lt_feisheng',
@@ -214,10 +214,10 @@ export const LIFE_THEMES: LifeThemeDef[] = [
     '这一世不做别的,只求跨过那道天门。',
     '本世飞升真仙',
     { kind: 'realm', major: 9 },
-    '天门之后的那口气你亲口尝过——往后修行,你记得它是什么味道。'
+    '天门之后的那口气,你亲口尝过。'
   ),
 
-  // ---- 百世老修:题目本身就是问题 ----
+  // ---- 百世老修 ----
   t(
     'lt_dacheng',
     '登顶',
@@ -226,7 +226,7 @@ export const LIFE_THEMES: LifeThemeDef[] = [
     '这一世不做别的,只看看这条路的尽头究竟在哪。',
     '本世修至大乘',
     { kind: 'realm', major: 7 },
-    '尽头的风景你亲眼看过一回,此后再攀不为求证,只为走得更从容。'
+    '尽头的风景,你亲眼看过一回。'
   ),
   t(
     'lt_zhushu',
@@ -242,7 +242,7 @@ export const LIFE_THEMES: LifeThemeDef[] = [
         { kind: 'materialLore', stage: 1, n: 14 }
       ]
     },
-    '一部只写给自己的书。往后每一世翻开,都是现成的答案。'
+    '一部只写给自己的书。'
   ),
   t(
     'lt_rushen',
@@ -252,7 +252,7 @@ export const LIFE_THEMES: LifeThemeDef[] = [
     '这一世要走得比上一世更远:去看看神域之上有什么。',
     '本世踏入神界',
     { kind: 'realm', major: 14 },
-    '神界的法则在你眼里过了一遍,此后再高的天,你也不再仰头看。'
+    '神界的法则在你眼里过了一遍。'
   )
 ]
 

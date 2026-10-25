@@ -37,7 +37,7 @@
           <span
             v-else-if="locked"
             class="shrink-0 rounded bg-ink/6 px-1.5 py-0.5 text-[10px] leading-none text-ink-faint"
-          >至{{ gateName }}境</span>
+          >需{{ gateName }}境</span>
         </p>
       </div>
     </div>
@@ -46,18 +46,12 @@
     </p>
     <!-- 词条另起一行,不写进 effectText -->
     <p v-if="modLine" class="mt-1 text-[11px] leading-relaxed text-azure tabular">{{ modLine }}</p>
-    <!-- 再进净得:本级词条到下一级的增量,买前预览;不可点时不给(不能对着画不了的饼招手) -->
     <p v-if="nextGain" class="mt-1 text-[10px] leading-relaxed text-ink-faint">
-      再升一层,又添 <span class="tabular text-azure">{{ nextGain }}</span>
+      再进净得:<span class="tabular text-azure">{{ nextGain }}</span>
     </p>
-    <!-- 灵兽园:把当前相伴的灵兽报在园子里 —— 别的建筑都是数值,这里是活物 -->
     <p v-if="beastCompanionName" class="mt-1 flex items-center gap-1 text-[10px] text-jade">
-      <GameIcon name="paw" :size="11" />居园相伴 · {{ beastCompanionName }}
+      <GameIcon name="paw" :size="11" />相伴 · {{ beastCompanionName }}
     </p>
-    <!--
-      藏经阁的翻检线:丹方获取是全书唯一的常驻被动流水,得在它家门口报一声 ——
-      升它之前,先看见它下一张方子几时来。与开炉页同一读数(studyEta)
-    -->
     <p v-if="studyStatusLine" class="mt-1 flex items-center gap-1 text-[10px] text-gold-ink">
       <GameIcon name="book" :size="11" />{{ studyStatusLine }}
     </p>
@@ -96,9 +90,8 @@
           <span v-if="batchGain" class="mt-0.5 block text-[9px] text-jade tabular">累积净得:{{ batchGain }}</span>
           <span
             v-if="batchPreview.lines.length"
-            class="mt-0.5 block text-[9px] leading-snug text-ink-faint"
+            class="mt-0.5 block text-[9px] leading-snug"
           >
-            升至 {{ batchPreview.nextLevel }} 级会变:
             <span v-for="line in batchPreview.lines" :key="line" class="block text-ink-soft">{{ line }}</span>
           </span>
         </p>
@@ -106,7 +99,10 @@
       </template>
       <template v-else>
         <p class="min-w-[5rem] flex-1 text-[10px] leading-snug text-ink-soft">
-          一步连升 {{ plan.levels }} 级,花上面那笔总账 —— 仍要?
+          连升 {{ plan.levels }} 级 · <span class="whitespace-nowrap">灵石 {{ formatGN(plan.stone) }}</span><span
+            v-if="plan.ore > 0"
+            class="whitespace-nowrap"
+          > · 玄铁 {{ plan.ore }} 块</span>
         </p>
         <button class="btn-ghost shrink-0 !px-2.5 !py-2 !text-[11px]" @click="batchArm = false">再想想</button>
         <button class="btn-seal shrink-0 !px-2.5 !py-2 !text-[11px]" @click="runBatch">连 升</button>
@@ -153,9 +149,9 @@
   const batchArm = ref(false)
   function runBatch(): void {
     batchArm.value = false
-    upgradeBuildingBatch(props.def.id) // 总账那一声与 toast 由服务自己报
+    upgradeBuildingBatch(props.def.id) // toast 由服务报
   }
-  /** 未建且被境界闸门锁着:等级 0 时满级/辖限都不可能,资源不足另有「尚差 X 石」置灰(不是封印该披露的境界闸) */
+  /** 未建且被境界闸门锁着(资源不足另走缺口句,不算锁) */
   const locked = computed(() => level.value === 0 && player.major < props.def.unlockRealm)
   /** 境界闸名:unlockRealm 即 REALMS 下标(见 buildingText) */
   const gateName = computed(() => buildingGateRealmName(props.def.unlockRealm))
@@ -168,14 +164,13 @@
     if (props.def.id !== 'library') return ''
     const eta = studyEta()
     if (!eta) return ''
-    if (!eta.readingId && !eta.nextIsNew) return '翻检中:够得着的方子都已到手'
+    if (!eta.readingId && !eta.nextIsNew) return '暂无新方'
     if (eta.readingId) {
       const name = pillDef(eta.readingId)?.name ?? '某方'
-      return `正研读「${name}」,约 ${formatDuration(eta.nextInSec)} 后读通`
+      return `研读「${name}」· 约 ${formatDuration(eta.nextInSec)}`
     }
-    return `翻检中,约 ${formatDuration(eta.nextInSec)} 后翻出一张新方`
+    return `翻检新方 · 约 ${formatDuration(eta.nextInSec)}`
   })
-  /** 品类满级:金彩「圆满」 */
   const atMax = computed(() => level.value > 0 && level.value >= props.def.maxLevel)
   /** 被洞府辖限:未到品类上限,但已到 mansion 抬的档 */
   const atGateCap = computed(() => level.value > 0 && !atMax.value && level.value >= cap.value)

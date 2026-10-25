@@ -19,9 +19,7 @@
     <!-- 安卓 MIME 表通常不认 .save;安全边界由 importSaveText 校验 -->
     <input ref="fileInput" type="file" accept="application/octet-stream,.save" class="hidden" @change="onFilePicked" />
 
-    <!-- 导入存档:确认文案 -->
     <BaseModal :open="importOpen" title="导入存档" @close="importOpen = false">
-      <p class="text-[12px] leading-relaxed text-ink-faint">从设置页导出的存档文件可在此恢复。</p>
       <template #footer>
         <div class="flex gap-2">
           <button class="btn-ghost flex-1" @click="importOpen = false">再想想</button>
@@ -32,14 +30,10 @@
 
     <AboutDialog :open="aboutOpen" @close="aboutOpen = false" />
 
-    <!-- 隐私政策全文 -->
     <PrivacyDialog :open="privacyOpen" @close="privacyOpen = false" />
 
-    <!-- 开始前的同意确认 -->
-    <BaseModal :open="agreeOpen" title="进入前请确认" :closable="false">
-      <p class="text-[12px] leading-relaxed text-ink-faint">
-        游戏数据仅保存在你的浏览器本地,不上传服务器。站点接入的流量统计不包含任何游戏数据(详见隐私政策)。继续游玩前,请阅读并同意隐私政策。
-      </p>
+    <BaseModal :open="agreeOpen" title="进入确认" :closable="false">
+      <p class="text-[12px] leading-relaxed text-ink-faint">游戏数据仅存本机 · 流量统计不含游戏数据</p>
       <label class="mt-3 flex items-center gap-2">
         <input v-model="agreed" type="checkbox" class="h-4 w-4 accent-cinnabar" />
         <span class="text-[12px] text-ink-soft">
@@ -100,8 +94,7 @@
   function confirmStart(): void {
     settings.privacyAccepted = true
     agreeOpen.value = false
-    // 穿梭传送门:播放约 2.5s 后进入建号页
-    warpRef.value?.show({ title: '云深不知处', subtitle: '一念修行 · 仙路自此始' })
+    warpRef.value?.show({ title: '云深不知处', subtitle: '仙路自此始' })
     enterTimer = setTimeout(() => {
       void router.push('/create')
     }, 2500)
@@ -123,17 +116,17 @@
       const err = importSaveText(text)
       if (err) {
         ui.toast(err, 'warn')
-        engine.resume() // 导入失败时恢复引擎
+        engine.resume()
         return
       }
-      ui.toast('存档导入成功,即将重入仙途', 'success')
-      // 导入已写盘,立即封存:阻止 persist 插件把欢迎页旧内存(started=false)回写覆盖
+      ui.toast('导入成功', 'success')
+      // 立即封存,阻止 persist 插件把欢迎页旧内存(started=false)回写覆盖
       sealStorageWrites()
       setTimeout(reloadGame, 800)
     }, () => {
       if (unmounted) return
       saveRead = null
-      ui.toast('这个文件读不出来,换一个再试', 'warn')
+      ui.toast('文件无法读取', 'warn')
     })
     if (fileInput.value) fileInput.value.value = ''
   }

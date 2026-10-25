@@ -21,9 +21,9 @@
           v-model="name"
           maxlength="8"
           class="w-full rounded-md border border-ink/20 bg-paper-deep/60 px-3 py-2 font-kai text-[15px] tracking-widest text-ink outline-none focus:border-cinnabar/50"
-          placeholder="取一个道号"
+          placeholder="道号"
         />
-        <button class="btn-ghost shrink-0 !px-3" aria-label="随机取一个道号" @click="randomName">
+        <button class="btn-ghost shrink-0 !px-3" aria-label="随机道号" @click="randomName">
           <GameIcon name="refresh" :size="15" />
         </button>
       </div>
@@ -57,9 +57,7 @@
         </p>
       </div>
       <button class="btn-ghost mt-4 w-full" :disabled="starting || (rerollsLeft !== null && rerollsLeft <= 0)" @click="reroll">{{ rerollLabel }}</button>
-      <p v-if="unlimitedReroll" class="mt-2 text-center text-[11px] text-ink-faint">
-        不满意就一直改,改到掷中你认的那副牌为止
-      </p>
+      <p v-if="unlimitedReroll" class="mt-2 text-center text-[11px] text-ink-faint">不限次数</p>
     </div>
 
     <div class="grow" />
@@ -150,8 +148,7 @@
     seedLoreIfNeeded()
     game.markStarted()
     trackRealm()
-    ui.toast('云深不知处,仙路自此始', 'rare')
-    // 灵根鉴定动画:随机闪现所有灵根品阶,最后定格真实灵根(gradeName)
+    ui.toast('已入仙途', 'rare')
     revealRef.value?.show(profile.value.gradeName, () => {
       void router.push('/')
     })

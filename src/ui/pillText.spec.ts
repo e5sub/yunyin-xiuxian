@@ -5,17 +5,21 @@ describe('丹药提示 · 文言仍报清药力与枚数', () => {
   it('囊中无丹、入口化开,不说不足', () => {
     expect(pillGoneToast()).toBe('囊中无此丹')
     expect(pillGoneToast()).not.toContain('不足')
-    expect(pillTakenToast('凝神丹', '药力化开,状态加身')).toBe('服下「凝神丹」,药力化开,状态加身')
+    expect(pillTakenToast('凝神丹', '药力化开')).toBe('服下「凝神丹」,药力化开')
+    expect(pillTakenToast('凝神丹', '')).toBe('服下「凝神丹」')
   })
 
   it('开炉缺料与成丹枚数都说清', () => {
     expect(craftShortToast()).toContain('灵草')
     expect(craftShortToast()).toContain('灵石')
-    expect(craftShortToast({ herb: 3 })).toBe('灵草尚差 3 株,难开此炉')
-    expect(craftShortToast({ stone: '12' })).toBe('灵石尚差 12,难开此炉')
-    expect(craftShortToast({ herb: 3, stone: '12' })).toBe('灵草尚差 3 株 · 灵石尚差 12,难开此炉')
-    expect(craftOkToast('护心丹', false)).toBe('炉开丹成,得「护心丹」一枚')
-    expect(craftOkToast('护心丹', true)).toBe('一炉双丹,「护心丹」品相极佳')
+    // 无差额兜底与全仓同词:「X不足」
+    expect(craftShortToast()).toBe('灵草或灵石不足')
+    expect(craftShortToast({})).toBe('灵草或灵石不足')
+    expect(craftShortToast({ herb: 3 })).toBe('灵草尚差 3 株')
+    expect(craftShortToast({ stone: '12' })).toBe('灵石尚差 12')
+    expect(craftShortToast({ herb: 3, stone: '12' })).toBe('灵草尚差 3 株 · 灵石尚差 12')
+    expect(craftOkToast('护心丹', false)).toBe('丹成,得「护心丹」一枚')
+    expect(craftOkToast('护心丹', true)).toBe('双丹,得「护心丹」两枚')
     expect(craftOkToast('护心丹', false)).not.toContain('×1')
   })
 })

@@ -31,12 +31,9 @@ describe('区域镇压系统', () => {
     setActivePinia(createPinia())
   })
 
-  /**
-   * 镇压产出行文案(灵石/时 × 物产,乘兴衰):界面与「镇压达成」回执共用 suppressRateLine ——
-   * 无手抄的证据:开头那段灵石用的就是速率表同源数字(同一组原语算出来的)。
-   */
+  /** 界面与「镇压达成」回执共用 suppressRateLine */
   it('suppressRateLine:产出行带数,且与速率表同源', () => {
-    const id = 'wanyao' // 万妖林:forest → 灵草 6/h
+    const id = 'wanyao' // 万妖林:forest → 灵草
     const mult = prosperityYieldMult('flourish')
     const line = suppressRateLine(id, 'flourish')
     expect(line).toContain(`${formatGN(mulN(suppressRateFor(id)!.stonePerHour, mult))}灵石/时`)
@@ -74,7 +71,7 @@ describe('区域镇压系统', () => {
       player.suppressedSince = { wanyao: Date.now() }
       const before = resources.herb
 
-      const total = settleSuppressedRegions(3600) // 一小时
+      const total = settleSuppressedRegions(3600)
       expect(total).not.toBeNull()
       expect(resources.herb, '林区镇压应产出灵草').toBeGreaterThan(before)
       const row = total!.resources.find(r => r.id === 'herb')
@@ -128,7 +125,7 @@ describe('区域镇压系统', () => {
       expect(player.suppressedRegions).not.toContain('qingyun')
       expect(player.suppressQualified, '资格不该随停取而失去').toContain('qingyun')
 
-      player.suppressRegion('qingyun') // 一键切回,无需再战
+      player.suppressRegion('qingyun')
       expect(player.suppressedRegions).toContain('qingyun')
     })
 
@@ -278,7 +275,7 @@ describe('区域镇压系统', () => {
       const resources = useResourcesStore()
       const initialStone = { ...resources.spiritStone }
 
-      settleSuppressedRegions(60) // 1 分钟
+      settleSuppressedRegions(60)
 
       expect(resources.spiritStone).toEqual(initialStone)
     })
@@ -304,11 +301,10 @@ describe('区域镇压系统', () => {
 
       const itemsBefore = inventory.items.length
       const dustBefore = resources.dust
-      // 注入固定随机源确保掉落(equipChance 0.4 × 1h > 0.1)——
-      // 从前是 mock 全局 Math.random,而 rng 在构造时已抓走原函数,mock 根本管不到
-      const total = settleSuppressedRegions(3600, new RandomService(() => 0.1)) // 1 小时
+      // 固定随机源确保掉落(equipChance 0.4 × 1h > 0.1)
+      // mock 全局 Math.random 无效:rng 构造时已取走原函数
+      const total = settleSuppressedRegions(3600, new RandomService(() => 0.1))
 
-      // 必掉 1 件;处置记账必须自洽:入包则件数+1且不化尘,回收则器灵尘按档位到账且不入包
       expect(total).not.toBeNull()
       expect(total!.equipment).toHaveLength(1)
       const eq = total!.equipment[0]!
@@ -497,7 +493,7 @@ describe('镇压速率:显示与结算同源', () => {
     player.suppressedSince = { qingyun: Date.now() }
 
     const before = { ...resources.spiritStone }
-    settleSuppressedRegions(3600, new RandomService(() => 0.99)) // 固定随机源:这一小时不掉装,只比灵石
+    settleSuppressedRegions(3600, new RandomService(() => 0.99)) // 0.99:不掉装,只比灵石
     const gained = toNum(sub(resources.spiritStone, before))
 
     expect(gained).toBeGreaterThan(0)
@@ -509,7 +505,7 @@ describe('镇压速率:显示与结算同源', () => {
     const resources = useResourcesStore()
     const now = Date.now()
     player.suppressedRegions = ['qingyun']
-    player.suppressedSince = { qingyun: now - 7 * 3600_000 } // 已守 7 小时 → 稳定
+    player.suppressedSince = { qingyun: now - 7 * 3600_000 } // 守 7 小时 → 稳定
 
     expect(regionRecallFor('qingyun').prosperity).toBe('stable')
     const before = { ...resources.spiritStone }
@@ -599,7 +595,7 @@ describe('镇压速率:显示与结算同源', () => {
     const rows = readFileSync(resolve(__dirname, '../composables/useRegionRows.ts'), 'utf8')
     expect(rows, '复聚章与一行指引要读同一份落盘状态').toContain('const revived = adventure.revived.includes(r.id)')
     const view = readFileSync(resolve(__dirname, '../components/adventure/RegionCard.vue'), 'utf8')
-    expect(view, '旧主归来要说出下一步:再历一程即可复靖').toContain('旧主归来,再历一程即可复靖')
+    expect(view, '复聚要点明旧主归来').toContain('· 旧主归来')
   })
 })
 

@@ -95,10 +95,10 @@ export function readingMinutes(reading: HexagramReading): number {
 export function readingCounsel(reading: HexagramReading): string[] {
   const tier = tierOf(reading.changing)
   return [
-    `内卦${reading.lower.name}为身,象${reading.lower.image} —— 宜「${reading.lower.good}」,忌「${reading.lower.bad}」。`,
-    `外卦${reading.upper.name}为境,象${reading.upper.image} —— 宜「${reading.upper.good}」,忌「${reading.upper.bad}」。`,
+    `内卦${reading.lower.name}为身,象${reading.lower.image};宜「${reading.lower.good}」,忌「${reading.lower.bad}」。`,
+    `外卦${reading.upper.name}为境,象${reading.upper.image};宜「${reading.upper.good}」,忌「${reading.upper.bad}」。`,
     tier.note,
-    reading.changed ? `动爻${reading.changingAt.join('、')}:${reading.hexagram.name}之${reading.changed.name}。` : '六爻皆静,守本卦而行。'
+    reading.changed ? `动爻${reading.changingAt.join('、')}:${reading.hexagram.name}之${reading.changed.name}。` : '无之卦,守本卦而行。'
   ]
 }
 

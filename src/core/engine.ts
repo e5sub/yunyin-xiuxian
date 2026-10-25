@@ -179,7 +179,7 @@ class GameEngine {
     if (!this.deathAnnounced) {
       this.deathAnnounced = true
       ui.deathDialog = true
-      ui.toast('油尽灯枯,大限已至……', 'warn')
+      ui.toast('大限已至', 'warn')
     }
   }
 

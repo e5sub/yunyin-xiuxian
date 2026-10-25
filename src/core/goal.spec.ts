@@ -34,27 +34,26 @@ describe('修行目标(Phase 29)', () => {
     expect(goal.type).toBe('breakthrough')
     expect(goal.text).toContain('突破')
     expect(goal.text).toContain(breakthroughInfo().targetLabel)
-    expect(goal.hint).toContain('小进阶')
-    expect(goal.hint).not.toContain('天劫')
+    expect(goal.hint ?? '').not.toContain('天劫')
   })
 
   it('临近突破但灵气不足时,hint 报出还差几成 —— 破境要耗灵气,别让人空冲', () => {
     const player = usePlayerStore()
     player.initCharacter('目标', { roots: [] } as never)
     player.exp = gn(Math.floor(toNum(player.expReq) * 0.9))
-    useResourcesStore().setQi(0, player.qiCapValue) // 灵气放空
+    useResourcesStore().setQi(0, player.qiCapValue)
     const goal = generateCurrentGoal(player)!
     expect(goal.type).toBe('breakthrough')
-    expect(goal.hint).toContain('灵气还差')
+    expect(goal.hint).toContain('灵气尚差')
   })
 
-  it('灵气已足时,临近突破的 hint 不必再报灵气缺口', () => {
+  it('灵气已足时,临近突破不出读数', () => {
     const player = usePlayerStore()
     player.initCharacter('目标', { roots: [] } as never)
     player.exp = gn(Math.floor(toNum(player.expReq) * 0.9))
-    useResourcesStore().setQi(player.qiCapValue, player.qiCapValue) // 灵气满
+    useResourcesStore().setQi(player.qiCapValue, player.qiCapValue)
     const goal = generateCurrentGoal(player)!
-    expect(goal.hint).not.toContain('灵气还差')
+    expect(goal.hint).toBeUndefined()
   })
 
   it('圆满层指向下一境,且不把小进阶的丹药说成能渡天劫', () => {
@@ -67,8 +66,7 @@ describe('修行目标(Phase 29)', () => {
     const goal = generateCurrentGoal(player)!
     expect(goal.text).toContain(info.targetLabel)
     expect(goal.text).not.toContain('圆满')
-    expect(goal.hint).toContain('天劫')
-    expect(goal.hint).not.toContain('可提升')
+    expect(goal.hint ?? '').not.toContain('可提升')
     expect(goal.text).toContain('引劫')
     expect(goal.text).not.toContain('尝试突破')
   })
@@ -92,7 +90,7 @@ describe('修行目标(Phase 29)', () => {
     const goal = generateCurrentGoal(player)!
     expect(goal.type).toBe('build')
     expect(goal.text).toContain('天龙')
-    expect(goal.progress).toBe(1) // 2/2,满筑可满
+    expect(goal.progress).toBe(1)
     expect(goal.hint).toContain('2/2')
   })
 
@@ -133,14 +131,14 @@ describe('修行目标(Phase 29)', () => {
     player.exp = gnZero()
     const adventure = useAdventureStore()
     adventure.unlocked = ['qingyun', 'luoxia']
-    adventure.cleared = ['qingyun', 'luoxia'] // 无未通关地界 → explore 不触发
+    adventure.cleared = ['qingyun', 'luoxia'] // 无未通关地界,explore 不触发
     useResourcesStore().herbByGrade[1] = 3
     const goal = generateCurrentGoal(player)!
     expect(goal.type).toBe('material')
     expect(goal.text).toContain('采')
     expect(goal.text).toContain('落霞谷') // tier 2 > tier 1,指最高的
     expect(goal.progress).toBe(0.3)
-    expect(goal.hint).toBeTruthy()
+    expect(goal.hint, '进度已在卡上,不另附说明').toBeUndefined()
   })
 
   it('灵草充足(herb>=10) → material 不触发', () => {
@@ -173,7 +171,7 @@ describe('修行目标(Phase 29)', () => {
     expect(goal.text).toContain('寻一件')
     expect(goal.text).toContain('衣袍')
     expect(goal.progress).toBeCloseTo(2 / 9)
-    expect(goal.hint).toBeTruthy()
+    expect(goal.hint, '进度已在卡上,不另附说明').toBeUndefined()
   })
 
   it('从未通关过地界(cleared 为空) → 即便灵草与装备皆缺也不硬塞(宁缺毋滥)', () => {
@@ -183,7 +181,7 @@ describe('修行目标(Phase 29)', () => {
     const adventure = useAdventureStore()
     adventure.unlocked = []
     adventure.cleared = []
-    useResourcesStore().herbByGrade[1] = 0 // 灵草见底
+    useResourcesStore().herbByGrade[1] = 0
     expect(generateCurrentGoal(player)).toBeNull()
   })
 
@@ -208,7 +206,7 @@ describe('修行目标(Phase 29)', () => {
     player.exp = gnZero()
     player.major = 12 // 当前大境界已是仙品(3)
     const adventure = useAdventureStore()
-    adventure.unlocked = ['qingyun'] // 只通关过凡界(地界 0)的地界
+    adventure.unlocked = ['qingyun'] // 只通关凡界(地界 0)
     adventure.cleared = ['qingyun']
     for (const slot of ['weapon', 'head', 'body', 'wrist', 'belt', 'boots', 'necklace', 'ring', 'talisman'] as const) {
       useInventoryStore().equip(`u-${slot}`, slot)

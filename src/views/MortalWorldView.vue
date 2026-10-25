@@ -12,10 +12,9 @@
             class="world-seal mb-1 grid h-11 w-11 shrink-0 -rotate-2 place-items-center rounded-sm font-kai text-[19px]"
           >世</span>
         </div>
-        <p class="mt-1.5 text-[11px] leading-relaxed text-cinnabar">此世笼罩:{{ view.ruleText }}</p>
+        <p class="mt-1.5 text-[11px] leading-relaxed text-cinnabar">此世规则:{{ view.ruleText }}</p>
       </div>
 
-      <!-- 路线全貌:高低即层级,横距即路程,点大即事多 —— 纸面先晕一层天清气韵,再落墨线 -->
       <div class="card-ink paper-grain px-3 py-2">
         <svg :viewBox="`0 0 ${VIEW_W} ${VIEW_H}`" class="h-16 w-full" role="img" aria-label="本世路线">
           <defs>
@@ -103,42 +102,27 @@
                 <span v-for="n in p.eventLevel" :key="n" class="h-1 w-1 rounded-full bg-gold-ink/60" />
               </span>
             </p>
-            <!-- 锁住的地界要给一句"为什么现在去不了",而不是只画把锁 -->
             <p v-if="!unlocked(p)" class="mt-0.5 text-[10px] leading-relaxed text-cinnabar">
-              {{ blockReason(p.regionId) ?? '此境未开,须先走完这一世的来时路' }}
+              {{ blockReason(p.regionId) ?? '未解锁' }}
             </p>
           </div>
-          <!-- 已通的段落照样能再去 —— 「已通」是记号,不是封路 -->
+          <!-- 「已通」是记号,不是封路 -->
           <button v-if="unlocked(p)" class="btn-seal shrink-0 !px-3 !py-1.5 !text-[12px]" @click="depart(p.regionId)">出 发</button>
         </div>
       </div>
 
-      <!--
-        换界规则必须写明:目前唯一的换界时机是兵解转世,玩家没有主动手段。
-        规则存在却不告诉玩家,和没有规则一样糟
-      -->
+      <!-- 换界规则须写明:唯一的换界时机是兵解转世 -->
       <div class="card-ink paper-grain px-4 py-3">
-        <p class="font-kai text-[13px] tracking-widest text-ink-soft">此界从何而来</p>
+        <p class="font-kai text-[13px] tracking-widest text-ink-soft">换界</p>
         <p class="mt-1.5 text-[11px] leading-relaxed text-ink-faint">
-          你睁眼时,天地已成此形。所历地界、途中缓急、镇守之物皆随此世而定,
-          <!-- 标点跟着前一句走:单独成行会在窄屏上被折成孤零零一个句号 -->
-          <span class="text-ink-soft">这一世之内不会再变。</span>
+          本世之内:<span class="text-ink-soft">地界、路线、镇守不变</span>
         </p>
         <p class="mt-1 text-[11px] leading-relaxed text-ink-faint">
-          唯有
-          <span class="text-violet-ink">兵解转世</span>
-          ,方另开一片天地—— 与此世不同的地界、不同的路、不同的规矩。
-        </p>
-        <p class="mt-1 text-[11px] leading-relaxed text-ink-faint">
-          此外诸界仍在,可回
-          <span class="text-azure">历练</span>
-          处另择他地,不必只走此路。
+          <span class="text-violet-ink">兵解转世</span>:另开一界
         </p>
       </div>
     </template>
-    <p v-else class="empty-note text-center text-[11px] text-ink-faint">
-      此世气象尚未凝成。天地未就,不妨先去历练,待此世凝成再来。
-    </p>
+    <p v-else class="empty-note text-center text-[11px] text-ink-faint">此世未成</p>
   </div>
 </template>
 
@@ -164,16 +148,14 @@
 
   const focusNode = computed(() => view.value?.places.find(p => unlocked(p) && !cleared(p.nodeId)) ?? null)
 
-  /** 标题旁那一句:「已通 X/Y 段」—— 与下方路段卡读同一份 view.places + cleared,不另报口径 */
+  /** 与下方路段卡同读 view.places + cleared,不另报口径 */
   const travelHint = computed(() => {
     const ps = view.value?.places ?? []
-    if (ps.length === 0) return '这一世的路,按段而行'
+    if (ps.length === 0) return ''
     const done = ps.filter(p => cleared(p.nodeId)).length
-    return `已通 ${done}/${ps.length} 段 · 按段而行`
+    return `已通 ${done}/${ps.length} 段`
   })
 
-  /** 路段三态:终点已通是「走过的路」、可往未通是「正要走的路」,皆画实墨;
-      仍未至的路虚画淡线 —— 走过的路在纸上被一段段点染成色 */
   const segments = computed(() => {
     const ps = view.value?.places ?? []
     const segs: { points: string; cls: string; dash: string }[] = []

@@ -1,16 +1,9 @@
 <template>
-  <!--
-    自动重铸:洗到指定词条即停(玩家反馈,可多选、可给最低值)。
-    注意它**不属于**上方的天机推演(修士实验室) —— 那是真仙+未装备才有的
-    v-if="canWhatIf" 段;重铸是凡人也在用的功能,若嵌在里面,普通玩家点开
-    开关只会变字、词条格子与「开洗」永远不渲染(实测即玩家反馈的「没生效」)。
-  -->
+  <!-- 不可嵌进天机推演段(v-if="canWhatIf",真仙+未装备才渲染):重铸人人在用 -->
   <div v-if="reforgeCostVal" class="mt-3 rounded-md border border-ink/15 bg-paper-deep/50 px-3 py-2">
     <p class="mb-1 text-[11px] text-ink-soft">
-      点词条看效果与区间,在弹框里设为目标(任一命中即停 · 已选 {{ autoTargets.length }}/{{ AUTO_REFORGE_MAX_TARGETS }})
+      任一命中即停 · 已选 {{ autoTargets.length }}/{{ AUTO_REFORGE_MAX_TARGETS }}
     </p>
-    <!-- 四档品质成组:传世在前、空组不占位 —— 一眼分出「撞大运的目标」与「随手可得」;
-         组色用词条自身的品质色(与装备卡片同源),选中的下一颗整颗亮成「你的目标章」 -->
     <div class="max-h-40 space-y-1.5 overflow-y-auto pr-0.5">
       <div v-for="group in rarityGroups" :key="group.rarity">
         <p class="flex items-center gap-1.5 text-[9px] tracking-widest" :style="{ color: AFFIX_RARITY_META[group.rarity].color }">
@@ -27,7 +20,7 @@
             :style="isAutoTarget(af.id)
               ? { borderColor: AFFIX_RARITY_META[af.rarity].color, color: AFFIX_RARITY_META[af.rarity].color }
               : { color: 'var(--color-ink-faint)' }"
-            :title="`查看「${af.name}」效果与区间`"
+            :title="`查看「${af.name}」`"
             @click="openCodex(af.id)"
           >
             <span v-if="isAutoTarget(af.id)" class="mr-0.5">选</span>{{ af.name }}
@@ -41,7 +34,7 @@
           type="button"
           class="flex min-h-[28px] w-10 shrink-0 items-center truncate text-left font-kai"
           :style="{ color: targetColor(t.affixId) }"
-          :title="`查看词条:${affixDef(t.affixId)?.name ?? t.affixId}`"
+          :title="`查看「${affixDef(t.affixId)?.name ?? t.affixId}」`"
           @click="openCodex(t.affixId)"
         >
           {{ affixDef(t.affixId)?.name ?? t.affixId }}
@@ -64,7 +57,7 @@
         <button
           class="btn-seal ml-auto !px-3 !py-1.5 !text-[11px]"
           :disabled="!autoTargets.length"
-          :title="autoTargets.length ? undefined : '先点一条要洗到的词条'"
+          :title="autoTargets.length ? undefined : '未选目标'"
           @click="autoArm = true"
         >
           开 洗
@@ -77,7 +70,7 @@
           :title="autoMaxShortText"
           @click="runAutoReforge"
         >
-          洗?至多 灵石{{ autoMaxCost ? formatGN(autoMaxCost.stone) : '0' }}·尘×{{ autoMaxCost?.dust ?? 0 }}
+          确认开洗 · 至多 灵石{{ autoMaxCost ? formatGN(autoMaxCost.stone) : '0' }}·尘×{{ autoMaxCost?.dust ?? 0 }}
         </button>
         <span v-if="autoMaxGap?.short" class="w-full text-[10px] leading-relaxed text-cinnabar tabular">
           {{ autoMaxShortText }}

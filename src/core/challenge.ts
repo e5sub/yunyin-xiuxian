@@ -87,14 +87,13 @@ export function verifyChallenge(draft: ChallengeDraft): ChallengeVerdict | null 
   const viable = rates.filter(r => r >= 0.35).length
   const difficulty = best >= 0.85 ? '闲庭信步' : best >= 0.6 ? '略有凶险' : best >= 0.4 ? '凶险' : '九死一生'
   if (best < 0.15) {
-    return { ok: false, reason: '此局近乎无解,天道不受此约', difficulty, viable, reward: 0 }
+    return { ok: false, reason: '近乎无解', difficulty, viable, reward: 0 }
   }
   if (best > 0.97) {
-    return { ok: false, reason: '此局形同虚设,不配称为挑战', difficulty, viable, reward: 0 }
+    return { ok: false, reason: '形同虚设', difficulty, viable, reward: 0 }
   }
-  // 奖励随通率下行而增大(越难给得越大)。viable 窗 best∈[0.15,0.97] 内 `45*(1.9-best)`
-  // 恒落在 [41.85, 78.75] —— 旧外层 Math.min(90, Math.max(30, …)) 在这个窗内永不生效,故删。
-  // 若有人放宽上下拒绝阈值,请把钳制加回来,不要以为它总会落在窗内。
+  // best∈[0.15,0.97] 内 `45*(1.9-best)` 恒落在 [41.85, 78.75],无需钳制;
+  // 放宽上下拒绝阈值须加回钳制 Math.min(90, Math.max(30, …))
   const reward = Math.round(45 * (1.9 - best))
   return { ok: true, difficulty, viable, reward }
 }
@@ -135,9 +134,9 @@ export function undertakeChallenge(draft: ChallengeDraft, verdict: ChallengeVerd
     recordMilestone('first_custom')
     const player2 = usePlayerStore()
     endgame.updateRecord('best_custom', reward, player2.reincarnation.count + 1, name, 'max')
-    ui.toast(`挑战书《${name}》功成!道源 +${reward}`, 'rare')
+    ui.toast(`《${name}》功成,道源 +${reward}`, 'rare')
   } else if (report.pactBroken) {
-    // 违契终止:并非败北,而是契约束缚 —— 已胜的场次如实报数,不再报「止步第 N 战」的败绩口吻
+    // 违契终止非败北:报已胜场次,不报「止步第 N 战」
     ui.toast(`《${name}》违契而止,已胜 ${report.fightsWon} 战`, 'warn')
   } else {
     ui.toast(`《${name}》未竟,止步第 ${report.fightsWon + 1} 战`, 'warn')

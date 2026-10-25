@@ -1,21 +1,16 @@
 <template>
-  <div class="card-ink px-4 py-3">
-    <!-- 头:主旨 + 容量总览。主/副上限一次性交代,免得人翻到下面才懂 70/30 何来 -->
-    <p class="flex items-center justify-between">
-      <span class="font-kai text-[14px] tracking-[0.25em] text-ink">灵脉投资</span>
-      <span class="tabular text-[11px] text-ink-faint">{{ veinTotal }}/{{ VEIN_TOTAL_CAPACITY }}</span>
+  <!-- 放在洞府页「灵脉投资」弹窗里,标题由弹窗给 -->
+  <div>
+    <p class="flex items-baseline justify-between gap-2">
+      <span class="text-[10px] leading-relaxed text-ink-soft">
+        主脉至多 <span class="text-cinnabar">{{ VEIN_MAIN_CAPACITY }} 点</span> · 副脉各
+        <span class="text-cinnabar">{{ VEIN_SIDE_CAP }} 点</span>
+      </span>
+      <span class="shrink-0 tabular text-[11px] text-ink-faint">{{ veinTotal }}/{{ VEIN_TOTAL_CAPACITY }}</span>
     </p>
-    <p class="mt-0.5 text-[10px] leading-relaxed text-ink-soft">
-      炼化灵石,洞府灵脉日益壮大。主脉至多
-      <span class="text-cinnabar">{{ VEIN_MAIN_CAPACITY }} 点</span>,副脉各
-      <span class="text-cinnabar">{{ VEIN_SIDE_CAP }} 点</span>;总容量有限,方向即取舍。
-    </p>
-    <!-- 总容量分度:金色条一眼看用了几成,取舍这个词落到画面上 -->
     <div class="mt-2 flex h-1.5 w-full items-center overflow-hidden rounded-full bg-ink/6">
       <div class="h-full rounded-full bg-gold-ink/70 transition-all" :style="{ width: totalPct + '%' }"></div>
     </div>
-    <!-- 一点未投时的开门话:主脉不是凭空选的,首投那一下就是答案 -->
-    <p v-if="veinTotal === 0" class="mt-1 text-[9px] text-ink-faint">尚未注力 —— 首投自成主脉,择一而始</p>
 
     <div class="mt-3 space-y-2">
       <div
@@ -24,12 +19,11 @@
         class="rounded-lg border px-2.5 py-2.5"
         :class="isMain(v.id) ? TONES[v.id].row : 'border-ink/8 bg-paper-deep/40'"
       >
-        <div class="flex items-start gap-2.5">
-          <!-- 脉章:方印托一字,与建筑卡同一套印章语言;字色随脉系 -->
+        <div class="flex flex-wrap items-start gap-2.5">
           <span class="grid h-9 w-9 shrink-0 place-items-center rounded-md font-kai text-[15px] leading-none" :class="TONES[v.id].seal">
             <span class="translate-y-[1px]">{{ v.seal }}</span>
           </span>
-          <div class="min-w-0 grow">
+          <div class="min-w-0 flex-1">
             <p class="flex flex-wrap items-center gap-1.5">
               <span class="truncate font-kai text-[13px] text-ink">{{ v.name }}</span>
               <span v-if="isMain(v.id)" class="shrink-0 rounded bg-cinnabar/15 px-1 py-0.5 text-[10px] leading-none text-cinnabar">主脉</span>
@@ -48,39 +42,34 @@
                 {{ currentLevel(v.id) }}/{{ cap(v.id) }}
               </span>
             </div>
-            <!-- 原主脉迁出后超额部分保留(效果不失,不可再投) -->
             <p v-if="surplusPoints(v.id) > 0" class="mt-0.5 text-[10px] leading-relaxed text-gold-ink">
-              作主脉时多投的 {{ surplusPoints(v.id) }} 点仍在账上,其效分毫不减,只是不能再添
+              超额 {{ surplusPoints(v.id) }} 点 · 效果保留
             </p>
           </div>
           <!--
-            投点单列:主动权放右边,说明体不再整行抢点击。
-            窄屏别让它吃掉整行:投点钮不再写死 nowrap(320 宽下「投一点 · 123,456 石」
-            单钮就有 ~110px,连着「改立主脉」会把脉名/说明压成极窄高列、长句碎行);
-            按钮文字在窄屏省略「一点」,并允许折行兜底 —— 拆开的永远是「数+量词」整体。
+            钮组另起一行靠右:弹窗正文窄,「改立主脉 · N 石」与说明并排时说明栏只剩 80px 上下。
+            说明栏须 flex-1(基准 0):基准按内容宽时,折行会把说明栏整块甩到下一行。
+            两钮放不下时折成两行;钮内两段各自不拆,钮窄时上下叠(不叠会被压成逐字竖排)。
           -->
-          <div class="flex shrink-0 flex-col items-end gap-1 self-start">
-            <button class="btn-ghost whitespace-normal !px-2.5 !py-1.5 !text-[11px]" :disabled="!canInvest(v.id)" @click="doInvest(v.id)">
+          <div class="flex basis-full flex-wrap items-center justify-end gap-1.5">
+            <button class="btn-ghost flex-wrap whitespace-normal !px-2.5 !py-1.5 !text-[11px]" :disabled="!canInvest(v.id)" @click="doInvest(v.id)">
               <template v-if="canInvest(v.id)">
-                <span class="hidden min-[400px]:inline">投一点 · </span>
+                <span class="whitespace-nowrap">投一点 ·</span>
                 <span class="whitespace-nowrap">{{ formatGN(investCost) }} 石</span>
               </template>
               <template v-else>{{ investedStateLabel(v.id) }}</template>
             </button>
             <button
               v-if="canSwitchTo(v.id)"
-              class="btn-ghost mt-0.5 !px-2.5 !py-2 !text-[10px]"
+              class="btn-ghost flex-wrap !px-2.5 !py-2 !text-[10px]"
               :disabled="switchShort"
               :aria-label="switchLabel(v.id)"
               :title="switchShort ? `灵石尚差 ${formatGN(switchGap)}` : undefined"
               @click="switchArm = v.id"
             >
-              <template v-if="switchShort">
-                改立主脉 · <span class="whitespace-nowrap">尚差 {{ formatGN(switchGap) }}</span>
-              </template>
-              <template v-else>
-                改立主脉 · <span class="whitespace-nowrap">{{ formatGN(switchCost) }} 石</span>
-              </template>
+              <span class="whitespace-nowrap">改立主脉 ·</span>
+              <span v-if="switchShort" class="whitespace-nowrap">尚差 {{ formatGN(switchGap) }}</span>
+              <span v-else class="whitespace-nowrap">{{ formatGN(switchCost) }} 石</span>
             </button>
           </div>
         </div>
@@ -99,23 +88,22 @@
           </template>
           <template v-else>
             <p class="min-w-[5rem] flex-1 text-[10px] leading-snug text-ink-soft">
-              一步连投 {{ plans[v.id].points }} 点,花上面那笔总账 —— 仍要?
+              连投 {{ plans[v.id].points }} 点 · 灵石 {{ formatGN(plans[v.id].stone) }}
             </p>
             <button class="btn-ghost shrink-0 !px-2.5 !py-2 !text-[11px]" @click="batchArm = null">再想想</button>
             <button class="btn-seal shrink-0 !px-2.5 !py-2 !text-[11px]" @click="runBatch(v.id)">连 投</button>
           </template>
         </div>
 
-        <!-- 改立主脉确认行:20 倍单价的迁移费,按下前把回落后果摆出来(原主脉的超额点不再可添) -->
         <div v-if="switchArm === v.id" class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md border border-ink/10 bg-paper-deep/50 px-2.5 py-2">
           <p class="min-w-[5rem] flex-1 text-[10px] leading-snug text-ink-soft">
-            改立「<span class="font-kai text-[11px] text-cinnabar">{{ v.name }}</span>」为主脉,耗灵石
+            改立「<span class="font-kai text-[11px] text-cinnabar">{{ v.name }}</span>」为主脉 · 耗灵石
             <span class="tabular text-ink">{{ formatGN(switchCost) }}</span>
             <span v-if="switchShort" class="mt-0.5 block text-[9px] leading-relaxed text-cinnabar tabular">
               灵石尚差 {{ formatGN(switchGap) }}
             </span>
             <span v-if="switchLoss" class="mt-0.5 block text-[9px] leading-relaxed text-gold-ink">
-              「{{ switchLoss.oldName }}」现有 {{ switchLoss.points }} 点,化为副脉后超出 {{ VEIN_SIDE_CAP }} 点的 {{ switchLoss.lost }} 点不再可添(已有效果不减)
+              「{{ switchLoss.oldName }}」转副脉<template v-if="switchLoss.lost > 0"> · 超额 {{ switchLoss.lost }} 点 · 效果保留</template>
             </span>
           </p>
           <div class="flex shrink-0 gap-1">
@@ -133,9 +121,8 @@
       </div>
     </div>
 
-    <!-- 加成列账:四条脉各归一行,投了的报当期效果、没投的一句见灰 —— 谁在出力,一眼可辨 -->
     <div class="mt-3 border-t border-ink/6 pt-2.5">
-      <p class="text-[10px] text-ink-faint">当前加成 · 四脉各记一账</p>
+      <p class="text-[10px] text-ink-faint">当前加成</p>
       <div class="mt-1.5 space-y-1">
         <div v-for="v in VEINS" :key="v.id" class="flex items-center gap-2">
           <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="currentLevel(v.id) > 0 ? TONES[v.id].dot : 'bg-ink/15'"></span>
@@ -228,11 +215,10 @@
     return resources.hasStone(investCost.value)
   }
 
-  /** 投点钮在不可投时的说辞:缺灵石 / 满却 / 总容量尽,各说各的 */
   function investedStateLabel(veinId: VeinId): string {
-    if (currentLevel(veinId) >= cap(veinId)) return isMain(veinId) ? '主脉圆满' : '副脉至限'
+    if (currentLevel(veinId) >= cap(veinId)) return isMain(veinId) ? '主脉圆满' : '副脉已至上限'
     if (veinTotal.value >= VEIN_TOTAL_CAPACITY) return '容量已尽'
-    if (!veinsUnlocked.value) return '未开'
+    if (!veinsUnlocked.value) return '未解锁'
     if (!resources.hasStone(investCost.value)) return `灵石尚差 ${formatGN(investGap.value)}`
     return '不可投'
   }
@@ -260,22 +246,20 @@
   const batchArm = ref<VeinId | null>(null)
   function runBatch(veinId: VeinId): void {
     batchArm.value = null
-    investVeinBatch(veinId) // 总账那一声与 toast 由服务自己报
+    investVeinBatch(veinId) // toast 由服务报
   }
 
-  /** 改立主脉的二步确认态:20 倍单价的迁移费,按下前把回落后果摆出来 */
+  /** 改立主脉二步确认态 */
   const switchArm = ref<VeinId | null>(null)
-  /** 改立后原主脉要落回副脉上限:超出 30 点的部分不再可投(效果不减) */
-  const switchLoss = computed<{ oldName: string; points: number; lost: number } | null>(() => {
+  /** 改立后原主脉落回副脉上限:超出 VEIN_SIDE_CAP 的部分不再可投(效果不减) */
+  const switchLoss = computed<{ oldName: string; lost: number } | null>(() => {
     const old = dongfu.veinMain
     if (!old || switchArm.value === null) return null
-    const pts = currentLevel(old)
-    if (pts <= 0) return { oldName: veinDef(old).name, points: pts, lost: 0 }
-    return { oldName: veinDef(old).name, points: pts, lost: Math.max(0, pts - VEIN_SIDE_CAP) }
+    return { oldName: veinDef(old).name, lost: Math.max(0, currentLevel(old) - VEIN_SIDE_CAP) }
   })
   function confirmSwitch(veinId: VeinId): void {
     switchArm.value = null
-    switchMainVein(veinId) // 成败一声与 toast 由服务自己报
+    switchMainVein(veinId) // toast 由服务报
   }
 
   function doInvest(veinId: VeinId): void {

@@ -1,13 +1,7 @@
-/* eslint-disable no-console -- 成本表是给人看的 */
+/* eslint-disable no-console -- 输出成本表 */
 /**
- * 重铸与封存 —— 成本只看「阶数」与「封存数」,重铸连条数一起重掷
- *
- * 旧口径是「品质倍率 × 1.5^次数,上限 10 次」。两处都换掉了:
- *   一 **不限次数**:能不能继续炼,不该由一个与装备无关的计数器决定;
- *   二 **成本只随两件事走**:它有多高阶(与强化/封存同一条 stoneByTier 经济)、
- *      你封存了几个词条(封存是保护,保护得越多,重掷剩下部分越贵)。
- * 而「重铸」的动作也换了:旧版只**换掉一条**词条、条数不动;现在把未封存的
- * 词条推倒重来 —— **条数按品质区间重掷**(至少给一条新的),数值全部重掷。
+ * 重铸与封存:成本只看阶数与封存数,不限次数;
+ * 重铸把未封存的词条推倒重来,条数按品质区间重掷(至少给一条新的),数值全部重掷。
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -212,7 +206,7 @@ describe('重铸动作 · 条数与数值一起重掷', () => {
     expect(useInventoryStore().findItem('poor')!.reforgeCount).toBe(0)
   })
 
-  it('手动重铸缺料回执写出实际差额,不只说未足', () => {
+  it('手动重铸缺料回执写出实际差额,不只说不足', () => {
     const inst: EquipmentInstance = { ...base, uid: 'short-receipt' }
     useInventoryStore().items = [inst]
     const res = useResourcesStore()
@@ -222,10 +216,10 @@ describe('重铸动作 · 条数与数值一起重掷', () => {
     expect(reforgeEquipment('short-receipt')).toBe(false)
     const text = useUiStore().toasts.at(-1)?.text ?? ''
     expect(text).toContain('灵石尚差 4')
-    expect(text).not.toContain('灵石未足')
+    expect(text).not.toContain('灵石不足')
   })
 
-  it('封存缺石回执写出实际差额,不只说未足', () => {
+  it('封存缺石回执写出实际差额,不只说不足', () => {
     const inst: EquipmentInstance = { ...base, uid: 'seal-short' }
     useInventoryStore().items = [inst]
     const res = useResourcesStore()
@@ -234,7 +228,7 @@ describe('重铸动作 · 条数与数值一起重掷', () => {
     expect(sealAffix('seal-short', 'atk1')).toBe(false)
     const text = useUiStore().toasts.at(-1)?.text ?? ''
     expect(text).toContain('灵石尚差 5')
-    expect(text).not.toContain('灵石未足')
+    expect(text).not.toContain('灵石不足')
   })
 
   it('封存缺口与扣款同源:付不起时给出实际石差,够时归零,封满无价', () => {
@@ -309,7 +303,38 @@ describe('重铸动作 · 条数与数值一起重掷', () => {
     flow.runAutoReforge()
     const text = useUiStore().toasts.at(-1)?.text ?? ''
     expect(text).toContain(`器灵尘尚差 2`)
-    expect(text).not.toContain('器灵尘未足')
+    expect(text).not.toContain('器灵尘不足')
+  })
+
+  /** 故障注入:把次数或花销从回执里删掉,本用例红 */
+  it('自动重铸洗满预算:回执是结果标签 + 次数 + 花销', () => {
+    const inst: EquipmentInstance = { ...base, uid: 'auto-budget-receipt' }
+    setup(inst)
+    useUiStore().equipDetailUid = inst.uid
+    const flow = useAutoReforge()
+    // roll 至多为 1,门槛 2 永远洗不中,必然洗满预算
+    flow.autoTargets.value = [{ affixId: 'hp1', minRoll: 2 }]
+    flow.autoBudget.value = 3
+    flow.runAutoReforge()
+    const text = useUiStore().toasts.at(-1)?.text ?? ''
+    expect(text.startsWith('未洗出目标 · 3 次 · 花 '), text).toBe(true)
+    expect(text).toMatch(/ · 尘×\d+$/)
+  })
+
+  /**
+   * 「浮 X%」与详情页词条行同一个说法。
+   * 故障注入:把 affixRollText 换成裸百分数,本用例红。
+   */
+  it('自动重铸洗中目标:回执带浮动标签、次数与花销', () => {
+    const inst: EquipmentInstance = { ...base, uid: 'auto-hit-receipt' }
+    setup(inst)
+    useUiStore().equipDetailUid = inst.uid
+    const flow = useAutoReforge()
+    // 目标是它身上已有的那条(roll 0.5):首轮即命中,0 次、分文不动
+    flow.autoTargets.value = [{ affixId: 'atk1' }]
+    flow.runAutoReforge()
+    const text = useUiStore().toasts.at(-1)?.text ?? ''
+    expect(text).toMatch(/^洗出「.+」浮 50% · 0 次 · 花 .+ · 尘×0$/)
   })
 
   it('封存要付费,且封满之后不再可封', () => {
@@ -390,13 +415,10 @@ describe('界面与判定同源 · 条数上限不写死', () => {
     expect(footer, '缺口就地写出来').toContain('灵石尚差 ${formatGN(s.stone)}')
     expect(footer, '缺尘也单独报数').toContain('器灵尘尚差 ${s.dust}')
     expect(footer, '提示与结算同源').toContain('reforgeShortfall(reforgeCostVal.value)')
-    expect(footer, 'toast 也带同一份差额').toContain('stone: formatGN(s.stone)')
+    expect(footer, '缺口行只列差额,不再拼 toast 那一句(同一笔差额写两遍)').not.toContain('reforgeShortToast(')
   })
 
-  /**
-   * 封存钮此前只查「有没有价」,余额不足仍亮着,点下才弹石差。
-   * 故障注入:把 :disabled 或 sealShortfall 删掉、钮面改回只写「封存」→ 本条红。
-   */
+  /** 故障注入:把 :disabled 或 sealShortfall 删掉、钮面改成只写「封存」,本用例红 */
   it('封存钮按石差置灰,钮面与页脚都写出实际尚差', () => {
     const seal = readFileSync(resolve(__dirname, '../components/equipment/EquipSealPanel.vue'), 'utf8')
     const footer = readFileSync(resolve(__dirname, '../components/equipment/EquipReforgeFooter.vue'), 'utf8')

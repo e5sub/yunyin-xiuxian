@@ -46,18 +46,26 @@ export const TEMPER_NAMES: Record<Temperament, string> = {
   curious: '好奇'
 }
 
-/**
- * 一个道侣角色。
- *
- * 注意这里**没有任何 mods 字段** —— 这是刻意的结构性约束:
- * 类型上就不给「顺手加个属性」留位置
- */
+/** 性别:只决定上屏代词 */
+export type DaoluGender = 'f' | 'm'
+
+/** 道侣文本里指这位道侣的代词一律写它,上屏前经 bondText 换成 她/他 */
+export const TA = '{ta}'
+
+const PRONOUNS: Record<DaoluGender, string> = { f: '她', m: '他' }
+
+/** 道侣文本的唯一渲染口 */
+export function bondText(text: string, gender: DaoluGender): string {
+  return text.split(TA).join(PRONOUNS[gender])
+}
+
+/** 道侣角色;刻意不设 mods 字段 */
 export interface DaoluDef {
   id: string
   name: string
+  gender: DaoluGender
   /** 一句人物速写 */
   brief: string
-  /** 性格 */
   temper: Temperament
   lean: DaoLean
   /** 灵根本源(影响相遇地界的偏好) */
@@ -75,6 +83,7 @@ export interface DaoluDef {
 function d(
   id: string,
   name: string,
+  gender: DaoluGender,
   brief: string,
   temper: Temperament,
   lean: DaoLean,
@@ -84,19 +93,15 @@ function d(
   taboo: string,
   terrains: readonly string[] = []
 ): DaoluDef {
-  return { id, name, brief, temper, lean, element, startMajor, pursuit, taboo, terrains }
+  return { id, name, gender, brief, temper, lean, element, startMajor, pursuit, taboo, terrains }
 }
 
-/**
- * 第一版十位。
- *
- * 刻意不做「最优对象」:每一位在不同世界、不同道途、不同命题下
- * 各有各的合适与不合适(见 daoluFit.spec.ts 的唯一最优检测)
- */
+/** 刻意无唯一最优对象:不同世界、道途、命题下各有合适与不合适(daoluService.spec.ts 检测) */
 export const DAOLU: DaoluDef[] = [
   d(
     'dl_qingli',
     '沈青璃',
+    'f',
     '寡言的女修,袖口常沾着药渣',
     'cautious',
     'alchemy',
@@ -109,6 +114,7 @@ export const DAOLU: DaoluDef[] = [
   d(
     'dl_zhaoyan',
     '赵砚',
+    'm',
     '背一柄未开锋的铁剑,说要等它自己认主',
     'bold',
     'sword',
@@ -121,6 +127,7 @@ export const DAOLU: DaoluDef[] = [
   d(
     'dl_muyan',
     '慕烟',
+    'f',
     '走到哪里都在记录草木,笔比剑用得勤',
     'curious',
     'truth',
@@ -133,18 +140,20 @@ export const DAOLU: DaoluDef[] = [
   d(
     'dl_hanzheng',
     '韩峥',
+    'm',
     '旧战场上活下来的人,袖中永远有三把匕首',
     'bold',
     'slaughter',
     'dark',
     3,
-    '找到当年灭他满门的那个人',
+    '找到当年灭{ta}满门的那个人',
     '受人恩惠必偿,欠债则寝食难安',
     ['废墟', '幽冥']
   ),
   d(
     'dl_yunshu',
     '云舒',
+    'f',
     '总在打盹的散修,醒着的时候话很准',
     'frugal',
     'longevity',
@@ -157,30 +166,33 @@ export const DAOLU: DaoluDef[] = [
   d(
     'dl_ligu',
     '厉孤',
+    'm',
     '独来独往的炼器师,十指有旧烫痕',
     'frugal',
     'artifice',
     'fire',
     2,
     '复原一件残缺的古器',
-    '不许他人碰他未成的器胚',
+    '不许他人碰{ta}未成的器胚',
     ['火域', '废墟']
   ),
   d(
     'dl_baiwei',
     '白薇',
+    'f',
     '医修出身,救人时手很稳,收钱时也很稳',
     'cautious',
     'alchemy',
     'water',
     1,
     '把一门失传的疗伤方子补全',
-    '见死不救是她的底线',
+    '见死不救',
     ['林泽', '山岳']
   ),
   d(
     'dl_zhongli',
     '钟离越',
+    'm',
     '前宗门执法,如今只信自己那一套规矩',
     'cautious',
     'truth',
@@ -193,18 +205,20 @@ export const DAOLU: DaoluDef[] = [
   d(
     'dl_xuewu',
     '雪无痕',
+    'f',
     '雪岭里长大的剑修,话少,出手更少但更狠',
     'bold',
     'sword',
     'ice',
     3,
-    '在有生之年递出一剑无悔的剑',
+    '在有生之年递出无悔的一剑',
     '不受嗟来之食',
     ['山岳', '天象']
   ),
   d(
     'dl_cangming',
     '苍冥',
+    'm',
     '来历不明的修士,自称只是路过',
     'curious',
     'longevity',
@@ -220,11 +234,15 @@ export function daoluDef(id: string): DaoluDef | undefined {
   return DAOLU.find(x => x.id === id)
 }
 
+/** 人物卡上屏用:速写、所求、底线换好代词 */
+export function daoluView(def: DaoluDef): DaoluDef {
+  const t = (s: string): string => bondText(s, def.gender)
+  return { ...def, brief: t(def.brief), pursuit: t(def.pursuit), taboo: t(def.taboo) }
+}
+
 // ============ 关系阶段 ============
 
-/**
- * 关系阶段 —— 每一步靠**行为条件**推进,不是把数字刷满。
- */
+/** 关系阶段:靠行为条件推进 */
 export type BondStage =
   | 'none'
   | 'met'
@@ -270,7 +288,7 @@ export const STAGE_GATES: readonly StageGate[] = [
   { stage: 'met', fate: 0, trust: 0, accord: 0, shared: 0, desc: '打过照面' },
   { stage: 'known', fate: 20, trust: 0, accord: 0, shared: 0, desc: '数次相遇,记住了彼此' },
   { stage: 'together', fate: 35, trust: 20, accord: 0, shared: 1, desc: '共历一次险境' },
-  { stage: 'confidant', fate: 50, trust: 45, accord: 0, shared: 2, desc: '替她了结过一桩事' },
+  { stage: 'confidant', fate: 50, trust: 45, accord: 0, shared: 2, desc: '替{ta}了结过一桩事' },
   { stage: 'pledged', fate: 65, trust: 60, accord: 55, shared: 3, desc: '道心相印,立下共同的道' },
   { stage: 'daolv', fate: 80, trust: 75, accord: 65, shared: 4, desc: '结为道侣' }
 ]

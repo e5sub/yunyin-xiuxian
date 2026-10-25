@@ -161,13 +161,13 @@ function settle(run: WorldRunState, world: CelestialWorldDef, cleared: boolean, 
     if (run.pactId === 'wushang') recordMilestone('first_wushang')
     if (world.id === 'void') recordMilestone('first_void')
     trackClearRecords(world.name, run.totalRounds, run.pactId, reward)
-    ui.toast(`你踏破${world.name}!道源 +${reward}${speedBonus > 0 ? '(含杀伐速战之赏)' : ''}`, 'rare')
+    ui.toast(`${world.name}已破 · 道源 +${reward}${speedBonus > 0 ? '(含速战之赏)' : ''}`, 'rare')
   } else if (pactBroken) {
-    ui.toast(`契约崩碎,天道将你逐出${world.name}`, 'warn')
+    ui.toast('契约崩碎', 'warn')
   } else {
-    ui.toast(`${world.name}将你逐出天门`, 'warn')
+    ui.toast(`被逐出${world.name}`, 'warn')
   }
-  // 所择之门记进道痕环境:忆战/重写要按当年的门重打这一趟
+  // 所择之门记入道痕:忆战/重写按当年的门重打
   recordMark(world.id, world.name, cleared, run.totalRounds, run.pactId, run.gateId ? { gateId: run.gateId } : undefined)
   endgame.worldRun = null
   return reward
@@ -225,7 +225,7 @@ export function startWorldExpedition(worldId: string, pactId: string | null, gat
   const world = resolveWorld(worldId)
   if (!world || !endgameUnlocked()) return null
   if (!endgame.daoPath) {
-    ui.toast('先择道途,方可踏天', 'warn')
+    ui.toast('未择道途', 'warn')
     return null
   }
   const busy = endgameBusy(endgame.worldRun, usePlayerStore().secretRealm, endgame.adventureSession)
@@ -239,14 +239,14 @@ export function startWorldExpedition(worldId: string, pactId: string | null, gat
   if (pact?.special === 'sealCore') {
     const sealed = sealCoreMods()
     if (!sealed) {
-      ui.toast('道途尚未成路,逆命契无从封印', 'warn')
+      ui.toast('无流派可封', 'warn')
       return null
     }
     sealedMods = sealed
   }
   const short = daoSourceShortfall(world.entryCost, endgame.daoSource)
   if (!endgame.spendDaoSource(world.entryCost)) {
-    ui.toast(`${short.reason ?? `道源尚差 ${world.entryCost}`}(天道熔炉可献祭闲置资财)`, 'warn')
+    ui.toast(short.reason ?? `道源不足 ${world.entryCost}`, 'warn')
     return null
   }
   const rules = chainRules(currentDaoRules(), world.rules, pactRules(pact), gateRulesOf(gate?.id))
@@ -262,8 +262,8 @@ export function startWorldExpedition(worldId: string, pactId: string | null, gat
     winStacks: 0,
     sealedMods
   }
-  if (pact) ui.toast(`你与天道立下「${pact.name}」`, 'info')
-  if (gate) ui.toast(`你自「${gate.fullName}」入界 —— ${gate.desc}`, 'info')
+  if (pact) ui.toast(`已立「${pact.name}」`, 'info')
+  if (gate) ui.toast(`自「${gate.fullName}」入界`, 'info')
   return fightStep(run, world, world.foes[0]!)
 }
 
@@ -297,7 +297,7 @@ export function abandonExpedition(): void {
   const world = resolveWorld(run.worldId)
   if (world) {
     recordMark(world.id, world.name, false, run.totalRounds)
-    useUiStore().toast(`你退出了${world.name},此行道源尽付东流`, 'info')
+    useUiStore().toast(`已退出${world.name}`, 'info')
   }
   endgame.worldRun = null
 }
@@ -345,30 +345,27 @@ export function previewFight(
     const tag = sk.effect ? (EFFECT_WORDS[sk.effect] ?? sk.effect) : '重击'
     return `【${sk.name}】${tag} · ${RATE_WORDS(sk.rate)} · 威力 ${sk.mult.toFixed(1)} 倍`
   })
-  if (foeShape.mods?.dodgeRate) skillLines.push(`身法诡谲,闪避约 ${Math.round(foeShape.mods.dodgeRate * 100)}%`)
-  // 实战(在途 run)吃 expeditionRules;出发前(run=null,带 prep)按首战那份规则合成:
-  // 道途 × 世界 × 所择契约 × 所择之门 —— 「先算后战」算的就是那一场仗,不是另一场
+  if (foeShape.mods?.dodgeRate) skillLines.push(`闪避 ${Math.round(foeShape.mods.dodgeRate * 100)}%`)
+  // 在途按 expeditionRules;出发前(带 prep)按首战规则合成:道途 × 世界 × 契约 × 门
   const rules =
     world && run
       ? expeditionRules(world, run, node)
       : prep && world
         ? chainRules(currentDaoRules(), world.rules, pactRules(prep.pactId ? pactDef(prep.pactId) : undefined), gateRulesOf(prep.gateId), node?.rules)
         : currentDaoRules()
-  // 危险时点:限时 / 杀意渐涨 / 重击预警 / 生机稀薄
   const riskLines: string[] = []
-  if (rules?.maxRounds !== undefined) riskLines.push(`天时仅 ${rules.maxRounds} 回合,拖延即败`)
-  if (rules?.perRounds) riskLines.push(`每 ${rules.perRounds.interval} 回合敌人杀意渐涨,战局越晚越凶`)
+  if (rules?.maxRounds !== undefined) riskLines.push(`天时仅 ${rules.maxRounds} 回合`)
+  if (rules?.perRounds) riskLines.push(`每 ${rules.perRounds.interval} 回合敌人杀意渐涨`)
   const heavy = foeShape.skills.find(sk => sk.mult >= 2)
-  if (heavy) riskLines.push(`【${heavy.name}】足以重创,留足气血以备不测`)
-  if ((rules?.healMult ?? 1) < 0.7) riskLines.push('此地生机稀薄,回血难以为继')
-  // 「所窥即所打」:在途 run 吃 runSnap 的契约修饰;出发前(prep)走同一份 pactBoundedSnap
-  // —— 逆命契封核心、无相只带一件法宝,预览不勾销这些负担
+  if (heavy) riskLines.push(`【${heavy.name}】可致重创`)
+  if ((rules?.healMult ?? 1) < 0.7) riskLines.push('生机稀薄')
+  // 契约负担(封核心、只带一件法宝)预览不得勾销
   const snap = run
     ? runSnap(run)
     : pactBoundedSnap(buildPlayerSnap(true), prep?.pactId ? pactDef(prep.pactId) : undefined)
   const fightRules = world && run ? withCarriedHp(rules, run) : rules
   const rate = sampleWinRate(snap, foe, rand, 3, fightRules)
-  const winText = rate >= 0.9 ? '胜算在握' : rate >= 0.6 ? '约有七成胜算' : rate >= 0.35 ? '五五之数,凶险参半' : '凶多吉少'
+  const winText = rate >= 0.9 ? '胜算在握' : rate >= 0.6 ? '七成胜算' : rate >= 0.35 ? '五五之数' : '凶多吉少'
   return { skillLines, riskLines, winText, rate }
 }
 
@@ -401,7 +398,7 @@ export function challengeMutation(mutatorIds: string[]): MutationResult | null {
   const endgame = useEndgameStore()
   const ui = useUiStore()
   if (!endgameUnlocked() || !endgame.daoPath) {
-    ui.toast('先择道途,方可应变数', 'warn')
+    ui.toast('未择道途', 'warn')
     return null
   }
   const busy = endgameBusy(endgame.worldRun, usePlayerStore().secretRealm, endgame.adventureSession)
@@ -428,9 +425,9 @@ export function challengeMutation(mutatorIds: string[]): MutationResult | null {
   if (report.cleared) {
     reward = MUTATION_BASE_REWARD
     endgame.addDaoSource(reward)
-    ui.toast(`天道变数尽数破解!道源 +${reward}`, 'rare')
+    ui.toast(`变数已破 · 道源 +${reward}`, 'rare')
   } else {
-    ui.toast(`变数难测,你止步第 ${report.fightsWon + 1} 战`, 'warn')
+    ui.toast(`止步第 ${report.fightsWon + 1} 战`, 'warn')
   }
   recordMark('mutation', '天道变数', report.cleared, report.totalRounds, null, { mutatorIds })
   return { report, rewardDaoSource: reward }
@@ -445,11 +442,11 @@ export function rerollVoidWorld(): boolean {
   const endgame = useEndgameStore()
   const ui = useUiStore()
   if (!endgameUnlocked() || !endgame.daoPath) {
-    ui.toast('先择道途,方可窥探虚界', 'warn')
+    ui.toast('未择道途', 'warn')
     return false
   }
   if (endgame.worldRun?.worldId === 'void') {
-    ui.toast('虚界远征在途,此界尚不能散去', 'warn')
+    ui.toast('虚界远征在途', 'warn')
     return false
   }
   const short = daoSourceShortfall(VOID_REROLL_COST, endgame.daoSource)
@@ -459,16 +456,13 @@ export function rerollVoidWorld(): boolean {
   }
   const generated = generateApprovedWorld(Date.now() % 999983, 40, voidHistory())
   if (!generated) {
-    // 极端情形兜底:裁判连续否决,退款
+    // 裁判连续否决:退款
     endgame.addDaoSource(VOID_REROLL_COST)
-    ui.toast('天机紊乱,虚界未能成形(道源已退还)', 'warn')
+    ui.toast('虚界未成形 · 道源已退还', 'warn')
     return false
   }
   endgame.voidWorld = generated.world
-  ui.toast(
-    `虚界「${generated.world.name}」成形(迥异诸天 ${Math.round(generated.novelty * 100)}%,推演淘汰 ${generated.rejected} 个候选)`,
-    'rare'
-  )
+  ui.toast(`虚界「${generated.world.name}」成形`, 'rare')
   return true
 }
 
@@ -549,7 +543,7 @@ export function forecastExpedition(worldId: string, pactId: string | null, gateI
 
   const starN = pRate >= 0.85 ? 5 : pRate >= 0.6 ? 4 : pRate >= 0.4 ? 3 : pRate >= 0.15 ? 2 : 1
   return {
-    difficulty: pRate >= 0.85 ? '胜券在望' : pRate >= 0.6 ? '略占上风' : pRate >= 0.4 ? '胜负各半' : pRate >= 0.15 ? '凶险' : '九死一生',
+    difficulty: pRate >= 0.85 ? '稳操胜券' : pRate >= 0.6 ? '略占上风' : pRate >= 0.4 ? '胜负各半' : pRate >= 0.15 ? '凶险' : '九死一生',
     judgementLines: celestialJudgementLines(player.celestialStats.mods, player.major, world.anchorTier),
     viableStyles,
     stars: '★'.repeat(starN) + '☆'.repeat(5 - starN)

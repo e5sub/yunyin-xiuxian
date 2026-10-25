@@ -7,14 +7,14 @@
         <span v-if="def.element" class="chip-ink" :style="{ color: ELEMENTS[def.element].color }">
           {{ ELEMENTS[def.element].name }}属性
         </span>
-        <!-- Phase 32.2:同源功法参悟时更易撞见(倾向,非独占;无此灵根照样学得到) -->
-        <span v-if="sameRoot" class="chip-ink border-gold-ink/40 text-gold-ink" title="与你的灵根同源,藏经阁参悟时更易撞见">同源</span>
+        <!-- 同源功法参悟时更易撞见(倾向,非独占) -->
+        <span v-if="sameRoot" class="chip-ink border-gold-ink/40 text-gold-ink" title="灵根同源 · 参悟更易得">同源</span>
         <span v-if="learned" class="ml-auto tabular text-[12px] text-gold-ink">第 {{ level }}/{{ def.maxLevel }} 层</span>
       </div>
       <p class="mt-2 text-[12px] leading-relaxed text-ink-faint">{{ def.desc }}</p>
-      <!-- 参悟门槛与藏经阁习得同源:minRealm ≤ major+1 已在池内(超前一层设计,spec 钉死),仅当再高一层的真参悟不到时才提示 -->
+      <!-- 参悟门槛与藏经阁习得同源:minRealm ≤ major+1 即在池内(超前一层,spec 钉死),更高才提示 -->
       <p v-if="!learned && def.minRealm > player.major + 1" class="mt-1 text-[11px] text-cinnabar">
-        需 {{ REALMS[def.minRealm]?.name ?? '更高' }} 境方可参悟其精义
+        需{{ REALMS[def.minRealm]?.name ?? '更高' }}境
       </p>
       <div class="ink-divider my-3" />
       <template v-if="learned">
@@ -27,9 +27,8 @@
             {{ gongfaSkillLine(def.skill) }}
           </p>
         </div>
-        <!-- 每进一层的增量:进修要花悟道点与残页,值不值当得看得见 -->
         <p class="mt-2 text-[11px] text-ink-faint">
-          每进一层:<span class="tabular text-azure">{{ modsText(def.perLevelMods) }}</span>
+          每层:<span class="tabular text-azure">{{ modsText(def.perLevelMods) }}</span>
         </p>
         <p v-if="upCost" class="mt-3 text-right text-[11px] text-ink-faint tabular">
           进修需 悟道点×{{ upCost.wudao }} · 残页×{{ upCost.page }}
@@ -37,13 +36,9 @@
         <p v-if="upShort" class="mt-1 text-right text-[11px] leading-relaxed text-cinnabar tabular">
           {{ upShortText }}
         </p>
-        <!-- Phase 31 A3:满级悟道,择一分支。文案须自解释——给什么、要不要慎重,按下之前就得看见 -->
+        <!-- 满级悟道,择一分支;规则(不可更改 · 转世不失)写在确认态里 -->
         <div v-if="fullLevel && branches.length" class="mt-3">
-          <p class="mb-1 font-kai text-[12px] tracking-[0.2em] text-ink-faint">功 行 圆 满 · 悟 道</p>
-          <p class="mb-2 text-[11px] leading-relaxed text-ink-faint">
-            此功已修至顶层,可就其中一条道走到底,永久追加下方词条(转世不失)。
-            <span class="text-cinnabar">道分歧路,一经择定终身不改。</span>
-          </p>
+          <p class="mb-2 font-kai text-[12px] tracking-[0.2em] text-ink-faint">悟 道</p>
           <div v-if="branchPicked" class="rounded-md bg-paper-deep/70 px-3 py-2">
             <p>
               <span class="font-kai text-[13px] text-gold-ink">{{ branchPicked.name }}</span>
@@ -65,10 +60,10 @@
               </span>
               <span class="shrink-0 text-[10px] text-azure">择此道 →</span>
             </button>
-            <!-- 永久抉择二步确认:选了就改不了,按一下不该就此了结 -->
+            <!-- 永久抉择二步确认 -->
             <div v-if="branchConfirm" class="rounded-md bg-cinnabar/5 px-3 py-2">
               <p class="text-[10px] leading-relaxed text-cinnabar">
-                道分歧路,一经择定<strong>终身不改</strong>(转世仍随你)。确认择【{{ gongfaBranchDef(branchConfirm)?.name ?? '' }}】?
+                择【{{ gongfaBranchDef(branchConfirm)?.name ?? '' }}】· <strong>不可更改</strong> · 转世不失
               </p>
               <p v-if="gongfaBranchDef(branchConfirm)" class="mt-1 text-[11px] tabular text-azure">
                 {{ modsText(gongfaBranchDef(branchConfirm)!.mods) }}
@@ -81,16 +76,12 @@
             </div>
           </div>
         </div>
-        <!-- 满级却无分支:也要交代一句,免得玩家满世界找入口 -->
-        <p v-else-if="fullLevel" class="mt-3 text-[11px] text-ink-faint">此功已修至顶层,一以贯之,别无歧路可择。</p>
+        <p v-else-if="fullLevel" class="mt-3 text-[11px] text-ink-faint">无悟道分支</p>
       </template>
-      <!--
-        未习得也要给得出「学它做什么」:参悟是花残页的抉择,池子里若只写着风味,
-        玩家只能凭名字挑 —— 而名字看不出它是攻是守。故这里给满级账。
-      -->
+      <!-- 未习得:给满级账 -->
       <template v-else>
-        <p class="text-[12px] text-ink-faint">尚未习得此功法。</p>
-        <p class="mt-2 text-[11px] text-ink-soft">修至圆满({{ def.maxLevel }} 层)可得:</p>
+        <p class="text-[12px] text-ink-faint">未习得</p>
+        <p class="mt-2 text-[11px] text-ink-soft">圆满({{ def.maxLevel }} 层):</p>
         <div class="mt-1 space-y-1">
           <p v-for="row in previewRows" :key="row.label" class="flex justify-between text-[13px]">
             <span class="text-ink-faint">{{ row.label }}</span>
@@ -111,10 +102,9 @@
           v-else
           class="btn-seal flex-1 text-[12px]"
           :disabled="subFull"
-          :title="subFull ? `辅修槽已满(${cultivation.subGongfa.length}/${dongfu.subGongfaSlots})` : undefined"
           @click="toggleSub"
         >
-          {{ subFull ? `辅修槽满 ${cultivation.subGongfa.length}/${dongfu.subGongfaSlots}` : subActionText }}
+          {{ subFull ? `辅修已满 ${cultivation.subGongfa.length}/${dongfu.subGongfaSlots}` : subActionText }}
         </button>
         <button v-if="upCost" class="btn-ghost flex-1" :disabled="upShort !== null" @click="def && upgradeGongfa(def.id)">
           {{ upShort ? '进 修(缺料)' : '进 修' }}

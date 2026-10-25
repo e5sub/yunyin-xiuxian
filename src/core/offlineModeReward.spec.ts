@@ -62,8 +62,8 @@ function seedSession(mode: 'normal' | 'deep' | 'prolonged' | 'marathon' | 'deepE
   const awayHours = mode === 'normal' || mode === 'deep' ? SESSION_HOURS : EXPLORE_MODES[mode].durationSec / 3600
   const started = Date.now() - awayHours * 3600 * 1000
   game.lastActiveAt = started
-  game.totalPlaySec = 60 * 60 // 本日第 1 小时,避开跨天时序
-  player.major = 2 // 筑基境,打得动一阶区域
+  game.totalPlaySec = 60 * 60 // 避开跨天时序
+  player.major = 2 // 金丹
   player.exp = { m: 0, e: 0 }
   adventure.setSession({
     regionId: 'qingyun',
@@ -90,9 +90,8 @@ interface Yields {
 const invPills = (): number =>
   Object.values(useInventoryStore().pills).reduce((a, b) => a + b, 0)
 
-/** 从归来卷轴读回「另有 N 件寻常之物」的 N(无该行即 0) */
 function overflowOf(notes: string[]): number {
-  const line = notes.find(n => n.includes('件寻常之物'))
+  const line = notes.find(n => n.includes('件折作器灵尘'))
   return line ? Number(/另有\s*(\d+)\s*件/.exec(line)![1]) : 0
 }
 
@@ -156,13 +155,12 @@ describe('离线长档(8h / 16h)吃同一把倍率,且不越过洞府封顶', ()
   })
 
   it('16h 行程配 8h 洞府:离线只结 8h,不按整程 16h 给', () => {
-    // 洞府 0 级 = 8h 封顶。锚点取「同一档位、只缺席 8h」的那一程:
-    // 若 capSec 失效,16h 档会按整程结算,产出约为锚点的两倍。
+    // 洞府 0 级 = 8h 封顶;capSec 失效则 16h 档按整程结算,产出约为锚点两倍
     const capped = runOnce('deepExpedition')
-    const anchor = runOnce('marathon') // 8h 档:时长恰为封顶,产出即为 8h 的满额
+    const anchor = runOnce('marathon') // 8h 档:时长恰为封顶
     expect(capped.page, '16h 档应有产出').toBeGreaterThan(0)
     expect(anchor.page).toBeGreaterThan(0)
-    // 同为 8h 结算,只差档位倍率(3.6 vs 3.0):产出应在同一量级,不得翻倍
+    // 同为 8h 结算,只差档位倍率 3.6 vs 3.0
     expect(capped.page).toBeLessThan(anchor.page * 1.5)
     expect(capped.pills).toBeLessThan(anchor.pills * 1.5)
     // 会话剩余 16h,离线只推进 8h:不该被判「历练完成」
@@ -201,25 +199,20 @@ describe('离线长档(8h / 16h)吃同一把倍率,且不越过洞府封顶', ()
         itemGain: 0
       })
       const summary = settleOffline(now)!
-      const note = summary.notes.find(n => n.includes('这一程还没走完'))
+      const note = summary.notes.find(n => n.includes('历练在途'))
       expect(note, `归来卷轴未提被截断的历练:${summary.notes.join(' | ')}`).toBeTruthy()
-      expect(note).toContain('洞府上限')
       expect(note).toMatch(/尚余\s*4小时/)
-      // 会话必须仍在途(没被误判成圆满结束)
+      // 截断缘由见卷轴顶行(OfflineRewardDialog 的 awayLine:「此去 · 上限」)
+      expect(summary.capped, '缺席 12h 超过 8h 上限,顶行该报「上限」').toBe(true)
+      expect(summary.cappedSeconds, '顶行报的上限即洞府 0 级的 8h').toBe(8 * 3600)
       expect(useAdventureStore().session, '被 cap 截断的会话不该被清掉').not.toBeNull()
     } finally {
       vi.useRealTimers()
     }
   })
 
-  /**
-   * 「圆满结束」与「还没走完」两句互斥 —— 不能同屏出现。
-   *
-   * 16 小时档配 8h 洞府时,离线只推进到洞府上限,会话留在途上:这时该印
-   * 「还没走完」;一旦这一程真的走完了(remainSec 已被这段缺席走满),
-   * 该印的是「圆满结束」。两句同时出现,玩家读到的就是自相矛盾的旅程。
-   */
-  it('圆满结束与还没走完不共屏', () => {
+  /** 会话在途印「历练在途」;remainSec 被缺席走满才印「历练完成」 */
+  it('历练完成与历练在途不共屏', () => {
     setActivePinia(createPinia())
     const game = useGameStore()
     const player = usePlayerStore()
@@ -248,13 +241,12 @@ describe('离线长档(8h / 16h)吃同一把倍率,且不越过洞府封顶', ()
         itemGain: 0
       })
       const summary = settleOffline(now)!
-      const done = summary.notes.some(n => n.endsWith('之行圆满结束'))
-      const unfinished = summary.notes.some(n => n.includes('这一程还没走完'))
-      // 这一程还剩 4h(16h 满程 − 12h 缺席),离线只结 8h → 未走完
-      expect(unfinished, '还剩半程该说还没走完').toBe(true)
-      expect(done, '未走完的行程不许又说圆满结束').toBe(false)
-      // 句子里必须给出可核对的剩余数,不能只说一句「还没走完」
-      expect(summary.notes.find(n => n.includes('这一程还没走完'))).toMatch(/尚余\s*[1-9]/)
+      const done = summary.notes.some(n => n.endsWith('历练完成'))
+      const unfinished = summary.notes.some(n => n.includes('历练在途'))
+      // 16h 满程 − 12h 缺席,还剩 4h
+      expect(unfinished, '还剩半程该说历练在途').toBe(true)
+      expect(done, '未走完的行程不许又说历练完成').toBe(false)
+      expect(summary.notes.find(n => n.includes('历练在途'))).toMatch(/尚余\s*[1-9]/)
     } finally {
       vi.useRealTimers()
     }
@@ -274,7 +266,7 @@ describe('离线长档(8h / 16h)吃同一把倍率,且不越过洞府封顶', ()
     const now = new Date('2026-10-23T12:00:00.000Z').getTime()
     vi.setSystemTime(now)
     try {
-      const started = now - 8 * 3600 * 1000 // 正好等于 0 级洞府的离线上限
+      const started = now - 8 * 3600 * 1000 // 等于 0 级洞府的离线上限
       game.lastActiveAt = started
       game.totalPlaySec = 60 * 60
       player.major = 2
@@ -293,7 +285,7 @@ describe('离线长档(8h / 16h)吃同一把倍率,且不越过洞府封顶', ()
         itemGain: 0
       })
       const summary = settleOffline(now)!
-      const note = summary.notes.find(n => n.includes('这一程还没走完'))
+      const note = summary.notes.find(n => n.includes('历练在途'))
       expect(note, `离线正好等于上限时卷轴只字未提:${summary.notes.join(' | ')}`).toBeTruthy()
       expect(note).toMatch(/尚余\s*8小时/)
       expect(useAdventureStore().session, '被 cap 截断的会话不该被清掉').not.toBeNull()
@@ -550,7 +542,7 @@ describe('离线首领战同样雪耻', () => {
       ;(rng as { float: (a: number, b: number) => number }).float = realFloat
     }
     expect(summary.battles, '这一趟得真的交过手').toBeGreaterThan(0)
-    expect(summary.notes.some(n => n.includes('斩于剑下') || n.includes('区域之主')), '首领这一场该真的打了').toBe(true)
+    expect(summary.notes.some(n => n.includes(`【${boss.name}】`)), '首领这一场该真的打了').toBe(true)
     expect(player.nemeses.find(n => n.enemyId === boss.id)?.avengedAt, '首领打赢也该雪耻').toBeDefined()
     expect(summary.notes.some(n => n.includes('雪耻')), '雪耻要在卷轴里说一声').toBe(true)
   })

@@ -20,17 +20,12 @@ export type IntentSpark =
 
 export const SPARK_NAMES: Record<IntentSpark, string> = {
   shared: '又一次同行',
-  supported: '你站在她那边',
-  crossed: '你越过了她的线',
-  omen: '与她未了之事有关的东西出现了'
+  supported: '你站在{ta}那边',
+  crossed: '你越过了{ta}的线',
+  omen: '与{ta}未了之事有关的东西出现了'
 }
 
-/**
- * 各类经历对酝酿度的推动。
- *
- * 注意 `crossed` 是负的:被辜负之后,话会咽回去。
- * 这不是「信任下降所以不触发」,而是「这件事让她不想说了」
- */
+/** 各类经历对酝酿度的推动 */
 export const SPARK_WEIGHT: Record<IntentSpark, number> = {
   shared: 0.12,
   supported: 0.22,
@@ -80,28 +75,24 @@ export const RESPONSE_NAMES: Record<IntentResponse, string> = {
   ignore: '不作声'
 }
 
-/**
- * 由她的所求生成这一世的意图。
- *
- * 每个人的意图来自 DaoluDef.pursuit —— 那本就是「她自己要做的事」,
- * 33.8 起就写在数据里,只是一直没有机制读它
- */
+/** 由道侣的所求(DaoluDef.pursuit)生成这一世的意图 */
 export function intentFor(def: DaoluDef): { wish: string; line: string } {
   const lines: Record<string, string> = {
-    dl_qingli: '她忽然停下:「往北那条路……我想去看看。」',
-    dl_zhaoyan: '他把剑横在膝上:「这柄铁剑，我想带它去个地方。」',
-    dl_muyan: '她合上册子:「还有一处我没记过。你愿不愿意绕一趟?」',
-    dl_hanzheng: '他盯着远处很久:「我听说那个人往这边来过。」',
-    dl_yunshu: '她难得没有打盹:「有件事,我想趁还来得及去看一眼。」',
-    dl_ligu: '他摊开那件残器:「差最后一味。你陪我去取?」',
-    dl_baiwei: '她把药囊系紧:「那张方子还缺一截,我想去找。」',
-    dl_zhongli: '他沉默了一路,忽然开口:「当年的事,我想弄清楚。」',
-    dl_xuewu: '她握了握剑柄:「有一剑,我想在那个地方递出去。」',
-    dl_cangming: '他罕见地认真起来:「我大概知道自己是从哪儿来的了。」'
+    dl_qingli: '{ta}忽然停下:「往北那条路……我想去看看。」',
+    dl_zhaoyan: '{ta}把剑横在膝上:「这柄铁剑,我想带它去个地方。」',
+    dl_muyan: '{ta}合上册子:「还有一处我没记过。你愿不愿意绕一趟?」',
+    dl_hanzheng: '{ta}盯着远处很久:「我听说那个人往这边来过。」',
+    dl_yunshu: '{ta}难得没有打盹:「有件事,我想趁还来得及去看一眼。」',
+    dl_ligu: '{ta}摊开那件残器:「差最后一味。你陪我去取?」',
+    dl_baiwei: '{ta}把药囊系紧:「那张方子还缺一截,我想去找。」',
+    dl_zhongli: '{ta}沉默了一路,忽然开口:「当年的事,我想弄清楚。」',
+    dl_xuewu: '{ta}握了握剑柄:「有一剑,我想在那个地方递出去。」',
+    dl_cangming: '{ta}罕见地认真起来:「我大概知道自己是从哪儿来的了。」'
   }
+  // 返回模板;落档前由 sparkIntent 换代词
   return {
     wish: def.pursuit,
-    line: lines[def.id] ?? `${def.name}似乎有话想说。`
+    line: lines[def.id] ?? `${def.name}有话想说。`
   }
 }
 
@@ -141,7 +132,7 @@ export function respondTo(def: DaoluDef, intent: BondIntent, response: IntentRes
       trust: 16,
       accord: 6,
       settled: true,
-      text: `你们一同去了。${def.name}要找的东西未必在那里,但她说这一趟不算白走。`
+      text: `你们一同去了。回来的路上,${def.name}话多了些。`
     }
   }
   if (response === 'refuse') {
@@ -150,17 +141,17 @@ export function respondTo(def: DaoluDef, intent: BondIntent, response: IntentRes
       trust: -8,
       accord: -4,
       settled: false,
-      text: `${def.name}点了点头:「也好。」她没有再提,但你知道她还惦记着。`
+      text: `${def.name}点了点头:「也好。」`
     }
   }
-  // 忽略:第一次她当你没听见,再三之后她自己去了
+  // 忽略:第一次道侣当你没听见,再三之后道侣自己去了
   if (ignored >= 2) {
     return {
       fate: 0,
       trust: -14,
       accord: -2,
       settled: true,
-      text: `${def.name}独自去了那里,回来时什么也没说。有些事她不再指望你。`
+      text: `${def.name}独自去了那里,回来时什么也没说。`
     }
   }
   return {

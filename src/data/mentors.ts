@@ -67,7 +67,7 @@ export const MENTORS: MentorDef[] = [
     id: 'hunter',
     name: '猎修',
     title: '踏遍山河',
-    desc: '赶路更快,所得更多',
+    desc: '妖踪更密,装备更易现世',
     mods: { explorationSpeed: 0.04, dropRate: 0.03 },
     narrative: {
       aligned: '师尊拍肩:「行万里路,猎万兽。你正是猎修的苗子。」',

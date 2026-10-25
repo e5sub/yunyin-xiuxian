@@ -98,17 +98,16 @@ export function worldIdentity(w: MortalWorld): WorldIdentity {
   if (dominance >= DOMINANCE_SINGLE) {
     form = 'single'
     name = `${themeName}的${terrain}之世`
-    summary = `${w.bias}的${terrain},为${themeName}所笼罩`
+    summary = `${w.bias}之地`
   } else if (second && dualShare >= DOMINANCE_DUAL) {
     form = 'dual'
     secondary = second[0]
     name = `${terrain}与${secondary}交错之世`
-    summary = `${w.bias}之地,${terrain}与${secondary}相间,为${themeName}所笼罩`
+    summary = `${w.bias}之地,为${themeName}所笼罩`
   } else {
-    // 地貌高度分散:不许拿任何一轴代表整个世界,退回主题与生态
     form = 'scattered'
     name = `${themeName}的杂涌之世`
-    summary = `${w.bias}之地,山川无序、诸相杂陈,唯${themeName}贯穿始终`
+    summary = `${w.bias}之地,山川无序`
   }
 
   return {

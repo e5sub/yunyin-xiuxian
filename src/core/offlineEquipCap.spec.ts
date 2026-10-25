@@ -42,10 +42,10 @@ vi.mock('./combat', async importOriginal => {
 
 const SESSION_HOURS = 8
 
-/** 从归来卷轴里读回「另有 N 件寻常之物」的 N(= 期望件数 − 6) */
+/** 读卷轴「另有 N 件折作器灵尘」的 N(= 期望件数 − 6) */
 function overflowFromNotes(notes: string[]): number {
-  const line = notes.find(n => n.includes('件寻常之物'))
-  expect(line, `归来卷轴缺「另有 N 件寻常之物」一行,读不到期望件数:${notes.join(' | ')}`).toBeTruthy()
+  const line = notes.find(n => n.includes('件折作器灵尘'))
+  expect(line, `归来卷轴缺「另有 N 件折作器灵尘」一行,读不到期望件数:${notes.join(' | ')}`).toBeTruthy()
   return Number(/另有\s*(\d+)\s*件/.exec(line!)![1])
 }
 
@@ -65,8 +65,8 @@ describe('离线装备掉落 · 每场概率吃在线那道封顶(行为层·确
     game.totalPlaySec = 60 * 60 // 本日第 1 小时,避开跨天时序
     player.major = 2 // 筑基境,打得动一阶区域
     player.exp = { m: 0, e: 0 }
-    player.addTalent('t_hongyun') // 鸿运:dropRate +0.1(裸概率 0.9 → 0.99,越过封顶)
-    dongfu.setLevel('mansion', 8) // 离线封顶拉高,保证 simSec=cap 而非被 dt 掐短
+    player.addTalent('t_hongyun') // 鸿运:dropRate +0.1(裸概率 0.9 → 0.99)
+    dongfu.setLevel('mansion', 8) // 离线封顶拉高,simSec 不被 dt 掐短
     // 商队遇袭:区域加丰 ×1.25,与 mode ×2.4 相乘后裸概率恰为 0.9
     player.setRegionEvent({ regionId: 'qingyun', eventId: 'shangdui', endsAt: Date.now() + 24 * 3600 * 1000 })
     adventure.setSession({
@@ -84,11 +84,11 @@ describe('离线装备掉落 · 每场概率吃在线那道封顶(行为层·确
     })
 
     const summary = settleOffline(Date.now())!
-    expect(summary.wins).toBeGreaterThan(100) // 有足够场次,round 噪声无关紧要
+    expect(summary.wins).toBeGreaterThan(100) // 场次够多,round 噪声可忽略
 
     const overflow = overflowFromNotes(summary.notes)
-    const equipped = overflow + 6 // 期望件数 = 超出行囊 6 件的部分 + 实际生成的 6 件
-    // 与在线同源:每场概率封顶 0.9(鸿运的 +0.1 被夹掉),福缘未挂故 doubleMult=1
+    const equipped = overflow + 6
+    // 封顶 0.9;未挂福缘,doubleMult = 1
     expect(equipped, '离线期望件数未按 0.9 封顶(裸概率 0.99 直接乘了进去)').toBe(
       Math.round(summary.wins * 0.9)
     )
@@ -108,10 +108,10 @@ describe('离线装备掉落 · 每场概率吃在线那道封顶(行为层·确
     game.markStarted()
     const started = Date.now() - SESSION_HOURS * 3600 * 1000
     game.lastActiveAt = started
-    game.totalPlaySec = 60 * 60 // 本日第 1 小时,避开跨天时序
+    game.totalPlaySec = 60 * 60
     player.major = 20 // 混沌道祖,打得动高阶地界
     player.exp = { m: 0, e: 0 }
-    dongfu.setLevel('mansion', 8) // 拉高离线上限,保证 simSec 不被 dt 掐短、溢出足够多
+    dongfu.setLevel('mansion', 8)
     adventure.setSession({
       regionId: 'wudaoya', // 道祖悟道崖,tier 32
       mode: 'normal',

@@ -36,9 +36,9 @@ function percentBacked(percent: number, nums: number[]): boolean {
   return nums.some(v => {
     const candidates = [v, Math.abs(v)]
     for (const c of candidates) {
-      if (Math.abs(c - p) < 1e-9) return true // x
-      if (Math.abs(c - 1 - p) < 1e-9) return true // 1+x
-      if (Math.abs(c - (1 - p)) < 1e-9) return true // 1-x
+      if (Math.abs(c - p) < 1e-9) return true // x:0.15 = +15%(概率、词条)
+      if (Math.abs(c - 1 - p) < 1e-9) return true // 1+x:1.15 = +15%(敌方/治疗倍率)
+      if (Math.abs(c - (1 - p)) < 1e-9) return true // 1-x:0.25 = -75%(治疗压制)
       if (Math.abs(c - percent) < 1e-9) return true // 直接写了百分数
     }
     return false
@@ -466,10 +466,9 @@ describe('文案数值对账 · 手写的门槛与容量', () => {
     for (const hand of ['70 点', '30 点', '总容量 100']) {
       expect(card, `手抄的「${hand}」应改成读常数`).not.toContain(hand)
     }
-    // 开启境界那句前瞻也读同一枚 VEIN_UNLOCK_MAJOR:门槛动,「金丹境方启」必须跟着动
     const view = src('../views/DongfuView.vue')
-    expect(view, '前瞻应读 VEIN_UNLOCK_MAJOR 所在的境名').toContain('veinGateRealm')
-    expect(view, '前瞻不应再手抄「金丹境方启」').not.toContain('金丹境方启此脉')
+    expect(view, '开启境界应读 VEIN_UNLOCK_MAJOR 所在的境名').toContain('veinGateRealm')
+    expect(view, '开启境界不应手抄「需金丹境」').not.toContain('需金丹境')
   })
 
   it('「不能全部点满」是算术事实:全部脉的上限之和确实超过总容量', () => {
@@ -549,8 +548,8 @@ describe('术语一致性 · 用户可见文本', () => {
     walk('../data')
     walk('../views')
     walk('../components')
-    walk('../ui') // 词条名表就在这儿(属性面板上的标签)
-    walk('../core') // toast 与区域事件文案也算玩家可见
+    walk('../ui') // 含词条名表
+    walk('../core') // toast 与区域事件文案
     return out
   }
 
@@ -697,11 +696,9 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(view, '禁用态按缺的那一样判,不能拿整个缺口对象当布尔').toContain(
       ':disabled="row.short?.short != null"'
     )
-    expect(view, '行内写悟道缺口').toContain('悟道尚差 ${short.wudao}')
+    expect(view, '行内写悟道缺口').toContain('悟道点尚差 ${short.wudao}')
     expect(view, '行内写灵石缺口').toContain('灵石尚差 ${formatGN(short.stone)}')
-    expect(view, '提示按缺的那一样走').toContain('artifactShortToast(short.short!, {')
-    expect(view, '提示与行内读同一份差额').toContain('wudao: short.wudao')
-    expect(view, '灵石差额也走同源').toContain('stone: formatGN(short.stone)')
+    expect(view, '行内不再缀 toast 的来路提示').not.toContain('artifactShortToast(')
     expect(view, '不许再用笼统的「悟道或灵石不足」').not.toContain('悟道或灵石不足')
   })
 
@@ -747,13 +744,11 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(src('../views/InventoryView.vue'), '丹方读到几分熟取自 lore.recipeMastery').toContain('recipeMastery(')
   })
 
-  it('丹方熟练度的来路与机制同向 —— 三路都点名', () => {
-    // 成功开炉 +0.01、炸炉 +0.02、藏经阁被动钻研都会积累熟练;
-    // 文案三路都说清,不把任何一条真实来路藏起来。
+  it('丹方熟练度只报读数 —— 不列半截来路冒充全部', () => {
+    // 熟练来路:成功开炉 +0.01、炸炉 +0.02、藏经阁被动钻研
     const view = src('../views/InventoryView.vue')
-    expect(view, '要说明开炉成功也精进').toContain('开炉')
-    expect(view, '要说明藏经阁钻研这条主路').toContain('藏经阁钻研')
-    expect(view, '炸炉也长记性是该机制的独特性格').toContain('炸炉都会长记性')
+    expect(view, '熟练度读数取自 recipeMastery 的现值').toContain('`熟练 ${Math.round(m * 100)}%`')
+    expect(view, '来路说明已删,不该残留半句').not.toContain('长记性')
   })
 
   /**
@@ -830,7 +825,7 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
   it('天道熔炉材料不足时回执写出实际差量', () => {
     const service = src('./endgameService.ts')
     expect(service, '材料差额单源').toContain('export function furnaceMaterialShortfall(')
-    expect(service, '预览失败写实际差量').toContain('ui.toast(`${rate.name}尚差 ${furnaceMaterialShortfall(rate)},不够熔铸一缕道源`')
+    expect(service, '预览失败写实际差量').toContain('ui.toast(`${rate.name}尚差 ${furnaceMaterialShortfall(rate)}`')
     expect(service, '扣料失败同写实际差量').toMatch(
       /spendSmall\(rate\.resource, spent\)[\s\S]{0,180}furnaceMaterialShortfall\(rate\)/,
     )
@@ -848,7 +843,7 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     const apprentice = src('../views/ApprenticeView.vue')
     expect(apprentice, '道童报价与缺口同源').toContain('apprenticeRecruitShortfall(player.major, resources.spiritStone)')
     expect(apprentice, '招募付不起要置灰').toContain(':disabled="slotsFull || !canAffordRecruit"')
-    expect(apprentice, '招募按钮就地写实际差额').toContain('尚差 ${formatGN(recruitShort)} 灵石')
+    expect(apprentice, '招募按钮就地写实际差额').toContain('(灵石尚差 ${formatGN(recruitShort)})')
     expect(apprentice, '招募失败 toast 也报实际差额').toContain('灵石尚差 ${formatGN(recruitShort.value)}')
   })
 
@@ -884,7 +879,7 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(card, '投点钮就地写实际石差').toContain('灵石尚差 ${formatGN(investGap.value)}')
     expect(service, '单点拒因写实际石差').toContain('veinShortToast(formatGN(veinPointShortfall()))')
     expect(service, '批量拒因同写实际石差').toContain('else ui.toast(veinShortToast(formatGN(veinPointShortfall())), \'warn\')')
-    expect(text, '短差文案只在传入差数时才写尚差').toContain('`灵石尚差 ${stoneText},难注此脉`')
+    expect(text, '短差文案只在传入差数时才写尚差').toContain('`灵石尚差 ${stoneText}`')
   })
 
   it('强化缺料时置灰并写出实际差额', () => {
@@ -934,7 +929,7 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(service, '单炉与计划共用差额函数').toContain('export function craftShortfall(')
     expect(service, '单炉回执传实际草石差').toMatch(/craftShortToast\(\{[\s\S]{0,120}herb: gap\.herb,[\s\S]{0,120}stone: formatGN\(gap\.stone\)/)
     expect(service, '计划只缺石时带 shortStone').toContain('shortStone?: GNum')
-    expect(service, '计划回执不再写死灵石未足').not.toContain("blocked('灵石未足,难开此炉'")
+    expect(service, '计划回执不再写死笼统的灵石不足').not.toMatch(/blocked\('灵石[未不]足'/)
     expect(text, '缺料文案分开报草石').toContain('灵草尚差 ${gap.herb} 株')
     expect(text, '缺料文案报石差').toContain('灵石尚差 ${gap.stone}')
   })
@@ -991,18 +986,48 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(deadLinks, `这些 <a> 没有 href 却挂了点击:${deadLinks.join(' | ')}`).toEqual([])
   })
 
-  it('凝道果先采样首次教学标志,再执行凝果 —— 否则教学弹窗永不弹出', () => {
-    // doCondense 随熔炉/道果弹窗搬进了 components/celestial/FurnaceDialog.vue
+  /** 故障注入:doCondense 开窗时调 markFruitTutorialSeen(),本用例红 */
+  it('凝道果按未见标志开说明,开窗不置已见 —— 开窗即置,说明显示中刷新或按返回就永久丢失', () => {
     const view = src('../components/celestial/FurnaceDialog.vue')
-    const body = /function doCondense\(\)[^{]*\{([\s\S]*?)\n  \}/.exec(view)?.[1] ?? ''
-    expect(body, '没读到 doCondense —— 判据会假绿').toContain('shouldShowFruitTutorial')
-    // condenseDaoFruit 首次成功时会自己置 seen=true,后读判定恒为假
-    const sampleAt = body.indexOf('shouldShowFruitTutorial()')
-    const condenseAt = body.indexOf('condenseDaoFruit()')
-    expect(sampleAt, 'doCondense 里先采样 shouldShowFruitTutorial()').toBeGreaterThanOrEqual(0)
-    expect(condenseAt, 'doCondense 里应调用 condenseDaoFruit()').toBeGreaterThanOrEqual(0)
-    expect(sampleAt, 'shouldShowFruitTutorial() 必须在 condenseDaoFruit() 之前采样').toBeLessThan(
-      condenseAt,
-    )
+    const body = /function doCondense\(\)[^{]*\{([\s\S]*?)\n\}/.exec(view)?.[1] ?? ''
+    expect(body, '没读到 doCondense —— 判据会假绿').toContain('condenseDaoFruit()')
+    expect(body, '开窗前须问 shouldShowFruitTutorial(),否则每次凝果都弹').toContain('shouldShowFruitTutorial()')
+    expect(body, '已见只在关掉说明时置').not.toMatch(/markFruitTutorialSeen|dismissFruitTutorial|daoFruitTutorialSeen/)
+  })
+
+  /** 故障注入:注释改回「其成功即置 daoFruitTutorialSeen」,本用例红 */
+  it('shouldShowFruitTutorial 的注释写明已见在关掉说明时置 —— 照「凝果即置」接线,说明显示中刷新就永久丢失', () => {
+    const raw = readFileSync(resolve(__dirname, './resourceGuidance.ts'), 'utf8')
+    const doc = /\/\*\*((?:(?!\*\/)[\s\S])*)\*\/\s*export function shouldShowFruitTutorial\b/.exec(raw)?.[1] ?? ''
+    expect(doc, '没读到 shouldShowFruitTutorial 的注释 —— 判据会假绿').not.toBe('')
+    expect(doc).not.toContain('成功即置')
+    expect(doc).toContain('关掉')
+  })
+
+  /** 故障注入:「知道了」改回 `fruitDialogOpen = false`、doCondense 不记打开时刻、开窗改读 Date.now、关窗不看 dismissFruitTutorial 的结果、或绕过它直接置已见,本用例红 */
+  it('道果说明的关闭全过保护期,作数才置已见 —— 「知道了」盖在「道果 +1」上,连点第二下会关掉一次性说明', () => {
+    const view = src('../components/celestial/FurnaceDialog.vue')
+    const modal = /<BaseModal\b[^>]*\btitle="道果"[^>]*>[\s\S]*?<\/BaseModal>/.exec(view)?.[0] ?? ''
+    // 遮罩、Esc、右上角走 @close
+    const close = /@close="(\w+)\(\)"/.exec(modal)?.[1] ?? ''
+    expect(close, '没读到道果说明的 @close —— 判据会假绿').not.toBe('')
+    expect(modal, '「知道了」与 @close 同一个关闭').toMatch(new RegExp(`@click="${close}\\(\\)"[^>]*>\\s*知道了`))
+    const fnBody = (name: string): string =>
+      new RegExp(`function ${name}\\(\\)[^{]*\\{([\\s\\S]*?)\\n\\}`).exec(view)?.[1] ?? ''
+    const closeBody = fnBody(close)
+    // dismissFruitTutorial:保护期内不作数,作数才置已见(resourceGuidance.spec 验行为)
+    const openedAt = /dismissFruitTutorial\((\w+)/.exec(closeBody)?.[1] ?? ''
+    expect(openedAt, `${close} 须先过 dismissFruitTutorial`).not.toBe('')
+    expect(closeBody.indexOf('dismissFruitTutorial(')).toBeLessThan(closeBody.indexOf('fruitDialogOpen.value = false'))
+    expect(closeBody, '只调用不看结果,保护期内照样关窗').toMatch(/if\s*\(\s*!?\s*dismissFruitTutorial\(/)
+    expect(fnBody('doCondense'), '打开时记下时刻').toMatch(new RegExp(`\\b${openedAt}\\s*=[^=]`))
+    // 开窗与关窗读同一时钟:一边换成 Date.now,说明要么永远关不掉、要么不设防
+    const openClock = new RegExp(`\\b${openedAt}\\s*=\\s*([\\w.]+\\(\\))`).exec(fnBody('doCondense'))?.[1] ?? ''
+    const closeClock = new RegExp(`dismissFruitTutorial\\(${openedAt},\\s*([\\w.]+\\(\\))\\)`).exec(closeBody)?.[1] ?? ''
+    expect(closeClock, '没读到关窗时刻 —— 判据会假绿').not.toBe('')
+    expect(openClock, '开窗与关窗同一时钟').toBe(closeClock)
+    expect(view.match(/fruitDialogOpen(?:\.value)?\s*=\s*false/g), '别处不许绕过保护期直接关').toHaveLength(1)
+    expect(view.match(/\bdismissFruitTutorial\(/g), '置已见只经关窗一处').toHaveLength(1)
+    expect(view, '别处不许绕过保护期直接置已见').not.toMatch(/markFruitTutorialSeen\(|daoFruitTutorialSeen\s*=/)
   })
 })

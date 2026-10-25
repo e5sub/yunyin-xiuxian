@@ -114,9 +114,8 @@ describe('天劫解法空间审计', () => {
   it('④ 短板门:专精构筑的最弱维度应被风险行点名', () => {
     const cf = planOf(SHAPES.find(s => s.key === 'sustain')!, 'counterflow')
     expect(cf.risks.join()).toContain('逆流')
-    // 爆发流在裂魂劫下不应被点"爆发被压制"(它爆发是够的)
     const sr = planOf(SHAPES.find(s => s.key === 'burst')!, 'soulrend')
-    expect(sr.risks.join()).not.toContain('爆发攻势被压制')
+    expect(sr.risks.join()).not.toContain('爆发不足')
   })
 
   /**
@@ -183,6 +182,6 @@ describe('濒危减伤(背水/涅槃)——结算兑现,渡劫账也须看得见
     const dmgHigh = waveDamage(def, mods, 1, 1, 0.5)
     const dmgNone = waveDamage(def, {}, 1, 1, 0.2)
     expect(dmgLow).toBeCloseTo(dmgNone * (1 - 0.4), 9)
-    expect(dmgHigh).toBe(dmgNone) // ≥0.3 不触发濒危减伤
+    expect(dmgHigh).toBe(dmgNone)
   })
 })

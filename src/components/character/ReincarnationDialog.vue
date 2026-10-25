@@ -4,11 +4,7 @@
     <div class="text-center">
       <p class="mt-2 font-kai text-2xl tracking-[0.4em] text-ink">寿元将尽</p>
       <p class="mt-3 text-[13px] leading-relaxed text-ink-soft">
-        {{ player.name }}枯坐于蒲团之上,油尽灯枯。
-        <br />
-        此生行至 {{ Math.floor(player.age) }} 载,止步于{{ player.realmName }}。
-        <br />
-        所幸神魂不灭,尚可入轮回,再启仙途。
+        {{ player.name }} · {{ Math.floor(player.age) }} 载 · {{ player.realmName }}
       </p>
     </div>
     <template #footer>
@@ -22,9 +18,9 @@
       <p class="text-[12px] leading-relaxed text-ink-soft">
         第
         <span class="font-kai text-ink tabular">{{ view.review.index }}</span>
-        世,你行至{{ view.review.realmLabel }},寿终于
+        世 · {{ view.review.realmLabel }} ·
         <span class="tabular">{{ view.review.age }}</span>
-        载。
+        载
       </p>
 
       <!-- 这一世立的题 -->
@@ -45,15 +41,15 @@
           {{ reviewTheme.legacy }}
         </p>
         <p v-else-if="view.review.themeResult === 'broken'" class="mt-1 text-[11px] text-ink-faint">
-          你{{ TABOO_NAMES[reviewTheme.taboo ?? 'pill'] }}了。这一世的话,没能说到底。
+          犯忌:{{ TABOO_NAMES[reviewTheme.taboo ?? 'pill'] }}
         </p>
       </div>
-      <p v-else class="mt-3 text-[11px] text-ink-faint">此生不曾为自己立下什么题目。</p>
+      <p v-else class="mt-3 text-[11px] text-ink-faint">未立题</p>
 
       <!-- 宿慧与阶段 -->
       <div class="mt-3 rounded-lg border border-ink/15 px-3 py-2">
         <p class="flex items-center justify-between text-[12px]">
-          <span class="text-ink-soft">此生所历,化作宿慧</span>
+          <span class="text-ink-soft">本世宿慧</span>
           <span class="font-kai text-cinnabar tabular">+{{ view.review.insightGained }}</span>
         </p>
         <p class="mt-1.5 flex items-center justify-between text-[12px]">
@@ -66,20 +62,19 @@
         </p>
         <p class="mt-1 text-[11px] leading-relaxed text-ink-faint">{{ view.stageDesc }}</p>
         <p v-if="view.toNextStage !== null" class="mt-1 text-[11px] text-ink-faint tabular">
-          再积 {{ view.toNextStage }} 宿慧,可入下一境地。
+          下一境地 · 宿慧尚差 {{ view.toNextStage }}
         </p>
       </div>
 
       <p class="mt-3 text-[11px] leading-relaxed text-ink-faint">
-        丹方、药性、器纹、敌手的路数——这些所知不随皮囊腐朽。
-        来世睁眼,你便认得
+        来世认得
         <span class="text-ink tabular">{{ view.knownMaterials }}</span>
-        味灵材。
+        味灵材
       </p>
 
-      <!-- 交割清单:带走什么、放下什么 —— 与 core/samsaraAudit 的继承表同源,不另写一份 -->
+      <!-- 交割清单:与 core/samsaraAudit 的继承表同源,不另写 -->
       <div class="mt-3 rounded-lg border border-ink/15 px-3 py-2">
-        <p class="text-[10px] text-ink-faint">此生交割 —— 留下的是「我是谁」,放下的是「我拥有多少」 · 点一枚看取舍</p>
+        <p class="text-[10px] text-ink-faint">此生交割</p>
         <div v-for="g in heritageGroups()" :key="g.mode" class="mt-1.5">
           <p class="text-[11px]" :class="g.mode === 'reset' ? 'text-ink-faint' : 'text-ink-soft'">
             {{ g.title }}
@@ -90,20 +85,20 @@
               v-for="r in g.rows"
               :key="r.id"
               type="button"
-              class="chip-ink !text-[10px]"
+              class="chip-ink !py-1.5 !text-[10px]"
               :class="[
                 g.mode === 'full' ? 'border-jade/50 text-jade' : g.mode === 'partial' ? 'border-gold-ink/50 text-gold-ink' : 'border-ink/20 text-ink-faint',
                 detailId === r.id ? 'ring-1 ring-current' : ''
               ]"
               :aria-pressed="detailId === r.id"
-              :title="r.detail"
+              :title="r.brief"
               @click="detailId = detailId === r.id ? null : r.id"
             >
               {{ r.name }}
             </button>
           </div>
         </div>
-        <p v-if="detailRow" class="mt-2 text-[10px] leading-relaxed text-ink-soft tabular">{{ detailRow.name }} · {{ detailRow.detail }}</p>
+        <p v-if="detailRow" class="mt-2 text-[10px] leading-relaxed text-ink-soft tabular">{{ detailRow.name }} · {{ detailRow.brief }}</p>
       </div>
     </div>
     <template #footer>
@@ -115,14 +110,11 @@
   <BaseModal :open="view !== null && step === 'next'" :closable="false" title="轮回">
     <div v-if="view">
       <p class="text-[12px] leading-relaxed text-ink-soft">
-        此番轮回凝得道果
-        <span class="text-cinnabar tabular">{{ view.daoFruitGained }}</span>
-        枚,来世修行更进一步。
+        道果
+        <span class="text-cinnabar tabular">+{{ view.daoFruitGained }}</span>
       </p>
       <p class="mt-3 font-kai text-[13px] tracking-widest text-ink">择一先天之姿</p>
-      <p v-if="view.talentChoices.length === 0" class="mt-2 text-[11px] leading-relaxed text-ink-faint">
-        先天之姿已尽数为你所有,此番再无可择——直取轮回便是。
-      </p>
+      <p v-if="view.talentChoices.length === 0" class="mt-2 text-[11px] leading-relaxed text-ink-faint">已集齐</p>
       <div class="mt-2 space-y-2">
         <button
           v-for="id in view.talentChoices"
@@ -144,7 +136,7 @@
         </button>
       </div>
       <div v-if="view.extraTalents.length" class="mt-3 text-[11px] text-ink-faint">
-        <p>另有天资自开:</p>
+        <p>另得:</p>
         <p v-for="id in view.extraTalents" :key="id" class="mt-1">
           <span class="font-kai text-gold-ink">{{ talentDef(id)?.name }}</span>
           <span v-if="talentDef(id) && modsText(talentDef(id)!.mods)" class="ml-1 tabular text-azure">
@@ -156,10 +148,10 @@
       <!-- 这一世的命题 -->
       <template v-if="view.themeChoices.length">
         <p class="mt-4 font-kai text-[13px] tracking-widest text-ink">
-          这一世要做什么
-          <span v-if="view.themeFree" class="ml-1 text-[10px] font-normal text-gold-ink">(百世老修,任你自择)</span>
+          本世命题
+          <span v-if="view.themeFree" class="ml-1 text-[10px] font-normal text-gold-ink">(自选)</span>
         </p>
-        <p class="mt-1 text-[11px] text-ink-faint">立题不给属性。走到底了,所得的是随神魂不灭的一份所知。</p>
+        <p class="mt-1 text-[11px] text-ink-faint">不加属性</p>
         <div class="mt-2 space-y-2">
           <button
             v-for="t in themeDefs"
@@ -170,7 +162,7 @@
           >
             <p class="flex items-center justify-between">
               <span class="font-kai text-[14px] text-ink">{{ t.name }}</span>
-              <span class="text-[10px] text-ink-faint tabular">走成 +{{ t.insight }} 宿慧</span>
+              <span class="text-[10px] text-ink-faint tabular">达成 +{{ t.insight }} 宿慧</span>
             </p>
             <p class="mt-0.5 text-[11px] leading-relaxed text-ink-soft">{{ t.vow }}</p>
             <p class="mt-0.5 text-[11px] text-ink-faint">
@@ -179,7 +171,6 @@
             </p>
           </button>
         </div>
-        <p class="mt-2 text-[11px] text-ink-faint">不选亦可——无题的一世,不过是少一份所得。</p>
       </template>
     </div>
     <template #footer>
@@ -206,7 +197,7 @@
   const router = useRouter()
 
   const RESULT_NAMES: Record<'done' | 'unfinished' | 'broken', string> = {
-    done: '践行到底',
+    done: '已成',
     unfinished: '未竟',
     broken: '已破'
   }
@@ -237,9 +228,11 @@
   /** talentChoices 多周目后可能为空,此时须放行,否则卡死在此弹窗;只拦「有可选却未择定」 */
   const canConfirm = computed(() => (view.value?.talentChoices.length ?? 0) === 0 || chosen.value !== null)
 
-  // 每次新开轮回界面都从"回顾"这一程重新走起
+  // 弹窗常驻 App,不随结算卸载:每次新结算回到第一程,收起上回点开的去留
   watch(view, v => {
-    if (v) step.value = 'review'
+    if (!v) return
+    step.value = 'review'
+    detailId.value = null
   })
 
   function beginRebirth(): void {

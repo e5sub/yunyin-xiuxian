@@ -13,9 +13,9 @@
         </p>
         <p v-for="(r, i) in preview.mine.reasons" :key="i" class="mt-0.5 text-[10px] text-ink-faint">{{ r }}</p>
       </template>
-      <p v-else class="text-[11px] text-ink-faint">尚未成流派,此地对各路数一视同仁。</p>
+      <p v-else class="text-[11px] text-ink-faint">未成流派</p>
       <div class="ink-divider my-2" />
-      <p class="text-[10px] text-ink-faint">此地与你的路数合不合(未必等于胜算):</p>
+      <p class="text-[10px] text-ink-faint">此地适配:</p>
       <p class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
         <span v-for="rec in preview.recs" :key="rec.style.id" class="text-[11px] text-ink-soft tabular">
           {{ rec.style.name }}
@@ -23,13 +23,10 @@
         </span>
       </p>
       <p class="mt-1.5 text-[10px] text-ink-faint tabular">
-        战力 {{ formatGN(player.finalStats.power) }} · 装备成色、词条与临场随机仍定成败
+        战力 {{ formatGN(player.finalStats.power) }}
       </p>
     </div>
-    <!--
-      灵兽之性折进了下面每档的「遇险 ×N / 行程」里,却不说是它干的 ——
-      换伙伴的决定点在这里,把它的跟脚照实摊开(departButtonText 同表)
-    -->
+    <!-- 灵兽之性已折进各档的遇险 / 行程,另列一行摊开(与 departButtonText 同表) -->
     <p v-if="petTripLine" class="mb-2 text-[10px] leading-relaxed text-violet-ink tabular">{{ petTripLine }}</p>
     <!-- 档位名与档数取自 EVENT_TIERS -->
     <p class="mb-2 text-[10px] leading-relaxed text-ink-faint tabular">
@@ -38,13 +35,6 @@
         <span v-if="i > 0"> · </span>{{ t.name }} {{ tierOddsText(t.id, chainPending, departEventChance) }}
       </template>
     </p>
-    <p class="text-[12px] text-ink-faint">此行欲作何打算?</p>
-    <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">行程论这一程走多久;「历练遇敌」只令同程妖踪更密,不能缩地成寸。</p>
-    <!--
-      「N档行程 · 最凶较最稳凶 X 倍」:两个数都从 EXPLORE_MODES 现算。
-      从前这句话写死「三档里敌人差了 2.1 倍」,档位扩到六档、最凶抬到 3.9 之后
-      它留在原处没动 —— 而注释不渲染,玩家读到的是上一个版本的世界。
-    -->
     <p class="mt-0.5 text-[10px] text-ink-faint tabular">
       {{ modeSummary }}
     </p>
@@ -121,10 +111,9 @@
     const capSec = useDongfuStore().offlineCapHours * 3600
     const durationSec = exploreDurationSec(mode, player.petId)
     if (durationSec <= capSec) return ''
-    // 差多少与「怎么解」一起给:只说「只结到 X」,玩家仍不知道该升级洞府还是换档
     const needLv = OFFLINE_CAP_HOURS.findIndex(h => h * 3600 >= durationSec)
     const hint = needLv >= 0 ? ` · 洞府 ${needLv} 级可结满` : ''
-    return `离线只结到 ${formatDuration(capSec)}(洞府上限)${hint}`
+    return `离线上限 ${formatDuration(capSec)}${hint}`
   }
 
   const currentBuild = computed(() => detectBuild(player.finalStats.mods))

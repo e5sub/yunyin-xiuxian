@@ -1,6 +1,6 @@
 <template>
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
-    <SectionTitle title="流派" hint="道路由构筑自然成形" />
+    <SectionTitle title="流派" />
     <div class="card-ink px-4 py-3">
       <template v-if="build">
         <div class="flex items-center gap-3">
@@ -18,7 +18,7 @@
               <div class="bar-fill" :style="{ width: `${build.affinity * 100}%`, background: 'var(--color-cinnabar)' }" />
             </div>
             <p v-if="build.secondary" class="mt-1 text-[10px] text-ink-faint tabular">
-              副体系:{{ build.secondary.style.name }} {{ Math.floor(build.secondary.affinity * 100) }}% —— 修行无职业,道路可以不纯
+              副体系:{{ build.secondary.style.name }} {{ Math.floor(build.secondary.affinity * 100) }}%
             </p>
           </div>
         </div>
@@ -43,11 +43,9 @@
           <span>成路于:</span>
           <span v-for="name in buildSourceNames" :key="name" class="text-azure">{{ name }}</span>
         </p>
-        <!-- 五维评级(Phase 30.2):读懂构筑"形状",不看战力总数 -->
         <div class="mt-2.5 rounded-md bg-paper-deep/60 px-3 py-2">
-          <p class="text-[10px] text-ink-faint">{{ cnNumber(powerRating.labels.length) }}维评级 —— 读的是形状,不是排名</p>
+          <p class="text-[10px] text-ink-faint">{{ cnNumber(powerRating.labels.length) }}维评级</p>
           <div class="mt-1 grid grid-cols-1 gap-0.5">
-            <!-- 每维可点开:星级是结果,词条才是原因 -->
             <button
               v-for="l in powerRating.labels"
               :key="l.key"
@@ -60,32 +58,24 @@
               </span>
               <span v-if="dimKey === l.key" class="mt-1 block rounded-md bg-paper/70 px-2 py-1.5">
                 <span class="block text-[10px] text-ink-soft">
-                  {{ l.name }}得分 {{ l.score.toFixed(2) }} · 一至五星,分高星足
+                  {{ l.name }}得分 {{ l.score.toFixed(2) }}
                 </span>
                 <span v-for="t in l.terms" :key="t.label" class="mt-0.5 flex justify-between text-[10px]">
                   <span class="text-ink-faint">{{ t.label }}</span>
                   <span class="tabular text-azure">+{{ t.contribution.toFixed(2) }}</span>
                 </span>
-                <span v-if="!l.terms.length" class="block text-[10px] text-ink-faint">这一维还没有词条撑着。</span>
-                <span class="mt-1 block text-[9px] leading-relaxed text-ink-faint">
-                  底下各项相加,便得出这一维的得分;星随得分而升。
-                </span>
+                <span v-if="!l.terms.length" class="block text-[10px] text-ink-faint">暂无词条</span>
               </span>
             </button>
           </div>
-          <p class="mt-1 text-[10px] text-ink-faint">点一维看它由哪些词条凑出来。</p>
-          <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
-            同一星级的两个构筑谁更强,由环境与相性决定 —— 所以这里给的是形状,不是名次。
-          </p>
         </div>
-        <!-- 组合技:两条道路交汇处的一式神通 -->
         <div v-if="comboInfo" class="mt-2.5 rounded-md px-3 py-2" :class="comboInfo.active ? 'bg-violet-ink/8' : 'bg-ink/4'">
           <p class="flex items-center gap-2">
             <span class="font-kai text-[13px]" :class="comboInfo.active ? 'text-violet-ink' : 'text-ink-faint'">
               组合技「{{ comboInfo.art.name }}」
             </span>
             <span class="text-[10px]" :class="comboInfo.active ? 'text-jade' : 'text-ink-faint'">
-              {{ comboInfo.active ? '已成' : `副体系至 ${Math.round(COMBO_SECONDARY_MIN * 100)}% 契合可成` }}
+              {{ comboInfo.active ? '已成' : `需副体系 ${Math.round(COMBO_SECONDARY_MIN * 100)}%` }}
             </span>
           </p>
           <p class="mt-0.5 text-[11px] leading-relaxed" :class="comboInfo.active ? 'text-ink-soft' : 'text-ink-faint'">
@@ -107,12 +97,8 @@
           </p>
           <p class="mt-0.5 text-[10px] text-ink-faint">{{ resilienceText(resilience) }}</p>
         </div>
-        <!--
-          本世对局:七类本世实敌挨个对打,短板一面先入眼。
-          玩家早在四处踩坑,却看不到「到底输在哪一类」 —— 胜率面把最吃亏的那面摆在前头。
-        -->
         <div v-if="matchupRows" class="mt-2.5 rounded-md bg-paper-deep/60 px-3 py-2">
-          <p class="text-[10px] text-ink-faint">本世对局 —— 与当下构筑对打七类实敌,估其胜率,短板在前</p>
+          <p class="text-[10px] text-ink-faint">本世对局</p>
           <div class="mt-1.5 space-y-1">
             <div v-for="row in matchupSorted" :key="row.id" class="flex items-center gap-2">
               <span class="w-9 shrink-0 truncate text-[11px] text-ink-soft">{{ row.name }}</span>
@@ -125,25 +111,16 @@
               </span>
             </div>
           </div>
-          <p class="mt-1.5 text-[9px] leading-relaxed text-ink-faint">
-            每类各打 {{ MATCHUP_SAMPLE_RUNS }} 场估算,读的是「哪面吃亏」的方向,不是精确胜率;四墙(首领 / 高爆发 / 真伤 / 疾影)通吃,才称万金油。
-          </p>
+          <p class="mt-1.5 text-[9px] text-ink-faint">每类 {{ MATCHUP_SAMPLE_RUNS }} 场估算</p>
         </div>
       </template>
-      <p v-else class="empty-note text-center text-[11px] leading-relaxed text-ink-faint">
-        道途尚未成路。凑齐同一路数的词条、功法与法宝,自成一派——
-        <br />
-        <span class="text-ink-faint">背水 / 罡盾 / 反震 / 连击 / 沐泽 / 锋芒,各有克制,亦各有天敌。</span>
-      </p>
+      <p v-else class="empty-note text-center text-[11px] text-ink-faint">未成流派</p>
     </div>
 
-    <!-- 构筑快照 -->
     <SectionTitle title="构筑快照" :hint="`${loadouts.list.length}/${MAX_LOADOUTS}`" />
     <div class="card-ink px-4 py-3">
-      <p class="mb-1.5 flex items-center justify-between">
-        <span class="text-[11px] text-ink-faint">把顺手的整套功法 / 法宝 / 装备存起来,一键切换</span>
-        <!-- 满栏即置灰:别再让人点了存名字才被弹「已满」教训(与卡牌置灰同一纪律)。
-             已满时点不了,标题横幅「X/6」仍把余额摊在眼前 -->
+      <p class="mb-1.5 flex items-center justify-end">
+        <!-- 满栏即置灰(与卡牌置灰同一纪律) -->
         <button
           :disabled="loadouts.list.length >= MAX_LOADOUTS"
           class="-my-1 py-1.5 text-[11px]"
@@ -176,63 +153,59 @@
           </template>
         </div>
       </div>
-      <p v-else class="empty-note mt-1 text-center text-[11px] text-ink-faint">
-        尚无快照,存一套后可在此与各区域间从容切换。
-      </p>
+      <p v-else class="empty-note mt-1 text-center text-[11px] text-ink-faint">暂无快照</p>
     </div>
 
-    <!-- 双构筑对照:让实验成为研究(真仙可用) -->
+    <!-- 双构筑对照(真仙可用) -->
     <template v-if="compareCandidates.length">
-      <SectionTitle title="构筑对照" hint="分环境论短长,不宣布谁胜" />
+      <SectionTitle title="构筑对照" />
       <div class="card-ink px-4 py-3">
-        <p class="text-[11px] text-ink-faint">以当前构筑,对照道痕中冻结的一套过往构筑,看四天局面各有何异。</p>
-        <div class="mt-2 flex flex-wrap gap-1.5">
+        <div class="flex flex-wrap gap-1.5">
           <button
             v-for="(c, i) in compareCandidates"
             :key="i"
-            class="chip-ink !py-1.5"
-            :class="compareAt === c ? 'border-cinnabar text-cinnabar' : 'border-ink/25 text-ink-faint'"
+            class="chip-ink !py-1.5 border-ink/25 text-ink-faint"
             @click="pickCompare(c)"
           >
             第{{ c.life }}世·{{ c.buildName }}
           </button>
         </div>
-        <template v-if="compareResult">
-          <div class="mt-2 space-y-0.5">
-            <p v-for="row in compareResult.rows" :key="row.worldName" class="flex justify-between text-[11px]">
-              <span class="text-ink-faint">{{ row.worldName }}</span>
-              <span class="tabular">
-                <span class="text-ink-soft">今 {{ row.aText }}</span>
-                <span class="mx-1 text-ink-faint">|</span>
-                <span :class="row.trend === 'down' ? 'text-jade' : row.trend === 'up' ? 'text-cinnabar' : 'text-ink-faint'">
-                  彼 {{ row.bText }}
-                </span>
-              </span>
-            </p>
-          </div>
-          <p v-if="compareResult.diffLines.length" class="mt-1 text-[10px] text-azure tabular">
-            彼相对于今:{{ compareResult.diffLines.join(' · ') }}
-          </p>
-          <p class="mt-0.5 text-[10px] text-ink-faint">两套方案各有其境,取舍在你。</p>
-        </template>
       </div>
     </template>
 
     <BuildLabPanel />
 
-    <!-- 保存 / 改名构筑:同一弹窗两种身位,存的那套功/宝/装原样不动 -->
+    <!-- 保存 / 改名同一弹窗;存的那套功/宝/装原样不动 -->
     <BaseModal :open="saveOpen" :title="renameId ? '为构筑改名' : '存为构筑'" @close="closeSave">
-      <p v-if="renameId" class="text-[11px] text-ink-faint">仅改这套的名号,所存功法 / 法宝 / 整身装备原样不动。</p>
-      <p v-else class="text-[11px] text-ink-faint">将当前功法 / 法宝 / 整身装备存为一套,可随时一键切换。</p>
       <input
         v-model="saveName"
         maxlength="8"
-        class="mt-2 w-full rounded-md border border-ink/20 bg-paper-deep/60 px-3 py-2 font-kai text-[14px] tracking-widest text-ink outline-none focus:border-cinnabar/50"
-        placeholder="给这套构筑起个名号"
+        class="w-full rounded-md border border-ink/20 bg-paper-deep/60 px-3 py-2 font-kai text-[14px] tracking-widest text-ink outline-none focus:border-cinnabar/50"
+        placeholder="构筑名号"
       />
       <template #footer>
         <button class="btn-seal w-full" @click="onSaveSubmit">{{ renameId ? '改 名' : '存 入' }}</button>
       </template>
+    </BaseModal>
+
+    <BaseModal :open="compareOpen" :title="compareTitle" @close="compareOpen = false">
+      <div v-if="compareResult" class="rounded-md bg-paper-deep/60 px-2.5 py-2">
+        <div class="space-y-0.5">
+          <p v-for="row in compareResult.rows" :key="row.worldName" class="flex justify-between text-[11px]">
+            <span class="text-ink-faint">{{ row.worldName }}</span>
+            <span class="tabular">
+              <span class="text-ink-soft">今 {{ row.aText }}</span>
+              <span class="mx-1 text-ink-faint">|</span>
+              <span :class="row.trend === 'down' ? 'text-jade' : row.trend === 'up' ? 'text-cinnabar' : 'text-ink-faint'">
+                彼 {{ row.bText }}
+              </span>
+            </span>
+          </p>
+        </div>
+        <p v-if="compareResult.diffLines.length" class="mt-1 text-[10px] text-azure tabular">
+          彼相对于今:{{ compareResult.diffLines.join(' · ') }}
+        </p>
+      </div>
     </BaseModal>
   </div>
 </template>
@@ -303,15 +276,11 @@
   }
 
   const endgame = useEndgameStore()
-  /**
-   * 对照选中态按道痕这一条本身记,不按落痕时刻记。
-   *
-   * 同一毫秒内可以落两条痕(远征/试炼批量结算、读档夹具),按 `at` 认痕迹时
-   * 两条 chip 会同时点亮,而 `find` 只取第一条 —— 高亮的是这条,算的是那条。
-   * 记对象引用:点哪条算哪条,列表重建则回落到未选。
-   */
+  /** 对照的那条道痕;关窗只收 open、不清,淡出时标题不闪空 */
   const compareAt = ref<(typeof endgame.marks)[number] | null>(null)
   const compareResult = ref<CompareReport | null>(null)
+  const compareOpen = ref(false)
+  const compareTitle = computed(() => (compareAt.value ? `第${compareAt.value.life}世·${compareAt.value.buildName}` : ''))
 
   const compareCandidates = computed(() =>
     endgameUnlocked()
@@ -323,6 +292,7 @@
     compareAt.value = mark
     if (!mark.replay) return
     compareResult.value = compareSnaps(buildPlayerSnap(), snapFromReplay('彼时构筑', mark.replay))
+    compareOpen.value = true
   }
 
   const saveOpen = ref(false)

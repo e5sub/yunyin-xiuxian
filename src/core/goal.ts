@@ -7,8 +7,6 @@ import { detectBuild } from './buildDetect'
 import { breakthroughInfo } from './breakthrough'
 import { REGIONS } from '@/data/regions'
 import { EQUIP_SLOT_NAMES, EQUIP_SLOTS } from '@/data/equipment'
-import { BREAKTHROUGH_PREP_OPTIONS } from '@/data/earlyGame'
-import { pillDef } from '@/data/pills'
 import { herbGradeOfMajor } from '@/data/herbGrades'
 import { breakthroughGoalText } from '@/ui/cultivationText'
 import { formatNum } from '@/utils/format'
@@ -27,36 +25,12 @@ export interface Goal {
 /** 实体装备槽,不含 artifact(法宝走 equippedArtifacts);顺序即空槽提示优先级 */
 const GEAR_SLOTS = EQUIP_SLOTS
 
-/**
- * 灵草的低位线:野外唯一被消耗的材料(丹方 4~30 一味),10 约等于两炉最廉丹方的余量,
- * 既不至于一采就闪烁,也远低于"炼不出一炉"的绝望水位。ore 目前只进不花,不作提示对象。
- */
+/** 灵草低位线:约两炉最廉丹方的余量(丹方 4~30 一味);ore 只进不花,不作提示对象 */
 const MATERIAL_LOW_HERB = 10
 
-/**
- * 临近突破时的一句提示。
- *
- * 下一境的名字必须来自 breakthroughInfo(圆满层要进下一个大境界,不能把 sub+1 钳在本境)。
- * 凝神丹与静坐只加小进阶的 breakthroughRate;大关走天劫,提示若仍说「提升成功率」就是谎话。
- */
-function nearBreakthroughHint(needTribulation: boolean): string {
-  if (needTribulation) return '这一步是大关天劫,凝神丹与静坐不加成功率,先看劫势再决意'
-  const prep = BREAKTHROUGH_PREP_OPTIONS.filter(o => o.bonusRate > 0)
-    .map(o => o.label)
-    .join('、')
-  const pill = pillDef('p_ningshen')?.name ?? '凝神丹'
-  return `这一步是小进阶,${prep}或${pill}可提升进阶成功率`
-}
-
-/**
- * 临近突破的主页提示:除成功率口径外,把「灵气够不够破」也摆上台面 ——
- * 破境要耗 qiCost = 灵气上限 × BT_QI_COST_RATIO,灵气没蓄满就冲,会在修炼页被
- * 一口「灵气未满」弹回来。这里直接报还差几成,别等玩家点破才知道。
- */
-function breakthroughNearHint(needTribulation: boolean, qiShort: number): string {
-  const base = nearBreakthroughHint(needTribulation)
-  if (qiShort <= 0) return base
-  return `${base};灵气还差 ${formatNum(qiShort)} 才够破境`
+/** 临近突破读数:破境耗 qiCost = 灵气上限 × BT_QI_COST_RATIO(门槛拒因见 ui/cultivationText 的 breakthroughQiReason);只报灵气尚差,够了不出 */
+function qiShortHint(qiShort: number): string | undefined {
+  return qiShort > 0 ? `灵气尚差 ${formatNum(qiShort)}` : undefined
 }
 
 /** 纯函数:根据玩家状态生成当前目标 */
@@ -70,9 +44,10 @@ export function generateCurrentGoal(player: ReturnType<typeof usePlayerStore>): 
     const qiShort = Math.max(0, info.qiCost - res.qi)
     return {
       type: 'breakthrough',
+      // 下一境名须取自 breakthroughInfo:圆满层进下一大境界,不能把 sub+1 钳在本境
       text: breakthroughGoalText(near, info.needTribulation, info.targetLabel),
       progress: player.expProgress,
-      hint: near ? breakthroughNearHint(info.needTribulation, qiShort) : undefined
+      hint: near ? qiShortHint(qiShort) : undefined
     }
   }
 
@@ -86,7 +61,7 @@ export function generateCurrentGoal(player: ReturnType<typeof usePlayerStore>): 
       type: 'build',
       text: `完善「${style}」流派`,
       progress: Math.min(1, core / coreTotal),
-      hint: `当前已凑出 ${core}/${coreTotal} 个核心词条,继续寻找关键装备`
+      hint: `核心词条 ${core}/${coreTotal}`
     }
   }
 
@@ -96,8 +71,7 @@ export function generateCurrentGoal(player: ReturnType<typeof usePlayerStore>): 
   if (nextRegion) {
     return {
       type: 'explore',
-      text: `深入「${nextRegion.name}」`,
-      hint: '增长阅历,也寻些机缘与材料'
+      text: `深入「${nextRegion.name}」`
     }
   }
   const hasClearedAny = adventure.cleared.length > 0
@@ -114,8 +88,7 @@ export function generateCurrentGoal(player: ReturnType<typeof usePlayerStore>): 
     return {
       type: 'material',
       text: `去「${best.name}」采集灵草`,
-      progress: Math.min(1, currentHerb / MATERIAL_LOW_HERB),
-      hint: '丹药原料所剩无几,历练途中常有灵草可采'
+      progress: Math.min(1, currentHerb / MATERIAL_LOW_HERB)
     }
   }
 
@@ -123,12 +96,10 @@ export function generateCurrentGoal(player: ReturnType<typeof usePlayerStore>): 
   const emptySlot = GEAR_SLOTS.find(slot => !inventory.equipped[slot])
   if (hasClearedAny && emptySlot) {
     const filled = GEAR_SLOTS.filter(slot => inventory.equipped[slot]).length
-    const slotName = EQUIP_SLOT_NAMES[emptySlot]
     return {
       type: 'equipment',
-      text: `寻一件${slotName}`,
-      progress: filled / GEAR_SLOTS.length,
-      hint: `还缺一件${slotName},历练所得的装备里常有`
+      text: `寻一件${EQUIP_SLOT_NAMES[emptySlot]}`,
+      progress: filled / GEAR_SLOTS.length
     }
   }
   return null

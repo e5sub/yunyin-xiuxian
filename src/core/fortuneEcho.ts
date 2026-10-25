@@ -32,35 +32,35 @@ export interface EventNarrative {
 const FORTUNE_ECHO_TEXTS: Record<string, { form: EchoForm; line: string }> = {
   ft_reclusive_elder: {
     form: 'recognize',
-    line: '竹屋前的老人抬眼望来,目光在你面上停了一瞬——「原来是你。」'
+    line: '竹屋前的老人抬眼望来,目光在你面上停了一瞬:「原来是你。」'
   },
   ft_sword_remnant: {
     form: 'traces',
-    line: '三道剑痕犹在,只是剑气已散。你们曾在此狭路相逢。'
+    line: '三道剑痕犹在。你曾在此绕道而去。'
   },
   ft_ancient_elixir: {
     form: 'fate-over',
-    line: '丹房还在,丹方却已不在原处。那段未曾结下的缘,此刻无法重新拾起。'
+    line: '你放回原处的那卷丹方,无人动过。'
   },
   ft_beast_pledge: {
     form: 'recognize',
-    line: '草丛边窜出一头幼兽,嗅了嗅你的衣角,又退开两步,似是认得你。'
+    line: '你曾放走的那头幼兽,又寻来了。'
   },
   ft_blood_contract: {
     form: 'traces',
-    line: '染血的龟甲埋在你亲手挖的土坑里——你曾将它掩埋于此。'
+    line: '你亲手挖的土坑空了。'
   },
   ft_xianmen_guqin: {
     form: 'traces',
-    line: '古琴仍在案上,弦上依旧无尘。你曾在这里坐了一晌,终究没有伸手。'
+    line: '古琴仍在案上。你曾在这里坐了一晌,终究没有伸手。'
   },
   ft_yunduan_xianzun: {
     form: 'recognize',
-    line: '云端那位仙尊又在负手而立,瞥见你时笑了笑:「这回,还是不来?」'
+    line: '云端那位仙尊又在负手而立,瞥见你时笑了笑:「这回,还是不拜?」'
   },
   ft_shenyu_wangzuo: {
     form: 'fate-over',
-    line: '王座依旧悬在神域中央。你曾绕它而行,如今它认得你的脚步了。'
+    line: '王座依旧悬在神域中央。你曾绕它而行。'
   },
   ft_faze_zhixin: {
     form: 'traces',
@@ -68,11 +68,11 @@ const FORTUNE_ECHO_TEXTS: Record<string, { form: EchoForm; line: string }> = {
   },
   ft_hundun_zhong: {
     form: 'recognize',
-    line: '混沌之种回到你眼前,像是认得那个把它埋回去的人。'
+    line: '你埋回去的那粒种子,又回到了眼前。'
   },
   ft_hongmeng_xiantai: {
     form: 'fate-over',
-    line: '先台无字,那与你有关的一笔,还空着。你曾选择不去看它。'
+    line: '你曾在台前退开一步,那笔账至今未结。'
   }
 }
 

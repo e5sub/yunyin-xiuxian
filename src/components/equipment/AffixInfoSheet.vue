@@ -32,9 +32,6 @@
           <span class="min-w-0 truncate text-right text-ink">{{ rankText ?? '无' }}</span>
         </p>
       </div>
-      <p class="text-[10px] leading-relaxed text-ink-faint">
-        自动重铸以「出现即停」为旨:定几成只定它须达到的数值底线,掷点仍在这一区间里摇。
-      </p>
     </div>
     <template #footer>
       <div v-if="targetable" class="grid grid-cols-2 gap-2">
@@ -82,10 +79,10 @@
   const rangeEnds = computed(() => (def.value ? affixRangeEnds(def.value) : { lo: 0, hi: 0 }))
   const slotsText = computed(() => (def.value ? affixSlotsText(def.value) : ''))
   const rankText = computed(() => (def.value ? affixRankText(def.value) : null))
-  /** 目标按钮文案即缘由:满位/已选各明示,禁用不是猜谜(约定「按钮上的字就是原因」) */
+  /** 约定「按钮上的字就是原因」 */
   const toggleLabel = computed(() => {
-    if (props.selected) return '取消自动重铸目标'
+    if (props.selected) return '取消目标'
     if (!props.canSelect) return `目标已满(${AUTO_REFORGE_MAX_TARGETS})`
-    return '设为自动重铸目标'
+    return '设为目标'
   })
 </script>

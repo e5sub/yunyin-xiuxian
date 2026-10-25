@@ -76,7 +76,7 @@ describe('S1 区域兴衰', () => {
       totalWins: 0,
       hasSuppressed: true,
       suppressedAt: now - 50 * HOUR,
-      lastActivityAt: now - 60 * HOUR, // 最后一战比镇压还早
+      lastActivityAt: now - 60 * HOUR,
       now
     })
     expect(held50h.prosperity, '守了 50 小时却判成混乱,等于把守土收益吃掉').toBe('flourish')
@@ -120,7 +120,7 @@ describe('S1 区域兴衰', () => {
     player.suppressedSince = { qingyun: Date.now() }
     player.regionStats = {
       qingyun: {
-        totalFights: FLOURISH_WINS + 50, // 打了这么多场,但一场没赢
+        totalFights: FLOURISH_WINS + 50, // 只在胜场累计;此处故意与 regionWins 错开
         avgRounds: 9,
         avgDamageTakenPct: 0.9,
         consecutiveWins: 0,
@@ -128,9 +128,8 @@ describe('S1 区域兴衰', () => {
       }
     }
     player.regionWins = { qingyun: 0 }
-    expect(regionRecallFor('qingyun').prosperity, '一场没赢却因打得多久而判繁盛,是错的').toBe('chaos')
+    expect(regionRecallFor('qingyun').prosperity, '本世一场没赢却判繁盛,是错的').toBe('chaos')
 
-    // 赢够场数才升档,阈值与 deriveProsperity 同一把尺
     player.regionWins = { qingyun: STABLE_WINS }
     expect(regionRecallFor('qingyun').prosperity).toBe('stable')
     player.regionWins = { qingyun: FLOURISH_WINS }
@@ -318,6 +317,99 @@ describe('S2 宿敌记忆', () => {
       list: before,
       becameNemesis: false
     })
+  })
+
+  /** 故障注入:recordLoss 旗标改回 `lossCount >= threshold`,本条红 */
+  it('逐场败北:宿敌旗标只在跨过门槛那一败为真', () => {
+    const losses = NEMESIS_THRESHOLD + 2
+    let list: NemesisRecord[] = []
+    const flags: boolean[] = []
+    for (let i = 0; i < losses; i++) {
+      const r = recordLoss(list, 'e_wolf', '赤目野狼', 'qingyun', Date.now())
+      list = r.list
+      flags.push(r.becameNemesis)
+    }
+    const expected = Array.from({ length: losses }, (_, i) => i + 1 === NEMESIS_THRESHOLD)
+    expect(flags, '跨门槛那一败报一次,之后每败都不再报').toEqual(expected)
+    expect(list[0]?.lossCount, '败场照常累加').toBe(losses)
+  })
+
+  /** 雪耻永久(avengedAt 只写一次)且 lossCount 不清零:雪耻后此敌不再成宿敌 */
+  it('雪耻后再败:逐场与整批都不再报宿敌', () => {
+    const now = Date.now()
+    let list: NemesisRecord[] = []
+    for (let i = 0; i < NEMESIS_THRESHOLD; i++) list = recordLoss(list, 'e_icejiao', '玄冰蛟', 'hantan', now).list
+    list = markAvenged(list, 'e_icejiao', now)
+    const afterAvenge = list
+    for (let i = 0; i < NEMESIS_THRESHOLD; i++) {
+      const r = recordLoss(list, 'e_icejiao', '玄冰蛟', 'hantan', now)
+      list = r.list
+      expect(r.becameNemesis, `雪耻后第 ${i + 1} 败不报`).toBe(false)
+    }
+    expect(isNemesis(list, 'e_icejiao'), '雪耻后仍不是宿敌').toBe(false)
+    expect(list[0]?.lossCount, '败场照常累加').toBe(NEMESIS_THRESHOLD * 2)
+    expect(
+      recordLossBatch(afterAvenge, 'e_icejiao', '玄冰蛟', 'hantan', now, NEMESIS_THRESHOLD).becameNemesis,
+      '整批同样不报'
+    ).toBe(false)
+  })
+
+  /** 坏档经 sanitize 可留下败场低于门槛的已雪耻记录;故障注入:旗标去掉 avengedAt 条件,本条红 */
+  it('已雪耻记录从门槛下再跨过门槛也不报', () => {
+    const now = Date.now()
+    const avenged: NemesisRecord[] = [
+      { enemyId: 'e_wolf', enemyName: '赤目野狼', regionId: 'qingyun', lossCount: 0, lastLossAt: 0, avengedAt: now }
+    ]
+    let list = avenged
+    for (let i = 0; i < NEMESIS_THRESHOLD; i++) {
+      const r = recordLoss(list, 'e_wolf', '赤目野狼', 'qingyun', now)
+      list = r.list
+      expect(r.becameNemesis, `第 ${i + 1} 败不报`).toBe(false)
+    }
+    expect(isNemesis(list, 'e_wolf')).toBe(false)
+    expect(recordLossBatch(avenged, 'e_wolf', '赤目野狼', 'qingyun', now, NEMESIS_THRESHOLD).becameNemesis).toBe(false)
+  })
+
+  /** 故障注入:旗标改回 `lossCount >= threshold`,或去掉 avengedAt 条件,本条红 */
+  it('穷举:整批与逐场同一份账,旗标 = 逐场取或 = isNemesis 由假转真', () => {
+    const now = Date.now()
+    const id = 'e_wolf'
+    const fillers: NemesisRecord[] = Array.from({ length: 50 }, (_, i) => ({
+      enemyId: `e_filler${i}`,
+      enemyName: '路人',
+      regionId: 'qingyun',
+      lossCount: 1,
+      lastLossAt: 0
+    }))
+    const initials: (NemesisRecord | undefined)[] = [undefined]
+    for (let c = 0; c <= NEMESIS_THRESHOLD + 2; c++) {
+      initials.push({ enemyId: id, enemyName: '赤目野狼', regionId: 'qingyun', lossCount: c, lastLossAt: 0 })
+      initials.push({ enemyId: id, enemyName: '赤目野狼', regionId: 'qingyun', lossCount: c, lastLossAt: 0, avengedAt: 1 })
+    }
+    for (const full of [false, true]) {
+      for (const init of initials) {
+        // 满表:新敌入账要挤掉最早一条(上限 50)
+        const start = init ? [...(full ? fillers.slice(1) : []), init] : full ? fillers : []
+        for (let times = 0; times <= NEMESIS_THRESHOLD * 2; times++) {
+          let single = start
+          const flags: boolean[] = []
+          for (let i = 0; i < times; i++) {
+            const r = recordLoss(single, id, '赤目野狼', 'qingyun', now)
+            single = r.list
+            flags.push(r.becameNemesis)
+          }
+          const batch = recordLossBatch(start, id, '赤目野狼', 'qingyun', now, times)
+          const initTag = init ? `${init.lossCount}${init.avengedAt === undefined ? '' : '(已雪耻)'}` : '无'
+          const tag = `满表=${full} 初始=${initTag} 本批=${times}`
+          expect(batch.list, `${tag}:同一份账`).toEqual(single)
+          expect(flags.filter(Boolean).length, `${tag}:逐场至多报一次`).toBeLessThanOrEqual(1)
+          expect(batch.becameNemesis, `${tag}:整批 = 逐场取或`).toBe(flags.some(Boolean))
+          expect(batch.becameNemesis, `${tag}:旗标 = isNemesis 由假转真`).toBe(
+            !isNemesis(start, id) && isNemesis(batch.list, id)
+          )
+        }
+      }
+    }
   })
 })
 

@@ -40,10 +40,8 @@
           </div>
         </template>
       </div>
-      <p class="text-center text-[10px] text-ink-faint">功成之日,名目自现</p>
     </template>
 
-    <!-- 收藏图鉴 -->
     <template v-else-if="tab === 'collection'">
       <section v-for="cat in collectionCats" :key="cat.key">
         <SectionTitle :title="cat.name" :hint="cat.hint" />
@@ -64,15 +62,13 @@
             <span
               v-else
               class="inline-flex items-center rounded-full border border-dashed border-ink/15 px-2 py-0.5 text-[10px] leading-snug text-ink-faint"
-              :title="`尚未收录 · ${cat.source}`"
+              title="未收录"
             >???</span>
           </template>
         </div>
       </section>
-      <p class="text-center text-[10px] text-ink-faint">点已收录的条目可看详情 —— 灵材与悟道另分深浅,愈用愈明</p>
     </template>
 
-    <!-- 图鉴详情 -->
     <BaseModal :open="detail !== null" :title="detail?.entry.name ?? ''" @close="detail = null">
       <div v-if="detail">
         <p class="flex flex-wrap items-center gap-2">
@@ -82,8 +78,8 @@
           <span v-if="detail.entry.stageName" class="chip-ink border-ink/20 text-ink-faint">{{ detail.entry.stageName }}</span>
           <span v-if="detail.entry.meta" class="text-[11px] text-ink-faint">{{ detail.entry.meta }}</span>
         </p>
-        <p class="mt-3 whitespace-pre-line text-[13px] leading-relaxed text-ink-soft">
-          {{ detail.entry.desc || '此物玄妙,难以言表。' }}
+        <p v-if="detail.entry.desc" class="mt-3 whitespace-pre-line text-[13px] leading-relaxed text-ink-soft">
+          {{ detail.entry.desc }}
         </p>
         <p v-if="detail.entry.hint" class="mt-2 text-[11px] text-ink-faint">{{ detail.entry.hint }}</p>
         <div class="ink-divider my-3" />
@@ -151,11 +147,8 @@
         group: achievementGroup(a.cond),
         achievedAt: quests.achievedAt[a.id],
         name: done ? a.name : '???',
-        // 名字成时自现,但方向要给:六十多个「???」不给方向,这一页就是白纸
-        desc: done ? a.desc : `尚未达成 · 方向:${achievementDirection(a.cond)}`,
-        // 计数类成就在方向之外补进度数字:「已 46/50」比一句「历练征战」更让人知道还差几步
-        // current 封顶在 target:周期补扫前计数暂超阈值时,别显示「已 60/50」这种越界数,
-        // 也免得它在未达成段里压过所有其它条目
+        desc: done ? a.desc : `方向:${achievementDirection(a.cond)}`,
+        // current 封顶在 target:周期补扫前计数可能暂超阈值
         progress:
           a.cond.type === 'counter'
             ? { current: Math.min(quests.counter(a.cond.key), a.cond.value), target: a.cond.value }

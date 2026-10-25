@@ -1,11 +1,6 @@
 <template>
   <BaseModal :open="open" title="数值体系" @close="$emit('close')">
     <div class="space-y-3 text-[12px] leading-relaxed">
-      <p class="text-ink-faint">
-        每高一层境界,所需多寡自有其法;此处所写,皆按修行实账而来,不掺虚言。
-      </p>
-
-      <!-- 各数值轴的复利倍率 -->
       <div class="card-ink px-3 py-2">
         <p class="text-[10px] text-ink-faint">每境复利(人间界 / 界外)</p>
         <div class="mt-1.5 space-y-1.5">
@@ -19,22 +14,19 @@
         </div>
       </div>
 
-      <!-- 净耗时:玩家真正感受到的难度 -->
       <div class="card-ink px-3 py-2">
-        <p class="text-[10px] text-ink-faint">净耗时(难度感 = 修为需求 ÷ 修炼速度)</p>
+        <p class="text-[10px] text-ink-faint">净耗时(修为需求 ÷ 修炼速度)</p>
         <p class="mt-1 text-ink-soft tabular">
           人间界 ×{{ MORTAL_TIME_PER_MAJOR.toFixed(2) }} / 境 · 界外 ×{{ OUTER_TIME_PER_MAJOR.toFixed(2) }} / 境
         </p>
         <p class="mt-1 text-[10px] text-ink-faint">
-          数值按指数堆叠,耗时却压在 x{{ OUTER_TIME_PER_MAJOR.toFixed(2) }} —— 于是每一境都明显更"重",
-          整条阶梯仍在可达范围。渡劫之上为界外(第 {{ PROGRESSION_NOTES.worldBreakMajor + 1 }} 境起)。
+          界外:渡劫之上,第 {{ PROGRESSION_NOTES.worldBreakMajor + 1 }} 境起
         </p>
       </div>
 
-      <!-- 积余:卡境不浪费 -->
-      <!-- 花费同样复利:不是线性涨价 -->
+      <!-- 花费同样复利,非线性涨价 -->
       <div class="card-ink px-3 py-2">
-        <p class="text-[10px] text-ink-faint">花费同按倍率逐级加码(越到后头越重,并非固定加价)</p>
+        <p class="text-[10px] text-ink-faint">花费倍率</p>
         <div class="mt-1.5 space-y-1">
           <div v-for="c in COST_CURVES" :key="c.id" class="flex items-start gap-2">
             <span class="w-[92px] shrink-0 text-ink-soft">{{ c.name }}</span>
@@ -45,7 +37,7 @@
       </div>
 
       <div class="card-ink px-3 py-2">
-        <p class="text-[10px] text-ink-faint">积余(卡境也继续增长)</p>
+        <p class="text-[10px] text-ink-faint">积余</p>
         <ul class="mt-1 space-y-1">
           <li v-for="line in PROGRESSION_NOTES.banking" :key="line" class="text-ink-soft">· {{ line }}</li>
         </ul>
@@ -56,14 +48,11 @@
         <ul class="mt-1 space-y-1">
           <li v-for="line in PROGRESSION_NOTES.basis" :key="line" class="text-ink-soft">· {{ line }}</li>
         </ul>
-        <p class="mt-1.5 text-[10px] text-ink-faint">
-          每一境在修行页都写着它取自何处、因何承接。
-        </p>
       </div>
 
       <!-- 术数四门:时机各占一层 -->
       <div class="card-ink px-3 py-2">
-        <p class="text-[10px] text-ink-faint">术数四门(时机各占一层,不是四份加成叠着发)</p>
+        <p class="text-[10px] text-ink-faint">术数四门</p>
         <div class="mt-1.5 space-y-1.5">
           <div v-for="s in SORCERY_LAYERS" :key="s.id" class="flex items-start gap-2">
             <span class="w-[84px] shrink-0 text-ink-soft">{{ s.name }}</span>
@@ -74,14 +63,11 @@
           </div>
         </div>
         <p class="mt-1.5 text-[10px] leading-relaxed text-ink-soft">{{ SORCERY_SUMMARY }}</p>
-        <p class="mt-1 text-[10px] text-ink-faint">
-          四门代价如下,数字皆与修行现场一一对应;此处所列,即实打实之数。
-        </p>
       </div>
 
       <!-- 寿元:界域内复利,跨界一次大跃 -->
       <div class="card-ink px-3 py-2">
-        <p class="text-[10px] text-ink-faint">寿元(界域内复利,跨界为大跃)</p>
+        <p class="text-[10px] text-ink-faint">寿元</p>
         <div class="mt-1.5 space-y-1">
           <div v-for="l in LIFESPAN_CURVES" :key="l.world" class="flex items-center gap-2">
             <span class="w-[64px] shrink-0 text-ink-soft">{{ l.world }}</span>
@@ -89,7 +75,7 @@
           </div>
         </div>
         <p class="mt-1.5 text-[10px] text-ink-faint">
-          唯「渡劫→真仙」是脱去凡尘的大跃(约 ×{{ ascensionLeap() }});此后破界入神、归返混沌亦各跃一档。
+          渡劫→真仙:约 ×{{ ascensionLeap() }};入神界、入混沌海亦各跃一档
         </p>
       </div>
 

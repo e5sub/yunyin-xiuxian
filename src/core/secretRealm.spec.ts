@@ -1,30 +1,23 @@
-/* eslint-disable no-console -- 秘境是过程性验收,打印层间推进 */
-/**
- * 短期秘境验收(Phase 34.9)
- *
- * Phase 31 留下了骨架:状态与目录都在,却没有任何入口 —— 玩家进不去,
- * player.secretRealm 永远是 null,而轮回清单还交代着它的去留(与奇遇连锁同一种病)。
- *
- * 本轮把玩法接上,故这里钉四件事:
- *   一 进得去:门槛、代价、一次性(已在秘境中不许再进);
- *   二 规则是真的:随机规则与秘境自带规则必须落到既有 CombatRules 上,不是纯文本;
- *   三 推得动:三层递进,层间按本境规则回血/损血;败两次被逐出;
- *   四 出得来:通关给宝藏并清空状态;放弃也清空,但已得战利不退。
- */
+/* eslint-disable no-console -- 打印层间推进 */
+/** 短期秘境验收:进得去、规则是真的、推得动、出得来 */
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { gn, subClamp, toNum } from '@/utils/gnum'
 import { formatGN } from '@/utils/format'
-import { SECRET_REALMS, SECRET_RULES } from '@/data/secretRealms'
+import { SECRET_REALMS, SECRET_RULES, secretRuleByText } from '@/data/secretRealms'
+import { MATERIALS, type MaterialBucket, type MaterialDef } from '@/data/materials'
+import { rng } from '@/utils/random'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useEndgameStore } from '@/stores/endgame'
 import { useAdventureStore } from '@/stores/adventure'
 import { useUiStore } from '@/stores/ui'
+import { useLoreStore } from '@/stores/lore'
 import { startExploration } from './exploration'
 import { endgameBusy } from './endgameActivity'
+import { rollFieldMaterial } from './loreService'
 import {
   SECRET_LAYERS,
   SECRET_MAX_LOSSES,
@@ -40,8 +33,23 @@ import {
   secretFightRules,
   secretLayerFoe,
   secretLayerReward,
+  secretRealmDef,
   tierOfMajor
 } from './secretRealm'
+
+const forceWin = vi.hoisted(() => ({ value: false }))
+
+// 默认原样透传;forceWin 时只把胜负钉成胜,其余照真算
+vi.mock('./combat', async importOriginal => {
+  const mod = await importOriginal<typeof import('./combat')>()
+  return {
+    ...mod,
+    resolveCombat: (...args: Parameters<typeof mod.resolveCombat>): ReturnType<typeof mod.resolveCombat> => {
+      const r = mod.resolveCombat(...args)
+      return forceWin.value ? { ...r, win: true } : r
+    }
+  }
+})
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -381,7 +389,7 @@ describe('秘境 · 两阶(凡境灵石 / 天界道源)', () => {
     const short = entryShortfallOf(def, 9)
     expect(short?.kind).toBe('daoSource')
     expect(short?.daoSource).toBe(cost.daoSource - 10)
-    expect(short?.reason).toBe(`尚差 ${cost.daoSource - 10} 道源`)
+    expect(short?.reason).toBe(`道源尚差 ${cost.daoSource - 10}`)
 
     endgame.addDaoSource(cost.daoSource - 10)
     expect(entryShortfallOf(def, 9)).toBeNull()
@@ -410,7 +418,7 @@ describe('秘境 · 两阶(凡境灵石 / 天界道源)', () => {
       return false
     })
     expect(enterSecretRealm(def.id).ok).toBe(false)
-    expect(useUiStore().toasts.at(-1)?.text).toBe(`尚差 ${formatGN(cost.stone)} 石`)
+    expect(useUiStore().toasts.at(-1)?.text).toBe(`灵石尚差 ${formatGN(cost.stone)}`)
     expect(currentRealm()).toBeNull()
   })
 
@@ -450,10 +458,10 @@ describe('秘境 · 敌人按玩家缩放(与远征/试炼同法)', () => {
       expect(ratio, `major ${major} 的秘境敌人攻击是玩家的 ${ratio.toFixed(1)} 倍`).toBeLessThan(5)
       expect(Number.isFinite(toNum(foe.snap.maxHp))).toBe(true)
     }
-    // 真打一场也要有可读结果(不崩、不空)
+    // 真打一场:不崩、不空
     player.major = 9
     ready(9)
-    useEndgameStore().addDaoSource(100) // 天界秘境付的是道源
+    useEndgameStore().addDaoSource(100) // 天界秘境付道源
     expect(enterSecretRealm('sr_xingchen').ok).toBe(true)
     const r = fightSecretLayer()
     expect(r).not.toBeNull()
@@ -484,5 +492,134 @@ describe('秘境 · 战利倍率算得出对', () => {
     for (let tier = 3; tier < 30; tier += 1) {
       expect(toNum(secretLayerReward(tier + 1, 2, 1.2).stone)).toBeGreaterThan(toNum(secretLayerReward(tier, 2, 1.2).stone))
     }
+  })
+})
+
+/**
+ * 层胜掉灵草属战斗掉落,与历练掉落同经 harvestMaterials 计照面:按掉落数抽(每批至多 3 抽),抽本境层级的灵材。
+ * 故障注入:删掉 fightSecretLayer 里的 harvestMaterials、改成只抽 1 回、层级传错 → 本条红。
+ */
+describe('秘境 · 层胜掉灵草计照面', () => {
+  function seenIn(bucket: MaterialBucket): number {
+    const lore = useLoreStore()
+    return MATERIALS.filter(m => m.bucket === bucket).reduce((n, m) => n + lore.seenOf(m.id), 0)
+  }
+
+  it('层胜:灵草照旧入账,同时计照面', () => {
+    ready(3)
+    expect(enterSecretRealm('sr_kurong').ok).toBe(true)
+    const resources = useResourcesStore()
+    const herb0 = resources.herb
+    const ore0 = resources.ore
+    const tier = tierOfMajor(3)
+    // 灵材池一律取最末(最高阶)那味,其余照常掷:照面落在哪味,就钉住了按哪个层级抽
+    const weighted = rng.weighted.bind(rng)
+    const spy = vi
+      .spyOn(rng, 'weighted')
+      .mockImplementation((items, weightOf) =>
+        items.length > 0 && items.every(x => MATERIALS.includes(x as MaterialDef)) ? items[items.length - 1]! : weighted(items, weightOf)
+      )
+    forceWin.value = true
+    let r: ReturnType<typeof fightSecretLayer> = null
+    let top: MaterialDef | null = null
+    let low: MaterialDef | null = null
+    try {
+      top = rollFieldMaterial(tier, 'herb')
+      low = rollFieldMaterial(1, 'herb')
+      r = fightSecretLayer()
+    } finally {
+      forceWin.value = false
+      spy.mockRestore()
+    }
+    expect(r?.win, '前置:本层取胜').toBe(true)
+    expect(top?.id, '前置:层级不同,抽中的不同').not.toBe(low?.id)
+    const { material } = secretLayerReward(tier, 1, secretRealmDef('sr_kurong')!.rewardMult)
+    const draws = Math.min(3, material)
+    expect(resources.herb - herb0, '灵草数照旧').toBe(material)
+    expect(resources.ore, '不发玄铁').toBe(ore0)
+    expect(useLoreStore().seenOf(top!.id), '按掉落数抽本境层级的灵材').toBe(draws)
+    expect(seenIn('herb'), '别的灵材不计').toBe(draws)
+    expect(seenIn('ore')).toBe(0)
+  })
+})
+
+/**
+ * 旧会话存的是旧说法「敌方多一段追击」(实装是敌方反击概率 +15%):读档归一为现行说法,规则照样生效。
+ *
+ * 故障注入:去掉 legacyTexts → 旧档两条红;sanitize 不归一 → 读档那条红。
+ */
+describe('秘境 · 反击规则的文案与旧档', () => {
+  const NEW = '敌方反击概率 +15%'
+  const OLD = '敌方多一段追击'
+  const base = {
+    realmId: 'sr_kurong',
+    enteredAt: 1,
+    layer: 1,
+    wins: 0,
+    losses: 0,
+    spoils: [] as string[],
+    rules: [] as string[],
+    carriedHpPct: 1,
+    finished: false
+  }
+
+  it('文案与实装一致:写的是反击,不是追击', () => {
+    const rule = SECRET_RULES.find(r => r.rules.enemyExtraMods?.counterRate !== undefined)!
+    expect(rule.text).toBe(NEW)
+    expect(rule.rules.enemyExtraMods!.counterRate).toBeCloseTo(0.15)
+    expect(SECRET_RULES.some(r => r.text.includes('追击'))).toBe(false)
+  })
+
+  it('旧文案只作别名:不与现行文案重名,且只认一条规则', () => {
+    const current = new Set(SECRET_RULES.map(r => r.text))
+    for (const r of SECRET_RULES) {
+      for (const old of r.legacyTexts ?? []) {
+        expect(current.has(old), old).toBe(false)
+        expect(SECRET_RULES.filter(x => x.legacyTexts?.includes(old))).toHaveLength(1)
+      }
+    }
+    expect(secretRuleByText(OLD)?.text).toBe(NEW)
+    expect(secretRuleByText(NEW)?.text).toBe(NEW)
+    expect(secretRuleByText('不存在的规则')).toBeUndefined()
+  })
+
+  it('旧档存着旧文案:读档后显示新文案,反击概率照样并入敌方', () => {
+    const player = usePlayerStore()
+    player.setSecretRealm({ ...base, rules: [OLD, '治疗减半'] })
+    player.sanitize()
+    const st = currentRealm()!
+    expect(st.rules).toEqual([NEW, '治疗减半'])
+    const rules = secretFightRules(st)
+    expect(rules.enemyExtraMods?.counterRate).toBeCloseTo(0.15)
+    // 枯荣古境自带治疗 ×2,与「治疗减半」相乘回到 ×1:另一条规则没被归一顺手丢掉
+    expect(rules.healMult).toBe(1)
+  })
+
+  it('未经读档清洗的旧文案,反查照样认得', () => {
+    expect(secretFightRules({ ...base, rules: [OLD] }).enemyExtraMods?.counterRate).toBeCloseTo(0.15)
+  })
+
+  it('新旧文案同时在档里只算一次,不叠成 +30%', () => {
+    const player = usePlayerStore()
+    player.setSecretRealm({ ...base, rules: [OLD, NEW] })
+    player.sanitize()
+    expect(currentRealm()!.rules).toEqual([NEW])
+    expect(secretFightRules(currentRealm()!).enemyExtraMods?.counterRate).toBeCloseTo(0.15)
+  })
+
+  it('新文案能被掷到,落档即是新文案,并入战斗', () => {
+    ready(3)
+    const idx = SECRET_RULES.findIndex(r => r.text === NEW)
+    expect(idx).toBeGreaterThanOrEqual(0)
+    // 掷 1 条,抽中反击那条
+    const spy = vi.spyOn(rng, 'int').mockImplementationOnce(() => 1).mockImplementationOnce(() => idx)
+    try {
+      expect(enterSecretRealm('sr_kurong').ok).toBe(true)
+    } finally {
+      spy.mockRestore()
+    }
+    const st = currentRealm()!
+    expect(st.rules).toEqual([NEW])
+    expect(secretFightRules(st).enemyExtraMods?.counterRate).toBeCloseTo(0.15)
   })
 })

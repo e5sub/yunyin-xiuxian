@@ -14,7 +14,7 @@ export function apprenticeSpoilsText(s: TaskSpoils, major: number): string {
   const parts: string[] = []
   if (s.herb) parts.push(`${apprenticeHerbName(major)}×${s.herb}`)
   if (s.ore) parts.push(`玄铁×${s.ore}`)
-  if (s.dust) parts.push(`器尘×${s.dust}`)
+  if (s.dust) parts.push(`器灵尘×${s.dust}`)
   if (s.wudao) parts.push(`悟道×${s.wudao}`)
   if (s.stone) parts.push(`灵石 ${formatGN(s.stone)}`)
   if (s.pillId) parts.push(`${pillDef(s.pillId)?.name ?? '丹药'}×${s.pillCount ?? 1}`)
@@ -24,6 +24,6 @@ export function apprenticeSpoilsText(s: TaskSpoils, major: number): string {
 /** 一次收割的归来回执;没有道童完工时为空串 */
 export function apprenticeReturnText(reaped: TaskSpoils[], major: number): string {
   if (reaped.length === 0) return ''
-  if (reaped.length === 1) return `道童归来,带回 ${apprenticeSpoilsText(reaped[0]!, major)}`
+  if (reaped.length === 1) return `道童归来:${apprenticeSpoilsText(reaped[0]!, major)}`
   return `道童归来 ${reaped.length} 名:${reaped.map(s => apprenticeSpoilsText(s, major)).join(';')}`
 }

@@ -23,7 +23,7 @@ describe('悟道顿悟选项文案与 buff 同源', () => {
     expect(enlightenmentOptionText(bt)).toContain('大关天劫不与')
     expect(enlightenmentOptionText(bt)).toContain('30分钟')
     const wudao = ENLIGHTENMENT_OPTIONS.find(o => o.reward?.type === 'wudao')!
-    expect(enlightenmentOptionText(wudao)).toBe(`立即获得 ${wudao.reward!.value} 悟道点`)
+    expect(enlightenmentOptionText(wudao)).toBe(`悟道点 +${wudao.reward!.value}`)
   })
 
   it('弹窗与点选回执都走现算文案,不再直接印手写 desc', () => {

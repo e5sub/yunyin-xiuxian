@@ -73,15 +73,9 @@ export function celestialJudgement(playerMods: StatMods, playerMajor: number, an
   return { thicken, damageBonus: judge + suppress, damageReduction: judge, suppressed }
 }
 
-/** 判定的去向语 —— 战前预估与战后归因读的是同一句(两处各写一句,迟早分叉) */
-export const JUDGEMENT_DIRECTION = '判定随你的厚度与境界而来 —— 换个方向而非继续堆,或再破一境,它自会退回去。'
-
 /**
- * 天界敌人的加成来源 —— 供战后分析归因(与凡界的 mortalFoeOrigin 同一形状、同一用途)。
- * 无判定时也如实写明「这一界没有额外判定」,免得玩家把「打不过」全算在判定头上。
- *
- * parts 只装**三维倍率**(加厚);增伤减伤各走自己的字段 ——
- * 两者混进同一个列表,读的人就分不清「×1.4」是加厚还是增伤。
+ * 天界敌人的加成来源,供战后分析归因(与凡界 mortalFoeOrigin 同形状、同用途)。
+ * parts 只装三维倍率(加厚),增伤减伤走各自字段,不混入 parts。
  */
 export function celestialFoeOrigin(j: CelestialJudgement): FoeOrigin {
   const parts: FoeOriginPart[] = j.thicken > 1 ? [{ label: '道之理解', ratio: j.thicken }] : []
@@ -94,7 +88,7 @@ export function celestialFoeOrigin(j: CelestialJudgement): FoeOrigin {
     damageBonus: j.damageBonus,
     damageReduction: j.damageReduction,
     parts,
-    note: names.length === 0 ? '这一界对你没有额外判定 —— 胜败只由三维与构筑形状决定。' : JUDGEMENT_DIRECTION
+    note: names.length === 0 ? '无额外判定' : ''
   }
 }
 
@@ -108,18 +102,16 @@ export function celestialJudgementLines(
   const lines: string[] = []
   if (j.thicken > 1) {
     lines.push(
-      `道之理解:你的构筑厚度 ${(modDepth(playerMods)).toFixed(1)}(基准 ${CELESTIAL_BASE_DEPTH})—— 守关者三维 ×${j.thicken.toFixed(2)}`
+      `道之理解:构筑厚度 ${(modDepth(playerMods)).toFixed(1)}(基准 ${CELESTIAL_BASE_DEPTH})· 守关者三维 ×${j.thicken.toFixed(2)}`
     )
   }
   const judgeOnly = Math.min(CELESTIAL_JUDGE_CAP, (j.thicken - 1) * CELESTIAL_JUDGE_RATE)
   if (judgeOnly > 0) {
-    lines.push(`道之理解:路数被看破 —— 守关者增伤 +${Math.round(judgeOnly * 100)}%、减伤 +${Math.round(judgeOnly * 100)}%`)
+    lines.push(`道之理解:守关者增伤 +${Math.round(judgeOnly * 100)}% · 减伤 +${Math.round(judgeOnly * 100)}%`)
   }
   if (playerMajor < tierMajor(anchorTier)) {
-    lines.push(`境界压制:未及此界该有的境界 —— 守关者额外增伤 +${Math.round(CELESTIAL_SUPPRESS_BONUS * 100)}%`)
+    lines.push(`境界压制:守关者增伤 +${Math.round(CELESTIAL_SUPPRESS_BONUS * 100)}%`)
   }
-  // 报了病因,也要给方向:两条判定各有自己的解法(一个改形状,一个抬境界)
-  if (lines.length > 0) lines.push(JUDGEMENT_DIRECTION)
   return lines
 }
 

@@ -5,38 +5,12 @@
  *   玩家行为计数 → playerLean() + 道侣道途 + 选择与道侣的诉求/底线是否相合 → 三维各自变化。
  * 玩家只看到道侣的反应,看不到「accord +5」。
  *
- * 上一版道侣只有「状态」,没有「关系中的事件与选择」。三个缺口
- * (accordShift 无调用点、诉求与底线只是展示文本、玩家做不了选择)
- * 其实是同一件事:**道侣还没有自己的意志。**
- *
- * ## 契合必须是行为结果,不是 API 参数
- *
- * 33.8 的 accordShift 需要调用方把玩家道途传进来,而玩家道途根本
- * 没有系统字段 —— 等于开发者在喂数据。本版改为:
- *
- *   玩家行为计数 → playerLean()  推断玩家实际走的是哪条道
- *   + 道侣道途
- *   + 事件选择与她的诉求/底线是否相合
- *       ↓
- *   三维各自变化
- *
- * 玩家不会看到「accord +5」,只会看到她的反应。
- *
- * ## 三维吃不同类型的行为,不平均分配
- *
- *   缘分  你们一起经历过多少事      —— 共历本身
- *   信任  她敢不敢把事情交给你      —— 是否兑现、是否在危险中支持她
- *   契合  你们到底是不是同一种人    —— 价值观与道途的关键选择
- *
- * ## 边界照旧
- *
- * 共同事件可以改变关系、结局、她是否离开,但**不产出任何**
- * StatMods / 资源 / 道果 / 宿慧。刚拆干净的跨世正反馈不能从这里接回来。
+ * 边界:可改变关系、结局、道侣是否离开,不产出任何 StatMods / 资源 / 道果 / 宿慧。
  */
 import type { CounterKey } from '@/types'
-import { type DaoLean, type DaoluDef } from '@/data/daolu'
+import { type DaoLean, type DaoluDef, type DaoluGender, bondText } from '@/data/daolu'
 
-/** 关系冲突的类型 —— 六个事件各代表一种,不做重复 */
+/** 关系冲突的类型 —— 每个事件各代表一种,不做重复 */
 export type ConflictKind =
   /** 资源冲突:只有一份 */
   | 'resource'
@@ -137,17 +111,17 @@ export const BOND_EVENTS: BondEventDef[] = [
     id: 'be_relic',
     kind: 'resource',
     title: '遗府',
-    text: '你与她循着塌了半边的石阶下到底层。案上一卷丹方,更深处的石匣里另有一件法宝,机关将合,只够取走一样。',
-    herWish: '她想要那卷丹方——那是她找了很久的东西',
-    herLimit: '她不会为了法宝眼睁睁看你去死',
+    text: '你与{ta}循着塌了半边的石阶下到底层。案上一卷丹方,更深处的石匣里另有一件法宝,机关将合,只够取走一样。',
+    herWish: '{ta}想要那卷丹方,已经找了很久',
+    herLimit: '{ta}不会为了法宝眼睁睁看你去死',
     minStageIndex: 2,
     triggers: ['bossDefeated'],
     choices: [
-      c('take_recipe', '取丹方,依她所愿', 'alchemy', {
+      c('take_recipe', '取丹方,依{ta}所愿', 'alchemy', {
         fate: 4,
         trust: 12,
         accord: 6,
-        text: '她把丹方收进袖中,没有说谢,但那之后你说的话她都听得很认真。'
+        text: '{ta}把丹方收进袖中,没有说谢,但那之后你说的话{ta}都听得很认真。'
       }),
       c(
         'take_artifact',
@@ -157,7 +131,7 @@ export const BOND_EVENTS: BondEventDef[] = [
           fate: 3,
           trust: -14,
           accord: -8,
-          text: '她看着石匣合上,什么也没说。回程路上她一直走在你身后半步。'
+          text: '{ta}看着石匣合上,什么也没说。回程路上{ta}一直走在你身后半步。'
         },
         { crossesTaboo: true }
       ),
@@ -169,7 +143,7 @@ export const BOND_EVENTS: BondEventDef[] = [
           fate: 6,
           trust: -4,
           accord: -2,
-          text: '机关落下时她替你挡了一记。丹方到手,法宝碎了半边,她的左臂三日不能抬。'
+          text: '机关落下时{ta}替你挡了一记。丹方到手,法宝碎了半边,{ta}的左臂三日不能抬。'
         },
         { risky: true }
       )
@@ -180,8 +154,8 @@ export const BOND_EVENTS: BondEventDef[] = [
     kind: 'path',
     title: '刀下',
     text: '一名重伤的散修跪在你们面前。他方才还在设伏,如今只求活命。',
-    herWish: '她希望留他一条命',
-    herLimit: '她不看着人被杀',
+    herWish: '{ta}希望留那人一条命',
+    herLimit: '{ta}不看着人被杀',
     minStageIndex: 2,
     triggers: ['firstVictory'],
     choices: [
@@ -189,7 +163,7 @@ export const BOND_EVENTS: BondEventDef[] = [
         fate: 3,
         trust: 6,
         accord: 8,
-        text: '那人踉跄着消失在林子里。她说:「不是每个人都该死在今天。」'
+        text: '那人踉跄着消失在林子里。{ta}说:「不是每个人都该死在今天。」'
       }),
       c(
         'kill',
@@ -199,7 +173,7 @@ export const BOND_EVENTS: BondEventDef[] = [
           fate: 2,
           trust: -8,
           accord: -12,
-          text: '你收剑时她已经转过身去。这一路她再没主动开口。'
+          text: '你收剑时{ta}已经转过身去。这一路{ta}再没主动开口。'
         },
         { crossesTaboo: true }
       ),
@@ -215,39 +189,39 @@ export const BOND_EVENTS: BondEventDef[] = [
     id: 'be_lead',
     kind: 'risk',
     title: '线索',
-    text: '她在一处断碑上认出了旧年的刻痕。往深处走或许有她要找的东西,那里的凶险却不好说。',
-    herWish: '她想进去看看',
-    herLimit: '她不愿因自己的事把别人拖下水',
+    text: '{ta}在一处断碑上认出了旧年的刻痕。往深处走或许有{ta}要找的东西,那里的凶险却不好说。',
+    herWish: '{ta}想进去看看',
+    herLimit: '{ta}不愿因自己的事把别人拖下水',
     minStageIndex: 2,
     triggers: ['enterPlace'],
     choices: [
       c(
         'accompany',
-        '陪她进去',
+        '陪{ta}进去',
         null,
         {
           fate: 8,
           trust: 15,
           accord: 4,
-          text: '深处什么也没有,只有一面塌了的墙。她在墙前站了很久,出来时说:「多谢。」'
+          text: '深处什么也没有,只有一面塌了的墙。{ta}在墙前站了很久,出来时说:「多谢。」'
         },
         { supportsHer: true, risky: true }
       ),
-      c('dissuade', '劝她别去', 'longevity', {
+      c('dissuade', '劝{ta}别去', 'longevity', {
         fate: 2,
         trust: -6,
         accord: -3,
-        text: '她点头说好,但你知道她记住了那个位置。'
+        text: '{ta}点头说好,却记住了那个位置。'
       }),
       c(
         'alone',
-        '你自己进去,让她在外面等',
+        '你自己进去,让{ta}在外面等',
         null,
         {
           fate: 3,
           trust: 4,
           accord: -4,
-          text: '你带回半块碑文。她道了谢,却没接过去看:「这是我该自己走的一段。」'
+          text: '你带回半块碑文。{ta}道了谢,却没接过去看:「这是我该自己走的一段。」'
         },
         { risky: true }
       )
@@ -257,9 +231,9 @@ export const BOND_EVENTS: BondEventDef[] = [
     id: 'be_price',
     kind: 'value',
     title: '代价',
-    text: '要取得那味药引,须惊动山下一整座村子的地脉。药引能救她的伤,村子会因此薄收三年。',
-    herWish: '她宁可自己扛着伤',
-    herLimit: '她不肯让别人替她付代价',
+    text: '要取得那味药引,须惊动山下一整座村子的地脉。药引能救{ta}的伤,村子会因此薄收三年。',
+    herWish: '{ta}宁可自己扛着伤',
+    herLimit: '{ta}不肯让别人替{ta}付代价',
     minStageIndex: 3,
     triggers: ['bossDefeated'],
     choices: [
@@ -267,25 +241,25 @@ export const BOND_EVENTS: BondEventDef[] = [
         fate: 4,
         trust: 8,
         accord: 14,
-        text: '她笑了一下,说这是她认识你以来最像你的一次。'
+        text: '{ta}笑了一下:「这才像你。」'
       }),
       c(
         'take',
-        '取药引,救她要紧',
+        '取药引,救{ta}要紧',
         'alchemy',
         {
           fate: 5,
           trust: 6,
           accord: -16,
-          text: '伤是好了。她后来常望着山下的方向出神,没再提过这件事。'
+          text: '伤是好了。{ta}后来常望着山下的方向出神,没再提过这件事。'
         },
         { crossesTaboo: true }
       ),
-      c('ask', '让她自己决定', null, {
+      c('ask', '让{ta}自己决定', null, {
         fate: 3,
         trust: 10,
         accord: 5,
-        text: '她想了很久,说不要。你尊重了她的选择——她记住了这一点。'
+        text: '{ta}想了很久,说不要。'
       })
     ]
   },
@@ -293,34 +267,34 @@ export const BOND_EVENTS: BondEventDef[] = [
     id: 'be_depart',
     kind: 'pursuit',
     title: '岔路',
-    text: '她说她要往北去了。那是与你这一世的路线相反的方向,而她要找的人可能在那里。',
-    herWish: '她想去完成自己的事',
-    herLimit: '她不肯让人为她改道',
+    text: '{ta}说要往北去了,与你这一世的路线相反。{ta}要找的人可能在那里。',
+    herWish: '{ta}想去完成自己的事',
+    herLimit: '{ta}不肯让人为{ta}改道',
     minStageIndex: 3,
     triggers: ['enterPlace'],
-    sheDecides: { when: 'lowAccord', line: '她已经收好了行囊,像是不打算商量。' },
+    sheDecides: { when: 'lowAccord', line: '{ta}已经收好了行囊,像是不打算商量。' },
     choices: [
       c(
         'follow',
-        '陪她走这一趟',
+        '陪{ta}走这一趟',
         null,
         {
           fate: 12,
           trust: 18,
           accord: 8,
-          text: '你们绕了很远。她要找的人不在那里,但她说这趟路她记一辈子。'
+          text: '你们绕了很远,{ta}要找的人不在那里。归途中,{ta}说起了那人的旧事。'
         },
         { supportsHer: true, risky: true }
       ),
       c(
         'stop',
-        '拦下她',
+        '拦下{ta}',
         null,
         {
           fate: 2,
           trust: -12,
           accord: -10,
-          text: '她留下了,却不再提北边的事。有些话一旦没说出口,就再也不会说了。'
+          text: '{ta}留下了,却不再提北边的事。'
         },
         { crossesTaboo: true }
       ),
@@ -329,7 +303,7 @@ export const BOND_EVENTS: BondEventDef[] = [
         trust: -2,
         accord: 6,
         leaves: true,
-        text: '她说:「你我本就不是一条道上的人,这样也好。」然后头也不回地走了。'
+        text: '{ta}说:「你我本就不是一条道上的人,这样也好。」然后头也不回地走了。'
       })
     ]
   },
@@ -337,36 +311,36 @@ export const BOND_EVENTS: BondEventDef[] = [
     id: 'be_rescue',
     kind: 'sacrifice',
     title: '重伤',
-    text: '你伤得很重。她手里有一枚能救你的丹,那是她攒了三年、准备用来突破的东西。',
-    herWish: '她已经把丹药握在手里了',
-    herLimit: '她不喜欢欠人情,也不喜欢别人欠她',
+    text: '你伤得很重。{ta}有一枚能救你的丹,攒了三年,原是留着突破用的。',
+    herWish: '{ta}已经把丹药握在手里了',
+    herLimit: '{ta}不喜欢欠人情,也不喜欢别人欠{ta}',
     minStageIndex: 3,
     triggers: ['nearDeath'],
-    sheDecides: { when: 'lowTrust', line: '她犹豫了一下,把丹药收了回去。' },
+    sheDecides: { when: 'lowTrust', line: '{ta}犹豫了一下,把丹药收了回去。' },
     choices: [
-      c('accept', '受了她这枚丹', null, {
+      c('accept', '受了{ta}这枚丹', null, {
         fate: 10,
         trust: 12,
         accord: 2,
-        text: '她的境界因此停在原处两年。这件事你们谁都没再提。'
+        text: '{ta}的境界因此停在原处两年。这件事你们谁都没再提。'
       }),
       c(
         'refuse',
-        '推开她的手',
+        '推开{ta}的手',
         'longevity',
         {
           fate: 6,
           trust: -4,
           accord: 10,
-          text: '你自己熬了过来。她说:「你这个人,真是。」语气里听不出是气还是别的。'
+          text: '你自己熬了过来。{ta}说:「你这个人,真是。」'
         },
         { supportsHer: true }
       ),
-      c('trade', '要她记下这份人情', null, {
+      c('trade', '要{ta}记下这份人情', null, {
         fate: 4,
         trust: -10,
         accord: -6,
-        text: '她把丹给了你,也把这句话记下了。此后她待你客气了许多。'
+        text: '{ta}把丹给了你,也把这句话记下了。此后{ta}待你客气了许多。'
       })
     ]
   },
@@ -374,15 +348,15 @@ export const BOND_EVENTS: BondEventDef[] = [
     id: 'be_jie',
     kind: 'mortal',
     title: '共劫',
-    text: '这一劫来得比你们预料的早。退路已经断了,两个人只够一个人先走 —— 或者,一起从中间蹚过去。',
-    herWish: '她说:「一起走吧。」语气很平,像在说一件已经想好的事。',
-    herLimit: '她不怕死,但她怕拖累别人;你若把她推开,她会记很久',
+    text: '这一劫来得比你们预料的早。退路已断,两人只够一人先走,或者一起从中间蹚过去。',
+    herWish: '{ta}说:「一起走吧。」语气很平。',
+    herLimit: '{ta}怕拖累别人;你若把{ta}推开,{ta}会记很久',
     minStageIndex: 4,
     triggers: ['nearDeath', 'bossDefeated'],
     choices: [
       c(
         'share',
-        '与她同担此劫(她未必撑得住)',
+        '与{ta}同担此劫({ta}未必撑得住)',
         null,
         {
           fate: 8,
@@ -392,17 +366,17 @@ export const BOND_EVENTS: BondEventDef[] = [
         },
         { risky: true, peril: true, supportsHer: true }
       ),
-      c('shield', '替她挡下这一击', 'longevity', {
+      c('shield', '替{ta}挡下这一击', 'longevity', {
         fate: 10,
         trust: 18,
         accord: 10,
-        text: '你把她按在身后,自己迎了上去。她没有说话,只是把你的名字念了一遍。'
+        text: '你把{ta}按在身后,自己迎了上去。{ta}念了一遍你的名字。'
       }),
-      c('send', '让她先走', null, {
+      c('send', '让{ta}先走', null, {
         fate: 2,
         trust: -12,
         accord: -6,
-        text: '她被推向生路,回头看你那一眼,你后来想了很多年。'
+        text: '{ta}被推向生路,回头看了你一眼。'
       })
     ]
   }
@@ -412,14 +386,23 @@ export function bondEventDef(id: string): BondEventDef | undefined {
   return BOND_EVENTS.find(e => e.id === id)
 }
 
+/** 上屏用:事件里所有文案按道侣性别换好代词(返回新对象) */
+export function bondEventView(ev: BondEventDef, gender: DaoluGender): BondEventDef {
+  const t = (s: string): string => bondText(s, gender)
+  return {
+    ...ev,
+    title: t(ev.title),
+    text: t(ev.text),
+    herWish: t(ev.herWish),
+    herLimit: t(ev.herLimit),
+    choices: ev.choices.map(c => ({ ...c, label: t(c.label), outcome: { ...c.outcome, text: t(c.outcome.text) } })),
+    ...(ev.sheDecides ? { sheDecides: { ...ev.sheDecides, line: t(ev.sheDecides.line) } } : {})
+  }
+}
+
 // ============ 玩家道途:由行为推断,不是设定 ============
 
-/**
- * 各道途对应的行为计数。
- *
- * 玩家没有「选择道途」的按钮 —— 他走的是哪条道,由他做过什么决定。
- * 这样契合才是**行为的结果**,而不是喂进来的参数
- */
+/** 各道途对应的行为计数 */
 export const LEAN_COUNTERS: Record<DaoLean, readonly CounterKey[]> = {
   slaughter: ['kills', 'bossKills'],
   longevity: ['breakthroughs', 'tribulations'],

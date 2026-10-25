@@ -9,7 +9,7 @@ describe('equipNextLevelText', () => {
   it('裸装第一级等于常数,已强化的再涨按当前倍率折', () => {
     expect(equipNextLevelText(0)).toContain(formatPercent(EQUIP_LEVEL_BONUS))
     const rel = EQUIP_LEVEL_BONUS / (1 + 5 * EQUIP_LEVEL_BONUS)
-    expect(equipNextLevelText(5)).toContain(`此刻再涨 ${formatPercent(rel)}`)
+    expect(equipNextLevelText(5)).toContain(`基础属性 +${formatPercent(rel)}`)
     expect(rel).toBeLessThan(EQUIP_LEVEL_BONUS)
   })
 
@@ -27,7 +27,8 @@ describe('affixRollText', () => {
     expect(affixRollText(1)).toBe('浮 100%')
     expect(affixRollText(1.5)).toBe('浮 100%')
     expect(affixRollText(-0.2)).toBe('浮 0%')
-    expect(affixRollHint.length).toBeGreaterThan(20)
+    expect(affixRollHint).toContain('0% 下限')
+    expect(affixRollHint).toContain('100% 上限')
   })
 
   it('详情页按词条行渲染浮动与悬停说明,不手抄「浮」字与「%"', () => {
@@ -39,14 +40,20 @@ describe('affixRollText', () => {
 })
 
 describe('powerCompareLabel', () => {
-  it('起名忠于一键换装的口径 —— 不冒充面板「战力"', () => {
-    expect(powerCompareLabel()).toBe('战斗价值(一键口径)')
+  it('起名不冒充面板「战力"', () => {
+    expect(powerCompareLabel()).toBe('战斗价值')
+    expect(powerCompareLabel()).not.toBe('战力')
   })
 
-  it('详情页用函数取名,并把「一键口径」写在名里,避免被抄成「战力"', () => {
+  it('详情页用函数取名,不在模板里手写', () => {
     const src = readFileSync(resolve(__dirname, '../components/equipment/EquipmentDetailDialog.vue'), 'utf8')
+    // 注释里会提到「战斗价值对比」,判据只看代码
+    const code = src
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*$/gm, '')
     expect(src).toContain('powerCompareLabel()')
     expect(src).toContain('v-if="powerCompare"')
-    expect(src).not.toContain('战斗价值(一键口径)')
+    expect(code).not.toContain('战斗价值')
   })
 })

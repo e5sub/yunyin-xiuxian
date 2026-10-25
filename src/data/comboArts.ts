@@ -15,22 +15,22 @@ export const COMBO_ARTS: ComboArtDef[] = [
     id: 'xuangang',
     pair: ['gangdun', 'fanzhen'],
     name: '玄罡反震',
-    desc: '护盾被击破的刹那,碎光化作一次强化反击(每场至多两次)',
-    costText: '依赖护盾节奏,真伤之敌可绕过罡盾使其无从触发'
+    desc: '护盾被破即强化反击(每场至多两次)',
+    costText: '真伤之敌绕盾则不触发'
   },
   {
     id: 'kuze',
     pair: ['muze', 'beishui'],
     name: '枯泽回春',
     desc: '气血低于三成时,一切治疗增效五成',
-    costText: '此时每次受疗,护盾亦随之消散一半——生机与灵光不可兼得'
+    costText: '此时每次受疗,护盾减半'
   },
   {
     id: 'fenglian',
     pair: ['fengmang', 'lianji'],
     name: '锋连诀',
     desc: '满血会心必定衔接一记追击(每场限一次)',
-    costText: '首伤之后锋芒顿减,机会只在开局一线'
+    costText: '仅开局可触发'
   }
 ]
 

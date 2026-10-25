@@ -1,13 +1,13 @@
-/* eslint-disable no-console -- 命中对闪避是"落空次数少了几成"的读数,打印出来便于复核 */
+/* eslint-disable no-console -- 打印落空次数供复核 */
 import { describe, expect, it } from 'vitest'
-import type { CombatantSnap } from '@/types'
-import { gn } from '@/utils/gnum'
+import type { BossPhase, CombatantSnap, CombatResult, CombatRules, EnemyDef, StatMods } from '@/types'
+import { gn, mulN } from '@/utils/gnum'
 import { mulberry32, RandomService } from '@/utils/random'
 import { enemyDef } from '@/data/enemies'
-import { artifactDef } from '@/data/artifacts'
+import { ARTIFACTS, artifactDef } from '@/data/artifacts'
 import { applyCombatRuleSnap, makeEnemySnap, resolveCombat, sampleWinRate, snapPower } from './combat'
 import { toNum } from '@/utils/gnum'
-import { powerScore } from './formulas'
+import { powerScale, powerScore } from './formulas'
 
 const seeded = (seed = 1): RandomService => new RandomService(mulberry32(seed))
 
@@ -214,5 +214,172 @@ describe('自动战斗', () => {
     expect(bare, '幻影一次都没闪开,这条判据失去对象').toBeGreaterThan(0)
     expect(keen, `20 场累计落空:无命中 ${bare} 次,带四成命中 ${keen} 次 —— 命中没有换来出手`).toBeLessThan(bare)
     console.log(`\n幻影(闪避 55%)× 20 场:无命中落空 ${bare} 次,带四成命中落空 ${keen} 次`)
+  })
+})
+
+describe('首领阶段', () => {
+  /** 与该层敌人同步缩放的玩家(mortalWorldGen 审计同一份基准) */
+  function tierPlayer(tier: number, k: number): CombatantSnap {
+    const s = powerScale(tier)
+    return {
+      ...playerSnap(1),
+      attack: mulN(s, 96 * k),
+      defense: mulN(s, 54 * k),
+      maxHp: mulN(s, 1400 * k)
+    }
+  }
+
+  /** 深冻结的独立副本:严格模式下任何写入(换引用、Object.assign、push)当场抛错 */
+  function frozenCopy<T>(value: T): T {
+    const copy = structuredClone(value)
+    const freeze = (x: unknown): void => {
+      if (x === null || typeof x !== 'object' || Object.isFrozen(x)) return
+      Object.freeze(x)
+      for (const v of Object.values(x)) freeze(v)
+    }
+    freeze(copy)
+    return copy
+  }
+
+  /** 木桩首领:不出招、不设防,被打死时护盾吸收量就是它凝过的护盾总量 */
+  function dummyBoss(mods: StatMods, phases: BossPhase[]): CombatantSnap {
+    return {
+      name: '木桩',
+      icon: 'skull',
+      isPlayer: false,
+      attack: gn(1),
+      defense: gn(0),
+      maxHp: gn(1000),
+      speed: 0.5,
+      mods,
+      skills: [],
+      phases
+    }
+  }
+
+  function killDummy(boss: CombatantSnap, seed: number, rules?: CombatRules): CombatResult {
+    const result = resolveCombat({ ...playerSnap(1), attack: gn(150), maxHp: gn(1e9) }, boss, seeded(seed), rules)
+    expect(result.win, '木桩没打死,护盾吸收量不等于凝盾总量').toBe(true)
+    return result
+  }
+
+  const enemyShieldLines = (r: CombatResult): number => r.log.filter(l => l.t === 'shield' && l.side === 'e').length
+
+  it('同一份首领快照连打两场:快照不被写入,两场逐位相同', () => {
+    const boss = makeEnemySnap(enemyDef('e_wolfking')!, 1, 1)
+    const player = playerSnap(3)
+    const before = structuredClone({ boss, player })
+    const first = resolveCombat(player, boss, seeded(1))
+    expect(first.log.some(l => l.text.includes('狂化!')), '第一场没进第二阶段,判据失去对象').toBe(true)
+    expect({ boss, player }, '战斗写回了调用方快照').toEqual(before)
+    const second = resolveCombat(player, boss, seeded(1))
+    expect(second, '第二场没有从第一阶段开打').toEqual(first)
+  })
+
+  it('冻结的快照与规则走遍法宝、组合技、铁壁、长生印、阶段各分支,一处不写', () => {
+    const effectTypes = [...new Set(ARTIFACTS.map(a => a.active.effect.type))]
+    const artifacts = effectTypes.map(t => ({ def: ARTIFACTS.find(a => a.active.effect.type === t)!, level: 3 }))
+    const rules = frozenCopy({
+      perRounds: { interval: 2, playerHealPct: 0.05, playerShieldPct: 0.05, enemyAtkGrowth: 0.05 },
+      playerExtraMods: { lifesteal: 0.05 },
+      enemyExtraMods: { critRate: 0.05 }
+    })
+    const markers = ['铁壁共鸣', '长生印', '罡盾崩碎', '锋连诀', '摄魂之力散于无形', '将军誓!', '狂化!']
+    const seen = new Set<string>()
+    const loaded = { shieldOnStart: 0.2, counterRate: 0.3, comboRate: 0.3, stunRate: 0.2, regenPerRound: 0.03, overhealShield: 0.5, critRate: 0.3 }
+    for (const comboArt of ['xuangang', 'kuze', 'fenglian']) {
+      for (const id of ['e_general', 'e_wolfking', 'e_python']) {
+        const def = enemyDef(id)!
+        // 满配一身法宝几乎不死,铁壁与濒死分支(枯泽)要靠一具只带吸血的裸身去走
+        const players = [
+          { ...tierPlayer(def.tier, 0.1), artifacts, comboArt, ironwallBrace: true, mods: loaded },
+          { ...tierPlayer(def.tier, 0.9), artifacts, comboArt, ironwallBrace: true, mods: loaded },
+          { ...tierPlayer(def.tier, 0.3), comboArt, ironwallBrace: true, mods: { lifesteal: 0.1 } }
+        ]
+        const base = makeEnemySnap(def, def.tier, 1)
+        const boss = frozenCopy({ ...base, mods: { ...base.mods, stunRate: 0.3 } })
+        for (const p of players) {
+          const player = frozenCopy(p)
+          for (const r of [undefined, rules]) {
+            const text = resolveCombat(player, boss, seeded(5), r).log.map(l => l.text).join('\n')
+            for (const m of markers) if (text.includes(m)) seen.add(m)
+          }
+        }
+      }
+    }
+    expect(effectTypes.length, '法宝神通类型少于八种').toBeGreaterThanOrEqual(8)
+    expect(markers.filter(m => !seen.has(m)), '这些分支一场都没走到').toEqual([])
+  })
+
+  it('sampleWinRate 的三次抽样互不串场:与每场新开快照的胜负一致', () => {
+    const def = enemyDef('e_general')!
+    const table = [0.08, 0.4, 0.72, 0.93]
+    for (let seed = 1; seed <= 40; seed += 1) {
+      const shared = sampleWinRate(tierPlayer(6, 0.8), makeEnemySnap(def, 6, 1), seeded(seed), 3)
+      const rng = seeded(seed)
+      let wins = 0
+      for (let i = 0; i < 3; i += 1) {
+        if (resolveCombat(tierPlayer(6, 0.8), makeEnemySnap(def, 6, 1), rng, undefined, false).win) wins += 1
+      }
+      expect(shared, `种子 ${seed}`).toBe(table[wins])
+    }
+  })
+
+  it('阶段写入开战护盾即当场凝盾:将军誓后紧跟敌方护盾,吸收量多于删掉该阶段护盾的同一场', () => {
+    const def = enemyDef('e_general')!
+    const bare: EnemyDef = { ...def, phases: def.phases!.map(p => ({ ...p, modChanges: {} })) }
+    for (let seed = 1; seed <= 20; seed += 1) {
+      const withPhase = resolveCombat(tierPlayer(6, 1), makeEnemySnap(def, 6, 1), seeded(seed))
+      const idx = withPhase.log.findIndex(l => l.text.includes('将军誓'))
+      expect(idx, `种子 ${seed}:没进阶段`).toBeGreaterThan(-1)
+      const next = withPhase.log[idx + 1]!
+      expect([next.t, next.side], `种子 ${seed}:将军誓之后没有凝盾`).toEqual(['shield', 'e'])
+      const without = resolveCombat(tierPlayer(6, 1), makeEnemySnap(bare, 6, 1), seeded(seed))
+      expect(toNum(withPhase.stats!.enemy.shieldAbsorbed), `种子 ${seed}`).toBeGreaterThan(toNum(without.stats!.enemy.shieldAbsorbed))
+    }
+  })
+
+  it('阶段抬高开战护盾只补差额,受护盾上限约束', () => {
+    // 开战 25%,半血抬到 45%:补 20%;盾在半血前已被打光,两段都不顶上限
+    const half = killDummy(dummyBoss({ shieldOnStart: 0.25 }, [{ hpThreshold: 0.5, modChanges: { shieldOnStart: 0.45 } }]), 1)
+    expect(toNum(half.stats!.enemy.shieldAbsorbed)).toBeCloseTo(450, 6)
+    expect(enemyShieldLines(half)).toBe(2)
+    // 开战无盾的首领(神域封锁型):差额即阶段值
+    const fresh = killDummy(dummyBoss({}, [{ hpThreshold: 0.5, modChanges: { shieldOnStart: 0.4 } }]), 1)
+    expect(toNum(fresh.stats!.enemy.shieldAbsorbed)).toBeCloseTo(400, 6)
+    // 开战 30% 未破即入阶段(阈值 1):30% + 15% 被世界规则的 40% 上限截住
+    const capped = killDummy(
+      dummyBoss({ shieldOnStart: 0.3 }, [{ hpThreshold: 1, modChanges: { shieldOnStart: 0.45 } }]),
+      1,
+      { shieldCapRatio: 0.4 }
+    )
+    expect(toNum(capped.stats!.enemy.shieldAbsorbed)).toBeCloseTo(400, 6)
+  })
+
+  it('阶段不写开战护盾就不凝盾:开战盾只凝一次', () => {
+    const result = killDummy(dummyBoss({ shieldOnStart: 0.2 }, [{ hpThreshold: 0.5, modChanges: { damageReduction: 0.1 } }]), 1)
+    expect(toNum(result.stats!.enemy.shieldAbsorbed)).toBeCloseTo(200, 6)
+    expect(enemyShieldLines(result)).toBe(1)
+  })
+
+  it('阶段改词条照常生效:入阶段即带上新减伤', () => {
+    const plain = killDummy(dummyBoss({}, []), 1)
+    const warded = killDummy(dummyBoss({}, [{ hpThreshold: 1, modChanges: { damageReduction: 0.5 } }]), 1)
+    expect(warded.rounds, `无阶段 ${plain.rounds} 回合,开场入阶段减伤五成 ${warded.rounds} 回合`).toBeGreaterThan(plain.rounds)
+  })
+
+  it('阶段换招照常生效:狂化之后只用新招', () => {
+    let phaseCasts = 0
+    for (let seed = 1; seed <= 20; seed += 1) {
+      const result = resolveCombat(playerSnap(3), makeEnemySnap(enemyDef('e_wolfking')!, 1, 1), seeded(seed))
+      const idx = result.log.findIndex(l => l.text.includes('狂化!'))
+      if (idx < 0) continue
+      const before = result.log.slice(0, idx).map(l => l.text).join('\n')
+      const after = result.log.slice(idx + 1).map(l => l.text).join('\n')
+      expect(before, `种子 ${seed}`).not.toContain('狂化·裂空')
+      expect(after, `种子 ${seed}`).not.toContain('裂空爪')
+      phaseCasts += result.log.slice(idx + 1).filter(l => l.text.includes('施展【狂化·裂空】')).length
+    }
+    expect(phaseCasts, '20 场里狂化之后一次新招都没出,判据失去对象').toBeGreaterThan(0)
   })
 })

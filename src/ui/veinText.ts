@@ -18,28 +18,28 @@ export function veinEffectText(def: VeinDef, points: number): string {
   return parts.join(' · ')
 }
 
-/** 洞府灵脉投点与改立。容量、主副上限、灵石仍报清。 */
+/** 洞府灵脉投点与改立;容量、主副上限、灵石报清 */
 export function veinFullToast(): string {
-  return '灵脉容量已尽,唯有取舍'
+  return '容量已尽'
 }
 
 export function veinPeakToast(isMain: boolean): string {
-  return isMain ? '主脉已至圆满' : '副脉有其上限,欲再进须立为主脉'
+  return isMain ? '主脉圆满' : '副脉已至上限'
 }
 
 export function veinShortToast(stoneText?: string): string {
-  return stoneText === undefined ? '灵石未足,难注此脉' : `灵石尚差 ${stoneText},难注此脉`
+  return stoneText === undefined ? '灵石不足' : `灵石尚差 ${stoneText}`
 }
 
 export function veinSwitchShortToast(stoneText?: string): string {
-  return stoneText === undefined ? '灵石未足,迁脉非小事' : `灵石尚差 ${stoneText},迁脉非小事`
+  return stoneText === undefined ? '灵石不足' : `灵石尚差 ${stoneText}`
 }
 
 export function veinSwitchDoneToast(name: string): string {
   return `主脉改立「${name}」`
 }
 
-/** 连投的总结账:一点一点报太吵,连投只报一次总况(stoneText 由调用方 formatGN 好) */
+/** 连投总况,只报一次(stoneText 由调用方 formatGN) */
 export function veinBatchDoneToast(name: string, points: number, stoneText: string): string {
-  return `「${name}」连注 ${points} 点,共耗灵石 ${stoneText}`
+  return `「${name}」连投 ${points} 点 · 共耗灵石 ${stoneText}`
 }

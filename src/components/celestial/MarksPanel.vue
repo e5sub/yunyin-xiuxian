@@ -1,10 +1,9 @@
 <template>
-  <!-- 道痕 -->
   <section>
-    <SectionTitle title="道痕" :hint="`历代修行履历 · ${endgame.marks.length} 则`" />
+    <SectionTitle title="道痕" :hint="`${endgame.marks.length} 则`" />
     <div class="mt-2 flex items-center justify-between px-1">
       <p class="text-[10px] tabular text-ink-faint">
-        天道历 {{ RULESET_VERSION }} 世 · 天地规矩易过 {{ RULESET_CHANGELOG.length }} 回
+        纪元 {{ RULESET_VERSION }} · 变更 {{ RULESET_CHANGELOG.length }} 回
       </p>
       <button class="-my-1 py-2 font-kai text-[10px] text-azure active:scale-90" @click="openEra(null)">
         纪元变迁史 →
@@ -38,7 +37,7 @@
         <button
           v-if="isStaleRuleset(mark.ruleset)"
           class="shrink-0 min-h-[28px] rounded border border-cinnabar/50 bg-cinnabar/10 px-1 py-0.5 font-kai text-[9px] text-cinnabar active:scale-90"
-          :title="`录于旧纪 ${mark.ruleset},天道已变`"
+          :title="`旧纪 ${mark.ruleset}`"
           @click="openEra(mark)"
         >
           变
@@ -48,7 +47,7 @@
           class="shrink-0 min-h-[28px] rounded border border-gold-ink/40 px-1.5 py-0.5 font-kai text-[10px] text-gold-ink active:scale-90"
           :disabled="busy !== null"
           :class="{ 'cursor-not-allowed border-ink/15 text-ink-faint': busy !== null }"
-          :title="busy ? busy.reason : '以当年的构筑重打此战'"
+          :title="busy ? busy.reason : '忆战'"
           @click="goReplay(mark)"
         >
           忆
@@ -72,37 +71,32 @@
           v-else-if="mark.cleared && mark.replay"
           class="shrink-0 min-h-[28px] rounded border border-cinnabar/40 px-2 py-1 font-kai text-[10px] text-cinnabar active:scale-90 disabled:border-ink/15 disabled:text-ink-faint"
           :disabled="busy !== null || endgame.daoSource < REWRITE_ENTRY_COST"
-          :title="busy ? busy.reason : endgame.daoSource < REWRITE_ENTRY_COST ? `道源尚差 ${daoSourceShortText(REWRITE_ENTRY_COST, endgame.daoSource)}` : '以今日之你重打此战,快过旧我之回合即【胜于旧我】'"
+          :title="busy ? busy.reason : endgame.daoSource < REWRITE_ENTRY_COST ? `道源尚差 ${daoSourceShortText(REWRITE_ENTRY_COST, endgame.daoSource)}` : '重写'"
           @click="rewriteConfirm = mark"
         >
-          {{ busy ? `写($busy.kind === 'expedition' ? '远征在途' : busy.kind === 'exploration' ? '历练在途' : '身在秘境'})` : endgame.daoSource < REWRITE_ENTRY_COST ? `写(尚差${daoSourceShortText(REWRITE_ENTRY_COST, endgame.daoSource)})` : `写(道源${REWRITE_ENTRY_COST} · 破${mark.rounds}回合)` }}
+          {{ busy ? `写(${busy.kind === 'expedition' ? '远征在途' : busy.kind === 'exploration' ? '历练在途' : '身在秘境'})` : endgame.daoSource < REWRITE_ENTRY_COST ? `写(尚差${daoSourceShortText(REWRITE_ENTRY_COST, endgame.daoSource)})` : `写(道源${REWRITE_ENTRY_COST} · 破${mark.rounds}回合)` }}
         </button>
       </div>
     </div>
     <p v-else class="card-ink mt-2 px-4 py-5 text-center">
       <span class="empty-seal" aria-hidden="true">白</span>
-      <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">此页尚白</span>
-      <span class="mt-1 block text-[10px] leading-relaxed text-ink-faint">你在天界的每一战,都会留下痕迹</span>
+      <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">暂无道痕</span>
     </p>
   </section>
 
-  <!-- 天道已变:旧纪道痕为何不能按老眼光看 -->
   <BaseModal :open="eraOpen" title="天道已变" @close="eraOpen = false">
     <p v-if="eraMark" class="text-[11px] leading-relaxed text-ink-soft">
-      此战录于规则纪元 <span class="tabular text-cinnabar">{{ eraMark.ruleset }}</span>,今为
-      <span class="tabular">{{ RULESET_VERSION }}</span>。同界同契,当年的你依当年的规矩取胜 ——
-      如今再忆,规矩已换。
+      录于纪元 <span class="tabular text-cinnabar">{{ eraMark.ruleset }}</span> · 今为
+      <span class="tabular">{{ RULESET_VERSION }}</span>
     </p>
-    <p v-else class="text-[11px] leading-relaxed text-ink-soft">
-      纪元变迁,只记改了规矩的大事变;寻常增减,不记在此册。
-    </p>
+    <p v-else class="text-[11px] leading-relaxed text-ink-soft">只记规则变更</p>
     <div class="mt-2.5 space-y-2">
       <div v-for="c in eraChanges" :key="c.version" class="card-ink px-3 py-2">
         <p class="font-kai text-[12px] tabular text-cinnabar">纪元 {{ c.version }}</p>
         <p class="mt-0.5 text-[11px] leading-relaxed text-ink-soft">{{ c.note }}</p>
       </div>
       <p v-if="!eraChanges.length" class="card-ink px-3 py-3 text-center text-[11px] text-ink-faint">
-        {{ eraMark ? '此后天道未再改过规矩 —— 当年的打法,今日依旧算数。' : '尚无变更记录。' }}
+        {{ eraMark ? '此后无变更' : '暂无变更' }}
       </p>
     </div>
   </BaseModal>

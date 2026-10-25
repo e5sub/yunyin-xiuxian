@@ -1,14 +1,5 @@
-/* eslint-disable no-console -- 星象是过程性验收,打印值日轮转 */
-/**
- * 星象值日验收(Phase 34.5)
- *
- * 二十八宿这一门最容易做成纯文本:名字好听、分野好看,但玩家用不上。
- * 故这里的判据只有三类:
- *
- *   一 数据是齐的:四象各七宿,宿名/全名/分野/所宜一个不缺;
- *   二 轮值是定的:同一游戏日同一宿,二十八日一轮,不缺不跳;
- *   三 所利是用得上的:值日宿所配界域之地**真的**多一分际遇,他处真的不加。
- */
+/* eslint-disable no-console -- 打印值日轮转 */
+/** 星象值日验收:数据齐、轮值定、所利只利一方 */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { readFileSync } from 'node:fs'
@@ -251,14 +242,14 @@ describe('星象 · 值日定向(A-2)', () => {
     expect(check.reason).not.toContain('灵石不足')
   })
 
-  it('已定向此界 / 次数已尽优先于灵石不足;付得起则判据归空', () => {
+  it('已定向此界 / 今日已用尽优先于灵石不足;付得起则判据归空', () => {
     const day = setTodayAutoMortal()
     const same = mansionRedirectCheck(day, { gameDay: day, worldId: 'immortal', count: 1 }, 'immortal', gn(0))
     expect(same).toMatchObject({ blocked: 'already', reason: '已定向此界' })
     expect(same.stoneShort.m).toBe(0)
 
     const full = mansionRedirectCheck(day, { gameDay: day, worldId: 'mortal', count: MANSION_REDIRECT_MAX }, 'immortal', gn(0))
-    expect(full).toMatchObject({ blocked: 'limit', reason: '今日次数已尽' })
+    expect(full).toMatchObject({ blocked: 'limit', reason: '今日已用尽' })
     expect(full.stoneShort.m).toBe(0)
 
     const ready = mansionRedirectCheck(day, null, 'immortal', gn(MANSION_REDIRECT_COST))

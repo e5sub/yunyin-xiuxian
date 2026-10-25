@@ -143,7 +143,9 @@ function buildNarrative(
   if (roots.branches.length > 0) parts.push(`悟至${roots.branches.join('、')}`)
   if (riskBias === 'gamble') parts.push('偏好以险求胜')
   if (riskBias === 'steady') parts.push('稳扎稳打,不贪冒进')
-  const core = parts.length > 0 ? parts.join(',') : '足迹尚浅,江湖初见。'
+  // 空态只报状态词;此时 adjectives 必为空(每一项都伴随一条 parts)
+  if (parts.length === 0) return '暂无记录'
+  const core = parts.join(',')
   return adjectives.length > 0
     ? `${core}。诸事观之,此修士${adjectives.join('与')}之相已现。`
     : `${core}。`

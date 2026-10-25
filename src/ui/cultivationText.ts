@@ -1,18 +1,17 @@
-/**
- * 修行页提示 —— 疗伤、备药、突破门槛。
- *
- * 卡片与 toast 同源。写成「不足」太硬,缕数与药资仍得报清。
- */
+import type { RatePart } from '@/core/breakthrough'
+import { formatPercent, roundToSum } from '@/utils/format'
+
+/** 修行页提示:疗伤、备药、突破门槛。卡片与 toast 同源;缕数与药资照实报 */
 export function repairIdleToast(): string {
-  return '周身无恙,无须静养'
+  return '周身无恙'
 }
 
 export function repairShortToast(shortText: string, qiText: string): string {
-  return `灵气尚差 ${shortText} 缕,静养需 ${qiText} 缕`
+  return `灵气尚差 ${shortText} 缕 · 需 ${qiText} 缕`
 }
 
 export function repairDoneToast(qiText: string): string {
-  return `你引灵气静养,伤势尽复(耗灵气 ${qiText})`
+  return `伤势尽复 · 耗灵气 ${qiText}`
 }
 
 export function repairActLabel(affordable: boolean, qiText: string, shortText: string): string {
@@ -20,10 +19,10 @@ export function repairActLabel(affordable: boolean, qiText: string, shortText: s
 }
 
 export function prepPillShortToast(shortText: string): string {
-  return `灵石尚差 ${shortText},无以备药`
+  return `灵石尚差 ${shortText}`
 }
 
-/** 服聚气丹按钮欠资时的禁用说明 —— 与备药 toast 同读一份实际石差 */
+/** 服聚气丹按钮欠资禁用说明,与备药 toast 同读一份石差 */
 export function prepPillDisabledLabel(shortText: string): string {
   return `灵石尚差 ${shortText}`
 }
@@ -37,7 +36,7 @@ export function breakthroughExpReason(): string {
 }
 
 export function breakthroughQiReason(qiText: string): string {
-  return `灵气未足,此关需 ${qiText} 缕`
+  return `灵气不足 · 需 ${qiText} 缕`
 }
 
 export function breakthroughActLabel(needTribulation: boolean): string {
@@ -49,16 +48,38 @@ export function breakthroughGoalText(near: boolean, needTribulation: boolean, ta
   return `${breakthroughActLabel(needTribulation)}「${targetLabel}」`
 }
 
+/** 离线归来卷轴:小进阶不提劫 */
 export function breakthroughReadyNote(needTribulation: boolean): string {
-  return `修为已至圆满,可${breakthroughActLabel(needTribulation)}`
+  return needTribulation ? '修为已至圆满 · 待渡劫' : '修为已至圆满'
 }
 
-// ---- 悟道兑换(Phase C-1):灵石 → 悟道点,tost 文案一处出,不在视图里硬写 ----
+/** 进阶成功率显示精度 0.1%;卡面率、来路各行、合计与配色同读一个取整值 */
+const RATE_UNIT = 0.001
+const RATE_GOOD = 0.7
+
+export interface BreakthroughRateView {
+  /** 取整后为 0 的行不列 */
+  rows: RatePart[]
+  text: string
+  good: boolean
+}
+
+export function breakthroughRateView(parts: readonly RatePart[]): BreakthroughRateView {
+  const shown = roundToSum(parts.map(p => p.value), RATE_UNIT)
+  const units = Math.round(shown.reduce((a, b) => a + b, 0) / RATE_UNIT)
+  return {
+    rows: parts.map((p, i) => ({ label: p.label, value: shown[i] ?? 0 })).filter(r => Math.abs(r.value) > 1e-9),
+    text: formatPercent(units * RATE_UNIT),
+    good: units >= Math.round(RATE_GOOD / RATE_UNIT)
+  }
+}
+
+// ---- 悟道兑换:灵石 → 悟道点 ----
 export function exchangeOkToast(reward: number): string {
   return `悟道点 +${reward}`
 }
 export function exchangeFailText(lockedByRealm: boolean, dailyFull: boolean, stoneShortText: string): string {
-  if (lockedByRealm) return '境界未到,兑换未开'
-  if (dailyFull) return '今日已兑满,明日再来'
-  return `灵石尚差 ${stoneShortText},难兑悟道`
+  if (lockedByRealm) return '境界未到'
+  if (dailyFull) return '今日已用尽'
+  return `灵石尚差 ${stoneShortText}`
 }

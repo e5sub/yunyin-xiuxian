@@ -17,7 +17,7 @@
     <span
       v-if="setName"
       class="absolute bottom-0.5 left-1 font-kai text-[8px] leading-none text-violet-ink"
-      :title="`共鸣「${setName}」`"
+      :title="setName"
     >
       共
     </span>

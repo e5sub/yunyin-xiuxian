@@ -36,12 +36,12 @@
   const LINE_COUNT = 28
 
   const title = ref('云深不知处')
-  const subtitle = ref('一念修行 · 仙路自此始')
+  const subtitle = ref('仙路自此始')
 
-  /** 显示传送门(约 2.6s 后自动隐藏,供路由跳转衔接) */
+  /** 显示传送门;约 2.6s 后自动隐藏 */
   function show(opts?: { title?: string; subtitle?: string }): void {
     title.value = opts?.title ?? '云深不知处'
-    subtitle.value = opts?.subtitle ?? '一念修行 · 仙路自此始'
+    subtitle.value = opts?.subtitle ?? '仙路自此始'
     const particles = buildWarpParticleStyles(STAR_COUNT, LINE_COUNT)
     starStyles.value = particles.stars
     lineStyles.value = particles.lines

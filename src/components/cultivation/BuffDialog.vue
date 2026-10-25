@@ -71,8 +71,8 @@
   const isInjury = computed(() => def.value?.kind === 'injury')
 
   const KIND_TEXT: Record<string, string> = {
-    pill: '丹药之效',
-    blessing: '天赐之福',
+    pill: '丹药',
+    blessing: '增益',
     injury: '负面状态'
   }
   const kindText = computed(() => KIND_TEXT[def.value?.kind ?? ''] ?? '')

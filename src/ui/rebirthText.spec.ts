@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { HERITAGE } from '@/core/samsaraAudit'
+import { HERITAGE, heritageGroups } from '@/core/samsaraAudit'
 import { heritageViewRows, rebirthDecisionHint } from './rebirthText'
 
 describe('rebirthDecisionHint', () => {
@@ -25,6 +25,7 @@ describe('rebirthDecisionHint', () => {
     const src = readFileSync(resolve(__dirname, '../components/character/RebirthDialog.vue'), 'utf8')
     expect(src).toContain('REALMS[MANUAL_REBIRTH_MIN_MAJOR]?.name')
     expect(src).not.toContain('至少金丹境方可自行兵解')
+    expect(src).not.toContain('兵解需金丹境')
   })
 })
 
@@ -40,12 +41,17 @@ describe('heritageViewRows 去留一览(与 HERITAGE 同表)', () => {
     }
   })
 
-  it('措辞三态:全留/部分/归零各自成词,随魂一色、归零灰', () => {
+  it('措辞三态:保留/部分保留/归零各自成词,保留一色、归零灰', () => {
     const rows = heritageViewRows()
-    expect(rows.find(r => r.id === 'daoFruit')!.modeLabel).toBe('随魂保留')
+    expect(rows.find(r => r.id === 'daoFruit')!.modeLabel).toBe('保留')
     expect(rows.find(r => r.id === 'daoFruit')!.cls).toBe('text-jade')
     expect(rows.find(r => r.id === 'gongfa')!.modeLabel).toBe('部分保留')
-    expect(rows.find(r => r.id === 'realm')!.modeLabel).toBe('归零重来')
+    expect(rows.find(r => r.id === 'realm')!.modeLabel).toBe('归零')
     expect(rows.find(r => r.id === 'realm')!.cls).toBe('text-ink-faint')
+  })
+
+  it('兵解前一览与结算弹窗的分组同一套去留用词', () => {
+    const titles = new Map(heritageGroups().map(g => [g.mode, g.title]))
+    for (const row of heritageViewRows()) expect(row.modeLabel, row.id).toBe(titles.get(row.mode))
   })
 })

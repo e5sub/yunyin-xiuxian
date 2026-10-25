@@ -33,20 +33,20 @@ export interface RegionStats {
   life?: number
 }
 
-/** 镇压判定阈值(界面也用它写规则说明,避免两处各写一套数字) */
+/** 镇压判定阈值;界面规则说明同源 */
 export const SUPPRESS_THRESHOLDS = {
-  minWins: 20,                // 最少胜场(败场不计,见 RegionStats.totalFights)
+  minWins: 20,                // 最少胜场(败场不计)
   maxAvgRounds: 3,            // 平均回合数上限
-  maxAvgDamageTaken: 0.10,    // 平均受伤百分比上限 10%
+  maxAvgDamageTaken: 0.10,    // 平均受伤百分比上限
 }
 
 /** 镇压收益(每小时基础倍率) */
 const SUPPRESS_YIELD_PER_HOUR = {
   stoneMultiplier: 150,       // 灵石倍率
-  equipmentChance: 0.4,       // 装备掉落概率
+  equipmentChance: 0.4,       // 装备期望件数/时
 }
 
-/** 镇守道韵:每镇压一区,每小时按挂机修速 +8% 给修为;总封顶 +40%(5 区满) */
+/** 镇守道韵:每镇压一区,修为按挂机修速 +8%;封顶 +40%(5 区) */
 export const SUPPRESS_EXP_PER_REGION = 0.08
 export const SUPPRESS_EXP_MAX = 0.4
 
@@ -329,10 +329,10 @@ export function settleSuppressedRegions(
     const since = player.suppressedSince[regionId]
     const tenureLuck = since === undefined ? 0 : suppressionEquipmentLuck(since, now)
     for (let i = 0; i < equipCount; i += 1) {
-      // 不传品质下限:传了(哪怕是 0)品质窗口就失效,镇压产出会比历练掉落更容易出低阶高品
+      // 不传品质下限:传了(哪怕是 0)品质窗口就失效,低阶高品更易出
       const equip = generateEquipment(region.tier, service, { luck: tenureLuck })
-      const res = acquireEquipment(equip, { quiet: true }) // quiet=true 避免镇压收益刷屏
-      // 所得清单如实记下每一件产出:入包与否都列,未入包(自动回收/满包化尘)标注回收
+      const res = acquireEquipment(equip, { quiet: true }) // 免刷屏
+      // 入包与否都列;未入包标注回收
       total.equipment.push({
         name: equipmentTemplate(equip.templateId)?.name ?? '未知',
         quality: equip.quality,
@@ -367,15 +367,11 @@ export function memorialLine(
   if (since === undefined) return null
   const region = regionDef(regionId)
   if (!region) return null
-  /**
-   * 与寿元同一把尺:现实 1 小时 = AGE_YEARS_PER_HOUR 岁。
-   * 旧除数 31_536_000 ms(约 8.76 小时)会把守了十小时读成「一载」,
-   * 而同时顶栏的寿元已经走了十岁 —— 同一件事两处对不上。
-   */
+  // 与寿元同一把尺:现实 1 小时 = AGE_YEARS_PER_HOUR 岁
   const years = Math.max(1, Math.floor(((now - since) / 3_600_000) * AGE_YEARS_PER_HOUR))
   return [
-    `行至${region.name},山道两侧立着两块石碑——一块刻着你的道号,另一块是空的。`,
-    `你镇压此地已逾${years}载,此方妖邪至今不敢再聚。`,
-    `守道的山民见你,愣了愣,拱手道:「是你。上回一别,已是多年。」`
+    `行至${region.name},山道两侧立着两块石碑,一块刻着你的道号,另一块是空的。`,
+    `你镇压此地已逾${years}载,妖邪至今不敢再聚。`,
+    `守道的山民见你,愣了愣,拱手道:「是你。」`
   ].join('')
 }

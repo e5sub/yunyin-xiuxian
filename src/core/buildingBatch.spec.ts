@@ -87,10 +87,10 @@ describe('建筑连升 · 批量账', () => {
   it('一级都升不起时:拒因点名缺哪一样并给出实际差额', () => {
     const first = costOf(0)
     fund(0, first.ore)
-    expect(buildingBatchPlan('array').blocked).toMatch(/^尚差 .+ 石,难营此工$/)
+    expect(buildingBatchPlan('array').blocked).toMatch(/^灵石尚差 [^·]+$/)
 
     fund(toNum(first.stone) * 2, Math.max(0, first.ore - 2))
-    expect(buildingBatchPlan('array').blocked).toBe('玄铁 2 块,难营此工')
+    expect(buildingBatchPlan('array').blocked).toBe('玄铁尚差 2 块')
   })
 
   it('境界闸:未至对应境(0 级连升)带拒因,一升不动', () => {
@@ -104,15 +104,13 @@ describe('建筑连升 · 批量账', () => {
     useDongfuStore().setLevel('array', 20)
     const plan = buildingBatchPlan('array')
     expect(plan.levels).toBe(0)
-    expect(plan.blocked).toContain('层巅')
+    expect(plan.blocked).toContain('圆满')
     expect(plan.atMax).toBe(true)
   })
 
   it('连升按计划一次到位:等级升到计划数、扣费与计划一致、报实际级', () => {
-    // 预热:先前置状态里可自动达成的一次性成就/主线/日课会在「首次 track」时
-    // 一起涌入账目(今次实测 +454.86 灵石),把「期初」记在它们落定之后,
-    // 连升这一笔才只对得上它自己的总账。
-    track('buildingUpgrades', 500) // 一次把建筑系计数带过全部阈值,a_bd10/a_bd40 与成就全发
+    // 首次 track 会把可达成的成就/主线/日课奖励一起入账,期初须记在其后
+    track('buildingUpgrades', 500) // 带过全部阈值,a_bd10/a_bd40 全发
     const before = useResourcesStore().spiritStone
     const plan = buildingBatchPlan('array')
     const n = upgradeBuildingBatch('array')
@@ -124,7 +122,7 @@ describe('建筑连升 · 批量账', () => {
   })
 
   it('连升一次计 N 次营建:成就/主线的「累计升级建筑」按实际级数记账,不按批数', () => {
-    track('buildingUpgrades', 100) // 先把一次性阈值发走,后面这句才数得准
+    track('buildingUpgrades', 100) // 先发走一次性阈值
     const plan = buildingBatchPlan('array')
     upgradeBuildingBatch('array')
     expect(useQuestsStore().counter('buildingUpgrades')).toBe(100 + plan.levels)

@@ -306,15 +306,15 @@ export function buildExportPayload(): ExportPayload {
 
 /** 校验导入数据结构,返回错误信息;null 表示通过 */
 export function validateImportPayload(obj: unknown): string | null {
-  if (typeof obj !== 'object' || obj === null) return '存档内容不是有效对象'
+  if (typeof obj !== 'object' || obj === null) return '存档格式无效'
   const p = obj as Partial<ExportPayload>
-  if (p.game !== 'yunyin-xiuxian') return '并非《云隐修仙录》的存档文件'
+  if (p.game !== 'yunyin-xiuxian') return '非本游戏存档'
   if (typeof p.version !== 'number') return '存档缺少版本号'
-  if (p.version > SAVE_VERSION) return '存档版本高于当前游戏版本,无法导入'
+  if (p.version > SAVE_VERSION) return '存档版本过高'
   if (typeof p.data !== 'object' || p.data === null) return '存档数据段缺失'
   const data = p.data as Record<string, unknown>
   if (typeof data.player !== 'object' || typeof data.game !== 'object') {
-    return '存档缺少关键数据(player/game)'
+    return '存档缺少关键数据'
   }
   return null
 }
@@ -351,10 +351,10 @@ export function applyImportPayload(payload: ExportPayload): void {
         if (raw === null) localStorage.removeItem(storageKey(id))
         else localStorage.setItem(storageKey(id), raw)
       } catch {
-        // 回滚尽力而为:若存储完全不可用,剩下的是已报错的现状
+        // 回滚尽力而为
       }
     }
-    throw new Error(`写入存档失败(${failed.join('/')}),原存档已保留`)
+    throw new Error('存档写入失败,原档已保留')
   }
 }
 

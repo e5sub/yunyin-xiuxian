@@ -46,7 +46,7 @@ export const LIFE_TRIALS: LifeTrialDef[] = [
     id: 'tr_ji',
     name: '疾行契',
     seal: '疾',
-    desc: '缠斗非你所长。拖得越久,越不是你的道。',
+    desc: '缠斗非你所长,久战必败。',
     ruleText: '本世战斗回合上限 30',
     cost: 30,
     rules: { maxRounds: 30 }
@@ -64,7 +64,7 @@ export const LIFE_TRIALS: LifeTrialDef[] = [
     id: 'tr_ni',
     name: '逆锋契',
     seal: '逆',
-    desc: '你要走的这一程,天地会把最凶的一面留给你。',
+    desc: '这一程,天地会把最凶的一面留给你。',
     ruleText: '本世敌人攻击 +30%、生命 +20%',
     cost: 48,
     rules: { enemyAtkMult: 1.3, enemyHpMult: 1.2 }

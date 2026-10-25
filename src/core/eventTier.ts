@@ -12,13 +12,9 @@ export type EventTier = 'jingyu' | 'jiyuan' | 'qiyuan'
 export interface EventTierDef {
   id: EventTier
   name: string
-  /** 一句话:这一档是什么 */
-  brief: string
-  /** 这一档凭什么来(与代码里的触发口径同源) */
-  source: string
-  /** 界面用的颜色 token */
+  /** 界面颜色 token */
   color: string
-  /** 稀有度序:数字越大越罕见。际遇 0 → 奇缘 1 → 机缘 2 */
+  /** 稀有度序:越大越罕见 */
   rarity: number
 }
 
@@ -26,24 +22,18 @@ export const EVENT_TIERS: EventTierDef[] = [
   {
     id: 'jingyu',
     name: '际遇',
-    brief: '路上撞见的事,常来',
-    source: '每次遭遇都可能出事',
     color: 'var(--color-ink-soft)',
     rarity: 0
   },
   {
     id: 'qiyuan',
     name: '奇缘',
-    brief: '你这条缘的下一程 —— 缘起了才会再来',
-    source: '出事后取当时该走的那一程',
     color: 'var(--color-violet-ink)',
     rarity: 1
   },
   {
     id: 'jiyuan',
     name: '机缘',
-    brief: '千载难逢的大机遇,取或不取都要付代价',
-    source: '出事后极小概率撞上',
     color: 'var(--color-gold-ink)',
     rarity: 2
   }
@@ -85,10 +75,9 @@ export function tierEncountersPerTrigger(tier: EventTier, stagePending: boolean,
   return p > 0 ? 1 / p : Number.POSITIVE_INFINITY
 }
 
-/** 界面用的一句话:「约每 6 程一次」;奇缘无缘在续时说明它为什么不来 */
 export function tierOddsText(tier: EventTier, stagePending: boolean, anyChance = EXPLORE_EVENT_CHANCE): string {
   const n = tierEncountersPerTrigger(tier, stagePending, anyChance)
-  if (!Number.isFinite(n)) return tier === 'qiyuan' ? '缘起之后才来' : '不出现'
+  if (!Number.isFinite(n)) return '暂无'
   if (n < 20) return `约每 ${Math.round(n)} 程一次`
   return `约每 ${Math.round(n / 10) * 10} 程一次`
 }

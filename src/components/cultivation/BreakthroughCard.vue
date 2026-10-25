@@ -3,29 +3,17 @@
   <div class="flex items-center justify-between text-[12px] text-ink-soft">
     <span>下一步:{{ btInfo.targetLabel }}</span>
   </div>
-  <!--
-    天劫步不显示「突破成功率」:那条路根本不掷这个骰子(见 breakthrough.attemptBreakthrough,
-    渡劫走 runTribulation 的逐波推演),摆出来只会让人以为还有一个可以堆的概率。
-  -->
+  <!-- 天劫步不显示「进阶成功率」:渡劫走 runTribulation 逐波推演,不掷这个率(见 breakthrough.attemptBreakthrough) -->
   <div class="mt-2 grid gap-2" :class="btInfo.needTribulation ? 'grid-cols-1' : 'grid-cols-2'">
     <div v-if="!btInfo.needTribulation" class="rounded-md bg-paper-deep/60 px-2.5 py-1.5">
-      <!-- 两段 10px 字的按钮,裸着只有 16px 高 —— layout-check 一嗓子喊出来(拇指点不着)。
-           -my-1 py-2:靶面抬到 31px,负外边距把视觉位移抵回去,行高不动 -->
-      <button class="-my-1 flex w-full items-baseline justify-between gap-1 py-2 text-left" @click="rateOpen = !rateOpen">
-        <span class="text-[10px] text-ink-faint">进阶成功率(小进阶)</span>
-        <span class="text-[9px] text-ink-faint">{{ rateOpen ? '▾' : '▸' }}来路</span>
+      <!-- -my-1 py-2:触面抬到 31px(layout-check 查),负外边距抵回视觉位移 -->
+      <button class="-my-1 flex w-full items-baseline justify-between gap-1 py-2 text-left" @click="rateOpen = true">
+        <span class="text-[10px] text-ink-faint">进阶成功率</span>
+        <span class="text-[9px] text-ink-faint">来路 →</span>
       </button>
-      <p class="tabular text-[16px] font-kai leading-tight" :class="btInfo.rate >= 0.7 ? 'text-jade' : 'text-cinnabar'">
-        {{ btInfo.rateText }}
+      <p class="tabular text-[16px] font-kai leading-tight" :class="rateView.good ? 'text-jade' : 'text-cinnabar'">
+        {{ rateView.text }}
       </p>
-      <!-- 率不是天外飞数:4 项操作数与结算同一批,展开即见 —— 0 贡献的档位渲染时就省略了 -->
-      <template v-if="rateOpen">
-        <p v-for="part in btInfo.rateParts" :key="part.label" class="mt-0.5 flex justify-between text-[10px]">
-          <span class="text-ink-faint">{{ part.label }}</span>
-          <span class="tabular" :class="part.value > 0 ? 'text-azure' : 'text-cinnabar'">{{ signedPercent(part.value) }}</span>
-        </p>
-        <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">各项相加,再按上下限敛口,方成此数。</p>
-      </template>
     </div>
     <TribulationCard :need-tribulation="btInfo.needTribulation" />
   </div>
@@ -65,6 +53,20 @@
   >
     {{ btInfo.ready ? (btInfo.needTribulation ? '引 劫 突 破' : '尝 试 突 破') : btInfo.reason }}
   </button>
+
+  <BaseModal :open="rateOpen" title="进阶成功率 · 来路" @close="rateOpen = false">
+    <!-- 来路与结算同一批(越过上下限另有差额行) -->
+    <div class="space-y-0.5 rounded-md bg-paper-deep/60 px-2.5 py-2 text-[11px]">
+      <p v-for="part in rateView.rows" :key="part.label" class="flex justify-between">
+        <span class="text-ink-faint">{{ part.label }}</span>
+        <span class="tabular" :class="part.value > 0 ? 'text-azure' : 'text-cinnabar'">{{ signedPercent(part.value) }}</span>
+      </p>
+      <p class="flex justify-between border-t border-ink/8 pt-1">
+        <span class="text-ink-faint">合计</span>
+        <span class="tabular font-kai text-[12px]" :class="rateView.good ? 'text-jade' : 'text-cinnabar'">{{ rateView.text }}</span>
+      </p>
+    </div>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
@@ -76,24 +78,21 @@
   import { formatCountdown, formatGN } from '@/utils/format'
   import { signedPercent } from '@/data/statNames'
   import { BREAKTHROUGH_PREP_OPTIONS } from '@/data/earlyGame'
-  import { prepPillDisabledLabel, prepPillShortToast } from '@/ui/cultivationText'
+  import { breakthroughRateView, prepPillDisabledLabel, prepPillShortToast } from '@/ui/cultivationText'
   import { useNow } from '@/composables/useNow'
   import TribulationCard from './TribulationCard.vue'
   import TribulationDetail from './TribulationDetail.vue'
+  import BaseModal from '@/components/common/BaseModal.vue'
 
-  /**
-   * 破境卡 —— 自 CultivationView 迁入。
-   *
-   * 下一步、进阶成功率与来路、劫势摘要与详情、突破准备与引劫/尝试按钮同属一域;
-   * 成功率与备药判据仍读 core/breakthrough 与 BREAKTHROUGH_PREP_OPTIONS,
-   * 准备的两个选项文案与耗时也不在视图里写第二份。
-   */
+  /** 破境卡:成功率与备药判据读 core/breakthrough 与 BREAKTHROUGH_PREP_OPTIONS,视图不写第二份 */
   const ui = useUiStore()
   const now = useNow()
 
   const rateOpen = ref(false)
-  // 倒计时与「坐满转就绪」走 1 秒游戏钟,不再借 5 秒才刷新的修行时长。
+  // 倒计时与「坐满转就绪」走 1 秒游戏钟,不借 5 秒才刷新的修行时长
   const btInfo = computed(() => breakthroughInfo(now.value))
+  // 卡面率与来路合计同一取整:各行相加等于合计
+  const rateView = computed(() => breakthroughRateView(btInfo.value.rateParts))
 
   const prepMeditate = BREAKTHROUGH_PREP_OPTIONS.find(o => o.id === 'meditate')!
   const prepPill = BREAKTHROUGH_PREP_OPTIONS.find(o => o.id === 'pill')!
@@ -103,7 +102,7 @@
 
   function startPrep(option: 'meditate' | 'pill'): void {
     if (prepareBreakthrough(option)) {
-      ui.toast(option === 'meditate' ? '你盘膝入定,静待调息完成' : '丹药入腹,气机已然蓄足', 'info')
+      ui.toast(option === 'meditate' ? '开始调息' : '加成就绪', 'info')
     } else {
       ui.toast(prepPillShortToast(formatGN(prepPillShort.value)), 'warn')
     }

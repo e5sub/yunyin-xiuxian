@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { formatPercent } from '@/utils/format'
 import {
   breakthroughActLabel,
   breakthroughExpReason,
   breakthroughGoalText,
   breakthroughPeakReason,
   breakthroughQiReason,
+  breakthroughRateView,
   breakthroughReadyNote,
   exchangeFailText,
   prepPillDisabledLabel,
@@ -19,7 +21,7 @@ import {
 describe('修行页提示 · 文言仍报清缕数与药资', () => {
   it('疗伤缺气、落成、无伤,不说不足', () => {
     expect(repairIdleToast()).toContain('无恙')
-    expect(repairShortToast('20', '120')).toBe('灵气尚差 20 缕,静养需 120 缕')
+    expect(repairShortToast('20', '120')).toBe('灵气尚差 20 缕 · 需 120 缕')
     expect(repairShortToast('20', '120')).not.toContain('不足')
     expect(repairDoneToast('120')).toContain('耗灵气 120')
     expect(repairActLabel(true, '80', '0')).toContain('引气疗伤')
@@ -28,27 +30,54 @@ describe('修行页提示 · 文言仍报清缕数与药资', () => {
 
   it('备药与突破门槛仍报灵石、灵气', () => {
     expect(prepPillShortToast('20')).toContain('灵石尚差 20')
-    expect(prepPillShortToast('20')).toContain('备药')
     expect(prepPillShortToast('20')).not.toContain('不足')
-    // 欠资禁用说明与备药 toast 同一句「未足」,也不够硬
+    // 欠资禁用说明与备药 toast 同读一份石差
     expect(prepPillDisabledLabel('20')).toContain('灵石尚差 20')
     expect(prepPillDisabledLabel('20')).not.toContain('不足')
     expect(breakthroughPeakReason()).toContain('大道尽头')
     expect(breakthroughExpReason()).toContain('圆满')
-    expect(breakthroughQiReason('40')).toBe('灵气未足,此关需 40 缕')
+    expect(breakthroughQiReason('40')).toBe('灵气不足 · 需 40 缕')
     expect(breakthroughActLabel(false)).toBe('尝试突破')
     expect(breakthroughActLabel(true)).toBe('引劫突破')
     expect(breakthroughGoalText(true, true, '筑基初期')).toBe('引劫突破「筑基初期」')
     expect(breakthroughGoalText(true, false, '炼气中期')).toBe('尝试突破「炼气中期」')
-    expect(breakthroughReadyNote(true)).toBe('修为已至圆满,可引劫突破')
-    expect(breakthroughReadyNote(false)).not.toContain('引劫')
+    expect(breakthroughReadyNote(true)).toBe('修为已至圆满 · 待渡劫')
+    expect(breakthroughReadyNote(false)).toBe('修为已至圆满')
+    // 小进阶不渡劫:归来卷轴不许提劫
+    expect(breakthroughReadyNote(false)).not.toContain('劫')
   })
 
   it('悟道兑换三种拒因分开报,石差直接写数', () => {
-    expect(exchangeFailText(true, false, '0')).toBe('境界未到,兑换未开')
-    expect(exchangeFailText(false, true, '0')).toBe('今日已兑满,明日再来')
-    expect(exchangeFailText(false, false, '20')).toBe('灵石尚差 20,难兑悟道')
-    expect(exchangeFailText(false, false, '20')).not.toContain('今日已兑满')
+    expect(exchangeFailText(true, false, '0')).toBe('境界未到')
+    expect(exchangeFailText(false, true, '0')).toBe('今日已用尽')
+    expect(exchangeFailText(false, false, '20')).toBe('灵石尚差 20')
+    expect(exchangeFailText(false, false, '20')).not.toContain('今日已用尽')
+  })
+})
+
+/** 故障注入:卡面文字改回按原值取整,或配色改看原值,本组红 */
+describe('进阶成功率 · 卡面率、来路与合计同一取整', () => {
+  const part = (label: string, value: number) => ({ label, value })
+
+  it('落在半格上:卡面与合计都报 97.5%,各行相加正好是它', () => {
+    const view = breakthroughRateView([part('基础', 0.95), part('气运 ×5%', 0.0245)])
+    expect(view.text).toBe('97.5%')
+    expect(formatPercent(view.rows.reduce((a, r) => a + r.value, 0))).toBe(view.text)
+  })
+
+  it('配色看取整后的数:报 70% 就按 70% 着色', () => {
+    const edge = breakthroughRateView([part('基础', 0.77), part('词条加成', -0.1), part('气运 ×5%', 0.0297)])
+    expect(edge.text).toBe('70%')
+    expect(edge.good).toBe(true)
+    const below = breakthroughRateView([part('基础', 0.6994)])
+    expect(below.text).toBe('69.9%')
+    expect(below.good).toBe(false)
+  })
+
+  it('取整后为 0 的行不列', () => {
+    const view = breakthroughRateView([part('基础', 0.95), part('气运 ×5%', 0.0004)])
+    expect(view.rows.map(r => r.label)).toEqual(['基础'])
+    expect(view.text).toBe('95%')
   })
 })
 
@@ -65,6 +94,9 @@ describe('修行页与提示同源', () => {
     expect(view, '宿主只挂载破境卡').toContain('<BreakthroughCard />')
     expect(view, '宿主不再自带突破按钮').not.toContain('引 劫 突 破')
     expect(card, '引劫/尝试按钮在卡里').toContain('attemptBreakthrough()')
+    expect(card, '卡面率与来路合计读同一取整').toContain('breakthroughRateView(btInfo.value.rateParts)')
+    expect(card.match(/\{\{ rateView\.text \}\}/g)?.length, '卡面与合计报同一个数').toBe(2)
+    expect(card, '配色不看原值').not.toContain('btInfo.rate >=')
     expect(view + card).not.toContain('灵气不足')
     expect(view + card).not.toContain('灵石不足')
     expect(trib, '天威区间须乘入今日 tribulationMult,与劫势/引劫同源').toContain(
@@ -100,16 +132,13 @@ describe('修行页 · 主修可升层信号', () => {
     expect(section, '付不起就置灰').toContain(':disabled="!canComprehend"')
     expect(section, '可参悟 = 池里还有货且残页够').toContain('comprehendLeft.value > 0 && pageShort.value === 0')
     expect(section, '差额与 comprehendGongfa 的消耗同源').toContain('COMPREHEND_PAGE_COST - resources.page')
-    expect(section, '差额要写出来').toContain('尚差 {{ pageShort }} 残页')
+    expect(section, '差额要写出来').toContain('尚差 {{ pageShort }} 页')
   })
 
-  /**
-   * 只报全局参悟余量,玩家分不清想补的那一门还剩几部。
-   * 故障注入:把 poolLeft 换成 comprehendLeft → 本条红。
-   */
+  /** 故障注入:把 poolLeft 换成 comprehendLeft,本条红 */
   it('门类栏报的是本门参悟池余量,不是全局余量', () => {
     expect(section, '按门过滤同一条池条件').toContain('g.type === gongfaCat.value && g.minRealm <= player.major + 1')
-    expect(section, '栏内读本门余量').toContain('参悟池尚余 {{ poolLeft }} 部')
+    expect(section, '栏内读本门余量').toContain('此门尚余 {{ poolLeft }} 部')
     expect(section, '收全时说清是此门此境').toContain('此门此境已收全')
   })
 

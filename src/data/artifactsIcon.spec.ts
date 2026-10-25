@@ -1,19 +1,7 @@
-/**
- * 法宝图标(玩家实报:「法宝的各个 icon 不显示了」)。
- *
- * 症状分两层,这一份钉的是第二层:第一层是组件丢了 import(已由
- * core/uiLayering.spec 的模板标签判据接管),第二层是**图标本身分不出彼此** ——
- * 45 件法宝此前只用了 21 个键,`flame`/`bell`/`flask`/`shield`/`ghost`/`star`/`gem`
- * 各有三到四件共用,而 `iconOf` 有 Sparkles 兜底、写错键只会静默掉成四角星。
- * 名字与图各自成对之后,卡片上一眼认得出是哪一件,而不是「又一张火焰图」。
- *
- * 判据三件:
- *   一 每件法宝的图标键都必须注册(不靠 iconOf 的兜底 —— 那会把死键变成四角星);
- *   二 45 件不许撞图:图标是辨识手段,两件共用等于没有第二件;
- *   三 名字与图要对得上,挑几个手挑过的钉死,防后来者把图标改回同槽清一色。
- */
+/** 法宝图标。组件丢 import 已由 core/uiLayering.spec 的模板标签判据接管。 */
 import { describe, expect, it } from 'vitest'
 import { ARTIFACTS, artifactDef, artifactEvictedBy, artifactSlotViews, ARTIFACT_MAX_SLOTS } from './artifacts'
+import { qualityDef } from './qualities'
 import { ICONS } from '@/ui/icons'
 
 describe('法宝图标', () => {
@@ -68,16 +56,26 @@ describe('法宝图标', () => {
  * 故障注入:槽位按品质升/降序、库存顺序或旧画法(品质→祭炼→名字)摊格,或 `artifactEvictedBy` 返回末件,各至少一条红。
  */
 describe('法宝位 · 画出来的第一格就是要让位的那一件', () => {
-  /** 故意让「后佩带的」品质更高:旧画法会把它排到第一格,而替下的仍是先佩带的那件 */
+  // 库存顺序故意与佩带顺序相反(防按库存摊格)
   const owned = [
-    { defId: 'af_muyu', level: 0 }, // 凡品
-    { defId: 'af_xuantian', level: 0 } // 更高品阶
+    { defId: 'af_shenmojing', level: 0 }, // 神品
+    { defId: 'af_muyu', level: 0 } // 凡品
   ]
-  const equipped = ['af_muyu', 'af_xuantian']
+  const equipped = ['af_muyu', 'af_shenmojing']
+
+  it('夹具前提:后佩带的那件品阶更高', () => {
+    const rank = (id: string): number => qualityDef(artifactDef(id)!.quality).rank
+    expect(rank(equipped[1]!), '同品阶测不出按品质重排').toBeGreaterThan(rank(equipped[0]!))
+  })
 
   it('逐槽视图按佩带顺序,不按品质重排', () => {
     const views = artifactSlotViews(equipped, owned, ARTIFACT_MAX_SLOTS)
-    expect(views.map(v => v?.def.id), '第一格必须是最早佩带的那件').toEqual(['af_muyu', 'af_xuantian'])
+    expect(views.map(v => v?.def.id), '第一格必须是最早佩带的那件').toEqual(['af_muyu', 'af_shenmojing'])
+  })
+
+  it('先佩高品、后佩低品,仍按佩带顺序', () => {
+    const views = artifactSlotViews(['af_shenmojing', 'af_muyu'], owned, ARTIFACT_MAX_SLOTS)
+    expect(views.map(v => v?.def.id), '第一格必须是最早佩带的那件').toEqual(['af_shenmojing', 'af_muyu'])
   })
 
   it('替下判据与第一格同源:槽满时让位的就是画在第一格的那件', () => {

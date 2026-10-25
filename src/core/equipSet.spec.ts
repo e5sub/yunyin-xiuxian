@@ -87,18 +87,13 @@ describe('装备共鸣(equipSet)', () => {
     expect(requireds.length, '共鸣定义不该是空的').toBeGreaterThan(1)
     expect(new Set(requireds).size, '所有共鸣要的件数都是一种,这条就钉不住什么').toBeGreaterThan(1)
     expect(Math.max(...requireds), '要有三件套在,这条才有意义').toBeGreaterThan(2)
-    /**
-     * 只查**渲染出来的那一行**,不查整份源码。
-     *
-     * 整份源码里 `toContain` 会连解释这件事的 HTML 注释一起匹配上 ——
-     * 把渲染行改回「同组两件即共鸣」而注释里留着新措辞,断言照样绿(Sourcery 指出)。
-     * 故先把 `<!-- ... -->` 全括掉,再在剩下的正文里找那一行。
-     */
+    // 只查渲染行:先剥掉 <!-- --> 注释,否则注释里的措辞会让断言假绿
     const raw = readFileSync(resolve(__dirname, '../views/InventoryView.vue'), 'utf8')
     const body = raw.replace(/<!--[\s\S]*?-->/g, '')
-    const row = body.split('\n').find(l => l.includes('装备共鸣('))
+    const row = body.split('\n').find(l => l.includes('>装备共鸣'))
     expect(row, '渲染出来的小标题那一行找不到 —— 结构变了?').toBeTruthy()
     expect(row, '小标题又把件数写死了').not.toContain('同组两件即共鸣')
-    expect(row, '小标题要说「该套所要件数」').toContain('凑齐该套所要件数即共鸣')
+    expect(row, '小标题不写任何件数').not.toMatch(/[两三\d]\s*件/)
+    expect(body, '件数走逐行读数 N/所需').toContain('{{ s.count }}/{{ s.def.required }}')
   })
 })

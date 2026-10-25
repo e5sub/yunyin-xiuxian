@@ -118,7 +118,7 @@ export function entryBlockReason(regionId: string): string | null {
   const w = useAdventureStore().mortalWorld
   if (!w || !w.chain.some(p => p.fromId === regionId)) return null
   const next = w.chain.find(p => canEnterNode(p.nodeId) && !isNodeCleared(p.nodeId))
-  return next ? `本世路线尚未行至此处,眼下该往「${next.name}」。` : null
+  return next ? `需先通「${next.name}」` : null
 }
 
 /**

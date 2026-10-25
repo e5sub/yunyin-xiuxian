@@ -85,7 +85,7 @@ describe('三档文案的依据(buffOverflowOf 纯函数)', () => {
     expect(buffOverflowOf(nearCap(0), 'buff_juling', 0)).toBe('partial')
   })
 
-  it('已经顶死:一点也加不上去 → full(界面报"这一颗白费了")', () => {
+  it('已经顶死:一点也加不上去 → full(界面报"白费")', () => {
     const atCap = (at: number) => [{ defId: 'buff_juling', endsAt: at + capSec * 1000 }]
     expect(buffOverflowOf(atCap(0), 'buff_juling', 0)).toBe('full')
     expect(capSec).toBe(4 * SHICHEN_SEC)
@@ -126,8 +126,7 @@ describe('addBuff 封顶边界(store 集成)', () => {
     const cultivation = useCultivationStore()
     const t0 = 5_000_000
     const capSec = buffCapSec('buff_juling')!
-    const full = 20 * buffDef('buff_juling')!.durationSec * 1000 // 10 小时,远超四个时辰
-    // 恶意/老坏档:endsAt 与 added 都被撸到 10 小时 —— 模拟"无限囤"时代的残留
+    const full = 20 * buffDef('buff_juling')!.durationSec * 1000 // 10 小时
     cultivation.$patch({ buffs: [{ defId: 'buff_juling', endsAt: t0 + full, added: full }] })
     cultivation.addBuff('buff_juling', t0)
 
@@ -168,9 +167,9 @@ describe('服用丹药的三档文案(usePill 端到端)', () => {
     expect(usePill('p_juling')).toBe(true)
     expect(lastToast()).toContain('只延续到顶')
 
-    // 顶回四个时辰后当场再服:一点也加不上去 —— 白费
+    // 已顶满再服:白费
     expect(usePill('p_juling')).toBe(true)
-    expect(lastToast()).toContain('这一颗白费了')
+    expect(lastToast()).toContain('药力已顶满,白费')
   })
 
   it('三种话术各在 toast 里真实出现过一次(防空转/防文案缺失)', () => {
@@ -196,10 +195,10 @@ describe('服用丹药的三档文案(usePill 端到端)', () => {
     collectTitles()
     expect(seen.some(t => t.includes('药力化开'))).toBe(true)
     expect(seen.some(t => t.includes('只延续到顶'))).toBe(true)
-    expect(seen.some(t => t.includes('这一颗白费了'))).toBe(true)
+    expect(seen.some(t => t.includes('药力已顶满,白费'))).toBe(true)
   })
 
-  it('增益丹批量连服退化为单服:贴顶不静默,一句"白费了"说得明白', () => {
+  it('增益丹批量连服退化为单服:贴顶不静默,一句"白费"说得明白', () => {
     const t0 = 1_000_000
     vi.setSystemTime(t0)
     const inv = useInventoryStore()
@@ -211,9 +210,9 @@ describe('服用丹药的三档文案(usePill 端到端)', () => {
     for (let i = 0; i < 16; i++) cultivation.addBuff('buff_juling', t0)
     const eaten = usePillBatch('p_juling', 5)
 
-    expect(eaten).toBe(1) // 只会吃 1 枚,不白白连吃 5 枚
+    expect(eaten).toBe(1)
     expect(inv.pills['p_juling'] ?? 0).toBe(4)
-    expect(lastToast()).toContain('这一颗白费了')
+    expect(lastToast()).toContain('药力已顶满,白费')
   })
 })
 
@@ -226,7 +225,7 @@ describe('读档复钳上限(sanitize 不放过超限 buff)', () => {
     const cultivation = useCultivationStore()
     const now = Date.now()
     const capMs = buffCapSec('buff_juling')! * 1000
-    const full = 20 * buffDef('buff_juling')!.durationSec * 1000 // 10 小时,远超四个时辰
+    const full = 20 * buffDef('buff_juling')!.durationSec * 1000 // 10 小时
     cultivation.$patch({ buffs: [{ defId: 'buff_juling', endsAt: now + full, added: full }] })
     cultivation.sanitize()
     expect(cultivation.buffs[0]!.added).toBe(capMs)
@@ -249,7 +248,7 @@ describe('读档复钳上限(sanitize 不放过超限 buff)', () => {
     const now = Date.now()
     cultivation.buffs = [{ defId: 'injury', endsAt: now + 5000, added: 5000 } as never]
     cultivation.sanitize()
-    expect(cultivation.buffs[0]!.endsAt).toBe(now + 5000) // 未过期、未过期:不受钳制原样保留
+    expect(cultivation.buffs[0]!.endsAt).toBe(now + 5000)
   })
 })
 

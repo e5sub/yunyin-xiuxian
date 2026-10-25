@@ -44,15 +44,15 @@ export function importSaveText(text: string): string | null {
   try {
     parsed = JSON.parse(readSaveText(text.trim()))
   } catch {
-    return '文件内容无法解析(既非本游戏密文,也非有效 JSON)'
+    return '文件无法解析'
   }
   const error = validateImportPayload(parsed)
   if (error) return error
   try {
     applyImportPayload(migrate(parsed as ExportPayload))
   } catch (e) {
-    // 原子导入已回滚旧档,写明「原档还在」,免得玩家以为存档没了
-    return e instanceof Error ? e.message : '写入存档失败,浏览器存储可能不可用'
+    // 原子导入已回滚旧档,错误信息写明「原档已保留」
+    return e instanceof Error ? e.message : '存档写入失败'
   }
   return null
 }

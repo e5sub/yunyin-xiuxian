@@ -12,13 +12,13 @@ export interface EndgameBusy {
 /** 当前是否已有在途终局活动;没有则返回 null */
 export function endgameBusy(worldRun: unknown, secretRealm: unknown, adventureSession: unknown): EndgameBusy | null {
   if (worldRun) {
-    return { kind: 'expedition', reason: '远征在途,须先了结眼前的路' }
+    return { kind: 'expedition', reason: '远征在途' }
   }
   if (secretRealm) {
-    return { kind: 'secretRealm', reason: '身在秘境之中,须先出了秘境' }
+    return { kind: 'secretRealm', reason: '身在秘境' }
   }
   if (adventureSession) {
-    return { kind: 'exploration', reason: '历练在途,须先结束这一程' }
+    return { kind: 'exploration', reason: '历练在途' }
   }
   return null
 }

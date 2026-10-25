@@ -68,10 +68,10 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
   it('采集给草按「地界」品阶,不按玩家当前大境界(回刷低境只给低品)', () => {
     const player = usePlayerStore()
     player.initCharacter('品阶守卫', { roots: [] } as never)
-    player.major = 12 // 当前大境界已是仙品(3)—— 回青云(地界 0)只该给凡品(1)
+    player.major = 12 // 仙品(3);青云(地界 0)只该给凡品(1)
     const resources = useResourcesStore()
     for (const g of [1, 2, 3, 4, 5] as const) resources.herbByGrade[g] = 0
-    // 只放行材料这一支(rng.chance 判 0.5 的只有灵草),rng.int 固定给 2
+    // 只放行灵草(rng.chance 判 0.5 的只有灵草)
     const spyC = vi.spyOn(rng, 'chance').mockImplementation(p => p === 0.5)
     const spyI = vi.spyOn(rng, 'int').mockReturnValue(2)
     try {
@@ -143,10 +143,10 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
   it('智能收纳开启后,低于保留线又无核心词条的精品也会化尘', () => {
     useSettingsStore().smartKeep.enabled = true
     const resources = useResourcesStore()
-    const item = mk('excellent') // 精品 rank2,低于保留线 → 交由智能收纳裁决
+    const item = mk('excellent') // 精品 rank2,低于保留线
     const got = acquireEquipment(item)
     expect(bagUids()).not.toContain(item.uid)
-    expect(got.line).toContain('道途未成')
+    expect(got.line).toContain('未成流派')
     expect(resources.dust).toBeGreaterThanOrEqual(DECOMPOSE_DUST[2] ?? 1)
   })
 
@@ -155,7 +155,7 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
     settings.smartKeep.enabled = true
     settings.decomposeRanks = [0, 1, 2, 3, 4, 5]
     for (const q of ['spirit', 'profound'] as const) {
-      const item = mk(q) // 灵/玄品 ≥ 保留线(灵品):手动勾选档再宽也动它不得
+      const item = mk(q) // 灵/玄品 ≥ 保留线(灵品)
       const got = acquireEquipment(item)
       expect(bagUids(), q).toContain(item.uid)
       expect(got.line, q).not.toContain('自动回收')

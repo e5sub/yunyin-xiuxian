@@ -46,9 +46,7 @@ export interface TribulationPlan {
   }
   /** 风险点(人类可读) */
   risks: string[]
-  /** 决策档:高风险 / 中等 / 可渡 / 稳渡 */
   verdict: 'danger' | 'hard' | 'ok' | 'easy'
-  advice: string
 }
 
 const VERDICT_LABEL: Record<TribulationPlan['verdict'], string> = {
@@ -351,31 +349,11 @@ export function buildTribulationPlan(
     expectedRate,
     prep,
     risks: riskLines(def, prep, trace, relief),
-    verdict,
-    advice: adviceFor(verdict)
+    verdict
   }
 }
 
-/** 建议档:只给方向,不替玩家决定(建议按档位给,信息已由风险行承载) */
-function adviceFor(verdict: TribulationPlan['verdict']): string {
-  switch (verdict) {
-    case 'danger':
-      return '凶多吉少。可先练恢复/护持,或等待更顺的天时;若决意一试,备好丹药。'
-    case 'hard':
-      return '尚有一线。补一补最弱的一维(见主要风险),此劫可渡。'
-    case 'ok':
-      return '此劫对你不算难。若求稳,可待灵雨/清和天;若寻刺激,现在便可一试。'
-    case 'easy':
-      return '稳渡在望。若非雷鸣破盾之流,尽可放心引劫。'
-  }
-}
-
-/**
- * 风险识别:哪个维度最弱,即"主要风险点"
- *
- * 灵根已解开的那条通道不再报警——若仍照报,玩家会去补一个
- * 自己天生就不缺的短板,那等于把"牌面"变成了噪音。
- */
+/** 风险识别:灵根已解开的通道不报警 */
 function riskLines(
   def: TribulationDef,
   prep: { guard: number; sustain: number; resist: number; burst: number },
@@ -383,18 +361,18 @@ function riskLines(
   relief: TribulationRelief = NO_RELIEF
 ): string[] {
   const risks: string[] = []
-  // 劫型专属短板优先:它才是"今天这一劫"的信息
-  if (def.id === 'counterflow' && prep.sustain >= 1 && relief.healRestore <= 0) risks.push('逆流:治疗恢复大减,恢复流在此劫失效')
-  if (def.id === 'thunder' && prep.guard >= 1 && relief.reductionToResist <= 0) risks.push('雷鸣:雷光破盾,护持打折')
-  if (def.id === 'ironbody' && prep.guard >= 2 && relief.shieldRestore <= 0) risks.push('铁躯:钝压碾盾,护体灵光几乎无用')
-  if (def.id === 'heavyrush' && prep.guard <= 1 && relief.frontLoadEase <= 0) risks.push('重压:起手两击极重,首轮护持不足恐当场坠劫')
-  if (def.id === 'soulrend' && prep.burst <= 1) risks.push('裂魂:攻势不足,削不动劫威')
+  // 劫型专属短板优先
+  if (def.id === 'counterflow' && prep.sustain >= 1 && relief.healRestore <= 0) risks.push('逆流:恢复大减')
+  if (def.id === 'thunder' && prep.guard >= 1 && relief.reductionToResist <= 0) risks.push('雷鸣:护持打折')
+  if (def.id === 'ironbody' && prep.guard >= 2 && relief.shieldRestore <= 0) risks.push('铁躯:护盾几乎无效')
+  if (def.id === 'heavyrush' && prep.guard <= 1 && relief.frontLoadEase <= 0) risks.push('重压:起手两击极重')
+  if (def.id === 'soulrend' && prep.burst <= 1) risks.push('裂魂:爆发不足')
   // 通用短板
-  if (prep.guard <= 1) risks.push('首轮承伤压力较大(护持不足)')
-  if (prep.sustain <= 1) risks.push('恢复能力一般(久战易被拖垮)')
-  if (prep.resist <= 1) risks.push('此劫抗性不足(天罚直伤偏高)')
-  if (!trace.survived) risks.push(`推演于第 ${trace.fellAt} 道天雷不支`)
-  if (risks.length === 0) risks.push('准备周全,未见明显破绽')
+  if (prep.guard <= 1) risks.push('护持不足')
+  if (prep.sustain <= 1) risks.push('恢复不足')
+  if (prep.resist <= 1) risks.push('抗性不足')
+  if (!trace.survived) risks.push(`推演第 ${trace.fellAt} 道不支`)
+  if (risks.length === 0) risks.push('未见破绽')
   return risks.slice(0, 3)
 }
 

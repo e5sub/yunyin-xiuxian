@@ -213,7 +213,7 @@ export function noteTaboo(taboo: LifeTaboo): void {
   const def = lifeThemeDef(vow.themeId)
   if (def?.taboo !== taboo) return
   player.breakVow()
-  useUiStore().toast(`【破题】你曾立誓「${def.vow}」——这一世的话,没能说到底`, 'warn')
+  useUiStore().toast('命题已破', 'warn')
 }
 
 /**

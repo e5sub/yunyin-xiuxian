@@ -15,18 +15,18 @@ function src(from: string): string {
 
 describe('离线归来 ≠ 闭关', () => {
   it('卷轴时长写「此去」,封顶时交代结算口径,并披露离线 0.9 折扣', () => {
-    // OFFLINE_EFFICIENCY=0.9:「离线可攒 X 时」是上限,账面按九成结算 —— 不能当哑谜
+    // OFFLINE_EFFICIENCY=0.9:「离线可攒 X 时」是上限,账面按九成结算
     expect(offlineAwayPhrase('8小时')).toContain('此去 8小时')
     expect(offlineAwayPhrase('8小时')).toContain('90%')
-    expect(offlineAwayPhrase('60小时', '8小时')).toContain('收益按 8小时 结算')
+    expect(offlineAwayPhrase('60小时', '8小时')).toContain('上限 8小时')
     expect(offlineAwayPhrase('60小时', '8小时')).toContain('90%')
-    // 0.9 只削闲置积蓄(修炼/洞府),不虚称「全体按 90%」:历练与镇压按全额(TASK-331)
+    // 0.9 只削闲置积蓄(修炼/洞府),历练与镇压按全额
     expect(offlineAwayPhrase('8小时')).toContain('修炼')
     expect(offlineAwayPhrase('8小时')).not.toMatch(/离线按\s*9\d%/)
   })
 
-  it('寿元说明也用「此去」,不冒充闭关', () => {
-    expect(offlineAgeNote(60)).toBe('此去寿元流逝 60 载')
+  it('寿元说明不冒充闭关', () => {
+    expect(offlineAgeNote(60)).toBe('寿元流逝 60 载')
     expect(offlineAgeNote(60)).not.toContain('闭关')
   })
 

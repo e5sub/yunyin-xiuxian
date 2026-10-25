@@ -1,18 +1,9 @@
 /* eslint-disable no-console */
-/**
- * 藏经阁求索回归 —— 丹方是否真的拿得到
- *
- * 这组测试守的是一条曾经断掉的路:Phase 32.6 把灵乳移出掉落池,注释里写"丹方须
- * 另行习得",而当时"另行习得"根本不存在 —— 丹方掌握度只有三个写入点,播种是
- * 一次性的、炸炉要求已能开炉、studyTick 只补已知未通的方子,没有一处能把一张
- * 掌握度为 0 的方子捡起来。于是新号这辈子只会那三张入门方,rank 4 以上的丹全是
- * 看得见炼不出的死内容。
- *
- * 所以这里不止测灵乳。真正要钉住的是那条通则:
- * **每一张写进 PILLS 的可炼丹方,都得有一条走得通的到手路径。**
- */
+/** 藏经阁求索回归:每一张写进 PILLS 的可炼丹方,都须有一条走得通的到手路径。 */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join, relative, resolve } from 'node:path'
 import { PILLS } from '@/data/pills'
 import { recipeCraft } from '@/data/crafting'
 import { MAX_MAJOR } from '@/data/realms'
@@ -248,5 +239,44 @@ describe('藏经阁翻检概况(studyEta)', () => {
     expect(eta.readingId).toBeNull()
     expect(eta.nextIsNew).toBe(false)
     expect(eta.nextInSec).toBe(0)
+  })
+})
+
+/**
+ * 发灵草/玄铁的源码须归类,与 encounterMaterial 注释同口径:计照面的文件调 harvestMaterials,不计的点名。
+ * 故障注入:删掉 secretRealm.ts 的 harvestMaterials 调用 → 本条红;新增发草处而不归类 → 本条红。
+ */
+describe('灵材照面 · 来源归类', () => {
+  const SRC = resolve(__dirname, '..')
+  /** addHerb,或 addSmall 首参不是残页/器灵尘/悟道点字面量 */
+  const GRANT = /\baddHerb\(|\baddSmall\((?!\s*'(?:page|dust|wudao)')/
+  const COUNTED = ['core/eventEngine.ts', 'core/loot.ts', 'core/offline.ts', 'core/secretRealm.ts']
+  const NOT_COUNTED = ['core/earlyGameService.ts', 'core/progress.ts', 'core/suppress.ts', 'stores/apprentice.ts', 'stores/dongfu.ts', 'stores/market.ts']
+  /** 库存本体:定义 addHerb / addSmall */
+  const STORE = ['stores/resources.ts']
+
+  function walk(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry)
+      if (statSync(full).isDirectory()) walk(full, out)
+      else if (/\.(ts|vue)$/.test(entry) && !entry.endsWith('.spec.ts')) out.push(full)
+    }
+    return out
+  }
+
+  const code = (full: string): string =>
+    readFileSync(full, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*$/gm, '')
+
+  it('凡发灵草/玄铁的源码都已归类,计照面的确实调了 harvestMaterials', () => {
+    const files = walk(SRC)
+    expect(files.length, '扫描到了源码(防空转)').toBeGreaterThan(100)
+    const granting = files
+      .filter(f => GRANT.test(code(f)))
+      .map(f => relative(SRC, f).replace(/\\/g, '/'))
+      .sort()
+    expect(granting).toEqual([...COUNTED, ...NOT_COUNTED, ...STORE].sort())
+    for (const rel of COUNTED) expect(code(join(SRC, rel)), `${rel} 须经 harvestMaterials 计照面`).toContain('harvestMaterials(')
   })
 })

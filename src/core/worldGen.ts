@@ -262,8 +262,7 @@ export function generateApprovedWorld(baseSeed: number, maxTries = 200, history?
     const novelty = noveltyScore(world, audit, hist)
     if (novelty < NOVELTY_MIN) continue
     const reward = Math.round(Math.min(100, Math.max(55, 60 * (1.85 - audit.best))))
-    const desc = `${world.desc}与诸天相似不足${Math.round((1 - novelty) * 10)}成,规则无常,过审方存。`
-    return { world: { ...world, desc, rewardDaoSource: reward }, audit, novelty, rejected: t }
+    return { world: { ...world, rewardDaoSource: reward }, audit, novelty, rejected: t }
   }
   return null
 }

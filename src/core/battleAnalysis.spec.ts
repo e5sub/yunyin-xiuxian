@@ -59,10 +59,10 @@ describe('战斗分析', () => {
     expect(long.findings.some(f => f.text.includes('回合'))).toBe(true)
   })
 
-  it('无明显短板时给出兜底解释', () => {
+  it('无明显短板时给出兜底标签', () => {
     const a = analyzeBattle(result(false, stats({ healed: gn(600) }), 10), null)!
     expect(a.findings.length).toBe(1)
-    expect(a.findings[0]!.text.includes('道行')).toBe(true)
+    expect(a.findings[0]!.text).toBe('无明显短板')
   })
 
   it('数据面板行完整', () => {
@@ -92,7 +92,6 @@ describe('战斗分析', () => {
       const hit = a.findings.find(f => f.text.includes('先手判定'))
       expect(hit, '被抢先应当被点名').toBeDefined()
       expect(hit!.text).toContain('8%')
-      expect(hit!.text, '要说清这是一条阈值').toContain('阈值')
     })
 
     it('抢到了就不唠叨:胜利时不给先手告警', () => {

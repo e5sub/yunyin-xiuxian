@@ -12,21 +12,14 @@
     </span>
   </div>
   <!--
-    祭炼到底给什么:数值都从上界常数来,不在界面里再写一份。
-    但「被动与神通通常各强」不是每件都成立 —— 神鞭/无相念珠的主体零重就封顶,
-    神魔镜的回补零重就满十成(见 ui/codex 的按件提示)。总纲只承诺「多数」,
-    并指到每张卡上的「下一重」,免得全局句替那几件撒谎。
+    数值取常数,不在界面另写。
+    「通常」不可删:神鞭/无相念珠的主体、神魔镜的回补零重即封顶,逐件由「下一重」照实报。
   -->
   <p class="mt-1 px-1 text-[10px] text-ink-faint">
-    祭炼一重,被动与神通通常各强 {{ formatPercent(ARTIFACT_LEVEL_BONUS) }},至多 {{ cnNumber(ARTIFACT_MAX_LEVEL) }} 重 ——
-    已到顶的那一侧不再涨,每张卡的「下一重」会照实写清
+    祭炼一重,被动与神通通常各强 {{ formatPercent(ARTIFACT_LEVEL_BONUS) }} · 至多 {{ cnNumber(ARTIFACT_MAX_LEVEL) }} 重
   </p>
   <div v-if="artifactRows.length" class="mt-2 space-y-2.5">
-    <!--
-      品阶晕染:边框随三档加深,天/仙/神另盖角章。
-      底色固定 6%,不随档位加到 10%/13% —— 法宝行是多行文字的密卡,
-      深底色会压低正文对比度;档位线索交给边框与角章承担。
-    -->
+    <!-- 底色固定 6%,不随档加深:密卡深底会压低正文对比度;档位线索交给边框与角章 -->
     <div
       v-for="row in artifactRows"
       :key="row.def.id"
@@ -75,12 +68,8 @@
           :class="{ '!bg-ink-faint': row.equipped }"
           @click="toggleArtifact(row.def.id)"
         >
-          <!--
-            槽满时把「会让位的那几件」直接写在按钮上 —— 替下谁是有规则的(最早祭炼的,
-            排在前头),不是随机;看不见这一条,换件就成了掷骰子。列表本来就超编时
-            让位的是不止一件,按钮也照实全念出来(见 artifactEvictedBy)。
-          -->
-          {{ row.equipped ? '收回法宝' : row.evicts.length ? `替下${row.evicts}` : '祭炼随身' }}
+          <!-- 槽满时按钮列出全部让位件(超编时不止一件,见 artifactEvictedBy) -->
+          {{ row.equipped ? '收回法宝' : row.evicts.length ? `替下${row.evicts.join('、')}` : '祭炼随身' }}
         </button>
         <button
           v-if="row.upCost"
@@ -110,7 +99,7 @@
         </template>
         <template v-else>
           <p class="min-w-[5rem] flex-1 text-[10px] leading-snug text-ink-soft">
-            一步连炼 {{ row.artPlan.levels }} 重,花上面那笔总账 —— 仍要?
+            连炼 {{ row.artPlan.levels }} 重 · 悟道×{{ row.artPlan.wudao }} · 灵石 {{ formatGN(row.artPlan.stone) }}
           </p>
           <button class="btn-ghost shrink-0 !px-2.5 !py-2 !text-[11px]" @click="batchArtConfirm = null">再想想</button>
           <button class="btn-seal shrink-0 !px-2.5 !py-2 !text-[11px]" @click="runArtifactBatch(row.def.id)">连 炼</button>
@@ -118,12 +107,7 @@
       </div>
     </div>
   </div>
-  <p v-else class="mt-16 text-center text-[12px] text-ink-faint">
-    尚无法宝随身
-    <br />
-    <span class="text-[11px]">法宝多出自际遇与强敌之手</span>
-  </p>
-  <p v-if="player.petId" class="mt-4 text-center text-[11px] text-ink-faint">灵兽相伴,可前往「人物」页查看</p>
+  <p v-else class="mt-16 text-center text-[12px] text-ink-faint">暂无法宝</p>
 </template>
 
 <script setup lang="ts">
@@ -150,7 +134,6 @@ import {
 import { artifactBatchPlan, artifactShortfall, artifactUpCost, upgradeArtifact, upgradeArtifactBatch } from '@/core/forge'
 import { STAT_NAMES, statCaveat, statModPhrase } from '@/data/statNames'
 import { artifactSlotReplacedToast } from '@/ui/inventoryText'
-import { artifactShortToast } from '@/ui/forgeText'
 import { cnNumber, formatGN, formatPercent } from '@/utils/format'
 import { tint } from '@/utils/colorToken'
 import { isRareQuality, qualityTierStyle } from '@/ui/qualityTier'
@@ -216,18 +199,14 @@ function toggleArtifact(defId: string): void {
 const batchArtConfirm = ref<string | null>(null)
 function runArtifactBatch(defId: string): void {
   batchArtConfirm.value = null
-  upgradeArtifactBatch(defId) // 总账那一声与 toast 由服务自己报
+  upgradeArtifactBatch(defId) // toast 由服务报
 }
 
-/** 缺口文案:两样都缺就都报出来,并给同一条 toast 的来路提示 */
 function artifactShortText(short: NonNullable<(typeof artifactRows.value)[number]['short']>): string {
   const parts: string[] = []
-  if (short.wudao > 0) parts.push(`悟道尚差 ${short.wudao}`)
+  if (short.wudao > 0) parts.push(`悟道点尚差 ${short.wudao}`)
   if (short.stone.m > 0) parts.push(`灵石尚差 ${formatGN(short.stone)}`)
-  return `${parts.join(' · ')} —— ${artifactShortToast(short.short!, {
-    wudao: short.wudao,
-    stone: formatGN(short.stone)
-  })}`
+  return parts.join(' · ')
 }
 
 function passiveLines(defId: string, level: number): string[] {
@@ -264,11 +243,11 @@ function nextGainText(defId: string, level: number): string {
     const alreadyCapped = gain.active.capped && Math.abs(gain.active.to - gain.active.from) < 1e-9
     parts.push(
       alreadyCapped
-        ? `神通${noun}已至上限(${formatPercent(gain.active.to)}),祭炼只涨被动`
+        ? `神通${noun}已至上限(${formatPercent(gain.active.to)})`
         : `神通${noun} ${formatPercent(gain.active.from)} → ${formatPercent(gain.active.to)}${gain.active.capped ? '(已至上限)' : ''}`
     )
   } else {
-    parts.push('神通不随祭炼变')
+    parts.push('神通不变')
   }
   if (gain.heal) {
     parts.push(`回补 ${formatPercent(gain.heal.from)} → ${formatPercent(gain.heal.to)}${gain.heal.capped ? '(已至上限)' : ''}`)

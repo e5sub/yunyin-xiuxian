@@ -38,7 +38,7 @@ export interface MansionDef {
 /** 28 宿 —— 四象各七宿,依历代所传顺序 */
 export const MANSIONS: MansionDef[] = [
   // 东方苍龙七宿
-  { name: '角', fullName: '角木蛟', image: 'qinglong', domain: '兖州', good: '修造与开市,宜起手' },
+  { name: '角', fullName: '角木蛟', image: 'qinglong', domain: '兖州', good: '宜修造与开市' },
   { name: '亢', fullName: '亢金龙', image: 'qinglong', domain: '兖州', good: '宜结契与立约' },
   { name: '氐', fullName: '氐土貉', image: 'qinglong', domain: '兖州', good: '宜安宅与定基' },
   { name: '房', fullName: '房日兔', image: 'qinglong', domain: '豫州', good: '宜与人同游' },

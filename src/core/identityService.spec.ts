@@ -19,6 +19,8 @@ describe('修行身份(identityService)', () => {
     expect(id.epithet).toBe('云隐散人')
     expect(id.roots.fortunes.length).toBe(0)
     expect(id.traits.riskBias).toBeNull()
+    // 空态只给状态词,不拼句号
+    expect(id.narrative).toBe('暂无记录')
   })
 
   it('机缘取过 → 根因记录', () => {

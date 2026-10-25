@@ -36,7 +36,7 @@ export function equipFuncText(t: EquipmentTemplate): string {
   if (flats.length) parts.push(`所主:${flats.join('、')}`)
   if (t.fixedMods && Object.keys(t.fixedMods).length) parts.push(`固有:${modsText(t.fixedMods)}`)
   const set = t.set ? equipSetDef(t.set) : undefined
-  if (set) parts.push(`共鸣「${set.name}」:${set.effectDesc}(${set.required} 件)`)
+  if (set) parts.push(`${set.name}(${set.required} 件):${set.effectDesc}`)
   return parts.join('\n')
 }
 
@@ -58,34 +58,26 @@ export function artifactFuncText(a: ArtifactDef, level = 0): string {
 
 /**
  * 法宝的出处一行:品质 · 界域 · 从哪一阶起可现世。
- *
- * 与装备那一条刻意不同:装备是「一阶一名」(名字就是它的阶),法宝是**收藏品** ——
- * 看品质与界域,升阶靠祭炼;一个「N 阶起」说清它会在哪些地界掉出来。
+ * 与装备「一阶一名」刻意不同:法宝是收藏品,升阶靠祭炼。
  */
 export function artifactMetaText(a: ArtifactDef): string {
-  return `${qualityDef(a.quality).name} · ${worldNameOfTier(a.fromTier)} · ${a.fromTier} 阶起可现世`
+  return `${qualityDef(a.quality).name} · ${worldNameOfTier(a.fromTier)} · ${a.fromTier} 阶起`
 }
 
 // ============ 功法 ============
 
-/**
- * 功法的功用:修至圆满能得什么 + 附带神通的几率与威力。
- * 功法没有「掉落层级」这回事,满级数值对谁都是同一个 —— 故直接印满级。
- */
+/** 功法的功用:修至圆满能得什么 + 附带神通的几率与威力;功法没有掉落层级,直接印满级。 */
 export function gongfaFuncText(g: GongfaDef): string {
-  const lines = [`圆满(${g.maxLevel} 层)可得:${modsText(gongfaModsAt(g.id, g.maxLevel))}`]
+  const lines = [`圆满(${g.maxLevel} 层):${modsText(gongfaModsAt(g.id, g.maxLevel))}`]
   const skill = gongfaSkillLine(g.skill)
   if (skill) lines.push(skill)
   return lines.join('\n')
 }
 
-/**
- * 神通只从主修进战斗(playerSnap 只带 mainSkill)。
- * 几率与威力从功法表现算;未设主修则这一式不出手。
- */
+/** 神通只从主修进战斗(playerSnap 只带 mainSkill);未设主修则这一式不出手。 */
 export function gongfaSkillLine(skill: GongfaDef['skill'] | undefined): string {
   if (!skill) return ''
-  return `附带神通「${skill.name}」:出手 ${formatPercent(skill.rate)} 几率,${formatPercent(skill.mult)} 威力。须设为主修,战斗只出这一式`
+  return `神通「${skill.name}」:出手 ${formatPercent(skill.rate)} 几率 · ${formatPercent(skill.mult)} 威力 · 须设为主修`
 }
 
 /** 功法的出处一行:类型 · 品质 · 属性 · 从哪一境起可参 */
@@ -119,11 +111,11 @@ export function pillFuncText(def: PillDef): string {
   return lines.join('\n')
 }
 
-/** 丹药的来路:有方子的说方子(含方子要的品阶),没方子的明说「只能偶得」 */
+/** 丹药的来路:有方子的说方子(含品阶),没方子的明说「无方」 */
 export function pillSourceText(def: PillDef): string {
   return def.recipe
-    ? `有方:${HERB_GRADE_SHORT[herbGradeOfMajor(def.minRealm)]}灵草×${def.recipe.herb},丹房可炼`
-    : '无方,只在历练掉落与际遇里偶得'
+    ? `有方:${HERB_GRADE_SHORT[herbGradeOfMajor(def.minRealm)]}灵草×${def.recipe.herb}`
+    : '无方:历练掉落、际遇'
 }
 
 /** 丹药的出处一行:品质 · 类别 · 从哪一境起现世 */

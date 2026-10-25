@@ -2,14 +2,14 @@
   <template v-if="canWhatIf">
     <div class="ink-divider my-3" />
     <button v-if="!whatIf" class="btn-ghost w-full !py-2 !text-[12px]" @click="runWhatIf">
-      天机推演 · 若换此装,四天局面如何?
+      天机推演
     </button>
     <template v-else>
       <p class="mb-1.5 font-kai text-[12px] tracking-[0.3em] text-ink-faint">天机推演</p>
       <p class="text-[11px] text-ink-soft tabular">
-        构筑:{{ whatIf.buildBefore?.displayName ?? '未成路' }}
+        构筑:{{ whatIf.buildBefore?.displayName ?? '未成流派' }}
         <span class="text-ink-faint">→</span>
-        {{ whatIf.buildAfter?.displayName ?? '流派散去' }}
+        {{ whatIf.buildAfter?.displayName ?? '未成流派' }}
       </p>
       <div class="mt-1 space-y-0.5">
         <p v-for="w in whatIf.worlds" :key="w.name" class="flex justify-between text-[11px]">
@@ -26,7 +26,6 @@
       <p v-if="whatIf.modChanges.length" class="mt-1 text-[10px] text-azure tabular">
         主要变化:{{ whatIf.modChanges.map(c => `${c.label} ${c.delta > 0 ? '+' : ''}${Math.round(c.delta * 100)}%`).join(' · ') }}
       </p>
-      <p class="mt-0.5 text-[10px] text-ink-faint">推演只述局面,不替你定夺。</p>
     </template>
   </template>
 </template>

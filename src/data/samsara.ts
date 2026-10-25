@@ -48,11 +48,11 @@ function s(
 }
 
 export const SAMSARA_STAGES: SamsaraStageDef[] = [
-  s(0, 'st_first', '初入轮回', 0, '前尘尽散,你只带着一具新的皮囊和一片空白。所见皆是初见。', {}),
+  s(0, 'st_first', '初入轮回', 0, '前尘尽散,你只带着一具新的皮囊。所见皆是初见。', {}),
   s(1, 'st_mortal', '熟知凡间', 90, '凡间的草木你已叫得出名字。田埂上那株青芝,你上一世采过。', {
     knownMaterialRank: 2
   }),
-  s(2, 'st_xiuxian', '熟知修仙界', 260, '哪片林子里的东西会绕后,哪头妖物残血才发狂——你交过手,你记得。', {
+  s(2, 'st_xiuxian', '熟知修仙界', 260, '哪片林子里的东西会绕到身后,哪头妖物残血才发狂,凡交过手的,你都记得。', {
     knownMaterialRank: 4,
     enemyInsight: true
   }),
@@ -61,7 +61,7 @@ export const SAMSARA_STAGES: SamsaraStageDef[] = [
     enemyInsight: true,
     heavenInsight: true
   }),
-  s(4, 'st_ancient', '百世老修', 1100, '你已不是"重新开始的人",而是带着百世记忆重新投胎的存在。这一世要做什么,由你自己定。', {
+  s(4, 'st_ancient', '百世老修', 1100, '百世记忆随你投胎。这一世要做什么,由你自己定。', {
     knownMaterialRank: 9,
     enemyInsight: true,
     heavenInsight: true,

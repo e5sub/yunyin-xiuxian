@@ -6,7 +6,7 @@ export const PACTS: PactDef[] = [
     id: 'xue',
     name: '血契',
     seal: '血',
-    desc: '此行不得回血,伤势只进不出',
+    desc: '此行伤势只进不出',
     ruleText: '一切治疗无效 · 道源 ×2.2',
     rules: { healMult: 0 },
     sourceMult: 2.2

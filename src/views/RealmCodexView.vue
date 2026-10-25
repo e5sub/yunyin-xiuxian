@@ -6,7 +6,7 @@
       <span class="text-[12px] text-ink-soft">界域志</span>
     </div>
 
-    <SectionTitle title="界域志" hint="境界名从哪来,一路读下去" />
+    <SectionTitle title="界域志" />
     <InkTabs v-model="codexTab" :tabs="CODEX_TABS" />
 
     <template v-if="codexTab === 'realm'">
@@ -31,7 +31,7 @@
               {{ cell.def.name }}
             </span>
             <span class="chip-ink !text-[9px]">{{ cell.def.basis }}</span>
-            <span v-if="cell.index === player.major" class="text-[9px] text-cinnabar">此刻在此</span>
+            <span v-if="cell.index === player.major" class="text-[9px] text-cinnabar">当前</span>
           </p>
           <p class="mt-0.5 text-[11px] leading-relaxed text-ink-soft">{{ cell.def.desc }}</p>
           <p class="mt-1 text-[11px] leading-relaxed text-ink-faint">{{ cell.def.lore }}</p>
@@ -44,8 +44,7 @@
     </template>
 
     <template v-if="codexTab === 'classics'">
-    <!-- 典籍:境界名背后的原典 -->
-    <SectionTitle title="典籍" hint="所述者传统道教、佛教、道家与丹道之书" />
+    <SectionTitle title="典籍" />
     <section class="space-y-2">
       <article v-for="c in CLASSICS" :key="c.id" class="card-ink px-4 py-3">
         <p class="flex flex-wrap items-center gap-2">
@@ -62,15 +61,10 @@
     </template>
 
     <template v-if="codexTab === 'yi'">
-    <!-- 周易:读过之后可以真的问一卦 -->
-    <SectionTitle title="周易" :hint="`${cnNumber(TRIGRAMS.length)}卦为体,${cnNumber(HEXAGRAMS.length)}卦为用`" />
+    <SectionTitle title="周易" :hint="`${cnNumber(TRIGRAMS.length)}卦 · ${cnNumber(HEXAGRAMS.length)}卦`" />
     <section class="card-ink px-4 py-3">
-      <p class="text-[11px] leading-relaxed text-ink-faint">
-        「易」不是书斋里的摆设:八卦各主一事之势,重卦由上下相叠 ——
-        下卦为身,上卦为境,故一卦之力是内外相济的两股。摇得之卦在身,过时自散。
-      </p>
+      <p class="text-[11px] leading-relaxed text-ink-faint">下卦为身,上卦为境;卦力为两卦之和,限时。</p>
 
-      <!-- 在身之卦 -->
       <div v-if="currentReading" class="mt-3 rounded-md bg-paper-deep/50 px-3 py-2.5">
         <p class="flex flex-wrap items-center gap-2">
           <span class="font-kai text-[16px] tracking-widest text-cinnabar">{{ currentReading.hexagram.name }}卦</span>
@@ -99,9 +93,7 @@
         >
           {{ askLabel }}
         </button>
-        <span class="text-[10px] leading-relaxed text-ink-faint">
-          卜以决疑,不疑何卜 —— 一事不二卜,卦力随动爻而盛,亦随时而尽。
-        </span>
+        <span class="text-[10px] leading-relaxed text-ink-faint">动爻越多,卦力越盛</span>
       </div>
     </section>
 
@@ -118,7 +110,7 @@
     <section class="card-ink px-4 py-3">
       <button class="flex w-full items-center justify-between text-left" @click="showAllHex = !showAllHex">
         <span class="font-kai text-[13px] tracking-wider text-ink">{{ cnNumber(HEXAGRAMS.length) }}卦</span>
-        <span class="text-[10px] text-azure">{{ showAllHex ? '收起' : `展开查看 ${HEXAGRAMS.length} 卦 →` }}</span>
+        <span class="text-[10px] text-azure">{{ showAllHex ? '收起' : '展开' }}</span>
       </button>
       <div v-if="showAllHex" class="mt-2 max-h-72 divide-y divide-ink/6 overflow-y-auto">
         <div v-for="x in HEXAGRAMS" :key="x.order" class="flex items-baseline gap-2 py-2">
@@ -135,14 +127,9 @@
     </template>
 
     <template v-if="codexTab === 'ziwei'">
-    <!-- 紫微:一世之格,与周易的「一时之机」分工 -->
-    <SectionTitle title="紫微" :hint="`${cnNumber(PALACES.length)}宫定一世之格,与问卦分工`" />
+    <SectionTitle title="紫微" :hint="`${cnNumber(PALACES.length)}宫`" />
     <section class="card-ink px-4 py-3">
-      <p class="text-[11px] leading-relaxed text-ink-faint">
-        紫微斗数本当以生辰起五行局再安诸星,游戏内没有生辰 ——
-        故此门只取{{ cnNumber(PALACES.length) }}宫所主与{{ cnNumber(STARS.length) }}主星的星性,按灵根与轮回归属安星:是取象义,不是排盘。
-        卦是一时之机(可问、有时限),命是一世之格(常驻、转世重算,力薄为底色)。
-      </p>
+      <p class="text-[11px] leading-relaxed text-ink-faint">按灵根与轮回安星 · 常驻 · 转世重算</p>
       <p class="mt-2 font-kai text-[13px] leading-relaxed text-ink">{{ fateLordLineText }}</p>
       <p class="mt-1 text-[11px] text-azure">命格之力:{{ fateModsText }}</p>
       <div class="mt-2.5 divide-y divide-ink/6">
@@ -153,7 +140,7 @@
         </div>
       </div>
       <div class="mt-2 border-t border-ink/10 pt-2">
-        <p class="text-[10px] text-ink-faint">{{ cnNumber(STARS.length) }}主星 · 无石亦可只观,择一点化则换流派方向</p>
+        <p class="text-[10px] text-ink-faint">{{ cnNumber(STARS.length) }}主星</p>
         <div v-for="s in STARS" :key="s.id" class="mt-1 flex items-start gap-2 text-[11px] leading-relaxed text-ink-soft">
           <span class="min-w-0 flex-1">
             <span class="font-kai text-ink">{{ s.name }}</span>
@@ -176,56 +163,50 @@
                 ? '已显化'
                 : focusShort > 0
                   ? `点化 · 灵石尚差 ${formatGN(focusShortGN)}`
-                  : `点化 ${focusCostText}`
+                  : `点化 · 灵石 ${focusCostText}`
             }}
           </button>
         </div>
-        <p class="mt-2 text-[10px] leading-relaxed text-ink-faint">
-          点化一位主星,其力二倍显化(其余十三颗仍作底色,十四星一颗不误)—— 花的是灵石({{ focusCostText }}),
-          换的是这一世侧重哪一路:好钢用在一个人身上。
-        </p>
+        <p class="mt-2 text-[10px] leading-relaxed text-ink-faint">点化:限一星 · 其力二倍 · 余星不变</p>
       </div>
     </section>
     </template>
 
     <template v-if="codexTab === 'xiang'">
-    <!-- 星象:二十八宿值日,利一方界域 -->
-    <SectionTitle title="星象" :hint="`${cnNumber(MANSIONS.length)}宿值日,分野为读、四象为用`" />
+    <SectionTitle title="星象" :hint="`${cnNumber(MANSIONS.length)}宿值日`" />
     <section class="card-ink px-4 py-3">
       <p class="font-kai text-[13px] leading-relaxed text-ink">{{ mansionLine }}</p>
       <p class="mt-1 text-[11px] leading-relaxed text-ink-faint">
-        分野依《晋书·天文志》(诸家小异)只作来历读 —— 游戏里的地界不是九州。
-        管用的是下面这条游戏约定:{{ cnNumber(IMAGES.length) }}象配{{ cnNumber(WORLDS.length) }}界({{ imageWorldMap }}),
-        值日之宿所属之象,所配界域今日历练际遇更易(乘在历练际遇上 +{{ mansionLuckPercent() }}%),他处不加。
+        {{ cnNumber(IMAGES.length) }}象配{{ cnNumber(WORLDS.length) }}界:{{ imageWorldMap }}。值日之宿所属之象,所配界域历练际遇 +{{ mansionLuckPercent() }}%。
       </p>
       <p class="mt-1.5 text-[11px] text-azure">
-        今日利 <span class="text-gold-ink">{{ favoredWorldName }}</span> —— 与天时不同:天时是全境之气,星象只利一方。
+        今日利 <span class="text-gold-ink">{{ favoredWorldName }}</span>
       </p>
-      <button class="-my-1 mt-2 w-full py-2 text-left text-[10px] text-azure" @click="showAllMansions = !showAllMansions">
-        {{ showAllMansions ? `收起${cnNumber(MANSIONS.length)}宿` : `展开查看 ${MANSIONS.length} 宿 →` }}
+      <button class="-my-1 mt-2 w-full py-2 text-left text-[10px] text-azure" @click="showAllMansions = true">
+        {{ cnNumber(MANSIONS.length) }}宿 →
       </button>
-      <div v-if="showAllMansions" class="mt-2 divide-y divide-ink/6">
+    </section>
+    <BaseModal :open="showAllMansions" :title="`${cnNumber(MANSIONS.length)}宿`" @close="showAllMansions = false">
+      <div class="divide-y divide-ink/6">
         <template v-for="img in IMAGES" :key="img.id">
           <p class="pt-2 text-[10px] text-ink-faint">{{ img.direction }}方 {{ img.name }} · 所配{{ worldName(img.world) }}</p>
+          <!-- 定宽按最长内容收(宿名 1 字、全名 3 字、分野 2 字):320 宽下所宜 6 字仍单行 -->
           <div v-for="m in mansionsOf(img.id)" :key="m.name" class="flex items-baseline gap-2 py-1.5">
-            <span class="w-12 shrink-0 font-kai text-[13px] text-ink">{{ m.name }}</span>
-            <span class="w-20 shrink-0 text-[10px] text-ink-faint">{{ m.fullName }}</span>
-            <span class="w-12 shrink-0 text-[10px] text-ink-faint">{{ m.domain }}</span>
+            <span class="w-5 shrink-0 font-kai text-[13px] text-ink">{{ m.name }}</span>
+            <span class="w-10 shrink-0 text-[10px] text-ink-faint">{{ m.fullName }}</span>
+            <span class="w-7 shrink-0 text-[10px] text-ink-faint">{{ m.domain }}</span>
             <span class="min-w-0 text-[11px] leading-relaxed text-ink-soft">{{ m.good }}</span>
           </div>
         </template>
       </div>
-    </section>
+    </BaseModal>
     </template>
 
     <template v-if="codexTab === 'qimen'">
-    <!-- 奇门:九宫八门,择门而入 -->
-    <SectionTitle title="奇门" :hint="`九宫${cnNumber(GATES.length)}门,择门而入`" />
+    <SectionTitle title="奇门" :hint="`九宫${cnNumber(GATES.length)}门`" />
     <section class="card-ink px-4 py-3">
       <p class="text-[11px] leading-relaxed text-ink-faint">
-        {{ cnNumber(GATES.length) }}门依洛书九宫排布:{{ luoshuGatesText }}。
-        远征启程前可择一门入界 —— 不是与天道立契(那换的是道源),
-        择门改的是这一趟的打法:续航、抢攻、守拙或速决。
+        洛书九宫:{{ luoshuGatesText }}。择门:远征启程前,仅限本趟。
       </p>
       <div class="mt-2.5 divide-y divide-ink/6">
         <div v-for="g in GATES" :key="g.id" class="flex items-start gap-2 py-2">
@@ -240,22 +221,16 @@
           </span>
         </div>
       </div>
-      <p class="mt-2 text-[10px] leading-relaxed text-ink-faint">
-        八门并非新的规则,只是换了打法 —— 不择门时,一切与从前无异。
-      </p>
     </section>
     </template>
 
     <template v-if="codexTab === 'todo' && PLANNED_SCHOOLS.length">
-      <SectionTitle title="待续" hint="已在构思、尚未成书的门类" />
+      <SectionTitle title="待续" />
       <section class="card-ink divide-y divide-ink/6 px-4">
       <div v-for="p in PLANNED_SCHOOLS" :key="p.name" class="flex items-start gap-2 py-2.5">
         <span class="w-[104px] shrink-0 font-kai text-[12px] text-ink-soft">{{ p.name }}</span>
         <span class="text-[11px] leading-relaxed text-ink-faint">{{ p.note }}</span>
       </div>
-      <p class="py-2.5 text-[10px] leading-relaxed text-ink-faint">
-        已有构思、尚未成书的门类 —— 待它接好,自会带典籍与玩法入此册。
-      </p>
       </section>
     </template>
   </div>
@@ -292,6 +267,7 @@
   import { modsText } from '@/data/statNames'
   import SectionTitle from '@/components/common/SectionTitle.vue'
   import InkTabs from '@/components/common/InkTabs.vue'
+  import BaseModal from '@/components/common/BaseModal.vue'
   import { useNow } from '@/composables/useNow'
 
   const player = usePlayerStore()
@@ -330,8 +306,8 @@
   const askShort = computed(() => Math.max(0, DIVINATION_COST - resources.wudao))
   const askDisabled = computed(() => !!currentState.value || askShort.value > 0)
   const askLabel = computed(() => {
-    if (currentState.value) return '卦在身,待其自过'
-    if (askShort.value > 0) return `问卦 · 尚差 ${askShort.value} 悟道点`
+    if (currentState.value) return '卦在身'
+    if (askShort.value > 0) return `问卦 · 悟道点尚差 ${askShort.value}`
     return `问 卦(悟道点 ${DIVINATION_COST})`
   })
 
@@ -357,17 +333,16 @@
   const focusShort = computed(() => focusShortGN.value.m)
   function focusStar(id: string): void {
     const name = STARS.find(s => s.id === id)?.name ?? id
-    // 已显化同星:不是灵石不足,另提示
     if (player.fateFocus === id) {
-      ui.toast(`「${name}」已显化,无需再点`, 'info')
+      ui.toast(`「${name}」已显化`, 'info')
       return
     }
     if (focusShort.value > 0) {
-      ui.toast(`尚差 ${formatGN(focusShortGN.value)} 灵石,点化不成`, 'warn')
+      ui.toast(`灵石尚差 ${formatGN(focusShortGN.value)}`, 'warn')
       return
     }
     const ok = player.focusFateStar(id)
-    ui.toast(ok ? `点化「${name}」显化,其力二倍` : '灵石不足,点化不成', ok ? 'info' : 'warn')
+    ui.toast(ok ? `已点化「${name}」` : '灵石不足', ok ? 'info' : 'warn')
   }
   const fateRows = computed(() =>
     player.fateChart.palaces.map(p => ({

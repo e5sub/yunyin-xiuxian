@@ -319,7 +319,7 @@ export const ENEMIES: EnemyDef[] = [
   e('e_god_emperor', '神帝', 29, 'deity', [7.0, 2.4, 1.6, 1.25], [{ name: '神帝一念', mult: 3.3, rate: 0.32, effect: 'pierce' }], {
     boss: true,
     element: 'chaos',
-    archetype: 'threshold',
+    archetype: 'truedmg',
     mods: { critRate: 0.15 },
     phases: [{ hpThreshold: 0.5, modChanges: { damageBonus: 0.5, critDamage: 0.5 }, label: '神帝临尘' }]
   }),
@@ -361,7 +361,7 @@ export const ENEMIES: EnemyDef[] = [
   e('e_chaos_zu', '混沌道祖', 32, 'immortal', [8.0, 2.7, 1.7, 1.3], [{ name: '道祖一斩', mult: 3.8, rate: 0.32, effect: 'pierce' }], {
     boss: true,
     element: 'chaos',
-    archetype: 'threshold',
+    archetype: 'spellbane',
     mods: { damageReduction: 0.25, critRate: 0.15 },
     phases: [{ hpThreshold: 0.5, modChanges: { damageReduction: 0.4, damageBonus: 0.5 }, label: '道祖临世' }]
   }),

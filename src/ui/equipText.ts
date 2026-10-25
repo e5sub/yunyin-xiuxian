@@ -1,20 +1,21 @@
 import { EQUIP_LEVEL_BONUS } from '@/data/constants'
 import { formatPercent } from '@/utils/format'
 
+/** Each level adds EQUIP_LEVEL_BONUS of the naked base; the gain relative to the stats on screen shrinks as the level rises */
 export function equipNextLevelText(level: number): string {
   const rel = EQUIP_LEVEL_BONUS / (1 + level * EQUIP_LEVEL_BONUS)
-  return `基础属性此刻再涨 ${formatPercent(rel)}(每级相对裸装 +${formatPercent(EQUIP_LEVEL_BONUS)})`
+  return `基础属性 +${formatPercent(rel)}`
 }
 
-/** 词条随机浮动,取实例上存的 roll(0~1)。满掷 = 贴着该条上限,贴底 = 掷在下限 */
+/** 词条随机浮动,取实例上存的 roll(0~1) */
 export function affixRollText(roll: number): string {
   return `浮 ${Math.round(Math.max(0, Math.min(1, roll)) * 100)}%`
 }
 
-/** 「浮 X%」的悬停说明:告诉玩家这个百分数在比什么 */
-export const affixRollHint = '随机浮动:百分数越大,这条越接近它的上限。封存/重铸前看一眼'
+/** 「浮 X%」的悬停说明 */
+export const affixRollHint = '浮动:0% 下限 · 100% 上限'
 
-/** 战斗价值对比行的命名 —— 「(一键口径)」这半句要写实,免得被误抄成面板的「战力」 */
+/** 战斗价值对比行的命名;不叫「战力」,免得误认成面板的「战力」 */
 export function powerCompareLabel(): string {
-  return '战斗价值(一键口径)'
+  return '战斗价值'
 }

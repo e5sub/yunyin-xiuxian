@@ -8,6 +8,7 @@ import { modOf } from './statsCalc'
 import { buildTribulationPlan, currentTribulationPlan } from './tribulationDecision'
 import { prepareBreakthrough, breakthroughPrepState, consumeBreakthroughPrep } from './earlyGameService'
 import { gn } from '@/utils/gnum'
+import { formatPercent } from '@/utils/format'
 import type { StatMods } from '@/types'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
@@ -60,13 +61,12 @@ describe('渡劫成功率推演', () => {
     // 炼气·十层(SUB_LEVELS=10,sub=9 时 isMajorStep)
     player.$patch({ major: 0, sub: 9 })
     resources.$patch({ qi: 99999 })
-    // 强制修为圆满:exp >= expRequirement(0,9)
+    // 修为圆满:exp >= expRequirement(0,9)
     player.$patch({ exp: { m: 1e12, e: 0 } })
     const info = breakthroughInfo()
-    console.log(`境界=${player.realmName} major→${info.targetLabel} needTribulation=${info.needTribulation} rate=${info.rateText}`)
+    console.log(`境界=${player.realmName} major→${info.targetLabel} needTribulation=${info.needTribulation} rate=${formatPercent(info.rate)}`)
 
-    // Phase 32.0:突破面板只承载"基础突破率",天劫另走决策面板;
-    // 若哪天 BreakthroughInfo 上又长出一个渡劫成功率字段,说明系统正在退回"堆成功率"。
+    // 突破面板只承载基础突破率,天劫另走决策面板;BreakthroughInfo 不得有渡劫成功率字段
     expect(Object.keys(info)).not.toContain('tribRate')
 
     if (info.needTribulation) {
@@ -95,7 +95,7 @@ describe('渡劫成功率推演', () => {
     expect(clampRate(bareSum)).toBeCloseTo(bare.rate, 6)
   })
 
-  it('带气运称号时,明细给出「气运 (幸运×5%)」一行,合计仍对上展示率', () => {
+  it('带气运称号时,明细给出「气运 ×5%」一行,合计仍对上展示率', () => {
     const player = usePlayerStore()
     const resources = useResourcesStore()
     player.$patch({ major: 0, sub: 5, titleId: 'ti_tianjiao' })
@@ -109,6 +109,28 @@ describe('渡劫成功率推演', () => {
     expect(luckRow!.value).toBeCloseTo(modOf(player.finalStats.mods, 'luck') * 0.05, 6)
     const sum = info.rateParts.reduce((a, p) => a + p.value, 0)
     expect(clampRate(sum)).toBeCloseTo(info.rate, 6)
+  })
+
+  it('分项之和越过上限时,明细补一行「封顶」差额:各行相加正好是展示率', () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(1_000_000)
+      const player = usePlayerStore()
+      const resources = useResourcesStore()
+      player.$patch({ major: 0, sub: 0, exp: { m: 1e12, e: 0 } })
+      resources.$patch({ qi: 99999 })
+      resources.addStone(gn(80))
+      expect(prepareBreakthrough('pill')).toBe(true)
+      const info = breakthroughInfo()
+      const cap = info.rateParts.find(p => p.label === '封顶')
+      expect(cap, '基础 95% 加准备加成已越过上限').toBeDefined()
+      expect(cap!.value).toBeLessThan(0)
+      const sum = info.rateParts.reduce((a, p) => a + p.value, 0)
+      expect(sum).toBeCloseTo(info.rate, 6)
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
   })
 
   it('突破准备就绪计入成功率;尝试突破后一次性消耗(TASK-023)', () => {
@@ -183,7 +205,7 @@ describe('渡劫成功率推演', () => {
     expect(before.needTribulation).toBe(false)
     cultivation.addBuff('buff_pojing', Date.now()) // 进阶成功率 +15%
     const after = breakthroughInfo()
-    console.log(`破境丹:${before.rateText} → ${after.rateText}`)
+    console.log(`破境丹:${formatPercent(before.rate)} → ${formatPercent(after.rate)}`)
     expect(after.rate).toBeGreaterThan(before.rate)
   })
 

@@ -20,10 +20,10 @@
         </p>
       </div>
       <p class="mt-2 text-[11px] text-ink-faint">共历 {{ bond.shared }} 次</p>
-      <p v-if="responseLine" class="mt-1 text-[11px] text-ink-faint">她开的口,你历次回应:{{ responseLine }}</p>
+      <p v-if="responseLine" class="mt-1 text-[11px] text-ink-faint">历次回应:{{ responseLine }}</p>
 
-      <p class="mt-3 text-[11px] leading-relaxed text-ink-soft">她所求:{{ bondDef.pursuit }}</p>
-      <p class="mt-0.5 text-[11px] leading-relaxed text-ink-faint">她不越的线:{{ bondDef.taboo }}</p>
+      <p class="mt-3 text-[11px] leading-relaxed text-ink-soft">{{ pronoun }}所求:{{ bondDef.pursuit }}</p>
+      <p class="mt-0.5 text-[11px] leading-relaxed text-ink-faint">{{ pronoun }}不越的线:{{ bondDef.taboo }}</p>
 
       <p v-if="gateHint" class="mt-3 text-[11px] text-gold-ink">
         离「{{ STAGE_NAMES[gateHint.stage] }}」尚差:{{ gateHint.lacking.join('、') }}
@@ -33,12 +33,11 @@
       <template v-if="herIntent">
         <div class="mt-4 border-t border-ink/10 pt-3">
           <p class="text-[12px] leading-relaxed text-gold-ink">{{ herIntent.line }}</p>
-          <p class="mt-1 text-[10px] text-ink-faint">她所求:{{ herIntent.wish }}</p>
-          <!-- 意图由经历催生,不是凭空的:把「因何而起」摆出来 -->
+          <p class="mt-1 text-[10px] text-ink-faint">{{ pronoun }}所求:{{ herIntent.wish }}</p>
           <p v-if="herIntentSparks" class="text-[10px] text-ink-faint">因何而起:{{ herIntentSparks }}</p>
           <div class="mt-2.5 flex gap-2">
             <button
-              v-for="r in INTENT_CHOICES"
+              v-for="r in intentChoices"
               :key="r.id"
               class="card-ink grow px-2 py-2 text-center text-[12px] text-ink-soft active:scale-98"
               @click="answerIntent(r.id)"
@@ -76,9 +75,7 @@
         {{ lastEventText }}
       </p>
     </template>
-    <p v-else class="text-[12px] leading-relaxed text-ink-faint">
-      此生尚未遇见谁。人是在路上碰到的,不是挑出来的 —— 多走几处地界,或许自有相逢。
-    </p>
+    <p v-else class="text-[12px] leading-relaxed text-ink-faint">尚未遇见</p>
 
     <template v-if="pastBonds.length">
       <p class="mt-4 font-kai text-[13px] tracking-widest text-ink-soft">历世同行</p>
@@ -108,7 +105,7 @@
   const props = defineProps<{ open: boolean }>()
   const emit = defineEmits<{ close: [] }>()
 
-  const { bond, bondDef, pastBonds, pendingEvent, herIntent } = useBondOverview()
+  const { bond, bondDef, pastBonds, pendingEvent, herIntent, pronoun, ta } = useBondOverview()
 
   const bondMeters = computed(() =>
     bond.value
@@ -138,21 +135,21 @@
     lastEventText.value = r?.text ?? ''
   }
 
-  /** 这份心意因何而起(经历名取自 bondIntent) */
+  /** 心意因何而起:经历名取自 bondIntent */
   const herIntentSparks = computed(() => {
     const sparks = herIntent.value?.sparks ?? []
-    return [...new Set(sparks)].map(s => SPARK_NAMES[s]).join('、')
+    return [...new Set(sparks)].map(s => ta(SPARK_NAMES[s])).join('、')
   })
-  /** 她记得你怎么答的 —— 回应名取自 bondIntent,视图不另写一份 */
+  /** 回应史:回应名取自 bondIntent,不另写 */
   const responseLine = computed(() => {
     const rs = bond.value?.intent?.responses ?? []
     return rs.length ? rs.map(r => RESPONSE_NAMES[r]).join(' · ') : ''
   })
-  const INTENT_CHOICES = [
-    { id: 'accept' as const, label: '与她同去' },
+  const intentChoices = computed(() => [
+    { id: 'accept' as const, label: `与${pronoun.value}同去` },
     { id: 'refuse' as const, label: '婉言谢绝' },
     { id: 'ignore' as const, label: '不作声' }
-  ]
+  ])
   function answerIntent(r: 'accept' | 'refuse' | 'ignore'): void {
     const a = respondIntent(r)
     lastEventText.value = a?.text ?? ''

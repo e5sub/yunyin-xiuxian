@@ -85,7 +85,8 @@ function sanitizeLastBattle(raw: unknown): LastBattleView | null {
     at: asFiniteNumber(b.at, 0),
     loot: b.loot === undefined ? undefined : asStringArray(b.loot),
     enemyPower: b.enemyPower === undefined ? undefined : gnStrict(b.enemyPower),
-    playerPower: b.playerPower === undefined ? undefined : gnStrict(b.playerPower)
+    playerPower: b.playerPower === undefined ? undefined : gnStrict(b.playerPower),
+    foeKnown: typeof b.foeKnown === 'boolean' ? b.foeKnown : undefined
   }
 }
 
@@ -97,15 +98,13 @@ export interface LastBattleView {
   isBoss: boolean
   /** 敌方战力:开打那一刻的快照(战斗卡片用;旧存档可能缺失) */
   enemyPower?: GNum
-  /** 我方战力(战斗那一刻冻结 —— 卡片与敌力同刻比较,不拿战后的活数陪它站) */
+  /** 我方战力:战斗那一刻冻结,与敌方战力同刻比较,不取战后值 */
   playerPower?: GNum
+  /** 开打那一刻是否已眼熟(战斗页特性 / 星级的门);旧存档可能缺失 */
+  foeKnown?: boolean
   result: CombatResult
   at: number
-  /**
-   * 这一场的战利品明细(残页/装备/丹药/法宝/灵草;翻倍提示也在内)。
-   * 线上一向只把掉落条数记进会话、把文案丢掉,玩家打完看不到自己得了什么。
-   * 旧存档没有这一栏,消费方按缺省空数组处理。
-   */
+  /** 本场战利品明细(含翻倍提示);旧存档无此栏,按空数组处理 */
   loot?: string[]
 }
 

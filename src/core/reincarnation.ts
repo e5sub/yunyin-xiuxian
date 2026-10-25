@@ -165,10 +165,10 @@ export function confirmReincarnation(chosenTalentId: string | null, chosenThemeI
   const forged = lifeForge(player.major)
   if (forged) {
     player.addHeritage(forged.id)
-    ui.toast(`宿慧凝形,你留下一道传承 —— 「${forged.name}」`, 'rare')
+    ui.toast(`获得传承「${forged.name}」`, 'rare')
   }
 
-  // 这一世的账:履历归档、宿慧落袋。二者都只在此处发生一次
+  // 履历归档、宿慧落袋:只在此处发生一次
   const r = view.review
   player.recordLife({
     index: r.index,
@@ -220,9 +220,9 @@ export function confirmReincarnation(chosenTalentId: string | null, chosenThemeI
   const releasedSuppressed = player.suppressedRegions.length
   player.rebirth(rollLinggen(rng, aptitudeFloorNow()))
   if (releasedSuppressed > 0) {
-    ui.toast(`${releasedSuppressed} 处昔日镇压之地,妖气复聚 —— 此世再走一遭`, 'info')
+    ui.toast(`${releasedSuppressed} 处镇压已解除`, 'info')
   }
-  // 新的一世:上一世的建号草稿作废,「逆天改命」额度归满
+  // 建号草稿作废,「逆天改命」额度归满
   useGameStore().resetCreateDraft()
   // 道途归还,道源与道痕保留
   useEndgameStore().onRebirth()
@@ -232,7 +232,7 @@ export function confirmReincarnation(chosenTalentId: string | null, chosenThemeI
   track('reincarnations')
   ui.reincarnation = null
   ui.deathDialog = false
-  ui.toast(`一梦轮回,你以「${player.name}」的道号在云隐山下再度睁开双眼`, 'rare')
-  if (view.stageAdvanced) ui.toast(`宿慧渐厚,你已是「${view.stageName}」`, 'rare')
-  if (recognized > 0) ui.toast(`睁眼之际,${recognized} 味灵材的名字自行浮上心头`, 'info')
+  ui.toast(`已转世 · 道号「${player.name}」`, 'rare')
+  if (view.stageAdvanced) ui.toast(`境地已迁「${view.stageName}」`, 'rare')
+  if (recognized > 0) ui.toast(`新认得 ${recognized} 味灵材`, 'info')
 }

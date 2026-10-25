@@ -134,7 +134,7 @@ function acquireInto(inst: EquipmentInstance, opts: { quiet?: boolean; forceKeep
     return { ...res, line: `${label}(行囊已满,${res.line})` }
   }
   if (!quiet && isRareQuality(q)) {
-    ui.toast(`灵光乍现,拾得「${label}」`, 'rare')
+    ui.toast(`拾得「${label}」`, 'rare')
   }
   return { line: label, bagged: true, evicted: false, dust: 0, stone: gnZero() }
 }
@@ -187,7 +187,7 @@ export function acquireArtifactGain(defId: string, quiet = false, autoEquip = tr
       wudao: ARTIFACT_DUPLICATE_WUDAO
     }
   }
-  if (!quiet) ui.toast(`天降机缘!获得法宝「${def.name}」`, 'rare')
+  if (!quiet) ui.toast(`获得法宝「${def.name}」`, 'rare')
   return { defId, name: def.name, line: `法宝「${def.name}」`, duplicate: false, wudao: 0 }
 }
 
@@ -262,13 +262,13 @@ export function afterWin(region: RegionDef, rewardMult: number, isBoss: boolean,
     const n = rng.int(1, 2) * doubled
     resources.addSmall('ore', n)
     harvestMaterials(tier, 'ore', n)
-    // 与灵草同规:掉落要显式报品 —— 不然战报「本战拾获」查无此项,给而不报
-    lines.push(`玄铁×${n}`)
+    // 与灵草同规:掉落须报进战报
+    lines.push(`玄铁 +${n}`)
   }
   if (rng.chance(capChance(PAGE_DROP_CHANCE * rewardMult))) {
     const n = rng.int(1, 2) * doubled
     resources.addSmall('page', n)
-    lines.push(`功法残页×${n}`)
+    lines.push(`功法残页 +${n}`)
     items += 1
   }
 
@@ -303,10 +303,8 @@ export function afterWin(region: RegionDef, rewardMult: number, isBoss: boolean,
     }
   }
 
-  // 福缘翻倍:若有已列出的掉落,挂在「当场战利翻倍」上;若一行都没列(只翻了灵石/修为),
-  // 就直说翻的是灵石与修为 —— 「本战所得翻倍!」却不给可见之物,只会让人疑惑
   if (doubled === 2) {
-    lines.unshift(lines.length ? '福缘深厚,当场战利翻倍!' : '福缘深厚,灵石与修为翻倍!')
+    lines.unshift(lines.length ? '战利翻倍' : '灵石修为翻倍')
   }
 
   return { lines, stone, exp, items }

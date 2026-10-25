@@ -411,7 +411,7 @@ describe('词条转移 · 服务记账', () => {
     expect(transferAffix({ sourceUid: 's', targetUid: 's', affixId: 'atk3', replaceId: null, seal: false })).toBe(false)
     expect(ui.toasts.at(-1)?.text).toBe('同一件')
     expect(transferAffix({ sourceUid: 's', targetUid: 'nope', affixId: 'atk3', replaceId: null, seal: false })).toBe(false)
-    expect(ui.toasts.at(-1)?.text).toBe('装备不在')
+    expect(ui.toasts.at(-1)?.text).toBe('未找到装备')
     expect(resources.dust).toBe(1e6)
     expect(inventory.findItem('s')).toEqual(src)
     expect(inventory.findItem('t')).toEqual(tgt)

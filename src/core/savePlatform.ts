@@ -30,13 +30,14 @@ async function exportSaveOnAndroid(text: string, file: string): Promise<string |
       useUiStore().toast(`已导出「${file}」`, 'success')
       return null
     }
+    // 返回值留真实原因(只判成败、不显示);toast 只报状态
     const reason = result?.saved === false ? '已取消导出' : '存档导出失败:原生桥返回了无法识别的结果'
-    useUiStore().toast(reason, 'warn')
+    useUiStore().toast(result?.saved === false ? '已取消导出' : '导出失败', 'warn')
     return reason
   } catch (error) {
     const detail = error instanceof Error && error.message ? `:${error.message}` : ''
     const reason = `存档导出失败${detail}`
-    useUiStore().toast(reason, 'warn')
+    useUiStore().toast('导出失败', 'warn')
     return reason
   }
 }
@@ -49,10 +50,9 @@ export async function exportSaveToDevice(): Promise<string | null> {
   }
   if (Capacitor.isNativePlatform()) {
     try {
-      // Documents 在部分 Android 上需运行时授权,先问一句,被拒就如实告知
       const perm = await Filesystem.requestPermissions()
       if (perm.publicStorage === 'denied') {
-        const reason = '存储权限被拒绝,无法导出存档'
+        const reason = '存储权限被拒绝'
         useUiStore().toast(reason, 'warn')
         return reason
       }
@@ -68,8 +68,7 @@ export async function exportSaveToDevice(): Promise<string | null> {
       useUiStore().toast(`已导出到「文档/Export/${file}」`, 'success')
       return null
     } catch {
-      // 写盘失败(存储不可用/权限异常)明确告知,不静默
-      useUiStore().toast('存档导出失败,请检查存储空间后重试', 'warn')
+      useUiStore().toast('导出失败', 'warn')
       return '导出失败'
     }
   }
@@ -98,7 +97,7 @@ export async function exportSaveToDevice(): Promise<string | null> {
   }
 
   if (downloaded && clipped) {
-    useUiStore().toast(`已导出「${file}」(存档文本也已复制到剪贴板备用)`, 'success')
+    useUiStore().toast(`已导出「${file}」· 已复制到剪贴板`, 'success')
     return null
   }
   if (downloaded) {
@@ -106,9 +105,9 @@ export async function exportSaveToDevice(): Promise<string | null> {
     return null
   }
   if (clipped) {
-    useUiStore().toast('浏览器没能下载 —— 存档文本已复制到剪贴板,新建文本粘贴并另存为 .save 即可导入', 'warn')
+    useUiStore().toast('下载失败 · 已复制到剪贴板', 'warn')
     return '存档已复制到剪贴板'
   }
-  useUiStore().toast('浏览器既不能下载也复制不了存档,请换一个浏览器打开后再导出', 'warn')
+  useUiStore().toast('浏览器不支持导出', 'warn')
   return '浏览器不支持导出'
 }
