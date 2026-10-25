@@ -1,6 +1,6 @@
-/* eslint-disable no-console -- 自检脚本的产出就是给人看的报告 */
+/* eslint-disable no-console -- 产出即报告 */
 /**
- * 排版自检 —— 手机尺寸下逐页量一遍「有没有横向溢出」
+ * 排版自检:手机尺寸下逐页量横向溢出等判据。
  *
  * 用法:
  *   bun run build
@@ -67,15 +67,10 @@ const browser = await chromium.launch({
 const failures = []
 let checked = 0
 let zoomSeen = 0
+/** 后期档 200% 另计:与主巡页合计时,主巡页那档停掉也报不出 */
+let zoomSeenLate = 0
 
-/**
- * 弹窗**里面**的控件也要过页面上那两条尺子:有可访问名、不小于 28px。
- *
- * 逐页巡的那一遍只量得到页面上摆着的东西 —— 弹窗没打开就不存在,于是这两条
- * 判据一直没有覆盖弹窗内部。实测漏掉的有:共享的关闭键(一枚图标、无名、
- * 内外边距加起来 26px,每个弹窗都有它)、纯文字按钮「立契」(18px)、
- * 行内链接(命中区只有字体那 14px)。故这里量弹窗自己。
- */
+/** 弹窗内控件过页面那两条尺子:有可访问名、不小于 28px */
 async function auditModalControls(page) {
   return page.evaluate(() => {
     // 动画禁令:量稳态布局,不量过渡中间帧;与 measurePage 同口径
@@ -534,7 +529,7 @@ async function measureZoomScale(page, vp) {
   const width = Math.round(vp.width / 2)
   const height = Math.round(vp.height / 2)
   await page.setViewportSize({ width, height })
-  await page.waitForTimeout(420) // 让断点与 transition 走完再量
+  await page.waitForTimeout(420) // 等断点与 transition 走完
   const info = await measurePage(page)
   const innerWidth = await page.evaluate(() => window.innerWidth)
   await page.setViewportSize({ width: vp.width, height: vp.height })
@@ -668,7 +663,11 @@ for (const vp of VIEWPORTS) {
     location.hash = '#/settings'
   })
   await page.waitForTimeout(800)
-  const warned = await page.evaluate(() => document.body.innerText.includes('上次存档没能存下'))
+  // 只认设置页存档卡:App 的写盘失败 toast 同词,扫整页会误判
+  const warned = await page.evaluate(() => {
+    const card = [...document.querySelectorAll('.card-ink')].find(c => (c.textContent || '').includes('存档版本'))
+    return (card?.textContent || '').includes('存档写入失败')
+  })
   checked += 1
   if (!warned) failures.push('[375] /settings → 存档写失败时设置页没有提示(静默丢档)')
   if (pageErrors.length) failures.push(`[375] 存档失败场景页面异常:${[...new Set(pageErrors)].join(' | ')}`)
@@ -1044,11 +1043,14 @@ for (const vp of VIEWPORTS) {
       lastBattle: null,
       eventMemories: {}
     },
-    /*
-     * 洞府等级:升级按钮上的代价是「数 + 量词」(2,798 石 · 50 铁),
-     * 空档只有「200 石 20 铁」这种短数字,量不出「数字与量词被换行拆开」那条判据。
-     */
-    dongfu: { levels: { mansion: 4, field: 5, alchemy: 5, forge: 4, library: 4 }, offlineCapHours: 24 },
+    // 洞府等级:代价「2,798 石 · 50 铁」;空档只有「200 石 20 铁」,量不出数字与量词被换行拆开。
+    // 灵脉已投两位数:「营造」右侧入口够宽,200% 档才量得出它撑不撑破标题行
+    dongfu: {
+      levels: { mansion: 4, field: 5, alchemy: 5, forge: 4, library: 4 },
+      offlineCapHours: 24,
+      veinPoints: { gather: 52 },
+      veinMain: 'gather'
+    },
     settings: {
       privacyAccepted: true,
       sfxOn: false,
@@ -1120,16 +1122,14 @@ for (const vp of VIEWPORTS) {
     const railFails = railProblems(rail)
     if (rail) checked += 1
     if (railFails.length) failures.push(`[390-late] ${route} → ${railFails.join(' / ')}`)
+    // 200% 缩放:与空档同一把尺子,后期档才有的长数字、灵脉入口在这里量
+    const zoom = await measureZoomScale(page, { width: 390, height: 844 })
+    zoomSeenLate += 1
+    const zoomBad = zoomProblems(zoom, '390')
+    if (zoomBad.length) failures.push(`[200%-late] ${route} → ${zoomBad.join(' / ')}`)
   }
 
-  /*
-   * (三)在途秘境要真的推得动。
-   *
-   * 秘境这一整套此前只在单元用例里跑过 —— 界面上「再入一层」按下去会怎样,
-   * 从没有人看过:点了没反应、刷不出战报、数字漏 NaN,都会静静留在这里。
-   * 夹具身上带着一趟打到第二层的秘境,故这里真点一次:要么浮出战报,
-   * 要么卡片状态前移(层数/败次/探尽),两者必有其一。
-   */
+  // (三)在途秘境真点一次「再入一层」:要么浮出战报,要么卡片状态前移(层数/败次/探尽)
   await page.goto(INDEX + '#' + '/adventure', { waitUntil: 'load' })
   await page.waitForTimeout(800)
   checked += 1
@@ -1369,7 +1369,8 @@ for (const vp of VIEWPORTS) {
       if (view.outcome === '成功' && view.realm !== '筑基') {
         failures.push(`[390] 渡劫场景:弹窗说成功,页面上的境界却还是「${view.realm}」`)
       }
-      const close = page.locator('.modal-panel button', { hasText: /继续问道|收拾心情/ }).first()
+      // 「知道了」全站通用:只认突破结果那一扇里的那一枚
+      const close = page.locator('.modal-panel', { hasText: /突破成功|突破失败/ }).locator('button', { hasText: /知道了/ }).first()
       if ((await close.count()) === 0) failures.push('[390] 渡劫场景:结果弹窗没有收尾按钮')
       else {
         await close.click({ timeout: 3000 }).catch(() => {})
@@ -1639,9 +1640,8 @@ for (const vp of VIEWPORTS) {
   })
   await page.locator('input[type=file]').first().setInputFiles(savePath)
   await page.waitForTimeout(500)
-  // 导入是「整体替换本机进度」的不可逆操作 —— 与重置同纪律,先弹确认,点「覆盖导入」才落库。
-  // 判据仍盯着原来的事(成功提示 + 重新入定 + 灵石回到导出那一刻),只是要穿过这扇确认门。
-  await page.getByRole('button', { name: /覆盖导入/ }).click({ timeout: 3000 })
+  // 导入先弹确认(与重置同纪律),点「确认导入」才落库
+  await page.getByRole('button', { name: /确认导入/ }).click({ timeout: 3000 })
   await page.waitForTimeout(700)
   const toast = await page.evaluate(() => [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim()).join('|'))
   await page.waitForTimeout(2600)
@@ -1712,7 +1712,7 @@ for (const vp of VIEWPORTS) {
   checked += 1
   const bagCount = () =>
     page.evaluate(() => {
-      const m = /藏品\s*(\d+)/.exec(document.querySelector('main')?.innerText || '')
+      const m = /行囊\s*(\d+)/.exec(document.querySelector('main')?.innerText || '')
       return m ? Number(m[1]) : null
     })
   const opened = await page
@@ -1727,15 +1727,15 @@ for (const vp of VIEWPORTS) {
     const before = await bagCount()
     if (before !== 5) failures.push(`[390] 收纳场景:夹具没铺好 —— 开局行囊 ${before} 件(应为 5)`)
     const armed = await page
-      .locator('.modal-panel button', { hasText: /依此规则清理行囊/ })
+      .locator('.modal-panel button', { hasText: /清理行囊/ })
       .first()
       .click({ timeout: 3000 })
       .then(() => true)
       .catch(() => false)
-    if (!armed) failures.push('[390] 收纳场景:找不到「依此规则清理行囊」按钮')
+    if (!armed) failures.push('[390] 收纳场景:找不到「清理行囊」按钮')
     await page.waitForTimeout(300)
     const warn = await page.evaluate(() => (document.querySelector('.modal-panel')?.innerText || '').replace(/\n+/g, ' '))
-    // 确认框文案随版本走动:老句「共 N 件」→ 新句「将化尘 N 件,入炉可得…」。两式都认,免得尺子被改词带翻
+    // 确认框两式都认:「共 N 件」/「将化尘 N 件 · 可得…」
     const promisedCount = Number((/将化尘\s*(\d+)\s*件/.exec(warn) || /共\s*(\d+)\s*件/.exec(warn) || [])[1] ?? NaN)
     if (promisedCount !== 2) {
       failures.push(`[390] 收纳场景:该清的只有 2 件废物,确认框写的是 ${promisedCount} 件 —— 练过/成套/近满的件被算进了清理名单(${warn.slice(0, 90)})`)
@@ -1748,7 +1748,7 @@ for (const vp of VIEWPORTS) {
       [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim()).join('|')
     )
     if (after !== 3) failures.push(`[390] 收纳场景:清理后行囊剩 ${after} 件(应为 3 —— 那 3 件有投入的必须留下)`)
-    if (!/收纳既毕,2 件无缘之物化尘/.test(toast)) failures.push(`[390] 收纳场景:清理后的交代不对(${toast || '无提示'})`)
+    if (!/已化尘 2 件/.test(toast)) failures.push(`[390] 收纳场景:清理后的交代不对(${toast || '无提示'})`)
     for (const [uid, name] of [['k_set', '玄铁重剑'], ['k_roll', '桃木簪']]) {
       if (!body.includes(name)) failures.push(`[390] 收纳场景:${name}(${uid})被自动清理了`)
     }
@@ -1809,7 +1809,7 @@ for (const vp of VIEWPORTS) {
   /** 行囊件数(只读 main;弹窗 Teleport 到 body,不在这棵子树里) */
   const bagCount = () =>
     page.evaluate(() => {
-      const m = /藏品\s*(\d+)/.exec(document.querySelector('main')?.innerText || '')
+      const m = /行囊\s*(\d+)/.exec(document.querySelector('main')?.innerText || '')
       return m ? Number(m[1]) : null
     })
   /** 背包页顶上那栏「器灵尘 N」 */
@@ -1855,7 +1855,7 @@ for (const vp of VIEWPORTS) {
       const after = await bagCount()
       const afterToast = await toasts()
       if (after !== 0) failures.push(`[390] 分解场景:点了「分 解」行囊还剩 ${after} 件(两件精品都该拆掉)`)
-      if (!/炉中化去 2 件/.test(afterToast)) failures.push(`[390] 分解场景:点「分 解」之后没有交代(${afterToast || '无提示'})`)
+      if (!/已化尘 2 件/.test(afterToast)) failures.push(`[390] 分解场景:点「分 解」之后没有交代(${afterToast || '无提示'})`)
       const promised = Number((/得器灵尘×(\d+)/.exec(afterToast) || [])[1] ?? NaN)
       const dustAfter = await dustCount()
       if (promised !== 88) {
@@ -2019,7 +2019,7 @@ for (const vp of VIEWPORTS) {
     else if (oreBefore.value === null || oreAfter.value === null || oreBefore.value - oreAfter.value !== oreCost) {
       failures.push(`[390] 营造场景:卡片写「${label}」,玄铁实际 ${oreBefore.text} → ${oreAfter.text}(所见非所付)`)
     }
-    if (!/营造再进|落成/.test(toast)) failures.push(`[390] 营造场景:动工之后没有任何交代(${toast || '无提示'})`)
+    if (!/已至\s*\d+\s*级/.test(toast)) failures.push(`[390] 营造场景:动工之后没有任何交代(${toast || '无提示'})`)
     console.log(`\n洞府营造:${label} → 玄铁 ${oreBefore.text} → ${oreAfter.text}(应扣 ${Number.isFinite(oreCost) ? oreCost : '?'})`)
   }
   if (pageErrors.length) failures.push(`[390] 营造场景页面异常:${[...new Set(pageErrors)].join(' | ')}`)
@@ -2238,7 +2238,7 @@ for (const vp of VIEWPORTS) {
     const toast = await page.evaluate(() =>
       [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim()).join('|')
     )
-    const promised = Number((/此器化尘,得器灵尘×(\d+)/.exec(toast) || [])[1] ?? NaN)
+    const promised = Number((/已化尘 · 得器灵尘×(\d+)/.exec(toast) || [])[1] ?? NaN)
     const dustAfterSplit = await readDust()
     const stillInBag = await page.evaluate(uid => !!document.querySelector(`main button[data-uid="${uid}"]`), BAG_UID)
     if (Number.isFinite(promised)) {
@@ -2248,7 +2248,7 @@ for (const vp of VIEWPORTS) {
       if (stillInBag) failures.push('[390] 锻造场景:分解之后那件还留在背包里')
       console.log(`\n背包账目:强化扣尘 ${costLine}(对上) · 分解得尘 ${promised}(对上,且件已出包)`)
     } else {
-      failures.push(`[390] 锻造场景:分解没有给出「此器化尘,得器灵尘×N」的交代(${toast || '无提示'})`)
+      failures.push(`[390] 锻造场景:分解没有给出「已化尘 · 得器灵尘×N」的交代(${toast || '无提示'})`)
     }
   }
   if (pageErrors.length) failures.push(`[390] 锻造场景页面异常:${[...new Set(pageErrors)].join(' | ')}`)
@@ -2339,12 +2339,15 @@ for (const vp of VIEWPORTS) {
     else {
       await analysisBtn.click({ timeout: 3000 }).catch(() => {})
       await page.waitForTimeout(400)
-      const analysisText = await page.evaluate(() => document.querySelector('main')?.innerText || '')
+      // 分析在弹窗里(挂 body,不在 main 下)
+      const analysisText = await page.evaluate(() =>
+        [...document.querySelectorAll('.modal-panel')].map(p => p.innerText).join('\n')
+      )
       if (!/总输出|总承伤/.test(analysisText)) failures.push('[390] 战斗场景:点开战斗分析也没看到数据面板(总输出/总承伤)')
       else console.log(`\n战斗回放:${summary} · 战报 ${logLines} 行 · 分析面板可开`)
     }
   }
-  if (/NaN|undefined|Infinity/.test(await page.evaluate(() => document.querySelector('main')?.innerText || ''))) {
+  if (/NaN|undefined|Infinity/.test(await page.evaluate(() => document.body.innerText))) {
     failures.push('[390] 战斗场景:战报里漏出占位符')
   }
   if (pageErrors.length) failures.push(`[390] 战斗场景页面异常:${[...new Set(pageErrors)].join(' | ')}`)
@@ -2419,7 +2422,7 @@ for (const vp of VIEWPORTS) {
           ]
         },
         at: now - 3000,
-        loot: ['功法残页×2', '玄冰剑']
+        loot: ['功法残页 +2', '玄冰剑']
       },
       eventMemories: {}
     },
@@ -2869,15 +2872,10 @@ for (const vp of [
     return typeof v === 'number' ? v : v.m * Math.pow(10, v.e)
   }
   const investOnce = async () => {
-    // 灵脉投资已从弹窗改为东府页展开区:先走到东府页,点开折叠头(已展开则不重复收拢),再点投点钮。
+    // 灵脉投资是洞府页的弹窗。同一 URL 再 goto 是同文档跳转、页面不重挂:上一次开的弹窗还在,不再点入口(遮罩挡着会超时)
     await page.goto(INDEX + '#' + '/dongfu', { waitUntil: 'load' })
     await page.waitForTimeout(700)
-    const expanded = await page
-      .getByRole('button', { name: /灵脉投资/ })
-      .first()
-      .getAttribute('aria-expanded')
-      .catch(() => null)
-    if (expanded !== 'true') {
+    if (!(await page.locator('#vein-panel').isVisible().catch(() => false))) {
       await page.getByRole('button', { name: /灵脉投资/ }).first().click({ timeout: 3000 }).catch(() => {})
       await page.waitForTimeout(400)
     }
@@ -3096,8 +3094,8 @@ for (const vp of [
     const page = await ctx.newPage()
     return { ctx, page }
   }
-  /** 提示卡的标题就是它唯一的文案锚点 */
-  const cardCount = page => page.locator('text=把游戏「添加到主屏幕」').count()
+  /** 以提示卡标题为锚点,精确匹配(步骤行里也有这几个字) */
+  const cardCount = page => page.locator('text="添加到主屏幕"').count()
 
   {
     const { ctx, page } = await openWith(UA_IOS)
@@ -3392,7 +3390,7 @@ for (const vp of [
       }))
       if (!/focus=herb/.test(landed.hash)) failures.push(`[390] 续草场景:跳转没带上 focus=herb(${landed.hash})`)
       if (!/grade=1/.test(landed.hash)) failures.push(`[390] 续草场景:跳转没带上要补的品阶(${landed.hash})`)
-      if (landed.missing) failures.push('[390] 续草场景:货架明明有灵草,却报「这一刻没有灵草」')
+      if (landed.missing) failures.push('[390] 续草场景:货架明明有灵草,却报「暂无此品灵草」')
       if (landed.wrongGrade?.highlighted) failures.push(`[390] 续草场景:点亮了别品的草 —— ${landed.wrongGrade.text.slice(0, 30)}`)
       if (!landed.herb) {
         failures.push('[390] 续草场景:坊市里找不到 fixture 的灵草格,判据没量到东西')
@@ -3470,8 +3468,8 @@ for (const vp of [
     const el = document.querySelector('[data-focus-herb-missing]')
     return (el?.textContent || '').replace(/\s+/g, ' ').trim()
   })
-  // 这一架压根没进这一品草(而不是卖光了)—— 话得对得上处境
-  if (!/没有这一品灵草/.test(said)) failures.push(`[390] 空架续草:架上没有这一品草却没说清(${said || '无提示'})`)
+  // 架上没进这一品草(不是卖光),提示须与之对应
+  if (!/暂无此品灵草/.test(said)) failures.push(`[390] 空架续草:架上没有这一品草却没说清(${said || '无提示'})`)
   else console.log(`\n空架续草:「${said.slice(0, 40)}…」`)
   if (pageErrors.length) failures.push(`[390] 空架续草页面异常:${[...new Set(pageErrors)].join(' | ')}`)
   await ctx.close()
@@ -3512,6 +3510,7 @@ await browser.close()
 }
 
 if (zoomSeen === 0) failures.push('200% 缩放档一处都没量到 —— 那条判据空转了(390 档的路由没跑完?)')
+if (zoomSeenLate === 0) failures.push('后期档 200% 缩放一处都没量到 —— 那条判据空转了(后期档路由没跑完?)')
 
 console.log(`\n排版自检:${checked} 个页面 × 视口组合`)
 if (failures.length === 0) {

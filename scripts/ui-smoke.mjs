@@ -1,8 +1,7 @@
-/* eslint-disable no-console -- 自检脚本的产出就是给人看的报告 */
+/* eslint-disable no-console -- 自检报告 */
 /**
- * 界面冒烟 —— 把每个页面上的按钮、以及站内导航链接都点一遍,看有没有运行时异常
- * (导航入口是 RouterLink(<a>) 渲染的,不在 getByRole('button') 里 —— 单独走一条 pass,
- *  否则「点入口没反应」这类 bug 在冒烟里永远看不见)
+ * 界面冒烟:逐页点按钮与站内导航链接,查运行时异常。
+ * 导航入口是 RouterLink 渲染的 <a>,不在 getByRole('button') 里,单走一轮。
  *
  * 用法(需 playwright):
  *   bun run build
@@ -47,6 +46,8 @@ const ROUTES = [
 ]
 /** 正文里不该出现的数字/占位泄漏 */
 const NUMERIC_LEAK = ['NaN', 'Infinity', 'undefined']
+/** 进行中的页面/弹窗过渡 */
+const FADING = '.page-fade-enter-active, .page-fade-leave-active, .modal-fade-enter-active, .modal-fade-leave-active'
 /** 破坏性/离开型按钮:冒烟盘上不点 */
 const SKIP = /分解|删除|清空|重置|兵解|转世|散尽|导出|导入|隐私|关于我们|出 秘 境|暂别|确认转移/
 
@@ -165,10 +166,7 @@ async function settle() {
   await page.waitForTimeout(260)
   const deadline = Date.now() + 2000
   for (;;) {
-    // Vue Transition 把 active/leave 类挂在「正在切换」的元素上;退出条件:没在切换 && 指纹稳定
-    const busy = await page.evaluate(
-      () => document.querySelector('.page-fade-enter-active, .page-fade-leave-active') !== null
-    )
+    const busy = await page.evaluate(sel => document.querySelector(sel) !== null, FADING)
     const a = await fingerprint()
     await page.waitForTimeout(60)
     const b = await fingerprint()
@@ -297,18 +295,15 @@ for (const route of ROUTES) {
     else if ((await fingerprint()) === beforeFp) await classifySilent(route, 'page', label)
     await scanNumericLeaks(`${route} 点「${label}」后泄漏`)
     await clickInsideModal(route)
-    // 点开弹窗后关掉,免得挡住后面的按钮
-    await page.keyboard.press('Escape').catch(() => {})
-    await page.waitForTimeout(80)
+    // 逐层收起弹窗(弹窗内点开的详情会叠第二层),免挡后续按钮;每层等淡出走完:离场中的弹窗会让下一按钮的前后指纹必然不同,死按钮漏判
+    for (let layer = 0; layer < 4 && (await page.locator('.modal-panel').count()) > 0; layer += 1) {
+      await page.keyboard.press('Escape').catch(() => {})
+      await page.waitForTimeout(80)
+      await page.waitForFunction(sel => document.querySelector(sel) === null, FADING, { timeout: 1000 }).catch(() => {})
+    }
   }
 
-  /**
-   * 真·导航图:底部五页签 / 顶栏设置齿轮 / 各页内入口全是 RouterLink(<a>),不是 button ——
-   * 上面的按钮 pass 一根都戳不到。「点入口没反应」这类 bug(点击导航却原地不动)
-   * 正藏在这层。这里把每根 in-app 导航边都真实点一遍(成功的边同 href 全站只点一次,
-   * 被挡/未达标的保留下来等后续路由重试);落地页同样做数字体检 —— 出跳后目标页
-   * 有没有炸,单看本页按钮看不出端倪。
-   */
+  // 站内导航链接(<a>)逐根真点,落地页同做泄漏体检
   const linkHrefs = await page.evaluate(() =>
     [...document.querySelectorAll('a[href^="#/"]')]
       .map(a => a.getAttribute('href'))

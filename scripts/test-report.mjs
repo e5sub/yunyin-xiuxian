@@ -34,16 +34,15 @@ function caseCountHits(text) {
   return hits
 }
 
-// CI 的 4 vCPU runner 上 169 个文件全量并行,worker 内存顶爆会整组打断:
-// 2026-10-05 一轮 PR 连续两次同一批 8 条 exploration 战败用例被打断,本地任何
-// 配置(含 --pool=forks --maxWorkers=4)都全绿,改为流式输出后同一份代码当场即绿 ——
-// 是负荷态下的 worker 中断,不是逻辑败。合入闸门不许靠运气,故 CI 限核:
-// 本地不设 CI 变量时按机器核心数全速,两边的判据仍是同一份 JSON。
+// CI(4 vCPU)全量并行会顶爆 worker 内存、整组中断,CI 限 4 worker;本地按核数全速,判据同一份 JSON
 const CI_WORKERS = process.env.CI ? ' --maxWorkers=4' : ''
+/** vitest 退出码:未处理错误只体现在这里,JSON 报告的 success 不计它 */
+let vitestExit = 0
 try {
   execSync(`bunx vitest run --reporter=json${CI_WORKERS} --outputFile=${OUT}`, { stdio: 'pipe' })
-} catch {
-  // 有测试失败时 vitest 以非零码退出,报告文件仍会生成
+} catch (e) {
+  // 有失败时 vitest 非零退出,报告照样生成
+  vitestExit = typeof e?.status === 'number' ? e.status : 1
 }
 
 let report
@@ -55,11 +54,13 @@ try {
 }
 rmSync(OUT, { force: true })
 
-const rows = TEST_CATEGORIES.map(c => ({ ...c, passed: 0, failed: 0 }))
+const rows = TEST_CATEGORIES.map(c => ({ ...c, passed: 0, failed: 0, fileFailed: 0 }))
 let uncategorized = 0
-/** 未登记的文件与失败的用例都要点名 —— 这份报告现在是 CI 的门,只给个数字没法修 */
+/** 未登记文件与失败用例逐条点名(本报告是 CI 门) */
 const uncategorizedFiles = []
 const failures = []
+/** 整文件失败:导入失败、beforeAll/afterAll 抛错等,断言里一条失败都没有 */
+const fileFailures = []
 
 const docFailures = []
 for (const { rel, file } of DOC_FILES) {
@@ -85,9 +86,15 @@ for (const file of report.testResults ?? []) {
   for (const a of file.assertionResults ?? []) {
     if (a.status === 'failed') failures.push(`${short} › ${a.fullName ?? a.title}`)
   }
+  const wholeFile = file.status === 'failed' && failed === 0
+  if (wholeFile) {
+    const why = String(file.message ?? '').split('\n')[0].slice(0, 160)
+    fileFailures.push(why ? `${short} › ${why}` : short)
+  }
   if (row) {
     row.passed += passed
     row.failed += failed
+    if (wholeFile) row.fileFailed += 1
   } else {
     uncategorized += passed + failed
     uncategorizedFiles.push(short)
@@ -98,9 +105,11 @@ console.log('\n—— 《云隐修仙录》分类测试报告 ——\n')
 let totalPassed = 0
 for (const row of rows) {
   totalPassed += row.passed
-  const status = row.failed > 0 ? 'FAIL' : 'PASS'
-  const mark = row.failed > 0 ? '✗' : '✓'
-  console.log(`  ${mark} ${row.name.padEnd(22, ' ')} ${status}  (${row.passed} 过${row.failed ? ` / ${row.failed} 败` : ''})`)
+  const bad = row.failed > 0 || row.fileFailed > 0
+  const status = bad ? 'FAIL' : 'PASS'
+  const mark = bad ? '✗' : '✓'
+  const fileNote = row.fileFailed ? ` / ${row.fileFailed} 文件失败` : ''
+  console.log(`  ${mark} ${row.name.padEnd(22, ' ')} ${status}  (${row.passed} 过${row.failed ? ` / ${row.failed} 败` : ''}${fileNote})`)
 }
 if (uncategorized > 0) {
   console.log(`  ✗ 未分类用例 ${uncategorized} 个 —— 请在 scripts/test-report.mjs 的 CATEGORIES 中补充映射:`)
@@ -109,6 +118,10 @@ if (uncategorized > 0) {
 if (failures.length > 0) {
   console.log(`\n  失败用例(${failures.length}):`)
   for (const f of failures) console.log(`    ✗ ${f}`)
+}
+if (fileFailures.length > 0) {
+  console.log(`\n  整文件失败(${fileFailures.length}):`)
+  for (const f of fileFailures) console.log(`    ✗ ${f}`)
 }
 if (docFailures.length > 0) {
   console.log('\n  ✗ 文档里又写回了用例条数(它每次都变,不该记在文档里):')
@@ -120,4 +133,9 @@ console.log(`\n  共 ${totalPassed} 过 / ${failures.length} 败\n`)
 if (docFailures.length > 0) {
   console.log('  退出码 1 的原因:文档里又写回了用例条数\n')
 }
-process.exit(failures.length > 0 || uncategorized > 0 || docFailures.length > 0 ? 1 : 0)
+// 无失败用例、无整文件失败却非零退出:多为未处理错误(如 SSR 渲染里读 document),JSON 不记
+const silentCrash = vitestExit !== 0 && failures.length === 0 && fileFailures.length === 0
+if (silentCrash) {
+  console.log(`  ✗ vitest 退出码 ${vitestExit},但无失败用例(多为未处理错误),跑 bun run test 看详情\n`)
+}
+process.exit(failures.length > 0 || fileFailures.length > 0 || uncategorized > 0 || docFailures.length > 0 || silentCrash ? 1 : 0)
