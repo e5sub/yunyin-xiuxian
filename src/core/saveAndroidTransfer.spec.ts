@@ -1,7 +1,7 @@
 /**
  * Android 存档导入/导出接线审计(静态)。
  * 故障注入:删掉 registerPlugin、把 ACTION_CREATE_DOCUMENT 改回 Documents、
- * 或把 accept 改回 application/json,.save,对应用例红。
+ * 删掉 saveInstanceState 覆写,或把 accept 改回 application/json,.save,对应用例红。
  */
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -31,6 +31,13 @@ describe('Android 存档传输 · 接线', () => {
     expect(plugin, '大存档写入必须离开主线程').toContain('execute(() -> writeSave(call, uri, text))')
     expect(plugin, '原生回包必须投回主线程').toContain('executeOnMainThread')
     expect(plugin, 'Android 存档导出不得回退到公共 Documents').not.toContain('Directory.Documents')
+  })
+
+  it('挂起的导出调用不存进实例状态,整份存档不进 Bundle', () => {
+    // 默认实现把调用参数写进 Bundle,Bridge 再写一份;大存档在保存面板打开时超出 Binder 上限即闪退
+    expect(plugin, '缺少覆写时,保存面板一开就把整份存档写进实例状态').toMatch(
+      /protected Bundle saveInstanceState\(\)\s*\{\s*return null;\s*\}/
+    )
   })
 
   it('不再声明公共存储写权限', () => {

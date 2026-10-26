@@ -3,6 +3,7 @@ package com.games.wenzi.yunyin;
 import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Bundle;
 
 import androidx.activity.result.ActivityResult;
 
@@ -39,6 +40,15 @@ public class SaveTransferPlugin extends Plugin {
         intent.setType("application/octet-stream");
         intent.putExtra(Intent.EXTRA_TITLE, fileName);
         startActivityForResult(call, intent, "onSaveResult");
+    }
+
+    /**
+     * 挂起调用不存进实例状态:参数含整份存档,保存面板打开时会被写进 Bundle(Bridge 再写一份),
+     * 超出 Binder 上限即 TransactionTooLargeException 闪退。面板期间进程被回收时网页也重载,无调用可续。
+     */
+    @Override
+    protected Bundle saveInstanceState() {
+        return null;
     }
 
     @ActivityCallback
