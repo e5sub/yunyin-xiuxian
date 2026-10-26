@@ -113,7 +113,7 @@
         道果
         <span class="text-cinnabar tabular">+{{ view.daoFruitGained }}</span>
       </p>
-      <div class="mt-3 rounded-lg border border-ink/15 px-3 py-3" aria-label="来世灵根">
+      <div class="mt-3 rounded-lg border border-ink/15 px-3 py-3" role="group" aria-label="来世灵根">
         <p class="flex items-center justify-between font-kai text-[13px] text-ink">
           <span>来世灵根</span>
           <span class="text-cinnabar">{{ view.nextLinggen.gradeName }}</span>
@@ -133,7 +133,7 @@
           修行倍率 <span class="tabular text-ink">×{{ view.nextLinggen.growthMult.toFixed(2) }}</span>
         </p>
         <button class="btn-ghost mt-3 w-full" @click="rerollReincarnationLinggen">逆天改命</button>
-        <p class="mt-2 text-center text-[11px] text-ink-faint">不限次数,满意后踏入轮回,灵根便以此定下。</p>
+        <p class="mt-2 text-center text-[11px] text-ink-faint">不限次数</p>
       </div>
       <p class="mt-3 font-kai text-[13px] tracking-widest text-ink">择一先天之姿</p>
       <p v-if="view.talentChoices.length === 0" class="mt-2 text-[11px] leading-relaxed text-ink-faint">已集齐</p>

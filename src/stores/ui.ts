@@ -37,7 +37,7 @@ export interface LifeReview {
 export interface ReincarnationView {
   /** 来世灵根草稿:重刷仅替换此项,确认后原样采用 */
   nextLinggen: LinggenProfile
-  /** 本次结算后的资质加成,重刷沿用同一口径 */
+  /** 本次结算后的资质保底,重刷沿用 */
   linggenAptitudeFloor: number
   daoFruitGained: number
   talentChoices: string[]

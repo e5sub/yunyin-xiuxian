@@ -396,5 +396,5 @@ export const REINCARNATE_APTITUDE_FLOOR = 5
 export const OFFLINE_BOSS_REWARD_MULT = 0.75
 
 // ============ 创角 ============
-/** 建号「逆天改命」次数上限,null = 不限次;store 扣减/耗尽分支与界面文案同读。转世不适用(无挑选界面) */
+/** 建号「逆天改命」次数上限,null = 不限次;store 扣减/耗尽分支与界面文案同读。转世预览的重掷另算,恒不限次 */
 export const CREATE_REROLL_QUOTA: number | null = null
