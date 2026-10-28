@@ -1,26 +1,155 @@
 /**
- * SQLite 库:用户 / 云存档 / 玩家档案 / 好友 / 聊天
+ * 数据访问层:SQLite(默认) / MySQL(DB_DRIVER=mysql) 双方言
+ * 全部查询走 ? 占位符,统一异步接口;表结构按方言建,字段一致
  * 战力与属性为 GNum(尾数+指数),全部按字符串落库,避免浮点精度丢失
+ *
+ * env:
+ *   DB_DRIVER=sqlite|mysql
+ *   DB_HOST / DB_PORT / DB_USER / DB_PASSWORD / DB_NAME   (mysql 时必填)
  */
-import Database from 'better-sqlite3'
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const here = dirname(fileURLToPath(import.meta.url))
-const dataDir = join(here, '..', 'data')
-mkdirSync(dataDir, { recursive: true })
+export type Row = Record<string, unknown>
 
-export const db = new Database(join(dataDir, 'yunyin.db'))
-db.pragma('journal_mode = WAL')
-db.pragma('foreign_keys = ON')
+export interface RunResult {
+  insertId: number
+  affectedRows: number
+}
 
-db.exec(`
+const DRIVER = (process.env.DB_DRIVER ?? 'sqlite').toLowerCase() === 'mysql' ? 'mysql' : 'sqlite'
+
+/* ---------------- SQLite ---------------- */
+
+type SqliteDb = {
+  prepare(sql: string): {
+    run(...p: unknown[]): { lastInsertRowid: number | bigint; changes: number | bigint }
+    get(...p: unknown[]): unknown
+    all(...p: unknown[]): unknown[]
+  }
+  exec(sql: string): void
+}
+
+let sqlite: SqliteDb | null = null
+
+async function sqliteDb(): Promise<SqliteDb> {
+  if (sqlite !== null) return sqlite
+  const mod = await import('better-sqlite3')
+  const Database = (mod.default ?? mod) as unknown as new (path: string) => SqliteDb
+  const here = dirname(fileURLToPath(import.meta.url))
+  const dataDir = join(here, '..', 'data')
+  mkdirSync(dataDir, { recursive: true })
+  sqlite = new Database(join(dataDir, 'yunyin.db'))
+  sqlite.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
+  return sqlite
+}
+
+/* ---------------- MySQL ---------------- */
+
+type MySqlDb = {
+  query(sql: string, params?: unknown[]): Promise<[unknown[], unknown]>
+}
+
+let mysqlDb: MySqlDb | null = null
+
+async function mysqlPool(): Promise<MySqlDb> {
+  if (mysqlDb !== null) return mysqlDb
+  const mod = await import('mysql2/promise')
+  mysqlDb = mod.default.createPool({
+    host: process.env.DB_HOST ?? '127.0.0.1',
+    port: Number(process.env.DB_PORT ?? 3306),
+    user: process.env.DB_USER ?? 'root',
+    password: process.env.DB_PASSWORD ?? '',
+    database: process.env.DB_NAME ?? 'yunyin',
+    waitForConnections: true,
+    connectionLimit: 10,
+    // 返回 JSON 数值而不是 Buffer
+    typeCast(field: { type: string; string(): string | null }, next: () => unknown) {
+      const t = field.type
+      if (t === 'BIGINT' || t === 'NEWDECIMAL') return String(field.string())
+      return next()
+    }
+  }) as unknown as MySqlDb
+  return mysqlDb
+}
+
+/* ---------------- 统一接口 ---------------- */
+
+export function driverName(): 'sqlite' | 'mysql' {
+  return DRIVER
+}
+
+/** 查多行 */
+export async function all<T = Row>(sql: string, params: unknown[] = []): Promise<T[]> {
+  if (DRIVER === 'sqlite') {
+    const d = await sqliteDb()
+    return d.prepare(sql).all(...params) as T[]
+  }
+  const d = await mysqlPool()
+  const [rows] = await d.query(sql, params)
+  return rows as T[]
+}
+
+/** 查单行,没有返回 undefined */
+export async function get<T = Row>(sql: string, params: unknown[] = []): Promise<T | undefined> {
+  if (DRIVER === 'sqlite') {
+    const d = await sqliteDb()
+    return d.prepare(sql).get(...params) as T | undefined
+  }
+  const d = await mysqlPool()
+  const [rows] = await d.query(sql, params)
+  return (rows as T[])[0]
+}
+
+/** 写入/更新/删除,返回 insertId 与影响行数 */
+export async function run(sql: string, params: unknown[] = []): Promise<RunResult> {
+  if (DRIVER === 'sqlite') {
+    const d = await sqliteDb()
+    const info = d.prepare(sql).run(...params)
+    return { insertId: Number(info.lastInsertRowid), affectedRows: Number(info.changes) }
+  }
+  const d = await mysqlPool()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [result] = await d.query(sql, params)
+  const r = result as { insertId?: number; affectedRows?: number }
+  return { insertId: r.insertId ?? 0, affectedRows: r.affectedRows ?? 0 }
+}
+
+/** 执行 DDL / 事务语句 */
+export async function exec(sql: string): Promise<void> {
+  if (DRIVER === 'sqlite') {
+    const d = await sqliteDb()
+    d.exec(sql)
+    return
+  }
+  const d = await mysqlPool()
+  await d.query(sql)
+}
+
+/** upsert 单主键行:REPLACE INTO 两种方言同语义 */
+export async function upsertByPk(table: string, row: Record<string, unknown>): Promise<RunResult> {
+  const keys = Object.keys(row)
+  const holders = keys.map(() => '?').join(', ')
+  const sql = `REPLACE INTO ${table} (${keys.join(', ')}) VALUES (${holders})`
+  return run(sql, keys.map(k => row[k]))
+}
+
+/* ---------------- 表结构 ---------------- */
+
+export async function initDb(): Promise<void> {
+  if (DRIVER === 'sqlite') {
+    const d = await sqliteDb()
+    d.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL,
   username_lower TEXT NOT NULL UNIQUE,
+  email TEXT,
+  email_lower TEXT,
   pass_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'player',
+  status TEXT NOT NULL DEFAULT 'active',
   created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS saves (
@@ -57,46 +186,135 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   content TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS email_codes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email_lower TEXT NOT NULL,
+  code TEXT NOT NULL,
+  purpose TEXT NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0,
+  expires_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS game_config (
+  config_key TEXT PRIMARY KEY,
+  config_value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(id DESC);
 CREATE INDEX IF NOT EXISTS idx_profile_rank ON profiles(realm_index DESC, power_e DESC, power_m DESC);
 `)
+    // 老库迁移:补邮箱/角色/状态列(已存在则忽略)
+    for (const stmt of [
+      'ALTER TABLE users ADD COLUMN email TEXT',
+      'ALTER TABLE users ADD COLUMN email_lower TEXT',
+      "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'player'",
+      "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"
+    ]) {
+      try {
+        d.exec(stmt)
+      } catch {
+        /* 列已存在 */
+      }
+    }
+    // 老库补列之后才能建邮箱索引
+    d.exec('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email_lower)')
+    await seedConfig()
+    return
+  }
 
-export interface ProfileRow {
-  user_id: number
-  name: string
-  realm_label: string
-  realm_index: number
-  power_m: number
-  power_e: number
-  hp_m: number
-  hp_e: number
-  atk_m: number
-  atk_e: number
-  updated_at: number
+  // MySQL
+  const d = await mysqlPool()
+  await d.query(`
+CREATE TABLE IF NOT EXISTS users (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(64) NOT NULL,
+  username_lower VARCHAR(64) NOT NULL UNIQUE,
+  email VARCHAR(190) DEFAULT NULL,
+  email_lower VARCHAR(190) DEFAULT NULL,
+  pass_hash VARCHAR(128) NOT NULL,
+  role VARCHAR(16) NOT NULL DEFAULT 'player',
+  status VARCHAR(16) NOT NULL DEFAULT 'active',
+  created_at BIGINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS saves (
+  user_id BIGINT PRIMARY KEY,
+  version INT NOT NULL,
+  data MEDIUMTEXT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  CONSTRAINT fk_saves_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS profiles (
+  user_id BIGINT PRIMARY KEY,
+  name VARCHAR(64) NOT NULL,
+  realm_label VARCHAR(64) NOT NULL,
+  realm_index INT NOT NULL,
+  power_m DOUBLE NOT NULL,
+  power_e INT NOT NULL,
+  hp_m DOUBLE NOT NULL,
+  hp_e INT NOT NULL,
+  atk_m DOUBLE NOT NULL,
+  atk_e INT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  CONSTRAINT fk_profiles_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_profile_rank (realm_index DESC, power_e DESC, power_m DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS friends (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  friend_id BIGINT NOT NULL,
+  status VARCHAR(16) NOT NULL,
+  created_at BIGINT NOT NULL,
+  UNIQUE KEY uq_friend (user_id, friend_id),
+  CONSTRAINT fk_friends_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_friends_friend FOREIGN KEY (friend_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  name VARCHAR(64) NOT NULL,
+  content VARCHAR(255) NOT NULL,
+  created_at BIGINT NOT NULL,
+  INDEX idx_chat_created (id DESC),
+  CONSTRAINT fk_chat_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS email_codes (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  email_lower VARCHAR(190) NOT NULL,
+  code VARCHAR(8) NOT NULL,
+  purpose VARCHAR(16) NOT NULL,
+  used INT NOT NULL DEFAULT 0,
+  expires_at BIGINT NOT NULL,
+  created_at BIGINT NOT NULL,
+  INDEX idx_code_email (email_lower, purpose)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS game_config (
+  config_key VARCHAR(64) PRIMARY KEY,
+  config_value TEXT NOT NULL,
+  updated_at BIGINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE INDEX idx_users_email ON users(email_lower);
+`) as unknown as void
+
+  await seedConfig()
 }
 
-export interface SaveSnapshot {
-  version: number
-  data: string
-  updated_at: number
+/** 游戏关键参数种子值(已存在不覆盖) */
+async function seedConfig(): Promise<void> {
+  const now = Date.now()
+  const defaults: Array<[string, string]> = [
+    ['announcement', ''],
+    ['chat_min_interval_ms', '1200'],
+    ['chat_max_len', '120'],
+    ['leaderboard_size', '50'],
+    ['chat_history_size', '50']
+  ]
+  if (DRIVER === 'sqlite') {
+    for (const [k, v] of defaults) {
+      await run('INSERT OR IGNORE INTO game_config (config_key, config_value, updated_at) VALUES (?, ?, ?)', [k, v, now])
+    }
+    return
+  }
+  for (const [k, v] of defaults) {
+    await run('INSERT IGNORE INTO game_config (config_key, config_value, updated_at) VALUES (?, ?, ?)', [k, v, now])
+  }
 }
-
-export const getSave = db.prepare('SELECT version, data, updated_at FROM saves WHERE user_id = ?') as Database.Statement<[number], SaveSnapshot>
-export const putSave = db.prepare(
-  `INSERT INTO saves (user_id, version, data, updated_at) VALUES (?, ?, ?, ?)
-   ON CONFLICT(user_id) DO UPDATE SET version = excluded.version, data = excluded.data, updated_at = excluded.updated_at`
-)
-export const deleteSave = db.prepare('DELETE FROM saves WHERE user_id = ?')
-export const getProfile = db.prepare('SELECT * FROM profiles WHERE user_id = ?') as Database.Statement<[number], ProfileRow | undefined>
-export const upsertProfile = db.prepare(
-  `INSERT INTO profiles (user_id, name, realm_label, realm_index, power_m, power_e, hp_m, hp_e, atk_m, atk_e, updated_at)
-   VALUES (@user_id, @name, @realm_label, @realm_index, @power_m, @power_e, @hp_m, @hp_e, @atk_m, @atk_e, @updated_at)
-   ON CONFLICT(user_id) DO UPDATE SET
-     name = excluded.name, realm_label = excluded.realm_label, realm_index = excluded.realm_index,
-     power_m = excluded.power_m, power_e = excluded.power_e,
-     hp_m = excluded.hp_m, hp_e = excluded.hp_e,
-     atk_m = excluded.atk_m, atk_e = excluded.atk_e, updated_at = excluded.updated_at`
-)
-export const findUserByName = db.prepare('SELECT id, username, pass_hash, created_at FROM users WHERE username_lower = ?')
-export const findUserById = db.prepare('SELECT id, username, created_at FROM users WHERE id = ?')
-export const insertUser = db.prepare('INSERT INTO users (username, username_lower, pass_hash, created_at) VALUES (?, ?, ?, ?)')

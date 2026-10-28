@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>云隐修仙录 · GM 后台</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --ink:#1f2329; --sub:#646a73; --line:#e5e6eb; --brand:#2f66d0; --danger:#c9382e; --ok:#2e8a4f; --warn:#b26b00; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif; background:var(--bg); color:var(--ink); font-size:14px; }
+  header { background:var(--card); border-bottom:1px solid var(--line); padding:0 20px; height:52px; display:flex; align-items:center; gap:16px; }
+  header h1 { font-size:16px; font-weight:600; }
+  header .spacer { flex:1; }
+  header .who { color:var(--sub); font-size:12px; }
+  button { cursor:pointer; border:1px solid var(--line); background:var(--card); border-radius:6px; padding:6px 12px; font-size:13px; color:var(--ink); }
+  button:hover { border-color:var(--brand); color:var(--brand); }
+  button.danger { color:var(--danger); }
+  button.danger:hover { border-color:var(--danger); }
+  button.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
+  button.primary:hover { opacity:.9; color:#fff; }
+  input, select { border:1px solid var(--line); border-radius:6px; padding:6px 10px; font-size:13px; outline:none; }
+  input:focus { border-color:var(--brand); }
+  main { max-width:1080px; margin:0 auto; padding:20px; }
+  .tabs { display:flex; gap:4px; margin-bottom:16px; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:4px; width:fit-content; }
+  .tabs button { border:none; background:transparent; padding:7px 18px; border-radius:6px; }
+  .tabs button.on { background:var(--brand); color:#fff; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:16px; }
+  .card h2 { font-size:14px; margin-bottom:12px; font-weight:600; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); font-size:13px; white-space:nowrap; }
+  th { color:var(--sub); font-weight:500; background:#fafbfc; }
+  td.wrap { white-space:normal; }
+  .tag { display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px; }
+  .tag.ok { background:#e8f5ee; color:var(--ok); }
+  .tag.ban { background:#fdeceb; color:var(--danger); }
+  .tag.admin { background:#e8effc; color:var(--brand); }
+  .stat-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 16px; }
+  .stat b { display:block; font-size:22px; margin-top:4px; }
+  .stat span { color:var(--sub); font-size:12px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .muted { color:var(--sub); font-size:12px; }
+  .pager { display:flex; gap:8px; align-items:center; margin-top:12px; }
+  .toast { position:fixed; top:16px; left:50%; transform:translateX(-50%); background:#333c4d; color:#fff; padding:9px 18px; border-radius:8px; font-size:13px; opacity:0; transition:.25s; pointer-events:none; z-index:9; }
+  .toast.show { opacity:1; }
+  dialog { border:1px solid var(--line); border-radius:10px; padding:20px; min-width:340px; max-width:520px; }
+  dialog::backdrop { background:rgba(0,0,0,.35); }
+  dialog h3 { font-size:15px; margin-bottom:14px; }
+  dialog .field { margin-bottom:12px; }
+  dialog label { display:block; font-size:12px; color:var(--sub); margin-bottom:4px; }
+  dialog input, dialog textarea { width:100%; }
+  dialog textarea { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; resize:vertical; }
+  dialog .acts { display:flex; gap:8px; justify-content:flex-end; margin-top:6px; }
+  .cfg-grid { display:grid; grid-template-columns:1fr auto auto; gap:10px 12px; align-items:center; }
+  .kv { font-size:13px; line-height:1.9; }
+  .kv b { display:inline-block; min-width:84px; color:var(--sub); font-weight:400; }
+  .login-wrap { min-height:100vh; display:grid; place-items:center; }
+  .login-box { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:32px; width:340px; }
+  .login-box h1 { font-size:18px; margin-bottom:4px; }
+  .login-box .muted { margin-bottom:18px; }
+  .login-box input { width:100%; margin-bottom:12px; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+
+<div id="login" class="login-wrap">
+  <div class="login-box">
+    <h1>云隐修仙录</h1>
+    <div class="muted">GM 后台 · 管理员登录</div>
+    <input id="lg-user" placeholder="道号" autocomplete="username">
+    <input id="lg-pass" type="password" placeholder="口令" autocomplete="current-password">
+    <button class="primary" style="width:100%" onclick="doLogin()">登 录</button>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <h1>云隐修仙录 · GM 后台</h1>
+    <div class="spacer"></div>
+    <span class="who" id="who"></span>
+    <button onclick="logout()">退出</button>
+  </header>
+  <main>
+    <div class="tabs">
+      <button id="tab-stats" class="on" onclick="switchTab('stats')">概览</button>
+      <button id="tab-users" onclick="switchTab('users')">账号管理</button>
+      <button id="tab-config" onclick="switchTab('config')">参数设置</button>
+      <button id="tab-broadcast" onclick="switchTab('broadcast')">全服公告</button>
+    </div>
+
+    <section id="pane-stats">
+      <div class="stat-grid" id="stats"></div>
+    </section>
+
+    <section id="pane-users" class="hidden">
+      <div class="card">
+        <div class="row">
+          <input id="u-search" placeholder="搜道号 / 邮箱" style="width:220px" onkeydown="if(event.key==='Enter')loadUsers(1)">
+          <button class="primary" onclick="loadUsers(1)">搜索</button>
+          <span class="muted" id="u-total"></span>
+        </div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr>
+            <th>ID</th><th>道号</th><th>邮箱</th><th>角色名</th><th>境界</th><th>战力</th>
+            <th>身份</th><th>状态</th><th>存档更新</th><th style="width:230px">操作</th>
+          </tr></thead>
+          <tbody id="u-rows"></tbody>
+        </table>
+        <div class="pager">
+          <button onclick="pageTurn(-1)">上一页</button>
+          <span class="muted" id="u-page"></span>
+          <button onclick="pageTurn(1)">下一页</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="pane-config" class="hidden">
+      <div class="card">
+        <h2>游戏关键参数</h2>
+        <div class="cfg-grid" id="cfg-rows"></div>
+        <p class="muted" style="margin-top:12px">改后点「保存」立即生效(聊天限速等对已在线玩家最迟 30 秒内生效)。</p>
+      </div>
+    </section>
+
+    <section id="pane-broadcast" class="hidden">
+      <div class="card">
+        <h2>全服公告</h2>
+        <textarea id="bc-text" rows="3" maxlength="200" placeholder="将同步到全服聊天(署名「仙官」)与公告参数"></textarea>
+        <div class="row" style="margin-top:10px">
+          <button class="primary" onclick="sendBroadcast()">发布公告</button>
+          <span class="muted">历史公告见「参数设置」页 announcement 字段</span>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="dlg-pw">
+  <h3>重置口令</h3>
+  <div class="field"><label>新口令(6~64 字)</label><input id="pw-input" type="text"></div>
+  <div class="acts">
+    <button onclick="document.getElementById('dlg-pw').close()">取消</button>
+    <button class="primary" onclick="confirmPw()">确定</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-detail">
+  <h3 id="dt-title">用户详情</h3>
+  <div id="dt-body" class="kv"></div>
+  <div class="acts"><button onclick="document.getElementById('dlg-detail').close()">关闭</button></div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = location.pathname.replace(/\/+$/, '') + '/api'
+let token = sessionStorage.getItem('gm_token') || ''
+let me = sessionStorage.getItem('gm_name') || ''
+let page = 1, pageSize = 20
+
+function $ (id) { return document.getElementById(id) }
+function toast (msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200) }
+function esc (s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
+function fmt (ts) { return ts ? new Date(Number(ts)).toLocaleString('zh-CN', { hour12: false }) : '—' }
+
+async function api (path, opts = {}) {
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', Authorization: token ? 'Bearer ' + token : '', ...(opts.headers || {}) }
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status))
+  return data
+}
+
+function switchTab (name) {
+  for (const t of ['stats', 'users', 'config', 'broadcast']) {
+    $('tab-' + t).classList.toggle('on', t === name)
+    $('pane-' + t).classList.toggle('hidden', t !== name)
+  }
+  if (name === 'stats') loadStats()
+  if (name === 'users') loadUsers(page)
+  if (name === 'config') loadConfig()
+}
+
+async function doLogin () {
+  try {
+    const d = await api('/login', { method: 'POST', body: JSON.stringify({ username: $('lg-user').value.trim(), password: $('lg-pass').value }) })
+    token = d.token
+    me = $('lg-user').value.trim()
+    sessionStorage.setItem('gm_token', token)
+    sessionStorage.setItem('gm_name', me)
+    enter()
+  } catch (e) { toast(e.message) }
+}
+function logout () { token = ''; sessionStorage.clear(); location.reload() }
+
+function enter () {
+  $('login').classList.add('hidden')
+  $('app').classList.remove('hidden')
+  $('who').textContent = '管理员:' + me
+  loadStats()
+}
+
+async function loadStats () {
+  try {
+    const d = await api('/stats')
+    $('stats').innerHTML = [
+      ['注册用户', d.users], ['有效存档', d.saves], ['已建角色', d.profiles],
+      ['当前在线', d.online], ['封禁中', d.banned]
+    ].map(([k, v]) => `<div class="stat"><span>${k}</span><b>${v}</b></div>`).join('')
+  } catch (e) { toast(e.message) }
+}
+
+async function loadUsers (p) {
+  page = p || page
+  try {
+    const q = new URLSearchParams({ search: $('u-search').value.trim(), page, pageSize })
+    const d = await api('/users?' + q)
+    $('u-total').textContent = '共 ' + d.total + ' 人'
+    $('u-page').textContent = '第 ' + d.page + ' / ' + Math.max(Math.ceil(d.total / d.pageSize), 1) + ' 页'
+    $('u-rows').innerHTML = d.users.map(u => `<tr>
+      <td>${u.id}</td>
+      <td>${esc(u.username)}</td>
+      <td class="wrap">${esc(u.email || '—')}</td>
+      <td>${u.profile ? esc(u.profile.name) : '—'}</td>
+      <td>${u.profile ? esc(u.profile.realmLabel) : '—'}</td>
+      <td>${u.profile ? esc(u.profile.powerE > 0 ? (u.profile.powerM + 'e' + u.profile.powerE) : u.profile.powerM) : '—'}</td>
+      <td>${u.role === 'admin' ? '<span class="tag admin">管理员</span>' : '玩家'}</td>
+      <td>${u.status === 'active' ? '<span class="tag ok">正常</span>' : '<span class="tag ban">封禁</span>'}</td>
+      <td>${fmt(u.saveAt)}</td>
+      <td>
+        <button onclick="viewDetail(${u.id})">详情</button>
+        ${u.status === 'active'
+          ? `<button class="danger" onclick="ban(${u.id},true)">封禁</button>`
+          : `<button onclick="ban(${u.id},false)">解封</button>`}
+        <button onclick="resetPw(${u.id})">重置口令</button>
+        ${u.role !== 'admin' ? `<button class="danger" onclick="delUser(${u.id},'${esc(u.username)}')">删除</button>` : ''}
+      </td>
+    </tr>`).join('') || '<tr><td colspan="10" class="muted">无数据</td></tr>'
+  } catch (e) { toast(e.message) }
+}
+function pageTurn (d) { loadUsers(Math.max(page + d, 1)) }
+
+async function ban (id, on) {
+  try { await api(`/users/${id}/${on ? 'ban' : 'unban'}`, { method: 'POST' }); toast(on ? '已封禁' : '已解封'); loadUsers() }
+  catch (e) { toast(e.message) }
+}
+async function delUser (id, name) {
+  if (!confirm(`删除用户「${name}」?\n其存档、角色、好友、聊天记录将一并清除,不可恢复。`)) return
+  try { await api(`/users/${id}`, { method: 'DELETE' }); toast('已删除'); loadUsers() }
+  catch (e) { toast(e.message) }
+}
+let pwTarget = 0
+function resetPw (id) { pwTarget = id; $('pw-input').value = ''; $('dlg-pw').showModal() }
+async function confirmPw () {
+  try { await api(`/users/${pwTarget}/reset-password`, { method: 'POST', body: JSON.stringify({ password: $('pw-input').value }) }); $('dlg-pw').close(); toast('口令已重置') }
+  catch (e) { toast(e.message) }
+}
+async function viewDetail (id) {
+  try {
+    const d = await api(`/users/${id}`)
+    const u = d.user, p = d.profile
+    $('dt-title').textContent = `用户详情 · ${u.username} (id=${u.id})`
+    $('dt-body').innerHTML = `
+      <div><b>邮箱</b>${esc(u.email || '—')}</div>
+      <div><b>身份</b>${u.role === 'admin' ? '管理员' : '玩家'} · ${u.status === 'active' ? '正常' : '封禁'}</div>
+      <div><b>注册时间</b>${fmt(u.created_at)}</div>
+      <div><b>角色名</b>${p ? esc(p.name) : '—'}</div>
+      <div><b>境界</b>${p ? esc(p.realm_label) + ' (' + p.realm_index + ')' : '—'}</div>
+      <div><b>战力</b>${p ? p.power_m + (p.power_e > 0 ? 'e' + p.power_e : '') : '—'}</div>
+      <div><b>气血</b>${p ? p.hp_m + (p.hp_e > 0 ? 'e' + p.hp_e : '') : '—'} <b style="min-width:0">攻击</b>${p ? p.atk_m + (p.atk_e > 0 ? 'e' + p.atk_e : '') : '—'}</div>
+      <div><b>角色更新</b>${p ? fmt(p.updated_at) : '—'}</div>
+      <div><b>存档</b>${d.save ? `版本 ${d.save.version} · ${d.save.bytes} 字节 · ${fmt(d.save.updatedAt)}` : '无'}</div>
+      <div><b>好友数</b>${d.friends}</div>`
+    $('dlg-detail').showModal()
+  } catch (e) { toast(e.message) }
+}
+
+const CFG_LABELS = {
+  announcement: ['全服公告', 'text'],
+  chat_min_interval_ms: ['聊天最小间隔(毫秒)', 'num'],
+  chat_max_len: ['单条聊天最长字数', 'num'],
+  leaderboard_size: ['排行榜条数', 'num'],
+  chat_history_size: ['聊天历史条数', 'num']
+}
+async function loadConfig () {
+  try {
+    const d = await api('/config')
+    $('cfg-rows').innerHTML = Object.keys(CFG_LABELS).map(k => `
+      <label style="color:var(--sub);font-size:13px">${CFG_LABELS[k][0]}</label>
+      <input id="cfg-${k}" value="${esc(d.config[k] ?? '')}">
+      <button class="primary" onclick="saveCfg('${k}')">保存</button>`).join('')
+  } catch (e) { toast(e.message) }
+}
+async function saveCfg (k) {
+  try { await api(`/config/${k}`, { method: 'PUT', body: JSON.stringify({ value: $('cfg-' + k).value }) }); toast('已保存') }
+  catch (e) { toast(e.message) }
+}
+async function sendBroadcast () {
+  try { await api('/broadcast', { method: 'POST', body: JSON.stringify({ content: $('bc-text').value.trim() }) }); toast('公告已发布'); $('bc-text').value = '' }
+  catch (e) { toast(e.message) }
+}
+
+if (token) enter()
+</script>
+</body>
+</html>

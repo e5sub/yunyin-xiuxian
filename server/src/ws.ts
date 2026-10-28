@@ -1,6 +1,7 @@
 /** ws 网关:鉴权 / 在线状态 / 聊天广播 / 好友通知推送 */
 import type { IncomingMessage } from 'node:http'
 import { WebSocket, WebSocketServer } from 'ws'
+import { getConfigNumber } from './config.js'
 import { verifyToken } from './auth.js'
 
 interface Client {
@@ -43,7 +44,7 @@ export function initWsServer(wss: WebSocketServer): void {
         return
       }
       if (msg.type === 'chat' && typeof msg.content === 'string') {
-        handleChat(client, msg.content)
+        void handleChat(client, msg.content)
       }
     })
 
@@ -57,6 +58,11 @@ export function initWsServer(wss: WebSocketServer): void {
 
 export function isOnline(uid: number): boolean {
   return clients.has(uid)
+}
+
+/** 在线连接数(同一账号多端只计一次) */
+export function onlineCount(): number {
+  return clients.size
 }
 
 export function onlineList(): Array<{ id: number; name: string }> {
@@ -77,14 +83,28 @@ function broadcastPresence(): void {
   }
 }
 
-const CHAT_MIN_INTERVAL_MS = 1200
-const CHAT_MAX_LEN = 120
+/** 全服广播(GM 公告等);system=true 时消息来自系统身份 */
+export function broadcastAll(msg: Record<string, unknown>): void {
+  const payload = JSON.stringify(msg)
+  for (const set of clients.values()) {
+    for (const c of set) {
+      if (c.ws.readyState === WebSocket.OPEN) c.ws.send(payload)
+    }
+  }
+}
 
-function handleChat(client: Client, content: string): void {
-  const text = content.trim().slice(0, CHAT_MAX_LEN)
+const DEFAULT_CHAT_MIN_INTERVAL_MS = 1200
+const DEFAULT_CHAT_MAX_LEN = 120
+
+async function handleChat(client: Client, content: string): Promise<void> {
+  const [minInterval, maxLen] = await Promise.all([
+    getConfigNumber('chat_min_interval_ms', DEFAULT_CHAT_MIN_INTERVAL_MS),
+    getConfigNumber('chat_max_len', DEFAULT_CHAT_MAX_LEN)
+  ])
+  const text = content.trim().slice(0, maxLen)
   if (text === '') return
   const now = Date.now()
-  if (now - client.lastChatAt < CHAT_MIN_INTERVAL_MS) return
+  if (now - client.lastChatAt < minInterval) return
   client.lastChatAt = now
   const payload = JSON.stringify({ type: 'chat', from: { id: client.uid, name: client.name }, content: text, at: now })
   for (const set of clients.values()) {
