@@ -69,7 +69,7 @@ const STATEFUL_CORE = new Set<string>([
   "resourceGuidance.ts",
   "samsaraService.ts",
   "save.ts",
-  "savePlatform.ts",
+  "cloudSave.ts",
   "secretRealm.ts",
   "smartKeep.ts",
   "soulService.ts",
@@ -81,7 +81,7 @@ const STATEFUL_CORE = new Set<string>([
 ]);
 
 /** core → store 的引用处数基线(只许减;名单没变时防止单个模块越挂越多) */
-const CORE_STORE_SITES = 192;
+const CORE_STORE_SITES = 194;
 /** core 用例里需要 Pinia 的文件数基线(只许减) */
 const CORE_PINIA_SPECS = 119;
 

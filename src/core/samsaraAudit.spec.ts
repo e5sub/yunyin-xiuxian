@@ -394,7 +394,7 @@ describe('轮回审计 · 跨店持久化分片最小完备', () => {
     settings: {
       sfxOn: 'keep', musicOn: 'keep', musicVol: 'keep', sfxVol: 'keep', reduceMotion: 'keep',
       dndEvents: 'keep', battleSpeed: 'keep', decomposeRanks: 'keep', smartKeep: 'keep',
-      privacyAccepted: 'keep', theme: 'keep', lastExportAt: 'keep', installNoticeDismissed: 'keep', lastSeenVersion: 'keep'
+      privacyAccepted: 'keep', theme: 'keep', installNoticeDismissed: 'keep', lastSeenVersion: 'keep'
     },
     loadouts: { list: 'keep' },
     endgame: {

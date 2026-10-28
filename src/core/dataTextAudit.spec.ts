@@ -305,7 +305,7 @@ describe('文案数值对账 · 视图不手抄数字', () => {
     const about = src('../components/settings/SettingsAboutSection.vue')
     for (const [name, text, marker] of [
       ['偏好段', pref, 'settings.musicOn'],
-      ['存档段', save, 'importSaveText('],
+      ['存档段', save, 'resetGame('],
       ['诊断段', diag, 'diag.errors'],
       ['关于段', about, 'markReleaseSeen(']
     ] as const) {
@@ -313,17 +313,9 @@ describe('文案数值对账 · 视图不手抄数字', () => {
     }
     expect(host, '宿主只摆节标题与顺序').toContain('<SettingsPreferenceSection />')
     expect(host, '宿主不再自己读设置项').not.toContain('settings.musicOn')
-    expect(host, '宿主不再自己接存档流程').not.toMatch(/importSaveText\(|resetGame\(|exportSaveToDevice\(/)
+    expect(host, '宿主不再自己接存档流程').not.toMatch(/resetGame\(|cloudApi\./)
     expect(host, '宿主不再自己摊诊断').not.toContain('diag.errors')
     expect(host, '宿主不再自己开关于浮层').not.toContain('markReleaseSeen(')
-  })
-
-  it('导入确认前摊开备份身份与版本,过高版本提前置灰', () => {
-    const save = src('../components/settings/SettingsSaveSection.vue')
-    expect(save, '确认前应摊开备份身份').toContain('importInspect.name')
-    expect(save, '确认前应摊开备份版本').toContain('importInspect.version')
-    expect(save, '过高版本应提前置灰').toContain(':disabled="importInspect?.tooNew === true"')
-    expect(save, '版本过高与否取自 inspect,不另写死').toContain('inspectImportText(text)')
   })
 })
 

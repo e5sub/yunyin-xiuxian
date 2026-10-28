@@ -39,6 +39,8 @@ src/ui/    展示层字符串/图标注册（非逻辑）
 | `src/types/` | 领域类型 |
 | `src/router/` | hash 路由 + 首启流程守卫 |
 | `src/composables/` | useNow / useWallClock 等 |
+| `src/services/` | 网游后端客户端（REST + WebSocket，见 cloud.ts） |
+| `server/` | 网游后端：Node + Express + ws + better-sqlite3（注册登录 / 云存档 / 好友 / 排行榜 / 聊天 / 切磋） |
 | `scripts/` | test-report.mjs、ui-smoke.mjs、layout-check.mjs、offline-check.mjs、fonts/build-kai-font.py |
 | `.github/workflows/` | CI（PR 检查、发布 Pages/PWA/Docker/Electron/APK） |
 | `.planning/ril/` | RIL 图（工程记忆，勿手改 JSON） |
@@ -61,6 +63,18 @@ tsconfig paths `@/* → ./src/*`，开启 `strict` + `noUncheckedIndexedAccess` 
 - `bun run offline-check` — 构建 + SW 离线自检
 - `bun run build:electron` / `build:android` / `build:apk`
 - 楷体打包：`uv run scripts/fonts/build-kai-font.py`
+
+## 网游后端（server/）
+
+单机已改网游：进度存云端，本地 localStorage 只是缓存。后端在 `server/`（独立 package.json，Node + tsx）。
+
+- `cd server && npm install && npm run dev` — 起后端（:8787，REST `/api/**` + WS `/ws`）
+- `npm run check`（server 目录内）— tsc 类型检查
+- 数据落在 `server/data/yunyin.db`（SQLite，gitignore）；JWT 密钥在 `server/data/jwt-secret`
+- 客户端接后端：dev 走 vite 代理（vite.config.ts 里 `/api`、`/ws` → 127.0.0.1:8787）；生产用 `VITE_API_BASE` 指向后端域名
+- **云存档链路**：`core/cloudSave.ts` 定时推（20s + 切后台）+ 登录/启动拉取（`restoreFromCloud`）；云端应用与旧导入走同一条 `core/save.ts applySavePayload`（校验/迁移/原子写盘）
+- **auth store 不在 PERSISTED_STORES**（登录态不是游戏进度，清档不清登录、云上传不带 token）；saveRoundTrip.spec 的源码倒推清单已豁免 `auth`
+- 本地「导入/导出存档」已移除；`savePlatform*/saveFileRead/saveBackup` 等模块已删
 
 ## Code Conventions & Common Patterns
 

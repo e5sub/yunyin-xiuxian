@@ -63,6 +63,11 @@
         <span class="font-kai text-[13px] tracking-widest text-ink">坊市</span>
       </RouterLink>
 
+      <RouterLink to="/friends" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-azure/15 text-azure"><GameIcon name="users" :size="18" /></span>
+        <span class="font-kai text-[13px] tracking-widest text-ink">道友</span>
+      </RouterLink>
+
       <RouterLink to="/apprentice" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
         <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-jade/15 text-jade"><GameIcon name="users" :size="18" /></span>
         <span class="font-kai text-[13px] tracking-widest text-ink">道童</span>

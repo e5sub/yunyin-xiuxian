@@ -31,6 +31,13 @@ export default defineConfig({
       '@': resolve(import.meta.dirname, 'src')
     }
   },
+  server: {
+    // dev 代理到本地网游后端;生产走反代或 VITE_API_BASE。用 127.0.0.1:localhost 在部分环境解析成 ::1 连不上
+    proxy: {
+      '/api': 'http://127.0.0.1:8787',
+      '/ws': { target: 'ws://127.0.0.1:8787', ws: true }
+    }
+  },
   test: {
     environment: 'node',
     include: ['src/**/*.spec.ts'],

@@ -1,7 +1,6 @@
-/** 存档服务:导出 / 导入 / 重置 / 迁移 */
+/** 存档服务:云端档应用 / 重置 / 迁移 */
 import {
   applyImportPayload,
-  buildExportPayload,
   clearAllSave,
   migrateHerbSlice,
   migrateInventorySlice,
@@ -9,8 +8,6 @@ import {
   validateImportPayload,
   type ExportPayload
 } from '@/utils/storage'
-import { encryptSave, readSaveText } from '@/utils/crypto'
-import { realmLabel } from '@/data/realms'
 import { useGameStore } from '@/stores/game'
 import { engine } from './engine'
 
@@ -33,60 +30,19 @@ function migrate(payload: ExportPayload): ExportPayload {
   return migrated
 }
 
-export function exportSaveText(): string {
-  // 导出为密文,防手改;导入时兼容旧版明文 JSON
-  return encryptSave(JSON.stringify(buildExportPayload()))
-}
-
-/** 导入存档文本(密文或旧版明文皆可);成功返回 null,失败返回错误信息 */
-export function importSaveText(text: string): string | null {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(readSaveText(text.trim()))
-  } catch {
-    return '文件无法解析'
-  }
+/**
+ * 云端存档应用入口:校验/迁移/原子写盘链路,来源是对象而非密文文本。
+ * 成功返回 null;失败已回滚旧档,返回错误信息。
+ */
+export function applySavePayload(parsed: unknown): string | null {
   const error = validateImportPayload(parsed)
   if (error) return error
   try {
     applyImportPayload(migrate(parsed as ExportPayload))
   } catch (e) {
-    // 原子导入已回滚旧档,错误信息写明「原档已保留」
     return e instanceof Error ? e.message : '存档写入失败'
   }
   return null
-}
-
-export interface ImportInspect {
-  name: string
-  realmLabel: string
-  version: number
-  exportedAt: number
-  /** 备份版本高于当前游戏(确认前展示) */
-  tooNew: boolean
-}
-
-/** 只读检视待导入的存档(不落库),供确认框展示;解析失败返回 null(交由导入路径报具体错) */
-export function inspectImportText(text: string): ImportInspect | null {
-  try {
-    const parsed = JSON.parse(readSaveText(text.trim())) as Partial<
-      ExportPayload & { data?: { player?: { name?: unknown; major?: unknown; sub?: unknown } } }
-    >
-    if (typeof parsed !== 'object' || parsed === null) return null
-    if (typeof parsed.version !== 'number' || typeof parsed.exportedAt !== 'number') return null
-    const player = parsed.data?.player
-    const major = typeof player?.major === 'number' && Number.isFinite(player.major) ? player.major : 0
-    const sub = typeof player?.sub === 'number' && Number.isFinite(player.sub) ? player.sub : 0
-    return {
-      name: typeof player?.name === 'string' && player.name ? player.name : '无名散修',
-      realmLabel: realmLabel(major, sub),
-      version: parsed.version,
-      exportedAt: parsed.exportedAt,
-      tooNew: parsed.version > SAVE_VERSION
-    }
-  } catch {
-    return null
-  }
 }
 
 /**

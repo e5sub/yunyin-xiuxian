@@ -149,22 +149,6 @@ describe('界面分层 · 浮层只有一个出处', () => {
     expect(codex!.src, '卦象倒计时不得再借修行时长刷新').not.toContain('game.totalPlaySec')
   })
 
-  it('存档导入读取失败要当场回执 —— 两处入口同一条退路', () => {
-    const RECEIPT = "ui.toast('文件无法读取', 'warn')"
-    for (const path of ['views/WelcomeView.vue', 'components/settings/SettingsSaveSection.vue']) {
-      const f = FILES.find(x => x.path === path)
-      expect(f, `${path} 不见了`).toBeDefined()
-      const src = f!.src
-      const readAt = src.indexOf('readSaveFile(file')
-      const receiptAt = src.indexOf(RECEIPT, readAt)
-      expect(receiptAt, `${path} 读文件失败会静默`).toBeGreaterThan(-1)
-      expect(readAt, `${path} 导入读取要走可撤销句柄`).toBeGreaterThan(-1)
-      expect(receiptAt, `${path} 失败回执要挂在读取句柄的 error 回调里`).toBeGreaterThan(readAt)
-      expect(src, `${path} 离页要撤销读取句柄`).toContain('saveRead?.abort()')
-      expect(src, `${path} 离页后回调不许再暂停引擎`).toContain('if (unmounted) return')
-    }
-  })
-
   it('首页法球的断点监听随组件卸载 —— 重进首页不许累积闭包', () => {
     const f = FILES.find(x => x.path === 'views/HomeView.vue')
     expect(f, 'HomeView 不见了').toBeDefined()

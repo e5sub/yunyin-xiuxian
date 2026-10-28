@@ -1,8 +1,8 @@
 /* eslint-disable no-console -- 往返报告是给人看的 */
 /**
- * 存档往返:导出 → 清档 → 导入。
- *   一 PERSISTED_STORES 决定导出/导入/清档范围,须与 store 源码里的 persistConfig('x') 双向一致
- *      (漏登记:导出少一块、清档不净,且无提示)
+ * 存档往返:云端同步用的同一条应用链路(构建载荷 → 清档 → 应用)。
+ *   一 PERSISTED_STORES 决定上传/应用/清档范围,须与 store 源码里的 persistConfig('x') 双向一致
+ *      (漏登记:上传少一块、清档不净,且无提示;auth 是登录态不是游戏进度,不在清单)
  *   二 往返一致:每个分片对得上,重建 store 后关键状态仍在
  * 故障注入:删掉 PERSISTED_STORES 任一项(清单那条红),或让 applyImportPayload 跳过一个分片(往返那条红)。
  */
@@ -16,13 +16,14 @@ import {
   PERSISTED_STORES,
   SAVE_VERSION,
   STORE_NAMES,
+  buildExportPayload,
   clearAllSave,
   dropPendingWrites,
   flushSaveWrites,
   storageKey
 } from '@/utils/storage'
 import { readSaveText } from '@/utils/crypto'
-import { exportSaveText, importSaveText, inspectImportText } from './save'
+import { applySavePayload } from './save'
 import { usePlayerStore } from '@/stores/player'
 import { useInventoryStore } from '@/stores/inventory'
 import { useLoreStore } from '@/stores/lore'
@@ -39,7 +40,9 @@ import type { EnemyDef } from '@/types'
 
 const STORES_DIR = resolve(__dirname, '../stores')
 
-/** store 源码里调了 persistConfig 的 id;清单的真来源 */
+/** store 源码里调了 persistConfig 的 id;清单的真来源。auth 是登录态,不是游戏进度分片 */
+const NON_SAVE_STORES = new Set(['auth'])
+
 function persistedIdsFromSource(): string[] {
   const ids = new Set<string>()
   for (const file of readdirSync(STORES_DIR)) {
@@ -47,7 +50,7 @@ function persistedIdsFromSource(): string[] {
     const src = readFileSync(resolve(STORES_DIR, file), 'utf8')
     for (const m of src.matchAll(/persistConfig\(\s*'([a-zA-Z]+)'\s*\)/g)) ids.add(m[1]!)
   }
-  return [...ids].sort()
+  return [...ids].filter(id => !NON_SAVE_STORES.has(id)).sort()
 }
 
 function installStorage(): Map<string, string> {
@@ -138,8 +141,7 @@ describe('存档往返 · 导出再导入一模一样', () => {
     await nextTick()
     flushSaveWrites()
 
-    const text = exportSaveText()
-    const payload = JSON.parse(readSaveText(text)) as { version: number; data: Record<string, unknown> }
+    const payload = buildExportPayload()
     expect(payload.version, '导出应写明存档版本').toBe(SAVE_VERSION)
     const exportedIds = Object.keys(payload.data).sort()
     console.log(`\n导出分片 ${exportedIds.length} 片:${exportedIds.join('、')}`)
@@ -151,8 +153,8 @@ describe('存档往返 · 导出再导入一模一样', () => {
       '清档没清干净,后面的导入就分不清是导入的还是残留的'
     ).toEqual([])
 
-    const err = importSaveText(text)
-    expect(err, `导入失败:${err}`).toBeNull()
+    const err = applySavePayload(payload)
+    expect(err, `应用失败:${err}`).toBeNull()
 
     for (const id of exportedIds) {
       const raw = localStorage.getItem(storageKey(id))
@@ -233,11 +235,11 @@ describe('存档往返 · 导出再导入一模一样', () => {
     await nextTick()
     flushSaveWrites()
 
-    const text = exportSaveText()
+    const payload = buildExportPayload()
     dropPendingWrites()
     clearAllSave()
-    const err = importSaveText(text)
-    expect(err, `导入失败:${err}`).toBeNull()
+    const err = applySavePayload(payload)
+    expect(err, `应用失败:${err}`).toBeNull()
     bootStores()
 
     const back = useAdventureStore().lastBattle
@@ -252,44 +254,14 @@ describe('存档往返 · 导出再导入一模一样', () => {
     expect(analysis!.dataRows.length).toBeGreaterThan(5)
   })
 
-  it('导入的坏文本不许污染现有存档 —— 失败要原样留着', () => {
+  it('坏数据不许污染现有存档 —— 失败要原样留着', () => {
     const player = usePlayerStore()
     player.major = 5
     flushSaveWrites()
     const before = localStorage.getItem(storageKey('player'))
 
-    const err = importSaveText('这不是存档')
-    expect(err, '坏文本应报错').not.toBeNull()
-    expect(localStorage.getItem(storageKey('player')), '导入失败却动了现有存档').toBe(before)
-  })
-
-  it('检视导入能看到备份的身份与版本(确认前摊开,不改存档)', async () => {
-    const player = usePlayerStore()
-    useGameStore().markStarted()
-    player.name = '青崖子'
-    player.major = 7
-    player.sub = 3
-    await nextTick()
-    flushSaveWrites()
-    const text = exportSaveText()
-
-    const info = inspectImportText(text)
-    expect(info, '自己导的档应当检视得出身份').not.toBeNull()
-    expect(info!.name, '应读出存档里的玩家名').toBe('青崖子')
-    expect(info!.version, '检视版本应与当前一致').toBe(SAVE_VERSION)
-    expect(info!.tooNew, '同版本的档不该误报高于当前').toBe(false)
-    expect(info!.exportedAt, '应如实报导出时间').toBeGreaterThan(0)
-    expect(info!.realmLabel).not.toBe('')
-
-    const tooNew = inspectImportText(
-      `{"game":"yunyin-xiuxian","version":${SAVE_VERSION + 1},"exportedAt":1,"data":{"player":{"name":"未来客","major":1},"game":{}}}`
-    )
-    expect(tooNew?.tooNew, '更高版本应在确认前标出').toBe(true)
-
-    // 无名/缺字段时不抛错
-    expect(
-      inspectImportText(`{"game":"yunyin-xiuxian","version":1,"exportedAt":2,"data":{"player":{},"game":{}}}`)?.name
-    ).toBe('无名散修')
-    expect(inspectImportText('完全不是存档')).toBeNull()
+    const err = applySavePayload('这不是存档')
+    expect(err, '坏数据应报错').not.toBeNull()
+    expect(localStorage.getItem(storageKey('player')), '应用失败却动了现有存档').toBe(before)
   })
 })

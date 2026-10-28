@@ -1,10 +1,12 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { useGameStore } from '@/stores/game'
 import { useSettingsStore } from '@/stores/settings'
+import { useAuthStore } from '@/stores/auth'
 
 export const router = createRouter({
   history: createWebHashHistory(),
   routes: [
+    { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue') },
     { path: '/welcome', name: 'welcome', component: () => import('@/views/WelcomeView.vue') },
     { path: '/create', name: 'create', component: () => import('@/views/CreateView.vue') },
     { path: '/', name: 'home', component: () => import('@/views/HomeView.vue') },
@@ -24,11 +26,17 @@ export const router = createRouter({
     { path: '/titles', name: 'titles', component: () => import('@/views/TitlesView.vue') },
     { path: '/legacy', name: 'legacy', component: () => import('@/views/LegacyView.vue') },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
+    { path: '/friends', name: 'friends', component: () => import('@/views/FriendsView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' }
   ]
 })
 
 router.beforeEach(to => {
+  // 未登录一律先到登录页(网游版:进度存云端,不再有游客模式)
+  const auth = useAuthStore()
+  if (!auth.loggedIn) {
+    return to.name === 'login' ? true : { name: 'login' }
+  }
   const game = useGameStore()
   if (game.started) {
     if (to.name === 'welcome' || to.name === 'create') return { name: 'home' }

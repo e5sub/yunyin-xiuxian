@@ -36,8 +36,11 @@
   import { useGameStore } from '@/stores/game'
   import { useUiStore } from '@/stores/ui'
   import { useSettingsStore } from '@/stores/settings'
+  import { useAuthStore } from '@/stores/auth'
   import { subscribeSaveWriteFailure } from '@/utils/storage'
   import { engine } from '@/core/engine'
+  import { connectCloudWs, disconnectCloudWs } from '@/services/cloud'
+  import { restoreFromCloud, startCloudSync } from '@/core/cloudSave'
   import { applyTheme, initTheme } from '@/core/theme'
   import { resetModalStack } from '@/composables/useModalStack'
   import { configureAudio, disposeAudio, playSfx, unlockAudio } from '@/core/audio'
@@ -72,6 +75,16 @@
 
   let unsubscribeTheme: () => void = () => undefined
   let unsubscribeSaveFailure: () => void = () => undefined
+
+  /** 网游会话:已登录则连 ws + 拉云端档 + 启动定时推送 */
+  async function bootstrapCloud(): Promise<void> {
+    const auth = useAuthStore()
+    if (!auth.loggedIn) return
+    connectCloudWs()
+    const restored = await restoreFromCloud()
+    if (restored) return // 云端档已应用并重载
+    startCloudSync()
+  }
 
   /** 首次交互后才能出声(浏览器策略);按钮附带点击音 */
   function onPointerDown(e: PointerEvent): void {
@@ -110,6 +123,7 @@
       else ui.toast('存档已恢复写入', 'info')
     })
     engine.start()
+    void bootstrapCloud()
     window.addEventListener('pointerdown', onPointerDown)
   })
 
@@ -117,6 +131,7 @@
     unsubscribeTheme()
     unsubscribeSaveFailure()
     engine.stop()
+    disconnectCloudWs()
     resetModalStack()
     disposeAudio()
     window.removeEventListener('pointerdown', onPointerDown)

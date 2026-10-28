@@ -17,7 +17,7 @@ import {
   storageKey
 } from '@/utils/storage'
 import { decryptSave, encryptSave } from '@/utils/crypto'
-import { importSaveText } from './save'
+import { applySavePayload } from './save'
 import { useInventoryStore } from '@/stores/inventory'
 import { useGameStore } from '@/stores/game'
 import { usePlayerStore } from '@/stores/player'
@@ -136,7 +136,7 @@ describe('迁移 · 导入一份 v1 存档', () => {
       exportedAt: Date.now(),
       data: { game: { started: true }, player: { major: 3 }, inventory: structuredClone(LEGACY_V1) }
     }
-    expect(importSaveText(JSON.stringify(payload)), 'v1 存档应当能导入').toBeNull()
+    expect(applySavePayload(payload), 'v1 存档应当能应用').toBeNull()
 
     const raw = localStorage.getItem(storageKey('inventory'))!
     const stored = JSON.parse(decryptSave(raw)!)
@@ -187,7 +187,7 @@ describe('迁移 · 灵草五品(旧档单标量 herb → 品阶分账)', () => 
       exportedAt: Date.now(),
       data: { game: { started: true }, player: { major: 9 }, resources: { herb: 60 } }
     }
-    expect(importSaveText(JSON.stringify(payload))).toBeNull()
+    expect(applySavePayload(payload)).toBeNull()
     const back = JSON.parse(decryptSave(localStorage.getItem(storageKey('resources'))!)!)
     expect(back.herbByGrade[1], '仙界(9 境)旧草同样并入凡品账').toBe(60)
     expect('herb' in back).toBe(false)

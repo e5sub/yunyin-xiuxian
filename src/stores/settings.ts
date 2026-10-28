@@ -45,8 +45,6 @@ export const useSettingsStore = defineStore(
     /** 是否已同意隐私政策(欢迎页勾选后记录,老档视为已同意) */
     const privacyAccepted = ref(false)
     const theme = ref<'auto' | 'light' | 'dark'>('auto')
-    /** 上次导出存档的时间戳(0 = 从未导出);备份提醒见 core/saveBackup.ts */
-    const lastExportAt = ref(0)
     /** iOS「添加到主屏幕」提示卡被玩家关掉过(关掉即不再出现) */
     const installNoticeDismissed = ref(false)
 
@@ -73,7 +71,6 @@ export const useSettingsStore = defineStore(
       musicOn.value = musicOn.value === true
       reduceMotion.value = reduceMotion.value === true
       privacyAccepted.value = privacyAccepted.value === true
-      lastExportAt.value = asFiniteNumber(lastExportAt.value, 0, 0)
       installNoticeDismissed.value = installNoticeDismissed.value === true
       lastSeenVersion.value = typeof lastSeenVersion.value === 'string' ? lastSeenVersion.value : ''
       decomposeRanks.value = [
@@ -111,7 +108,6 @@ export const useSettingsStore = defineStore(
       smartKeep,
       privacyAccepted,
       theme,
-      lastExportAt,
       installNoticeDismissed,
       lastSeenVersion,
       hasUnseenRelease,

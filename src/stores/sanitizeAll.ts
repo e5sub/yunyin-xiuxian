@@ -13,6 +13,7 @@ import { useAdventureStore } from '@/stores/adventure'
 import { useEndgameStore } from '@/stores/endgame'
 import { useLoadoutsStore } from '@/stores/loadouts'
 import { useSettingsStore } from '@/stores/settings'
+import { useAuthStore } from '@/stores/auth'
 import { useGameStore } from '@/stores/game'
 import { useDiagStore } from '@/stores/diag'
 import { useMarketStore } from '@/stores/market'
@@ -33,6 +34,7 @@ export function sanitizeAllStores(): void {
   useEndgameStore().sanitize()
   useLoadoutsStore().sanitize()
   useSettingsStore().sanitize()
+  useAuthStore().sanitize()
   useGameStore().sanitize()
   useDiagStore().sanitize()
   useMarketStore().sanitize()

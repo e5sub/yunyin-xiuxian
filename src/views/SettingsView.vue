@@ -2,6 +2,9 @@
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
     <SectionTitle title="设置" />
 
+    <SettingsAccountSection />
+
+    <SectionTitle title="偏好" />
     <SettingsPreferenceSection />
 
     <SectionTitle title="存档" />
@@ -21,6 +24,7 @@
 <script setup lang="ts">
   import SectionTitle from '@/components/common/SectionTitle.vue'
   import InstallToHomeNotice from '@/components/common/InstallToHomeNotice.vue'
+  import SettingsAccountSection from '@/components/settings/SettingsAccountSection.vue'
   import SettingsPreferenceSection from '@/components/settings/SettingsPreferenceSection.vue'
   import SettingsSaveSection from '@/components/settings/SettingsSaveSection.vue'
   import SettingsDiagnosticsSection from '@/components/settings/SettingsDiagnosticsSection.vue'
