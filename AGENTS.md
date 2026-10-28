@@ -40,7 +40,7 @@ src/ui/    展示层字符串/图标注册（非逻辑）
 | `src/router/` | hash 路由 + 首启流程守卫 |
 | `src/composables/` | useNow / useWallClock 等 |
 | `src/services/` | 网游后端客户端（REST + WebSocket，见 cloud.ts） |
-| `server/` | 网游后端：Node + Express + ws + better-sqlite3（注册登录 / 云存档 / 好友 / 排行榜 / 聊天 / 切磋） |
+| `server/` | 网游后端：Node + Express + ws（SQLite/MySQL 双方言，注册登录 / 云存档 / 好友 / 排行榜 / 聊天 / 切磋 / GM 后台） |
 | `scripts/` | test-report.mjs、ui-smoke.mjs、layout-check.mjs、offline-check.mjs、fonts/build-kai-font.py |
 | `.github/workflows/` | CI（PR 检查、发布 Pages/PWA/Docker/Electron/APK） |
 | `.planning/ril/` | RIL 图（工程记忆，勿手改 JSON） |
@@ -75,6 +75,9 @@ tsconfig paths `@/* → ./src/*`，开启 `strict` + `noUncheckedIndexedAccess` 
 - **云存档链路**：`core/cloudSave.ts` 定时推（20s + 切后台）+ 登录/启动拉取（`restoreFromCloud`）；云端应用与旧导入走同一条 `core/save.ts applySavePayload`（校验/迁移/原子写盘）
 - **auth store 不在 PERSISTED_STORES**（登录态不是游戏进度，清档不清登录、云上传不带 token）；saveRoundTrip.spec 的源码倒推清单已豁免 `auth`
 - 本地「导入/导出存档」已移除；`savePlatform*/saveFileRead/saveBackup` 等模块已删
+- **数据库**：默认 SQLite（`server/data/yunyin.db`）；`DB_DRIVER=mysql` + `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME` 切 MySQL。查询统一走 `db.ts` 的 `all/get/run/exec`（`?` 占位、异步），upsert 用双方言同语义的 `REPLACE INTO`
+- **GM 后台**：路径由 `GM_PATH` 自定义（默认 `/gm`），单页在 `server/gm/index.html`。功能：账号管理（搜索/封禁/解封/重置口令/删除）、角色与存档查看、游戏参数（`game_config` 表，30 秒缓存生效）、全服公告（聊天署名「仙官」+ 广播）。管理员：`npm run admin -- <道号> <口令>`（创建或提权，`users.role='admin'`）
+- **邮箱**：注册必填用户名+邮箱；`EMAIL_CODE_REQUIRED=true` 强制验证码（预留开关）、`EMAIL_ENABLED=true` + `SMTP_HOST/PORT/USER/PASS/FROM` 实发邮件；未启用时验证码打到控制台且响应带 `devCode`（联调）。忘记密码：`/api/auth/forgot` + `/api/auth/reset`（邮箱+验证码+新口令）
 
 ## Code Conventions & Common Patterns
 

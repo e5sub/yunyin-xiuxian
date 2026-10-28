@@ -14,9 +14,9 @@ export const useAuthStore = defineStore(
 
     const loggedIn = computed(() => token.value !== '' && userId.value > 0)
 
-    /** 注册并登录;失败抛 CloudError(界面取 message 显示) */
-    async function register(name: string, password: string): Promise<void> {
-      const res = await cloudApi.register(name, password)
+    /** 注册并登录(邮箱必填);失败抛 CloudError(界面取 message 显示) */
+    async function register(name: string, email: string, password: string, code = ''): Promise<void> {
+      const res = await cloudApi.register(name, email, password, code)
       applySession(res.token, res.user.id, res.user.username)
     }
 

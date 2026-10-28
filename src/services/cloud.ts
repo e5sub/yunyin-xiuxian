@@ -61,6 +61,19 @@ export type CloudWsMsg =
 
 export class CloudError extends Error {}
 
+export interface AuthConfig {
+  /** 注册是否强制邮箱验证码(预留开关,服务端 EMAIL_CODE_REQUIRED) */
+  emailCodeRequired: boolean
+  /** 服务端是否已配置 SMTP 实发邮件 */
+  emailEnabled: boolean
+}
+
+export interface EmailCodeResp {
+  ok: boolean
+  /** SMTP 未启用时联调用 */
+  devCode?: string
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const auth = useAuthStore()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -92,10 +105,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 export const cloudApi = {
-  register: (username: string, password: string): Promise<{ token: string; user: CloudUser }> =>
-    request('POST', '/auth/register', { username, password }),
+  authConfig: (): Promise<AuthConfig> => request('GET', '/auth/config'),
+  register: (username: string, email: string, password: string, code = ''): Promise<{ token: string; user: CloudUser }> =>
+    request('POST', '/auth/register', { username, email, password, code }),
   login: (username: string, password: string): Promise<{ token: string; user: CloudUser }> =>
     request('POST', '/auth/login', { username, password }),
+  emailCode: (email: string, purpose: 'register' | 'reset'): Promise<EmailCodeResp> =>
+    request('POST', '/auth/email-code', { email, purpose }),
+  forgot: (email: string): Promise<EmailCodeResp> => request('POST', '/auth/forgot', { email }),
+  resetPassword: (email: string, code: string, password: string): Promise<{ ok: boolean }> =>
+    request('POST', '/auth/reset', { email, code, password }),
   deleteSave: (): Promise<{ ok: boolean }> => request('DELETE', '/save'),
   getSave: (): Promise<{ save: CloudSaveInfo | null }> => request('GET', '/save'),
   putSave: (payload: { version: number; data: Record<string, unknown>; profile: unknown }): Promise<{ ok: boolean }> =>

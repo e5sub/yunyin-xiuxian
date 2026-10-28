@@ -35,6 +35,33 @@
           class="w-full rounded-lg border border-ink/15 bg-paper-deep/60 px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-faint focus:border-cinnabar/60 focus:outline-none"
         />
         <input
+          v-if="mode === 'register'"
+          v-model.trim="email"
+          type="email"
+          maxlength="190"
+          autocomplete="email"
+          placeholder="邮箱(找回口令用)"
+          class="w-full rounded-lg border border-ink/15 bg-paper-deep/60 px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-faint focus:border-cinnabar/60 focus:outline-none"
+        />
+        <div v-if="mode === 'register' && codeRequired" class="flex gap-2">
+          <input
+            v-model.trim="code"
+            type="text"
+            inputmode="numeric"
+            maxlength="6"
+            placeholder="邮箱验证码"
+            class="min-w-0 flex-1 rounded-lg border border-ink/15 bg-paper-deep/60 px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-faint focus:border-cinnabar/60 focus:outline-none"
+          />
+          <button
+            type="button"
+            class="shrink-0 rounded-lg border border-ink/15 px-3 text-[12px] text-ink-faint active:text-ink"
+            :disabled="codeCooldown > 0"
+            @click="sendRegisterCode"
+          >
+            {{ codeCooldown > 0 ? `${codeCooldown}s` : '发验证码' }}
+          </button>
+        </div>
+        <input
           v-model="password"
           type="password"
           maxlength="64"
@@ -47,27 +74,193 @@
           {{ busy ? '处理中' : mode === 'login' ? '入 道' : '开 山 门' }}
         </button>
       </form>
+
+      <button
+        v-if="mode === 'login'"
+        class="mt-3 inline-flex min-h-[28px] text-[11px] text-ink-faint active:text-ink-soft"
+        @click="forgotOpen = true"
+      >
+        忘记口令
+      </button>
     </div>
+
+    <BaseModal :open="forgotOpen" title="找回口令" @close="forgotOpen = false">
+      <div class="space-y-3">
+        <input
+          v-model.trim="fpEmail"
+          type="email"
+          maxlength="190"
+          placeholder="注册邮箱"
+          class="w-full rounded-lg border border-ink/15 bg-paper-deep/60 px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-faint focus:border-cinnabar/60 focus:outline-none"
+        />
+        <div class="flex gap-2">
+          <input
+            v-model.trim="fpCode"
+            type="text"
+            inputmode="numeric"
+            maxlength="6"
+            placeholder="验证码"
+            class="min-w-0 flex-1 rounded-lg border border-ink/15 bg-paper-deep/60 px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-faint focus:border-cinnabar/60 focus:outline-none"
+          />
+          <button
+            type="button"
+            class="shrink-0 rounded-lg border border-ink/15 px-3 text-[12px] text-ink-faint active:text-ink"
+            :disabled="fpCooldown > 0"
+            @click="sendForgotCode"
+          >
+            {{ fpCooldown > 0 ? `${fpCooldown}s` : '发验证码' }}
+          </button>
+        </div>
+        <input
+          v-model="fpPassword"
+          type="password"
+          maxlength="64"
+          autocomplete="new-password"
+          placeholder="新口令(6字以上)"
+          class="w-full rounded-lg border border-ink/15 bg-paper-deep/60 px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-faint focus:border-cinnabar/60 focus:outline-none"
+        />
+        <p v-if="forgotMsg !== ''" class="text-[11px]" :class="forgotOk ? 'text-teal-700' : 'text-cinnabar'">
+          {{ forgotMsg }}
+        </p>
+      </div>
+      <template #footer>
+        <div class="flex gap-2">
+          <button class="btn-ghost flex-1" @click="forgotOpen = false">再想想</button>
+          <button class="btn-seal flex-1" :disabled="forgotBusy" @click="doReset">重置口令</button>
+        </div>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
 <script setup lang="ts">
-  import { ref } from 'vue'
+  import { onMounted, ref } from 'vue'
   import { useRouter } from 'vue-router'
   import { useAuthStore } from '@/stores/auth'
   import { useGameStore } from '@/stores/game'
-  import { CloudError, connectCloudWs } from '@/services/cloud'
+  import { useUiStore } from '@/stores/ui'
+  import { CloudError, cloudApi, connectCloudWs } from '@/services/cloud'
   import { pullCloudSave } from '@/core/cloudSave'
+  import BaseModal from '@/components/common/BaseModal.vue'
 
   const router = useRouter()
   const auth = useAuthStore()
   const game = useGameStore()
+  const ui = useUiStore()
 
   const mode = ref<'login' | 'register'>('login')
   const name = ref('')
+  const email = ref('')
+  const code = ref('')
   const password = ref('')
   const error = ref('')
   const busy = ref(false)
+
+  /** 服务端开关:注册是否强制邮箱验证码(EMAIL_CODE_REQUIRED) */
+  const codeRequired = ref(false)
+  const codeCooldown = ref(0)
+
+  const forgotOpen = ref(false)
+  const fpEmail = ref('')
+  const fpCode = ref('')
+  const fpPassword = ref('')
+  const fpCooldown = ref(0)
+  const forgotMsg = ref('')
+  const forgotOk = ref(false)
+  const forgotBusy = ref(false)
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+  onMounted(() => {
+    void cloudApi
+      .authConfig()
+      .then(c => {
+        codeRequired.value = c.emailCodeRequired
+      })
+      .catch(() => undefined)
+  })
+
+  function sendRegisterCode(): void {
+    if (!EMAIL_RE.test(email.value)) {
+      error.value = '请填写有效邮箱'
+      return
+    }
+    error.value = ''
+    void cloudApi
+      .emailCode(email.value, 'register')
+      .then(r => {
+        if (r.devCode !== undefined) ui.toast(`验证码 ${r.devCode}`, 'success')
+        else ui.toast('验证码已发送', 'success')
+      })
+      .catch(e => {
+        error.value = e instanceof CloudError ? e.message : '发送失败'
+      })
+    codeCooldown.value = 60
+    const iv = setInterval(() => {
+      codeCooldown.value -= 1
+      if (codeCooldown.value <= 0) clearInterval(iv)
+    }, 1000)
+  }
+
+  function sendForgotCode(): void {
+    if (!EMAIL_RE.test(fpEmail.value)) {
+      forgotMsg.value = '请填写有效邮箱'
+      forgotOk.value = false
+      return
+    }
+    void cloudApi
+      .forgot(fpEmail.value)
+      .then(r => {
+        forgotMsg.value = r.devCode !== undefined ? `验证码 ${r.devCode}` : '验证码已发送'
+        forgotOk.value = true
+      })
+      .catch(e => {
+        forgotMsg.value = e instanceof CloudError ? e.message : '发送失败'
+        forgotOk.value = false
+      })
+    fpCooldown.value = 60
+    const iv = setInterval(() => {
+      fpCooldown.value -= 1
+      if (fpCooldown.value <= 0) clearInterval(iv)
+    }, 1000)
+  }
+
+  async function doReset(): Promise<void> {
+    if (forgotBusy.value) return
+    if (!EMAIL_RE.test(fpEmail.value)) {
+      forgotMsg.value = '请填写有效邮箱'
+      forgotOk.value = false
+      return
+    }
+    if (fpCode.value === '') {
+      forgotMsg.value = '请填验证码'
+      forgotOk.value = false
+      return
+    }
+    if (fpPassword.value.length < 6) {
+      forgotMsg.value = '口令太短'
+      forgotOk.value = false
+      return
+    }
+    forgotBusy.value = true
+    try {
+      await cloudApi.resetPassword(fpEmail.value, fpCode.value, fpPassword.value)
+      forgotMsg.value = '口令已重置'
+      forgotOk.value = true
+      fpEmail.value = ''
+      fpCode.value = ''
+      fpPassword.value = ''
+      setTimeout(() => {
+        forgotOpen.value = false
+        mode.value = 'login'
+        forgotMsg.value = ''
+      }, 800)
+    } catch (e) {
+      forgotMsg.value = e instanceof CloudError ? e.message : '重置失败'
+      forgotOk.value = false
+    }
+    forgotBusy.value = false
+  }
 
   async function onSubmit(): Promise<void> {
     if (busy.value) return
@@ -76,6 +269,16 @@
       error.value = '道号太短'
       return
     }
+    if (mode.value === 'register') {
+      if (!EMAIL_RE.test(email.value)) {
+        error.value = '请填写有效邮箱'
+        return
+      }
+      if (codeRequired.value && code.value === '') {
+        error.value = '请填邮箱验证码'
+        return
+      }
+    }
     if (password.value.length < 6) {
       error.value = '口令太短'
       return
@@ -83,7 +286,7 @@
     busy.value = true
     try {
       if (mode.value === 'login') await auth.login(name.value, password.value)
-      else await auth.register(name.value, password.value)
+      else await auth.register(name.value, email.value, password.value, code.value)
     } catch (e) {
       error.value = e instanceof CloudError ? e.message : '请求失败'
       busy.value = false
