@@ -114,10 +114,10 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       // 签名/过期类是正常的老 token;其余(尤其查库失败=迁移没跑成)必须留痕,否则线上只看到「登录已过期」查不到原因。
       // 密钥换掉后所有旧 token 都会刷 invalid signature,老客户端还会每几秒推一次档 —— 日志限流,别刷屏
       if (err instanceof jwt.TokenExpiredError) {
-        warnToken('token 已过期')
+        warnToken('token 已过期', req)
       } else if (err instanceof jwt.JsonWebTokenError) {
         // 密钥变了(重启丢卷/换了实例/改了 YUNYIN_JWT_SECRET)最典型,生产可见即可自查
-        warnToken(`token 校验失败:${err.message}`)
+        warnToken(`token 校验失败:${err.message}`, req)
       } else {
         console.error('[auth] 鉴权查库异常(多半是表结构迁移没跑成):', err)
       }
@@ -126,21 +126,22 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   })()
 }
 
-/** token 校验失败日志限流:密钥变更后老客户端会高频重试,同因 30 秒只打一条并带次数 */
+/** token 校验失败日志限流:密钥变更后老客户端会高频重试,同因(同消息)30 秒只打一条并带次数 */
 const TOKEN_WARN_GAP_MS = 30_000
-let tokenWarnLastAt = 0
-let tokenWarnSkipped = 0
+const tokenWarnLast = new Map<string, { at: number; skipped: number }>()
 
-function warnToken(message: string): void {
+function warnToken(message: string, req: Request): void {
   const now = Date.now()
-  if (now - tokenWarnLastAt < TOKEN_WARN_GAP_MS) {
-    tokenWarnSkipped += 1
+  const bucket = tokenWarnLast.get(message)
+  if (bucket !== undefined && now - bucket.at < TOKEN_WARN_GAP_MS) {
+    bucket.skipped += 1
     return
   }
-  const suffix = tokenWarnSkipped > 0 ? `(已省略 ${tokenWarnSkipped} 条同因日志)` : ''
-  tokenWarnSkipped = 0
-  tokenWarnLastAt = now
-  console.warn(`[auth] ${message}${suffix}`)
+  const suffix = bucket !== undefined && bucket.skipped > 0 ? `(已省略 ${bucket.skipped} 条同因日志)` : ''
+  tokenWarnLast.set(message, { at: now, skipped: 0 })
+  // 带上路径与来源 IP(反代后 trust proxy 已解析 X-Forwarded-For),便于定位是哪个客户端在拿废 token 重试
+  const from = req.ip ?? 'unknown-ip'
+  console.warn(`[auth] ${message}${suffix} (来自 ${from} ${req.method} ${req.originalUrl})`)
 }
 
 /** GM 后台鉴权:必须是 role=admin 的活跃账号 */
