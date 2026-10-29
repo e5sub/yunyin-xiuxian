@@ -263,9 +263,9 @@ CREATE INDEX IF NOT EXISTS idx_profile_rank ON profiles(realm_index DESC, power_
     return
   }
 
-  // MySQL
+  // MySQL:连接未开 multipleStatements,DDL 需逐条执行;按 ';' 切分(表定义内部无分号)
   const d = await mysqlPool()
-  await d.query(`
+  const ddl = `
 CREATE TABLE IF NOT EXISTS users (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(64) NOT NULL,
@@ -378,8 +378,28 @@ CREATE TABLE IF NOT EXISTS dungeon_daily (
   PRIMARY KEY (user_id, dungeon, day),
   CONSTRAINT fk_dungeon_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE INDEX idx_users_email ON users(email_lower);
-`) as unknown as void
+` // CREATE INDEX 放后面单独跑(MySQL 无 IF NOT EXISTS,重复启动要容错)
+  for (const stmt of ddl.split(';').map(s => s.trim()).filter(Boolean)) {
+    await d.query(stmt)
+  }
+  // 老库迁移:补邮箱/角色/状态列(已存在则忽略),之后才能建邮箱索引
+  for (const stmt of [
+    'ALTER TABLE users ADD COLUMN email VARCHAR(190) DEFAULT NULL',
+    'ALTER TABLE users ADD COLUMN email_lower VARCHAR(190) DEFAULT NULL',
+    "ALTER TABLE users ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'player'",
+    "ALTER TABLE users ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'active'"
+  ]) {
+    try {
+      await d.query(stmt)
+    } catch {
+      /* 列已存在 */
+    }
+  }
+  try {
+    await d.query('CREATE INDEX idx_users_email ON users(email_lower)')
+  } catch {
+    /* 索引已存在 */
+  }
 
   await seedConfig()
 }
