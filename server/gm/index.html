@@ -96,6 +96,11 @@
   td { color:var(--ink-2); }
   tbody tr:hover td { background:rgb(var(--c-cinnabar) / 0.045); }
   td.wrap { white-space:normal; }
+  /* 表格比容器宽时横向滚动,不顶破卡片;触屏跟手 */
+  .tbl-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:8px; }
+  /* 操作列:按钮允许换行堆叠,不再撑爆固定宽 */
+  td.acts { white-space:normal; }
+  td.acts button { margin:2px 4px 2px 0; padding:4px 9px; font-size:12px; }
   .tag { display:inline-block; padding:1px 8px; border-radius:6px; font-size:12px; border:1px solid transparent; }
   .tag.ok { background:rgb(var(--c-jade) / 0.14); color:var(--ok); border-color:rgb(var(--c-jade) / 0.30); }
   .tag.ban { background:rgb(var(--c-cinnabar) / 0.12); color:var(--danger); border-color:rgb(var(--c-cinnabar) / 0.32); }
@@ -125,7 +130,7 @@
   .cfg-grid input { max-width:420px; }
   .cfg-group { grid-column:1/-1; margin-top:8px; font-family:var(--font-kai); font-weight:600;
     letter-spacing:.08em; color:var(--brand); }
-  .kv { font-size:13px; line-height:1.9; }
+  .kv { font-size:13px; line-height:1.9; overflow-wrap:anywhere; }
   .kv b { display:inline-block; min-width:84px; color:var(--sub); font-weight:400; }
   .login-wrap { min-height:100vh; display:grid; place-items:center; padding:20px; }
   .login-box { width:352px; padding:34px 32px; background:var(--card); border:1px solid var(--line);
@@ -187,13 +192,15 @@
         </div>
       </div>
       <div class="card">
-        <table>
-          <thead><tr>
-            <th>ID</th><th>道号</th><th>邮箱</th><th>角色名</th><th>境界</th><th>战力</th>
-            <th>身份</th><th>状态</th><th>存档更新</th><th style="width:230px">操作</th>
-          </tr></thead>
-          <tbody id="u-rows"></tbody>
-        </table>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>ID</th><th>道号</th><th>邮箱</th><th>角色名</th><th>境界</th><th>战力</th>
+              <th>身份</th><th>状态</th><th>存档更新</th><th style="min-width:150px">操作</th>
+            </tr></thead>
+            <tbody id="u-rows"></tbody>
+          </table>
+        </div>
         <div class="pager">
           <button onclick="pageTurn(-1)">上一页</button>
           <span class="muted" id="u-page"></span>
@@ -211,13 +218,15 @@
         </div>
       </div>
       <div class="card">
-        <table>
-          <thead><tr>
-            <th>ID</th><th>道号</th><th>角色名</th><th>境界</th><th>战力</th>
-            <th>档大小</th><th>开局</th><th>存档更新</th><th style="width:90px">操作</th>
-          </tr></thead>
-          <tbody id="sv-rows"></tbody>
-        </table>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>ID</th><th>道号</th><th>角色名</th><th>境界</th><th>战力</th>
+              <th>档大小</th><th>开局</th><th>存档更新</th><th style="width:90px">操作</th>
+            </tr></thead>
+            <tbody id="sv-rows"></tbody>
+          </table>
+        </div>
       </div>
     </section>
 
@@ -346,7 +355,7 @@ async function loadUsers (p) {
       <td>${u.role === 'admin' ? '<span class="tag admin">管理员</span>' : '玩家'}</td>
       <td>${u.status === 'active' ? '<span class="tag ok">正常</span>' : '<span class="tag ban">封禁</span>'}</td>
       <td>${fmt(u.saveAt)}</td>
-      <td>
+      <td class="acts">
         <button onclick="viewDetail(${u.id})">详情</button>
         ${u.status === 'active'
           ? `<button class="danger" onclick="ban(${u.id},true)">封禁</button>`
