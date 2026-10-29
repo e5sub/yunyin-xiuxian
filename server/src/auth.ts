@@ -110,7 +110,16 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       }
       req.user = { id: row.id, username: row.username }
       next()
-    } catch {
+    } catch (err) {
+      // 签名/过期类是正常的老 token;其余(尤其查库失败=迁移没跑成)必须留痕,否则线上只看到「登录已过期」查不到原因
+      if (err instanceof jwt.TokenExpiredError) {
+        console.warn('[auth] token 已过期')
+      } else if (err instanceof jwt.JsonWebTokenError) {
+        // 密钥变了(重启丢卷/换了实例)最典型,生产可见即可自查
+        console.warn('[auth] token 校验失败:', err.message)
+      } else {
+        console.error('[auth] 鉴权查库异常(多半是表结构迁移没跑成):', err)
+      }
       res.status(401).json({ error: '登录已过期' })
     }
   })()
@@ -146,7 +155,10 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
       req.user = { id: row.id, username: row.username }
       req.isAdmin = true
       next()
-    } catch {
+    } catch (err) {
+      if (!(err instanceof jwt.JsonWebTokenError) && !(err instanceof jwt.TokenExpiredError)) {
+        console.error('[auth] GM 鉴权异常(查库失败?):', err)
+      }
       res.status(401).json({ error: '登录已过期' })
     }
   })()
