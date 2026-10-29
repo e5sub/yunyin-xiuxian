@@ -6,60 +6,142 @@
 <meta name="robots" content="noindex,nofollow">
 <title>云隐修仙录 · GM 后台</title>
 <style>
-  :root { --bg:#f4f5f7; --card:#fff; --ink:#1f2329; --sub:#646a73; --line:#e5e6eb; --brand:#2f66d0; --danger:#c9382e; --ok:#2e8a4f; --warn:#b26b00; }
+  /* 配色与游戏内一致(见 src/style.css):宣纸底 + 墨色字 + 朱砂点睛;暗色跟随系统 */
+  :root {
+    color-scheme: light dark;
+    --c-paper: 243 239 228;
+    --c-paper-deep: 234 228 211;
+    --c-paper-lift: 244 240 230;
+    --c-ink: 41 39 34;
+    --c-ink-soft: 74 70 61;
+    --c-ink-faint: 104 99 88;
+    --c-cinnabar: 168 63 57;
+    --c-cinnabar-deep: 140 51 46;
+    --c-jade: 80 109 88;
+    --c-gold: 124 94 42;
+
+    --bg: rgb(var(--c-paper));
+    --card: rgb(var(--c-paper-lift));
+    --ink: rgb(var(--c-ink));
+    --ink-2: rgb(var(--c-ink-soft));
+    --sub: rgb(var(--c-ink-faint));
+    --line: rgb(var(--c-ink) / 0.15);
+    --brand: rgb(var(--c-cinnabar));
+    --brand-deep: rgb(var(--c-cinnabar-deep));
+    --danger: rgb(var(--c-cinnabar-deep));
+    --ok: rgb(var(--c-jade));
+    --warn: rgb(var(--c-gold));
+    --font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    --font-kai: 'LXGW WenKai GB Screen', 'Kaiti SC', 'STKaiti', KaiTi, 'Noto Serif SC', serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --c-paper: 33 31 28;
+      --c-paper-deep: 41 38 34;
+      --c-paper-lift: 51 49 46;
+      --c-ink: 232 226 210;
+      --c-ink-soft: 198 191 169;
+      --c-ink-faint: 168 161 140;
+      --c-cinnabar: 201 85 78;
+      --c-cinnabar-deep: 163 70 64;
+      --c-jade: 147 175 149;
+      --c-gold: 200 163 90;
+    }
+  }
   * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif; background:var(--bg); color:var(--ink); font-size:14px; }
-  header { background:var(--card); border-bottom:1px solid var(--line); padding:0 20px; height:52px; display:flex; align-items:center; gap:16px; }
-  header h1 { font-size:16px; font-weight:600; }
+  body {
+    font-family:var(--font-sans);
+    background:radial-gradient(130% 90% at 50% 0%, rgb(var(--c-paper-lift)) 0%, rgb(var(--c-paper)) 64%) fixed;
+    color:var(--ink);
+    font-size:14px;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  header { position:sticky; top:0; z-index:5; height:56px; display:flex; align-items:center; gap:14px;
+    padding:0 20px; background:rgb(var(--c-paper) / 0.92); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line); }
+  header h1 { font-family:var(--font-kai); font-size:17px; font-weight:600; letter-spacing:.08em; }
   header .spacer { flex:1; }
-  header .who { color:var(--sub); font-size:12px; }
-  button { cursor:pointer; border:1px solid var(--line); background:var(--card); border-radius:6px; padding:6px 12px; font-size:13px; color:var(--ink); }
-  button:hover { border-color:var(--brand); color:var(--brand); }
-  button.danger { color:var(--danger); }
-  button.danger:hover { border-color:var(--danger); }
-  button.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
-  button.primary:hover { opacity:.9; color:#fff; }
-  input, select { border:1px solid var(--line); border-radius:6px; padding:6px 10px; font-size:13px; outline:none; }
-  input:focus { border-color:var(--brand); }
-  main { max-width:1080px; margin:0 auto; padding:20px; }
-  .tabs { display:flex; gap:4px; margin-bottom:16px; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:4px; width:fit-content; }
-  .tabs button { border:none; background:transparent; padding:7px 18px; border-radius:6px; }
-  .tabs button.on { background:var(--brand); color:#fff; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:16px; }
-  .card h2 { font-size:14px; margin-bottom:12px; font-weight:600; }
+  header .who { color:var(--sub); font-size:12px; letter-spacing:.06em; }
+  button { cursor:pointer; font-family:var(--font-kai); font-size:13px; color:var(--ink); letter-spacing:.04em;
+    background:var(--card); border:1px solid rgb(var(--c-ink) / 0.22); border-radius:8px; padding:6px 13px;
+    transition:border-color .15s, color .15s, background .15s; }
+  button:hover { border-color:rgb(var(--c-cinnabar) / 0.55); color:var(--brand); }
+  button.danger { color:var(--danger); border-color:rgb(var(--c-cinnabar) / 0.35); }
+  button.danger:hover { background:rgb(var(--c-cinnabar) / 0.10); border-color:var(--danger); }
+  button.primary { background:var(--brand); border-color:var(--brand); color:rgb(var(--c-paper)); }
+  button.primary:hover { background:var(--brand-deep); border-color:var(--brand-deep); color:rgb(var(--c-paper)); }
+  input, select, textarea { font-family:inherit; font-size:13px; color:var(--ink); background:var(--card);
+    border:1px solid rgb(var(--c-ink) / 0.20); border-radius:8px; padding:7px 10px; outline:none; }
+  input::placeholder, textarea::placeholder { color:var(--sub); }
+  input:focus, select:focus, textarea:focus { border-color:rgb(var(--c-cinnabar) / 0.6); box-shadow:0 0 0 3px rgb(var(--c-cinnabar) / 0.08); }
+  main { max-width:1120px; margin:0 auto; padding:22px 20px 44px; }
+  .tabs { display:inline-flex; gap:4px; margin-bottom:18px; background:var(--card);
+    border:1px solid var(--line); border-radius:10px; padding:4px; }
+  .tabs button { border:none; background:transparent; padding:7px 18px; border-radius:7px; color:var(--sub); }
+  .tabs button:hover { color:var(--brand); }
+  .tabs button.on { background:var(--brand); color:rgb(var(--c-paper)); }
+  .tabs button.on:hover { color:rgb(var(--c-paper)); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px;
+    margin-bottom:16px; box-shadow:0 1px 2px rgb(var(--c-ink) / 0.05); }
+  .card h2 { font-family:var(--font-kai); font-size:14px; font-weight:600; letter-spacing:.08em; margin-bottom:12px; }
+  .card h2::before { content:''; display:inline-block; width:3px; height:13px; background:var(--brand);
+    border-radius:2px; margin-right:8px; vertical-align:-1px; }
   table { width:100%; border-collapse:collapse; }
-  th, td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); font-size:13px; white-space:nowrap; }
-  th { color:var(--sub); font-weight:500; background:#fafbfc; }
+  th, td { text-align:left; padding:9px 10px; border-bottom:1px solid rgb(var(--c-ink) / 0.10);
+    font-size:13px; white-space:nowrap; }
+  th { color:var(--sub); font-weight:500; font-family:var(--font-kai); letter-spacing:.06em;
+    background:rgb(var(--c-ink) / 0.04); }
+  td { color:var(--ink-2); }
+  tbody tr:hover td { background:rgb(var(--c-cinnabar) / 0.045); }
   td.wrap { white-space:normal; }
-  .tag { display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px; }
-  .tag.ok { background:#e8f5ee; color:var(--ok); }
-  .tag.ban { background:#fdeceb; color:var(--danger); }
-  .tag.admin { background:#e8effc; color:var(--brand); }
+  .tag { display:inline-block; padding:1px 8px; border-radius:6px; font-size:12px; border:1px solid transparent; }
+  .tag.ok { background:rgb(var(--c-jade) / 0.14); color:var(--ok); border-color:rgb(var(--c-jade) / 0.30); }
+  .tag.ban { background:rgb(var(--c-cinnabar) / 0.12); color:var(--danger); border-color:rgb(var(--c-cinnabar) / 0.32); }
+  .tag.admin { background:rgb(var(--c-gold) / 0.14); color:var(--warn); border-color:rgb(var(--c-gold) / 0.32); }
   .stat-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
-  .stat { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 16px; }
-  .stat b { display:block; font-size:22px; margin-top:4px; }
-  .stat span { color:var(--sub); font-size:12px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  .stat span { color:var(--sub); font-size:12px; letter-spacing:.08em; }
+  .stat b { display:block; font-family:var(--font-kai); font-size:24px; line-height:1.35; margin-top:2px; }
+  .stat.hot b { color:var(--brand); }
   .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .muted { color:var(--sub); font-size:12px; }
   .pager { display:flex; gap:8px; align-items:center; margin-top:12px; }
-  .toast { position:fixed; top:16px; left:50%; transform:translateX(-50%); background:#333c4d; color:#fff; padding:9px 18px; border-radius:8px; font-size:13px; opacity:0; transition:.25s; pointer-events:none; z-index:9; }
+  .toast { position:fixed; top:18px; left:50%; transform:translateX(-50%); z-index:9;
+    background:rgb(var(--c-ink)); color:rgb(var(--c-paper)); padding:9px 18px; border-radius:10px;
+    font-size:13px; opacity:0; transition:.25s; pointer-events:none; box-shadow:0 8px 24px rgb(0 0 0 / .18); }
   .toast.show { opacity:1; }
-  dialog { border:1px solid var(--line); border-radius:10px; padding:20px; min-width:340px; max-width:520px; }
-  dialog::backdrop { background:rgba(0,0,0,.35); }
-  dialog h3 { font-size:15px; margin-bottom:14px; }
+  dialog { background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:12px;
+    padding:20px 22px; min-width:360px; max-width:540px; box-shadow:0 18px 50px rgb(0 0 0 / .25); }
+  dialog::backdrop { background:rgb(20 18 15 / .45); backdrop-filter:blur(2px); }
+  dialog h3 { font-family:var(--font-kai); font-size:15px; letter-spacing:.08em; margin-bottom:14px; }
   dialog .field { margin-bottom:12px; }
   dialog label { display:block; font-size:12px; color:var(--sub); margin-bottom:4px; }
   dialog input, dialog textarea { width:100%; }
-  dialog textarea { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; resize:vertical; }
+  dialog textarea { resize:vertical; }
   dialog .acts { display:flex; gap:8px; justify-content:flex-end; margin-top:6px; }
   .cfg-grid { display:grid; grid-template-columns:1fr auto auto; gap:10px 12px; align-items:center; }
+  .cfg-grid input { max-width:420px; }
+  .cfg-group { grid-column:1/-1; margin-top:8px; font-family:var(--font-kai); font-weight:600;
+    letter-spacing:.08em; color:var(--brand); }
   .kv { font-size:13px; line-height:1.9; }
   .kv b { display:inline-block; min-width:84px; color:var(--sub); font-weight:400; }
-  .login-wrap { min-height:100vh; display:grid; place-items:center; }
-  .login-box { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:32px; width:340px; }
-  .login-box h1 { font-size:18px; margin-bottom:4px; }
-  .login-box .muted { margin-bottom:18px; }
+  .login-wrap { min-height:100vh; display:grid; place-items:center; padding:20px; }
+  .login-box { width:352px; padding:34px 32px; background:var(--card); border:1px solid var(--line);
+    border-radius:14px; box-shadow:0 16px 40px rgb(var(--c-ink) / 0.08); }
+  .login-box h1 { font-family:var(--font-kai); font-size:24px; font-weight:600; letter-spacing:.18em; }
+  .login-box h1::after { content:''; display:block; width:38px; height:3px; border-radius:2px;
+    background:var(--brand); margin:12px 0 0; }
+  .login-box .muted { margin:10px 0 22px; letter-spacing:.12em; }
   .login-box input { width:100%; margin-bottom:12px; }
+  .login-box button.primary { width:100%; padding:9px; font-size:14px; letter-spacing:.3em; }
+  @media (max-width: 720px) {
+    main { padding:16px 12px 32px; }
+    .stat-grid { grid-template-columns:repeat(2,1fr); }
+    header { padding:0 14px; }
+    header h1 { font-size:15px; }
+    dialog { min-width:0; width:calc(100vw - 32px); }
+  }
   .hidden { display:none !important; }
 </style>
 </head>
@@ -215,7 +297,7 @@ async function loadStats () {
     $('stats').innerHTML = [
       ['注册用户', d.users], ['有效存档', d.saves], ['已建角色', d.profiles],
       ['当前在线', d.online], ['封禁中', d.banned]
-    ].map(([k, v]) => `<div class="stat"><span>${k}</span><b>${v}</b></div>`).join('')
+    ].map(([k, v]) => `<div class="stat${k === '当前在线' ? ' hot' : ''}"><span>${k}</span><b>${v}</b></div>`).join('')
   } catch (e) { toast(e.message) }
 }
 
@@ -361,7 +443,7 @@ async function loadConfig () {
   try {
     const d = await api('/config')
     $('cfg-rows').innerHTML = CFG_GROUPS.map(g => `
-      <div style="grid-column:1/-1;margin-top:6px;font-weight:600;color:var(--brand)">${g.title}</div>
+      <div class="cfg-group">${g.title}</div>
       ${Object.keys(g.keys).map(k => `
         <label style="color:var(--sub);font-size:13px">${g.keys[k][0]}</label>
         <input id="cfg-${k}" value="${esc(d.config[k] ?? '')}">
