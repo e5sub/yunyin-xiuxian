@@ -68,7 +68,6 @@ const STATEFUL_CORE = new Set<string>([
   "reincarnation.ts",
   "resourceGuidance.ts",
   "samsaraService.ts",
-  "save.ts",
   "cloudSave.ts",
   "secretRealm.ts",
   "smartKeep.ts",
