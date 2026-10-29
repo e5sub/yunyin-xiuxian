@@ -157,7 +157,19 @@ CREATE TABLE IF NOT EXISTS saves (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   version INTEGER NOT NULL,
   data TEXT NOT NULL,
+  started INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL
+);
+-- 存档历史:每次覆盖前留一份旧档,换设备/误覆盖后可回滚
+CREATE TABLE IF NOT EXISTS save_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  data TEXT NOT NULL,
+  realm_index INTEGER NOT NULL DEFAULT 0,
+  size INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS profiles (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -244,6 +256,7 @@ CREATE TABLE IF NOT EXISTS dungeon_daily (
 );
 CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(id DESC);
 CREATE INDEX IF NOT EXISTS idx_profile_rank ON profiles(realm_index DESC, power_e DESC, power_m DESC);
+CREATE INDEX IF NOT EXISTS idx_save_history_user ON save_history(user_id, id DESC);
 `)
     // 老库迁移:补邮箱/角色/状态列(已存在则忽略)
     for (const stmt of [
@@ -251,7 +264,8 @@ CREATE INDEX IF NOT EXISTS idx_profile_rank ON profiles(realm_index DESC, power_
       'ALTER TABLE users ADD COLUMN email_lower TEXT',
       "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'player'",
       "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
-      'ALTER TABLE users ADD COLUMN pass_changed_at INTEGER NOT NULL DEFAULT 0'
+      'ALTER TABLE users ADD COLUMN pass_changed_at INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE saves ADD COLUMN started INTEGER NOT NULL DEFAULT 0'
     ]) {
       try {
         d.exec(stmt)
@@ -261,6 +275,12 @@ CREATE INDEX IF NOT EXISTS idx_profile_rank ON profiles(realm_index DESC, power_
     }
     // 老库补列之后才能建邮箱索引
     d.exec('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email_lower)')
+    // 老库 saves.started 回填(JSON.stringify 无空格,按子串判定)
+    try {
+      d.exec(`UPDATE saves SET started = 1 WHERE started = 0 AND data LIKE '%"started":true%'`)
+    } catch {
+      /* 空表或列刚加 */
+    }
     await seedConfig()
     return
   }
@@ -284,8 +304,21 @@ CREATE TABLE IF NOT EXISTS saves (
   user_id BIGINT PRIMARY KEY,
   version INT NOT NULL,
   data MEDIUMTEXT NOT NULL,
+  started TINYINT NOT NULL DEFAULT 0,
   updated_at BIGINT NOT NULL,
   CONSTRAINT fk_saves_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS save_history (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  version INT NOT NULL,
+  data MEDIUMTEXT NOT NULL,
+  realm_index INT NOT NULL DEFAULT 0,
+  size INT NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL,
+  created_at BIGINT NOT NULL,
+  CONSTRAINT fk_save_history_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_save_history_user (user_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS profiles (
   user_id BIGINT PRIMARY KEY,
@@ -391,7 +424,8 @@ CREATE TABLE IF NOT EXISTS dungeon_daily (
     'ALTER TABLE users ADD COLUMN email_lower VARCHAR(190) DEFAULT NULL',
     "ALTER TABLE users ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'player'",
     "ALTER TABLE users ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'active'",
-    'ALTER TABLE users ADD COLUMN pass_changed_at BIGINT NOT NULL DEFAULT 0'
+    'ALTER TABLE users ADD COLUMN pass_changed_at BIGINT NOT NULL DEFAULT 0',
+    'ALTER TABLE saves ADD COLUMN started TINYINT NOT NULL DEFAULT 0'
   ]) {
     try {
       await d.query(stmt)
@@ -403,6 +437,12 @@ CREATE TABLE IF NOT EXISTS dungeon_daily (
     await d.query('CREATE INDEX idx_users_email ON users(email_lower)')
   } catch {
     /* 索引已存在 */
+  }
+  // 老库 saves.started 回填(同 SQLite 判定)
+  try {
+    await d.query(`UPDATE saves SET started = 1 WHERE started = 0 AND data LIKE '%"started":true%'`)
+  } catch {
+    /* 空表或列刚加 */
   }
 
   await seedConfig()

@@ -21,6 +21,16 @@ export interface CloudSaveInfo {
   updatedAt: number
 }
 
+/** 存档历史条目(不含档体) */
+export interface SaveHistoryRow {
+  id: number
+  version: number
+  realm_index: number
+  size: number
+  updated_at: number
+  created_at: number
+}
+
 export interface FriendEntry {
   id: number
   name: string
@@ -133,7 +143,18 @@ export interface DungeonRunResult {
   reward: { stone: number; herb: number }
 }
 
-export class CloudError extends Error {}
+export class CloudError extends Error {
+  /** HTTP 状态码;网络不通为 0 */
+  readonly status: number
+  /** 服务端业务码(如 conflict / empty_overwrite) */
+  readonly code: string
+
+  constructor(message: string, status = 0, code = '') {
+    super(message)
+    this.status = status
+    this.code = code
+  }
+}
 
 export interface AuthConfig {
   /** 注册是否强制邮箱验证码(预留开关,服务端 EMAIL_CODE_REQUIRED) */
@@ -169,11 +190,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     // 非 JSON 响应按空处理
   }
   if (!res.ok) {
-    const msg =
-      typeof json === 'object' && json !== null && typeof (json as { error?: unknown }).error === 'string'
-        ? (json as { error: string }).error
-        : '请求失败'
-    throw new CloudError(msg)
+    const obj = typeof json === 'object' && json !== null ? (json as { error?: unknown; code?: unknown }) : {}
+    const msg = typeof obj.error === 'string' ? obj.error : '请求失败'
+    const code = typeof obj.code === 'string' ? obj.code : ''
+    throw new CloudError(msg, res.status, code)
   }
   return json as T
 }
@@ -191,8 +211,17 @@ export const cloudApi = {
     request('POST', '/auth/reset', { email, code, password }),
   deleteSave: (): Promise<{ ok: boolean }> => request('DELETE', '/save'),
   getSave: (): Promise<{ save: CloudSaveInfo | null }> => request('GET', '/save'),
-  putSave: (payload: { version: number; data: Record<string, unknown>; profile: unknown }): Promise<{ ok: boolean }> =>
-    request('PUT', '/save', payload),
+  putSave: (payload: {
+    version: number
+    data: Record<string, unknown>
+    profile: unknown
+    /** 本机上次同步到的云端时间戳:服务端据此判断是否被别的设备改过 */
+    baseUpdatedAt?: number
+  }): Promise<{ ok: boolean; updatedAt: number }> => request('PUT', '/save', payload),
+  saveHistory: (limit = 30): Promise<{ history: SaveHistoryRow[] }> =>
+    request('GET', `/save/history?limit=${limit}`),
+  restoreSave: (historyId: number): Promise<{ ok: boolean; updatedAt: number }> =>
+    request('POST', '/save/restore', { historyId }),
   friends: (): Promise<FriendsData> => request('GET', '/friends'),
   presence: (): Promise<{ online: Array<{ id: number; name: string }>; count: number }> =>
     request('GET', '/presence'),

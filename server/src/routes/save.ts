@@ -1,6 +1,6 @@
-/** 云存档 + 玩家档案快照 */
+/** 云存档 + 玩家档案快照 + 存档历史(防丢/可回滚) */
 import express, { type Request, type Response } from 'express'
-import { get, run, upsertByPk } from '../db.js'
+import { all, get, run, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
 
 export interface ProfileSnapshot {
@@ -14,6 +14,15 @@ export interface ProfileSnapshot {
   atkM: number
   atkE: number
 }
+
+/** 每用户保留的历史份数 */
+const HISTORY_KEEP = 96
+/** 两次留存的最小间隔:客户端 20 秒推一次,不抽稀会一天灌满几千份 */
+const HISTORY_MIN_GAP_MS = 10 * 60_000
+/** 历史留存上限(天) */
+const HISTORY_TTL_MS = 7 * 24 * 3_600_000
+/** 客户端回传的 baseUpdatedAt 与服务端值的容差:上一次写入成功但响应丢了不算冲突 */
+const CONFLICT_TOLERANCE_MS = 2_000
 
 function finite(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v)
@@ -39,6 +48,52 @@ function parseSnapshot(raw: unknown, userId: number): ProfileSnapshot | null {
   }
 }
 
+/**
+ * 从存档 JSON 里取判定用的两个指标。
+ * 服务端只做「是否已开局 / 境界高低」的比较,不解析其余内容(玩法字段归客户端)。
+ */
+function metricsOf(json: string): { started: boolean; realmIndex: number } {
+  try {
+    const data = JSON.parse(json) as Record<string, unknown>
+    const game = typeof data.game === 'object' && data.game !== null ? (data.game as Record<string, unknown>) : {}
+    const player = typeof data.player === 'object' && data.player !== null ? (data.player as Record<string, unknown>) : {}
+    const major = finite(player.major) ? Math.trunc(player.major) : 0
+    const sub = finite(player.sub) ? Math.trunc(player.sub) : 0
+    return { started: game.started === true, realmIndex: major * 100 + sub }
+  } catch {
+    return { started: false, realmIndex: 0 }
+  }
+}
+
+/** 覆盖前留一份旧档:同份不重存、按间隔抽稀、突破(境界提升)必存,并顺手清理超量/超期 */
+async function backupBeforeOverwrite(userId: number, old: { version: number; data: string; updated_at: number }): Promise<void> {
+  const now = Date.now()
+  const oldMetrics = metricsOf(old.data)
+  const last = await get<{ id: number; updated_at: number; realm_index: number; created_at: number }>(
+    'SELECT id, updated_at, realm_index, created_at FROM save_history WHERE user_id = ? ORDER BY id DESC LIMIT 1',
+    [userId]
+  )
+  const sameAsLast = last !== undefined && last.updated_at === old.updated_at
+  const reachedBreakthrough = last !== undefined && oldMetrics.realmIndex > last.realm_index
+  const dueByGap = last === undefined || now - last.created_at >= HISTORY_MIN_GAP_MS
+  if (!sameAsLast && (reachedBreakthrough || dueByGap)) {
+    await run(
+      'INSERT INTO save_history (user_id, version, data, realm_index, size, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [userId, old.version, old.data, oldMetrics.realmIndex, old.data.length, old.updated_at, now]
+    )
+  }
+  // 超量清理:留最近 HISTORY_KEEP 份
+  const count = await get<{ c: number }>('SELECT COUNT(*) AS c FROM save_history WHERE user_id = ?', [userId])
+  if (count !== undefined && count.c > HISTORY_KEEP) {
+    await run(
+      'DELETE FROM save_history WHERE user_id = ? AND id NOT IN (SELECT id FROM (SELECT id FROM save_history WHERE user_id = ? ORDER BY id DESC LIMIT ?) t)',
+      [userId, userId, HISTORY_KEEP]
+    )
+  }
+  // 超期清理
+  await run('DELETE FROM save_history WHERE user_id = ? AND created_at < ?', [userId, now - HISTORY_TTL_MS])
+}
+
 export const saveRouter = express.Router()
 
 saveRouter.get('/save', requireAuth, (req: Request, res: Response) => {
@@ -60,7 +115,7 @@ saveRouter.get('/save', requireAuth, (req: Request, res: Response) => {
 saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
   void (async () => {
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
-    const version = typeof body.version === 'number' && Number.isFinite(body.version) ? Math.trunc(body.version) : 0
+    const version = finite(body.version) ? Math.trunc(body.version) : 0
     if (typeof body.data !== 'object' || body.data === null) {
       res.status(400).json({ error: '存档数据缺失' })
       return
@@ -77,10 +132,41 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       res.status(413).json({ error: '存档过大' })
       return
     }
+
+    const old = await get<{ version: number; data: string; updated_at: number }>(
+      'SELECT version, data, updated_at FROM saves WHERE user_id = ?',
+      [req.user!.id]
+    )
+
+    const metrics = metricsOf(json)
+    if (old !== undefined) {
+      const existing = metricsOf(old.data)
+      // 保护一:云端已有进度,不许被「未开局」的档覆盖(新设备残档 / 清档后的空档)
+      if (existing.started && !metrics.started) {
+        res.status(409).json({
+          code: 'empty_overwrite',
+          error: '云端已有存档,拒绝用未开局的空档覆盖',
+          updatedAt: old.updated_at
+        })
+        return
+      }
+      // 保护二:客户端声明了它基于哪个版本,与服务端不一致说明别的设备写过
+      if (finite(body.baseUpdatedAt) && old.updated_at > body.baseUpdatedAt + CONFLICT_TOLERANCE_MS) {
+        res.status(409).json({
+          code: 'conflict',
+          error: '云端存档已被其他设备更新',
+          updatedAt: old.updated_at
+        })
+        return
+      }
+      await backupBeforeOverwrite(req.user!.id, old)
+    }
+
     await upsertByPk('saves', {
       user_id: req.user!.id,
       version,
       data: json,
+      started: metrics.started ? 1 : 0,
       updated_at: now
     })
     const snapshot = parseSnapshot(body.profile, req.user!.id)
@@ -109,6 +195,56 @@ saveRouter.delete('/save', requireAuth, (req: Request, res: Response) => {
   void (async () => {
     await run('DELETE FROM saves WHERE user_id = ?', [req.user!.id])
     res.json({ ok: true })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})
+
+/** 自己的存档历史(不含 data,列表页够用) */
+saveRouter.get('/save/history', requireAuth, (req: Request, res: Response) => {
+  void (async () => {
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 30) || 30, 1), 96)
+    const rows = await all<{ id: number; version: number; realm_index: number; size: number; updated_at: number; created_at: number }>(
+      'SELECT id, version, realm_index, size, updated_at, created_at FROM save_history WHERE user_id = ? ORDER BY id DESC LIMIT ?',
+      [req.user!.id, limit]
+    )
+    res.json({ history: rows })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})
+
+/** 回滚到某个历史版本:当前档先存进历史,再写回 */
+saveRouter.post('/save/restore', requireAuth, (req: Request, res: Response) => {
+  void (async () => {
+    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
+    const historyId = finite(body.historyId) ? Math.trunc(body.historyId) : 0
+    if (historyId <= 0) {
+      res.status(400).json({ error: '缺少历史版本编号' })
+      return
+    }
+    const row = await get<{ version: number; data: string; updated_at: number }>(
+      'SELECT version, data, updated_at FROM save_history WHERE id = ? AND user_id = ?',
+      [historyId, req.user!.id]
+    )
+    if (row === undefined) {
+      res.status(404).json({ error: '历史版本不存在' })
+      return
+    }
+    const current = await get<{ version: number; data: string; updated_at: number }>(
+      'SELECT version, data, updated_at FROM saves WHERE user_id = ?',
+      [req.user!.id]
+    )
+    if (current !== undefined) await backupBeforeOverwrite(req.user!.id, current)
+    const now = Date.now()
+    await upsertByPk('saves', {
+      user_id: req.user!.id,
+      version: row.version,
+      data: row.data,
+      started: metricsOf(row.data).started ? 1 : 0,
+      updated_at: now
+    })
+    res.json({ ok: true, updatedAt: now })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })

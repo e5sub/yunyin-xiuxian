@@ -169,6 +169,7 @@
     <div class="tabs">
       <button id="tab-stats" class="on" onclick="switchTab('stats')">概览</button>
       <button id="tab-users" onclick="switchTab('users')">账号管理</button>
+      <button id="tab-saves" onclick="switchTab('saves')">云存档</button>
       <button id="tab-config" onclick="switchTab('config')">参数设置</button>
       <button id="tab-broadcast" onclick="switchTab('broadcast')">全服公告</button>
     </div>
@@ -198,6 +199,25 @@
           <span class="muted" id="u-page"></span>
           <button onclick="pageTurn(1)">下一页</button>
         </div>
+      </div>
+    </section>
+
+    <section id="pane-saves" class="hidden">
+      <div class="card">
+        <div class="row">
+          <input id="sv-search" placeholder="搜道号 / 角色名" style="width:220px" onkeydown="if(event.key==='Enter')loadSaves()">
+          <button class="primary" onclick="loadSaves()">搜索</button>
+          <span class="muted">按存档更新时间倒序;标记「空档」= 有云档但未开局,玩家报进度丢失时先看这里</span>
+        </div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr>
+            <th>ID</th><th>道号</th><th>角色名</th><th>境界</th><th>战力</th>
+            <th>档大小</th><th>开局</th><th>存档更新</th><th style="width:90px">操作</th>
+          </tr></thead>
+          <tbody id="sv-rows"></tbody>
+        </table>
       </div>
     </section>
 
@@ -240,6 +260,12 @@
   <div class="acts"><button onclick="document.getElementById('dlg-detail').close()">关闭</button></div>
 </dialog>
 
+<dialog id="dlg-history">
+  <h3 id="hs-title">存档历史</h3>
+  <div id="hs-body" class="kv"></div>
+  <div class="acts"><button onclick="document.getElementById('dlg-history').close()">关闭</button></div>
+</dialog>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -264,12 +290,13 @@ async function api (path, opts = {}) {
 }
 
 function switchTab (name) {
-  for (const t of ['stats', 'users', 'config', 'broadcast']) {
+  for (const t of ['stats', 'users', 'saves', 'config', 'broadcast']) {
     $('tab-' + t).classList.toggle('on', t === name)
     $('pane-' + t).classList.toggle('hidden', t !== name)
   }
   if (name === 'stats') loadStats()
   if (name === 'users') loadUsers(page)
+  if (name === 'saves') loadSaves()
   if (name === 'config') loadConfig()
 }
 
@@ -473,6 +500,74 @@ $('u-rows').addEventListener('click', e => {
   if (!btn) return
   void delUser(Number(btn.dataset.delId), btn.dataset.delName || '')
 })
+
+/* ---------------- 云存档:列表 / 历史 / 回滚 ---------------- */
+
+let saveRows = []
+let historyUserId = 0
+
+/** 战力 m×10^e 的粗展示(后台只看量级) */
+function fmtPower (s) {
+  const n = (Number(s.powerM) || 0) * Math.pow(10, Number(s.powerE) || 0)
+  if (!Number.isFinite(n)) return '—'
+  if (n >= 1e8) return (n / 1e8).toFixed(2) + '亿'
+  if (n >= 1e4) return (n / 1e4).toFixed(1) + '万'
+  return String(Math.round(n))
+}
+
+async function loadSaves () {
+  const q = $('sv-search').value.trim()
+  try {
+    const d = await api('/saves?limit=100' + (q === '' ? '' : '&q=' + encodeURIComponent(q)))
+    saveRows = d.saves
+    $('sv-rows').innerHTML = d.saves.length === 0
+      ? '<tr><td colspan="9" class="muted">没有匹配的存档</td></tr>'
+      : d.saves.map((s, i) => `<tr>
+          <td>${s.userId}</td>
+          <td>${esc(s.username)}</td>
+          <td>${esc(s.name)}</td>
+          <td>${esc(s.realmLabel) || '—'}</td>
+          <td>${fmtPower(s)}</td>
+          <td>${Math.max(1, Math.round(Number(s.bytes) / 1024))} KB</td>
+          <td>${s.started ? '<span class="tag ok">已开局</span>' : '<span class="tag ban">空档</span>'}</td>
+          <td>${fmt(s.updatedAt)}</td>
+          <td><button onclick="openHistoryByIndex(${i})">历史</button></td>
+        </tr>`).join('')
+  } catch (e) { toast(e.message) }
+}
+
+function openHistoryByIndex (i) {
+  const s = saveRows[i]
+  if (s) void openHistory(s.userId, s.username)
+}
+
+async function openHistory (userId, username) {
+  historyUserId = userId
+  $('hs-title').textContent = '存档历史 · ' + username
+  $('hs-body').innerHTML = '<div class="muted">读取中…</div>'
+  $('dlg-history').showModal()
+  try {
+    const d = await api('/saves/' + userId + '/history')
+    if (d.history.length === 0) {
+      $('hs-body').innerHTML = '<div class="muted">暂无历史版本(该玩家的档还没被覆盖过)</div>'
+      return
+    }
+    $('hs-body').innerHTML = d.history.map(h => `<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:5px 0">
+      <span>${fmt(h.created_at)} · 境界 ${Math.floor(h.realm_index / 100)}-${h.realm_index % 100} · ${Math.max(1, Math.round(Number(h.size) / 1024))} KB</span>
+      <button onclick="restoreVersion(${h.id})">回滚到这份</button>
+    </div>`).join('')
+  } catch (e) { $('hs-body').innerHTML = '<div class="muted">' + esc(e.message) + '</div>' }
+}
+
+async function restoreVersion (historyId) {
+  if (!confirm('确认把云端存档回滚到这份?当前存档会先存一份历史,可再回滚回来。')) return
+  try {
+    await api('/saves/' + historyUserId + '/restore', { method: 'POST', body: JSON.stringify({ historyId }) })
+    toast('已回滚,玩家下次启动即生效')
+    $('dlg-history').close()
+    loadSaves()
+  } catch (e) { toast(e.message) }
+}
 
 if (token) enter()
 </script>

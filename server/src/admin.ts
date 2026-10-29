@@ -5,7 +5,7 @@
  */
 import express, { type Request, type Response } from 'express'
 import bcrypt from 'bcryptjs'
-import { all, get, run } from './db.js'
+import { all, get, run, upsertByPk } from './db.js'
 import { setConfig } from './config.js'
 import { requireAdmin, verifyPassword } from './auth.js'
 import { onlineCount } from './ws.js'
@@ -146,8 +146,8 @@ gmRouter.get('/users/:id', requireAdmin, (req: Request, res: Response) => {
       return
     }
     const p = await get<Record<string, unknown>>('SELECT * FROM profiles WHERE user_id = ?', [id])
-    const s = await get<{ version: number; updated_at: number; LENGTH: number }>(
-      "SELECT version, updated_at, LENGTH(data) AS LENGTH FROM saves WHERE user_id = ?",
+    const s = await get<{ version: number; started: number; updated_at: number; LENGTH: number }>(
+      "SELECT version, started, updated_at, LENGTH(data) AS LENGTH FROM saves WHERE user_id = ?",
       [id]
     )
     const friendCount = await get<{ c: number }>(
@@ -157,7 +157,7 @@ gmRouter.get('/users/:id', requireAdmin, (req: Request, res: Response) => {
     res.json({
       user: u,
       profile: p ?? null,
-      save: s === undefined ? null : { version: s.version, updatedAt: s.updated_at, bytes: s.LENGTH },
+      save: s === undefined ? null : { version: s.version, started: s.started === 1, updatedAt: s.updated_at, bytes: s.LENGTH },
       friends: friendCount?.c ?? 0
     })
   })().catch(() => {
@@ -418,6 +418,102 @@ gmRouter.post('/broadcast', requireAdmin, (req: Request, res: Response) => {
     const { broadcastAll } = await import('./ws.js')
     broadcastAll({ type: 'chat', from: { id: 0, name: '仙官' }, content, at: now, system: true })
     res.json({ ok: true })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})
+
+/* ---------------- 云存档管理:查档 / 历史 / 回滚 ---------------- */
+
+/** 存档列表:按更新时间倒序;q 命中道号或角色名 */
+gmRouter.get('/saves', requireAdmin, (req: Request, res: Response) => {
+  void (async () => {
+    const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : ''
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 50) || 50, 1), 200)
+    const where = q === '' ? '' : 'WHERE u.username_lower LIKE ? OR LOWER(p.name) LIKE ?'
+    const params: unknown[] = q === '' ? [] : [`%${q}%`, `%${q}%`]
+    params.push(limit)
+    const rows = await all<Record<string, unknown>>(
+      `SELECT s.user_id, u.username, p.name, p.realm_label, p.realm_index, p.power_e, p.power_m,
+              s.version, s.started, s.updated_at, LENGTH(s.data) AS bytes
+       FROM saves s
+       JOIN users u ON u.id = s.user_id
+       LEFT JOIN profiles p ON p.user_id = s.user_id
+       ${where}
+       ORDER BY s.updated_at DESC
+       LIMIT ?`,
+      params
+    )
+    res.json({
+      saves: rows.map(r => ({
+        userId: r.user_id,
+        username: r.username,
+        name: r.name ?? '',
+        realmLabel: r.realm_label ?? '',
+        realmIndex: r.realm_index ?? 0,
+        powerE: r.power_e ?? 0,
+        powerM: r.power_m ?? 0,
+        version: r.version,
+        started: Number(r.started) === 1,
+        updatedAt: r.updated_at,
+        bytes: r.bytes ?? 0
+      }))
+    })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})
+
+/** 某人的存档历史(只列元信息,不传档体) */
+gmRouter.get('/saves/:userId/history', requireAdmin, (req: Request, res: Response) => {
+  void (async () => {
+    const userId = Number(req.params.userId)
+    if (!Number.isInteger(userId) || userId <= 0) {
+      res.status(400).json({ error: '参数无效' })
+      return
+    }
+    const rows = await all<Record<string, unknown>>(
+      'SELECT id, version, realm_index, size, updated_at, created_at FROM save_history WHERE user_id = ? ORDER BY id DESC LIMIT 100',
+      [userId]
+    )
+    res.json({ history: rows })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})
+
+/** 回滚某人的存档到指定历史版本(当前档先入历史,可再回滚回来) */
+gmRouter.post('/saves/:userId/restore', requireAdmin, (req: Request, res: Response) => {
+  void (async () => {
+    const userId = Number(req.params.userId)
+    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
+    const historyId = typeof body.historyId === 'number' && Number.isFinite(body.historyId) ? Math.trunc(body.historyId) : 0
+    if (!Number.isInteger(userId) || userId <= 0 || historyId <= 0) {
+      res.status(400).json({ error: '参数无效' })
+      return
+    }
+    const row = await get<{ version: number; data: string; updated_at: number }>(
+      'SELECT version, data, updated_at FROM save_history WHERE id = ? AND user_id = ?',
+      [historyId, userId]
+    )
+    if (row === undefined) {
+      res.status(404).json({ error: '历史版本不存在' })
+      return
+    }
+    const current = await get<{ version: number; data: string; updated_at: number }>(
+      'SELECT version, data, updated_at FROM saves WHERE user_id = ?',
+      [userId]
+    )
+    const now = Date.now()
+    if (current !== undefined) {
+      await run(
+        'INSERT INTO save_history (user_id, version, data, realm_index, size, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [userId, current.version, current.data, 0, current.data.length, current.updated_at, now]
+      )
+    }
+    const started = row.data.includes('"started":true') ? 1 : 0
+    await upsertByPk('saves', { user_id: userId, version: row.version, data: row.data, started, updated_at: now })
+    res.json({ ok: true, updatedAt: now, fromHistoryId: historyId })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })

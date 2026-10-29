@@ -1,7 +1,7 @@
 /** 网游账号:注册 / 登录 / 会话。token 持久化,断线重连不丢登录 */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { persistConfig } from '@/utils/storage'
+import { persistImmediateConfig } from '@/utils/storage'
 import { asFiniteNumber } from '@/utils/saveShape'
 import { cloudApi } from '@/services/cloud'
 
@@ -59,5 +59,5 @@ export const useAuthStore = defineStore(
       sanitize
     }
   },
-  { persist: persistConfig('auth') }
+  { persist: persistImmediateConfig('auth') }
 )

@@ -149,7 +149,7 @@
   import { useGameStore } from '@/stores/game'
   import { useUiStore } from '@/stores/ui'
   import { CloudError, cloudApi, connectCloudWs } from '@/services/cloud'
-  import { pullCloudSave } from '@/core/cloudSave'
+  import { pullCloudSave, startCloudSync } from '@/core/cloudSave'
   import BaseModal from '@/components/common/BaseModal.vue'
 
   const router = useRouter()
@@ -309,10 +309,20 @@
     connectCloudWs()
     try {
       const r = await pullCloudSave()
-      if (r === 'applied' || r === 'error') return // applied 已重载;error 走空档流程从头开局
-    } catch {
-      // 拉取失败不拦登录:本地照常进入
+      if (r.status === 'applied') return // 已重载进游戏
+      if (r.status === 'error') {
+        // 云端有档但应用失败:绝不能进空档流程,否则开局后的自动上传会把云端原档推平
+        error.value = `云端存档读取失败(${r.message}),请重试或联系仙官`
+        busy.value = false
+        return
+      }
+    } catch (e) {
+      // 网络失败不拦登录:此时锚点为 0,上传会被服务端判冲突挡下,不会覆盖云端
+      ui.toast(e instanceof CloudError ? `云存档拉取失败:${e.message}` : '云存档拉取失败', 'warn')
     }
+    // App 挂载时用户还在登录页,bootstrapCloud 直接返回了;登录成功后必须在这里启动同步循环,
+    // 否则整局都不会上传(换设备即丢档)
+    startCloudSync()
     busy.value = false
     void router.push(game.started ? '/' : '/welcome')
   }

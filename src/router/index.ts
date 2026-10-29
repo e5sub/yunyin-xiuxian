@@ -41,7 +41,8 @@ router.beforeEach(to => {
   }
   const game = useGameStore()
   if (game.started) {
-    if (to.name === 'welcome' || to.name === 'create') return { name: 'home' }
+    // 已开局还停在 welcome/create/login 都是异常态:云端档应用后会 reload,URL 可能仍是登录页
+    if (to.name === 'welcome' || to.name === 'create' || to.name === 'login') return { name: 'home' }
     return true
   }
   const settings = useSettingsStore()

@@ -192,6 +192,45 @@ export function persistConfig(storeId: string): {
   return { key: storageKey(storeId), serializer: SAVE_SERIALIZER, storage: THROTTLED_STORAGE }
 }
 
+/**
+ * 立即落盘的加密存储:给会话态(token)用,不进节流队列。
+ * 登录后紧跟的 pullCloudSave → applyImportPayload → clearAllSave 会 dropPendingWrites,
+ * 排队的 token 会一起被丢掉;reloadGame 又先封了 setItem,于是换设备登录后当场丢登录态、卡回登录页。
+ */
+export const IMMEDIATE_STORAGE = {
+  getItem: (key: string): string | null => {
+    try {
+      const raw = localStorage.getItem(key)
+      return raw === null ? null : readSaveText(raw)
+    } catch {
+      return null
+    }
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      localStorage.setItem(key, encryptSave(value))
+    } catch {
+      // 存储不可用:会话只在本次内存里有效
+    }
+  },
+  removeItem: (key: string): void => {
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      // 忽略
+    }
+  }
+}
+
+/** 会话态(登录 token)的持久化配置:每次变更立刻加密写盘 */
+export function persistImmediateConfig(storeId: string): {
+  key: string
+  serializer: typeof SAVE_SERIALIZER
+  storage: typeof IMMEDIATE_STORAGE
+} {
+  return { key: storageKey(storeId), serializer: SAVE_SERIALIZER, storage: IMMEDIATE_STORAGE }
+}
+
 /** 启动前扫描:损坏的存档移到备份键,避免白屏;返回被隔离的 store id 列表 */
 export function preflightScan(): string[] {
   const corrupted: string[] = []

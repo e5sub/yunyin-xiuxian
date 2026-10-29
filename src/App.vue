@@ -40,7 +40,7 @@
   import { subscribeSaveWriteFailure } from '@/utils/storage'
   import { engine } from '@/core/engine'
   import { connectCloudWs, disconnectCloudWs } from '@/services/cloud'
-  import { restoreFromCloud, startCloudSync } from '@/core/cloudSave'
+  import { probeCloudNewer, pushCloudSave, restoreFromCloud, startCloudSync, syncNotice } from '@/core/cloudSave'
   import { applyTheme, initTheme } from '@/core/theme'
   import { resetModalStack } from '@/composables/useModalStack'
   import { configureAudio, disposeAudio, playSfx, unlockAudio } from '@/core/audio'
@@ -83,6 +83,9 @@
     connectCloudWs()
     const restored = await restoreFromCloud()
     if (restored) return // 云端档已应用并重载
+    // 本机已对齐过但云端更新:不擅自覆盖(本机可能有未上传的进度),提示玩家自行决定
+    const newerAt = await probeCloudNewer()
+    if (newerAt !== null) ui.toast('云端存档比本机新,可在「设置 → 存档」中恢复', 'warn')
     startCloudSync()
   }
 
@@ -99,6 +102,19 @@
       configureAudio({ musicOn, sfxOn, musicVol: musicVol / 100, sfxVol: sfxVol / 100 })
     },
     { immediate: true }
+  )
+
+  // 云同步异常提示:core 只抛状态,弹窗归界面层
+  watch(syncNotice, notice => {
+    if (notice !== null) ui.toast(notice.text, 'warn')
+  })
+
+  // 开局(含转世重开)后立刻推一次:不等 20 秒定时器,玩家可能开局就退
+  watch(
+    () => game.started,
+    started => {
+      if (started) void pushCloudSave()
+    }
   )
 
   // 主题;auto 时随系统切换
