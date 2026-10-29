@@ -63,6 +63,9 @@ export type CloudWsMsg =
   | { type: 'friendAccepted'; by: { id: number; name: string } }
   | { type: 'boss_spawn'; name: string; at: number }
   | { type: 'boss_killed'; by: string; name: string; top: Array<{ name: string; dmgText: string }>; at: number }
+  | { type: 'room_join'; code: string; name: string; dungeon: string; at: number }
+  | { type: 'room_leave'; code: string; name: string; dungeon: string; at: number }
+  | { type: 'dungeon_result'; dungeon: string; name: string; by: string; win: boolean; stone: number; herb: number; at: number }
   | { type: 'pong' }
 
 export interface GEJson {
@@ -93,6 +96,40 @@ export interface BossStrikeResult {
   maxHp: GEJson
   bossName: string
   tier: number
+  reward: { stone: number; herb: number }
+}
+
+// ---- 多人副本(房间码) ----
+
+export type DungeonKey = 'demon' | 'explore' | 'guard' | 'array'
+
+export interface DungeonRoom {
+  code: string
+  dungeon: DungeonKey
+  leaderId: number
+  members: Array<{ userId: number; name: string }>
+}
+
+export interface DungeonBrief {
+  key: DungeonKey
+  name: string
+  desc: string
+  used: number
+  max: number
+}
+
+export interface DungeonOverview {
+  dungeons: DungeonBrief[]
+  maxSize: number
+  room: DungeonRoom | null
+}
+
+export interface DungeonRunResult {
+  dungeon: DungeonKey
+  name: string
+  roomSize: number
+  win: boolean
+  log: string[]
   reward: { stone: number; herb: number }
 }
 
@@ -167,7 +204,16 @@ export const cloudApi = {
   pvp: (targetId: number): Promise<{ winner: 'me' | 'target'; rounds: number; log: string[] }> =>
     request('POST', '/pvp', { targetId }),
   boss: (): Promise<BossState> => request('GET', '/boss'),
-  bossStrike: (): Promise<BossStrikeResult> => request('POST', '/boss/strike')
+  bossStrike: (): Promise<BossStrikeResult> => request('POST', '/boss/strike'),
+  dungeonOverview: (): Promise<DungeonOverview> => request('GET', '/dungeon'),
+  dungeonRoom: (): Promise<{ room: DungeonRoom | null }> => request('GET', '/dungeon/room'),
+  dungeonRoomCreate: (dungeon: DungeonKey): Promise<{ room: DungeonRoom }> =>
+    request('POST', '/dungeon/room', { dungeon }),
+  dungeonRoomJoin: (code: string): Promise<{ room: DungeonRoom; leftCode: string; full: boolean }> =>
+    request('POST', '/dungeon/room/join', { code }),
+  dungeonRoomLeave: (): Promise<{ ok: boolean }> => request('POST', '/dungeon/room/leave'),
+  dungeonRun: (dungeon: DungeonKey, code = ''): Promise<DungeonRunResult> =>
+    request('POST', '/dungeon/run', { dungeon, code })
 }
 
 // ---- WebSocket:聊天 / 在线状态 / 好友通知 ----
