@@ -1,84 +1,23 @@
 /** 万妖围城:全服共享血池的世界妖王;服务端权威模拟,每日出剑次数走 dungeon_daily */
 import express from 'express'
 import { randomInt } from 'node:crypto'
-import { all, driverName, get, run, upsertByPk } from '../db.js'
+import { all, get, run, upsertByPk } from '../db.js'
 import { getConfigNumber } from '../config.js'
 import { requireAuth } from '../auth.js'
 import { broadcastAll } from '../ws.js'
+import { dayKey, attemptsUsed, bumpDaily } from '../dungeonCore.js'
+import { geNorm, geAdd, geSub, geMulN, geMin, geText, randRange, type GE } from '../gnum.js'
 
 export const bossRouter = express.Router()
 
-const IS_MYSQL = driverName() === 'mysql'
+/* ---------------- GNum 与限次:公共实现见 gnum.ts / dungeonCore.ts ---------------- */
 
-/* ---------------- GNum(m×10^e) 服务器侧算术 ---------------- */
-
-interface GE {
-  m: number
-  e: number
-}
-
-function geNorm(m: number, e: number): GE {
-  if (!Number.isFinite(m) || m === 0) return { m: 0, e: 0 }
-  const shift = Math.floor(Math.log10(Math.abs(m)))
-  const nm = m / Math.pow(10, shift)
-  if (Math.abs(nm) >= 10) return geNorm(nm / 10, e + shift + 1)
-  return { m: nm, e: e + shift }
-}
-
-function geAdd(a: GE, b: GE): GE {
-  if (a.m === 0) return b
-  if (b.m === 0) return a
-  const hi = a.e >= b.e ? a : b
-  const lo = a.e >= b.e ? b : a
-  const diff = hi.e - lo.e
-  if (diff > 15) return hi
-  return geNorm(hi.m + lo.m / Math.pow(10, diff), hi.e)
-}
-
-/** a - b;b 大于 a 时结果视为 0(伤害扣除场景) */
-function geSub(a: GE, b: GE): GE {
-  if (b.m === 0) return a
-  const diff = a.e - b.e
-  if (diff > 15) return a
-  if (diff < -15) return { m: 0, e: 0 }
-  return geNorm(a.m - b.m / Math.pow(10, diff), a.e)
-}
-
-function geMulN(a: GE, n: number): GE {
-  return geNorm(a.m * n, a.e)
-}
-
-/** 取小者;相等取 a(伤害结算按剩余血截断) */
-function geMin(a: GE, b: GE): GE {
-  if (a.e !== b.e) return a.e < b.e ? a : b
-  return Math.abs(a.m) <= Math.abs(b.m) ? a : b
-}
-
-function geText(a: GE): string {
-  if (a.m <= 0) return '0'
-  if (a.e >= 6 || a.e <= -2) return `${a.m.toPrecision(4)}e${a.e}`
-  return (a.m * Math.pow(10, a.e)).toPrecision(6).replace(/\.?0+$/, '')
-}
-
-function randRange(min: number, max: number): number {
-  return min + (randomInt(0, 1000) / 1000) * (max - min)
-}
-
-/** 计数 upsert:双方言(仅加计数,REPLACE 语义不适用) */
-async function bumpDaily(userId: number, dungeon: string, day: string): Promise<void> {
-  if (IS_MYSQL) {
-    await run(
-      `INSERT INTO dungeon_daily (user_id, dungeon, day, count) VALUES (?, ?, ?, 1)
-       ON DUPLICATE KEY UPDATE count = count + 1`,
-      [userId, dungeon, day]
-    )
-    return
-  }
-  await run(
-    `INSERT INTO dungeon_daily (user_id, dungeon, day, count) VALUES (?, ?, ?, 1)
-     ON CONFLICT(user_id, dungeon, day) DO UPDATE SET count = count + 1`,
-    [userId, dungeon, day]
-  )
+interface DamageRow {
+  user_id: number
+  name: string
+  dmg_m: number
+  dmg_e: number
+  strikes: number
 }
 
 async function bumpDamage(userId: number, name: string, dmg: GE): Promise<void> {
@@ -119,19 +58,6 @@ interface DamageRow {
   dmg_m: number
   dmg_e: number
   strikes: number
-}
-
-/** 当日键(UTC+8);dungeon_daily 按它限次 */
-function dayKey(now = Date.now()): string {
-  return new Date(now + 8 * 3600_000).toISOString().slice(0, 10)
-}
-
-async function attemptsUsed(userId: number, dungeon: string, day: string): Promise<number> {
-  const row = await get<{ count: number }>(
-    'SELECT count FROM dungeon_daily WHERE user_id = ? AND dungeon = ? AND day = ?',
-    [userId, dungeon, day]
-  )
-  return row?.count ?? 0
 }
 
 interface TopProfile {

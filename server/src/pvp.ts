@@ -22,7 +22,9 @@ function mag(m: number, e: number): number {
 function fmt(m: number, e: number): string {
   if (m <= 0) return '0'
   if (e >= 6 || e <= -2) return `${m.toPrecision(4)}e${e}`
-  return (m * Math.pow(10, e)).toPrecision(6).replace(/\.?0+$/, '')
+  let s = (m * Math.pow(10, e)).toPrecision(6)
+  if (s.includes('.')) s = s.replace(/0+$/, '').replace(/\.$/, '')
+  return s
 }
 
 function randRange(min: number, max: number): number {

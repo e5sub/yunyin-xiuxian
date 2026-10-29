@@ -195,6 +195,21 @@ CREATE TABLE IF NOT EXISTS email_codes (
   expires_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS dungeon_teams (
+  code TEXT PRIMARY KEY,
+  dungeon TEXT NOT NULL,
+  leader_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS dungeon_team_members (
+  code TEXT NOT NULL REFERENCES dungeon_teams(code) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  joined_at INTEGER NOT NULL,
+  PRIMARY KEY (code, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_team_member_user ON dungeon_team_members(user_id);
 CREATE TABLE IF NOT EXISTS game_config (
   config_key TEXT PRIMARY KEY,
   config_value TEXT NOT NULL,
@@ -313,6 +328,23 @@ CREATE TABLE IF NOT EXISTS email_codes (
   created_at BIGINT NOT NULL,
   INDEX idx_code_email (email_lower, purpose)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS dungeon_teams (
+  code VARCHAR(8) PRIMARY KEY,
+  dungeon VARCHAR(16) NOT NULL,
+  leader_id BIGINT NOT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'open',
+  created_at BIGINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS dungeon_team_members (
+  code VARCHAR(8) NOT NULL,
+  user_id BIGINT NOT NULL,
+  name VARCHAR(64) NOT NULL,
+  joined_at BIGINT NOT NULL,
+  PRIMARY KEY (code, user_id),
+  INDEX idx_team_member_user (user_id),
+  CONSTRAINT fk_team_code FOREIGN KEY (code) REFERENCES dungeon_teams(code) ON DELETE CASCADE,
+  CONSTRAINT fk_team_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS game_config (
   config_key VARCHAR(64) PRIMARY KEY,
   config_value TEXT NOT NULL,
@@ -368,6 +400,26 @@ async function seedConfig(): Promise<void> {
     ['boss_respawn_sec', '86400'],
     ['boss_reward_stone', '30'],
     ['boss_reward_herb', '2'],
+    // 副本 · 心魔镜像(攻倍率为百分比:60 = 最高攻×0.6)
+    ['demon_daily_attempts', '1'],
+    ['demon_hp_mult', '10'],
+    ['demon_atk_mult', '60'],
+    ['demon_reward_stone', '60'],
+    ['demon_reward_herb', '4'],
+    // 副本 · 秘境共探
+    ['explore_daily_attempts', '1'],
+    ['explore_nodes', '6'],
+    ['explore_reward_stone', '40'],
+    ['explore_reward_herb', '3'],
+    // 副本 · 洞天守卫
+    ['guard_daily_attempts', '1'],
+    ['guard_max_waves', '9'],
+    ['guard_reward_stone', '10'],
+    ['guard_reward_herb', '1'],
+    // 副本 · 共修大阵
+    ['array_daily_attempts', '1'],
+    ['array_reward_stone', '25'],
+    ['array_reward_herb', '2'],
     ['email_enabled', env('EMAIL_ENABLED', 'false')],
     ['email_code_required', env('EMAIL_CODE_REQUIRED', 'false')],
     ['smtp_host', env('SMTP_HOST')],

@@ -9,6 +9,7 @@ import { authRouter } from './auth.js'
 import { saveRouter } from './routes/save.js'
 import { socialRouter, registerPresence } from './routes/social.js'
 import { bossRouter } from './routes/boss.js'
+import { dungeonRouter } from './routes/dungeon.js'
 import { initDb, run } from './db.js'
 import { gmPath, gmRouter } from './admin.js'
 import { initWsServer, isOnline, notifyUser, registerChatPersist } from './ws.js'
@@ -43,6 +44,7 @@ async function main(): Promise<void> {
   app.use('/api', saveRouter)
   app.use('/api', socialRouter)
   app.use('/api/boss', bossRouter)
+  app.use('/api/dungeon', dungeonRouter)
 
   // GM 后台:路径可自定义;管理 API 在 <path>/api,页面托管同一前缀
   const gm = gmPath()

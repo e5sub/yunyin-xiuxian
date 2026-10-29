@@ -10,6 +10,11 @@ services:
     restart: unless-stopped
     networks:
       - yunyin-net
+    # 宿主机 server/.env 里的全部配置(端口/GM 路径/数据库/SMTP 等)注入容器;
+    # compose v2.24+ 支持 required:false,文件不存在时忽略此行
+    env_file:
+      - path: ./server/.env
+        required: false
     environment:
       - TZ=Asia/Shanghai
       # GM 后台路径(可自定义;改后重启生效)

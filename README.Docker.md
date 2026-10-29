@@ -20,13 +20,16 @@ docker run -d -p 8080:80 -v yunyin-data:/app/server/data ghcr.io/setube/yunyin-x
 
 ### 方式二：docker compose（推荐自托管）
 
-`docker-compose.yml` 已配好端口、数据卷、时区、资源限制与日志滚动：
+`docker-compose.yml` 已配好端口、数据卷、时区、资源限制与日志滚动，并会读取宿主机 `server/.env`（`env_file` 配置为可选，文件不存在也能启动；`server/.env.example` 有全部可配项模板）：
 
 ```bash
-docker compose up -d        # 启动
-docker compose logs -f      # 日志
-docker compose down         # 停止
+cp server/.env.example server/.env   # 按需修改(可留空)
+docker compose up -d                 # 启动
+docker compose logs -f               # 日志
+docker compose down                  # 停止
 ```
+
+> 改 `server/.env` 后需 `docker compose up -d` 重启生效；运行期邮件/SMTP 与游戏参数可在 GM 后台热改。
 
 启动后浏览器打开 <http://localhost:8080> 即可注册进入游戏。
 
