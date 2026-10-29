@@ -117,7 +117,8 @@
     background:rgb(var(--c-ink)); color:rgb(var(--c-paper)); padding:9px 18px; border-radius:10px;
     font-size:13px; opacity:0; transition:.25s; pointer-events:none; box-shadow:0 8px 24px rgb(0 0 0 / .18); }
   .toast.show { opacity:1; }
-  dialog { background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:12px;
+  /* 全局 reset 干掉了 UA 的 dialog margin:auto,弹窗会贴顶;这里补回居中 */
+  dialog { margin:auto; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:12px;
     padding:20px 22px; min-width:360px; max-width:540px; box-shadow:0 18px 50px rgb(0 0 0 / .25); }
   dialog::backdrop { background:rgb(20 18 15 / .45); backdrop-filter:blur(2px); }
   dialog h3 { font-family:var(--font-kai); font-size:15px; letter-spacing:.08em; margin-bottom:14px; }
@@ -288,6 +289,15 @@ function toast (msg) { const t = $('toast'); t.textContent = msg; t.classList.ad
 function esc (s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
 function fmt (ts) { return ts ? new Date(Number(ts)).toLocaleString('zh-CN', { hour12: false }) : '—' }
 
+/** GNum(m×10^e) 展示:整数,大数折成万/亿(详情页不再出现 1.2345678e12 这类长小数) */
+function fmtGE (m, e) {
+  const n = (Number(m) || 0) * Math.pow(10, Number(e) || 0)
+  if (!Number.isFinite(n)) return '—'
+  if (n >= 1e8) return Math.round(n / 1e8) + '亿'
+  if (n >= 1e4) return Math.round(n / 1e4) + '万'
+  return String(Math.round(n))
+}
+
 async function api (path, opts = {}) {
   const res = await fetch(API + path, {
     ...opts,
@@ -351,7 +361,7 @@ async function loadUsers (p) {
       <td class="wrap">${esc(u.email || '—')}</td>
       <td>${u.profile ? esc(u.profile.name) : '—'}</td>
       <td>${u.profile ? esc(u.profile.realmLabel) : '—'}</td>
-      <td>${u.profile ? esc(u.profile.powerE > 0 ? (u.profile.powerM + 'e' + u.profile.powerE) : u.profile.powerM) : '—'}</td>
+      <td>${u.profile ? fmtGE(u.profile.powerM, u.profile.powerE) : '—'}</td>
       <td>${u.role === 'admin' ? '<span class="tag admin">管理员</span>' : '玩家'}</td>
       <td>${u.status === 'active' ? '<span class="tag ok">正常</span>' : '<span class="tag ban">封禁</span>'}</td>
       <td>${fmt(u.saveAt)}</td>
@@ -394,8 +404,8 @@ async function viewDetail (id) {
       <div><b>注册时间</b>${fmt(u.created_at)}</div>
       <div><b>角色名</b>${p ? esc(p.name) : '—'}</div>
       <div><b>境界</b>${p ? esc(p.realm_label) + ' (' + p.realm_index + ')' : '—'}</div>
-      <div><b>战力</b>${p ? p.power_m + (p.power_e > 0 ? 'e' + p.power_e : '') : '—'}</div>
-      <div><b>气血</b>${p ? p.hp_m + (p.hp_e > 0 ? 'e' + p.hp_e : '') : '—'} <b style="min-width:0">攻击</b>${p ? p.atk_m + (p.atk_e > 0 ? 'e' + p.atk_e : '') : '—'}</div>
+      <div><b>战力</b>${p ? fmtGE(p.power_m, p.power_e) : '—'}</div>
+      <div><b>气血</b>${p ? fmtGE(p.hp_m, p.hp_e) : '—'} <b style="min-width:0">攻击</b>${p ? fmtGE(p.atk_m, p.atk_e) : '—'}</div>
       <div><b>角色更新</b>${p ? fmt(p.updated_at) : '—'}</div>
       <div><b>存档</b>${d.save ? `版本 ${d.save.version} · ${d.save.bytes} 字节 · ${fmt(d.save.updatedAt)}` : '无'}</div>
       <div><b>好友数</b>${d.friends}</div>`

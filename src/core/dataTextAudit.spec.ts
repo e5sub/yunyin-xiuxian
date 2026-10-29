@@ -305,7 +305,7 @@ describe('文案数值对账 · 视图不手抄数字', () => {
     const about = src('../components/settings/SettingsAboutSection.vue')
     for (const [name, text, marker] of [
       ['偏好段', pref, 'settings.musicOn'],
-      ['存档段', save, 'resetGame('],
+      ['存档段', save, 'pushCloudSave('],
       ['诊断段', diag, 'diag.errors'],
       ['关于段', about, 'markReleaseSeen(']
     ] as const) {

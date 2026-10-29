@@ -26,27 +26,6 @@
       <button class="btn-ghost flex-1 !text-[12px]" :disabled="busy" @click="uploadNow">立即上传</button>
       <button class="btn-ghost flex-1 !text-[12px]" :disabled="busy" @click="pullConfirm = true">从云端恢复</button>
     </div>
-    <button class="btn-ghost w-full !text-[12px]" :disabled="busy" @click="toggleHistory">
-      {{ historyOpen ? '收起历史版本' : '历史版本' }}
-    </button>
-    <ul v-if="historyOpen" class="space-y-1">
-      <li v-if="history.length === 0" class="text-[11px] text-ink-faint">暂无历史版本（每次覆盖云端前自动留档）</li>
-      <li
-        v-for="h in history"
-        :key="h.id"
-        class="flex items-center justify-between gap-2 text-[11px] tabular text-ink-soft"
-      >
-        <span class="truncate">
-          {{ formatWhen(h.created_at) }} · {{ realmLabel(Math.floor(h.realm_index / 100), h.realm_index % 100) }} ·
-          {{ Math.max(1, Math.round(h.size / 1024)) }}KB
-        </span>
-        <button class="shrink-0 text-cinnabar underline" @click="rollbackTarget = h">回滚</button>
-      </li>
-    </ul>
-
-    <button class="btn-ghost w-full !border-cinnabar/40 !text-[12px] !text-cinnabar" @click="openReset">
-      清空存档
-    </button>
 
     <BaseModal :open="pullConfirm" title="从云端恢复" @close="pullConfirm = false">
       <p class="text-[13px] leading-relaxed text-ink-soft">
@@ -59,32 +38,6 @@
         </div>
       </template>
     </BaseModal>
-
-    <BaseModal :open="rollbackTarget !== null" title="回滚存档" @close="rollbackTarget = null">
-      <p class="text-[13px] leading-relaxed text-ink-soft">
-        回滚到
-        <span class="text-ink">{{ rollbackTarget === null ? '' : formatWhen(rollbackTarget.created_at) }}</span>
-        的存档。当前云端档会先存一份历史,回滚后仍可再回滚回来。
-      </p>
-      <template #footer>
-        <div class="flex gap-2">
-          <button class="btn-ghost flex-1" :disabled="busy" @click="rollbackTarget = null">取消</button>
-          <button class="btn-seal flex-1" :disabled="busy" @click="confirmRollback">确认回滚</button>
-        </div>
-      </template>
-    </BaseModal>
-
-    <BaseModal :open="resetConfirm" title="清空存档" @close="closeReset">
-      <p class="text-[13px] leading-relaxed text-ink-soft">
-        清空本机<span class="text-cinnabar">与云端</span>存档 · 含转世收获 · 不可逆
-      </p>
-      <template #footer>
-        <div class="flex gap-2">
-          <button class="btn-ghost flex-1" @click="closeReset">再想想</button>
-          <button class="btn-seal flex-1 !bg-cinnabar-deep" @click="confirmReset">确认清空</button>
-        </div>
-      </template>
-    </BaseModal>
   </div>
 </template>
 
@@ -92,13 +45,9 @@
   import { computed, onUnmounted, ref } from 'vue'
   import { useGameStore } from '@/stores/game'
   import { useUiStore } from '@/stores/ui'
-  import { resetGame } from '@/core/save'
-  import { engine } from '@/core/engine'
   import { formatDuration } from '@/utils/format'
   import { SAVE_VERSION, STORE_NAMES, saveWriteFailure, subscribeSaveWriteFailure } from '@/utils/storage'
   import { lastSyncAt, pullCloudSave, pushCloudSave, syncErrorText, syncState } from '@/core/cloudSave'
-  import { cloudApi, type SaveHistoryRow } from '@/services/cloud'
-  import { realmLabel } from '@/data/realms'
   import BaseModal from '@/components/common/BaseModal.vue'
 
   const game = useGameStore()
@@ -109,11 +58,7 @@
   const corruptedNotice = computed<string[]>(() => ui.corruptedNotice)
 
   const busy = ref(false)
-  const resetConfirm = ref(false)
   const pullConfirm = ref(false)
-  const historyOpen = ref(false)
-  const history = ref<SaveHistoryRow[]>([])
-  const rollbackTarget = ref<SaveHistoryRow | null>(null)
 
   const syncTone = computed(() => {
     if (syncState.value === 'ok') return 'text-ink-faint'
@@ -134,7 +79,6 @@
 
   onUnmounted(() => {
     unsubscribeSaveFailure()
-    if (resetConfirm.value) engine.resume()
   })
 
   function formatWhen(ts: number): string {
@@ -162,47 +106,6 @@
       ui.toast('拉取失败，请检查网络', 'warn')
     }
     busy.value = false
-  }
-
-  async function toggleHistory(): Promise<void> {
-    historyOpen.value = !historyOpen.value
-    if (!historyOpen.value) return
-    try {
-      history.value = (await cloudApi.saveHistory(30)).history
-    } catch {
-      ui.toast('历史版本读取失败', 'warn')
-    }
-  }
-
-  async function confirmRollback(): Promise<void> {
-    const target = rollbackTarget.value
-    if (target === null) return
-    rollbackTarget.value = null
-    busy.value = true
-    try {
-      await cloudApi.restoreSave(target.id)
-      const r = await pullCloudSave()
-      if (r.status !== 'applied') ui.toast('回滚已写入云端，重开游戏后生效', 'warn')
-    } catch {
-      ui.toast('回滚失败', 'warn')
-    }
-    busy.value = false
-  }
-
-  function openReset(): void {
-    resetConfirm.value = true
-    engine.pause()
-  }
-
-  function closeReset(): void {
-    resetConfirm.value = false
-    engine.resume()
-  }
-
-  function confirmReset(): void {
-    // 云端档一并清掉,否则重登会把云档拉回来
-    cloudApi.deleteSave().catch(() => undefined)
-    resetGame()
   }
 
   // 只有在还没同步过时才主动推一次刷新状态:进设置页不该改变云端档(manual 上传会覆盖冲突保护)
