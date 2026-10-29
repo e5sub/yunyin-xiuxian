@@ -1,12 +1,13 @@
 /**
  * 注册 / 登录 / 鉴权中间件 / 邮箱验证码 / 找回密码
- * 注册必填用户名(道号) + 邮箱;邮箱验证码预留(EMAIL_CODE_REQUIRED=true 强制校验)
+ * 注册必填用户名(道号) + 邮箱;邮箱验证码预留(game_config.email_code_required=true 强制校验,GM 后台可改)
  */
 import bcrypt from 'bcryptjs'
 import express, { type NextFunction, type Request, type Response } from 'express'
 import jwt from 'jsonwebtoken'
 import { get, run } from './db.js'
 import { emailEnabled, makeCode, sendCodeMail } from './mail.js'
+import { getConfig } from './config.js'
 import { jwtSecret } from './secret.js'
 
 const TOKEN_TTL_SEC = 60 * 60 * 24 * 30
@@ -123,9 +124,13 @@ export const authRouter = express.Router()
 
 /** 前端探测:邮箱验证码是否强制(预留开关)、邮箱服务是否启用 */
 authRouter.get('/config', (_req, res) => {
-  res.json({
-    emailCodeRequired: process.env.EMAIL_CODE_REQUIRED === 'true',
-    emailEnabled: emailEnabled()
+  void (async () => {
+    res.json({
+      emailCodeRequired: (await getConfig('email_code_required')) === 'true',
+      emailEnabled: await emailEnabled()
+    })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
   })
 })
 
@@ -206,7 +211,7 @@ authRouter.post('/register', (req, res) => {
       res.status(400).json({ error: '该邮箱已注册' })
       return
     }
-    if (process.env.EMAIL_CODE_REQUIRED === 'true') {
+    if ((await getConfig('email_code_required')) === 'true') {
       const ok = await consumeCode(email, code, 'register')
       if (!ok) {
         res.status(400).json({ error: '邮箱验证码不对或已过期' })

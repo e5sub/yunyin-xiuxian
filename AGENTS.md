@@ -32,7 +32,7 @@ src/ui/    展示层字符串/图标注册（非逻辑）
 | 路径 | 用途 |
 | --- | --- |
 | `src/data/` | 静态声明式游戏内容（唯一事实源） |
-| `src/core/` | 游戏逻辑 + 222 个同目录 `*.spec.ts` |
+| `src/core/` | 游戏逻辑 + 216 个同目录 `*.spec.ts` |
 | `src/stores/` | Pinia 状态（18 持久化 + ui 临时） |
 | `src/ui/` | 展示层字符串 / 图标 |
 | `src/utils/` | 大数、格式化、随机、存储、存档守卫 |
@@ -77,7 +77,7 @@ tsconfig paths `@/* → ./src/*`，开启 `strict` + `noUncheckedIndexedAccess` 
 - 本地「导入/导出存档」已移除；`savePlatform*/saveFileRead/saveBackup` 等模块已删
 - **数据库**：默认 SQLite（`server/data/yunyin.db`）；`DB_DRIVER=mysql` + `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME` 切 MySQL。查询统一走 `db.ts` 的 `all/get/run/exec`（`?` 占位、异步），upsert 用双方言同语义的 `REPLACE INTO`
 - **GM 后台**：路径由 `GM_PATH` 自定义（默认 `/gm`），单页在 `server/gm/index.html`。功能：账号管理（搜索/封禁/解封/重置口令/删除）、角色与存档查看、游戏参数（`game_config` 表，30 秒缓存生效）、全服公告（聊天署名「仙官」+ 广播）。管理员：`npm run admin -- <道号> <口令>`（创建或提权，`users.role='admin'`）
-- **邮箱**：注册必填用户名+邮箱；`EMAIL_CODE_REQUIRED=true` 强制验证码（预留开关）、`EMAIL_ENABLED=true` + `SMTP_HOST/PORT/USER/PASS/FROM` 实发邮件；未启用时验证码打到控制台且响应带 `devCode`（联调）。忘记密码：`/api/auth/forgot` + `/api/auth/reset`（邮箱+验证码+新口令）
+- **邮箱**：注册必填用户名+邮箱；邮箱设置全部存 `game_config`（`email_enabled` / `email_code_required` / `smtp_host` / `smtp_port` / `smtp_user` / `smtp_pass` / `smtp_from`），GM 后台「参数设置 → 邮件 / SMTP」页可改，另有「发送测试邮件」；`EMAIL_*` / `SMTP_*` 环境变量只作首次建库种子值。`email_code_required=true` 强制验证码（预留开关）；未启用时验证码打到控制台且响应带 `devCode`（联调）。忘记密码：`/api/auth/forgot` + `/api/auth/reset`（邮箱+验证码+新口令）
 - **多人副本**：万妖围城（`/api/boss`，页面 `/boss`）。全服共享血池的世界妖王，血池 = 全服最高攻 × `boss_hp_atk_mult`；出剑 = 服务端 10 回合模拟（玩家倒下后余回合伤害减半），伤害按剩余血截断。**每日出剑次数走 `dungeon_daily` 表（`boss_daily_attempts`，默认 1）**，新副本直接复用该表限次。奖励即时返回数量单位，客户端按 `stoneByTier` 折算入账；击杀 ws 全服广播 `boss_killed`，`boss_respawn_sec` 后懒重生（伤害榜清零）。参数均可 GM 后台调
 - **Docker 全栈镜像**：`Dockerfile`（本地）/ `Dockerfile.ci`（CI，dist 预构建）= nginx（静态 + 反代 `/api`、`/ws`、GM 后台）+ Node 后端同容器；`node:22-bookworm-slim`（glibc，better-sqlite3 有 arm64 预编译）；数据卷 `/app/server/data`；GM_PATH 由 `docker-entrypoint.sh` 注入 `nginx-docker.conf.template`。详见 README.Docker.md
 - **APK 构建**：`build.yml` 打 `v*.*.*` tag 或手动触发；APK 内后端地址默认 `https://yy.071717.xyz`（src/services/cloud.ts 生产构建兜底），仓库 Variable `VITE_API_BASE` 可覆盖；tag 触发时发 GitHub Release（版本须与 package.json 一致），手动触发只出 artifact
@@ -201,7 +201,7 @@ tsconfig paths `@/* → ./src/*`，开启 `strict` + `noUncheckedIndexedAccess` 
 
 ## Testing & QA
 
-- **框架**：Vitest 5；测试与实现同目录共存 `*.spec.ts`（共 319 个 spec：core 222、ui 44、stores 24、utils 10、data 9、composables 9、router 1）。用例条数不写进文档(`bun run test:report` 每次自己打)。
+- **框架**：Vitest 5；测试与实现同目录共存 `*.spec.ts`（共 313 个 spec：core 216、ui 44、stores 24、utils 10、data 9、composables 9、router 1）。用例条数不写进文档(`bun run test:report` 每次自己打)。
 - **运行**：全量 `bun run test`；分桶报告 `bun run test:report`。
 - **红线测试（改了相关逻辑必须保住）**：
   - `storeResilience.spec.ts` — 持久化 store 必须带 `sanitize`，且经恶意损坏用例。

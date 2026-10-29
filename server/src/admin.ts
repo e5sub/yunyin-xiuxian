@@ -269,12 +269,21 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'chat_max_len',
       'leaderboard_size',
       'chat_history_size',
+      // 副本(万妖围城)
       'boss_daily_attempts',
       'boss_hp_atk_mult',
       'boss_strike_rounds',
       'boss_respawn_sec',
       'boss_reward_stone',
-      'boss_reward_herb'
+      'boss_reward_herb',
+      // 邮件 / SMTP
+      'email_enabled',
+      'email_code_required',
+      'smtp_host',
+      'smtp_port',
+      'smtp_user',
+      'smtp_pass',
+      'smtp_from'
     ]
     if (!allowed.includes(key)) {
       res.status(400).json({ error: '不支持的参数' })
@@ -290,12 +299,19 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'boss_strike_rounds',
       'boss_respawn_sec',
       'boss_reward_stone',
-      'boss_reward_herb'
+      'boss_reward_herb',
+      'smtp_port'
     ]
+    const boolKeys = ['email_enabled', 'email_code_required']
     if (nKeys.includes(key)) {
       const n = Number(value)
       if (!Number.isInteger(n) || n < 0 || n > 1_000_000) {
         res.status(400).json({ error: '数值参数无效' })
+        return
+      }
+    } else if (boolKeys.includes(key)) {
+      if (value !== 'true' && value !== 'false') {
+        res.status(400).json({ error: '只接受 true / false' })
         return
       }
     } else if (value.length > 500) {
@@ -304,6 +320,31 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
     }
     await setConfig(key, value)
     res.json({ ok: true })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})
+
+/** 发测试邮件:验证 SMTP 设置;默认发给当前管理员注册邮箱,也可指定收件人 */
+gmRouter.post('/email-test', requireAdmin, (req: Request, res: Response) => {
+  void (async () => {
+    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
+    let to = typeof body.email === 'string' ? body.email.trim() : ''
+    if (to === '') {
+      const row = await get<{ email: string | null }>('SELECT email FROM users WHERE id = ?', [req.user!.id])
+      to = row?.email ?? ''
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+      res.status(400).json({ error: '没有可用的收件邮箱(管理员账号未填邮箱)' })
+      return
+    }
+    const { sendTestMail } = await import('./mail.js')
+    const err = await sendTestMail(to)
+    if (err !== null) {
+      res.status(400).json({ error: err })
+      return
+    }
+    res.json({ ok: true, to })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })

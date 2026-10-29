@@ -122,7 +122,10 @@
       <div class="card">
         <h2>游戏关键参数</h2>
         <div class="cfg-grid" id="cfg-rows"></div>
-        <p class="muted" style="margin-top:12px">改后点「保存」立即生效(聊天限速等对已在线玩家最迟 30 秒内生效)。</p>
+        <div class="row" style="margin-top:14px">
+          <button onclick="sendTestMail()">发送测试邮件</button>
+          <span class="muted">填好 SMTP 后发一封验证;改后立即生效(邮箱开关最迟 30 秒)</span>
+        </div>
       </div>
     </section>
 
@@ -281,25 +284,63 @@ async function viewDetail (id) {
   } catch (e) { toast(e.message) }
 }
 
-const CFG_LABELS = {
-  announcement: ['全服公告', 'text'],
-  chat_min_interval_ms: ['聊天最小间隔(毫秒)', 'num'],
-  chat_max_len: ['单条聊天最长字数', 'num'],
-  leaderboard_size: ['排行榜条数', 'num'],
-  chat_history_size: ['聊天历史条数', 'num']
-}
+const CFG_GROUPS = [
+  {
+    title: '基础参数',
+    keys: {
+      announcement: ['全服公告', 'text'],
+      chat_min_interval_ms: ['聊天最小间隔(毫秒)', 'num'],
+      chat_max_len: ['单条聊天最长字数', 'num'],
+      leaderboard_size: ['排行榜条数', 'num'],
+      chat_history_size: ['聊天历史条数', 'num']
+    }
+  },
+  {
+    title: '副本 · 万妖围城',
+    keys: {
+      boss_daily_attempts: ['每日出剑次数', 'num'],
+      boss_hp_atk_mult: ['血池=全服最高攻×N', 'num'],
+      boss_strike_rounds: ['出剑模拟回合数', 'num'],
+      boss_respawn_sec: ['击杀后重生秒数', 'num'],
+      boss_reward_stone: ['奖励灵石数', 'num'],
+      boss_reward_herb: ['奖励灵草数', 'num']
+    }
+  },
+  {
+    title: '邮件 / SMTP',
+    keys: {
+      email_enabled: ['邮箱服务开关(true/false)', 'bool'],
+      email_code_required: ['注册强制邮箱验证码(true/false)', 'bool'],
+      smtp_host: ['SMTP 服务器(如 smtp.qq.com)', 'text'],
+      smtp_port: ['SMTP 端口(465=SSL)', 'num'],
+      smtp_user: ['发信账号', 'text'],
+      smtp_pass: ['发信密码/授权码', 'text'],
+      smtp_from: ['发件人地址(留空用发信账号)', 'text']
+    }
+  }
+]
+
 async function loadConfig () {
   try {
     const d = await api('/config')
-    $('cfg-rows').innerHTML = Object.keys(CFG_LABELS).map(k => `
-      <label style="color:var(--sub);font-size:13px">${CFG_LABELS[k][0]}</label>
-      <input id="cfg-${k}" value="${esc(d.config[k] ?? '')}">
-      <button class="primary" onclick="saveCfg('${k}')">保存</button>`).join('')
+    $('cfg-rows').innerHTML = CFG_GROUPS.map(g => `
+      <div style="grid-column:1/-1;margin-top:6px;font-weight:600;color:var(--brand)">${g.title}</div>
+      ${Object.keys(g.keys).map(k => `
+        <label style="color:var(--sub);font-size:13px">${g.keys[k][0]}</label>
+        <input id="cfg-${k}" value="${esc(d.config[k] ?? '')}">
+        <button class="primary" onclick="saveCfg('${k}')">保存</button>`).join('')}`).join('')
   } catch (e) { toast(e.message) }
 }
 async function saveCfg (k) {
   try { await api(`/config/${k}`, { method: 'PUT', body: JSON.stringify({ value: $('cfg-' + k).value }) }); toast('已保存') }
   catch (e) { toast(e.message) }
+}
+async function sendTestMail () {
+  const email = prompt('收件邮箱(留空则发给你的账号注册邮箱):', '') || ''
+  try {
+    const d = await api('/email-test', { method: 'POST', body: JSON.stringify({ email }) })
+    toast('测试邮件已发送 -> ' + d.to)
+  } catch (e) { toast(e.message) }
 }
 async function sendBroadcast () {
   try { await api('/broadcast', { method: 'POST', body: JSON.stringify({ content: $('bc-text').value.trim() }) }); toast('公告已发布'); $('bc-text').value = '' }

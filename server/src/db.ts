@@ -352,9 +352,10 @@ CREATE INDEX idx_users_email ON users(email_lower);
   await seedConfig()
 }
 
-/** 游戏关键参数种子值(已存在不覆盖) */
+/** 游戏关键参数种子值(已存在不覆盖);邮件类种子值取环境变量,便于容器部署无缝迁移 */
 async function seedConfig(): Promise<void> {
   const now = Date.now()
+  const env = (k: string, dflt = ''): string => (process.env[k] ?? '').trim() || dflt
   const defaults: Array<[string, string]> = [
     ['announcement', ''],
     ['chat_min_interval_ms', '1200'],
@@ -366,7 +367,14 @@ async function seedConfig(): Promise<void> {
     ['boss_strike_rounds', '10'],
     ['boss_respawn_sec', '86400'],
     ['boss_reward_stone', '30'],
-    ['boss_reward_herb', '2']
+    ['boss_reward_herb', '2'],
+    ['email_enabled', env('EMAIL_ENABLED', 'false')],
+    ['email_code_required', env('EMAIL_CODE_REQUIRED', 'false')],
+    ['smtp_host', env('SMTP_HOST')],
+    ['smtp_port', env('SMTP_PORT', '465')],
+    ['smtp_user', env('SMTP_USER')],
+    ['smtp_pass', env('SMTP_PASS')],
+    ['smtp_from', env('SMTP_FROM')]
   ]
   if (DRIVER === 'sqlite') {
     for (const [k, v] of defaults) {

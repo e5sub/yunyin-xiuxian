@@ -51,9 +51,7 @@ docker build -t yunyin-xiuxian:latest .
 | `GM_PATH` | `/gm` | GM 后台路径，可自定义（entrypoint 会同步注入 nginx 反代规则） |
 | `DB_DRIVER` | `sqlite` | `sqlite` 或 `mysql` |
 | `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME` | — | MySQL 连接（`DB_DRIVER=mysql` 时必填） |
-| `EMAIL_ENABLED` | `false` | `true` + `SMTP_*` 实发邮箱验证码 |
-| `EMAIL_CODE_REQUIRED` | `false` | `true` 时注册强制邮箱验证码 |
-| `SMTP_HOST/PORT/USER/PASS/FROM` | — | SMTP 配置（PORT 465 走隐式 TLS） |
+| `EMAIL_ENABLED` / `EMAIL_CODE_REQUIRED` / `SMTP_HOST/PORT/USER/PASS/FROM` | — | 邮箱设置**首次建库的种子值**；运行期在 GM 后台「参数设置 → 邮件 / SMTP」页改，改后立即生效（开关最迟 30 秒） |
 | `PORT` | `8787` | 后端容器内端口（nginx 反代目标，一般不动） |
 | `YUNYIN_JWT_SECRET` | 自动生成落盘 | JWT 密钥（≥16 字符；多实例部署必须统一） |
 
