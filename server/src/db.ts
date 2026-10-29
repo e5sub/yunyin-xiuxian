@@ -200,6 +200,32 @@ CREATE TABLE IF NOT EXISTS game_config (
   config_value TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS boss_state (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  name TEXT NOT NULL,
+  realm_index INTEGER NOT NULL,
+  max_hp_m REAL NOT NULL,
+  max_hp_e INTEGER NOT NULL,
+  hp_m REAL NOT NULL,
+  hp_e INTEGER NOT NULL,
+  spawned_at INTEGER NOT NULL,
+  dead_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS boss_damage (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  dmg_m REAL NOT NULL,
+  dmg_e INTEGER NOT NULL,
+  strikes INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS dungeon_daily (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  dungeon TEXT NOT NULL,
+  day TEXT NOT NULL,
+  count INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, dungeon, day)
+);
 CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(id DESC);
 CREATE INDEX IF NOT EXISTS idx_profile_rank ON profiles(realm_index DESC, power_e DESC, power_m DESC);
 `)
@@ -292,6 +318,34 @@ CREATE TABLE IF NOT EXISTS game_config (
   config_value TEXT NOT NULL,
   updated_at BIGINT NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS boss_state (
+  id BIGINT PRIMARY KEY CHECK (id = 1),
+  name VARCHAR(64) NOT NULL,
+  realm_index INT NOT NULL,
+  max_hp_m DOUBLE NOT NULL,
+  max_hp_e INT NOT NULL,
+  hp_m DOUBLE NOT NULL,
+  hp_e INT NOT NULL,
+  spawned_at BIGINT NOT NULL,
+  dead_at BIGINT NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS boss_damage (
+  user_id BIGINT PRIMARY KEY,
+  name VARCHAR(64) NOT NULL,
+  dmg_m DOUBLE NOT NULL,
+  dmg_e INT NOT NULL,
+  strikes INT NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL,
+  CONSTRAINT fk_bossdmg_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS dungeon_daily (
+  user_id BIGINT NOT NULL,
+  dungeon VARCHAR(32) NOT NULL,
+  day CHAR(10) NOT NULL,
+  count INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, dungeon, day),
+  CONSTRAINT fk_dungeon_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE INDEX idx_users_email ON users(email_lower);
 `) as unknown as void
 
@@ -306,7 +360,13 @@ async function seedConfig(): Promise<void> {
     ['chat_min_interval_ms', '1200'],
     ['chat_max_len', '120'],
     ['leaderboard_size', '50'],
-    ['chat_history_size', '50']
+    ['chat_history_size', '50'],
+    ['boss_daily_attempts', '1'],
+    ['boss_hp_atk_mult', '20'],
+    ['boss_strike_rounds', '10'],
+    ['boss_respawn_sec', '86400'],
+    ['boss_reward_stone', '30'],
+    ['boss_reward_herb', '2']
   ]
   if (DRIVER === 'sqlite') {
     for (const [k, v] of defaults) {

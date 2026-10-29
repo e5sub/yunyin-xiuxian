@@ -263,12 +263,35 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
     const key = String(req.params.key)
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
     const value = typeof body.value === 'string' ? body.value : ''
-    const allowed = ['announcement', 'chat_min_interval_ms', 'chat_max_len', 'leaderboard_size', 'chat_history_size']
+    const allowed = [
+      'announcement',
+      'chat_min_interval_ms',
+      'chat_max_len',
+      'leaderboard_size',
+      'chat_history_size',
+      'boss_daily_attempts',
+      'boss_hp_atk_mult',
+      'boss_strike_rounds',
+      'boss_respawn_sec',
+      'boss_reward_stone',
+      'boss_reward_herb'
+    ]
     if (!allowed.includes(key)) {
       res.status(400).json({ error: '不支持的参数' })
       return
     }
-    const nKeys = ['chat_min_interval_ms', 'chat_max_len', 'leaderboard_size', 'chat_history_size']
+    const nKeys = [
+      'chat_min_interval_ms',
+      'chat_max_len',
+      'leaderboard_size',
+      'chat_history_size',
+      'boss_daily_attempts',
+      'boss_hp_atk_mult',
+      'boss_strike_rounds',
+      'boss_respawn_sec',
+      'boss_reward_stone',
+      'boss_reward_herb'
+    ]
     if (nKeys.includes(key)) {
       const n = Number(value)
       if (!Number.isInteger(n) || n < 0 || n > 1_000_000) {
