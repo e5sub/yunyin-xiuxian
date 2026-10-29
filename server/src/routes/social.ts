@@ -204,7 +204,8 @@ socialRouter.get('/leaderboard', requireAuth, (_req: Request, res: Response) => 
 
 socialRouter.get('/chat/history', requireAuth, (_req: Request, res: Response) => {
   void (async () => {
-    const size = Math.min(Math.max(await getConfigNumber('chat_history_size', 50), 10), 200)
+    // 默认 200 条:留存 7 天但只回最近 50 条的话,刷新后还是像「记录丢了」;上限放到 500 供 GM 调大
+    const size = Math.min(Math.max(await getConfigNumber('chat_history_size', 200), 10), 500)
     // 只回留存期内的记录(与定时清理同参数)
     const days = Math.max(await getConfigNumber('chat_retention_days', 7), 1)
     const rows = await all<{ id: number; user_id: number; name: string; content: string; created_at: number }>(

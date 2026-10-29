@@ -128,10 +128,16 @@
   dialog input, dialog textarea { width:100%; }
   dialog textarea { resize:vertical; }
   dialog .acts { display:flex; gap:8px; justify-content:flex-end; margin-top:6px; }
-  .cfg-grid { display:grid; grid-template-columns:1fr auto auto; gap:10px 12px; align-items:center; }
-  .cfg-grid input { max-width:420px; }
-  .cfg-group { grid-column:1/-1; margin-top:8px; font-family:var(--font-kai); font-weight:600;
-    letter-spacing:.08em; color:var(--brand); }
+  /* 参数设置:分类卡片,字段一排 3 个,每分类一个保存按钮 */
+  .cfg-group { margin-top:16px; padding:14px 16px; background:rgb(var(--c-ink) / 0.025);
+    border:1px solid var(--line); border-radius:10px; }
+  .cfg-group:first-child { margin-top:0; }
+  .cfg-group h3 { font-family:var(--font-kai); font-size:14px; font-weight:600; letter-spacing:.08em;
+    color:var(--brand); margin-bottom:10px; }
+  .cfg-fields { display:grid; grid-template-columns:repeat(3,1fr); gap:10px 14px; }
+  .cfg-field label { display:block; font-size:12px; color:var(--sub); margin-bottom:4px; }
+  .cfg-field input { width:100%; }
+  .cfg-save { margin-top:12px; }
   .kv { font-size:13px; line-height:1.9; overflow-wrap:anywhere; }
   .kv b { display:inline-block; min-width:84px; color:var(--sub); font-weight:400; }
   .login-wrap { min-height:100vh; display:grid; place-items:center; padding:20px; }
@@ -146,6 +152,7 @@
   @media (max-width: 720px) {
     main { padding:16px 12px 32px; }
     .stat-grid { grid-template-columns:repeat(2,1fr); }
+    .cfg-fields { grid-template-columns:1fr; }
     header { padding:0 14px; }
     header h1 { font-size:15px; }
     dialog { min-width:0; width:calc(100vw - 32px); }
@@ -236,10 +243,10 @@
     <section id="pane-config" class="hidden">
       <div class="card">
         <h2>游戏关键参数</h2>
-        <div class="cfg-grid" id="cfg-rows"></div>
+        <div id="cfg-rows"></div>
         <div class="row" style="margin-top:14px">
           <button onclick="sendTestMail()">发送测试邮件</button>
-          <span class="muted">填好 SMTP 后发一封验证;改后立即生效(邮箱开关最迟 30 秒)</span>
+          <span class="muted">每个分类单独保存;改后立即生效(邮箱开关最迟 30 秒)</span>
         </div>
       </div>
     </section>
@@ -499,20 +506,37 @@ const CFG_GROUPS = [
   }
 ]
 
+/** 每个字段加载时的原始值:整组保存时只提交改过的项 */
+const cfgOrig = {}
+
 async function loadConfig () {
   try {
     const d = await api('/config')
-    $('cfg-rows').innerHTML = CFG_GROUPS.map(g => `
-      <div class="cfg-group">${g.title}</div>
-      ${Object.keys(g.keys).map(k => `
-        <label style="color:var(--sub);font-size:13px">${g.keys[k][0]}</label>
-        <input id="cfg-${k}" value="${esc(d.config[k] ?? '')}">
-        <button class="primary" onclick="saveCfg('${k}')">保存</button>`).join('')}`).join('')
+    $('cfg-rows').innerHTML = CFG_GROUPS.map((g, gi) => `
+      <div class="cfg-group">
+        <h3>${g.title}</h3>
+        <div class="cfg-fields">
+          ${Object.keys(g.keys).map(k => {
+            cfgOrig[k] = d.config[k] ?? ''
+            return `<div class="cfg-field"><label>${g.keys[k][0]}</label><input id="cfg-${k}" value="${esc(cfgOrig[k])}"></div>`
+          }).join('')}
+        </div>
+        <div class="cfg-save"><button class="primary" onclick="saveCfgGroup(${gi})">保存</button></div>
+      </div>`).join('')
   } catch (e) { toast(e.message) }
 }
-async function saveCfg (k) {
-  try { await api(`/config/${k}`, { method: 'PUT', body: JSON.stringify({ value: $('cfg-' + k).value }) }); toast('已保存') }
-  catch (e) { toast(e.message) }
+/** 整组保存:只提交有改动的字段,全部一致时提示不重复提交 */
+async function saveCfgGroup (gi) {
+  const g = CFG_GROUPS[gi]
+  const changed = Object.keys(g.keys).filter(k => $('cfg-' + k).value !== cfgOrig[k])
+  if (changed.length === 0) { toast('没有改动'); return }
+  try {
+    for (const k of changed) {
+      await api(`/config/${k}`, { method: 'PUT', body: JSON.stringify({ value: $('cfg-' + k).value }) })
+      cfgOrig[k] = $('cfg-' + k).value
+    }
+    toast(`${g.title} 已保存 ${changed.length} 项`)
+  } catch (e) { toast(e.message) }
 }
 async function sendTestMail () {
   const email = prompt('收件邮箱(留空则发给你的账号注册邮箱):', '') || ''

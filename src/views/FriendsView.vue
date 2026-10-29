@@ -202,6 +202,9 @@
     }
   })
 
+  // 默认 tab 就是「论道」:挂载时必须拉一次历史,否则刷新后只有 WS 增量、旧消息全空
+  void loadChat()
+
   async function loadFriends(): Promise<void> {
     try {
       friends.value = await cloudApi.friends()

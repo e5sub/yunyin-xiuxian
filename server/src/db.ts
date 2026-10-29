@@ -475,7 +475,7 @@ async function seedConfig(): Promise<void> {
     ['chat_min_interval_ms', '1200'],
     ['chat_max_len', '120'],
     ['leaderboard_size', '50'],
-    ['chat_history_size', '50'],
+    ['chat_history_size', '200'],
     // 聊天留档天数:启动 + 每 6 小时清理更早的记录
     ['chat_retention_days', '7'],
     // 云存档自动上传间隔(秒);客户端登录时取一次
@@ -518,9 +518,16 @@ async function seedConfig(): Promise<void> {
     for (const [k, v] of defaults) {
       await run('INSERT OR IGNORE INTO game_config (config_key, config_value, updated_at) VALUES (?, ?, ?)', [k, v, now])
     }
-    return
+  } else {
+    for (const [k, v] of defaults) {
+      await run('INSERT IGNORE INTO game_config (config_key, config_value, updated_at) VALUES (?, ?, ?)', [k, v, now])
+    }
   }
-  for (const [k, v] of defaults) {
-    await run('INSERT IGNORE INTO game_config (config_key, config_value, updated_at) VALUES (?, ?, ?)', [k, v, now])
-  }
+  // 老库一次性升级:聊天历史条数仍是旧默认 50 时抬到 200(留存 7 天却只回 50 条,刷新像「记录丢了」)
+  await run('UPDATE game_config SET config_value = ?, updated_at = ? WHERE config_key = ? AND config_value = ?', [
+    '200',
+    now,
+    'chat_history_size',
+    '50'
+  ])
 }
