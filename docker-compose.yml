@@ -12,6 +12,21 @@ services:
       - yunyin-net
     environment:
       - TZ=Asia/Shanghai
+      # GM 后台路径(可自定义;改后重启生效)
+      - GM_PATH=/gm
+      # sqlite(默认) | mysql;mysql 时再配 DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME
+      - DB_DRIVER=sqlite
+      # 邮件(可选):EMAIL_ENABLED=true + SMTP_* 实发验证码;EMAIL_CODE_REQUIRED=true 强制注册验证码
+      # - EMAIL_ENABLED=false
+      # - EMAIL_CODE_REQUIRED=false
+      # - SMTP_HOST=
+      # - SMTP_PORT=465
+      # - SMTP_USER=
+      # - SMTP_PASS=
+      # - SMTP_FROM=
+    volumes:
+      # 账号/云存档/聊天等数据(SQLite 库 + JWT 密钥);换 MySQL 可去掉
+      - yunyin-data:/app/server/data
     deploy:
       resources:
         limits:
@@ -25,6 +40,9 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  yunyin-data:
 
 networks:
   yunyin-net:

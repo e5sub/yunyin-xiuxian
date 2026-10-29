@@ -1,4 +1,8 @@
-# CI 专用构建上下文白名单,配合 Dockerfile.ci:前端已在 runner 上构建,镜像只需 dist 与 nginx.conf
+# CI 专用构建上下文白名单,配合 Dockerfile.ci:前端已在 runner 上构建,镜像只需 dist、后端源码与运行配置
 *
 !dist
-!nginx.conf
+!docker-entrypoint.sh
+!nginx-docker.conf.template
+!server
+server/node_modules
+server/data

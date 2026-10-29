@@ -1,4 +1,6 @@
 node_modules
+server/node_modules
+server/data
 npm-debug.log
 package-lock.json
 

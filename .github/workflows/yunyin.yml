@@ -48,6 +48,12 @@ jobs:
           bun run check
           bun run test:report
 
+      - name: 后端类型检查(server/)
+        run: |
+          cd server
+          bun install
+          bun run check
+
       - name: 构建项目
         run: bun run build
 
