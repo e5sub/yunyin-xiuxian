@@ -5,7 +5,7 @@
  */
 import { useAuthStore } from '@/stores/auth'
 
-export const DEFAULT_API_BASE = 'https://yxxx.071717.xyz'
+export const DEFAULT_API_BASE = 'https://yy.071717.xyz'
 
 export const API_BASE: string =
   import.meta.env.VITE_API_BASE ?? (import.meta.env.PROD ? DEFAULT_API_BASE : '')
