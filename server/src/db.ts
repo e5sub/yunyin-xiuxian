@@ -151,7 +151,10 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL DEFAULT 'player',
   status TEXT NOT NULL DEFAULT 'active',
   created_at INTEGER NOT NULL,
-  pass_changed_at INTEGER NOT NULL DEFAULT 0
+  pass_changed_at INTEGER NOT NULL DEFAULT 0,
+  -- 单设备登录:每次登录自增,旧 token 据此作废(挤下线)
+  login_seq INTEGER NOT NULL DEFAULT 0,
+  login_seq_at INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS saves (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -265,6 +268,8 @@ CREATE INDEX IF NOT EXISTS idx_save_history_user ON save_history(user_id, id DES
       "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'player'",
       "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
       'ALTER TABLE users ADD COLUMN pass_changed_at INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE users ADD COLUMN login_seq INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE users ADD COLUMN login_seq_at INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE saves ADD COLUMN started INTEGER NOT NULL DEFAULT 0'
     ]) {
       try {
@@ -298,7 +303,10 @@ CREATE TABLE IF NOT EXISTS users (
   role VARCHAR(16) NOT NULL DEFAULT 'player',
   status VARCHAR(16) NOT NULL DEFAULT 'active',
   created_at BIGINT NOT NULL,
-  pass_changed_at BIGINT NOT NULL DEFAULT 0
+  pass_changed_at BIGINT NOT NULL DEFAULT 0,
+  -- 单设备登录:每次登录自增,旧 token 据此作废(挤下线)
+  login_seq BIGINT NOT NULL DEFAULT 0,
+  login_seq_at BIGINT NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS saves (
   user_id BIGINT PRIMARY KEY,
@@ -425,6 +433,8 @@ CREATE TABLE IF NOT EXISTS dungeon_daily (
     "ALTER TABLE users ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'player'",
     "ALTER TABLE users ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'active'",
     'ALTER TABLE users ADD COLUMN pass_changed_at BIGINT NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN login_seq BIGINT NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN login_seq_at BIGINT NOT NULL DEFAULT 0',
     'ALTER TABLE saves ADD COLUMN started TINYINT NOT NULL DEFAULT 0'
   ]) {
     try {

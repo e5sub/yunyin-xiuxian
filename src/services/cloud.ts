@@ -76,6 +76,7 @@ export type CloudWsMsg =
   | { type: 'room_join'; code: string; name: string; dungeon: string; at: number }
   | { type: 'room_leave'; code: string; name: string; dungeon: string; at: number }
   | { type: 'dungeon_result'; dungeon: string; name: string; by: string; win: boolean; stone: number; herb: number; at: number }
+  | { type: 'kick'; graceMs: number }
   | { type: 'pong' }
 
 export interface GEJson {
@@ -146,7 +147,7 @@ export interface DungeonRunResult {
 export class CloudError extends Error {
   /** HTTP 状态码;网络不通为 0 */
   readonly status: number
-  /** 服务端业务码(如 conflict / empty_overwrite) */
+  /** 服务端业务码(如 conflict / empty_overwrite / kicked) */
   readonly code: string
 
   constructor(message: string, status = 0, code = '') {
@@ -154,6 +155,31 @@ export class CloudError extends Error {
     this.status = status
     this.code = code
   }
+}
+
+// ---- 单设备登录:被挤下线 ----
+// 服务端在新设备登录后作废旧会话;旧设备通过 WS kick 消息或任意 REST 401(code=kicked)得知,
+// 统一走这里注册的回调(最后一推存档 → 本地登出 → 跳登录页),由界面层(App.vue)注册。
+
+type KickedHandler = () => void | Promise<void>
+let kickedHandler: KickedHandler | null = null
+/** 被挤下线的统一出口;防重入(最后一推也可能再收到 401) */
+let kicking = false
+
+export function onKicked(handler: KickedHandler): void {
+  kickedHandler = handler
+}
+
+/** 服务端判定本会话已被挤下线:触发统一下线流程 */
+function handleKicked(): void {
+  if (kicking || kickedHandler === null) return
+  kicking = true
+  void Promise.resolve(kickedHandler()).finally(() => {
+    // 留 3 秒缓冲:期间同会话的其他 401 不再重复触发
+    setTimeout(() => {
+      kicking = false
+    }, 3000)
+  })
 }
 
 export interface AuthConfig {
@@ -193,6 +219,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const obj = typeof json === 'object' && json !== null ? (json as { error?: unknown; code?: unknown }) : {}
     const msg = typeof obj.error === 'string' ? obj.error : '请求失败'
     const code = typeof obj.code === 'string' ? obj.code : ''
+    // 会话被新设备顶掉:统一走挤下线流程(旧设备最后的存档上报也走这里,宽限期内仍可写)
+    if (res.status === 401 && code === 'kicked') handleKicked()
     throw new CloudError(msg, res.status, code)
   }
   return json as T
@@ -284,6 +312,11 @@ export function connectCloudWs(): void {
     try {
       msg = JSON.parse(String(ev.data)) as CloudWsMsg
     } catch {
+      return
+    }
+    if (msg.type === 'kick') {
+      // 服务端已在宽限窗口后强关连接;这里立即走统一下线流程(最后一推存档 → 登出 → 登录页)
+      handleKicked()
       return
     }
     for (const h of handlers) h(msg)

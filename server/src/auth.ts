@@ -14,6 +14,19 @@ import { bodyStr, rateLimit } from './rateLimit.js'
 const TOKEN_TTL_SEC = 60 * 60 * 24 * 30
 const CODE_TTL_MS = 10 * 60 * 1000
 
+/**
+ * 单设备登录:登录成功 login_seq 自增,旧设备的 token 立即失效。
+ * 挤下线流程:登录接口先通知旧设备(WS kick)并等一小会儿,让旧设备把最后的进度推上云端;
+ * 旧 token 在 KICK_GRACE_MS 内仍放行(仅供收尾上报),超时后一律 401。
+ */
+export const KICK_GRACE_MS = 10_000
+
+/** 会话互踢回调:由 index.ts 注册(避免与 ws.ts 循环依赖)。返回时旧设备应已完成收尾 */
+let sessionKick: ((uid: number) => Promise<void>) | null = null
+export function registerSessionKick(fn: (uid: number) => Promise<void>): void {
+  sessionKick = fn
+}
+
 /** JWT 只认本服务签发算法,避免算法混淆类攻击 */
 const JWT_ALGS = ['HS256'] as const
 
@@ -39,8 +52,14 @@ declare global {
   }
 }
 
-export function signToken(user: AuthUser): string {
-  return jwt.sign({ uid: user.id }, jwtSecret(), { expiresIn: TOKEN_TTL_SEC })
+export function signToken(user: AuthUser, seq = 0): string {
+  return jwt.sign({ uid: user.id, seq }, jwtSecret(), { expiresIn: TOKEN_TTL_SEC })
+}
+
+/** token 里的会话序号(老 token 无此字段,按 0 处理,与存量用户的 login_seq=0 兼容) */
+function tokenSeq(payload: object): number {
+  const seq = (payload as { seq?: unknown }).seq
+  return typeof seq === 'number' && Number.isFinite(seq) ? seq : 0
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
@@ -56,10 +75,16 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       if (typeof payload !== 'object' || payload === null || typeof (payload as { uid?: unknown }).uid !== 'number') {
         throw new Error('bad payload')
       }
-      const row = await get<{ id: number; username: string; status: string; pass_changed_at: number }>(
-        'SELECT id, username, status, pass_changed_at FROM users WHERE id = ?',
-        [(payload as { uid: number }).uid]
-      )
+      const row = await get<{
+        id: number
+        username: string
+        status: string
+        pass_changed_at: number
+        login_seq: number
+        login_seq_at: number
+      }>('SELECT id, username, status, pass_changed_at, login_seq, login_seq_at FROM users WHERE id = ?', [
+        (payload as { uid: number }).uid
+      ])
       if (row === undefined) {
         res.status(401).json({ error: '未登录' })
         return
@@ -69,6 +94,15 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       if (row.pass_changed_at > 0 && iat * 1000 < row.pass_changed_at - 1000) {
         res.status(401).json({ error: '登录已失效,请重新登录' })
         return
+      }
+      // 单设备登录:会话序号对不上即已被挤下线;宽限期内放行,给旧设备最后的存档上报窗口
+      const seq = tokenSeq(payload)
+      if (seq !== row.login_seq) {
+        const withinGrace = Date.now() - row.login_seq_at < KICK_GRACE_MS
+        if (!withinGrace) {
+          res.status(401).json({ error: '账号已在其他设备登录', code: 'kicked' })
+          return
+        }
       }
       if (row.status !== 'active') {
         res.status(403).json({ error: '账号已被封禁' })
@@ -118,12 +152,12 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
   })()
 }
 
-/** ws 连接用:从 token 解 uid,无效返回 null */
-export function verifyToken(token: string): number | null {
+/** ws 连接用:从 token 解会话(uid + 会话序号),无效返回 null */
+export function verifyToken(token: string): { uid: number; seq: number } | null {
   try {
     const payload = jwt.verify(token, jwtSecret(), { algorithms: [...JWT_ALGS] })
     if (typeof payload === 'object' && payload !== null && typeof (payload as { uid?: unknown }).uid === 'number') {
-      return (payload as { uid: number }).uid
+      return { uid: (payload as { uid: number }).uid, seq: tokenSeq(payload) }
     }
     return null
   } catch {
@@ -141,6 +175,7 @@ interface UserRow {
   pass_hash: string
   role: string
   status: string
+  login_seq: number
 }
 
 export const authRouter = express.Router()
@@ -320,9 +355,10 @@ authRouter.post('/login', loginIpLimit, loginUserLimit, (req, res) => {
       res.status(401).json({ error: '道号或口令不对' })
       return
     }
-    const row = await get<UserRow>('SELECT id, username, email, pass_hash, role, status FROM users WHERE username_lower = ?', [
-      username.toLowerCase()
-    ])
+    const row = await get<UserRow>(
+      'SELECT id, username, email, pass_hash, role, status, login_seq FROM users WHERE username_lower = ?',
+      [username.toLowerCase()]
+    )
     if (row === undefined) {
       // 账号不存在也走一次比对:响应时间不泄露道号是否注册
       bcrypt.compareSync(password, DUMMY_HASH)
@@ -337,8 +373,12 @@ authRouter.post('/login', loginIpLimit, loginUserLimit, (req, res) => {
       res.status(403).json({ error: '账号已被封禁' })
       return
     }
+    // 单设备登录:先通知旧设备收尾(最后一推存档),等它落库后再签发新会话
+    if (sessionKick !== null) await sessionKick(row.id).catch(() => undefined)
+    const seq = row.login_seq + 1
+    await run('UPDATE users SET login_seq = ?, login_seq_at = ? WHERE id = ?', [seq, Date.now(), row.id])
     const user: AuthUser = { id: row.id, username: row.username }
-    res.json({ token: signToken(user), user })
+    res.json({ token: signToken(user, seq), user })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })

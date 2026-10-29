@@ -5,14 +5,14 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
 import { WebSocketServer } from 'ws'
-import { authRouter } from './auth.js'
+import { authRouter, KICK_GRACE_MS, registerSessionKick } from './auth.js'
 import { saveRouter } from './routes/save.js'
 import { socialRouter, registerPresence } from './routes/social.js'
 import { bossRouter } from './routes/boss.js'
 import { dungeonRouter } from './routes/dungeon.js'
 import { initDb, run } from './db.js'
 import { gmPath, gmRouter } from './admin.js'
-import { initWsServer, isOnline, notifyUser, registerChatPersist } from './ws.js'
+import { initWsServer, isOnline, KICK_WAIT_MS, kickUserSockets, notifyUser, registerChatPersist } from './ws.js'
 import { getConfigNumber } from './config.js'
 import { ensureAdminUser } from './adminBootstrap.js'
 
@@ -163,6 +163,9 @@ async function main(): Promise<void> {
   initWsServer(wss)
 
   registerPresence({ isOnline, notify: (uid, msg) => notifyUser(uid, msg) })
+
+  // 单设备登录:登录时通知旧设备收尾(最后一推存档),等它落库后再签发新会话
+  registerSessionKick(uid => kickUserSockets(uid, KICK_WAIT_MS, KICK_GRACE_MS))
 
   registerChatPersist((uid, name, content, at) => {
     void run('INSERT INTO chat_messages (user_id, name, content, created_at) VALUES (?, ?, ?, ?)', [

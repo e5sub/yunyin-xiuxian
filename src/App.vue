@@ -32,15 +32,15 @@
 
 <script setup lang="ts">
   import { onMounted, onUnmounted, ref, watch } from 'vue'
-  import { useRoute } from 'vue-router'
+  import { useRoute, useRouter } from 'vue-router'
   import { useGameStore } from '@/stores/game'
   import { useUiStore } from '@/stores/ui'
   import { useSettingsStore } from '@/stores/settings'
   import { useAuthStore } from '@/stores/auth'
   import { subscribeSaveWriteFailure } from '@/utils/storage'
   import { engine } from '@/core/engine'
-  import { connectCloudWs, disconnectCloudWs } from '@/services/cloud'
-  import { probeCloudNewer, pushCloudSave, restoreFromCloud, startCloudSync, syncNotice } from '@/core/cloudSave'
+  import { connectCloudWs, disconnectCloudWs, onKicked } from '@/services/cloud'
+  import { probeCloudNewer, pushCloudSave, restoreFromCloud, startCloudSync, stopCloudSync, syncNotice } from '@/core/cloudSave'
   import { applyTheme, initTheme } from '@/core/theme'
   import { resetModalStack } from '@/composables/useModalStack'
   import { configureAudio, disposeAudio, playSfx, unlockAudio } from '@/core/audio'
@@ -61,6 +61,7 @@
   const ui = useUiStore()
   const settings = useSettingsStore()
   const route = useRoute()
+  const router = useRouter()
 
   /** 内容区滚动宿主:滚动条在常驻的 main 上,不在 window */
   const scrollHost = ref<HTMLElement | null>(null)
@@ -107,6 +108,21 @@
   // 云同步异常提示:core 只抛状态,弹窗归界面层
   watch(syncNotice, notice => {
     if (notice !== null) ui.toast(notice.text, 'warn')
+  })
+
+  // 单设备登录:被新设备挤下线时的统一出口
+  // 宽限期内旧 token 仍可写存档 → 先把最后的进度推上云端,再本地登出跳登录页
+  onKicked(async () => {
+    try {
+      await pushCloudSave()
+    } catch {
+      // 尽力而为:推不上也不拦登出
+    }
+    stopCloudSync()
+    disconnectCloudWs()
+    useAuthStore().logout()
+    ui.toast('账号已在其他设备登录,本机已下线', 'warn')
+    void router.push('/login')
   })
 
   // 开局(含转世重开)后立刻推一次:不等 20 秒定时器,玩家可能开局就退

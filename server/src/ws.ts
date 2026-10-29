@@ -1,4 +1,4 @@
-/** ws 网关:鉴权 / 在线状态 / 聊天广播 / 好友通知推送 */
+/** ws 网关:鉴权 / 在线状态 / 聊天广播 / 好友通知推送 / 单设备互踢 */
 import type { IncomingMessage } from 'node:http'
 import { WebSocket, WebSocketServer } from 'ws'
 import { getConfigNumber } from './config.js'
@@ -16,20 +16,32 @@ const clients = new Map<number, Set<Client>>()
 /** 按账号限速:多开连接不能绕过(连接级计数在 ws 层会被并发连接放大) */
 const lastChatByUid = new Map<number, number>()
 
+/** 旧设备的收尾等待:登录接口等这段时间再发新 token(够旧设备把存档推上来) */
+export const KICK_WAIT_MS = 2500
+
 export function initWsServer(wss: WebSocketServer): void {
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
     void (async () => {
       const url = new URL(req.url ?? '/', 'http://localhost')
       const token = url.searchParams.get('token') ?? ''
-      const uid = verifyToken(token)
-      if (uid === null) {
+      const session = verifyToken(token)
+      if (session === null) {
         ws.close(4001, '未登录')
         return
       }
+      const uid = session.uid
       // 道号一律取库里的账号名:客户端传什么都不能改身份(否则可冒充他人/GM)
-      const row = await get<{ username: string; status: string }>('SELECT username, status FROM users WHERE id = ?', [uid])
+      const row = await get<{ username: string; status: string; login_seq: number }>(
+        'SELECT username, status, login_seq FROM users WHERE id = ?',
+        [uid]
+      )
       if (row === undefined || row.status !== 'active') {
         ws.close(4001, '账号不可用')
+        return
+      }
+      // 单设备登录:会话序号对不上(旧会话)的连接直接拒掉;存档上报的宽限逻辑在 requireAuth 里
+      if (session.seq !== row.login_seq) {
+        ws.close(4002, '账号已在其他设备登录')
         return
       }
       const client: Client = { uid, name: row.username, ws }
@@ -171,4 +183,28 @@ export function notifyUser(uid: number, msg: Record<string, unknown>): void {
   for (const c of set) {
     if (c.ws.readyState === WebSocket.OPEN) c.ws.send(payload)
   }
+}
+
+/**
+ * 单设备互踢:通知该账号所有在线连接「你已被挤下线」。
+ * 等 waitMs(给旧设备最后的存档上报窗口)后返回,closeAfterMs 后强制关闭旧连接。
+ * 登录接口据此串行化:旧设备的最后一推落库后才给新设备发 token。
+ */
+export function kickUserSockets(uid: number, waitMs: number, closeAfterMs: number): Promise<void> {
+  const set = clients.get(uid)
+  if (set === undefined) return Promise.resolve()
+  notifyUser(uid, { type: 'kick', graceMs: closeAfterMs })
+  return new Promise(resolve => {
+    setTimeout(resolve, waitMs)
+    setTimeout(() => {
+      const cur = clients.get(uid)
+      if (cur !== undefined) {
+        for (const c of cur) {
+          if (c.ws.readyState === WebSocket.OPEN || c.ws.readyState === WebSocket.CONNECTING) {
+            c.ws.close(4002, '账号已在其他设备登录')
+          }
+        }
+      }
+    }, closeAfterMs)
+  })
 }
