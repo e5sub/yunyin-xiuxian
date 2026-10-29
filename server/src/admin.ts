@@ -87,6 +87,9 @@ gmRouter.get('/users', requireAdmin, (req: Request, res: Response) => {
     const where = search !== '' ? "WHERE username_lower LIKE ? OR email_lower LIKE ?" : ''
     const params = search !== '' ? [like, like] : []
     const total = await get<{ c: number }>(`SELECT COUNT(*) AS c FROM users ${where}`, params)
+    // 页码夹到有效范围:超出总页数退回最后一页(空条件时至少第 1 页),防止翻出空页
+    const maxPage = Math.max(Math.ceil((total?.c ?? 0) / pageSize), 1)
+    const effPage = Math.min(page, maxPage)
     const rows = await all(
       `SELECT u.id, u.username, u.email, u.role, u.status, u.created_at,
               p.name, p.realm_label, p.realm_index, p.power_m, p.power_e,
@@ -98,11 +101,11 @@ gmRouter.get('/users', requireAdmin, (req: Request, res: Response) => {
        ${where}
        ORDER BY u.id DESC
        LIMIT ? OFFSET ?`,
-      [...params, pageSize, (page - 1) * pageSize]
+      [...params, pageSize, (effPage - 1) * pageSize]
     )
     res.json({
       total: total?.c ?? 0,
-      page,
+      page: effPage,
       pageSize,
       users: rows.map((r: Record<string, unknown>) => ({
         id: r.id,

@@ -285,6 +285,8 @@ const API = location.pathname.replace(/\/+$/, '') + '/api'
 let token = sessionStorage.getItem('gm_token') || ''
 let me = sessionStorage.getItem('gm_name') || ''
 let page = 1, pageSize = 20
+/** 最近一次响应算出的总页数:pageTurn 夹上界用(总人数不足一页时为 1) */
+let maxPage = 1
 
 function $ (id) { return document.getElementById(id) }
 function toast (msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200) }
@@ -357,8 +359,11 @@ async function loadUsers (p) {
   try {
     const q = new URLSearchParams({ search: $('u-search').value.trim(), page, pageSize })
     const d = await api('/users?' + q)
+    maxPage = Math.max(Math.ceil(d.total / d.pageSize), 1)
+    // 搜索/删除后总页数缩水:当前页越界时自动退回最后一页重取
+    if (d.page > maxPage) { page = maxPage; return loadUsers(page) }
     $('u-total').textContent = '共 ' + d.total + ' 人'
-    $('u-page').textContent = '第 ' + d.page + ' / ' + Math.max(Math.ceil(d.total / d.pageSize), 1) + ' 页'
+    $('u-page').textContent = '第 ' + d.page + ' / ' + maxPage + ' 页'
     $('u-rows').innerHTML = d.users.map(u => `<tr>
       <td>${u.id}</td>
       <td>${esc(u.username)}</td>
@@ -383,7 +388,7 @@ async function loadUsers (p) {
     </tr>`).join('') || '<tr><td colspan="13" class="muted">无数据</td></tr>'
   } catch (e) { toast(e.message) }
 }
-function pageTurn (d) { loadUsers(Math.max(page + d, 1)) }
+function pageTurn (d) { loadUsers(Math.min(Math.max(page + d, 1), maxPage)) }
 
 async function ban (id, on) {
   try { await api(`/users/${id}/${on ? 'ban' : 'unban'}`, { method: 'POST' }); toast(on ? '已封禁' : '已解封'); loadUsers() }
