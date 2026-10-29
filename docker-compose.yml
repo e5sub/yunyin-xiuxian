@@ -6,6 +6,8 @@ services:
     image: yunyin-xiuxian:latest
     container_name: yunyin-xiuxian
     ports:
+      # 对外访问端口 = 冒号左侧(宿主机)。想用 8787 访问就改成 "8787:80";
+      # .env 里的 PORT 只是容器内后端端口(nginx 反代目标自动跟随),不影响对外端口
       - "8080:80"
     restart: unless-stopped
     networks:

@@ -43,8 +43,8 @@ docker build -t yunyin-xiuxian:latest .
 
 - **前端构建**：`oven/bun:1-alpine`（本地 Dockerfile）；CI 走 `Dockerfile.ci`，`dist/` 由 runner 预构建后复制，多架构免在 QEMU 里重跑 `vue-tsc` 与 `vite`
 - **运行时**：`node:22-bookworm-slim`（glibc，`better-sqlite3` 有 x64/arm64 预编译产物）+ nginx
-- **进程**：entrypoint 起 nginx（`:80` 静态站 + 反代 `/api`、`/ws`、GM 后台到 `127.0.0.1:8787`），前台跑 Node 后端
-- **端口**：80（容器内）→ 8080（宿主机）
+- **进程**：entrypoint 起 nginx（`:80` 静态站 + 反代 `/api`、`/ws`、GM 后台到 `127.0.0.1:$PORT`），前台跑 Node 后端
+- **端口**：对外端口由 compose `ports` 的宿主机侧决定（默认 `8080:80`，即宿主机 8080 访问）；`.env` 的 `PORT` 是容器内后端端口，nginx 反代目标自动跟随，与对外端口无关
 - **健康检查**：每 30 秒探测 `/api/health`
 
 ## 环境变量
@@ -55,7 +55,7 @@ docker build -t yunyin-xiuxian:latest .
 | `DB_DRIVER` | `sqlite` | `sqlite` 或 `mysql` |
 | `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME` | — | MySQL 连接（`DB_DRIVER=mysql` 时必填） |
 | `EMAIL_ENABLED` / `EMAIL_CODE_REQUIRED` / `SMTP_HOST/PORT/USER/PASS/FROM` | — | 邮箱设置**首次建库的种子值**；运行期在 GM 后台「参数设置 → 邮件 / SMTP」页改，改后立即生效（开关最迟 30 秒） |
-| `PORT` | `8787` | 后端容器内端口（nginx 反代目标，一般不动） |
+| `PORT` | `8787` | 后端容器内端口（nginx 反代目标自动跟随；**对外端口改 compose `ports` 的宿主机侧**，如 `"8787:80"`） |
 | `YUNYIN_JWT_SECRET` | 自动生成落盘 | JWT 密钥（≥16 字符；多实例部署必须统一） |
 
 完整示例见 `server/.env.example`。

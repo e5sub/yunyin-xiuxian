@@ -15,7 +15,7 @@ server {
 
     # 游戏后端 REST
     location /api/ {
-        proxy_pass http://127.0.0.1:8787;
+        proxy_pass http://127.0.0.1:__PORT__;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -26,7 +26,7 @@ server {
 
     # WebSocket(聊天/在线状态)
     location /ws {
-        proxy_pass http://127.0.0.1:8787;
+        proxy_pass http://127.0.0.1:__PORT__;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -37,7 +37,7 @@ server {
 
     # GM 后台(页面 + 管理 API),路径跟 GM_PATH 走
     location __GM_PATH__ {
-        proxy_pass http://127.0.0.1:8787;
+        proxy_pass http://127.0.0.1:__PORT__;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
