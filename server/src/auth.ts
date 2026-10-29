@@ -7,7 +7,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import jwt from 'jsonwebtoken'
 import { get, run } from './db.js'
 import { emailEnabled, makeCode, sendCodeMail } from './mail.js'
-import { getConfig } from './config.js'
+import { getConfig, getConfigNumber } from './config.js'
 import { jwtSecret } from './secret.js'
 import { bodyStr, rateLimit } from './rateLimit.js'
 
@@ -216,12 +216,15 @@ export function verifyPassword(hash: string | undefined, password: string): bool
   return bcrypt.compareSync(password, hash)
 }
 
-/** 前端探测:邮箱验证码是否强制(预留开关)、邮箱服务是否启用 */
+/** 前端探测:邮箱验证码是否强制(预留开关)、邮箱服务是否启用、云存档上传间隔 */
 authRouter.get('/config', (_req, res) => {
   void (async () => {
+    const interval = await getConfigNumber('save_push_interval_sec', 5)
     res.json({
       emailCodeRequired: (await getConfig('email_code_required')) === 'true',
-      emailEnabled: await emailEnabled()
+      emailEnabled: await emailEnabled(),
+      // 兜底夹取:过短打爆服务器,过长失去「自动保存」意义
+      saveIntervalSec: Math.min(Math.max(interval, 3), 300)
     })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })

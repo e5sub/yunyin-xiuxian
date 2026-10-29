@@ -13,6 +13,8 @@ export interface ProfileSnapshot {
   hpE: number
   atkM: number
   atkE: number
+  defM: number
+  defE: number
 }
 
 /** 每用户保留的历史份数 */
@@ -44,7 +46,9 @@ function parseSnapshot(raw: unknown, userId: number): ProfileSnapshot | null {
     hpM: num(b.hpM),
     hpE: int(b.hpE),
     atkM: num(b.atkM),
-    atkE: int(b.atkE)
+    atkE: int(b.atkE),
+    defM: num(b.defM),
+    defE: int(b.defE)
   }
 }
 
@@ -182,6 +186,8 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
         hp_e: snapshot.hpE,
         atk_m: snapshot.atkM,
         atk_e: snapshot.atkE,
+        def_m: snapshot.defM,
+        def_e: snapshot.defE,
         updated_at: now
       })
     }

@@ -185,6 +185,8 @@ CREATE TABLE IF NOT EXISTS profiles (
   hp_e INTEGER NOT NULL,
   atk_m REAL NOT NULL,
   atk_e INTEGER NOT NULL,
+  def_m REAL NOT NULL,
+  def_e INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS friends (
@@ -270,7 +272,9 @@ CREATE INDEX IF NOT EXISTS idx_save_history_user ON save_history(user_id, id DES
       'ALTER TABLE users ADD COLUMN pass_changed_at INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE users ADD COLUMN login_seq INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE users ADD COLUMN login_seq_at INTEGER NOT NULL DEFAULT 0',
-      'ALTER TABLE saves ADD COLUMN started INTEGER NOT NULL DEFAULT 0'
+      'ALTER TABLE saves ADD COLUMN started INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE profiles ADD COLUMN def_m REAL NOT NULL DEFAULT 0',
+      'ALTER TABLE profiles ADD COLUMN def_e INTEGER NOT NULL DEFAULT 0'
     ]) {
       try {
         d.exec(stmt)
@@ -339,6 +343,8 @@ CREATE TABLE IF NOT EXISTS profiles (
   hp_e INT NOT NULL,
   atk_m DOUBLE NOT NULL,
   atk_e INT NOT NULL,
+  def_m DOUBLE NOT NULL,
+  def_e INT NOT NULL,
   updated_at BIGINT NOT NULL,
   CONSTRAINT fk_profiles_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX idx_profile_rank (realm_index DESC, power_e DESC, power_m DESC)
@@ -435,7 +441,9 @@ CREATE TABLE IF NOT EXISTS dungeon_daily (
     'ALTER TABLE users ADD COLUMN pass_changed_at BIGINT NOT NULL DEFAULT 0',
     'ALTER TABLE users ADD COLUMN login_seq BIGINT NOT NULL DEFAULT 0',
     'ALTER TABLE users ADD COLUMN login_seq_at BIGINT NOT NULL DEFAULT 0',
-    'ALTER TABLE saves ADD COLUMN started TINYINT NOT NULL DEFAULT 0'
+    'ALTER TABLE saves ADD COLUMN started TINYINT NOT NULL DEFAULT 0',
+    'ALTER TABLE profiles ADD COLUMN def_m DOUBLE NOT NULL DEFAULT 0',
+    'ALTER TABLE profiles ADD COLUMN def_e INT NOT NULL DEFAULT 0'
   ]) {
     try {
       await d.query(stmt)
@@ -470,6 +478,8 @@ async function seedConfig(): Promise<void> {
     ['chat_history_size', '50'],
     // 聊天留档天数:启动 + 每 6 小时清理更早的记录
     ['chat_retention_days', '7'],
+    // 云存档自动上传间隔(秒);客户端登录时取一次
+    ['save_push_interval_sec', '5'],
     ['boss_daily_attempts', '1'],
     ['boss_hp_atk_mult', '20'],
     ['boss_strike_rounds', '10'],

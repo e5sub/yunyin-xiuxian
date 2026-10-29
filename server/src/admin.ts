@@ -89,7 +89,8 @@ gmRouter.get('/users', requireAdmin, (req: Request, res: Response) => {
     const total = await get<{ c: number }>(`SELECT COUNT(*) AS c FROM users ${where}`, params)
     const rows = await all(
       `SELECT u.id, u.username, u.email, u.role, u.status, u.created_at,
-              p.name, p.realm_label, p.realm_index, p.power_m, p.power_e, p.updated_at AS profile_at,
+              p.name, p.realm_label, p.realm_index, p.power_m, p.power_e,
+              p.hp_m, p.hp_e, p.atk_m, p.atk_e, p.def_m, p.def_e, p.updated_at AS profile_at,
               s.updated_at AS save_at
        FROM users u
        LEFT JOIN profiles p ON p.user_id = u.id
@@ -118,6 +119,12 @@ gmRouter.get('/users', requireAdmin, (req: Request, res: Response) => {
                 realmIndex: r.realm_index,
                 powerM: r.power_m,
                 powerE: r.power_e,
+                hpM: r.hp_m,
+                hpE: r.hp_e,
+                atkM: r.atk_m,
+                atkE: r.atk_e,
+                defM: r.def_m,
+                defE: r.def_e,
                 updatedAt: r.profile_at
               }
             : null,
@@ -284,6 +291,7 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'leaderboard_size',
       'chat_history_size',
       'chat_retention_days',
+      'save_push_interval_sec',
       'boss_daily_attempts',
       'boss_hp_atk_mult',
       'boss_strike_rounds',
@@ -326,6 +334,7 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'leaderboard_size',
       'chat_history_size',
       'chat_retention_days',
+      'save_push_interval_sec',
       'boss_daily_attempts',
       'boss_hp_atk_mult',
       'boss_strike_rounds',

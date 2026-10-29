@@ -18,7 +18,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useGameStore } from '@/stores/game'
 import { usePlayerStore } from '@/stores/player'
 
-const PUSH_INTERVAL_MS = 20000
+/** 自动上传间隔:登录时从服务端 game_config(save_push_interval_sec)取,GM 后台可调 */
+let pushIntervalMs = 20_000
 
 /** 同步锚点:本机上次对齐到的云端 updatedAt。独立键,不进 PERSISTED_STORES(清档不该清掉它) */
 const SYNC_META_KEY = 'yunyin.syncMeta'
@@ -70,7 +71,7 @@ function report(kind: 'error' | 'conflict', text: string): void {
   }
 }
 
-/** 档案快照:随存档上传,供排行榜 / 好友列表 / 切磋使用 */
+/** 档案快照:随存档上传,供排行榜 / 好友列表 / 切磋 / GM 后台使用 */
 export function buildProfileSnapshot(): {
   name: string
   realmLabel: string
@@ -81,6 +82,8 @@ export function buildProfileSnapshot(): {
   hpE: number
   atkM: number
   atkE: number
+  defM: number
+  defE: number
 } {
   const player = usePlayerStore()
   const { attack, defense, maxHp } = player.finalStats
@@ -94,7 +97,9 @@ export function buildProfileSnapshot(): {
     hpM: maxHp.m,
     hpE: maxHp.e,
     atkM: attack.m,
-    atkE: attack.e
+    atkE: attack.e,
+    defM: defense.m,
+    defE: defense.e
   }
 }
 
@@ -236,11 +241,29 @@ let timer: ReturnType<typeof setInterval> | undefined
 export function startCloudSync(): void {
   const auth = useAuthStore()
   if (!auth.loggedIn || timer !== undefined) return
+  // 间隔以服务端配置为准(GM 后台 save_push_interval_sec);拿不到就用当前默认
+  void cloudApi
+    .authConfig()
+    .then(c => {
+      const sec = Math.min(Math.max(c.saveIntervalSec ?? 20, 3), 300)
+      if (sec * 1000 !== pushIntervalMs) {
+        pushIntervalMs = sec * 1000
+        // 已在同步中则按新间隔重排定时器
+        if (timer !== undefined) {
+          clearInterval(timer)
+          timer = setInterval(() => {
+            if (document.visibilityState === 'hidden') return
+            void pushCloudSave()
+          }, pushIntervalMs)
+        }
+      }
+    })
+    .catch(() => undefined)
   void pushCloudSave()
   timer = setInterval(() => {
     if (document.visibilityState === 'hidden') return
     void pushCloudSave()
-  }, PUSH_INTERVAL_MS)
+  }, pushIntervalMs)
 }
 
 export function stopCloudSync(): void {

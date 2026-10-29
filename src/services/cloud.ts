@@ -187,6 +187,8 @@ export interface AuthConfig {
   emailCodeRequired: boolean
   /** 服务端是否已配置 SMTP 实发邮件 */
   emailEnabled: boolean
+  /** 云存档自动上传间隔(秒);服务端 game_config.save_push_interval_sec,老后端缺省 undefined */
+  saveIntervalSec?: number
 }
 
 export interface EmailCodeResp {

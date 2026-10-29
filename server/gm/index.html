@@ -196,7 +196,8 @@
         <div class="tbl-wrap">
           <table>
             <thead><tr>
-              <th>ID</th><th>道号</th><th>邮箱</th><th>角色名</th><th>境界</th><th>战力</th>
+              <th>ID</th><th>道号</th><th>邮箱</th><th>角色名</th><th>境界</th>
+              <th>战力</th><th>攻击</th><th>防御</th><th>气血</th>
               <th>身份</th><th>状态</th><th>存档更新</th><th style="min-width:150px">操作</th>
             </tr></thead>
             <tbody id="u-rows"></tbody>
@@ -289,13 +290,15 @@ function toast (msg) { const t = $('toast'); t.textContent = msg; t.classList.ad
 function esc (s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
 function fmt (ts) { return ts ? new Date(Number(ts)).toLocaleString('zh-CN', { hour12: false }) : '—' }
 
-/** GNum(m×10^e) 展示:整数,大数折成万/亿(详情页不再出现 1.2345678e12 这类长小数) */
+/** GNum(m×10^e) 展示:保留 1 位小数,大数折成万/亿/兆(与前台同一折算口径) */
 function fmtGE (m, e) {
   const n = (Number(m) || 0) * Math.pow(10, Number(e) || 0)
   if (!Number.isFinite(n)) return '—'
-  if (n >= 1e8) return Math.round(n / 1e8) + '亿'
-  if (n >= 1e4) return Math.round(n / 1e4) + '万'
-  return String(Math.round(n))
+  if (n >= 1e16) return (n / 1e16).toFixed(1) + '京'
+  if (n >= 1e12) return (n / 1e12).toFixed(1) + '兆'
+  if (n >= 1e8) return (n / 1e8).toFixed(1) + '亿'
+  if (n >= 1e4) return (n / 1e4).toFixed(1) + '万'
+  return n.toFixed(1)
 }
 
 async function api (path, opts = {}) {
@@ -362,6 +365,9 @@ async function loadUsers (p) {
       <td>${u.profile ? esc(u.profile.name) : '—'}</td>
       <td>${u.profile ? esc(u.profile.realmLabel) : '—'}</td>
       <td>${u.profile ? fmtGE(u.profile.powerM, u.profile.powerE) : '—'}</td>
+      <td>${u.profile ? fmtGE(u.profile.atkM, u.profile.atkE) : '—'}</td>
+      <td>${u.profile ? fmtGE(u.profile.defM, u.profile.defE) : '—'}</td>
+      <td>${u.profile ? fmtGE(u.profile.hpM, u.profile.hpE) : '—'}</td>
       <td>${u.role === 'admin' ? '<span class="tag admin">管理员</span>' : '玩家'}</td>
       <td>${u.status === 'active' ? '<span class="tag ok">正常</span>' : '<span class="tag ban">封禁</span>'}</td>
       <td>${fmt(u.saveAt)}</td>
@@ -373,7 +379,7 @@ async function loadUsers (p) {
         <button onclick="resetPw(${u.id})">重置口令</button>
         ${u.role !== 'admin' ? `<button class="danger" data-del-id="${u.id}" data-del-name="${esc(u.username)}">删除</button>` : ''}
       </td>
-    </tr>`).join('') || '<tr><td colspan="10" class="muted">无数据</td></tr>'
+    </tr>`).join('') || '<tr><td colspan="13" class="muted">无数据</td></tr>'
   } catch (e) { toast(e.message) }
 }
 function pageTurn (d) { loadUsers(Math.max(page + d, 1)) }
@@ -405,7 +411,7 @@ async function viewDetail (id) {
       <div><b>角色名</b>${p ? esc(p.name) : '—'}</div>
       <div><b>境界</b>${p ? esc(p.realm_label) + ' (' + p.realm_index + ')' : '—'}</div>
       <div><b>战力</b>${p ? fmtGE(p.power_m, p.power_e) : '—'}</div>
-      <div><b>气血</b>${p ? fmtGE(p.hp_m, p.hp_e) : '—'} <b style="min-width:0">攻击</b>${p ? fmtGE(p.atk_m, p.atk_e) : '—'}</div>
+      <div><b>攻击</b>${p ? fmtGE(p.atk_m, p.atk_e) : '—'} <b style="min-width:0">防御</b>${p ? fmtGE(p.def_m, p.def_e) : '—'} <b style="min-width:0">气血</b>${p ? fmtGE(p.hp_m, p.hp_e) : '—'}</div>
       <div><b>角色更新</b>${p ? fmt(p.updated_at) : '—'}</div>
       <div><b>存档</b>${d.save ? `版本 ${d.save.version} · ${d.save.bytes} 字节 · ${fmt(d.save.updatedAt)}` : '无'}</div>
       <div><b>好友数</b>${d.friends}</div>`
@@ -422,7 +428,8 @@ const CFG_GROUPS = [
       chat_max_len: ['单条聊天最长字数', 'num'],
       leaderboard_size: ['排行榜条数', 'num'],
       chat_history_size: ['聊天历史条数', 'num'],
-      chat_retention_days: ['聊天留存天数(超期自动清理)', 'num']
+      chat_retention_days: ['聊天留存天数(超期自动清理)', 'num'],
+      save_push_interval_sec: ['云存档自动上传间隔(秒,3~300)', 'num']
     }
   },
   {
