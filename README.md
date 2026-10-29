@@ -143,17 +143,17 @@ git push origin main v1.34.0
 
 ```bash
 # 方式一：使用预构建镜像（推荐）
-docker run -d -p 8080:80 ghcr.io/setube/yunyin-xiuxian:latest
+docker run -d -p 8787:8787 -e PORT=8787 ghcr.io/setube/yunyin-xiuxian:latest
 
 # 方式二：指定版本
-docker run -d -p 8080:80 ghcr.io/setube/yunyin-xiuxian:<version>
+docker run -d -p 8787:8787 -e PORT=8787 ghcr.io/setube/yunyin-xiuxian:<version>
 
 # 方式三：本地构建镜像
 docker build -t yunyin-xiuxian .
-docker run -d -p 8080:80 yunyin-xiuxian
+docker run -d -p 8787:8787 -e PORT=8787 yunyin-xiuxian
 ```
 
-访问 `http://localhost:8080` 即可开始游戏。反向代理、docker-compose 与子路径部署见 [README.Docker.md](README.Docker.md)。
+访问 `http://localhost:8787` 即可开始游戏(容器默认 PORT=8787,`-e PORT=xxxx` 换端口)。反向代理、docker-compose 与子路径部署见 [README.Docker.md](README.Docker.md)。
 
 ## 技术栈
 

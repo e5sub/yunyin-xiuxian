@@ -1,7 +1,7 @@
 # 全栈镜像 nginx 模板:静态站 + 游戏后端反代
 # __GM_PATH__ 由 docker-entrypoint.sh 用 GM_PATH 环境变量替换(GM 后台可自定义路径)
 server {
-    listen 80;
+    listen __PORT__;
     server_name _;
     root /usr/share/nginx/html;
     index index.html;

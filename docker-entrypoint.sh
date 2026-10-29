@@ -5,7 +5,7 @@ set -e
 GM_PATH="${GM_PATH:-/gm}"
 export GM_PATH
 
-# 后端容器内端口(默认 8787);nginx 反代目标与后端 PORT 保持一致
+# 服务端口(默认 8787):nginx 监听与后端 PORT 同值,内外一致
 PORT="${PORT:-8787}"
 export PORT
 
@@ -13,7 +13,7 @@ export PORT
 sed -e "s|__GM_PATH__|${GM_PATH}|g" -e "s|__PORT__|${PORT}|g" /etc/nginx/conf.d/app.conf.template > /etc/nginx/conf.d/default.conf
 rm -f /etc/nginx/sites-enabled/default
 
-echo "[yunyin-docker] nginx :80 -> backend :${PORT}, gm path: ${GM_PATH}"
+echo "[yunyin-docker] listening :${PORT} (static + proxy to backend :${PORT}), gm path: ${GM_PATH}"
 
 nginx
 

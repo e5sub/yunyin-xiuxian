@@ -10,28 +10,28 @@
 
 ```bash
 # 最新版本
-docker run -d -p 8080:80 -v yunyin-data:/app/server/data ghcr.io/setube/yunyin-xiuxian:latest
+docker run -d -p 8787:8787 -e PORT=8787 -v yunyin-data:/app/server/data ghcr.io/setube/yunyin-xiuxian:latest
 
 # 指定版本号（取 package.json 的 version）
-docker run -d -p 8080:80 -v yunyin-data:/app/server/data ghcr.io/setube/yunyin-xiuxian:<version>
+docker run -d -p 8787:8787 -e PORT=8787 -v yunyin-data:/app/server/data ghcr.io/setube/yunyin-xiuxian:<version>
 ```
 
 若仓库配置了 `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN`，同一份镜像会额外推送到 Docker Hub 的 `<user>/yunyin-xiuxian`，标签一致。
 
 ### 方式二：docker compose（推荐自托管）
 
-`docker-compose.yml` 已配好端口、数据卷、时区、资源限制与日志滚动，并会读取宿主机 `server/.env`（`env_file` 配置为可选，文件不存在也能启动；`server/.env.example` 有全部可配项模板）：
+`docker-compose.yml` 已配好端口、数据卷、时区、资源限制与日志滚动。配置统一放**项目根目录 `.env`**（即 `server/.env.example` 的内容）：compose 读它做端口映射插值，并整体注入容器；旧的 `server/.env` 仍兼容（优先级更低，建议迁到根目录）：
 
 ```bash
-cp server/.env.example server/.env   # 按需修改(可留空)
+cp server/.env.example .env          # 按需修改(可留空)
 docker compose up -d                 # 启动
 docker compose logs -f               # 日志
 docker compose down                  # 停止
 ```
 
-> 改 `server/.env` 后需 `docker compose up -d` 重启生效；运行期邮件/SMTP 与游戏参数可在 GM 后台热改。
+> 改 `.env` 后需 `docker compose up -d` 重启生效；运行期邮件/SMTP 与游戏参数可在 GM 后台热改。
 
-启动后浏览器打开 <http://localhost:8080> 即可注册进入游戏。
+启动后浏览器打开 <http://localhost:8787>（端口跟随 `.env` 的 `PORT`，内外一致）即可注册进入游戏。
 
 ### 方式三：本地构建镜像
 
@@ -43,8 +43,8 @@ docker build -t yunyin-xiuxian:latest .
 
 - **前端构建**：`oven/bun:1-alpine`（本地 Dockerfile）；CI 走 `Dockerfile.ci`，`dist/` 由 runner 预构建后复制，多架构免在 QEMU 里重跑 `vue-tsc` 与 `vite`
 - **运行时**：`node:22-bookworm-slim`（glibc，`better-sqlite3` 有 x64/arm64 预编译产物）+ nginx
-- **进程**：entrypoint 起 nginx（`:80` 静态站 + 反代 `/api`、`/ws`、GM 后台到 `127.0.0.1:$PORT`），前台跑 Node 后端
-- **端口**：对外端口由 compose `ports` 的宿主机侧决定（默认 `8080:80`，即宿主机 8080 访问）；`.env` 的 `PORT` 是容器内后端端口，nginx 反代目标自动跟随，与对外端口无关
+- **进程**：entrypoint 起 nginx（静态站 + 反代 `/api`、`/ws`、GM 后台到后端），前台跑 Node 后端；**两者同听 `$PORT`，内外端口一致**
+- **端口**：由 `.env` 的 `PORT` 统一决定（默认 8787）——compose 端口映射、nginx 监听、后端监听三处同源
 - **健康检查**：每 30 秒探测 `/api/health`
 
 ## 环境变量
@@ -55,7 +55,7 @@ docker build -t yunyin-xiuxian:latest .
 | `DB_DRIVER` | `sqlite` | `sqlite` 或 `mysql` |
 | `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME` | — | MySQL 连接（`DB_DRIVER=mysql` 时必填） |
 | `EMAIL_ENABLED` / `EMAIL_CODE_REQUIRED` / `SMTP_HOST/PORT/USER/PASS/FROM` | — | 邮箱设置**首次建库的种子值**；运行期在 GM 后台「参数设置 → 邮件 / SMTP」页改，改后立即生效（开关最迟 30 秒） |
-| `PORT` | `8787` | 后端容器内端口（nginx 反代目标自动跟随；**对外端口改 compose `ports` 的宿主机侧**，如 `"8787:80"`） |
+| `PORT` | `8787` | **内外统一端口**：nginx 监听、后端监听、compose 端口映射（`"${PORT}:${PORT}"`）三处同源，改这一处即可 |
 | `YUNYIN_JWT_SECRET` | 自动生成落盘 | JWT 密钥（≥16 字符；多实例部署必须统一） |
 
 完整示例见 `server/.env.example`。
@@ -65,7 +65,7 @@ docker build -t yunyin-xiuxian:latest .
 **务必挂载 `/app/server/data`**——SQLite 数据库（账号/云存档/聊天）与 JWT 密钥都在这里：
 
 ```bash
-docker run -d -p 8080:80 -v yunyin-data:/app/server/data ghcr.io/setube/yunyin-xiuxian:latest
+docker run -d -p 8787:8787 -e PORT=8787 -v yunyin-data:/app/server/data ghcr.io/setube/yunyin-xiuxian:latest
 ```
 
 - 换用 MySQL（`DB_DRIVER=mysql`）时数据在外部库，可不挂卷
@@ -74,7 +74,7 @@ docker run -d -p 8080:80 -v yunyin-data:/app/server/data ghcr.io/setube/yunyin-x
 ## GM 后台
 
 1. 进容器创建管理员：`docker exec -it yunyin-xiuxian sh -c "cd /app/server && ./node_modules/.bin/tsx src/scripts/create-admin.ts 道号 口令"`
-2. 浏览器打开 `http://<host>:8080/gm`（自定义过 `GM_PATH` 则用对应路径），管理员登录
+2. 浏览器打开 `http://<host>:8787/gm`（自定义过 `GM_PATH` 则用对应路径），管理员登录
 3. 功能：账号管理（搜索/封禁/重置口令/删除）、角色与存档查看、游戏参数（聊天限速/榜单条数等）、全服公告
 
 ## Android APK

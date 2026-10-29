@@ -6,31 +6,22 @@ services:
     image: yunyin-xiuxian:latest
     container_name: yunyin-xiuxian
     ports:
-      # 对外访问端口 = 冒号左侧(宿主机)。想用 8787 访问就改成 "8787:80";
-      # .env 里的 PORT 只是容器内后端端口(nginx 反代目标自动跟随),不影响对外端口
-      - "8080:80"
+      # 内外端口一致:由根目录 .env 的 PORT 决定(compose 自动插值),默认 8787
+      # 想换端口只需在 .env 里改 PORT=xxxx,不用动这里
+      - "${PORT:-8787}:${PORT:-8787}"
     restart: unless-stopped
     networks:
       - yunyin-net
-    # 宿主机 server/.env 里的全部配置(端口/GM 路径/数据库/SMTP 等)注入容器;
-    # compose v2.24+ 支持 required:false,文件不存在时忽略此行
+    # 配置统一放项目根目录 .env(即 server/.env.example 的内容复制过来):
+    # compose 读它做端口等插值,并整体注入容器。旧的 server/.env 仍兼容(优先级更低)
     env_file:
       - path: ./server/.env
         required: false
+      - path: ./.env
+        required: false
     environment:
       - TZ=Asia/Shanghai
-      # GM 后台路径(可自定义;改后重启生效)
-      - GM_PATH=/gm
-      # sqlite(默认) | mysql;mysql 时再配 DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME
-      - DB_DRIVER=sqlite
-      # 邮件(可选):EMAIL_ENABLED=true + SMTP_* 实发验证码;EMAIL_CODE_REQUIRED=true 强制注册验证码
-      # - EMAIL_ENABLED=false
-      # - EMAIL_CODE_REQUIRED=false
-      # - SMTP_HOST=
-      # - SMTP_PORT=465
-      # - SMTP_USER=
-      # - SMTP_PASS=
-      # - SMTP_FROM=
+      # 其余配置(PORT/GM_PATH/DB_DRIVER/SMTP_* 等)全走 .env,这里不再写死以免覆盖
     volumes:
       # 账号/云存档/聊天等数据(SQLite 库 + JWT 密钥);换 MySQL 可去掉
       - yunyin-data:/app/server/data
