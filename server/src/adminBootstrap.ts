@@ -12,17 +12,24 @@ export async function ensureAdminUser(username: string, password = ''): Promise<
   const name = username.trim()
   if (name === '') throw new Error('GM 用户名不能为空')
   const lower = name.toLowerCase()
-  const existing = await get<{ id: number }>('SELECT id FROM users WHERE username_lower = ?', [lower])
+  const existing = await get<{ id: number; pass_hash: string }>(
+    'SELECT id, pass_hash FROM users WHERE username_lower = ?',
+    [lower]
+  )
   if (existing !== undefined) {
     if (password !== '') {
       if (password.length < 6 || password.length > 64) throw new Error('GM 口令须 6~64 字')
-      await run('UPDATE users SET role = ?, status = ?, pass_hash = ? WHERE id = ?', [
-        'admin',
-        'active',
-        bcrypt.hashSync(password, 10),
-        existing.id
-      ])
-      return `管理员「${name}」(id=${existing.id})已存在,口令已按 GM_PASS 重置`
+      // 口令没变就不重写哈希:否则每次重启都会把已签发的 GM token 作废
+      if (!bcrypt.compareSync(password, existing.pass_hash)) {
+        await run('UPDATE users SET role = ?, status = ?, pass_hash = ?, pass_changed_at = ? WHERE id = ?', [
+          'admin',
+          'active',
+          bcrypt.hashSync(password, 10),
+          Date.now(),
+          existing.id
+        ])
+        return `管理员「${name}」(id=${existing.id})已存在,口令已按 GM_PASS 重置(旧登录已失效)`
+      }
     }
     await run("UPDATE users SET role = 'admin', status = 'active' WHERE id = ?", [existing.id])
     return `管理员「${name}」(id=${existing.id})已存在,保持口令不变`
@@ -30,8 +37,8 @@ export async function ensureAdminUser(username: string, password = ''): Promise<
   if (password === '') throw new Error('新管理员必须提供 GM_PASS(6~64 字)')
   if (password.length < 6 || password.length > 64) throw new Error('GM 口令须 6~64 字')
   const info = await run(
-    'INSERT INTO users (username, username_lower, email, email_lower, pass_hash, role, status, created_at) VALUES (?, ?, NULL, NULL, ?, ?, ?, ?)',
-    [name, lower, bcrypt.hashSync(password, 10), 'admin', 'active', Date.now()]
+    'INSERT INTO users (username, username_lower, email, email_lower, pass_hash, role, status, created_at, pass_changed_at) VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, ?)',
+    [name, lower, bcrypt.hashSync(password, 10), 'admin', 'active', Date.now(), Date.now()]
   )
   return `管理员「${name}」已创建 (id=${info.insertId})`
 }

@@ -135,6 +135,23 @@ jobs:
       - name: 同步 Capacitor
         run: bunx cap sync android
 
+      # 签名材料不入库:从 Secrets 还原(见 README「APK 签名」)
+      #   ANDROID_KEYSTORE_BASE64     release.keystore 的 base64
+      #   ANDROID_KEYSTORE_PROPERTIES keystore.properties 全文(storeFile/keyAlias/storePassword/keyPassword)
+      - name: 还原签名密钥
+        working-directory: android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PROPS: ${{ secrets.ANDROID_KEYSTORE_PROPERTIES }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PROPS" ]; then
+            echo "::error::缺少 Secrets.ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PROPERTIES —— 见 README「APK 签名」"
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > release.keystore
+          printf '%s\n' "$KEYSTORE_PROPS" > keystore.properties
+          ls -l release.keystore
+
       - name: 构建 APK (Release)
         working-directory: android
         run: |

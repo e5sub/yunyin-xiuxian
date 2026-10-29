@@ -3,55 +3,68 @@ import type { IncomingMessage } from 'node:http'
 import { WebSocket, WebSocketServer } from 'ws'
 import { getConfigNumber } from './config.js'
 import { verifyToken } from './auth.js'
+import { get } from './db.js'
 
 interface Client {
   uid: number
   name: string
   ws: WebSocket
-  lastChatAt: number
 }
 
 const clients = new Map<number, Set<Client>>()
 
+/** 按账号限速:多开连接不能绕过(连接级计数在 ws 层会被并发连接放大) */
+const lastChatByUid = new Map<number, number>()
+
 export function initWsServer(wss: WebSocketServer): void {
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-    const url = new URL(req.url ?? '/', 'http://localhost')
-    const token = url.searchParams.get('token') ?? ''
-    const uid = verifyToken(token)
-    if (uid === null) {
-      ws.close(4001, '未登录')
-      return
-    }
-    // 道号取注册名;进入游戏后档案名一致,此处够用
-    const client: Client = { uid, name: url.searchParams.get('name') ?? `道友${uid}`, ws, lastChatAt: 0 }
-    let set = clients.get(uid)
-    if (set === undefined) {
-      set = new Set()
-      clients.set(uid, set)
-    }
-    set.add(client)
-    broadcastPresence()
-
-    ws.on('message', raw => {
-      let msg: Record<string, unknown>
-      try {
-        msg = JSON.parse(String(raw)) as Record<string, unknown>
-      } catch {
+    void (async () => {
+      const url = new URL(req.url ?? '/', 'http://localhost')
+      const token = url.searchParams.get('token') ?? ''
+      const uid = verifyToken(token)
+      if (uid === null) {
+        ws.close(4001, '未登录')
         return
       }
-      if (msg.type === 'ping') {
-        ws.send(JSON.stringify({ type: 'pong' }))
+      // 道号一律取库里的账号名:客户端传什么都不能改身份(否则可冒充他人/GM)
+      const row = await get<{ username: string; status: string }>('SELECT username, status FROM users WHERE id = ?', [uid])
+      if (row === undefined || row.status !== 'active') {
+        ws.close(4001, '账号不可用')
         return
       }
-      if (msg.type === 'chat' && typeof msg.content === 'string') {
-        void handleChat(client, msg.content)
+      const client: Client = { uid, name: row.username, ws }
+      let existing = clients.get(uid)
+      if (existing === undefined) {
+        existing = new Set()
+        clients.set(uid, existing)
       }
-    })
-
-    ws.on('close', () => {
-      set!.delete(client)
-      if (set!.size === 0) clients.delete(uid)
+      const set = existing
+      set.add(client)
       broadcastPresence()
+
+      ws.on('message', raw => {
+        let msg: Record<string, unknown>
+        try {
+          msg = JSON.parse(String(raw)) as Record<string, unknown>
+        } catch {
+          return
+        }
+        if (msg.type === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }))
+          return
+        }
+        if (msg.type === 'chat' && typeof msg.content === 'string') {
+          void handleChat(client, msg.content)
+        }
+      })
+
+      ws.on('close', () => {
+        set.delete(client)
+        if (set.size === 0) clients.delete(uid)
+        broadcastPresence()
+      })
+    })().catch(() => {
+      ws.close(1011, '服务器异常')
     })
   })
 }
@@ -127,15 +140,21 @@ async function handleChat(client: Client, content: string): Promise<void> {
   const text = content.trim().slice(0, maxLen)
   if (text === '') return
   const now = Date.now()
-  if (now - client.lastChatAt < minInterval) return
-  client.lastChatAt = now
+  // 按账号限速:同一账号多开连接共用一个配额
+  if (now - (lastChatByUid.get(client.uid) ?? 0) < minInterval) return
+  lastChatByUid.set(client.uid, now)
+  if (lastChatByUid.size > 5000) {
+    for (const [uid, at] of lastChatByUid) {
+      if (now - at > 300_000) lastChatByUid.delete(uid)
+    }
+  }
   const payload = JSON.stringify({ type: 'chat', from: { id: client.uid, name: client.name }, content: text, at: now })
   for (const set of clients.values()) {
     for (const c of set) {
       if (c.ws.readyState === WebSocket.OPEN) c.ws.send(payload)
     }
   }
-  // 留档交由 index.ts 通过回调落库(此处不 import db,保持网关纯粹)
+  // 留档交由 index.ts 通过回调落库(网关只管广播,不直接写库)
   onChatPersist?.(client.uid, client.name, text, now)
 }
 

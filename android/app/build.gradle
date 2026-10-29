@@ -9,7 +9,8 @@ def versionParts = appVersionName.split('\\.')
 def versionPart = { int i -> i < versionParts.length ? versionParts[i].toInteger() : 0 }
 def appVersionCode = versionPart(0) * 10000 + versionPart(1) * 100 + versionPart(2)
 
-// 签名读仓库内 keystore.properties(storeFile / keyAlias / 口令)+ release.keystore:随仓库分发是仓库所有者的既定选择,CI 无 Secret
+// 签名材料不入库(android/release.keystore、keystore.properties 均被 .gitignore 排除):
+//   CI 从 Secrets 还原成这两个文件;本地自行放置或用 KEYSTORE_FILE / KEYSTORE_ALIAS / KEYSTORE_*_PASSWORD 覆盖
 def keystorePropsFile = rootProject.file('keystore.properties')
 def keystoreProps = new Properties()
 if (keystorePropsFile.exists()) {
@@ -20,8 +21,8 @@ def localProps = new Properties()
 if (localPropsFile.exists()) {
     localPropsFile.withInputStream { localProps.load(it) }
 }
-// 口令优先级:环境变量 > keystore.local.properties(不入库) > keystore.properties
-// 空串按未设处理:CI 把没配的 Secret 注入成 "" 时,不能盖掉文件里的口令
+// 优先级:环境变量 > keystore.local.properties(不入库) > keystore.properties(不入库)
+// 空串按未设处理:CI 把没配的 Secret 注入成 "" 时,不能盖掉文件里的值
 def pick = { String key, String envName, props, local ->
     def v = System.getenv(envName)
     if (v != null && v.length() > 0) return v
@@ -31,10 +32,15 @@ def pick = { String key, String envName, props, local ->
 }
 def signStorePassword = pick('storePassword', 'KEYSTORE_STORE_PASSWORD', keystoreProps, localProps)
 def signKeyPassword = pick('keyPassword', 'KEYSTORE_KEY_PASSWORD', keystoreProps, localProps)
-// 口令不齐直接失败:未签名 APK 手机装不上,却能一路绿到发布页
-def signingAvailable = signStorePassword != null && signStorePassword.length() > 0 && signKeyPassword != null && signKeyPassword.length() > 0 && keystorePropsFile.exists()
+def signKeyAlias = pick('keyAlias', 'KEYSTORE_ALIAS', keystoreProps, localProps) ?: 'yunyin'
+def signStoreFile = rootProject.file(pick('storeFile', 'KEYSTORE_FILE', keystoreProps, localProps) ?: 'release.keystore')
+// 口令/密钥不齐直接失败:未签名 APK 手机装不上,却能一路绿到发布页
+def signingAvailable = signStorePassword != null && signStorePassword.length() > 0 &&
+        signKeyPassword != null && signKeyPassword.length() > 0 && signStoreFile.exists()
 if (!signingAvailable) {
-    throw new GradleException("签名口令缺失:检查 android/keystore.properties 的 storePassword / keyPassword(或环境变量 KEYSTORE_STORE_PASSWORD / KEYSTORE_KEY_PASSWORD)")
+    throw new GradleException("签名材料缺失:需要 android/release.keystore 与 android/keystore.properties" +
+        "(或环境变量 KEYSTORE_FILE / KEYSTORE_STORE_PASSWORD / KEYSTORE_KEY_PASSWORD)。" +
+        "CI 上请配置 Secrets.ANDROID_KEYSTORE_BASE64 与 Secrets.ANDROID_KEYSTORE_PROPERTIES")
 }
 
 android {
@@ -44,9 +50,9 @@ android {
     signingConfigs {
         release {
             if (signingAvailable) {
-                keyAlias keystoreProps['keyAlias']
+                keyAlias signKeyAlias
                 keyPassword signKeyPassword
-                storeFile rootProject.file(keystoreProps['storeFile'])
+                storeFile signStoreFile
                 storePassword signStorePassword
                 v1SigningEnabled true
                 v2SigningEnabled true

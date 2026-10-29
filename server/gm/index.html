@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="data:,">
 <title>云隐修仙录 · GM 后台</title>
 <style>
   /* 配色与游戏内一致(见 src/style.css):宣纸底 + 墨色字 + 朱砂点睛;暗色跟随系统 */
@@ -226,7 +227,7 @@
 
 <dialog id="dlg-pw">
   <h3>重置口令</h3>
-  <div class="field"><label>新口令(6~64 字)</label><input id="pw-input" type="text"></div>
+  <div class="field"><label>新口令(6~64 字)</label><input id="pw-input" type="password" autocomplete="new-password"></div>
   <div class="acts">
     <button onclick="document.getElementById('dlg-pw').close()">取消</button>
     <button class="primary" onclick="confirmPw()">确定</button>
@@ -324,7 +325,7 @@ async function loadUsers (p) {
           ? `<button class="danger" onclick="ban(${u.id},true)">封禁</button>`
           : `<button onclick="ban(${u.id},false)">解封</button>`}
         <button onclick="resetPw(${u.id})">重置口令</button>
-        ${u.role !== 'admin' ? `<button class="danger" onclick="delUser(${u.id},'${esc(u.username)}')">删除</button>` : ''}
+        ${u.role !== 'admin' ? `<button class="danger" data-del-id="${u.id}" data-del-name="${esc(u.username)}">删除</button>` : ''}
       </td>
     </tr>`).join('') || '<tr><td colspan="10" class="muted">无数据</td></tr>'
   } catch (e) { toast(e.message) }
@@ -465,6 +466,13 @@ async function sendBroadcast () {
   try { await api('/broadcast', { method: 'POST', body: JSON.stringify({ content: $('bc-text').value.trim() }) }); toast('公告已发布'); $('bc-text').value = '' }
   catch (e) { toast(e.message) }
 }
+
+// 删除按钮走事件委托:道号不拼进 onclick 字符串,避免引号把 HTML 属性顶穿
+$('u-rows').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-del-id]')
+  if (!btn) return
+  void delUser(Number(btn.dataset.delId), btn.dataset.delName || '')
+})
 
 if (token) enter()
 </script>

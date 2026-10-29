@@ -112,11 +112,23 @@ bun run build:electron
 # 同步 Web 产物到 Android 工程（Capacitor）
 bun run build:android
 
-# 直接出 Release APK（签名读仓库内的 android/keystore.properties + release.keystore，见下）
+# 直接出 Release APK（签名材料不入库，见下方「APK 签名」）
 bun run build:apk
 ```
 
-> **关于 Android 签名**：签名密钥（`android/release.keystore`）与口令（`android/keystore.properties`）随仓库分发，clone 下来即可出可安装的签名包，CI 也不需要任何 Secret。这只提供「用同一把钥匙签出的 APK」这一致性，**不构成官方性与防伪**——任何克隆仓库的人都能用它签出包，请以本仓库 release 页发布的 APK 与 Docker 镜像为准。要换一把不进仓库的密钥时，环境变量 `KEYSTORE_STORE_PASSWORD` / `KEYSTORE_KEY_PASSWORD` 或不入库的 `android/keystore.local.properties` 可覆盖文件里的口令。
+> **APK 签名**：`android/release.keystore` 与 `android/keystore.properties` **不入库**（已在 `.gitignore` 中）。CI 从仓库 Secrets 还原：
+> - `ANDROID_KEYSTORE_BASE64`：`base64 -w0 android/release.keystore` 的输出
+> - `ANDROID_KEYSTORE_PROPERTIES`：`keystore.properties` 全文（`storeFile` / `keyAlias` / `storePassword` / `keyPassword` 四行）
+>
+> 本地出包把这两个文件放回 `android/` 即可；也可用环境变量 `KEYSTORE_FILE` / `KEYSTORE_ALIAS` / `KEYSTORE_STORE_PASSWORD` / `KEYSTORE_KEY_PASSWORD` 覆盖。
+>
+> **这两个文件历史上曾随仓库提交，旧密钥应视为已泄露**（谁拿到都能签出冒充包）。请换一把新密钥：
+> ```bash
+> keytool -genkeypair -v -keystore android/release.keystore -alias yunyin \
+>   -keyalg RSA -keysize 2048 -validity 10000
+> base64 -w0 android/release.keystore   # 输出填进 Secrets.ANDROID_KEYSTORE_BASE64
+> ```
+> 换钥后新包与旧版签名不同，手机需先卸载旧版再安装。
 
 ### 多端安装
 
@@ -128,7 +140,7 @@ bun run build:apk
 
 推送到 `main` 会经 GitHub Actions 走同一道闸：类型检查、ESLint、单元测试全绿后才部署 Web/PWA 到 Pages、推送 Docker 镜像。
 
-**发版是一个显式动作 —— 推 tag。** 构建 Electron 与 Android 产物、发布 Release 的那条流水线只在 tag 上触发：
+**发版是一个显式动作 —— 推 tag，或手动触发构建。** 构建 Electron 与 Android 产物、发布 Release 的那条流水线在 tag 上触发；在 Actions 里手动 Run workflow 也会按 `package.json` 的版本构建并发 Release（缺 tag 时自动补建）：
 
 ```bash
 # 1. 先提 package.json 的版本号(它决定 APK 的 versionName/versionCode)

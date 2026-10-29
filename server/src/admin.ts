@@ -7,8 +7,9 @@ import express, { type Request, type Response } from 'express'
 import bcrypt from 'bcryptjs'
 import { all, get, run } from './db.js'
 import { setConfig } from './config.js'
-import { requireAdmin } from './auth.js'
+import { requireAdmin, verifyPassword } from './auth.js'
 import { onlineCount } from './ws.js'
+import { bodyStr, rateLimit } from './rateLimit.js'
 
 /** 后台挂载路径;必须是一个独立子路径(不允许根路径),非法值回落 /gm */
 export function gmPath(): string {
@@ -24,7 +25,16 @@ export function gmPath(): string {
 
 export const gmRouter = express.Router()
 
-gmRouter.post('/login', (req: Request, res: Response) => {
+// GM 登录限速:后台只有少数账号,严格按 IP + 账号双限,防口令爆破
+const gmLoginIpLimit = rateLimit({ windowMs: 5 * 60_000, max: 20, message: '请求过多,请稍后再试' })
+const gmLoginUserLimit = rateLimit({
+  windowMs: 5 * 60_000,
+  max: 5,
+  key: req => `${req.ip ?? ''}|${bodyStr(req, 'username')}`,
+  message: '登录尝试过多,请 5 分钟后再试'
+})
+
+gmRouter.post('/login', gmLoginIpLimit, gmLoginUserLimit, (req: Request, res: Response) => {
   void (async () => {
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
     const username = typeof body.username === 'string' ? body.username.trim() : ''
@@ -33,7 +43,7 @@ gmRouter.post('/login', (req: Request, res: Response) => {
       'SELECT id, username, pass_hash, role, status FROM users WHERE username_lower = ?',
       [username.toLowerCase()]
     )
-    if (row === undefined || !bcrypt.compareSync(password, row.pass_hash)) {
+    if (row === undefined || !verifyPassword(row.pass_hash, password)) {
       res.status(401).json({ error: '道号或口令不对' })
       return
     }
@@ -204,7 +214,11 @@ gmRouter.post('/users/:id/reset-password', requireAdmin, (req: Request, res: Res
       res.status(400).json({ error: '口令 6~64 字' })
       return
     }
-    const result = await run('UPDATE users SET pass_hash = ? WHERE id = ?', [bcrypt.hashSync(password, 10), id])
+    const result = await run('UPDATE users SET pass_hash = ?, pass_changed_at = ? WHERE id = ?', [
+      bcrypt.hashSync(password, 10),
+      Date.now(),
+      id
+    ])
     if (result.affectedRows === 0) {
       res.status(404).json({ error: '查无此用户' })
       return

@@ -150,7 +150,8 @@ CREATE TABLE IF NOT EXISTS users (
   pass_hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'player',
   status TEXT NOT NULL DEFAULT 'active',
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  pass_changed_at INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS saves (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -249,7 +250,8 @@ CREATE INDEX IF NOT EXISTS idx_profile_rank ON profiles(realm_index DESC, power_
       'ALTER TABLE users ADD COLUMN email TEXT',
       'ALTER TABLE users ADD COLUMN email_lower TEXT',
       "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'player'",
-      "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"
+      "ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
+      'ALTER TABLE users ADD COLUMN pass_changed_at INTEGER NOT NULL DEFAULT 0'
     ]) {
       try {
         d.exec(stmt)
@@ -275,7 +277,8 @@ CREATE TABLE IF NOT EXISTS users (
   pass_hash VARCHAR(128) NOT NULL,
   role VARCHAR(16) NOT NULL DEFAULT 'player',
   status VARCHAR(16) NOT NULL DEFAULT 'active',
-  created_at BIGINT NOT NULL
+  created_at BIGINT NOT NULL,
+  pass_changed_at BIGINT NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS saves (
   user_id BIGINT PRIMARY KEY,
@@ -387,7 +390,8 @@ CREATE TABLE IF NOT EXISTS dungeon_daily (
     'ALTER TABLE users ADD COLUMN email VARCHAR(190) DEFAULT NULL',
     'ALTER TABLE users ADD COLUMN email_lower VARCHAR(190) DEFAULT NULL',
     "ALTER TABLE users ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'player'",
-    "ALTER TABLE users ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'active'"
+    "ALTER TABLE users ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'active'",
+    'ALTER TABLE users ADD COLUMN pass_changed_at BIGINT NOT NULL DEFAULT 0'
   ]) {
     try {
       await d.query(stmt)

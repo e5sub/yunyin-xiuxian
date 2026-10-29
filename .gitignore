@@ -44,3 +44,10 @@ __pycache__/
 !.dev.vars.example
 .env*
 # 构建不需要任何环境变量
+
+# Android 签名材料:密钥/口令一旦入库即可被他人冒名签发 APK,只从 CI Secrets 还原
+android/release.keystore
+android/keystore.properties
+android/keystore.local.properties
+*.keystore
+*.jks
