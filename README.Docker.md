@@ -82,8 +82,8 @@ docker run -d -p 8080:80 -v yunyin-data:/app/server/data ghcr.io/setube/yunyin-x
 
 APK 内的后端地址在构建期写死：
 
-- 仓库 **Settings → Secrets and variables → Actions → Variables** 新建 `VITE_API_BASE`（如 `https://api.example.com`），APK 即指向该地址
-- 未配置时按同源编译（APK 内指向 `https://localhost`），只适合自建 WebView 拦截等特殊方案
+- 默认指向官方服务器 `https://yxxx.071717.xyz`（生产构建未配置时自动生效，dev 不受影响）
+- 仓库 **Settings → Secrets and variables → Actions → Variables** 新建 `VITE_API_BASE`（如 `https://api.example.com`）可覆盖默认地址，APK 即指向该地址
 
 ## 反向代理与 HTTPS
 

@@ -79,7 +79,7 @@ tsconfig paths `@/* → ./src/*`，开启 `strict` + `noUncheckedIndexedAccess` 
 - **GM 后台**：路径由 `GM_PATH` 自定义（默认 `/gm`），单页在 `server/gm/index.html`。功能：账号管理（搜索/封禁/解封/重置口令/删除）、角色与存档查看、游戏参数（`game_config` 表，30 秒缓存生效）、全服公告（聊天署名「仙官」+ 广播）。管理员：`npm run admin -- <道号> <口令>`（创建或提权，`users.role='admin'`）
 - **邮箱**：注册必填用户名+邮箱；`EMAIL_CODE_REQUIRED=true` 强制验证码（预留开关）、`EMAIL_ENABLED=true` + `SMTP_HOST/PORT/USER/PASS/FROM` 实发邮件；未启用时验证码打到控制台且响应带 `devCode`（联调）。忘记密码：`/api/auth/forgot` + `/api/auth/reset`（邮箱+验证码+新口令）
 - **Docker 全栈镜像**：`Dockerfile`（本地）/ `Dockerfile.ci`（CI，dist 预构建）= nginx（静态 + 反代 `/api`、`/ws`、GM 后台）+ Node 后端同容器；`node:22-bookworm-slim`（glibc，better-sqlite3 有 arm64 预编译）；数据卷 `/app/server/data`；GM_PATH 由 `docker-entrypoint.sh` 注入 `nginx-docker.conf.template`。详见 README.Docker.md
-- **APK 构建**：`build.yml` 打 `v*.*.*` tag 或手动触发；APK 内后端地址取仓库 Variable `VITE_API_BASE`（不配则同源编译，APK 里不可用）；tag 触发时发 GitHub Release（版本须与 package.json 一致），手动触发只出 artifact
+- **APK 构建**：`build.yml` 打 `v*.*.*` tag 或手动触发；APK 内后端地址默认 `https://yxxx.071717.xyz`（src/services/cloud.ts 生产构建兜底），仓库 Variable `VITE_API_BASE` 可覆盖；tag 触发时发 GitHub Release（版本须与 package.json 一致），手动触发只出 artifact
 
 ## Code Conventions & Common Patterns
 

@@ -1,10 +1,14 @@
 /**
  * 网游后端客户端:REST + WebSocket
- * token 存于 auth store;API 地址取 VITE_API_BASE(空 = 同源,dev 走 vite 代理)
+ * token 存于 auth store;API 地址取 VITE_API_BASE:
+ *   显式配置优先;生产构建未配置时默认官方服务器(APK/Web/Electron 同),dev 走 vite 代理
  */
 import { useAuthStore } from '@/stores/auth'
 
-export const API_BASE: string = import.meta.env.VITE_API_BASE ?? ''
+export const DEFAULT_API_BASE = 'https://yxxx.071717.xyz'
+
+export const API_BASE: string =
+  import.meta.env.VITE_API_BASE ?? (import.meta.env.PROD ? DEFAULT_API_BASE : '')
 
 export interface CloudUser {
   id: number

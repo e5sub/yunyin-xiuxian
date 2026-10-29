@@ -129,9 +129,9 @@ jobs:
       - name: 构建前端
         run: bun run build
         env:
-          # APK 内写死后端地址(Settings → Secrets and variables → Actions → Variables 新建 VITE_API_BASE,如 https://api.example.com)
-          # 未配置时按同源编译:APK 里指向 https://localhost,需自建反代或自行配置变量
-          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+          # APK 内写死后端地址:默认 https://yxxx.071717.xyz;
+          # 仓库 Variable VITE_API_BASE(Settings → Secrets and variables → Actions → Variables)可覆盖
+          VITE_API_BASE: ${{ vars.VITE_API_BASE || 'https://yxxx.071717.xyz' }}
 
       - name: 同步 Capacitor
         run: bunx cap sync android
