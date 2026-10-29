@@ -87,7 +87,7 @@ const DEMON_LINES = [
 ]
 
 interface DemonCfg {
-  demon_hp_mult: number
+  demon_hp_base: number
   demon_atk_mult: number
   demon_reward_stone: number
   demon_reward_herb: number
@@ -95,15 +95,17 @@ interface DemonCfg {
 
 /**
  * 心魔镜像:全员的心念凝成一只合体心魔。
- * 血 = 全员总攻 × demon_hp_mult;攻 = 全员最高攻 × demon_atk_mult%。
+ * 血 = 房内最高攻 × demon_hp_base × 人数^0.8(人多心魔更壮,但合击涨得更快,人多才有胜算);
+ * 攻 = 最高攻 × demon_atk_mult%。
  * 12 轮内合击轰破则胜;血池血空(全员倒下)后合击减半。
+ * 独行:心魔血 ≈ 13×自身攻,12 轮合击 ≈ 12×攻 → 大概率不胜;2 人同境界起才有稳定胜算。
  */
 function runDemon(room: MemberFighter[], cfg: DemonCfg): SimResult {
   const n = room.length
   const sumAtk = totalOf(room.map(m => m.atk))
   const maxAtk = maxOf(room.map(m => m.atk))
   const poolHp = totalOf(room.map(m => m.hp))
-  const demonHp = geMulN(sumAtk, Math.max(1, cfg.demon_hp_mult))
+  const demonHp = geMulN(maxAtk, Math.max(1, cfg.demon_hp_base) * Math.pow(n, 0.8))
   const demonAtk = geMulN(maxAtk, Math.max(5, cfg.demon_atk_mult) / 100)
   const rounds = 12
   const log: string[] = [
@@ -184,7 +186,8 @@ function runExplore(room: MemberFighter[], cfg: ExploreCfg): SimResult {
       stone += got
       log.push(`「${spot}」掘开遗迹宝箱,灵石 ${got}!`)
     } else if (roll < 75) {
-      const beastHp = geMulN(sumAtk, randRange(1.0, 1.6))
+      // 妖兽强度按人数缩放(最高攻 × 2.8~4.2 × 人数^0.8):独行 3 回合合击(≈3×攻)大多不胜,人多才稳破
+      const beastHp = geMulN(maxAtk, randRange(2.8, 4.2) * Math.pow(n, 0.8))
       const beastAtk = geMulN(maxAtk, randRange(0.25, 0.45))
       let left = beastHp
       let broke = false
@@ -235,6 +238,7 @@ interface GuardCfg {
  * 守满全部波次功劳 ×1.5。
  */
 function runGuard(room: MemberFighter[], cfg: GuardCfg): SimResult {
+  const n = room.length
   const sumAtk = totalOf(room.map(m => m.atk))
   const maxAtk = maxOf(room.map(m => m.atk))
   const poolHp = totalOf(room.map(m => m.hp))
@@ -246,8 +250,9 @@ function runGuard(room: MemberFighter[], cfg: GuardCfg): SimResult {
   const log: string[] = [`${room.length}人登陴守御,妖潮共 ${totalWaves} 波,大阵全开。`]
   for (let w = 1; w <= totalWaves; w++) {
     const label = GUARD_NAMES[Math.min(w - 1, GUARD_NAMES.length - 1)]!
-    const waveHp = geMulN(maxAtk, (0.4 + 0.35 * w) * randRange(0.9, 1.1))
-    const waveAtk = geMulN(maxAtk, (0.2 + 0.12 * w) * randRange(0.9, 1.1))
+    // 妖潮随人数变多变壮(血 ×人数^0.75,攻 ×人数^0.6):人多守得更深,但不是白送
+    const waveHp = geMulN(maxAtk, (0.4 + 0.35 * w) * Math.pow(n, 0.75) * randRange(0.9, 1.1))
+    const waveAtk = geMulN(maxAtk, (0.2 + 0.12 * w) * Math.pow(n, 0.6) * randRange(0.9, 1.1))
     const fallen = poolLeft.m <= 0
     const blow = geMulN(sumAtk, randRange(0.85, 1.15) * (fallen ? 0.5 : 1))
     log.push(`第${w}波「${label}」(气血 ${geText(waveHp)},攻势 ${geText(waveAtk)}) · 合击 ${geText(blow)}`)
@@ -288,13 +293,13 @@ interface ArrayCfg {
 
 /**
  * 共修大阵:不斗法,只论心意相通。
- * 共鸣率 = 35% + 8%×(人数-1) + 5%×境界层次数(共鸣加成上限 20%);
+ * 共鸣率 = 20% + 9%×(人数-1) + 5%×境界层次数(上限 95%):独行仅 ~25%,结伴才容易共鸣;
  * 共鸣则灵石翻倍;人越多、境界越杂,分润越厚。
  */
 function runArray(room: MemberFighter[], cfg: ArrayCfg): SimResult {
   const n = room.length
   const distinctRealms = new Set(room.map(m => m.realm)).size
-  const resonanceChance = Math.min(0.35 + 0.08 * (n - 1) + 0.05 * distinctRealms, 0.95)
+  const resonanceChance = Math.min(0.2 + 0.09 * (n - 1) + 0.05 * distinctRealms, 0.95)
   const resonant = Math.random() < resonanceChance
   const log: string[] = [
     `${n}人按方位入阵,道号相闻,灵机相应。`,
@@ -315,16 +320,16 @@ function runArray(room: MemberFighter[], cfg: ArrayCfg): SimResult {
 /* ---------------- 路由 ---------------- */
 
 const DUNGEON_DESCS: Record<DungeonKey, string> = {
-  demon: '全员心念凝成合体心魔,12 轮内轰破则胜',
-  explore: '随机秘境小径,矿脉/宝箱/妖兽/灵泉层层机缘',
-  guard: '妖潮一波比一波凶,守住越多功劳越大',
-  array: '不斗法只论默契,人越多境界越杂分润越厚'
+  demon: '全员心念凝成合体心魔,人多心魔越壮;12 轮内轰破则胜',
+  explore: '随机秘境小径,妖兽凶悍,结伴方有胜算',
+  guard: '妖潮一波比一波凶,人多阵固,守住越多功劳越大',
+  array: '不斗法只论默契,人多境界越杂分润越厚'
 }
 
 async function dungeonConfig(dungeon: DungeonKey): Promise<DemonCfg | ExploreCfg | GuardCfg | ArrayCfg> {
   if (dungeon === 'demon') {
     return {
-      demon_hp_mult: await getConfigNumber('demon_hp_mult', 10),
+      demon_hp_base: await getConfigNumber('demon_hp_base', 13),
       demon_atk_mult: await getConfigNumber('demon_atk_mult', 60),
       demon_reward_stone: await getConfigNumber('demon_reward_stone', 60),
       demon_reward_herb: await getConfigNumber('demon_reward_herb', 4)

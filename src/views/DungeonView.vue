@@ -49,7 +49,7 @@
           <select v-model="roomDungeon" class="rounded-md border border-ink/15 bg-paper-deep/60 px-2 py-1.5 text-[12px] text-ink">
             <option v-for="d in dungeons" :key="d.key" :value="d.key">{{ d.name }}</option>
           </select>
-          <button class="btn-ink px-3 py-1.5 text-[12px]" :disabled="roomBusy" @click="createRoom">创建房伍</button>
+          <button class="btn-ink px-3 py-1.5 text-[12px]" :disabled="roomBusy" @click="createRoom">创建房间</button>
         </div>
         <div class="mt-2.5 flex flex-wrap items-center gap-2">
           <input

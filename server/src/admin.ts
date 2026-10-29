@@ -278,7 +278,7 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'boss_reward_herb',
       // 副本(心魔镜像/秘境共探/洞天守卫/共修大阵)
       'demon_daily_attempts',
-      'demon_hp_mult',
+      'demon_hp_base',
       'demon_atk_mult',
       'demon_reward_stone',
       'demon_reward_herb',
@@ -318,7 +318,7 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'boss_reward_stone',
       'boss_reward_herb',
       'demon_daily_attempts',
-      'demon_hp_mult',
+      'demon_hp_base',
       'demon_atk_mult',
       'demon_reward_stone',
       'demon_reward_herb',

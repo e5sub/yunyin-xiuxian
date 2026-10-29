@@ -420,9 +420,9 @@ async function seedConfig(): Promise<void> {
     ['boss_respawn_sec', '86400'],
     ['boss_reward_stone', '30'],
     ['boss_reward_herb', '2'],
-    // 副本 · 心魔镜像(攻倍率为百分比:60 = 最高攻×0.6)
+    // 副本 · 心魔镜像(血基数=最高攻×N×人数^0.8;atk 倍率为百分比:60 = 最高攻×0.6)
     ['demon_daily_attempts', '1'],
-    ['demon_hp_mult', '10'],
+    ['demon_hp_base', '13'],
     ['demon_atk_mult', '60'],
     ['demon_reward_stone', '60'],
     ['demon_reward_herb', '4'],
