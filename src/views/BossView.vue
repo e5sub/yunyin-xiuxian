@@ -32,7 +32,7 @@
       </button>
 
       <!-- 战报 -->
-      <div v-if="lastResult" class="mt-3 rounded-md border border-border-weak bg-bg-secondary px-3 py-2 text-[12px] leading-relaxed text-ink-soft">
+      <div v-if="lastResult" class="mt-3 rounded-md border border-ink/15 bg-paper-deep/60 px-3 py-2 text-[12px] leading-relaxed text-ink-soft">
         <template v-if="lastResult.killed">
           <p class="text-cinnabar">妖王陨落!余众溃散。</p>
         </template>
@@ -61,7 +61,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(row, i) in boss.top" :key="i" class="border-t border-border-weak">
+          <tr v-for="(row, i) in boss.top" :key="i" class="border-t border-ink/15">
             <td class="py-1.5 text-ink" :class="row.name === myName ? 'text-cinnabar' : ''">{{ row.name }}</td>
             <td class="py-1.5 text-right font-mono text-ink-soft">{{ row.dmgText }}</td>
           </tr>

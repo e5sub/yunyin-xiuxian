@@ -25,7 +25,7 @@
         </div>
         <table class="mt-3 w-full text-[12px]">
           <tbody>
-            <tr v-for="m in room.members" :key="m.userId" class="border-t border-border-weak">
+            <tr v-for="m in room.members" :key="m.userId" class="border-t border-ink/15">
               <td class="py-1.5 text-ink">
                 {{ m.name }}
                 <span v-if="m.userId === room.leaderId" class="ml-1 text-[10px] text-gold-ink">房主</span>
@@ -42,7 +42,7 @@
       <!-- 未在房:创建 / 凭码加入 -->
       <template v-else>
         <div class="mt-3 flex flex-wrap items-center gap-2">
-          <select v-model="roomDungeon" class="rounded-md border border-border-weak bg-bg-secondary px-2 py-1.5 text-[12px] text-ink">
+          <select v-model="roomDungeon" class="rounded-md border border-ink/15 bg-paper-deep/60 px-2 py-1.5 text-[12px] text-ink">
             <option v-for="d in dungeons" :key="d.key" :value="d.key">{{ d.name }}</option>
           </select>
           <button class="btn-ink px-3 py-1.5 text-[12px]" :disabled="roomBusy" @click="createRoom">创建房伍</button>
@@ -52,7 +52,7 @@
             v-model="joinCode"
             placeholder="输入房间码"
             maxlength="6"
-            class="w-36 rounded-md border border-border-weak bg-bg-secondary px-2 py-1.5 font-mono text-[13px] uppercase tracking-widest text-ink"
+            class="w-36 rounded-md border border-ink/15 bg-paper-deep/60 px-2 py-1.5 font-mono text-[13px] uppercase tracking-widest text-ink placeholder:text-ink-faint"
             @keydown.enter="joinRoom"
           >
           <button class="btn-ink px-3 py-1.5 text-[12px]" :disabled="roomBusy || joinCode.trim().length < 4" @click="joinRoom">加入</button>
@@ -80,7 +80,7 @@
       <!-- 战报 -->
       <div
         v-if="results[d.key]"
-        class="mt-3 max-h-56 overflow-y-auto rounded-md border border-border-weak bg-bg-secondary px-3 py-2 text-[12px] leading-relaxed text-ink-soft"
+        class="mt-3 max-h-56 overflow-y-auto rounded-md border border-ink/15 bg-paper-deep/60 px-3 py-2 text-[12px] leading-relaxed text-ink-soft"
       >
         <p class="mb-1" :class="results[d.key]!.win ? 'text-jade' : 'text-cinnabar'">
           {{ results[d.key]!.name }} · {{ results[d.key]!.win ? '大有所获' : '止步于此' }}(房间 {{ results[d.key]!.roomSize }} 人)

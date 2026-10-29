@@ -69,6 +69,15 @@
           placeholder="口令(6字以上)"
           class="w-full rounded-lg border border-ink/15 bg-paper-deep/60 px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-faint focus:border-cinnabar/60 focus:outline-none"
         />
+        <input
+          v-if="mode === 'register'"
+          v-model="password2"
+          type="password"
+          maxlength="64"
+          autocomplete="new-password"
+          placeholder="再录一遍口令"
+          class="w-full rounded-lg border border-ink/15 bg-paper-deep/60 px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-faint focus:border-cinnabar/60 focus:outline-none"
+        />
         <p v-if="error" class="text-[11px] text-cinnabar">{{ error }}</p>
         <button type="submit" class="btn-seal w-full !py-3 text-[15px] tracking-[0.3em]" :disabled="busy">
           {{ busy ? '处理中' : mode === 'login' ? '入 道' : '开 山 门' }}
@@ -153,6 +162,7 @@
   const email = ref('')
   const code = ref('')
   const password = ref('')
+  const password2 = ref('')
   const error = ref('')
   const busy = ref(false)
 
@@ -281,6 +291,10 @@
     }
     if (password.value.length < 6) {
       error.value = '口令太短'
+      return
+    }
+    if (mode.value === 'register' && password2.value !== password.value) {
+      error.value = '两次口令不一致'
       return
     }
     busy.value = true

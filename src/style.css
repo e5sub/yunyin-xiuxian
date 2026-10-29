@@ -1037,3 +1037,9 @@ html[data-theme='dark'] .btn-seal:disabled {
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
 }
+
+/* 原生下拉展开列表跟随主题(option 不继承 select 的自定义背景) */
+select option {
+  background-color: rgb(var(--color-paper-rgb));
+  color: rgb(var(--color-ink-rgb));
+}
