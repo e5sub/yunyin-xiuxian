@@ -39,7 +39,7 @@
   import { useAuthStore } from '@/stores/auth'
   import { subscribeSaveWriteFailure } from '@/utils/storage'
   import { engine } from '@/core/engine'
-  import { connectCloudWs, disconnectCloudWs, onKicked } from '@/services/cloud'
+  import { connectCloudWs, disconnectCloudWs, onSessionEnd } from '@/services/cloud'
   import { probeCloudNewer, pushCloudSave, restoreFromCloud, startCloudSync, stopCloudSync, syncNotice } from '@/core/cloudSave'
   import { applyTheme, initTheme } from '@/core/theme'
   import { resetModalStack } from '@/composables/useModalStack'
@@ -110,18 +110,19 @@
     if (notice !== null) ui.toast(notice.text, 'warn')
   })
 
-  // 单设备登录:被新设备挤下线时的统一出口
-  // 宽限期内旧 token 仍可写存档 → 先把最后的进度推上云端,再本地登出跳登录页
-  onKicked(async () => {
-    try {
-      await pushCloudSave()
-    } catch {
-      // 尽力而为:推不上也不拦登出
+  // 会话失效统一出口:kicked=被新设备挤下线(宽限期内最后一推存档),expired=token 彻底失效(密钥变更/改密/过期)
+  onSessionEnd(async reason => {
+    if (reason === 'kicked') {
+      try {
+        await pushCloudSave()
+      } catch {
+        // 尽力而为:推不上也不拦登出
+      }
     }
     stopCloudSync()
     disconnectCloudWs()
     useAuthStore().logout()
-    ui.toast('账号已在其他设备登录,本机已下线', 'warn')
+    ui.toast(reason === 'kicked' ? '账号已在其他设备登录,本机已下线' : '登录已失效,请重新登录', 'warn')
     void router.push('/login')
   })
 

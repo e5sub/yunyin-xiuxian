@@ -157,27 +157,30 @@ export class CloudError extends Error {
   }
 }
 
-// ---- 单设备登录:被挤下线 ----
-// 服务端在新设备登录后作废旧会话;旧设备通过 WS kick 消息或任意 REST 401(code=kicked)得知,
-// 统一走这里注册的回调(最后一推存档 → 本地登出 → 跳登录页),由界面层(App.vue)注册。
+// ---- 会话失效统一下线 ----
+// 两类 401 都要下线:
+//   kicked  = 被新设备挤下线(宽限期内旧 token 仍可写存档 → 先最后一推再登出)
+//   session = token 彻底失效(密钥变更/改密作废/自然过期;服务端再也不会放行,直接登出)
+// 服务端给这两类 401 打了 code;业务类 401(如改口令时「当前口令不对」)没有 code,不会触发。
 
-type KickedHandler = () => void | Promise<void>
-let kickedHandler: KickedHandler | null = null
-/** 被挤下线的统一出口;防重入(最后一推也可能再收到 401) */
-let kicking = false
+type SessionEndReason = 'kicked' | 'expired'
+type SessionEndHandler = (reason: SessionEndReason) => void | Promise<void>
+let sessionEndHandler: SessionEndHandler | null = null
+/** 统一下线出口;防重入(最后一推也可能再收到 401) */
+let sessionEnding = false
 
-export function onKicked(handler: KickedHandler): void {
-  kickedHandler = handler
+export function onSessionEnd(handler: SessionEndHandler): void {
+  sessionEndHandler = handler
 }
 
-/** 服务端判定本会话已被挤下线:触发统一下线流程 */
-function handleKicked(): void {
-  if (kicking || kickedHandler === null) return
-  kicking = true
-  void Promise.resolve(kickedHandler()).finally(() => {
+/** 服务端判定本会话已不可用:触发统一下线流程 */
+function handleSessionEnd(reason: SessionEndReason): void {
+  if (sessionEnding || sessionEndHandler === null) return
+  sessionEnding = true
+  void Promise.resolve(sessionEndHandler(reason)).finally(() => {
     // 留 3 秒缓冲:期间同会话的其他 401 不再重复触发
     setTimeout(() => {
-      kicking = false
+      sessionEnding = false
     }, 3000)
   })
 }
@@ -221,8 +224,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const obj = typeof json === 'object' && json !== null ? (json as { error?: unknown; code?: unknown }) : {}
     const msg = typeof obj.error === 'string' ? obj.error : '请求失败'
     const code = typeof obj.code === 'string' ? obj.code : ''
-    // 会话被新设备顶掉:统一走挤下线流程(旧设备最后的存档上报也走这里,宽限期内仍可写)
-    if (res.status === 401 && code === 'kicked') handleKicked()
+    // 会话级 401:被挤下线 / token 失效,统一走下线流程(kicked 先推最后一版存档,expired 直接下线)
+    if (res.status === 401 && (code === 'kicked' || code === 'session')) {
+      handleSessionEnd(code === 'kicked' ? 'kicked' : 'expired')
+    }
     throw new CloudError(msg, res.status, code)
   }
   return json as T
@@ -324,7 +329,7 @@ export function connectCloudWs(): void {
     }
     if (msg.type === 'kick') {
       // 服务端已在宽限窗口后强关连接;这里立即走统一下线流程(最后一推存档 → 登出 → 登录页)
-      handleKicked()
+      handleSessionEnd('kicked')
       return
     }
     for (const h of handlers) h(msg)

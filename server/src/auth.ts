@@ -66,7 +66,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   const header = req.headers.authorization
   const token = header !== undefined && header.startsWith('Bearer ') ? header.slice(7) : null
   if (token === null) {
-    res.status(401).json({ error: '未登录' })
+    res.status(401).json({ error: '未登录', code: 'session' })
     return
   }
   void (async () => {
@@ -86,13 +86,13 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
         (payload as { uid: number }).uid
       ])
       if (row === undefined) {
-        res.status(401).json({ error: '未登录' })
+        res.status(401).json({ error: '未登录', code: 'session' })
         return
       }
       // 改密/重置口令后,此前签发的 token 一律作废(留 1 秒余量给同秒签发)
       const iat = typeof (payload as { iat?: unknown }).iat === 'number' ? (payload as { iat: number }).iat : 0
       if (row.pass_changed_at > 0 && iat * 1000 < row.pass_changed_at - 1000) {
-        res.status(401).json({ error: '登录已失效,请重新登录' })
+        res.status(401).json({ error: '登录已失效,请重新登录', code: 'session' })
         return
       }
       // 单设备登录:会话序号对不上即已被挤下线;宽限期内放行,给旧设备最后的存档上报窗口
@@ -111,18 +111,36 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       req.user = { id: row.id, username: row.username }
       next()
     } catch (err) {
-      // 签名/过期类是正常的老 token;其余(尤其查库失败=迁移没跑成)必须留痕,否则线上只看到「登录已过期」查不到原因
+      // 签名/过期类是正常的老 token;其余(尤其查库失败=迁移没跑成)必须留痕,否则线上只看到「登录已过期」查不到原因。
+      // 密钥换掉后所有旧 token 都会刷 invalid signature,老客户端还会每几秒推一次档 —— 日志限流,别刷屏
       if (err instanceof jwt.TokenExpiredError) {
-        console.warn('[auth] token 已过期')
+        warnToken('token 已过期')
       } else if (err instanceof jwt.JsonWebTokenError) {
-        // 密钥变了(重启丢卷/换了实例)最典型,生产可见即可自查
-        console.warn('[auth] token 校验失败:', err.message)
+        // 密钥变了(重启丢卷/换了实例/改了 YUNYIN_JWT_SECRET)最典型,生产可见即可自查
+        warnToken(`token 校验失败:${err.message}`)
       } else {
         console.error('[auth] 鉴权查库异常(多半是表结构迁移没跑成):', err)
       }
-      res.status(401).json({ error: '登录已过期' })
+      res.status(401).json({ error: '登录已过期', code: 'session' })
     }
   })()
+}
+
+/** token 校验失败日志限流:密钥变更后老客户端会高频重试,同因 30 秒只打一条并带次数 */
+const TOKEN_WARN_GAP_MS = 30_000
+let tokenWarnLastAt = 0
+let tokenWarnSkipped = 0
+
+function warnToken(message: string): void {
+  const now = Date.now()
+  if (now - tokenWarnLastAt < TOKEN_WARN_GAP_MS) {
+    tokenWarnSkipped += 1
+    return
+  }
+  const suffix = tokenWarnSkipped > 0 ? `(已省略 ${tokenWarnSkipped} 条同因日志)` : ''
+  tokenWarnSkipped = 0
+  tokenWarnLastAt = now
+  console.warn(`[auth] ${message}${suffix}`)
 }
 
 /** GM 后台鉴权:必须是 role=admin 的活跃账号 */
@@ -130,7 +148,7 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
   const header = req.headers.authorization
   const token = header !== undefined && header.startsWith('Bearer ') ? header.slice(7) : null
   if (token === null) {
-    res.status(401).json({ error: '未登录' })
+    res.status(401).json({ error: '未登录', code: 'session' })
     return
   }
   void (async () => {
@@ -149,7 +167,7 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
       // 改密后旧 token 同样作废(GM 后台更要紧)
       const iat = typeof (payload as { iat?: unknown }).iat === 'number' ? (payload as { iat: number }).iat : 0
       if (row.pass_changed_at > 0 && iat * 1000 < row.pass_changed_at - 1000) {
-        res.status(401).json({ error: '登录已失效,请重新登录' })
+        res.status(401).json({ error: '登录已失效,请重新登录', code: 'session' })
         return
       }
       req.user = { id: row.id, username: row.username }
@@ -159,7 +177,7 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
       if (!(err instanceof jwt.JsonWebTokenError) && !(err instanceof jwt.TokenExpiredError)) {
         console.error('[auth] GM 鉴权异常(查库失败?):', err)
       }
-      res.status(401).json({ error: '登录已过期' })
+      res.status(401).json({ error: '登录已过期', code: 'session' })
     }
   })()
 }
