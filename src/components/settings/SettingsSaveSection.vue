@@ -8,7 +8,7 @@
       v-if="syncState === 'conflict'"
       class="rounded-md border border-cinnabar/40 bg-cinnabar/8 px-2 py-1.5 text-[11px] leading-relaxed text-cinnabar"
     >
-      云端存档被其他设备更新过，本机已暂停上传以免覆盖。以哪边为准请自行选择：本机进度更新就「立即上传」，否则「从云端恢复」。
+      云端存档已被更新过，本机已暂停上传以免覆盖。确认本机进度不再需要后，可用「从云端恢复」回到云端最新档。
     </p>
     <p v-if="saveFailed" class="rounded-md border border-cinnabar/40 bg-cinnabar/8 px-2 py-1.5 text-[11px] leading-relaxed text-cinnabar">
       存档写入失败
@@ -22,14 +22,11 @@
       <button class="mt-1 block text-ink-faint underline" @click="ui.corruptedNotice = []">知道了</button>
     </p>
 
-    <div class="flex gap-2">
-      <button class="btn-ghost flex-1 !text-[12px]" :disabled="busy" @click="uploadNow">立即上传</button>
-      <button class="btn-ghost flex-1 !text-[12px]" :disabled="busy" @click="pullConfirm = true">从云端恢复</button>
-    </div>
+    <button class="btn-ghost w-full !text-[12px]" :disabled="busy" @click="pullConfirm = true">从云端恢复</button>
 
     <BaseModal :open="pullConfirm" title="从云端恢复" @close="pullConfirm = false">
       <p class="text-[13px] leading-relaxed text-ink-soft">
-        用<span class="text-cinnabar">云端存档覆盖本机</span>并重开游戏。本机尚未上传的进度会丢失;要保留就先「立即上传」。
+        用<span class="text-cinnabar">云端存档覆盖本机</span>并重开游戏。本机尚未上传的进度会丢失。
       </p>
       <template #footer>
         <div class="flex gap-2">
@@ -86,13 +83,6 @@
     const now = new Date()
     const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
     return d.toDateString() === now.toDateString() ? hm : `${d.getMonth() + 1}/${d.getDate()} ${hm}`
-  }
-
-  async function uploadNow(): Promise<void> {
-    busy.value = true
-    const ok = await pushCloudSave(true)
-    busy.value = false
-    ui.toast(ok ? '已上传到云端' : '上传失败，请稍后再试', ok ? 'success' : 'warn')
   }
 
   async function confirmPull(): Promise<void> {

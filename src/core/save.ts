@@ -1,14 +1,12 @@
 /** 存档服务:云端档应用 / 重置 / 迁移 */
 import {
   applyImportPayload,
-  clearAllSave,
   migrateHerbSlice,
   migrateInventorySlice,
   SAVE_VERSION,
   validateImportPayload,
   type ExportPayload
 } from '@/utils/storage'
-import { useGameStore } from '@/stores/game'
 import { engine } from './engine'
 
 /** 迁移旧版本存档(链式) */
@@ -66,25 +64,6 @@ export function sealStorageWrites(): void {
   } catch {
     // 存储不可用时无事可做
   }
-}
-
-/**
- * 清空全部存档并回到欢迎页。
- * 顺序:停引擎(去掉 beforeunload 写档)→ 封存写盘(丢弃排队刷盘)→ 清档 → 重载。
- * 不碰 location.hash:改 hash 触发 SPA 导航,persist 订阅会把刚清掉的分片回写
- * (实测 Android WebView 封存失效时 game 分片被写回 started:true,重载后卡在主页);清档后守卫自会弹回 welcome。
- */
-export function resetGame(): void {
-  engine.stop()
-  sealStorageWrites()
-  clearAllSave()
-  // 内存兜底:reload 异步,卸载前页面仍在跑;两条封存路径都失效时,排队刷盘写回的也是 started:false
-  try {
-    useGameStore().started = false
-  } catch {
-    // Pinia 未激活时忽略
-  }
-  window.location.reload()
 }
 
 /**
