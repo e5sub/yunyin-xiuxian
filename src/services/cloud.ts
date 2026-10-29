@@ -234,8 +234,14 @@ export const cloudApi = {
     request('POST', '/auth/register', { username, email, password, code }),
   login: (username: string, password: string): Promise<{ token: string; user: CloudUser }> =>
     request('POST', '/auth/login', { username, password }),
-  emailCode: (email: string, purpose: 'register' | 'reset'): Promise<EmailCodeResp> =>
+  emailCode: (email: string, purpose: 'register' | 'reset' | 'bind'): Promise<EmailCodeResp> =>
     request('POST', '/auth/email-code', { email, purpose }),
+  /** 修改口令:成功后返回新 token(换上,否则本会话作废) */
+  changePassword: (oldPassword: string, newPassword: string): Promise<{ ok: boolean; token: string }> =>
+    request('POST', '/auth/change-password', { oldPassword, newPassword }),
+  /** 修改绑定邮箱:邮箱服务开启时需先对新邮箱发验证码(purpose=bind) */
+  changeEmail: (password: string, email: string, code = ''): Promise<{ ok: boolean; email: string }> =>
+    request('POST', '/auth/change-email', { password, email, code }),
   forgot: (email: string): Promise<EmailCodeResp> => request('POST', '/auth/forgot', { email }),
   resetPassword: (email: string, code: string, password: string): Promise<{ ok: boolean }> =>
     request('POST', '/auth/reset', { email, code, password }),

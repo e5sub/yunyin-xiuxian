@@ -46,7 +46,7 @@
           若有疑问,可通过
           <!-- 行内链接命中区须够拇指点(py-1.5) -->
           <a
-            href="https://github.com/setube/yunyin-xiuxian/issues"
+            href="https://github.com/e5sub/yunyin-xiuxian/issues"
             target="_blank"
             rel="noopener noreferrer"
             class="inline-block py-1.5 text-azure"

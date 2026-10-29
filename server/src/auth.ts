@@ -243,18 +243,18 @@ authRouter.get('/config', (_req, res) => {
   })
 })
 
-/** 发邮箱验证码(purpose: register|reset);SMTP 未启用时响应带 devCode 便于联调 */
+/** 发邮箱验证码(purpose: register|reset|bind);SMTP 未启用时响应带 devCode 便于联调 */
 authRouter.post('/email-code', mailIpLimit, mailTargetLimit, (req, res) => {
   void (async () => {
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
-    const purpose = body.purpose === 'reset' ? 'reset' : 'register'
+    const purpose = body.purpose === 'reset' ? 'reset' : body.purpose === 'bind' ? 'bind' : 'register'
     if (!EMAIL_RE.test(email) || email.length > 190) {
       res.status(400).json({ error: '邮箱格式不对' })
       return
     }
     const user = await get<{ id: number }>('SELECT id FROM users WHERE email_lower = ?', [email])
-    if (purpose === 'register' && user !== undefined) {
+    if ((purpose === 'register' || purpose === 'bind') && user !== undefined) {
       res.status(400).json({ error: '该邮箱已注册' })
       return
     }
@@ -472,4 +472,92 @@ authRouter.post('/reset', resetIpLimit, resetTargetLimit, (req, res) => {
 
 authRouter.get('/me', requireAuth, (req, res) => {
   res.json({ user: req.user })
+})
+
+// ---- 账号自助管理:修改口令 / 修改邮箱(均需当前口令确认身份) ----
+
+const selfLimit = rateLimit({
+  windowMs: 10 * 60_000,
+  max: 8,
+  key: req => `${req.ip ?? ''}|${req.user?.id ?? 0}`,
+  message: '操作过于频繁,请稍后再试'
+})
+
+/** 修改口令:验证旧口令 → 换 hash;pass_changed_at 更新会作废此前所有 token,
+ *  所以响应里带一枚新 token,当前设备换上即可不掉线,其他设备的旧 token 全部失效 */
+authRouter.post('/change-password', requireAuth, selfLimit, (req, res) => {
+  void (async () => {
+    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
+    const oldPassword = typeof body.oldPassword === 'string' ? body.oldPassword : ''
+    const newPassword = typeof body.newPassword === 'string' ? body.newPassword : ''
+    if (newPassword.length < 6 || newPassword.length > 64) {
+      res.status(400).json({ error: '新口令 6~64 字' })
+      return
+    }
+    const row = await get<{ pass_hash: string; login_seq: number }>(
+      'SELECT pass_hash, login_seq FROM users WHERE id = ?',
+      [req.user!.id]
+    )
+    if (row === undefined || !verifyPassword(row.pass_hash, oldPassword)) {
+      res.status(401).json({ error: '当前口令不对' })
+      return
+    }
+    const now = Date.now()
+    await run('UPDATE users SET pass_hash = ?, pass_changed_at = ? WHERE id = ?', [
+      bcrypt.hashSync(newPassword, 10),
+      now,
+      req.user!.id
+    ])
+    // 新 token 沿用当前会话序号:本设备不掉线,其他设备的旧 token 随 pass_changed_at 作废
+    res.json({ ok: true, token: signToken(req.user!, row.login_seq) })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})
+
+/** 修改邮箱:验证当前口令;邮箱服务开启时还要新邮箱的验证码(purpose=bind),
+ *  未开启 SMTP 的部署没法发码,退化为仅口令确认 */
+authRouter.post('/change-email', requireAuth, selfLimit, (req, res) => {
+  void (async () => {
+    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
+    const password = typeof body.password === 'string' ? body.password : ''
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+    const code = typeof body.code === 'string' ? body.code.trim() : ''
+    if (!EMAIL_RE.test(email) || email.length > 190) {
+      res.status(400).json({ error: '请填写有效邮箱' })
+      return
+    }
+    const row = await get<{ pass_hash: string; email: string | null }>(
+      'SELECT pass_hash, email FROM users WHERE id = ?',
+      [req.user!.id]
+    )
+    if (row === undefined || !verifyPassword(row.pass_hash, password)) {
+      res.status(401).json({ error: '当前口令不对' })
+      return
+    }
+    if (row.email !== null && row.email.toLowerCase() === email) {
+      res.status(400).json({ error: '新邮箱与当前邮箱相同' })
+      return
+    }
+    const taken = await get<{ id: number }>('SELECT id FROM users WHERE email_lower = ?', [email])
+    if (taken !== undefined) {
+      res.status(400).json({ error: '该邮箱已被其他账号使用' })
+      return
+    }
+    if (await emailEnabled()) {
+      const ok = await consumeCode(email, code, 'bind')
+      if (ok === 'locked') {
+        res.status(429).json({ error: '验证码尝试次数过多,请重新获取' })
+        return
+      }
+      if (ok !== 'ok') {
+        res.status(400).json({ error: '验证码不对或已过期' })
+        return
+      }
+    }
+    await run('UPDATE users SET email = ?, email_lower = ? WHERE id = ?', [email, email, req.user!.id])
+    res.json({ ok: true, email })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
 })

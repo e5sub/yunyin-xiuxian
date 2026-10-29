@@ -10,17 +10,17 @@
         <p class="text-[10px] text-ink-faint">开源仓库</p>
         <!-- 补成内联块:触控高度 30px -->
         <a
-          href="https://github.com/setube/yunyin-xiuxian"
+          href="https://github.com/e5sub/yunyin-xiuxian"
           target="_blank"
           rel="noopener noreferrer"
           class="inline-block py-1.5 text-azure underline break-all"
         >
-          github.com/setube/yunyin-xiuxian
+          github.com/e5sub/yunyin-xiuxian
         </a>
       </div>
       <div class="card-ink px-3 py-2">
         <p class="text-[10px] text-ink-faint">QQ 交流群</p>
-        <p class="text-ink tabular">920930589</p>
+        <p class="text-ink tabular">169924359</p>
       </div>
     </div>
     <template #footer>

@@ -63,7 +63,8 @@ export function makeCode(): string {
 
 const PURPOSE_TEXT: Record<string, string> = {
   register: '注册',
-  reset: '找回密码'
+  reset: '找回密码',
+  bind: '换绑邮箱'
 }
 
 /** 发验证码;SMTP 未配置或发送失败时打控制台(不抛错,联调不受阻) */
