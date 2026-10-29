@@ -128,11 +128,27 @@ async function main(): Promise<void> {
   // 可选静态托管(容器部署):STATIC_DIR 指向前端构建产物即开启;本地 dev 不设,纯 API
   const staticDir = process.env.STATIC_DIR ?? ''
   if (staticDir !== '' && existsSync(join(staticDir, 'index.html'))) {
+    // 游戏 SPA 的 CSP:index.html 带内联统计脚本(51.la)与 vite legacy 的内联/data: 垫片,
+    // 故 script 需 unsafe-inline + data: + 51.la 域;样式内联来自 Vue 的 :style 绑定。
+    // API/WS 同域部署下 'self' 够用;官方域兜底(GitHub Pages 等托管方构建时指向官方 API);
+    // 其他跨域部署用 CSP_CONNECT_SRC 覆盖(如 "'self' https://api.example.com wss://api.example.com")
+    const cspConnect =
+      (process.env.CSP_CONNECT_SRC ?? "'self' https://yy.071717.xyz wss://yy.071717.xyz").trim() || "'self'"
+    const spaCsp =
+      `default-src 'self'; script-src 'self' 'unsafe-inline' data: https://sdk.51.la; ` +
+      `style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; ` +
+      `media-src 'self' data: blob:; connect-src ${cspConnect} https://*.51.la http://*.51.la; object-src 'none'; ` +
+      `base-uri 'self'; frame-ancestors 'self'`
+    app.use((_req, res, next) => {
+      res.setHeader('Content-Security-Policy', spaCsp)
+      next()
+    })
     app.use(express.static(staticDir, { index: 'index.html' }))
     // SPA 兜底:除 /api、/ws、GM 路径外的 GET 一律回 index.html(项目为 hash 路由)
     const gmEscaped = gm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const spaRe = new RegExp(`^(?!${gmEscaped}(?:/|$))(?!/api(?:/|$))(?!/ws(?:/|$)).*`)
     app.get(spaRe, (_req, res) => {
+      res.setHeader('Content-Security-Policy', spaCsp)
       res.sendFile(join(staticDir, 'index.html'))
     })
     console.log(`[yunyin-server] static site served from ${staticDir}`)

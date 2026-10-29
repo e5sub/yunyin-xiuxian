@@ -25,22 +25,36 @@ const HISTORY_MIN_GAP_MS = 10 * 60_000
 const HISTORY_TTL_MS = 7 * 24 * 3_600_000
 /** 客户端回传的 baseUpdatedAt 与服务端值的容差:上一次写入成功但响应丢了不算冲突 */
 const CONFLICT_TOLERANCE_MS = 2_000
+/** 同一账号两次写档的最小间隔:客户端自动上传最快 3 秒一推,限速防改包刷写档接口 */
+const WRITE_MIN_GAP_MS = 2_000
+
+/** 属性快照钳制上限:尾数与十进制指数都远超正常玩法上限(中文单位到「极」≈e48,真仙终局 ≈e80) */
+const SNAP_MANTISSA_MAX = 1e6
+const SNAP_EXP_MAX = 500
+const REALM_INDEX_MAX = 20_000
+
+/** 每账号上次写档时刻(内存即可:重启清零只影响 2 秒窗口) */
+const lastWriteAt = new Map<number, number>()
 
 function finite(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v)
 }
 
-/** 快照校验:字段缺失或非法按 0 兜底;name/realmLabel 兜空串 */
+/**
+ * 快照校验:字段缺失或非法按 0 兜底;name/realmLabel 兜空串。
+ * 属性按上限钳制:改包客户端上传 1e999 级攻击力,战斗结算与排行榜也不会被其污染。
+ */
 function parseSnapshot(raw: unknown, userId: number): ProfileSnapshot | null {
   if (typeof raw !== 'object' || raw === null) return null
   const b = raw as Record<string, unknown>
   const str = (v: unknown, max: number): string => (typeof v === 'string' ? v.slice(0, max) : '')
-  const num = (v: unknown): number => (finite(v) ? v : 0)
-  const int = (v: unknown): number => (finite(v) ? Math.trunc(v) : 0)
+  const num = (v: unknown): number => (finite(v) ? Math.min(Math.max(v, 0), SNAP_MANTISSA_MAX) : 0)
+  const int = (v: unknown): number => (finite(v) ? Math.trunc(Math.min(Math.max(v, 0), SNAP_EXP_MAX)) : 0)
+  const realm = (v: unknown): number => (finite(v) ? Math.trunc(Math.min(Math.max(v, 0), REALM_INDEX_MAX)) : 0)
   return {
     name: str(b.name, 24) || `道友${userId}`,
     realmLabel: str(b.realmLabel, 24),
-    realmIndex: int(b.realmIndex),
+    realmIndex: realm(b.realmIndex),
     powerM: num(b.powerM),
     powerE: int(b.powerE),
     hpM: num(b.hpM),
@@ -118,8 +132,21 @@ saveRouter.get('/save', requireAuth, (req: Request, res: Response) => {
 
 saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
   void (async () => {
+    // 写档限速:与上一写隔太近直接 429(无论成败都计时,防 409/校验失败风暴打库)
+    const now0 = Date.now()
+    const last = lastWriteAt.get(req.user!.id) ?? 0
+    if (now0 - last < WRITE_MIN_GAP_MS) {
+      res.status(429).json({ error: '存档保存太快,稍候再试' })
+      return
+    }
+    lastWriteAt.set(req.user!.id, now0)
+
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
     const version = finite(body.version) ? Math.trunc(body.version) : 0
+    if (version < 1 || version > 10_000) {
+      res.status(400).json({ error: '存档版本无效' })
+      return
+    }
     if (typeof body.data !== 'object' || body.data === null) {
       res.status(400).json({ error: '存档数据缺失' })
       return
