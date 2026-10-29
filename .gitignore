@@ -24,6 +24,7 @@ docs/generated/
 *.local
 
 .claude/*
+.workbuddy/
 .vscode/*
 !.vscode/extensions.json
 .idea
