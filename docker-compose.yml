@@ -23,7 +23,8 @@ services:
       - TZ=Asia/Shanghai
       # 其余配置(PORT/GM_PATH/DB_DRIVER/SMTP_* 等)全走 .env,这里不再写死以免覆盖
     volumes:
-      # 账号/云存档/聊天等数据(SQLite 库 + JWT 密钥);换 MySQL 可去掉
+      # JWT 密钥(jwt-secret)恒存这里:即使换 MySQL 也【不要】去掉本卷——
+      # 不挂卷则每次重启密钥重新生成,全员被踢回登录页。或者改为在 .env 配 YUNYIN_JWT_SECRET
       - yunyin-data:/app/server/data
     deploy:
       resources:
