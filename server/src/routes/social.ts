@@ -4,6 +4,7 @@ import { all, get, run } from '../db.js'
 import { getConfigNumber } from '../config.js'
 import { requireAuth } from '../auth.js'
 import { simulateDuel } from '../pvp.js'
+import { broadcastAll, onlineCount, onlineList, touchPresence } from '../ws.js'
 
 export const socialRouter = express.Router()
 
@@ -204,12 +205,62 @@ socialRouter.get('/leaderboard', requireAuth, (_req: Request, res: Response) => 
 socialRouter.get('/chat/history', requireAuth, (_req: Request, res: Response) => {
   void (async () => {
     const size = Math.min(Math.max(await getConfigNumber('chat_history_size', 50), 10), 200)
+    // 只回留存期内的记录(与定时清理同参数)
+    const days = Math.max(await getConfigNumber('chat_retention_days', 7), 1)
     const rows = await all<{ id: number; user_id: number; name: string; content: string; created_at: number }>(
-      'SELECT id, user_id, name, content, created_at FROM chat_messages ORDER BY id DESC LIMIT ?',
-      [size]
+      'SELECT id, user_id, name, content, created_at FROM chat_messages WHERE created_at >= ? ORDER BY id DESC LIMIT ?',
+      [Date.now() - days * 86_400_000, size]
     )
     rows.reverse()
     res.json({ messages: rows })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})
+
+/** 在线状态心跳:WS 不可用(反代不支持升级)时的 REST 兜底,顺带回当前在线名单 */
+socialRouter.get('/presence', requireAuth, (req: Request, res: Response) => {
+  touchPresence(req.user!.id, req.user!.username)
+  res.json({ online: onlineList(), count: onlineCount() })
+})
+
+// REST 聊天限速:WS 通道在 ws.ts 内记 lastChatAt,REST 通道单独记账
+const restChatLast = new Map<number, number>()
+
+/** WS 不通时的聊天发送兜底:同样限速、落库并全服广播 */
+socialRouter.post('/chat/send', requireAuth, (req: Request, res: Response) => {
+  void (async () => {
+    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
+    const content = typeof body.content === 'string' ? body.content : ''
+    const [minInterval, maxLen] = await Promise.all([
+      getConfigNumber('chat_min_interval_ms', 1200),
+      getConfigNumber('chat_max_len', 120)
+    ])
+    const text = content.trim().slice(0, maxLen)
+    if (text === '') {
+      res.json({ ok: true })
+      return
+    }
+    const now = Date.now()
+    const last = restChatLast.get(req.user!.id) ?? 0
+    if (now - last < minInterval) {
+      res.status(429).json({ error: '发言太快' })
+      return
+    }
+    restChatLast.set(req.user!.id, now)
+    if (restChatLast.size > 1000) {
+      for (const [uid, at] of restChatLast) {
+        if (now - at > 300_000) restChatLast.delete(uid)
+      }
+    }
+    await run('INSERT INTO chat_messages (user_id, name, content, created_at) VALUES (?, ?, ?, ?)', [
+      req.user!.id,
+      req.user!.username,
+      text,
+      now
+    ])
+    broadcastAll({ type: 'chat', from: { id: req.user!.id, name: req.user!.username }, content: text, at: now })
+    res.json({ ok: true })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })

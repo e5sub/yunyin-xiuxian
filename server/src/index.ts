@@ -13,12 +13,32 @@ import { dungeonRouter } from './routes/dungeon.js'
 import { initDb, run } from './db.js'
 import { gmPath, gmRouter } from './admin.js'
 import { initWsServer, isOnline, notifyUser, registerChatPersist } from './ws.js'
+import { getConfigNumber } from './config.js'
+import { ensureAdminUser } from './adminBootstrap.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT ?? 8787)
 
+/** 清理超过留存期的聊天记录(留存天数在 GM 后台「聊天留存天数」可改) */
+async function cleanupChat(): Promise<void> {
+  const days = Math.max(await getConfigNumber('chat_retention_days', 7), 1)
+  const cutoff = Date.now() - days * 86_400_000
+  const result = await run('DELETE FROM chat_messages WHERE created_at < ?', [cutoff])
+  if (result.affectedRows > 0) console.log(`[chat-cleanup] 已清理 ${result.affectedRows} 条 ${days} 天前的聊天记录`)
+}
+
 async function main(): Promise<void> {
   await initDb()
+
+  // GM 账号可由 env 引导:GM_USER 必填,GM_PASS 给出则同步重置口令(.env 一处控制,重启即生效)
+  const gmUser = (process.env.GM_USER ?? '').trim()
+  if (gmUser !== '') {
+    try {
+      console.log('[yunyin-server]', await ensureAdminUser(gmUser, process.env.GM_PASS ?? ''))
+    } catch (e) {
+      console.error('[yunyin-server] GM_USER 引导失败:', e instanceof Error ? e.message : e)
+    }
+  }
 
   const app = express()
   app.disable('x-powered-by')
@@ -99,9 +119,16 @@ async function main(): Promise<void> {
     })
   })
 
+  // 聊天留存:启动即清一次,之后每 6 小时清一轮
+  void cleanupChat()
+  const chatTimer = setInterval(() => {
+    void cleanupChat()
+  }, 6 * 3_600_000)
+  chatTimer.unref()
+
   server.listen(PORT, () => {
     console.log(`[yunyin-server] listening on :${PORT} (db=${process.env.DB_DRIVER ?? 'sqlite'}, gm=${gm})`)
-    console.log('[yunyin-server] 创建管理员: cd server && npm run admin -- 道号 口令')
+    console.log('[yunyin-server] 创建管理员: cd server && npm run admin -- 道号 口令;或在 .env 配 GM_USER / GM_PASS')
   })
 }
 

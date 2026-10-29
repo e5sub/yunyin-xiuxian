@@ -269,7 +269,7 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'chat_max_len',
       'leaderboard_size',
       'chat_history_size',
-      // 副本(万妖围城)
+      'chat_retention_days',
       'boss_daily_attempts',
       'boss_hp_atk_mult',
       'boss_strike_rounds',
@@ -311,6 +311,7 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'chat_max_len',
       'leaderboard_size',
       'chat_history_size',
+      'chat_retention_days',
       'boss_daily_attempts',
       'boss_hp_atk_mult',
       'boss_strike_rounds',

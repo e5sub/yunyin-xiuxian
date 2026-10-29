@@ -1,12 +1,11 @@
 name: 构建多平台程序 (Electron & Android)
 
-# 只由 tag 触发:挂 main push 会让每个提交都留下一个 release
-# main 的闸门(类型检查 + ESLint + 单测)在 deploy.yml
+# tag 触发:校验版本后构建并发布 Release
+# workflow_dispatch:不打 tag 也能出全套产物,并按 package.json 版本自动发 Release(缺 tag 时自动补建)
 on:
   push:
     tags:
       - 'v*.*.*'
-  # 手动触发:不打 tag 也能出 APK/Electron 产物(仅 artifact,不发 Release)
   workflow_dispatch:
 
 # 同一 tag 串行:并发 run 会在 release job 互删对方刚传的资产
@@ -149,8 +148,7 @@ jobs:
           path: android/app/build/outputs/apk/release/*.apk
 
   release:
-    # 只在 tag 触发时发 Release;手动触发产物留在 artifact
-    if: github.ref_type == 'tag'
+    # tag 触发按 tag 发版;手动触发按 package.json 版本发版(缺 tag 由 softprops 自动补建)
     needs: [guard, build-electron, build-android]
     runs-on: ubuntu-latest
     permissions:
@@ -164,8 +162,13 @@ jobs:
 
       - name: 获取版本号
         id: get_version
-        # tag 即版本(闸门已校验与 package.json 一致)
-        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+        # tag 触发即版本(闸门已校验与 package.json 一致);手动触发读 package.json
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=v$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+          fi
 
       # 不用 merge-multiple,防止覆盖冲突
       - name: 下载构建产物
@@ -210,6 +213,8 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.get_version.outputs.VERSION }}
+          # tag 已存在时忽略;手动触发未打 tag 时在当前 commit 上补建
+          target_commitish: ${{ github.sha }}
           name: Release ${{ steps.get_version.outputs.VERSION }}
           body_path: .release-body.md
           files: ./final-release/*

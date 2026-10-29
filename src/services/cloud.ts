@@ -194,6 +194,9 @@ export const cloudApi = {
   putSave: (payload: { version: number; data: Record<string, unknown>; profile: unknown }): Promise<{ ok: boolean }> =>
     request('PUT', '/save', payload),
   friends: (): Promise<FriendsData> => request('GET', '/friends'),
+  presence: (): Promise<{ online: Array<{ id: number; name: string }>; count: number }> =>
+    request('GET', '/presence'),
+  chatSend: (content: string): Promise<{ ok: boolean }> => request('POST', '/chat/send', { content }),
   friendRequest: (username: string): Promise<{ ok: boolean; accepted?: boolean }> =>
     request('POST', '/friends/request', { username }),
   friendRespond: (requestId: number, accept: boolean): Promise<{ ok: boolean }> =>
@@ -234,6 +237,8 @@ export function connectCloudWs(): void {
   if (typeof window === 'undefined' || ws !== null) return
   const auth = useAuthStore()
   if (!auth.loggedIn) return
+  // REST 心跳兜底与 WS 并行:WS 正常时 presence 广播为准,WS 被反代挡掉时轮询保底
+  startPresencePoll()
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
   const base = API_BASE === '' ? `${proto}://${location.host}` : API_BASE.replace(/^http/, 'ws')
   try {
@@ -279,10 +284,50 @@ export function disconnectCloudWs(): void {
   }
   ws?.close()
   ws = null
+  stopPresencePoll()
+}
+
+// ---- 在线状态 REST 兜底 ----
+// 反代不支持 WebSocket 升级时,WS 常连不上,在线人数会一直显示 0;
+// 这里每 30s 用 /api/presence 心跳保底,并把名单广播给订阅方(与 WS presence 同通道)。
+
+let presenceTimer: ReturnType<typeof setInterval> | undefined
+
+function dispatchPresence(online: Array<{ id: number; name: string }>): void {
+  const msg: CloudWsMsg = { type: 'presence', online }
+  for (const h of handlers) h(msg)
+}
+
+function pollPresence(): void {
+  const auth = useAuthStore()
+  if (!auth.loggedIn) return
+  void cloudApi
+    .presence()
+    .then(res => {
+      dispatchPresence(res.online)
+    })
+    .catch(() => undefined)
+}
+
+function startPresencePoll(): void {
+  if (presenceTimer !== undefined || typeof window === 'undefined') return
+  pollPresence()
+  presenceTimer = setInterval(pollPresence, 30_000)
+}
+
+function stopPresencePoll(): void {
+  if (presenceTimer !== undefined) {
+    clearInterval(presenceTimer)
+    presenceTimer = undefined
+  }
 }
 
 export function sendChat(content: string): boolean {
-  if (ws === null || ws.readyState !== WebSocket.OPEN) return false
-  ws.send(JSON.stringify({ type: 'chat', content }))
+  if (ws !== null && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'chat', content }))
+    return true
+  }
+  // WS 不通时走 REST 兜底:同样限速、落库并全服广播
+  void cloudApi.chatSend(content).catch(() => undefined)
   return true
 }

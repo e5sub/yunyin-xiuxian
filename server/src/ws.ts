@@ -60,9 +60,9 @@ export function isOnline(uid: number): boolean {
   return clients.has(uid)
 }
 
-/** 在线连接数(同一账号多端只计一次) */
+/** 在线连接数(同一账号多端只计一次;含 REST 心跳兜底的在线用户) */
 export function onlineCount(): number {
-  return clients.size
+  return clients.size + restOnline().length
 }
 
 export function onlineList(): Array<{ id: number; name: string }> {
@@ -71,6 +71,29 @@ export function onlineList(): Array<{ id: number; name: string }> {
     const first = set.values().next().value
     if (first !== undefined) out.push({ id: uid, name: first.name })
   }
+  return out.concat(restOnline())
+}
+
+// ---- REST 心跳兜底 ----
+// 反代不支持 WebSocket 升级时,客户端改用 /api/presence 轮询维持在线状态;
+// 心跳超过 TTL 未续期即视为离线。
+
+const REST_TTL_MS = 90_000
+const restSeen = new Map<number, { name: string; at: number }>()
+
+/** REST 心跳续期:uid 有 WS 连接时无须调用(WS 优先) */
+export function touchPresence(uid: number, name: string): void {
+  if (clients.has(uid)) return
+  restSeen.set(uid, { name, at: Date.now() })
+}
+
+function restOnline(): Array<{ id: number; name: string }> {
+  const now = Date.now()
+  for (const [uid, v] of restSeen) {
+    if (now - v.at > REST_TTL_MS || clients.has(uid)) restSeen.delete(uid)
+  }
+  const out: Array<{ id: number; name: string }> = []
+  for (const [uid, v] of restSeen) out.push({ id: uid, name: v.name })
   return out
 }
 

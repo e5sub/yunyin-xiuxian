@@ -414,6 +414,8 @@ async function seedConfig(): Promise<void> {
     ['chat_max_len', '120'],
     ['leaderboard_size', '50'],
     ['chat_history_size', '50'],
+    // 聊天留档天数:启动 + 每 6 小时清理更早的记录
+    ['chat_retention_days', '7'],
     ['boss_daily_attempts', '1'],
     ['boss_hp_atk_mult', '20'],
     ['boss_strike_rounds', '10'],
