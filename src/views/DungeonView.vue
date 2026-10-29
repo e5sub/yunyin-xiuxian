@@ -12,10 +12,14 @@
       <!-- 已在房:展示房间码与成员 -->
       <template v-if="room !== null">
         <div class="mt-3 flex items-center justify-between gap-2">
-          <div class="min-w-0">
-            <p class="text-[11px] text-ink-faint">{{ dungeonName(room.dungeon) }} · 房间码</p>
+          <button
+            class="min-w-0 text-left active:opacity-60"
+            title="点按复制房间码"
+            @click="copyRoomCode"
+          >
+            <p class="text-[11px] text-ink-faint">{{ dungeonName(room.dungeon) }} · 房间码(点按复制)</p>
             <p class="font-mono text-[22px] tracking-[0.3em] text-cinnabar tabular">{{ room.code }}</p>
-          </div>
+          </button>
           <div class="flex shrink-0 flex-col gap-1.5">
             <button class="btn-ink px-3 py-1.5 text-[12px]" :disabled="running !== null" @click="startRun(room.dungeon, room.code)">
               结阵开拔
@@ -99,6 +103,7 @@
   import { useResourcesStore } from '@/stores/resources'
   import { useAuthStore } from '@/stores/auth'
   import { cloudApi, onCloudWs, type DungeonBrief, type DungeonKey, type DungeonRunResult, type DungeonRoom } from '@/services/cloud'
+  import { copyText } from '@/utils/clipboard'
   import { stoneByTier } from '@/core/formulas'
   import { tierOfMajor } from '@/core/secretRealm'
 
@@ -133,6 +138,12 @@
 
   function dungeonName(key: DungeonKey): string {
     return dungeons.value.find(d => d.key === key)?.name ?? key
+  }
+
+  async function copyRoomCode(): Promise<void> {
+    if (room.value === null) return
+    const ok = await copyText(room.value.code)
+    ui.toast(ok ? `房间码 ${room.value.code} 已复制` : '复制失败,请手动抄录', ok ? 'success' : 'warn')
   }
 
   function usedUp(d: DungeonBrief): boolean {
