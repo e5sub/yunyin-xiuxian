@@ -61,7 +61,40 @@ export type CloudWsMsg =
   | { type: 'chat'; from: { id: number; name: string }; content: string; at: number }
   | { type: 'friendRequest'; from: { id: number; name: string } }
   | { type: 'friendAccepted'; by: { id: number; name: string } }
+  | { type: 'boss_spawn'; name: string; at: number }
+  | { type: 'boss_killed'; by: string; name: string; top: Array<{ name: string; dmgText: string }>; at: number }
   | { type: 'pong' }
+
+export interface GEJson {
+  m: number
+  e: number
+}
+
+export interface BossState {
+  name: string
+  realmIndex: number
+  alive: boolean
+  hp: GEJson
+  maxHp: GEJson
+  respawnAt: number
+  myAttempts: number
+  maxAttempts: number
+  myDamage: GEJson
+  top: Array<{ name: string; dmg: GEJson; dmgText: string }>
+}
+
+export interface BossStrikeResult {
+  damage: GEJson
+  damageText: string
+  rounds: number
+  fell: boolean
+  killed: boolean
+  hp: GEJson
+  maxHp: GEJson
+  bossName: string
+  tier: number
+  reward: { stone: number; herb: number }
+}
 
 export class CloudError extends Error {}
 
@@ -132,7 +165,9 @@ export const cloudApi = {
   leaderboard: (): Promise<{ board: LeaderRow[] }> => request('GET', '/leaderboard'),
   chatHistory: (): Promise<{ messages: ChatMsg[] }> => request('GET', '/chat/history'),
   pvp: (targetId: number): Promise<{ winner: 'me' | 'target'; rounds: number; log: string[] }> =>
-    request('POST', '/pvp', { targetId })
+    request('POST', '/pvp', { targetId }),
+  boss: (): Promise<BossState> => request('GET', '/boss'),
+  bossStrike: (): Promise<BossStrikeResult> => request('POST', '/boss/strike')
 }
 
 // ---- WebSocket:聊天 / 在线状态 / 好友通知 ----

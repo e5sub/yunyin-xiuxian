@@ -27,6 +27,7 @@ export const router = createRouter({
     { path: '/legacy', name: 'legacy', component: () => import('@/views/LegacyView.vue') },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
     { path: '/friends', name: 'friends', component: () => import('@/views/FriendsView.vue') },
+    { path: '/boss', name: 'boss', component: () => import('@/views/BossView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' }
   ]
 })
