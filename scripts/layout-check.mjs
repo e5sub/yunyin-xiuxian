@@ -51,18 +51,11 @@ const ROUTES = [
 ]
 
 /**
- * 不依赖公网:index.html 的 sdk.51.la 第三方统计会拖住 `load`(CDN 堵时 goto 卡满 30 秒),
- * host-resolver-rules 令它 DNS 解析失败;其运行时异常由 watchPageErrors 不计。
+ * 不依赖公网:游戏不加载任何外部资源,file:// 打开即离线可用。
  */
 const browser = await chromium.launch({
   // --no-sandbox / --disable-dev-shm-usage:容器里 headless 常崩(无用户命名空间、/dev/shm 只有 64M);同 ui-smoke
-  args: [
-    '--allow-file-access-from-files',
-    '--disable-web-security',
-    '--no-sandbox',
-    '--disable-dev-shm-usage',
-    '--host-resolver-rules=MAP sdk.51.la ~NOTFOUND'
-  ]
+  args: ['--allow-file-access-from-files', '--disable-web-security', '--no-sandbox', '--disable-dev-shm-usage']
 })
 const failures = []
 let checked = 0
@@ -101,19 +94,9 @@ async function auditModalControls(page) {
   })
 }
 
-/** 收集页面异常:堆栈来自 51.la 统计脚本的只打印不计(钉死 Math.random 后它会抛 Invalid UUID) */
+/** 收集页面异常,全部计入失败(游戏已无第三方脚本,页面异常即问题) */
 function watchPageErrors(page, sink) {
-  let thirdPartyNoted = false
   page.on('pageerror', e => {
-    const stack = String(e.stack || e.message || '')
-    if (/sdk\.51\.la/.test(stack)) {
-      // 逐页重载会重复抛,只提一次
-      if (!thirdPartyNoted) {
-        thirdPartyNoted = true
-        console.log(`  (第三方统计脚本异常,不计入失败:${String(e.message).slice(0, 60)})`)
-      }
-      return
-    }
     sink.push(String(e).slice(0, 160))
   })
 }

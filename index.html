@@ -23,17 +23,6 @@
   <body>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
-    <!--
-      统计代码勿删,须 defer:同步 <script> 会让首屏等它下载执行完。
-      离线或被拦截时 LA 不存在,裸写 LA.init 会抛 ReferenceError;defer 脚本先于 DOMContentLoaded 执行完,故在此时初始化。
-      autoTrack 开启即采集点击与滚动,改它须同步 public/privacy.html 与 PrivacyDialog.vue 的统计说明。
-    -->
-    <script defer charset="UTF-8" id="LA_COLLECT" src="https://sdk.51.la/js-sdk-pro.min.js"></script>
-    <script>
-      document.addEventListener('DOMContentLoaded', () => {
-        window.LA?.init({ id: 'LIx18788ryPZohY4', ck: 'LIx18788ryPZohY4', autoTrack: false, hashMode: true })
-      })
-    </script>
   </body>
 
 </html>

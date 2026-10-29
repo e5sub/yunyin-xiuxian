@@ -20,7 +20,7 @@
     <PrivacyDialog :open="privacyOpen" @close="privacyOpen = false" />
 
     <BaseModal :open="agreeOpen" title="进入确认" :closable="false">
-      <p class="text-[12px] leading-relaxed text-ink-faint">游戏数据存云端 · 流量统计不含游戏数据</p>
+      <p class="text-[12px] leading-relaxed text-ink-faint">游戏数据存云端 · 登录即自动同步</p>
       <label class="mt-3 flex items-center gap-2">
         <input v-model="agreed" type="checkbox" class="h-4 w-4 accent-cinnabar" />
         <span class="text-[12px] text-ink-soft">

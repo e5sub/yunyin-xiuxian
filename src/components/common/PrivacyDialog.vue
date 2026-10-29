@@ -22,22 +22,13 @@
       <section>
         <h4 class="mb-0.5 font-kai text-[13px] text-ink">四、游戏本体不联网</h4>
         <p class="text-ink-faint">
-          游戏玩法完全在本机运行,不与任何游戏服务器通信。断网后除流量统计脚本无法加载外,全部功能正常。
+          游戏玩法完全在本机运行。断网后云同步不可用,游戏可正常进行,进度会在联网后自动补传。
         </p>
       </section>
       <section>
-        <h4 class="mb-0.5 font-kai text-[13px] text-ink">五、第三方流量统计</h4>
-        <p class="mb-1 text-ink-faint">
-          站点接入了 51.LA 网站统计,只记录页面访问。统计内容:
-        </p>
-        <ul class="ml-3 list-disc space-y-0.5 text-ink-faint">
-          <li>访问来路、页面路径、访问时间、停留时长</li>
-          <li>IP 地址与由此推断的大致地区</li>
-          <li>浏览器、系统、分辨率等设备信息</li>
-          <li>51.LA 生成的匿名访客标识</li>
-        </ul>
-        <p class="mt-1 text-ink-faint">
-          <span class="text-ink">不读取存档</span>,不记录点击。游戏不接入广告与推送 SDK。
+        <h4 class="mb-0.5 font-kai text-[13px] text-ink">五、第三方服务</h4>
+        <p class="text-ink-faint">
+          游戏<span class="text-ink">不接入</span>任何第三方统计、广告与推送 SDK,不加载外部 CDN 资源,不向任何第三方共享信息。
         </p>
       </section>
       <section>

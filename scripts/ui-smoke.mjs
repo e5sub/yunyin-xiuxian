@@ -61,19 +61,12 @@ const browser = await chromium.launch({
 })
 const context = await browser.newContext({ viewport: { width: 375, height: 812 } })
 /**
- * 外域请求全拦,分两类记账:
- *   · sdk.51.la(index.html 唯一的第三方资源):拦掉防 goto(load) 被它拖到 30s 超时;
- *   · 其它外域:判失败。
+ * 外域请求全拦(游戏已无任何第三方资源,外域即异常):
  */
-let knownAnalyticsBlocked = 0
 const unknownExternal = []
 await context.route('**/*', route => {
   const url = route.request().url()
   if (/^(file|data|blob):/.test(url)) return route.continue()
-  if (url.startsWith('https://sdk.51.la/')) {
-    knownAnalyticsBlocked += 1
-    return route.abort()
-  }
   unknownExternal.push(url)
   return route.abort()
 })
@@ -356,9 +349,6 @@ for (const route of ROUTES) {
 
 await browser.close()
 console.log(`\n界面冒烟:${ROUTES.length} 页,点击 ${clicked} 次(导航 ${navClicked.size} 条边;按钮每页上限 ${DEPTH})`)
-if (knownAnalyticsBlocked) {
-  console.log(`  已拦下第三方统计脚本 ${knownAnalyticsBlocked} 次(唯一允许的外域,拦掉只为不随它超时)`)
-}
 if (unknownExternal.length) {
   const hosts = [...new Set(unknownExternal.map(u => u.replace(/^https?:\/\//, '').split('/')[0]))]
   console.log(`✗ 出现未登记的外域请求 ${unknownExternal.length} 次:${hosts.join(', ')}`)
