@@ -8,7 +8,7 @@
 - auth store 持久化但不进 PERSISTED_STORES(清档不清登录、云上传不带 token)。
 - 数据库双方言:`DB_DRIVER=sqlite`(默认)/`mysql`;查询统一走 `server/src/db.ts` 的 `all/get/run/exec`(`?` 占位、异步),upsert 用 `REPLACE INTO`。
 - GM 后台路径 `GM_PATH`(默认 /gm),单页 `server/gm/index.html`;管理员 `cd server && npm run admin -- 道号 口令`;游戏参数在 `game_config` 表(30s 缓存),后台可改聊天限速/榜单条数/公告等。
-- 注册必填用户名+邮箱;`EMAIL_CODE_REQUIRED=true` 强制验证码(预留);`EMAIL_ENABLED=true`+`SMTP_*` 实发邮件,否则验证码打控制台。找回密码走 `/api/auth/forgot` + `/api/auth/reset`。
+- 注册必填用户名+邮箱;邮箱/SMTP 设置已全部入 game_config(GM 后台「参数设置 → 邮件 / SMTP」页可改,含发送测试邮件),`EMAIL_*`/`SMTP_*` 环境变量只作首次建库种子值。`email_code_required=true` 强制验证码(预留);未启用邮箱时验证码打控制台并回 devCode。找回密码走 `/api/auth/forgot` + `/api/auth/reset`。
 - MySQL 分支尚未在真实 MySQL 上跑过(本机无 MySQL/Docker),首次部署须验证 initDb 建表。
 
 ## 工具链/环境(本机)
@@ -19,6 +19,7 @@
 - vite 代理目标写 127.0.0.1,不要写 localhost(解析 ::1 连不上)。
 - npm 缓存 EPERM 时换 --cache 临时目录,但沙箱 safe-delete 会拦 npm 缓存清理 → 直接用 pnpm。
 - Git Bash(MSYS) 会把 `/xxx` 形式的环境变量值转成盘符路径:传 GM_PATH 之类路径参数不要带前导斜杠。
+- Windows 下 libuv 默认 SO_REUSEADDR:旧 node 服务没杀干净时新实例仍能绑上同端口,但请求全落到旧进程(表现为"改了代码行为没变")。测服务端务必先用 Get-NetTCPConnection 按端口杀旧进程再启动。
 
 ## 待办
 

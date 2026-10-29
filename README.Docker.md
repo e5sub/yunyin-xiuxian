@@ -1,6 +1,6 @@
 # 云隐修仙录 Docker 部署指南
 
-网游版全栈镜像：**nginx（静态站 + 反代）+ Node 游戏后端同容器**。单容器跑通注册登录、云存档、聊天、好友、排行榜、切磋与 GM 后台。
+网游版镜像：**纯 Node 后端容器（无 nginx）**——REST + WebSocket + GM 后台 + 前端静态站同端口，实体机 nginx/Traefik 一层反代即可上线。单容器跑通注册登录、云存档、聊天、好友、排行榜、切磋与 GM 后台。
 
 ## 快速开始
 
@@ -42,20 +42,21 @@ docker build -t yunyin-xiuxian:latest .
 ## 镜像架构
 
 - **前端构建**：`oven/bun:1-alpine`（本地 Dockerfile）；CI 走 `Dockerfile.ci`，`dist/` 由 runner 预构建后复制，多架构免在 QEMU 里重跑 `vue-tsc` 与 `vite`
-- **运行时**：`node:22-bookworm-slim`（glibc，`better-sqlite3` 有 x64/arm64 预编译产物）+ nginx
-- **进程**：entrypoint 起 nginx（静态站 + 反代 `/api`、`/ws`、GM 后台到后端），前台跑 Node 后端；**两者同听 `$PORT`，内外端口一致**
-- **端口**：由 `.env` 的 `PORT` 统一决定（默认 8787）——compose 端口映射、nginx 监听、后端监听三处同源
+- **运行时**：`node:22-bookworm-slim`（glibc，`better-sqlite3` 有 x64/arm64 预编译产物），**纯 Node 容器，无 nginx**
+- **进程**：单进程 Node 后端，同端口托管 REST + WebSocket + GM 后台 + 前端静态站（`STATIC_DIR`）
+- **端口**：由 `.env` 的 `PORT` 统一决定（默认 8787）——compose 端口映射与后端监听同源
 - **健康检查**：每 30 秒探测 `/api/health`
 
 ## 环境变量
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
-| `GM_PATH` | `/gm` | GM 后台路径，可自定义（entrypoint 会同步注入 nginx 反代规则） |
+| `GM_PATH` | `/gm` | GM 后台路径，可自定义（后端自读，改后重启生效） |
 | `DB_DRIVER` | `sqlite` | `sqlite` 或 `mysql` |
 | `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME` | — | MySQL 连接（`DB_DRIVER=mysql` 时必填） |
 | `EMAIL_ENABLED` / `EMAIL_CODE_REQUIRED` / `SMTP_HOST/PORT/USER/PASS/FROM` | — | 邮箱设置**首次建库的种子值**；运行期在 GM 后台「参数设置 → 邮件 / SMTP」页改，改后立即生效（开关最迟 30 秒） |
-| `PORT` | `8787` | **内外统一端口**：nginx 监听、后端监听、compose 端口映射（`"${PORT}:${PORT}"`）三处同源，改这一处即可 |
+| `PORT` | `8787` | **内外统一端口**：后端监听与 compose 端口映射（`"${PORT}:${PORT}"`）同源，改这一处即可 |
+| `STATIC_DIR` | 镜像内 `/app/server/public` | 前端静态站目录；不设则纯 API（本地 dev 如此） |
 | `YUNYIN_JWT_SECRET` | 自动生成落盘 | JWT 密钥（≥16 字符；多实例部署必须统一） |
 
 完整示例见 `server/.env.example`。
@@ -88,13 +89,36 @@ APK 内的后端地址在构建期写死：
 
 ## 反向代理与 HTTPS
 
-外层反代（Traefik / Nginx Proxy Manager / Caddy）终止 SSL，把整站指到容器 `:80` 即可；`/api`、`/ws`、`/gm` 已在容器内 nginx 处理好，外层无需特殊重写。WebSocket 走 `/ws`，外层反代需支持 Upgrade 头。
+容器内已无 nginx——**实体机 nginx 直接反代整站**到容器端口，SSL 在实体机终止。`/ws` 需透传 Upgrade 头，示例：
+
+```nginx
+server {
+    listen 80;
+    server_name yy.example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8787;   # 容器映射出来的端口(.env 的 PORT)
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;      # WebSocket(/ws)
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        client_max_body_size 12m;                    # 云存档整包上传
+    }
+}
+```
+
+Traefik / Nginx Proxy Manager / Caddy 同理：整站转发 + 支持 WebSocket Upgrade 即可，无需路径重写。
 
 ## 故障排查
 
 ```bash
-docker logs yunyin-xiuxian                                   # 看 nginx 与后端日志
-docker exec yunyin-xiuxian wget -qO- http://localhost/api/health   # 后端探活
+docker logs yunyin-xiuxian                                   # 后端日志
+docker exec yunyin-xiuxian node -e "fetch('http://127.0.0.1:8787/api/health').then(r=>console.log(r.status))"   # 后端探活
 docker exec -it yunyin-xiuxian sh                            # 进容器
 ```
 

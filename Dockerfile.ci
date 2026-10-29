@@ -1,5 +1,5 @@
 # CI 专用:不在容器内构建前端,dist 由 runner 构建后复制进来,多架构镜像(amd64/arm64)免在 QEMU 里重跑 vue-tsc 与 vite
-# 全栈镜像:nginx(静态站 + /api、/ws、GM 后台反代) + Node 游戏后端同容器
+# 纯后端镜像(无 nginx):静态站由 Node 托管(STATIC_DIR),实体机 nginx/Traefik 反代整站到容器 $PORT
 # 基础用 bookworm-slim(glibc):better-sqlite3 有 linux-x64/arm64 预编译产物,免 QEMU 里源码编译
 
 FROM node:22-bookworm-slim
@@ -10,32 +10,28 @@ ARG COMMIT_SHA
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends nginx tzdata && \
+    apt-get install -y --no-install-recommends tzdata && \
     rm -rf /var/lib/apt/lists/* && \
     ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     echo "Asia/Shanghai" > /etc/timezone
 
-COPY dist /usr/share/nginx/html
-COPY nginx-docker.conf.template /etc/nginx/conf.d/app.conf.template
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh && rm -f /etc/nginx/sites-enabled/default
-
+COPY dist /app/server/public
 COPY server /app/server
 WORKDIR /app/server
 RUN npm install --omit=dev --no-fund --no-audit && npm cache clean --force
 
-# 后端端口(容器内),GM 后台路径与 GM 逻辑由 entrypoint/后端各自读 GM_PATH
+# 后端与静态站同听 $PORT;GM_PATH 由后端自读
 ENV PORT=8787 \
+    STATIC_DIR=/app/server/public \
     GM_PATH=/gm \
     DB_DRIVER=sqlite
 
 # SQLite 数据(JWT 密钥也在 data/),容器可换数据不丢;MySQL 见 server/.env.example
 VOLUME ["/app/server/data"]
 
-# nginx 与后端同听 $PORT(entrypoint 注入),内外端口一致
 EXPOSE $PORT
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8787)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["./node_modules/.bin/tsx", "src/index.ts"]

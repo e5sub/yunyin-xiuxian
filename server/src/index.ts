@@ -59,6 +59,19 @@ async function main(): Promise<void> {
     console.warn('[yunyin-server] gm/index.html 缺失,后台页面不可用(API 仍可用)')
   }
 
+  // 可选静态托管(容器部署):STATIC_DIR 指向前端构建产物即开启;本地 dev 不设,纯 API
+  const staticDir = process.env.STATIC_DIR ?? ''
+  if (staticDir !== '' && existsSync(join(staticDir, 'index.html'))) {
+    app.use(express.static(staticDir, { index: 'index.html' }))
+    // SPA 兜底:除 /api、/ws、GM 路径外的 GET 一律回 index.html(项目为 hash 路由)
+    const gmEscaped = gm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const spaRe = new RegExp(`^(?!${gmEscaped}(?:/|$))(?!/api(?:/|$))(?!/ws(?:/|$)).*`)
+    app.get(spaRe, (_req, res) => {
+      res.sendFile(join(staticDir, 'index.html'))
+    })
+    console.log(`[yunyin-server] static site served from ${staticDir}`)
+  }
+
   app.use((_req, res) => {
     res.status(404).json({ error: '接口不存在' })
   })
