@@ -10,6 +10,7 @@ import { setConfig } from './config.js'
 import { requireAdmin, verifyPassword } from './auth.js'
 import { onlineCount } from './ws.js'
 import { bodyStr, rateLimit } from './rateLimit.js'
+import { CODE_TYPE_DAYS, generateCode, grantVipDays, isCodeType } from './vip.js'
 
 /** 后台挂载路径;必须是一个独立子路径(不允许根路径),非法值回落 /gm */
 export function gmPath(): string {
@@ -217,13 +218,9 @@ gmRouter.post('/users/:id/vip', requireAdmin, (req: Request, res: Response) => {
       res.status(404).json({ error: '查无此用户' })
       return
     }
-    let vipUntil = 0
-    if (days > 0) {
-      const now = Date.now()
-      const base = Math.max(now, row.vip_until ?? 0)
-      vipUntil = base + days * 24 * 3600 * 1000
-    }
-    await run('UPDATE users SET vip_until = ? WHERE id = ?', [vipUntil, id])
+    // days=0 清零;days>0 走统一发放逻辑(永久态不叠加)
+    const vipUntil = days > 0 ? await grantVipDays(id, days) : 0
+    if (days === 0) await run('UPDATE users SET vip_until = 0 WHERE id = ?', [id])
     res.json({ ok: true, vipUntil })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
@@ -559,6 +556,98 @@ gmRouter.post('/saves/:userId/restore', requireAdmin, (req: Request, res: Respon
     const started = row.data.includes('"started":true') ? 1 : 0
     await upsertByPk('saves', { user_id: userId, version: row.version, data: row.data, started, updated_at: now })
     res.json({ ok: true, updatedAt: now, fromHistoryId: historyId })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})
+
+/* ---------------- VIP 激活码:批量生成 / 列表 / 删除 ---------------- */
+
+/** 批量生成激活码:type = month(月) | half(半年) | year(年) | forever(永久);count 1~200 */
+gmRouter.post('/codes/generate', requireAdmin, (req: Request, res: Response) => {
+  void (async () => {
+    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
+    if (!isCodeType(body.type)) {
+      res.status(400).json({ error: '类型无效' })
+      return
+    }
+    const count = Math.floor(Number(body.count))
+    if (!Number.isInteger(count) || count < 1 || count > 200) {
+      res.status(400).json({ error: '数量须在 1~200 之间' })
+      return
+    }
+    const note = typeof body.note === 'string' ? body.note.trim().slice(0, 60) : ''
+    const days = CODE_TYPE_DAYS[body.type]
+    const now = Date.now()
+    const codes: string[] = []
+    for (let i = 0; i < count; i++) {
+      // 主键碰撞(概率可忽略)重试一次
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const code = generateCode()
+        try {
+          await run('INSERT INTO vip_codes (code, days, note, created_at) VALUES (?, ?, ?, ?)', [code, days, note, now])
+          codes.push(code)
+          break
+        } catch (err) {
+          if (attempt === 1) throw err
+        }
+      }
+    }
+    res.json({ ok: true, codes, days })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})
+
+/** 激活码列表:filter = all | unused | used;q 模糊匹配码面/备注 */
+gmRouter.get('/codes', requireAdmin, (req: Request, res: Response) => {
+  void (async () => {
+    const filter = req.query.filter === 'unused' || req.query.filter === 'used' ? req.query.filter : 'all'
+    const q = typeof req.query.q === 'string' ? req.query.q.trim().toUpperCase() : ''
+    const conds: string[] = []
+    const params: unknown[] = []
+    if (filter === 'unused') conds.push('c.used_by = 0')
+    if (filter === 'used') conds.push('c.used_by != 0')
+    if (q !== '') {
+      conds.push('(c.code LIKE ? OR c.note LIKE ?)')
+      params.push(`%${q}%`, `%${q}%`)
+    }
+    const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : ''
+    const rows = await all<Record<string, unknown>>(
+      `SELECT c.code, c.days, c.note, c.used_by, c.used_at, c.created_at, u.username AS used_name
+       FROM vip_codes c
+       LEFT JOIN users u ON u.id = c.used_by
+       ${where}
+       ORDER BY c.created_at DESC, c.code
+       LIMIT 500`,
+      params
+    )
+    res.json({
+      codes: rows.map(r => ({
+        code: r.code,
+        days: r.days,
+        note: r.note,
+        usedBy: r.used_by !== 0 && r.used_by !== undefined ? r.used_by : 0,
+        usedName: r.used_name ?? '',
+        usedAt: r.used_at ?? 0,
+        createdAt: r.created_at
+      }))
+    })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})
+
+/** 删除激活码:仅未使用的可删(已使用的留作发放记录) */
+gmRouter.delete('/codes/:code', requireAdmin, (req: Request, res: Response) => {
+  void (async () => {
+    const code = String(req.params.code).trim().toUpperCase()
+    const result = await run('DELETE FROM vip_codes WHERE code = ? AND used_by = 0', [code])
+    if (result.affectedRows === 0) {
+      res.status(400).json({ error: '激活码不存在或已使用,不可删除' })
+      return
+    }
+    res.json({ ok: true })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })

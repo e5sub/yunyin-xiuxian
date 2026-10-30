@@ -5,13 +5,39 @@
       <div class="min-w-0">
         <span class="text-[13px] text-ink-soft">VIP 状态</span>
         <p class="mt-0.5 text-[10px] leading-relaxed text-ink-faint">
-          {{ auth.isVip ? `剩余 ${auth.vipDaysLeft} 天(至 ${expireText})` : '未开通 · 可联系仙官(GM)开通' }}
+          {{ statusText }}
         </p>
       </div>
       <span
         class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-kai tracking-widest"
         :class="auth.isVip ? 'bg-amber-ink/15 text-amber-ink' : 'bg-ink/10 text-ink-faint'"
       >VIP</span>
+    </div>
+
+    <!-- 激活码兑换(开通/续期皆可,永久卡直接补足到永久) -->
+    <div class="py-3">
+      <label class="flex items-center justify-between">
+        <span class="text-[13px] text-ink-soft">激活码兑换</span>
+        <button
+          type="button"
+          class="chip-ink !py-1.5"
+          :class="codeInput.trim() === '' ? 'border-ink/25 text-ink-faint' : 'border-cinnabar text-cinnabar'"
+          :disabled="redeeming || codeInput.trim() === ''"
+          @click="redeem"
+        >
+          {{ redeeming ? '兑换中…' : '兑换' }}
+        </button>
+      </label>
+      <input
+        v-model="codeInput"
+        class="mt-2 w-full rounded border border-ink/20 bg-transparent px-2 py-1.5 font-mono text-[12px] tracking-wider text-ink placeholder:text-ink-faint/60"
+        placeholder="VIP-XXXX-XXXX-XXXX"
+        maxlength="20"
+        @keyup.enter="redeem"
+      />
+      <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
+        月卡 / 半年卡 / 年卡在剩余时长上叠加;永久卡立即转为永久 VIP。找仙官(GM)获取激活码
+      </p>
     </div>
 
     <template v-if="auth.isVip">
@@ -78,10 +104,12 @@
 </template>
 
 <script setup lang="ts">
-  import { computed } from 'vue'
+  import { computed, ref } from 'vue'
   import { useSettingsStore } from '@/stores/settings'
   import { useAuthStore } from '@/stores/auth'
   import { useAdventureStore } from '@/stores/adventure'
+  import { useUiStore } from '@/stores/ui'
+  import { cloudApi } from '@/services/cloud'
   import { canEnterRegion } from '@/core/mortalWorldService'
   import { EXPLORE_MODES } from '@/data/constants'
   import { regionDef } from '@/data/regions'
@@ -89,6 +117,32 @@
 
   const settings = useSettingsStore()
   const auth = useAuthStore()
+  const ui = useUiStore()
+
+  const statusText = computed(() => {
+    if (!auth.isVip) return '未开通 · 输入激活码激活,或联系仙官(GM)开通'
+    if (auth.vipForever) return '永久 VIP · 尊享全部托管特权'
+    return `剩余 ${auth.vipDaysLeft} 天(至 ${expireText.value})`
+  })
+
+  const codeInput = ref('')
+  const redeeming = ref(false)
+
+  async function redeem(): Promise<void> {
+    const code = codeInput.value.trim().toUpperCase()
+    if (code === '' || redeeming.value) return
+    redeeming.value = true
+    try {
+      const r = await cloudApi.redeemVip(code)
+      await auth.refreshVip()
+      codeInput.value = ''
+      ui.toast(r.days === 0 ? '兑换成功:VIP 已转为永久!' : `兑换成功:VIP +${r.days} 天`, 'success')
+    } catch (e) {
+      ui.toast(e instanceof Error ? e.message : '兑换失败', 'warn')
+    } finally {
+      redeeming.value = false
+    }
+  }
 
   const allOn = computed(() => settings.autoBoss && settings.autoRetreat && settings.autoAdventure)
 

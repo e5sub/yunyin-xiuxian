@@ -261,6 +261,15 @@ CREATE TABLE IF NOT EXISTS dungeon_daily (
   count INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, dungeon, day)
 );
+-- VIP 激活码:days=0 表示永久;一码一用
+CREATE TABLE IF NOT EXISTS vip_codes (
+  code TEXT PRIMARY KEY,
+  days INTEGER NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  used_by INTEGER NOT NULL DEFAULT 0,
+  used_at INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(id DESC);
 CREATE INDEX IF NOT EXISTS idx_profile_rank ON profiles(realm_index DESC, power_e DESC, power_m DESC);
 CREATE INDEX IF NOT EXISTS idx_save_history_user ON save_history(user_id, id DESC);
@@ -432,6 +441,15 @@ CREATE TABLE IF NOT EXISTS dungeon_daily (
   count INT NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, dungeon, day),
   CONSTRAINT fk_dungeon_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS vip_codes (
+  code VARCHAR(20) PRIMARY KEY,
+  days INT NOT NULL,
+  note VARCHAR(64) NOT NULL DEFAULT '',
+  used_by BIGINT NOT NULL DEFAULT 0,
+  used_at BIGINT NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL,
+  INDEX idx_vip_code_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ` // CREATE INDEX 放后面单独跑(MySQL 无 IF NOT EXISTS,重复启动要容错)
   for (const stmt of ddl.split(';').map(s => s.trim()).filter(Boolean)) {

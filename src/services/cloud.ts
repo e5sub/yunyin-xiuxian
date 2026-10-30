@@ -243,6 +243,9 @@ export const cloudApi = {
     request('POST', '/auth/login', { username, password }),
   /** 会话信息刷新:取最新 VIP 状态(GM 发放/续期后无需重登) */
   me: (): Promise<{ user: CloudUser }> => request('GET', '/auth/me'),
+  /** VIP 激活码兑换:成功返回 days(0=永久)与新到期时间 */
+  redeemVip: (code: string): Promise<{ ok: boolean; days: number; vipUntil: number }> =>
+    request('POST', '/vip/redeem', { code }),
   emailCode: (email: string, purpose: 'register' | 'reset' | 'bind'): Promise<EmailCodeResp> =>
     request('POST', '/auth/email-code', { email, purpose }),
   /** 修改口令:成功后返回新 token(换上,否则本会话作废) */

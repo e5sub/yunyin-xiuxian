@@ -15,10 +15,16 @@ export const useAuthStore = defineStore(
     const vipUntil = ref(0)
 
     const loggedIn = computed(() => token.value !== '' && userId.value > 0)
+    /** 永久 VIP 的服务端落库值:2100-01-01(与 server PERMANENT_TS 一致) */
+    const VIP_PERMANENT_TS = 4102444800000
     /** 眼下是否 VIP(到期即失格);每秒级的到期动画不需要,托管循环 tick 里会兜底复核 */
     const isVip = computed(() => vipUntil.value > Date.now())
-    /** VIP 剩余天数(向上取整;未开通为 0) */
-    const vipDaysLeft = computed(() => (isVip.value ? Math.ceil((vipUntil.value - Date.now()) / 86400000) : 0))
+    /** 是否永久卡(激活码兑换) */
+    const vipForever = computed(() => vipUntil.value >= VIP_PERMANENT_TS)
+    /** VIP 剩余天数(向上取整;未开通/永久为 0) */
+    const vipDaysLeft = computed(() =>
+      isVip.value && !vipForever.value ? Math.ceil((vipUntil.value - Date.now()) / 86400000) : 0
+    )
 
     /** 注册并登录(邮箱必填);失败抛 CloudError(界面取 message 显示) */
     async function register(name: string, email: string, password: string, code = ''): Promise<void> {
@@ -73,6 +79,7 @@ export const useAuthStore = defineStore(
       vipUntil,
       loggedIn,
       isVip,
+      vipForever,
       vipDaysLeft,
       register,
       login,

@@ -185,6 +185,7 @@
       <button id="tab-users" onclick="switchTab('users')">账号管理</button>
       <button id="tab-saves" onclick="switchTab('saves')">云存档</button>
       <button id="tab-config" onclick="switchTab('config')">参数设置</button>
+      <button id="tab-codes" onclick="switchTab('codes')">VIP激活码</button>
       <button id="tab-broadcast" onclick="switchTab('broadcast')">全服公告</button>
     </div>
 
@@ -247,6 +248,50 @@
         <div class="row" style="margin-top:14px">
           <button onclick="sendTestMail()">发送测试邮件</button>
           <span class="muted">每个分类单独保存;改后立即生效(邮箱开关最迟 30 秒)</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="pane-codes" class="hidden">
+      <div class="card">
+        <h2>生成激活码</h2>
+        <div class="row" style="flex-wrap:wrap">
+          <select id="cd-type" style="width:130px">
+            <option value="month">月卡 · 30 天</option>
+            <option value="half">半年卡 · 183 天</option>
+            <option value="year">年卡 · 365 天</option>
+            <option value="forever">永久卡</option>
+          </select>
+          <input id="cd-count" type="number" min="1" max="200" value="10" style="width:90px" title="数量 1~200">
+          <input id="cd-note" placeholder="备注(批次/用途,选填)" style="width:220px" maxlength="60">
+          <button class="primary" onclick="genCodes()">生成</button>
+        </div>
+        <div id="cd-result" class="hidden" style="margin-top:12px">
+          <textarea id="cd-list" rows="6" readonly style="width:100%;font-family:monospace"></textarea>
+          <div class="row" style="margin-top:8px">
+            <button class="primary" onclick="copyCodes()">复制全部</button>
+            <span class="muted">生成后即生效,玩家在「设置 → VIP」页输入兑换;一码一用</span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="row">
+          <select id="cd-filter" style="width:110px" onchange="loadCodes()">
+            <option value="all">全部</option>
+            <option value="unused">未使用</option>
+            <option value="used">已使用</option>
+          </select>
+          <input id="cd-search" placeholder="搜码面 / 备注" style="width:200px" onkeydown="if(event.key==='Enter')loadCodes()">
+          <button class="primary" onclick="loadCodes()">查询</button>
+          <span class="muted">最多显示最近 500 条</span>
+        </div>
+        <div class="tbl-wrap" style="margin-top:10px">
+          <table>
+            <thead><tr>
+              <th>激活码</th><th>类型</th><th>状态</th><th>使用者</th><th>使用时间</th><th>备注</th><th>创建时间</th><th style="width:90px">操作</th>
+            </tr></thead>
+            <tbody id="cd-rows"></tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -315,6 +360,15 @@ function toast (msg) { const t = $('toast'); t.textContent = msg; t.classList.ad
 function esc (s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
 function fmt (ts) { return ts ? new Date(Number(ts)).toLocaleString('zh-CN', { hour12: false }) : '—' }
 
+/** 永久 VIP 的判定阈值(与后端 PERMANENT_TS=2100-01-01 一致) */
+const PERMANENT_TS = 4102444800000
+function fmtVip (ts) {
+  ts = Number(ts) || 0
+  if (ts >= PERMANENT_TS) return '<span class="tag ok">永久</span>'
+  if (ts > Date.now()) return '<span class="tag ok">VIP</span> 剩 ' + Math.ceil((ts - Date.now()) / 86400000) + ' 天'
+  return '—'
+}
+
 /** GNum(m×10^e) 展示:保留 1 位小数,大数折成万/亿/兆(与前台同一折算口径) */
 function fmtGE (m, e) {
   const n = (Number(m) || 0) * Math.pow(10, Number(e) || 0)
@@ -337,7 +391,7 @@ async function api (path, opts = {}) {
 }
 
 function switchTab (name) {
-  for (const t of ['stats', 'users', 'saves', 'config', 'broadcast']) {
+  for (const t of ['stats', 'users', 'saves', 'config', 'codes', 'broadcast']) {
     $('tab-' + t).classList.toggle('on', t === name)
     $('pane-' + t).classList.toggle('hidden', t !== name)
   }
@@ -345,6 +399,7 @@ function switchTab (name) {
   if (name === 'users') loadUsers(page)
   if (name === 'saves') loadSaves()
   if (name === 'config') loadConfig()
+  if (name === 'codes') loadCodes()
 }
 
 async function doLogin () {
@@ -398,7 +453,7 @@ async function loadUsers (p) {
       <td>${u.profile ? fmtGE(u.profile.hpM, u.profile.hpE) : '—'}</td>
       <td>${u.role === 'admin' ? '<span class="tag admin">管理员</span>' : '玩家'}</td>
       <td>${u.status === 'active' ? '<span class="tag ok">正常</span>' : '<span class="tag ban">封禁</span>'}</td>
-      <td>${u.vipUntil && u.vipUntil > Date.now() ? '<span class="tag ok">VIP</span> 剩 ' + Math.ceil((u.vipUntil - Date.now()) / 86400000) + ' 天' : '—'}</td>
+      <td>${fmtVip(u.vipUntil)}</td>
       <td>${fmt(u.saveAt)}</td>
       <td class="acts">
         <button onclick="viewDetail(${u.id})">详情</button>
@@ -432,7 +487,12 @@ async function confirmPw () {
 let vipTarget = 0
 function openVip (id, name, vipUntil) {
   vipTarget = id
-  const remain = vipUntil && vipUntil > Date.now() ? `当前剩余 ${Math.ceil((vipUntil - Date.now()) / 86400000)} 天(至 ${fmt(vipUntil)})` : '当前无 VIP'
+  vipUntil = Number(vipUntil) || 0
+  const remain = vipUntil >= PERMANENT_TS
+    ? '当前永久 VIP'
+    : vipUntil > Date.now()
+      ? `当前剩余 ${Math.ceil((vipUntil - Date.now()) / 86400000)} 天(至 ${fmt(vipUntil)})`
+      : '当前无 VIP'
   $('vip-title').textContent = `VIP · ${name}(${remain})`
   $('vip-days').value = 30
   $('dlg-vip').showModal()
@@ -446,6 +506,59 @@ async function confirmVip () {
     loadUsers()
   } catch (e) { toast(e.message) }
 }
+
+/* ---------------- VIP 激活码 ---------------- */
+
+const CODE_TYPE_TEXT = { month: '月卡', half: '半年卡', year: '年卡', forever: '永久卡' }
+const DAYS_TEXT = { 0: '永久卡', 30: '月卡(30天)', 183: '半年卡(183天)', 365: '年卡(365天)' }
+
+async function genCodes () {
+  try {
+    const r = await api('/codes/generate', {
+      method: 'POST',
+      body: JSON.stringify({ type: $('cd-type').value, count: Number($('cd-count').value), note: $('cd-note').value.trim() })
+    })
+    $('cd-result').classList.remove('hidden')
+    $('cd-list').value = r.codes.join('\n')
+    toast(`已生成 ${r.codes.length} 个${CODE_TYPE_TEXT[$('cd-type').value] || ''}激活码`)
+    loadCodes()
+  } catch (e) { toast(e.message) }
+}
+
+function copyCodes () {
+  const text = $('cd-list').value
+  if (!text) return
+  navigator.clipboard.writeText(text).then(() => toast('已复制全部激活码')).catch(() => toast('复制失败,请手动全选复制'))
+}
+
+async function loadCodes () {
+  try {
+    const q = new URLSearchParams({ filter: $('cd-filter').value })
+    if ($('cd-search').value.trim() !== '') q.set('q', $('cd-search').value.trim())
+    const d = await api('/codes?' + q)
+    $('cd-rows').innerHTML = d.codes.map(c => `<tr>
+      <td style="font-family:monospace;user-select:all">${esc(c.code)}</td>
+      <td>${DAYS_TEXT[c.days] || (c.days + ' 天')}</td>
+      <td>${c.usedBy ? '<span class="tag ban">已用</span>' : '<span class="tag ok">未用</span>'}</td>
+      <td>${c.usedName ? esc(c.usedName) + ' (#' + c.usedBy + ')' : '—'}</td>
+      <td>${c.usedAt ? fmt(c.usedAt) : '—'}</td>
+      <td>${c.note ? esc(c.note) : '—'}</td>
+      <td>${fmt(c.createdAt)}</td>
+      <td class="acts">
+        <button onclick="navigator.clipboard.writeText('${esc(c.code)}').then(()=>toast('已复制'))">复制</button>
+        ${c.usedBy ? '' : `<button class="danger" onclick="delCode('${esc(c.code)}')">删除</button>`}
+      </td>
+    </tr>`).join('') || '<tr><td colspan="8" class="muted">无数据</td></tr>'
+  } catch (e) { toast(e.message) }
+}
+
+async function delCode (code) {
+  try {
+    await api('/codes/' + encodeURIComponent(code), { method: 'DELETE' })
+    toast('已删除')
+    loadCodes()
+  } catch (e) { toast(e.message) }
+}
 async function viewDetail (id) {
   try {
     const d = await api(`/users/${id}`)
@@ -454,7 +567,7 @@ async function viewDetail (id) {
     $('dt-body').innerHTML = `
       <div><b>邮箱</b>${esc(u.email || '—')}</div>
       <div><b>身份</b>${u.role === 'admin' ? '管理员' : '玩家'} · ${u.status === 'active' ? '正常' : '封禁'}</div>
-      <div><b>VIP</b>${u.vip_until && u.vip_until > Date.now() ? '剩余 ' + Math.ceil((u.vip_until - Date.now()) / 86400000) + ' 天(至 ' + fmt(u.vip_until) + ')' : '无'}</div>
+      <div><b>VIP</b>${Number(u.vip_until) >= PERMANENT_TS ? '永久' : (u.vip_until && u.vip_until > Date.now() ? '剩余 ' + Math.ceil((u.vip_until - Date.now()) / 86400000) + ' 天(至 ' + fmt(u.vip_until) + ')' : '无')}</div>
       <div><b>注册时间</b>${fmt(u.created_at)}</div>
       <div><b>角色名</b>${p ? esc(p.name) : '—'}</div>
       <div><b>境界</b>${p ? esc(p.realm_label) + ' (' + p.realm_index + ')' : '—'}</div>
