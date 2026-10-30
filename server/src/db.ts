@@ -220,6 +220,7 @@ CREATE TABLE IF NOT EXISTS dungeon_teams (
   dungeon TEXT NOT NULL,
   leader_id INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'open',
+  difficulty TEXT NOT NULL DEFAULT 'normal',
   created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS dungeon_team_members (
@@ -317,7 +318,8 @@ CREATE INDEX IF NOT EXISTS idx_save_history_user ON save_history(user_id, id DES
       'ALTER TABLE profiles ADD COLUMN def_m REAL NOT NULL DEFAULT 0',
       'ALTER TABLE profiles ADD COLUMN def_e INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE boss_state ADD COLUMN kill_count INTEGER NOT NULL DEFAULT 0',
-      'ALTER TABLE boss_state ADD COLUMN period_start INTEGER NOT NULL DEFAULT 0'
+      'ALTER TABLE boss_state ADD COLUMN period_start INTEGER NOT NULL DEFAULT 0',
+      "ALTER TABLE dungeon_teams ADD COLUMN difficulty TEXT NOT NULL DEFAULT 'normal'"
     ]) {
       try {
         d.exec(stmt)
@@ -428,6 +430,7 @@ CREATE TABLE IF NOT EXISTS dungeon_teams (
   dungeon VARCHAR(16) NOT NULL,
   leader_id BIGINT NOT NULL,
   status VARCHAR(16) NOT NULL DEFAULT 'open',
+  difficulty VARCHAR(16) NOT NULL DEFAULT 'normal',
   created_at BIGINT NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS dungeon_team_members (
@@ -530,7 +533,8 @@ CREATE TABLE IF NOT EXISTS autoops_state (
     'ALTER TABLE profiles ADD COLUMN def_m DOUBLE NOT NULL DEFAULT 0',
     'ALTER TABLE profiles ADD COLUMN def_e INT NOT NULL DEFAULT 0',
     'ALTER TABLE boss_state ADD COLUMN kill_count INT NOT NULL DEFAULT 0',
-    'ALTER TABLE boss_state ADD COLUMN period_start BIGINT NOT NULL DEFAULT 0'
+    'ALTER TABLE boss_state ADD COLUMN period_start BIGINT NOT NULL DEFAULT 0',
+    "ALTER TABLE dungeon_teams ADD COLUMN difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'"
   ]) {
     try {
       await d.query(stmt)
@@ -598,6 +602,9 @@ async function seedConfig(): Promise<void> {
     ['array_daily_attempts', '1'],
     ['array_reward_stone', '25'],
     ['array_reward_herb', '2'],
+    // 副本 · 境界难度:房内平均大境界每高一层,妖物强度 +N%(战获 +M%),三档难度(循境/常探/绝境)另在上叠加
+    ['dungeon_realm_power_pct', '4'],
+    ['dungeon_realm_reward_pct', '2'],
     ['email_enabled', env('EMAIL_ENABLED', 'false')],
     ['email_code_required', env('EMAIL_CODE_REQUIRED', 'false')],
     ['smtp_host', env('SMTP_HOST')],

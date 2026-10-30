@@ -9,6 +9,11 @@ import { requireAuth } from '../auth.js'
 import { getConfigNumber } from '../config.js'
 import { notifyUser } from '../ws.js'
 import {
+  DIFFICULTIES,
+  DIFFICULTY_DESCS,
+  DIFFICULTY_NAMES,
+  DIFFICULTY_POWER,
+  DIFFICULTY_REWARD,
   DUNGEONS,
   DUNGEON_NAMES,
   ROOM_MAX_SIZE,
@@ -19,11 +24,13 @@ import {
   currentRoomOf,
   dayKey,
   disbandRoom,
+  isDifficulty,
   isDungeonKey,
   joinRoom,
   leaveRoom,
   resolveRunRoster,
   roomSnapshot,
+  type DungeonDifficulty,
   type DungeonKey
 } from '../dungeonCore.js'
 import { geAdd, geMulN, geNorm, geSub, geText, randRange, randomIntRange, type GE } from '../gnum.js'
@@ -37,7 +44,16 @@ interface MemberFighter {
   name: string
   hp: GE
   atk: GE
+  /** 档案原始 realm_index(major×100+sub;洞天守卫的波数按此口径,沿用旧例不改) */
   realm: number
+  /** 折回「大境界 + 小层/10」的连续刻度(0~20.9),供副本难度按境界加深 */
+  realmMajor: number
+}
+
+/** profiles.realm_index = 大境界×100 + 小层;折成 0~20.9 的连续刻度 */
+function realmScale(realmIndex: number): number {
+  const i = Math.max(0, Math.round(realmIndex))
+  return Math.floor(i / 100) + (i % 100) / 10
 }
 
 const NEWBIE_HP = geNorm(100, 2)
@@ -55,7 +71,8 @@ async function loadFighters(roster: Array<{ userId: number; name: string }>): Pr
       name: p?.name ?? r.name,
       hp: p ? geNorm(p.hp_m, p.hp_e) : NEWBIE_HP,
       atk: p ? geNorm(p.atk_m, p.atk_e) : NEWBIE_ATK,
-      realm: p?.realm_index ?? 0
+      realm: p?.realm_index ?? 0,
+      realmMajor: realmScale(p?.realm_index ?? 0)
     })
   }
   return out
@@ -74,6 +91,39 @@ interface SimResult {
   log: string[]
   stone: number
   herb: number
+}
+
+/**
+ * 难度修饰:两重相乘。
+ * - 档位(建房时选):循境/常探/绝境,妖物强度与战获各按表放大;
+ * - 境界基准:房内平均大境界越高,秘境越凶险(每境 +realm_power_pct% 强度,战获小补)。
+ * 强度只乘妖物的气血/攻势,不乘玩家自身——玩家强在境界与法宝里,秘境强在妖物里。
+ */
+interface DifficultyMod {
+  difficulty: DungeonDifficulty
+  power: number
+  reward: number
+  avgRealm: number
+}
+
+/** 把难度与境界折算成乘数(def 默认值即线上默认:每境强度 +4%、战获 +2%) */
+async function difficultyMod(difficulty: DungeonDifficulty, avgRealm: number): Promise<DifficultyMod> {
+  const powerPct = await getConfigNumber('dungeon_realm_power_pct', 4)
+  const rewardPct = await getConfigNumber('dungeon_realm_reward_pct', 2)
+  const realm = Math.max(0, Math.min(20, avgRealm))
+  // 强度倍率封顶 3:再高的境界也不至于让秘境变成必死之地
+  const realmPower = Math.min(3, 1 + (realm * powerPct) / 100)
+  return {
+    difficulty,
+    power: DIFFICULTY_POWER[difficulty] * realmPower,
+    reward: DIFFICULTY_REWARD[difficulty] * (1 + (realm * rewardPct) / 100),
+    avgRealm: realm
+  }
+}
+
+/** 战报抬头:这一场是按什么难度、什么境界基准开的 */
+function modLine(mod: DifficultyMod): string {
+  return `【${DIFFICULTY_NAMES[mod.difficulty]}】妖物强度 ×${mod.power.toFixed(2)} · 战获 ×${mod.reward.toFixed(2)}(境界基准 ${mod.avgRealm.toFixed(1)} 重)`
 }
 
 /* ---------------- 心魔镜像 ---------------- */
@@ -100,15 +150,16 @@ interface DemonCfg {
  * 12 轮内合击轰破则胜;血池血空(全员倒下)后合击减半。
  * 独行:心魔血 ≈ 13×自身攻,12 轮合击 ≈ 12×攻 → 大概率不胜;2 人同境界起才有稳定胜算。
  */
-function runDemon(room: MemberFighter[], cfg: DemonCfg): SimResult {
+function runDemon(room: MemberFighter[], cfg: DemonCfg, mod: DifficultyMod): SimResult {
   const n = room.length
   const sumAtk = totalOf(room.map(m => m.atk))
   const maxAtk = maxOf(room.map(m => m.atk))
   const poolHp = totalOf(room.map(m => m.hp))
-  const demonHp = geMulN(maxAtk, Math.max(1, cfg.demon_hp_base) * Math.pow(n, 0.8))
-  const demonAtk = geMulN(maxAtk, Math.max(5, cfg.demon_atk_mult) / 100)
+  const demonHp = geMulN(maxAtk, Math.max(1, cfg.demon_hp_base) * Math.pow(n, 0.8) * mod.power)
+  const demonAtk = geMulN(maxAtk, (Math.max(5, cfg.demon_atk_mult) / 100) * mod.power)
   const rounds = 12
   const log: string[] = [
+    modLine(mod),
     `众人心念一颤——合体心魔现形!气血 ${geText(demonHp)},攻势 ${geText(demonAtk)}。`
   ]
   let demonLeft = demonHp
@@ -136,8 +187,8 @@ function runDemon(room: MemberFighter[], cfg: DemonCfg): SimResult {
     }
   }
   if (!win) log.push(DEMON_LINES[randomIntRange(0, DEMON_LINES.length)]!)
-  const stone = Math.max(1, Math.round(cfg.demon_reward_stone * (1 + 0.25 * (n - 1)) * (win ? 1 : 1 / 3)))
-  const herb = Math.max(1, Math.round(cfg.demon_reward_herb * (1 + 0.25 * (n - 1)) * (win ? 1 : 1 / 3)))
+  const stone = Math.max(1, Math.round(cfg.demon_reward_stone * mod.reward * (1 + 0.25 * (n - 1)) * (win ? 1 : 1 / 3)))
+  const herb = Math.max(1, Math.round(cfg.demon_reward_herb * mod.reward * (1 + 0.25 * (n - 1)) * (win ? 1 : 1 / 3)))
   log.push(win ? `道心通明!每人得灵石 ${stone} · 灵草 ${herb}。` : `不敌而退,仅拾得残念:灵石 ${stone} · 灵草 ${herb}。`)
   return { win, log, stone, herb }
 }
@@ -160,7 +211,7 @@ interface ExploreCfg {
  * 秘境共探:随机走出一条秘境小径,每个节点掷一种机缘;
  * 妖兽伏击有小战斗(3 回合,房间总攻 vs 妖兽),击破多拾一份,血池血空则提前退出。
  */
-function runExplore(room: MemberFighter[], cfg: ExploreCfg): SimResult {
+function runExplore(room: MemberFighter[], cfg: ExploreCfg, mod: DifficultyMod): SimResult {
   const n = room.length
   const nodes = Math.max(3, Math.min(12, Math.round(cfg.explore_nodes)))
   const sumAtk = totalOf(room.map(m => m.atk))
@@ -169,7 +220,7 @@ function runExplore(room: MemberFighter[], cfg: ExploreCfg): SimResult {
   let stone = 0
   let herb = 0
   let poolLeft = poolHp
-  const log: string[] = [`一行${n}人踏入秘境,雾气扑面。`]
+  const log: string[] = [modLine(mod), `一行${n}人踏入秘境,雾气扑面。`]
   for (let i = 1; i <= nodes; i++) {
     const spot = EXPLORE_SPOTS[randomIntRange(0, EXPLORE_SPOTS.length)]!
     const roll = randomIntRange(0, 100)
@@ -187,8 +238,8 @@ function runExplore(room: MemberFighter[], cfg: ExploreCfg): SimResult {
       log.push(`「${spot}」掘开遗迹宝箱,灵石 ${got}!`)
     } else if (roll < 75) {
       // 妖兽强度按人数缩放(最高攻 × 2.8~4.2 × 人数^0.8):独行 3 回合合击(≈3×攻)大多不胜,人多才稳破
-      const beastHp = geMulN(maxAtk, randRange(2.8, 4.2) * Math.pow(n, 0.8))
-      const beastAtk = geMulN(maxAtk, randRange(0.25, 0.45))
+      const beastHp = geMulN(maxAtk, randRange(2.8, 4.2) * Math.pow(n, 0.8) * mod.power)
+      const beastAtk = geMulN(maxAtk, randRange(0.25, 0.45) * mod.power)
       let left = beastHp
       let broke = false
       for (let r = 1; r <= 3; r++) {
@@ -217,7 +268,8 @@ function runExplore(room: MemberFighter[], cfg: ExploreCfg): SimResult {
       log.push(`「${spot}」迷雾歧路,踌躇半晌,无功而返。`)
     }
   }
-  stone = Math.max(1, Math.round(stone * (1 + 0.1 * (n - 1))))
+  stone = Math.max(1, Math.round(stone * mod.reward * (1 + 0.1 * (n - 1))))
+  herb = Math.round(herb * mod.reward)
   log.push(`走出秘境:每人分得灵石 ${stone} · 灵草 ${herb}。`)
   return { win: true, log, stone, herb }
 }
@@ -237,7 +289,7 @@ interface GuardCfg {
  * 总波数 = 3 + 房内最高境界÷2(上限 guard_max_waves);每波击破计功,打不动即破防而止。
  * 守满全部波次功劳 ×1.5。
  */
-function runGuard(room: MemberFighter[], cfg: GuardCfg): SimResult {
+function runGuard(room: MemberFighter[], cfg: GuardCfg, mod: DifficultyMod): SimResult {
   const n = room.length
   const sumAtk = totalOf(room.map(m => m.atk))
   const maxAtk = maxOf(room.map(m => m.atk))
@@ -247,12 +299,12 @@ function runGuard(room: MemberFighter[], cfg: GuardCfg): SimResult {
   const totalWaves = Math.min(cap, 3 + Math.floor(maxRealm / 2))
   let poolLeft = poolHp
   let cleared = 0
-  const log: string[] = [`${room.length}人登陴守御,妖潮共 ${totalWaves} 波,大阵全开。`]
+  const log: string[] = [modLine(mod), `${room.length}人登陴守御,妖潮共 ${totalWaves} 波,大阵全开。`]
   for (let w = 1; w <= totalWaves; w++) {
     const label = GUARD_NAMES[Math.min(w - 1, GUARD_NAMES.length - 1)]!
     // 妖潮随人数变多变壮(血 ×人数^0.75,攻 ×人数^0.6):人多守得更深,但不是白送
-    const waveHp = geMulN(maxAtk, (0.4 + 0.35 * w) * Math.pow(n, 0.75) * randRange(0.9, 1.1))
-    const waveAtk = geMulN(maxAtk, (0.2 + 0.12 * w) * Math.pow(n, 0.6) * randRange(0.9, 1.1))
+    const waveHp = geMulN(maxAtk, (0.4 + 0.35 * w) * Math.pow(n, 0.75) * randRange(0.9, 1.1) * mod.power)
+    const waveAtk = geMulN(maxAtk, (0.2 + 0.12 * w) * Math.pow(n, 0.6) * randRange(0.9, 1.1) * mod.power)
     const fallen = poolLeft.m <= 0
     const blow = geMulN(sumAtk, randRange(0.85, 1.15) * (fallen ? 0.5 : 1))
     log.push(`第${w}波「${label}」(气血 ${geText(waveHp)},攻势 ${geText(waveAtk)}) · 合击 ${geText(blow)}`)
@@ -267,8 +319,8 @@ function runGuard(room: MemberFighter[], cfg: GuardCfg): SimResult {
     if (poolLeft.m <= 0 && w < totalWaves) log.push('大阵摇摇欲坠,守军凭意志死撑(战力减半)。')
   }
   const fullClear = cleared >= totalWaves
-  const stone = Math.max(0, Math.round(cfg.guard_reward_stone * cleared * (fullClear ? 1.5 : 1)))
-  const herb = Math.max(0, Math.round(cfg.guard_reward_herb * cleared * (fullClear ? 1.5 : 1)))
+  const stone = Math.max(0, Math.round(cfg.guard_reward_stone * mod.reward * cleared * (fullClear ? 1.5 : 1)))
+  const herb = Math.max(0, Math.round(cfg.guard_reward_herb * mod.reward * cleared * (fullClear ? 1.5 : 1)))
   log.push(
     fullClear
       ? `妖潮尽退!守满 ${cleared} 波,功劳倍计:每人灵石 ${stone} · 灵草 ${herb}。`
@@ -296,18 +348,19 @@ interface ArrayCfg {
  * 共鸣率 = 20% + 9%×(人数-1) + 5%×境界层次数(上限 95%):独行仅 ~25%,结伴才容易共鸣;
  * 共鸣则灵石翻倍;人越多、境界越杂,分润越厚。
  */
-function runArray(room: MemberFighter[], cfg: ArrayCfg): SimResult {
+function runArray(room: MemberFighter[], cfg: ArrayCfg, mod: DifficultyMod): SimResult {
   const n = room.length
   const distinctRealms = new Set(room.map(m => m.realm)).size
   const resonanceChance = Math.min(0.2 + 0.09 * (n - 1) + 0.05 * distinctRealms, 0.95)
   const resonant = Math.random() < resonanceChance
   const log: string[] = [
+    modLine(mod),
     `${n}人按方位入阵,道号相闻,灵机相应。`,
     ARRAY_LINES[randomIntRange(0, ARRAY_LINES.length)]!,
     `境界层次 ${distinctRealms} 重 · 共鸣率 ${Math.round(resonanceChance * 100)}%`
   ]
-  const stone = Math.max(1, Math.round(cfg.array_reward_stone * (1 + 0.6 * (n - 1)) * (resonant ? 2 : 1)))
-  const herb = Math.max(1, Math.round(cfg.array_reward_herb * (1 + 0.4 * (n - 1)) * (resonant ? 1.5 : 1)))
+  const stone = Math.max(1, Math.round(cfg.array_reward_stone * mod.reward * (1 + 0.6 * (n - 1)) * (resonant ? 2 : 1)))
+  const herb = Math.max(1, Math.round(cfg.array_reward_herb * mod.reward * (1 + 0.4 * (n - 1)) * (resonant ? 1.5 : 1)))
   if (resonant) {
     log.push('轰——大阵共鸣!灵潮倒卷,众人大有所获。')
   } else {
@@ -355,7 +408,7 @@ async function dungeonConfig(dungeon: DungeonKey): Promise<DemonCfg | ExploreCfg
   }
 }
 
-/** 副本总览:各副本次数 + 我的房间 */
+/** 副本总览:各副本次数 + 我的房间 + 难度目录(含我此刻的境界基准) */
 dungeonRouter.get('/', requireAuth, (req: Request, res: Response) => {
   void (async () => {
     const day = dayKey()
@@ -370,10 +423,25 @@ dungeonRouter.get('/', requireAuth, (req: Request, res: Response) => {
         max: await attemptsLimit(key, req.user!.id)
       })
     }
+    // 我的境界基准:独行即我这个境界开局,入房则以房内平均为准
+    const me = await get<{ realm_index: number; realm_label: string }>(
+      'SELECT realm_index, realm_label FROM profiles WHERE user_id = ?',
+      [req.user!.id]
+    )
+    const myRealm = realmScale(me?.realm_index ?? 0)
+    const myMod = await difficultyMod('normal', myRealm)
     res.json({
       dungeons,
       maxSize: ROOM_MAX_SIZE,
-      room: room === null ? null : await roomSnapshot(room)
+      room: room === null ? null : await roomSnapshot(room),
+      difficulties: DIFFICULTIES.map(k => ({
+        key: k,
+        name: DIFFICULTY_NAMES[k],
+        desc: DIFFICULTY_DESCS[k],
+        power: DIFFICULTY_POWER[k],
+        reward: DIFFICULTY_REWARD[k]
+      })),
+      myRealm: { index: myRealm, label: me?.realm_label ?? '', power: myMod.power, reward: myMod.reward }
     })
   })().catch(() => res.status(500).json({ error: '副本状态读取失败' }))
 })
@@ -394,8 +462,9 @@ dungeonRouter.post('/room', requireAuth, (req: Request, res: Response) => {
       res.status(400).json({ error: '未知副本' })
       return
     }
+    const difficulty = isDifficulty(body.difficulty) ? body.difficulty : 'normal'
     const name = await myName(req.user!.id, req.user!.username)
-    const r = await createRoom(req.user!.id, name, body.dungeon)
+    const r = await createRoom(req.user!.id, name, body.dungeon, difficulty)
     res.json({ room: r.room })
   })().catch(e => res.status(400).json({ error: e instanceof Error ? e.message : '建房失败' }))
 })
@@ -432,7 +501,9 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
     }
     const dungeon = body.dungeon
     const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : ''
-    const roster = await resolveRunRoster(req.user!.id, code)
+    // 独行时难度随请求(默认常探);入房则以房主建房时定的难度为准,不由客人改
+    const soloDifficulty: DungeonDifficulty = isDifficulty(body.difficulty) ? body.difficulty : 'normal'
+    const { members: roster, difficulty } = await resolveRunRoster(req.user!.id, code, soloDifficulty)
     const fighters = await loadFighters(roster)
 
     // 全员次数校验:任何一个不足都不开拔(名单点名);VIP 按各自身份 +1
@@ -450,14 +521,17 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
 
     for (const m of roster) await bumpDaily(m.userId, dungeon, day)
     const cfg = await dungeonConfig(dungeon)
+    // 境界基准按「大境界 + 小层」算,与页面显示的境界名同口径
+    const avgRealm = fighters.reduce((acc, f) => acc + f.realmMajor, 0) / Math.max(1, fighters.length)
+    const mod = await difficultyMod(difficulty, avgRealm)
     const sim =
       dungeon === 'demon'
-        ? runDemon(fighters, cfg as DemonCfg)
+        ? runDemon(fighters, cfg as DemonCfg, mod)
         : dungeon === 'explore'
-          ? runExplore(fighters, cfg as ExploreCfg)
+          ? runExplore(fighters, cfg as ExploreCfg, mod)
           : dungeon === 'guard'
-            ? runGuard(fighters, cfg as GuardCfg)
-            : runArray(fighters, cfg as ArrayCfg)
+            ? runGuard(fighters, cfg as GuardCfg, mod)
+            : runArray(fighters, cfg as ArrayCfg, mod)
 
     if (code !== '') await disbandRoom(code)
     const starterName = await myName(req.user!.id, req.user!.username)
@@ -468,6 +542,8 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
           dungeon,
           name: DUNGEON_NAMES[dungeon],
           by: starterName,
+          difficulty,
+          difficultyName: DIFFICULTY_NAMES[difficulty],
           win: sim.win,
           stone: sim.stone,
           herb: sim.herb,
@@ -479,6 +555,9 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
     res.json({
       dungeon,
       name: DUNGEON_NAMES[dungeon],
+      difficulty,
+      difficultyName: DIFFICULTY_NAMES[difficulty],
+      scaling: { power: mod.power, reward: mod.reward, avgRealm: mod.avgRealm },
       roomSize: fighters.length,
       win: sim.win,
       log: sim.log,

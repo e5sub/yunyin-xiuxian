@@ -80,7 +80,18 @@ export type CloudWsMsg =
   | { type: 'boss_killed'; by: string; name: string; top: Array<{ name: string; dmgText: string }>; at: number }
   | { type: 'room_join'; code: string; name: string; dungeon: string; at: number }
   | { type: 'room_leave'; code: string; name: string; dungeon: string; at: number }
-  | { type: 'dungeon_result'; dungeon: string; name: string; by: string; win: boolean; stone: number; herb: number; at: number }
+  | {
+      type: 'dungeon_result'
+      dungeon: string
+      name: string
+      by: string
+      difficulty?: DungeonDifficulty
+      difficultyName?: string
+      win: boolean
+      stone: number
+      herb: number
+      at: number
+    }
   | { type: 'kick'; graceMs: number }
   | { type: 'pong' }
 
@@ -130,9 +141,23 @@ export interface BossStrikeResult {
 
 export type DungeonKey = 'demon' | 'explore' | 'guard' | 'array'
 
+/** 副本难度:循境(稳)/ 常探(标准)/ 绝境(凶险而厚报) */
+export type DungeonDifficulty = 'calm' | 'normal' | 'peril'
+
+export interface DungeonDifficultyBrief {
+  key: DungeonDifficulty
+  name: string
+  desc: string
+  /** 妖物强度倍率(未叠境界) */
+  power: number
+  /** 战获倍率(未叠境界) */
+  reward: number
+}
+
 export interface DungeonRoom {
   code: string
   dungeon: DungeonKey
+  difficulty: DungeonDifficulty
   leaderId: number
   members: Array<{ userId: number; name: string }>
 }
@@ -149,11 +174,18 @@ export interface DungeonOverview {
   dungeons: DungeonBrief[]
   maxSize: number
   room: DungeonRoom | null
+  difficulties: DungeonDifficultyBrief[]
+  /** 我的境界基准:独行开局的默认强度/战获倍率 */
+  myRealm: { index: number; label: string; power: number; reward: number }
 }
 
 export interface DungeonRunResult {
   dungeon: DungeonKey
   name: string
+  difficulty: DungeonDifficulty
+  difficultyName: string
+  /** 本场实算倍率(难度 × 境界基准) */
+  scaling: { power: number; reward: number; avgRealm: number }
   roomSize: number
   win: boolean
   log: string[]
@@ -328,13 +360,13 @@ export const cloudApi = {
   bossStrike: (): Promise<BossStrikeResult> => request('POST', '/boss/strike'),
   dungeonOverview: (): Promise<DungeonOverview> => request('GET', '/dungeon'),
   dungeonRoom: (): Promise<{ room: DungeonRoom | null }> => request('GET', '/dungeon/room'),
-  dungeonRoomCreate: (dungeon: DungeonKey): Promise<{ room: DungeonRoom }> =>
-    request('POST', '/dungeon/room', { dungeon }),
+  dungeonRoomCreate: (dungeon: DungeonKey, difficulty: DungeonDifficulty = 'normal'): Promise<{ room: DungeonRoom }> =>
+    request('POST', '/dungeon/room', { dungeon, difficulty }),
   dungeonRoomJoin: (code: string): Promise<{ room: DungeonRoom; leftCode: string; full: boolean }> =>
     request('POST', '/dungeon/room/join', { code }),
   dungeonRoomLeave: (): Promise<{ ok: boolean }> => request('POST', '/dungeon/room/leave'),
-  dungeonRun: (dungeon: DungeonKey, code = ''): Promise<DungeonRunResult> =>
-    request('POST', '/dungeon/run', { dungeon, code })
+  dungeonRun: (dungeon: DungeonKey, code = '', difficulty: DungeonDifficulty = 'normal'): Promise<DungeonRunResult> =>
+    request('POST', '/dungeon/run', { dungeon, code, difficulty })
 }
 
 // ---- WebSocket:聊天 / 在线状态 / 好友通知 ----

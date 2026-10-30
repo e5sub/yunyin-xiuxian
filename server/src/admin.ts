@@ -351,6 +351,8 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'array_daily_attempts',
       'array_reward_stone',
       'array_reward_herb',
+      'dungeon_realm_power_pct',
+      'dungeon_realm_reward_pct',
       // 邮件 / SMTP
       'email_enabled',
       'email_code_required',
@@ -404,6 +406,8 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'array_daily_attempts',
       'array_reward_stone',
       'array_reward_herb',
+      'dungeon_realm_power_pct',
+      'dungeon_realm_reward_pct',
       'smtp_port'
     ]
     const boolKeys = ['email_enabled', 'email_code_required', 'alipay_enabled', 'boss_autoops_smart']

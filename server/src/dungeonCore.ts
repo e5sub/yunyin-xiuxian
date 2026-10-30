@@ -66,11 +66,57 @@ export function isDungeonKey(v: unknown): v is DungeonKey {
 export const ROOM_MAX_SIZE = 5
 const ROOM_TTL_MS = 2 * 3600_000
 
+/* ---------------- 副本难度 ---------------- */
+
+/**
+ * 三档难度(建房时选):越往上妖物越壮、战获越厚。
+ * 另有一层「境界基准」:房内平均大境界越高,秘境整体越凶险(见 routes/dungeon 的 realmScaling),
+ * 即同一档难度下,金丹与合体踏进的是两处不同深浅的秘境。
+ */
+export const DIFFICULTIES = ['calm', 'normal', 'peril'] as const
+export type DungeonDifficulty = (typeof DIFFICULTIES)[number]
+
+export const DIFFICULTY_NAMES: Record<DungeonDifficulty, string> = {
+  calm: '循境',
+  normal: '常探',
+  peril: '绝境'
+}
+
+export const DIFFICULTY_DESCS: Record<DungeonDifficulty, string> = {
+  calm: '沿旧径缓行,妖气稀薄:强度 ×0.78,战获 ×0.8',
+  normal: '与自身境界相称的常道:强度 ×1,战获 ×1',
+  peril: '深入禁区,妖物成群:强度 ×1.5,战获 ×1.75'
+}
+
+/** 强度倍率(妖物气血/攻势同乘) */
+export const DIFFICULTY_POWER: Record<DungeonDifficulty, number> = {
+  calm: 0.78,
+  normal: 1,
+  peril: 1.5
+}
+
+/** 战获倍率 */
+export const DIFFICULTY_REWARD: Record<DungeonDifficulty, number> = {
+  calm: 0.8,
+  normal: 1,
+  peril: 1.75
+}
+
+export function isDifficulty(v: unknown): v is DungeonDifficulty {
+  return typeof v === 'string' && (DIFFICULTIES as readonly string[]).includes(v)
+}
+
+/** 宽松解析(老房间无此列 / 脏值一律按常探) */
+export function difficultyOf(v: unknown): DungeonDifficulty {
+  return isDifficulty(v) ? v : 'normal'
+}
+
 export interface RoomRow {
   code: string
   dungeon: string
   leader_id: number
   status: string
+  difficulty: string
   created_at: number
 }
 
@@ -107,7 +153,7 @@ async function deleteRoom(code: string): Promise<void> {
 export async function currentRoomOf(userId: number): Promise<RoomRow | null> {
   await sweepRooms()
   const row = await get<RoomRow>(
-    `SELECT t.code, t.dungeon, t.leader_id, t.status, t.created_at
+    `SELECT t.code, t.dungeon, t.leader_id, t.status, t.difficulty, t.created_at
      FROM dungeon_teams t JOIN dungeon_team_members m ON m.code = t.code
      WHERE m.user_id = ? AND t.status = 'open' AND t.created_at >= ?
      ORDER BY m.joined_at DESC LIMIT 1`,
@@ -119,6 +165,7 @@ export async function currentRoomOf(userId: number): Promise<RoomRow | null> {
 export interface RoomSnapshot {
   code: string
   dungeon: DungeonKey
+  difficulty: DungeonDifficulty
   leaderId: number
   members: Array<{ userId: number; name: string }>
 }
@@ -128,6 +175,7 @@ export async function roomSnapshot(room: RoomRow): Promise<RoomSnapshot> {
   return {
     code: room.code,
     dungeon: room.dungeon as DungeonKey,
+    difficulty: difficultyOf(room.difficulty),
     leaderId: room.leader_id,
     members: rows.map(r => ({ userId: r.user_id, name: r.name }))
   }
@@ -142,19 +190,21 @@ export interface RoomJoinResult {
 }
 
 /** 建房:先退掉旧房间;码冲突自动换码重试 */
-export async function createRoom(userId: number, name: string, dungeon: DungeonKey): Promise<RoomJoinResult> {
+export async function createRoom(
+  userId: number,
+  name: string,
+  dungeon: DungeonKey,
+  difficulty: DungeonDifficulty = 'normal'
+): Promise<RoomJoinResult> {
   await leaveRoom(userId, false)
   for (let i = 0; i < 8; i++) {
     const code = newCode()
     const taken = await get<{ code: string }>('SELECT code FROM dungeon_teams WHERE code = ?', [code])
     if (taken !== undefined) continue
-    await run('INSERT INTO dungeon_teams (code, dungeon, leader_id, status, created_at) VALUES (?, ?, ?, ?, ?)', [
-      code,
-      dungeon,
-      userId,
-      'open',
-      Date.now()
-    ])
+    await run(
+      'INSERT INTO dungeon_teams (code, dungeon, leader_id, status, difficulty, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [code, dungeon, userId, 'open', difficultyOf(difficulty), Date.now()]
+    )
     await run('INSERT INTO dungeon_team_members (code, user_id, name, joined_at) VALUES (?, ?, ?, ?)', [
       code,
       userId,
@@ -226,15 +276,28 @@ export async function leaveRoom(userId: number, notify = true): Promise<void> {
   }
 }
 
-/** 开拔:返回成员快照;code 为空 = 独行 */
-export async function resolveRunRoster(userId: number, code: string): Promise<Array<{ userId: number; name: string }>> {
-  if (code.trim() === '') return [{ userId, name: '' }] // name 由调用方补
+export interface RunRoster {
+  members: Array<{ userId: number; name: string }>
+  /** 本场难度(独行时由调用方传入,房间由房主建房时定下) */
+  difficulty: DungeonDifficulty
+}
+
+/** 开拔:返回成员快照;code 为空 = 独行(难度取 soloDifficulty) */
+export async function resolveRunRoster(
+  userId: number,
+  code: string,
+  soloDifficulty: DungeonDifficulty = 'normal'
+): Promise<RunRoster> {
+  if (code.trim() === '') return { members: [{ userId, name: '' }], difficulty: soloDifficulty } // name 由调用方补
   const want = code.trim().toUpperCase()
   const room = await get<RoomRow>("SELECT * FROM dungeon_teams WHERE code = ? AND status = 'open'", [want])
   if (room === undefined) throw new Error('房间码无效或已开拔')
   const members = await all<RoomMemberRow>('SELECT * FROM dungeon_team_members WHERE code = ? ORDER BY joined_at', [want])
   if (!members.some(m => m.user_id === userId)) throw new Error('你不在此房间中')
-  return members.map(m => ({ userId: m.user_id, name: m.name }))
+  return {
+    members: members.map(m => ({ userId: m.user_id, name: m.name })),
+    difficulty: difficultyOf(room.difficulty)
+  }
 }
 
 /** 开拔后标记完赛并解散(记录已随 ws/响应分发) */

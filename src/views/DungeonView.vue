@@ -17,7 +17,9 @@
             title="点按复制房间码"
             @click="copyRoomCode"
           >
-            <p class="text-[11px] text-ink-faint">{{ dungeonName(room.dungeon) }} · 房间码(点按复制)</p>
+            <p class="text-[11px] text-ink-faint">
+              {{ dungeonName(room.dungeon) }} · {{ difficultyName(room.difficulty) }} · 房间码(点按复制)
+            </p>
             <p class="font-mono text-[22px] tracking-[0.3em] text-cinnabar tabular">{{ room.code }}</p>
           </button>
           <div class="flex shrink-0 flex-col gap-1.5">
@@ -39,7 +41,7 @@
           </tbody>
         </table>
         <p class="mt-2 text-[10px] leading-relaxed text-ink-faint">
-          把房间码告诉道友,对方在「输入房间码」里填同一串即自动进房;开拔需全员今日次数未用,结算后自动散伙。
+          把房间码告诉道友,对方在「输入房间码」里填同一串即自动进房;难度由房主定,同行者随房;开拔需全员今日次数未用,结算后自动散伙。
         </p>
       </template>
 
@@ -51,6 +53,25 @@
           </select>
           <button class="btn-ink px-3 py-1.5 text-[12px]" :disabled="roomBusy" @click="createRoom">创建房间</button>
         </div>
+
+        <!-- 难度:建房时定,独行亦按此难度 -->
+        <div class="mt-2.5">
+          <span class="text-[11px] text-ink-soft">难度</span>
+          <div class="mt-1.5 flex gap-1.5">
+            <button
+              v-for="d in difficulties"
+              :key="d.key"
+              class="min-h-[30px] flex-1 rounded-md border px-2 py-1 text-[12px] active:scale-95"
+              :class="difficulty === d.key ? 'border-cinnabar/60 bg-cinnabar/10 text-cinnabar' : 'border-ink/15 text-ink-soft'"
+              @click="difficulty = d.key"
+            >
+              {{ d.name }}
+            </button>
+          </div>
+          <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">{{ difficultyDesc }}</p>
+          <p class="mt-0.5 text-[10px] leading-relaxed text-ink-faint">{{ realmHint }}</p>
+        </div>
+
         <div class="mt-2.5 flex flex-wrap items-center gap-2">
           <input
             v-model="joinCode"
@@ -61,7 +82,7 @@
           >
           <button class="btn-ink px-3 py-1.5 text-[12px]" :disabled="roomBusy || joinCode.trim().length < 4" @click="joinRoom">加入</button>
         </div>
-        <p class="mt-2 text-[10px] leading-relaxed text-ink-faint">道友建房拿到房间码,输入同一串码即自动进房。</p>
+        <p class="mt-2 text-[10px] leading-relaxed text-ink-faint">道友建房拿到房间码,输入同一串码即自动进房;秘境按房内境界定深浅,境界越高妖物越凶,战获亦厚。</p>
       </template>
     </div>
 
@@ -87,7 +108,8 @@
         class="mt-3 max-h-56 overflow-y-auto rounded-md border border-ink/15 bg-paper-deep/60 px-3 py-2 text-[12px] leading-relaxed text-ink-soft"
       >
         <p class="mb-1" :class="results[d.key]!.win ? 'text-jade' : 'text-cinnabar'">
-          {{ results[d.key]!.name }} · {{ results[d.key]!.win ? '大有所获' : '止步于此' }}(房间 {{ results[d.key]!.roomSize }} 人)
+          {{ results[d.key]!.name }} · {{ results[d.key]!.difficultyName }} ·
+          {{ results[d.key]!.win ? '大有所获' : '止步于此' }}(房间 {{ results[d.key]!.roomSize }} 人)
         </p>
         <p v-for="(line, i) in results[d.key]!.log" :key="i">{{ line }}</p>
       </div>
@@ -102,7 +124,7 @@
   import { usePlayerStore } from '@/stores/player'
   import { useResourcesStore } from '@/stores/resources'
   import { useAuthStore } from '@/stores/auth'
-  import { cloudApi, onCloudWs, type DungeonBrief, type DungeonKey, type DungeonRunResult, type DungeonRoom } from '@/services/cloud'
+  import { cloudApi, onCloudWs, type DungeonBrief, type DungeonDifficulty, type DungeonDifficultyBrief, type DungeonKey, type DungeonRunResult, type DungeonRoom } from '@/services/cloud'
   import { copyText } from '@/utils/clipboard'
   import { stoneByTier } from '@/core/formulas'
   import { tierOfMajor } from '@/core/secretRealm'
@@ -122,6 +144,24 @@
   const joinCode = ref('')
   const myId = computed(() => auth.userId)
 
+  // 难度:建房时定下,独行亦按所选难度入场(先给三档占位,免得总览未到时选择器空着)
+  const difficulties = ref<DungeonDifficultyBrief[]>([
+    { key: 'calm', name: '循境', desc: '', power: 0.78, reward: 0.8 },
+    { key: 'normal', name: '常探', desc: '', power: 1, reward: 1 },
+    { key: 'peril', name: '绝境', desc: '', power: 1.5, reward: 1.75 }
+  ])
+  const difficulty = ref<DungeonDifficulty>('normal')
+  const myRealm = ref<{ index: number; label: string; power: number; reward: number } | null>(null)
+
+  const difficultyDesc = computed(() => difficulties.value.find(d => d.key === difficulty.value)?.desc ?? '')
+
+  /** 我的境界基准:独行开局的妖物强度/战获(入房以房内平均为准) */
+  const realmHint = computed(() => {
+    const r = myRealm.value
+    if (r === null || r.label === '') return '独行按自身境界定深浅'
+    return `我的境界 ${r.label} · 妖物强度 ×${r.power.toFixed(2)} · 战获 ×${r.reward.toFixed(2)}`
+  })
+
   const unsubWs = onCloudWs(msg => {
     if (msg.type === 'room_join') {
       ui.toast(`${msg.name} 凭码入房`, 'info')
@@ -138,6 +178,10 @@
 
   function dungeonName(key: DungeonKey): string {
     return dungeons.value.find(d => d.key === key)?.name ?? key
+  }
+
+  function difficultyName(key: DungeonDifficulty): string {
+    return difficulties.value.find(d => d.key === key)?.name ?? ''
   }
 
   async function copyRoomCode(): Promise<void> {
@@ -158,7 +202,8 @@
     if (running.value === d.key) return '斗法中……'
     if (usedUp(d)) return '今日已尽 · 明日再探'
     const inRoom = room.value !== null && room.value.dungeon === d.key
-    return inRoom ? '与房间同往' : '独行入场'
+    if (inRoom) return `与房间同往(${difficultyName(room.value!.difficulty)})`
+    return `独行入场(${difficultyName(difficulty.value)})`
   }
 
   async function reload(): Promise<void> {
@@ -167,6 +212,8 @@
       dungeons.value = o.dungeons
       maxSize.value = o.maxSize
       room.value = o.room
+      difficulties.value = o.difficulties
+      myRealm.value = o.myRealm
     } catch {
       // 云不可达时静默
     }
@@ -176,9 +223,9 @@
     if (roomBusy.value) return
     roomBusy.value = true
     try {
-      const r = await cloudApi.dungeonRoomCreate(roomDungeon.value)
+      const r = await cloudApi.dungeonRoomCreate(roomDungeon.value, difficulty.value)
       room.value = r.room
-      ui.toast(`房间已建 · 房间码 ${r.room.code}`, 'success')
+      ui.toast(`房间已建 · ${difficultyName(r.room.difficulty)} · 房间码 ${r.room.code}`, 'success')
     } catch (e) {
       ui.toast(errText(e, '建房失败'), 'warn')
     } finally {
@@ -220,7 +267,7 @@
     if (running.value !== null) return
     running.value = key
     try {
-      const r = await cloudApi.dungeonRun(key, code)
+      const r = await cloudApi.dungeonRun(key, code, difficulty.value)
       results.value = { ...results.value, [key]: r }
       // 奖励即时入账(数量单位按自身境界折算),随下次云同步落档
       resources.addStone(stoneByTier(tierOfMajor(Math.max(0, player.major)), r.reward.stone))
