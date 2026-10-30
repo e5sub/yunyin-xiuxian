@@ -36,9 +36,15 @@ export async function bumpDaily(userId: number, dungeon: string, day: string): P
   )
 }
 
-/** 副本每日次数上限:<dungeon>_daily_attempts(默认 1),GM 后台可改 */
-export async function attemptsLimit(dungeon: string): Promise<number> {
-  return getConfigNumber(`${dungeon}_daily_attempts`, 1)
+/**
+ * 副本每日次数上限:<dungeon>_daily_attempts(默认 1),GM 后台可改;
+ * VIP 在案有效额外 +1 次(不叠配置,只加这一刀)。
+ */
+export async function attemptsLimit(dungeon: string, userId?: number): Promise<number> {
+  const base = await getConfigNumber(`${dungeon}_daily_attempts`, 1)
+  if (userId === undefined) return base
+  const row = await get<{ vip_until: number }>('SELECT vip_until FROM users WHERE id = ?', [userId])
+  return base + ((row?.vip_until ?? 0) > Date.now() ? 1 : 0)
 }
 
 /* ---------------- 房间码 ---------------- */

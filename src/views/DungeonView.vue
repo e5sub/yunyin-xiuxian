@@ -1,6 +1,6 @@
 <template>
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
-    <SectionTitle title="多人副本" hint="结伴共修 · 每日各一次" />
+    <SectionTitle title="多人副本" hint="结伴共修 · 每日各一次,VIP 道友多探一次" />
 
     <!-- 房间卡 -->
     <div class="card-ink px-4 py-4">
@@ -151,7 +151,7 @@
   }
 
   function attemptsText(d: DungeonBrief): string {
-    return `今日 ${Math.min(d.used, d.max)}/${d.max}`
+    return `今日余 ${Math.max(0, d.max - d.used)}/${d.max}`
   }
 
   function runLabel(d: DungeonBrief): string {

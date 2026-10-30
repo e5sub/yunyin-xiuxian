@@ -367,7 +367,7 @@ dungeonRouter.get('/', requireAuth, (req: Request, res: Response) => {
         name: DUNGEON_NAMES[key],
         desc: DUNGEON_DESCS[key],
         used: await attemptsUsed(req.user!.id, key, day),
-        max: await attemptsLimit(key)
+        max: await attemptsLimit(key, req.user!.id)
       })
     }
     res.json({
@@ -435,13 +435,13 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
     const roster = await resolveRunRoster(req.user!.id, code)
     const fighters = await loadFighters(roster)
 
-    // 全员次数校验:任何一个不足都不开拔(名单点名)
+    // 全员次数校验:任何一个不足都不开拔(名单点名);VIP 按各自身份 +1
     const day = dayKey()
-    const limit = await attemptsLimit(dungeon)
     const lacking: string[] = []
     for (const f of fighters) {
+      const fLimit = await attemptsLimit(dungeon, f.userId)
       const used = await attemptsUsed(f.userId, dungeon, day)
-      if (used >= limit) lacking.push(f.name)
+      if (used >= fLimit) lacking.push(f.name)
     }
     if (lacking.length > 0) {
       res.status(429).json({ error: `今日次数已用尽:${lacking.join('、')}` })
