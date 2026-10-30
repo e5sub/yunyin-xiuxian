@@ -76,22 +76,31 @@
         </button>
       </div>
 
-      <label class="flex items-center justify-between py-3">
-        <span class="text-[13px] text-ink-soft">自动打 BOSS</span>
-        <input v-model="settings.autoBoss" type="checkbox" class="h-4 w-4 accent-cinnabar" />
-      </label>
-
-      <label class="flex items-center justify-between py-3">
-        <span class="text-[13px] text-ink-soft">自动闭关</span>
-        <input v-model="settings.autoRetreat" type="checkbox" class="h-4 w-4 accent-cinnabar" />
-      </label>
-
+      <!-- 三项托管:一行三个滑块,各自独立 -->
       <div class="py-3">
-        <label class="flex items-center justify-between">
-          <span class="text-[13px] text-ink-soft">自动历练</span>
-          <input v-model="settings.autoAdventure" type="checkbox" class="h-4 w-4 accent-cinnabar" />
-        </label>
-        <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
+        <div class="grid grid-cols-3 gap-2">
+          <div v-for="item in AUTO_ITEMS" :key="item.key" class="flex flex-col items-center gap-2">
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="settings[item.key]"
+              :aria-label="item.label"
+              class="relative h-6 w-11 rounded-full border transition-colors"
+              :class="settings[item.key] ? 'border-cinnabar bg-cinnabar' : 'border-ink/25 bg-ink/10'"
+              @click="settings[item.key] = !settings[item.key]"
+            >
+              <span
+                class="absolute top-[2px] h-[18px] w-[18px] rounded-full border border-ink/20 bg-paper transition-all"
+                :class="settings[item.key] ? 'left-[22px]' : 'left-[2px]'"
+              />
+            </button>
+            <span
+              class="text-center text-[11px] leading-tight"
+              :class="settings[item.key] ? 'text-ink' : 'text-ink-faint'"
+            >{{ item.label }}</span>
+          </div>
+        </div>
+        <p class="mt-2 text-[10px] leading-relaxed text-ink-faint">
           三项托管各自独立,想开哪项开哪项;历练与闭关都开时历练优先,历练间隙才闭关
         </p>
         <div v-if="settings.autoAdventure" class="mt-2 space-y-2">
@@ -283,14 +292,20 @@
     stopPolling()
   })
 
+  /** 一行三滑块:key 直指 settings 字段,点滑块即翻转 */
+  const AUTO_ITEMS: ReadonlyArray<{ key: 'autoBoss' | 'autoRetreat' | 'autoAdventure'; label: string }> = [
+    { key: 'autoBoss', label: '自动打 BOSS' },
+    { key: 'autoRetreat', label: '自动闭关' },
+    { key: 'autoAdventure', label: '自动历练' }
+  ]
+
   const allOn = computed(() => settings.autoBoss && settings.autoRetreat && settings.autoAdventure)
 
   function toggleAll(): void {
     const next = !allOn.value
     settings.autoBoss = next
-    // 闭关与历练互斥:一键全开时历练优先
+    settings.autoRetreat = next
     settings.autoAdventure = next
-    settings.autoRetreat = next && !settings.autoAdventure
   }
 
   /** 当前可进入的区域(须与历练入口同口径:canEnterRegion,而非只看 unlocked) */
