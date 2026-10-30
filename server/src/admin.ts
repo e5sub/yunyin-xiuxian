@@ -355,7 +355,16 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'smtp_port',
       'smtp_user',
       'smtp_pass',
-      'smtp_from'
+      'smtp_from',
+      // 支付宝当面付 + VIP 定价(元)
+      'alipay_enabled',
+      'alipay_app_id',
+      'alipay_merchant_private_key',
+      'alipay_alipay_public_key',
+      'vip_price_month',
+      'vip_price_half',
+      'vip_price_year',
+      'vip_price_forever'
     ]
     if (!allowed.includes(key)) {
       res.status(400).json({ error: '不支持的参数' })
@@ -392,16 +401,31 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'array_reward_herb',
       'smtp_port'
     ]
-    const boolKeys = ['email_enabled', 'email_code_required']
+    const boolKeys = ['email_enabled', 'email_code_required', 'alipay_enabled']
+    // VIP 定价:元,最多两位小数(0 = 该档不开放)
+    const priceKeys = ['vip_price_month', 'vip_price_half', 'vip_price_year', 'vip_price_forever']
+    // 支付宝密钥:PKCS8 base64 较长
+    const longTextKeys = ['alipay_merchant_private_key', 'alipay_alipay_public_key']
     if (nKeys.includes(key)) {
       const n = Number(value)
       if (!Number.isInteger(n) || n < 0 || n > 1_000_000) {
         res.status(400).json({ error: '数值参数无效' })
         return
       }
+    } else if (priceKeys.includes(key)) {
+      const n = Number(value)
+      if (!Number.isFinite(n) || n < 0 || n > 100_000) {
+        res.status(400).json({ error: '价格须在 0~100000 之间(0 = 该档不开放)' })
+        return
+      }
     } else if (boolKeys.includes(key)) {
       if (value !== 'true' && value !== 'false') {
         res.status(400).json({ error: '只接受 true / false' })
+        return
+      }
+    } else if (longTextKeys.includes(key)) {
+      if (value.length > 4000) {
+        res.status(400).json({ error: '密钥过长' })
         return
       }
     } else if (value.length > 500) {
@@ -648,6 +672,36 @@ gmRouter.delete('/codes/:code', requireAdmin, (req: Request, res: Response) => {
       return
     }
     res.json({ ok: true })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})
+
+/** VIP 支付订单:最近 N 条(默认 100),含买家道号 */
+gmRouter.get('/orders', requireAdmin, (req: Request, res: Response) => {
+  void (async () => {
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 100) || 100, 1), 300)
+    const rows = await all<Record<string, unknown>>(
+      `SELECT o.out_trade_no, o.user_id, u.username, o.type, o.days, o.amount, o.status, o.created_at, o.paid_at
+       FROM vip_orders o
+       LEFT JOIN users u ON u.id = o.user_id
+       ORDER BY o.created_at DESC
+       LIMIT ?`,
+      [limit]
+    )
+    res.json({
+      orders: rows.map(r => ({
+        outTradeNo: r.out_trade_no,
+        userId: r.user_id,
+        username: r.username ?? '',
+        type: r.type,
+        days: r.days,
+        amount: r.amount,
+        status: r.status,
+        createdAt: r.created_at,
+        paidAt: r.paid_at ?? 0
+      }))
+    })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })

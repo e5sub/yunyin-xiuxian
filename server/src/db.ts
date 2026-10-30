@@ -270,6 +270,17 @@ CREATE TABLE IF NOT EXISTS vip_codes (
   used_at INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
+-- VIP 支付订单(当面付):status = pending | paid | closed
+CREATE TABLE IF NOT EXISTS vip_orders (
+  out_trade_no TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  days INTEGER NOT NULL,
+  amount TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at INTEGER NOT NULL,
+  paid_at INTEGER NOT NULL DEFAULT 0
+);
 CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(id DESC);
 CREATE INDEX IF NOT EXISTS idx_profile_rank ON profiles(realm_index DESC, power_e DESC, power_m DESC);
 CREATE INDEX IF NOT EXISTS idx_save_history_user ON save_history(user_id, id DESC);
@@ -451,6 +462,18 @@ CREATE TABLE IF NOT EXISTS vip_codes (
   created_at BIGINT NOT NULL,
   INDEX idx_vip_code_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS vip_orders (
+  out_trade_no VARCHAR(64) PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  type VARCHAR(16) NOT NULL,
+  days INT NOT NULL,
+  amount VARCHAR(16) NOT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'pending',
+  created_at BIGINT NOT NULL,
+  paid_at BIGINT NOT NULL DEFAULT 0,
+  INDEX idx_vip_order_user (user_id, created_at),
+  CONSTRAINT fk_vip_order_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ` // CREATE INDEX 放后面单独跑(MySQL 无 IF NOT EXISTS,重复启动要容错)
   for (const stmt of ddl.split(';').map(s => s.trim()).filter(Boolean)) {
     await d.query(stmt)
@@ -536,7 +559,16 @@ async function seedConfig(): Promise<void> {
     ['smtp_port', env('SMTP_PORT', '465')],
     ['smtp_user', env('SMTP_USER')],
     ['smtp_pass', env('SMTP_PASS')],
-    ['smtp_from', env('SMTP_FROM')]
+    ['smtp_from', env('SMTP_FROM')],
+    // 支付宝当面付:开关 / 密钥 / VIP 各档定价(元)
+    ['alipay_enabled', env('ALIPAY_ENABLED', 'false')],
+    ['alipay_app_id', env('ALIPAY_APP_ID')],
+    ['alipay_merchant_private_key', env('ALIPAY_MERCHANT_PRIVATE_KEY')],
+    ['alipay_alipay_public_key', env('ALIPAY_ALIPAY_PUBLIC_KEY')],
+    ['vip_price_month', '18'],
+    ['vip_price_half', '50'],
+    ['vip_price_year', '88'],
+    ['vip_price_forever', '168']
   ]
   if (DRIVER === 'sqlite') {
     for (const [k, v] of defaults) {

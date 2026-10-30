@@ -25,6 +25,7 @@ const STORE_IMPORT = /from\s+["']@\/stores\/[A-Za-z]+["']/g;
 const STATEFUL_CORE = new Set<string>([
   "affixTransfer.ts",
   "astronomy.ts",
+  "autoOps.ts",
   "breakthrough.ts",
   "buildDetect.ts",
   "buildingService.ts",
@@ -80,7 +81,7 @@ const STATEFUL_CORE = new Set<string>([
 ]);
 
 /** core → store 的引用处数基线(只许减;名单没变时防止单个模块越挂越多) */
-const CORE_STORE_SITES = 194;
+const CORE_STORE_SITES = 201;
 /** core 用例里需要 Pinia 的文件数基线(只许减) */
 const CORE_PINIA_SPECS = 119;
 

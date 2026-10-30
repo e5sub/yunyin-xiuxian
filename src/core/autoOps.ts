@@ -115,8 +115,3 @@ export function stopAutoOps(): void {
     bossTimer = undefined
   }
 }
-
-/** 供测试与设置页复核:重置到期提示位 */
-export function resetAutoOpsExpiryNotice(): void {
-  expiryNotified = false
-}

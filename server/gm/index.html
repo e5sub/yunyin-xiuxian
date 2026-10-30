@@ -294,6 +294,21 @@
           </table>
         </div>
       </div>
+      <div class="card">
+        <h2>支付订单(当面付)</h2>
+        <div class="row" style="margin-bottom:10px">
+          <button onclick="loadOrders()">刷新</button>
+          <span class="muted">最近 100 单;paid = 已支付并发 VIP,closed = 超时未付</span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>订单号</th><th>买家</th><th>档位</th><th>金额</th><th>状态</th><th>下单时间</th><th>支付时间</th>
+            </tr></thead>
+            <tbody id="od-rows"></tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
     <section id="pane-broadcast" class="hidden">
@@ -399,7 +414,7 @@ function switchTab (name) {
   if (name === 'users') loadUsers(page)
   if (name === 'saves') loadSaves()
   if (name === 'config') loadConfig()
-  if (name === 'codes') loadCodes()
+  if (name === 'codes') { loadCodes(); loadOrders() }
 }
 
 async function doLogin () {
@@ -559,6 +574,24 @@ async function delCode (code) {
     loadCodes()
   } catch (e) { toast(e.message) }
 }
+
+const ORDER_TYPE_TEXT = { month: '月卡', half: '半年卡', year: '年卡', forever: '永久卡' }
+const ORDER_STATUS_TAG = { pending: '<span class="tag admin">待支付</span>', paid: '<span class="tag ok">已支付</span>', closed: '<span class="tag ban">已关闭</span>' }
+
+async function loadOrders () {
+  try {
+    const d = await api('/orders?limit=100')
+    $('od-rows').innerHTML = d.orders.map(o => `<tr>
+      <td style="font-family:monospace;user-select:all">${esc(o.outTradeNo)}</td>
+      <td>${o.username ? esc(o.username) + ' (#' + o.userId + ')' : '#' + o.userId}</td>
+      <td>${ORDER_TYPE_TEXT[o.type] || o.type}</td>
+      <td>¥${esc(o.amount)}</td>
+      <td>${ORDER_STATUS_TAG[o.status] || esc(o.status)}</td>
+      <td>${fmt(o.createdAt)}</td>
+      <td>${o.paidAt ? fmt(o.paidAt) : '—'}</td>
+    </tr>`).join('') || '<tr><td colspan="7" class="muted">无订单</td></tr>'
+  } catch (e) { toast(e.message) }
+}
 async function viewDetail (id) {
   try {
     const d = await api(`/users/${id}`)
@@ -651,6 +684,24 @@ const CFG_GROUPS = [
       smtp_pass: ['发信密码/授权码', 'text'],
       smtp_from: ['发件人地址(留空用发信账号)', 'text']
     }
+  },
+  {
+    title: 'VIP 定价(元,0 = 该档不开放)',
+    keys: {
+      vip_price_month: ['月卡(30 天)', 'num'],
+      vip_price_half: ['半年卡(183 天)', 'num'],
+      vip_price_year: ['年卡(365 天)', 'num'],
+      vip_price_forever: ['永久卡', 'num']
+    }
+  },
+  {
+    title: '支付宝当面付',
+    keys: {
+      alipay_enabled: ['支付开关(true/false)', 'bool'],
+      alipay_app_id: ['应用 APPID', 'text'],
+      alipay_merchant_private_key: ['应用私钥(PKCS8,支持单行或 PEM)', 'long'],
+      alipay_alipay_public_key: ['支付宝公钥(支持单行或 PEM)', 'long']
+    }
   }
 ]
 
@@ -666,6 +717,10 @@ async function loadConfig () {
         <div class="cfg-fields">
           ${Object.keys(g.keys).map(k => {
             cfgOrig[k] = d.config[k] ?? ''
+            const type = g.keys[k][1]
+            if (type === 'long') {
+              return `<div class="cfg-field" style="grid-column:1/-1"><label>${g.keys[k][0]}</label><textarea id="cfg-${k}" rows="4" style="width:100%;font-family:monospace;font-size:12px;word-break:break-all"></textarea></div>`
+            }
             return `<div class="cfg-field"><label>${g.keys[k][0]}</label><input id="cfg-${k}" value="${esc(cfgOrig[k])}"></div>`
           }).join('')}
         </div>

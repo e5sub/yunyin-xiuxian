@@ -17,6 +17,9 @@ export interface CloudUser {
   vipUntil?: number
 }
 
+/** VIP 自助开通档位(与 GM 定价四档一致) */
+export type VipPurchaseType = 'month' | 'half' | 'year' | 'forever'
+
 export interface CloudSaveInfo {
   version: number
   data: Record<string, unknown>
@@ -246,6 +249,17 @@ export const cloudApi = {
   /** VIP 激活码兑换:成功返回 days(0=永久)与新到期时间 */
   redeemVip: (code: string): Promise<{ ok: boolean; days: number; vipUntil: number }> =>
     request('POST', '/vip/redeem', { code }),
+  /** 支付宝当面付:定价与开关(未登录也可读,界面自行判断) */
+  vipPricing: (): Promise<{ enabled: boolean; prices: Record<VipPurchaseType, number> }> =>
+    request('GET', '/vip/pricing'),
+  /** 创建当面付订单:返回二维码 dataURL 与有效期 */
+  vipCreateOrder: (
+    type: VipPurchaseType
+  ): Promise<{ outTradeNo: string; qrDataUrl: string; amountYuan: number; days: number; expireAt: number }> =>
+    request('POST', '/vip/order', { type }),
+  /** 轮询订单状态:paid 时服务端已发放 VIP */
+  vipOrderStatus: (outTradeNo: string): Promise<{ status: 'pending' | 'paid' | 'closed'; vipUntil?: number }> =>
+    request('GET', `/vip/order/${encodeURIComponent(outTradeNo)}/status`),
   emailCode: (email: string, purpose: 'register' | 'reset' | 'bind'): Promise<EmailCodeResp> =>
     request('POST', '/auth/email-code', { email, purpose }),
   /** 修改口令:成功后返回新 token(换上,否则本会话作废) */
