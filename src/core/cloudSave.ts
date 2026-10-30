@@ -133,7 +133,7 @@ export async function pushCloudSave(manual = false): Promise<PushOutcome> {
         if (!game.started) {
           blocked = true
           report('conflict', '云端已有存档,本机尚未同步')
-          return false
+          return 'conflict'
         }
         // 本机已开局但从未对齐(锚点机制上线前的老客户端 / 开机时拉档失败的长驻页):
         // 单设备登录下本机就是该账号的唯一在线设备,视为同一份进度延续,接续云端锚点恢复自动上传。
