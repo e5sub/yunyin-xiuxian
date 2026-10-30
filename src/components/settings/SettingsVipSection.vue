@@ -97,7 +97,8 @@
           <label class="flex items-center justify-between gap-2">
             <span class="shrink-0 text-[11px] text-ink-faint">历练去处</span>
             <select v-model="settings.autoRegionId" class="min-w-0 grow rounded border border-ink/20 bg-transparent px-1.5 py-1 text-[12px] text-ink">
-              <option value="" disabled>选择区域</option>
+              <option :value="AUTO_REGION_ID">自动择地(随境界推进)</option>
+              <option value="" disabled>手工指定一处</option>
               <option v-for="r in enterableRegions" :key="r.id" :value="r.id">{{ r.name }}</option>
             </select>
           </label>
@@ -107,6 +108,11 @@
               <option v-for="(m, id) in EXPLORE_MODES" :key="id" :value="id">{{ m.name }}({{ classicalDuration(m.durationSec) }})</option>
             </select>
           </label>
+          <p v-if="settings.autoRegionId === AUTO_REGION_ID" class="text-[10px] leading-relaxed text-ink-faint">
+            自动择地:每次出行前按实战同源试算遇敌胜率,取<span class="text-ink">最深且站得住</span>的一处;
+            所选档位过于凶险会自动退到最稳档,力有不及则不出行(败则中断行程、负伤,白耗时辰)
+          </p>
+          <p v-if="planHint !== ''" class="text-[10px] leading-relaxed text-gold-ink">{{ planHint }}</p>
           <p v-if="settings.autoRegionId === ''" class="text-[10px] text-cinnabar">须先选历练去处,否则托管不出行</p>
         </div>
       </div>
@@ -133,13 +139,14 @@
   import { computed, onMounted, onUnmounted, ref } from 'vue'
   import { useSettingsStore } from '@/stores/settings'
   import { useAuthStore } from '@/stores/auth'
-  import { useAdventureStore } from '@/stores/adventure'
   import { useUiStore } from '@/stores/ui'
   import { cloudApi, type VipPurchaseType } from '@/services/cloud'
   import { canEnterRegion } from '@/core/mortalWorldService'
-  import { EXPLORE_MODES } from '@/data/constants'
-  import { regionDef } from '@/data/regions'
+  import { AUTO_REGION_ID, EXPLORE_MODES } from '@/data/constants'
+  import { REGIONS } from '@/data/regions'
   import { classicalDuration } from '@/data/timeUnits'
+  import { winBandText } from '@/ui/adventureText'
+  import { planAutoAdventure } from '@/core/autoOps'
   import BaseModal from '@/components/common/BaseModal.vue'
   import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 
@@ -299,12 +306,30 @@
     settings.autoAdventure = next
   }
 
-  /** 当前可进入的区域(须与历练入口同口径:canEnterRegion,而非只看 unlocked) */
-  const enterableRegions = computed(() =>
-    useAdventureStore()
-      .unlocked.map(id => regionDef(id))
-      .filter((r): r is NonNullable<ReturnType<typeof regionDef>> => !!r && canEnterRegion(r.id))
-  )
+  /**
+   * 当前可进入的地界:须与历练入口同口径(canEnterRegion)。
+   * 不能只读 adventure.unlocked —— 本世路线上新开的一段常常不在那份旧链里,会漏掉。
+   */
+  const enterableRegions = computed(() => REGIONS.filter(r => canEnterRegion(r.id)))
+
+  /**
+   * 自动择地眼下会去哪:与托管同一套决策(core/autoOps 的 planAutoAdventure),
+   * 设置页先让人看明白,不必等出门才知道。试打很轻(至多三处 × 三场),失败就当没说。
+   */
+  const planHint = computed(() => {
+    if (settings.autoRegionId !== AUTO_REGION_ID) return ''
+    try {
+      const plan = planAutoAdventure(settings.autoMode)
+      if (plan === null) return '此刻无可战之地 · 先提升修为,或改选一处能去的地界'
+      const where = `${plan.regionName} · ${EXPLORE_MODES[plan.mode].name}`
+      const band = winBandText(plan.winRate)
+      if (plan.reason === 'safer') return `托管会去:${where}(${band})· 所选档位力有不及,已退到最稳档`
+      if (plan.reason === 'ceiling') return `托管会去:${where}(${band})· 前路已靖,聊作温养`
+      return `托管会去:${where}(${band})`
+    } catch {
+      return ''
+    }
+  })
 
   const expireText = computed(() =>
     new Date(auth.vipUntil).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })

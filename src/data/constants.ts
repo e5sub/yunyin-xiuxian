@@ -348,6 +348,17 @@ export const EXPLORE_MODES = {
 } as const
 /** 凶险 > 奖励 × 本值才算「险」(deep 的 1.45 / 1.4 不算);见 explorationFoeDanger 与出行弹窗的同名判据 */
 export const RISKY_DANGER_MARGIN = 1.05
+/**
+ * 托管择地:遇敌胜率达到此数才去。胜率由 core/autoOps 以实战同源的三场试打得出,
+ * 取值只有 0.08 / 0.4 / 0.72 / 0.93 四档,故 0.6 等于「三战至少两胜」。
+ */
+export const AUTO_ADVENTURE_MIN_WIN = 0.6
+/** 托管择地:首选档位撑不住时退到的最稳档(也是「无力可战」的最后一试) */
+export const AUTO_ADVENTURE_SAFE_MODE = 'normal'
+/** 托管择地:最多试几处(由深到浅);更浅的都已入册,试也无益 */
+export const AUTO_ADVENTURE_TRIALS = 3
+/** 托管去处选「自动择地」时的哨兵值(与具体地界 id 区分;地界 id 里没有 auto) */
+export const AUTO_REGION_ID = 'auto'
 /** 战败重伤 Buff 持续秒数 */
 export const INJURY_DURATION = 150
 

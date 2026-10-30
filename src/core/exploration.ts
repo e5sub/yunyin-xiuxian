@@ -65,7 +65,12 @@ function routeAllows(regionId: string): boolean {
   return canEnterRegion(regionId)
 }
 
-export function startExploration(regionId: string, mode: ExploreMode): boolean {
+/**
+ * 开一趟历练。
+ * `quiet` 只压「前往某地 · 某档」那一条:托管自己会报一条更详细的回执(见 core/autoOps),
+ * 其余提示(区域异象、凭吊、拒因)照报不误。
+ */
+export function startExploration(regionId: string, mode: ExploreMode, opts?: { quiet?: boolean }): boolean {
   const adventure = useAdventureStore()
   const player = usePlayerStore()
   const ui = useUiStore()
@@ -114,7 +119,7 @@ export function startExploration(regionId: string, mode: ExploreMode): boolean {
     itemGain: 0
   }
   adventure.setSession(session)
-  ui.toast(`前往${region.name} · ${modeDef.name}`, 'info')
+  if (opts?.quiet !== true) ui.toast(`前往${region.name} · ${modeDef.name}`, 'info')
   // 出发时低频判定区域事件(妖潮等,30~120 分钟)
   const ev = rollRegionEvent(region)
   if (ev) {

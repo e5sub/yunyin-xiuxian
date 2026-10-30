@@ -37,7 +37,7 @@ export const useSettingsStore = defineStore(
     const autoBoss = ref(false)
     const autoRetreat = ref(false)
     const autoAdventure = ref(false)
-    /** 自动历练的目标区域与档位('' = 未选,循环不启动历练) */
+    /** 自动历练的去处与档位('' = 未选;AUTO_REGION_ID 即 'auto' = 托管自行择地) */
     const autoRegionId = ref('')
     const autoMode = ref<import('@/types').ExploreMode>('normal')
     const battleSpeed = ref<1 | 2 | 4>(1)

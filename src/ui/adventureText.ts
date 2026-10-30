@@ -3,6 +3,7 @@ import { cnNumber, formatDuration } from '@/utils/format'
 import { EXPLORE_MODES } from '@/data/constants'
 import type { ExploreMode } from '@/types'
 import type { PetPersonalityEffects } from '@/core/petPersonality'
+import type { AutoAdventurePlan } from '@/core/autoAdventure'
 
 /** 各档行程的凶险形容词(纯展示,与 `EXPLORE_MODES` 的数值无关) */
 export const EXPLORE_MODE_RISK_LABEL: Record<ExploreMode, string> = {
@@ -68,4 +69,25 @@ export function sessionRecordText(s: { wins: number; losses: number }): string {
   const wins = count(s.wins)
   const losses = count(s.losses)
   return losses > 0 ? `胜 ${wins} 场 · 负 ${losses} 场` : `胜 ${wins} 场`
+}
+
+/**
+ * 遇敌胜率的口头档。三场试打的样本率只有四档(0.08 / 0.4 / 0.72 / 0.93),
+ * 报小数是假精确,故只报档。
+ */
+export function winBandText(rate: number): string {
+  if (rate >= 0.93) return '稳操胜券'
+  if (rate >= 0.72) return '胜算尚可'
+  if (rate >= 0.4) return '胜负难料'
+  return '凶多吉少'
+}
+
+/** 托管行程的回执:换地换档时才报;退档避险与前路已靖各有一句交代 */
+export function autoTripText(t: { regionName: string; mode: ExploreMode; plan: AutoAdventurePlan | null }): string {
+  const line = `${t.regionName} · ${EXPLORE_MODES[t.mode].name}`
+  if (t.plan === null) return `托管:前往${line}`
+  const band = winBandText(t.plan.winRate)
+  if (t.plan.reason === 'safer') return `托管:所选档位过于凶险,改走${line}(${band})`
+  if (t.plan.reason === 'ceiling') return `托管:前路已靖,于${line}温养(${band})`
+  return `托管:前往${line}(${band})`
 }
