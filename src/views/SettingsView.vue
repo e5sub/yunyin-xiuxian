@@ -4,6 +4,9 @@
 
     <SettingsAccountSection />
 
+    <SectionTitle title="VIP 托管" />
+    <SettingsVipSection />
+
     <SectionTitle title="偏好" />
     <SettingsPreferenceSection />
 
@@ -25,6 +28,7 @@
   import SectionTitle from '@/components/common/SectionTitle.vue'
   import InstallToHomeNotice from '@/components/common/InstallToHomeNotice.vue'
   import SettingsAccountSection from '@/components/settings/SettingsAccountSection.vue'
+  import SettingsVipSection from '@/components/settings/SettingsVipSection.vue'
   import SettingsPreferenceSection from '@/components/settings/SettingsPreferenceSection.vue'
   import SettingsSaveSection from '@/components/settings/SettingsSaveSection.vue'
   import SettingsDiagnosticsSection from '@/components/settings/SettingsDiagnosticsSection.vue'

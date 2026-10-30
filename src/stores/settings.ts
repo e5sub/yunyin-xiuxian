@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { persistConfig } from '@/utils/storage'
 import { asArray, asFiniteNumber, asRecord } from '@/utils/saveShape'
+import { exploreModeOf } from '@/core/exploreModes'
 import { MAX_EQUIP_TIER } from '@/data/equipment'
 import { QUALITIES } from '@/data/qualities'
 import { APP_VERSION, compareVersions } from '@/utils/appVersion'
@@ -29,6 +30,16 @@ export const useSettingsStore = defineStore(
     )
     /** 遇事勿扰:历练撞见际遇/机缘/奇缘时不弹窗,立刻按默认好愿了结(与超时自动处置同一条路) */
     const dndEvents = ref(false)
+    /**
+     * VIP 托管自动化(core/autoOps 循环读取):三个开关独立,「历练优先于闭关」。
+     * 开关本身持久化,但须 VIP 才能开;VIP 到期由 autoOps 循环复核后自动关停。
+     */
+    const autoBoss = ref(false)
+    const autoRetreat = ref(false)
+    const autoAdventure = ref(false)
+    /** 自动历练的目标区域与档位('' = 未选,循环不启动历练) */
+    const autoRegionId = ref('')
+    const autoMode = ref<import('@/types').ExploreMode>('normal')
     const battleSpeed = ref<1 | 2 | 4>(1)
     /** 一键分解勾选的品质 rank 列表 */
     const decomposeRanks = ref<number[]>([0, 1])
@@ -66,6 +77,11 @@ export const useSettingsStore = defineStore(
       if (![1, 2, 4].includes(battleSpeed.value)) battleSpeed.value = 1
       if (!['auto', 'light', 'dark'].includes(theme.value)) theme.value = 'auto'
       dndEvents.value = dndEvents.value === true
+      autoBoss.value = autoBoss.value === true
+      autoRetreat.value = autoRetreat.value === true
+      autoAdventure.value = autoAdventure.value === true
+      autoRegionId.value = typeof autoRegionId.value === 'string' ? autoRegionId.value : ''
+      autoMode.value = exploreModeOf(autoMode.value)
       // 布尔开关一律 ===true 归一:损坏档里混入的字符串("false")/数字(1)会以真值存活
       sfxOn.value = sfxOn.value === true
       musicOn.value = musicOn.value === true
@@ -103,6 +119,11 @@ export const useSettingsStore = defineStore(
       sfxVol,
       reduceMotion,
       dndEvents,
+      autoBoss,
+      autoRetreat,
+      autoAdventure,
+      autoRegionId,
+      autoMode,
       battleSpeed,
       decomposeRanks,
       smartKeep,

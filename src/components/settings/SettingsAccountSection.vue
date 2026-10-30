@@ -2,6 +2,10 @@
   <div class="card-ink space-y-2 px-4 py-3">
     <p class="text-[11px] text-ink-faint">
       道号 <span class="font-kai text-[14px] text-ink">{{ auth.username }}</span>
+      <span
+        v-if="auth.isVip"
+        class="ml-1.5 rounded-full bg-amber-ink/15 px-1.5 py-0.5 align-middle font-kai text-[10px] tracking-widest text-amber-ink"
+      >VIP·{{ auth.vipDaysLeft }}天</span>
     </p>
     <div class="flex gap-2">
       <button class="btn-ghost flex-1 !text-[12px]" @click="openPassword">修改口令</button>

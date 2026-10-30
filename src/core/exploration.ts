@@ -486,7 +486,9 @@ export function tickExploration(now: number): void {
     if (rng.chance(exploreEventChance(region.id, player.finalStats.mods))) {
       // 事件标签取本世内容
       const ev = pickEventFor({ ...region, eventTags: [...placeContent(region.id).eventTags] })
-      if (ev && useSettingsStore().dndEvents) {
+      // 遇事勿扰或 VIP 自动历练托管:不弹窗,按超时同一条路(默认好愿)当场结清
+      const st = useSettingsStore()
+      if (ev && (st.dndEvents || st.autoAdventure)) {
         // 遇事勿扰:不弹窗,按超时同一条路(默认好愿)当场结清
         const res = autoResolveEvent(ev.id, region.tier)
         if (res && res.lines.length) useUiStore().toast(res.lines.join('、'), 'info')

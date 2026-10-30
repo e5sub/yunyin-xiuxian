@@ -13,6 +13,8 @@ export const API_BASE: string =
 export interface CloudUser {
   id: number
   username: string
+  /** VIP 到期毫秒时间戳;缺省/0 = 未开通(登录响应老服务端可能不带) */
+  vipUntil?: number
 }
 
 export interface CloudSaveInfo {
@@ -239,6 +241,8 @@ export const cloudApi = {
     request('POST', '/auth/register', { username, email, password, code }),
   login: (username: string, password: string): Promise<{ token: string; user: CloudUser }> =>
     request('POST', '/auth/login', { username, password }),
+  /** 会话信息刷新:取最新 VIP 状态(GM 发放/续期后无需重登) */
+  me: (): Promise<{ user: CloudUser }> => request('GET', '/auth/me'),
   emailCode: (email: string, purpose: 'register' | 'reset' | 'bind'): Promise<EmailCodeResp> =>
     request('POST', '/auth/email-code', { email, purpose }),
   /** 修改口令:成功后返回新 token(换上,否则本会话作废) */

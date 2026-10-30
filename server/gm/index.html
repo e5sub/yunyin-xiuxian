@@ -206,7 +206,7 @@
             <thead><tr>
               <th>ID</th><th>道号</th><th>邮箱</th><th>角色名</th><th>境界</th>
               <th>战力</th><th>攻击</th><th>防御</th><th>气血</th>
-              <th>身份</th><th>状态</th><th>存档更新</th><th style="min-width:150px">操作</th>
+              <th>身份</th><th>状态</th><th>VIP</th><th>存档更新</th><th style="min-width:150px">操作</th>
             </tr></thead>
             <tbody id="u-rows"></tbody>
           </table>
@@ -270,6 +270,21 @@
   <div class="acts">
     <button onclick="document.getElementById('dlg-pw').close()">取消</button>
     <button class="primary" onclick="confirmPw()">确定</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-vip">
+  <h3 id="vip-title">发放 VIP</h3>
+  <p class="muted" style="margin:6px 0 10px">在剩余时长基础上叠加(未到期续期不浪费);填 0 并确定 = 取消 VIP。玩家下次登录或刷新页面后生效。</p>
+  <div class="field"><label>天数(0~3650)</label><input id="vip-days" type="number" min="0" max="3650" value="30"></div>
+  <div class="row" style="gap:6px">
+    <button onclick="$('vip-days').value=30">30 天</button>
+    <button onclick="$('vip-days').value=90">90 天</button>
+    <button onclick="$('vip-days').value=365">365 天</button>
+  </div>
+  <div class="acts">
+    <button onclick="document.getElementById('dlg-vip').close()">取消</button>
+    <button class="primary" onclick="confirmVip()">确定</button>
   </div>
 </dialog>
 
@@ -383,6 +398,7 @@ async function loadUsers (p) {
       <td>${u.profile ? fmtGE(u.profile.hpM, u.profile.hpE) : '—'}</td>
       <td>${u.role === 'admin' ? '<span class="tag admin">管理员</span>' : '玩家'}</td>
       <td>${u.status === 'active' ? '<span class="tag ok">正常</span>' : '<span class="tag ban">封禁</span>'}</td>
+      <td>${u.vipUntil && u.vipUntil > Date.now() ? '<span class="tag ok">VIP</span> 剩 ' + Math.ceil((u.vipUntil - Date.now()) / 86400000) + ' 天' : '—'}</td>
       <td>${fmt(u.saveAt)}</td>
       <td class="acts">
         <button onclick="viewDetail(${u.id})">详情</button>
@@ -390,9 +406,10 @@ async function loadUsers (p) {
           ? `<button class="danger" onclick="ban(${u.id},true)">封禁</button>`
           : `<button onclick="ban(${u.id},false)">解封</button>`}
         <button onclick="resetPw(${u.id})">重置口令</button>
+        <button onclick="openVip(${u.id},'${esc(u.username)}',${u.vipUntil || 0})">VIP</button>
         ${u.role !== 'admin' ? `<button class="danger" data-del-id="${u.id}" data-del-name="${esc(u.username)}">删除</button>` : ''}
       </td>
-    </tr>`).join('') || '<tr><td colspan="13" class="muted">无数据</td></tr>'
+    </tr>`).join('') || '<tr><td colspan="14" class="muted">无数据</td></tr>'
   } catch (e) { toast(e.message) }
 }
 function pageTurn (d) { loadUsers(Math.min(Math.max(page + d, 1), maxPage)) }
@@ -412,6 +429,23 @@ async function confirmPw () {
   try { await api(`/users/${pwTarget}/reset-password`, { method: 'POST', body: JSON.stringify({ password: $('pw-input').value }) }); $('dlg-pw').close(); toast('口令已重置') }
   catch (e) { toast(e.message) }
 }
+let vipTarget = 0
+function openVip (id, name, vipUntil) {
+  vipTarget = id
+  const remain = vipUntil && vipUntil > Date.now() ? `当前剩余 ${Math.ceil((vipUntil - Date.now()) / 86400000)} 天(至 ${fmt(vipUntil)})` : '当前无 VIP'
+  $('vip-title').textContent = `VIP · ${name}(${remain})`
+  $('vip-days').value = 30
+  $('dlg-vip').showModal()
+}
+async function confirmVip () {
+  const days = Number($('vip-days').value)
+  try {
+    const r = await api(`/users/${vipTarget}/vip`, { method: 'POST', body: JSON.stringify({ days }) })
+    $('dlg-vip').close()
+    toast(days > 0 ? '已发放,至 ' + fmt(r.vipUntil) : '已取消 VIP')
+    loadUsers()
+  } catch (e) { toast(e.message) }
+}
 async function viewDetail (id) {
   try {
     const d = await api(`/users/${id}`)
@@ -420,6 +454,7 @@ async function viewDetail (id) {
     $('dt-body').innerHTML = `
       <div><b>邮箱</b>${esc(u.email || '—')}</div>
       <div><b>身份</b>${u.role === 'admin' ? '管理员' : '玩家'} · ${u.status === 'active' ? '正常' : '封禁'}</div>
+      <div><b>VIP</b>${u.vip_until && u.vip_until > Date.now() ? '剩余 ' + Math.ceil((u.vip_until - Date.now()) / 86400000) + ' 天(至 ' + fmt(u.vip_until) + ')' : '无'}</div>
       <div><b>注册时间</b>${fmt(u.created_at)}</div>
       <div><b>角色名</b>${p ? esc(p.name) : '—'}</div>
       <div><b>境界</b>${p ? esc(p.realm_label) + ' (' + p.realm_index + ')' : '—'}</div>

@@ -39,6 +39,7 @@
   import { useAuthStore } from '@/stores/auth'
   import { subscribeSaveWriteFailure } from '@/utils/storage'
   import { engine } from '@/core/engine'
+  import { startAutoOps, stopAutoOps } from '@/core/autoOps'
   import { connectCloudWs, disconnectCloudWs, onSessionEnd } from '@/services/cloud'
   import { probeCloudNewer, pushCloudSave, restoreFromCloud, startCloudSync, stopCloudSync, syncNotice } from '@/core/cloudSave'
   import { applyTheme, initTheme } from '@/core/theme'
@@ -82,6 +83,8 @@
     const auth = useAuthStore()
     if (!auth.loggedIn) return
     connectCloudWs()
+    // VIP 状态随会话刷新(GM 发放/续期后,玩家刷新页面即生效)
+    void auth.refreshVip().catch(() => undefined)
     const restored = await restoreFromCloud()
     if (restored) return // 云端档已应用并重载
     // 本机已对齐过但云端更新:不擅自覆盖(本机可能有未上传的进度),提示玩家自行决定
@@ -156,6 +159,7 @@
       else ui.toast('存档已恢复写入', 'info')
     })
     engine.start()
+    startAutoOps()
     void bootstrapCloud()
     window.addEventListener('pointerdown', onPointerDown)
   })
@@ -164,6 +168,7 @@
     unsubscribeTheme()
     unsubscribeSaveFailure()
     engine.stop()
+    stopAutoOps()
     disconnectCloudWs()
     resetModalStack()
     disposeAudio()

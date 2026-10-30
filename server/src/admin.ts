@@ -91,7 +91,7 @@ gmRouter.get('/users', requireAdmin, (req: Request, res: Response) => {
     const maxPage = Math.max(Math.ceil((total?.c ?? 0) / pageSize), 1)
     const effPage = Math.min(page, maxPage)
     const rows = await all(
-      `SELECT u.id, u.username, u.email, u.role, u.status, u.created_at,
+      `SELECT u.id, u.username, u.email, u.role, u.status, u.created_at, u.vip_until,
               p.name, p.realm_label, p.realm_index, p.power_m, p.power_e,
               p.hp_m, p.hp_e, p.atk_m, p.atk_e, p.def_m, p.def_e, p.updated_at AS profile_at,
               s.updated_at AS save_at
@@ -114,6 +114,7 @@ gmRouter.get('/users', requireAdmin, (req: Request, res: Response) => {
         role: r.role,
         status: r.status,
         createdAt: r.created_at,
+        vipUntil: r.vip_until ?? 0,
         profile:
           r.name !== null && r.name !== undefined
             ? {
@@ -148,7 +149,7 @@ gmRouter.get('/users/:id', requireAdmin, (req: Request, res: Response) => {
       return
     }
     const u = await get<Record<string, unknown>>(
-      'SELECT id, username, email, role, status, created_at FROM users WHERE id = ?',
+      'SELECT id, username, email, role, status, created_at, vip_until FROM users WHERE id = ?',
       [id]
     )
     if (u === undefined) {
@@ -192,6 +193,38 @@ gmRouter.post('/users/:id/ban', requireAdmin, (req: Request, res: Response) => {
       return
     }
     res.json({ ok: true })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})
+
+gmRouter.post('/users/:id/vip', requireAdmin, (req: Request, res: Response) => {
+  void (async () => {
+    const id = Number(req.params.id)
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: '参数无效' })
+      return
+    }
+    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
+    const days = Math.floor(Number(body.days))
+    // days>0 发放/续期(从「当前剩余或现在」的较晚者起算,叠加不浪费);days=0 清零
+    if (!Number.isFinite(days) || days < 0 || days > 3650) {
+      res.status(400).json({ error: '天数须在 0~3650 之间(0 为取消 VIP)' })
+      return
+    }
+    const row = await get<{ vip_until: number }>('SELECT vip_until FROM users WHERE id = ?', [id])
+    if (row === undefined) {
+      res.status(404).json({ error: '查无此用户' })
+      return
+    }
+    let vipUntil = 0
+    if (days > 0) {
+      const now = Date.now()
+      const base = Math.max(now, row.vip_until ?? 0)
+      vipUntil = base + days * 24 * 3600 * 1000
+    }
+    await run('UPDATE users SET vip_until = ? WHERE id = ?', [vipUntil, id])
+    res.json({ ok: true, vipUntil })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })

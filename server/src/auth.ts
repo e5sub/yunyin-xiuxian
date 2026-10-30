@@ -207,6 +207,7 @@ interface UserRow {
   role: string
   status: string
   login_seq: number
+  vip_until: number
 }
 
 export const authRouter = express.Router()
@@ -390,7 +391,7 @@ authRouter.post('/login', loginIpLimit, loginUserLimit, (req, res) => {
       return
     }
     const row = await get<UserRow>(
-      'SELECT id, username, email, pass_hash, role, status, login_seq FROM users WHERE username_lower = ?',
+      'SELECT id, username, email, pass_hash, role, status, login_seq, vip_until FROM users WHERE username_lower = ?',
       [username.toLowerCase()]
     )
     if (row === undefined) {
@@ -412,7 +413,7 @@ authRouter.post('/login', loginIpLimit, loginUserLimit, (req, res) => {
     const seq = row.login_seq + 1
     await run('UPDATE users SET login_seq = ?, login_seq_at = ? WHERE id = ?', [seq, Date.now(), row.id])
     const user: AuthUser = { id: row.id, username: row.username }
-    res.json({ token: signToken(user, seq), user })
+    res.json({ token: signToken(user, seq), user: { ...user, vipUntil: row.vip_until ?? 0 } })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })
@@ -490,7 +491,13 @@ authRouter.post('/reset', resetIpLimit, resetTargetLimit, (req, res) => {
 })
 
 authRouter.get('/me', requireAuth, (req, res) => {
-  res.json({ user: req.user })
+  void (async () => {
+    // VIP 到期时间随会话实时下发:GM 后台发放/续期后,玩家刷新页面即生效
+    const row = await get<{ vip_until: number }>('SELECT vip_until FROM users WHERE id = ?', [req.user!.id])
+    res.json({ user: { ...req.user, vipUntil: row?.vip_until ?? 0 } })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
 })
 
 // ---- 账号自助管理:修改口令 / 修改邮箱(均需当前口令确认身份) ----

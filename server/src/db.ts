@@ -154,7 +154,9 @@ CREATE TABLE IF NOT EXISTS users (
   pass_changed_at INTEGER NOT NULL DEFAULT 0,
   -- 单设备登录:每次登录自增,旧 token 据此作废(挤下线)
   login_seq INTEGER NOT NULL DEFAULT 0,
-  login_seq_at INTEGER NOT NULL DEFAULT 0
+  login_seq_at INTEGER NOT NULL DEFAULT 0,
+  -- VIP 到期时间(毫秒时间戳,0 = 未开通);特权为客户端托管自动化,服务端只管发放与下发
+  vip_until INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS saves (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -272,6 +274,7 @@ CREATE INDEX IF NOT EXISTS idx_save_history_user ON save_history(user_id, id DES
       'ALTER TABLE users ADD COLUMN pass_changed_at INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE users ADD COLUMN login_seq INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE users ADD COLUMN login_seq_at INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE users ADD COLUMN vip_until INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE saves ADD COLUMN started INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE profiles ADD COLUMN def_m REAL NOT NULL DEFAULT 0',
       'ALTER TABLE profiles ADD COLUMN def_e INTEGER NOT NULL DEFAULT 0'
@@ -310,7 +313,9 @@ CREATE TABLE IF NOT EXISTS users (
   pass_changed_at BIGINT NOT NULL DEFAULT 0,
   -- 单设备登录:每次登录自增,旧 token 据此作废(挤下线)
   login_seq BIGINT NOT NULL DEFAULT 0,
-  login_seq_at BIGINT NOT NULL DEFAULT 0
+  login_seq_at BIGINT NOT NULL DEFAULT 0,
+  -- VIP 到期时间(毫秒时间戳,0 = 未开通)
+  vip_until BIGINT NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS saves (
   user_id BIGINT PRIMARY KEY,
@@ -441,6 +446,7 @@ CREATE TABLE IF NOT EXISTS dungeon_daily (
     'ALTER TABLE users ADD COLUMN pass_changed_at BIGINT NOT NULL DEFAULT 0',
     'ALTER TABLE users ADD COLUMN login_seq BIGINT NOT NULL DEFAULT 0',
     'ALTER TABLE users ADD COLUMN login_seq_at BIGINT NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN vip_until BIGINT NOT NULL DEFAULT 0',
     'ALTER TABLE saves ADD COLUMN started TINYINT NOT NULL DEFAULT 0',
     'ALTER TABLE profiles ADD COLUMN def_m DOUBLE NOT NULL DEFAULT 0',
     'ALTER TABLE profiles ADD COLUMN def_e INT NOT NULL DEFAULT 0'
