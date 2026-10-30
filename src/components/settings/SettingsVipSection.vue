@@ -30,7 +30,7 @@
       </label>
       <input
         v-model="codeInput"
-        class="mt-2 w-full rounded border border-ink/20 bg-transparent px-2 py-1.5 font-mono text-[12px] tracking-wider text-ink placeholder:text-ink-faint/60"
+        class="mt-2 w-full rounded border border-ink/20 bg-transparent px-2 py-1.5 font-mono text-[12px] tracking-wider text-ink placeholder:text-ink-faint"
         placeholder="VIP-XXXX-XXXX-XXXX"
         maxlength="20"
         @keyup.enter="redeem"
@@ -49,7 +49,7 @@
           :key="t.type"
           type="button"
           class="rounded border px-1 py-2 text-center"
-          :class="priceOf(t.type) > 0 ? 'border-ink/25 text-ink active:bg-ink/5' : 'border-ink/10 text-ink-faint/50'"
+          :class="priceOf(t.type) > 0 ? 'border-ink/25 text-ink active:bg-ink/5' : 'border-ink/10 text-ink-faint'"
           :disabled="priceOf(t.type) <= 0"
           @click="buy(t.type)"
         >
