@@ -17,7 +17,8 @@
     <!-- 聊天 -->
     <template v-if="tab === 'chat'">
       <div ref="chatBox" class="card-ink h-96 space-y-2 overflow-y-auto px-3 py-3">
-        <p v-if="messages.length === 0" class="text-center text-[12px] text-ink-faint">暂无消息</p>
+        <p v-if="chatError" class="text-center text-[12px] text-cinnabar">聊天记录拉取失败,请检查网络后切换页签重试</p>
+        <p v-else-if="messages.length === 0" class="text-center text-[12px] text-ink-faint">暂无消息</p>
         <div v-for="(m, i) in messages" :key="m.id ?? `live-${i}`" class="text-[12px] leading-relaxed">
           <span class="text-ink-faint tabular">{{ formatClock(m.at) }}</span>
           <span class="ml-1.5 font-kai" :class="m.self ? 'text-cinnabar' : 'text-azure'">{{ m.self ? '我' : (m.from?.name ?? m.name ?? '') }}</span>
@@ -171,9 +172,11 @@
   })
 
   // 首次进页 + 切页时按需拉数据
+  const chatError = ref(false)
   async function loadChat(): Promise<void> {
     try {
       const res = await cloudApi.chatHistory()
+      chatError.value = false
       messages.value = res.messages.map(m => ({
         id: m.id,
         from: m.user_id !== undefined ? { id: m.user_id, name: m.name ?? '' } : m.from,
@@ -183,7 +186,8 @@
       }))
       scrollToBottom()
     } catch {
-      // 下次切页重拉
+      // 拉取失败不装作没发生:留个可见提示,免得误以为记录被清空
+      chatError.value = true
     }
   }
 

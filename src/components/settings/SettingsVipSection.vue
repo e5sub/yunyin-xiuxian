@@ -83,26 +83,16 @@
 
       <label class="flex items-center justify-between py-3">
         <span class="text-[13px] text-ink-soft">自动闭关</span>
-        <input
-          v-model="settings.autoRetreat"
-          type="checkbox"
-          class="h-4 w-4 accent-cinnabar"
-          :disabled="settings.autoAdventure"
-        />
+        <input v-model="settings.autoRetreat" type="checkbox" class="h-4 w-4 accent-cinnabar" />
       </label>
 
       <div class="py-3">
         <label class="flex items-center justify-between">
           <span class="text-[13px] text-ink-soft">自动历练</span>
-          <input
-            v-model="settings.autoAdventure"
-            type="checkbox"
-            class="h-4 w-4 accent-cinnabar"
-            :disabled="settings.autoRetreat"
-          />
+          <input v-model="settings.autoAdventure" type="checkbox" class="h-4 w-4 accent-cinnabar" />
         </label>
         <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
-          历练与闭关互斥:开自动历练时闭关让位,遇事自动按默认好愿了结
+          三项托管各自独立,想开哪项开哪项;历练与闭关都开时历练优先,历练间隙才闭关
         </p>
         <div v-if="settings.autoAdventure" class="mt-2 space-y-2">
           <label class="flex items-center justify-between gap-2">
