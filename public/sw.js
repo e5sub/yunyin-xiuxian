@@ -2,13 +2,15 @@
  * 云隐修仙录 Service Worker:离线缓存,只管能退化的缓存层(见 RIL TASK-157 / DEC-033)
  *  · 导航请求(hash 路由下都落在 index.html)network-first,离线才回退缓存
  *  · /assets/*(vite 内容哈希命名)与 manifest / 图标 / 音频等 public/ 稳定文件 cache-first
+ *  · /api/*(含 /gm/api/*)与带 Authorization 的请求一律直连,绝不入缓存:
+ *    接口响应会随数据变化(存档/排行/聊天/支付轮询),缓存住就是「上传后永远拉回旧空档」
  *  · 跨域(51.la 统计 SDK 等)不干预
  *
  * 发版提醒:改了需要换缓存内容的策略(资产路径规则、导航回退行为等)须同步 bump CACHE_VERSION,
  * 否则 activate 不清旧缓存。它是唯一的缓存版本号,不在别处另设。
  */
 
-const CACHE_VERSION = 'yunyin-v2'
+const CACHE_VERSION = 'yunyin-v3'
 
 /**
  * 本地外壳(Electron 的 file://、Capacitor 的 https://localhost)里不许存在 SW:fetch() 本地 URL 失败、
@@ -75,6 +77,11 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return
   const url = new URL(req.url)
   if (url.origin !== self.location.origin) return
+  // 接口直连:同源 /api(含 GM 后台)与任何带鉴权头的请求都不进缓存层,
+  // 否则首访的空响应(如 {save:null})会永久占住缓存,上传成功也读不回
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/gm/api/') || req.headers.has('authorization')) {
+    return
+  }
   if (req.mode === 'navigate') {
     event.respondWith(networkFirst(req))
     return

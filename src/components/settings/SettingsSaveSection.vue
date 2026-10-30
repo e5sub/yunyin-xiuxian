@@ -3,6 +3,7 @@
     <p class="text-[11px] text-ink-faint tabular">
       存档版本 v{{ SAVE_VERSION }} · 修行时长 {{ formatDuration(game.totalPlaySec) }}
     </p>
+    <p class="text-[11px] text-ink-faint tabular">道号 {{ auth.username || '未登录' }} · 服务器 {{ serverText }}</p>
     <p class="text-[11px] tabular" :class="syncTone">云同步 {{ syncText }}</p>
     <p
       v-if="syncState === 'conflict'"
@@ -43,15 +44,21 @@
 
 <script setup lang="ts">
   import { computed, onUnmounted, ref } from 'vue'
+  import { useAuthStore } from '@/stores/auth'
   import { useGameStore } from '@/stores/game'
   import { useUiStore } from '@/stores/ui'
   import { formatDuration } from '@/utils/format'
   import { SAVE_VERSION, STORE_NAMES, saveWriteFailure, subscribeSaveWriteFailure } from '@/utils/storage'
   import { lastSyncAt, pullCloudSave, pushCloudSave, syncErrorText, syncState } from '@/core/cloudSave'
+  import { API_BASE } from '@/services/cloud'
   import BaseModal from '@/components/common/BaseModal.vue'
 
   const game = useGameStore()
   const ui = useUiStore()
+  const auth = useAuthStore()
+
+  /** 自诊断:上传/恢复报异常时,先看是否同一道号、同一服务器 */
+  const serverText = API_BASE === '' ? '本站同域' : API_BASE.replace(/^https?:\/\//, '')
 
   const saveFailed = ref(saveWriteFailure() !== null)
   /** 被隔离的分片(启动时 preflightScan 记下) */
@@ -116,7 +123,7 @@
       ui.toast(
         r.status === 'error'
           ? `云端存档读取失败:${r.message}`
-          : '云端还没有存档 · 若刚上传过,请确认登录的是同一道号、同一服务器',
+          : `云端还没有存档 · 账号 ${auth.username || '未登录'} @ ${serverText},确认与上传时同一道号、同一服务器`,
         'warn'
       )
     } catch {
