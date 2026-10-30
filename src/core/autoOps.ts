@@ -29,6 +29,7 @@ import { makeEnemySnap, sampleWinRate } from './combat'
 import { buildPlayerSnap } from './playerSnap'
 import { personalityEffects } from './petPersonality'
 import { dangerFactorFor, explorationRules, regionBossCleared, startExploration } from './exploration'
+import { claimBossLoot } from './bossLoot'
 import { pickAutoPlan, type AutoAdventurePlan } from './autoAdventure'
 import { autoTripText } from '@/ui/adventureText'
 import { RandomService, mulberry32 } from '@/utils/random'
@@ -188,8 +189,11 @@ async function tickBoss(): Promise<void> {
   const g = gate()
   if (g === null || !g.settings.autoBoss) return
   try {
-    const st = await cloudApi.boss()
-    if (!st.alive || st.myAttempts >= st.maxAttempts) return
+    const st = await cloudApi.boss(g.settings.bossDifficulty)
+    if (!st.alive || st.myAttempts >= st.maxAttempts) {
+      await claimIfPending()
+      return
+    }
     if (st.assess !== undefined && !st.assess.worthIt) {
       if (st.assess.reason !== lastHoldReason) {
         lastHoldReason = st.assess.reason
@@ -197,17 +201,36 @@ async function tickBoss(): Promise<void> {
           useUiStore().toast('托管:蓄势留剑,待其力竭', 'info')
         }
       }
+      await claimIfPending()
       return
     }
     lastHoldReason = ''
-    const r: BossStrikeResult = await cloudApi.bossStrike()
-    // 奖励即时入账(与 BossView 手动出剑同一条入账路径)
-    const resources = useResourcesStore()
-    resources.addStone(stoneByTier(tierOfMajor(Math.max(0, r.tier)), r.reward.stone))
-    resources.addSmall('herb', r.reward.herb)
-    if (r.killed) useUiStore().toast(`托管:出剑讨伐,${r.bossName}已陨落!`, 'success')
+    const r: BossStrikeResult = await cloudApi.bossStrike(g.settings.bossDifficulty)
+    if (r.killed) {
+      useUiStore().toast(
+        r.equipWinner !== null
+          ? `托管:出剑讨伐,${r.bossName}已陨落!装备归于 ${r.equipWinner}`
+          : `托管:出剑讨伐,${r.bossName}已陨落!`,
+        'success'
+      )
+    }
+    // 击杀赏走台账:不管这一剑有没有斩落妖王,有待领就顺手领了
+    await claimIfPending()
   } catch {
     // 云不可达 / 次数用尽 / 会话失效等:静默跳过,下一轮再说
+  }
+}
+
+/** 领取击杀赏(与 BossView 同一条入账路):资粮即领,装备按自身境界生成入包 */
+async function claimIfPending(): Promise<void> {
+  try {
+    const got = await claimBossLoot()
+    if (got !== null) {
+      useUiStore().toast(`托管:领取击杀赏 · 灵石 ${got.stoneText} · 灵草 +${got.herb}`, 'success')
+      if (got.equipLine !== null) useUiStore().toast(`击杀赏装备:${got.equipLine}`, 'rare')
+    }
+  } catch {
+    // 领取失败不打扰,下一轮再试
   }
 }
 
@@ -220,7 +243,7 @@ export function startAutoOps(): void {
     () => {
       const auth = useAuthStore()
       const s = useSettingsStore()
-      return [auth.loggedIn, auth.isVip, s.autoBoss, s.autoRetreat, s.autoAdventure, s.autoRegionId, s.autoMode] as const
+      return [auth.loggedIn, auth.isVip, s.autoBoss, s.autoRetreat, s.autoAdventure, s.autoRegionId, s.autoMode, s.bossDifficulty] as const
     },
     () => scheduleSync(),
     { immediate: true }
@@ -262,7 +285,8 @@ function pushAutoOpsSettings(): void {
       autoRetreat: settings.autoRetreat,
       autoAdventure: settings.autoAdventure,
       regionId: settings.autoRegionId,
-      mode: settings.autoMode
+      mode: settings.autoMode,
+      bossDifficulty: settings.bossDifficulty
     })
     .catch(() => undefined)
 }

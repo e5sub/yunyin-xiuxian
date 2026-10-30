@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { persistConfig } from '@/utils/storage'
 import { asArray, asFiniteNumber, asRecord } from '@/utils/saveShape'
 import { exploreModeOf } from '@/core/exploreModes'
+import { bossDifficultyOf } from '@/data/bossDifficulty'
 import { MAX_EQUIP_TIER } from '@/data/equipment'
 import { QUALITIES } from '@/data/qualities'
 import { APP_VERSION, compareVersions } from '@/utils/appVersion'
@@ -40,6 +41,8 @@ export const useSettingsStore = defineStore(
     /** 自动历练的去处与档位('' = 未选;AUTO_REGION_ID 即 'auto' = 托管自行择地) */
     const autoRegionId = ref('')
     const autoMode = ref<import('@/types').ExploreMode>('normal')
+    /** 围妖出剑难度档(手动出剑与托管代打同用;击杀赏格随档加深) */
+    const bossDifficulty = ref<import('@/data/bossDifficulty').BossDifficulty>('normal')
     const battleSpeed = ref<1 | 2 | 4>(1)
     /** 一键分解勾选的品质 rank 列表 */
     const decomposeRanks = ref<number[]>([0, 1])
@@ -82,6 +85,7 @@ export const useSettingsStore = defineStore(
       autoAdventure.value = autoAdventure.value === true
       autoRegionId.value = typeof autoRegionId.value === 'string' ? autoRegionId.value : ''
       autoMode.value = exploreModeOf(autoMode.value)
+      bossDifficulty.value = bossDifficultyOf(bossDifficulty.value)
       // 布尔开关一律 ===true 归一:损坏档里混入的字符串("false")/数字(1)会以真值存活
       sfxOn.value = sfxOn.value === true
       musicOn.value = musicOn.value === true
@@ -124,6 +128,7 @@ export const useSettingsStore = defineStore(
       autoAdventure,
       autoRegionId,
       autoMode,
+      bossDifficulty,
       battleSpeed,
       decomposeRanks,
       smartKeep,

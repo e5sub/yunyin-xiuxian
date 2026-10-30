@@ -5,7 +5,7 @@ import { all, get, run, upsertByPk } from '../db.js'
 import { getConfig, getConfigNumber } from '../config.js'
 import { requireAuth } from '../auth.js'
 import { broadcastAll } from '../ws.js'
-import { dayKey, attemptsUsed, bumpDaily } from '../dungeonCore.js'
+import { dayKey, attemptsUsed, bumpDaily, type DungeonDifficulty } from '../dungeonCore.js'
 import { geNorm, geAdd, geSub, geMulN, geMin, geText, randRange, type GE } from '../gnum.js'
 
 export const bossRouter = express.Router()
@@ -18,11 +18,12 @@ interface DamageRow {
   dmg_m: number
   dmg_e: number
   strikes: number
+  difficulty: string
 }
 
-async function bumpDamage(userId: number, name: string, dmg: GE): Promise<void> {
+async function bumpDamage(userId: number, name: string, dmg: GE, difficulty: string): Promise<void> {
   // GNum 跨指数累加在应用层做,落库走双方言同语义的 REPLACE INTO
-  const existing = await get<DamageRow>('SELECT user_id, name, dmg_m, dmg_e, strikes FROM boss_damage WHERE user_id = ?', [
+  const existing = await get<DamageRow>('SELECT user_id, name, dmg_m, dmg_e, strikes, difficulty FROM boss_damage WHERE user_id = ?', [
     userId
   ])
   const next = existing === undefined ? dmg : geAdd({ m: existing.dmg_m, e: existing.dmg_e }, dmg)
@@ -32,6 +33,7 @@ async function bumpDamage(userId: number, name: string, dmg: GE): Promise<void> 
     dmg_m: next.m,
     dmg_e: next.e,
     strikes: (existing?.strikes ?? 0) + 1,
+    difficulty,
     updated_at: Date.now()
   })
 }
@@ -39,6 +41,29 @@ async function bumpDamage(userId: number, name: string, dmg: GE): Promise<void> 
 /* ---------------- 妖王数据 ---------------- */
 
 const BOSS_NAMES = ['赤炎妖王', '玄冰妖王', '九婴', '穷奇', '饕餮', '梼杌', '浑敦', '刑天残魄', '烛阴', '相柳']
+
+/* ---------------- 出剑难度 ---------------- */
+
+/** 围妖难度档(出剑时自选):妖王越凶,削血越难,但击杀赏格越厚 */
+export type BossDifficulty = Exclude<DungeonDifficulty, 'abyss'>
+
+export const BOSS_DIFFICULTY: Record<BossDifficulty, { atk: number; kill: number }> = {
+  calm: { atk: 0.8, kill: 1 },
+  normal: { atk: 1, kill: 1.5 },
+  peril: { atk: 1.35, kill: 2.5 }
+}
+
+/** 宽松解析(脏值按常探;炼狱档在围妖并入绝境口径) */
+export function bossDifficultyOf(v: unknown): BossDifficulty {
+  if (v === 'calm' || v === 'peril') return v
+  return 'normal'
+}
+
+export const BOSS_DIFFICULTY_NAMES: Record<BossDifficulty, string> = {
+  calm: '循境',
+  normal: '常探',
+  peril: '绝境'
+}
 
 interface BossRow {
   id: number
@@ -187,9 +212,9 @@ interface Sides {
 
 /**
  * 取一剑的对位:玩家(档案快照;无档按新手保底)对妖王。
- * 妖王攻势 = 全服最强一击 × 0.5 × 成长:高境界玩家站得满全程,低境界会被打退半程。
+ * 妖王攻势 = 全服最强一击 × 0.5 × 成长 × 难度档:高境界玩家站得满全程,低境界会被打退半程。
  */
-async function combatSides(userId: number, bossRow?: BossRow): Promise<Sides> {
+async function combatSides(userId: number, bossRow?: BossRow, difficulty: BossDifficulty = 'normal'): Promise<Sides> {
   const boss = bossRow ?? (await ensureBoss())
   const profile = await get<{ name: string; hp_m: number; hp_e: number; atk_m: number; atk_e: number }>(
     'SELECT name, hp_m, hp_e, atk_m, atk_e FROM profiles WHERE user_id = ?',
@@ -206,7 +231,7 @@ async function combatSides(userId: number, bossRow?: BossRow): Promise<Sides> {
     boss,
     bossSide: {
       hp: geNorm(boss.hp_m, boss.hp_e),
-      atk: geMulN(geMulN(geNorm(top.atkM, top.atkE), 0.5), grown)
+      atk: geMulN(geMulN(geNorm(top.atkM, top.atkE), 0.5 * BOSS_DIFFICULTY[difficulty].atk), grown)
     },
     rounds: await getConfigNumber('boss_strike_rounds', 10),
     grown
@@ -233,8 +258,8 @@ export interface StrikeAssessment {
  * 评估托管的一剑:优先补刀(三倍),其次站得住就砍;
  * 明显打不过则蓄势留剑(次数不过期),只在临近重置时兜底出手。
  */
-export async function assessStrike(userId: number, bossRow?: BossRow): Promise<StrikeAssessment> {
-  const s = await combatSides(userId, bossRow)
+export async function assessStrike(userId: number, bossRow?: BossRow, difficulty: BossDifficulty = 'normal'): Promise<StrikeAssessment> {
+  const s = await combatSides(userId, bossRow, difficulty)
   const hpLeft = geNorm(s.boss.hp_m, s.boss.hp_e)
   const blank: StrikeAssessment = {
     hasProfile: s.hasProfile,
@@ -295,6 +320,97 @@ function simulateStrike(player: StrikeSide, boss: StrikeSide, rounds: number): {
 
 /* ---------------- 接口 ---------------- */
 
+/* ---------------- 击杀赏分发 ---------------- */
+
+/** 击杀赏:人人按「基准 × 3 × 各自最后出剑难度」均分;补刀者另得 1.5 份彩头 */
+const KILL_SHARE_MULT = 3
+const KILLER_BONUS = 1.5
+
+interface KillDistribution {
+  recipients: number
+  equipWinner: string | null
+}
+
+/** 击杀赏待领台账(GNum 不适用:奖励是数量单位,stone_m 直存累计值,stone_e 恒 0) */
+interface LootRow {
+  stone_m: number
+  stone_e: number
+  herb: number
+  equip: number
+}
+
+async function lootOf(userId: number): Promise<LootRow | undefined> {
+  return get<LootRow>('SELECT stone_m, stone_e, herb, equip FROM boss_loot WHERE user_id = ?', [userId])
+}
+
+async function creditLoot(userId: number, stone: number, herb: number, equip: number): Promise<void> {
+  const ex = await lootOf(userId)
+  if (ex === undefined) {
+    await run('REPLACE INTO boss_loot (user_id, stone_m, stone_e, herb, equip, updated_at) VALUES (?, ?, 0, ?, ?, ?)', [
+      userId,
+      stone,
+      herb,
+      equip,
+      Date.now()
+    ])
+  } else {
+    await run('UPDATE boss_loot SET stone_m = ?, herb = ?, equip = CASE WHEN ? = 1 THEN 1 ELSE equip END, updated_at = ? WHERE user_id = ?', [
+      ex.stone_m + stone,
+      ex.herb + herb,
+      equip,
+      Date.now(),
+      userId
+    ])
+  }
+}
+
+/**
+ * 妖王被推倒:本周期所有出过剑的道友按各自最后出剑的难度领击杀赏(补刀者加彩头),
+ * 记入待领台账;装备每杀掷一次,中则按伤害占比加权抽一人(补刀者权重 ×3)。
+ * 产出控制:单人赏被「每日次数 × 固定赏格」锁死,装备每杀至多一件。
+ */
+async function distributeKillLoot(killerId: number): Promise<KillDistribution> {
+  const stoneBase = await getConfigNumber('boss_reward_stone', 30)
+  const herbBase = await getConfigNumber('boss_reward_herb', 2)
+  const dropPct = await getConfigNumber('boss_kill_equip_drop', 60)
+  const rows = await all<DamageRow>('SELECT user_id, name, dmg_m, dmg_e, difficulty FROM boss_damage')
+  if (rows.length === 0) return { recipients: 0, equipWinner: null }
+
+  let equipWinnerId = 0
+  let equipWinner: string | null = null
+  if (randomInt(0, 100) < dropPct) {
+    // 伤害占比加权:权 = 我伤 / 最大伤(geDiv 按指数差算,不溢出);补刀者 ×3
+    const maxRow = rows.reduce((a, b) => (b.dmg_e > a.dmg_e || (b.dmg_e === a.dmg_e && b.dmg_m > a.dmg_m) ? b : a))
+    const maxGE = { m: maxRow.dmg_m, e: maxRow.dmg_e }
+    const entries = rows.map(r => ({
+      id: r.user_id,
+      name: r.name,
+      w: Math.max(1e-9, geDiv({ m: r.dmg_m, e: r.dmg_e }, maxGE)) * (r.user_id === killerId ? 3 : 1)
+    }))
+    let roll = Math.random() * entries.reduce((s, e) => s + e.w, 0)
+    for (const e of entries) {
+      roll -= e.w
+      if (roll <= 0) {
+        equipWinnerId = e.id
+        equipWinner = e.name
+        break
+      }
+    }
+  }
+
+  for (const r of rows) {
+    const killMult = BOSS_DIFFICULTY[bossDifficultyOf(r.difficulty)].kill
+    let stone = stoneBase * KILL_SHARE_MULT * killMult
+    let herb = herbBase * KILL_SHARE_MULT * killMult
+    if (r.user_id === killerId) {
+      stone += stoneBase * KILLER_BONUS
+      herb += herbBase * KILLER_BONUS
+    }
+    await creditLoot(r.user_id, Math.round(stone), Math.round(herb), r.user_id === equipWinnerId ? 1 : 0)
+  }
+  return { recipients: rows.length, equipWinner }
+}
+
 /** 妖王状态 + 我的次数与伤害 + 贡献榜 */
 bossRouter.get('/', requireAuth, (req, res) => {
   void (async () => {
@@ -310,7 +426,10 @@ bossRouter.get('/', requireAuth, (req, res) => {
     )
     const grown = await growthMult(boss.kill_count)
     const resetDays = await getConfigNumber('boss_growth_reset_days', 30)
-    const assess = await assessStrike(req.user!.id, boss)
+    // 预判随难度档:难度越高妖王攻势越猛,评估结论随之变化(页面切档即刷新)
+    const difficulty = bossDifficultyOf(req.query.difficulty)
+    const assess = await assessStrike(req.user!.id, boss, difficulty)
+    const loot = await lootOf(req.user!.id)
     res.json({
       name: boss.name,
       realmIndex: boss.realm_index,
@@ -335,6 +454,8 @@ bossRouter.get('/', requireAuth, (req, res) => {
         reason: assess.reason
       },
       myDamage: mine === undefined ? { m: 0, e: 0 } : { m: mine.dmg_m, e: mine.dmg_e },
+      // 击杀赏待领:妖王被推倒时按功分发至此,领取即入账
+      pending: { stone: loot?.stone_m ?? 0, herb: loot?.herb ?? 0, equip: (loot?.equip ?? 0) === 1 },
       top: top.map(r => ({ name: r.name, dmg: { m: r.dmg_m, e: r.dmg_e }, dmgText: geText({ m: r.dmg_m, e: r.dmg_e }) }))
     })
   })().catch(() => res.status(500).json({ error: '妖王状态读取失败' }))
@@ -350,37 +471,45 @@ export interface StrikeOutcome {
   maxHp: GE
   bossName: string
   tier: number
+  /** 出剑本身不再发资粮:击杀赏由分发入台账,玩家领取 */
   reward: { stone: number; herb: number }
+  difficulty: BossDifficulty
+  difficultyName: string
+  /** 击杀时的分发规模与装备归属(未击杀为 0/null) */
+  recipients: number
+  equipWinner: string | null
   growthMult: number
   killCount: number
 }
 
 /**
- * 出剑一次:服务端模拟、按剩余血截断、即时结算奖励与榜单;击杀则记入成长周期。
+ * 出剑一次:服务端模拟、按剩余血截断、即时记榜;击杀则分发击杀赏并记入成长周期。
+ * 出剑本身无资粮——妖王被推倒,凡出过剑者按功均分(见 distributeKillLoot)。
  * 调用方须自行完成「妖王存活」「当日次数未用尽」的前置校验。
  */
-export async function performStrike(userId: number): Promise<StrikeOutcome> {
-  const s = await combatSides(userId)
+export async function performStrike(userId: number, difficulty: BossDifficulty = 'normal'): Promise<StrikeOutcome> {
+  const s = await combatSides(userId, undefined, difficulty)
   const boss = s.boss
   const playerName = s.playerName
   const grown = s.grown
   const sim = simulateStrike(s.player, s.bossSide, s.rounds)
 
-  // 伤害按剩余血截断;结算奖励(数量单位,客户端按 stoneByTier 折算)
+  // 伤害按剩余血截断;出剑无资粮,击杀赏待分发
   const hpLeft = s.bossSide.hp
   const applied = geMin(sim.damage, hpLeft)
   const killed = applied.e === hpLeft.e && applied.m >= hpLeft.m
   const hpAfter = geSub(hpLeft, applied)
-  const stoneBase = await getConfigNumber('boss_reward_stone', 30)
-  const herbBase = await getConfigNumber('boss_reward_herb', 2)
-  const stone = killed ? stoneBase * 3 : stoneBase
-  const herb = killed ? herbBase * 3 : herbBase
 
   await bumpDaily(userId, 'boss', dayKey())
-  await bumpDamage(userId, playerName || `道友${userId}`, applied)
+  await bumpDamage(userId, playerName || `道友${userId}`, applied, difficulty)
 
+  let recipients = 0
+  let equipWinner: string | null = null
   if (killed) {
-    // 击杀入成长账:周期内的第 N 次击杀,下只妖王按 N 增强
+    // 先分发(榜里已含这一剑),再入成长账:周期内的第 N 次击杀,下只妖王按 N 增强
+    const dist = await distributeKillLoot(userId)
+    recipients = dist.recipients
+    equipWinner = dist.equipWinner
     const killCount = boss.kill_count + 1
     await run('UPDATE boss_state SET hp_m = 0, hp_e = 0, dead_at = ?, kill_count = ? WHERE id = 1', [Date.now(), killCount])
     const topRows = await all<DamageRow>(
@@ -391,6 +520,8 @@ export async function performStrike(userId: number): Promise<StrikeOutcome> {
       by: playerName || `道友${userId}`,
       name: boss.name,
       top: topRows.map(r => ({ name: r.name, dmgText: geText({ m: r.dmg_m, e: r.dmg_e }) })),
+      recipients,
+      equipWinner,
       at: Date.now()
     })
     boss.kill_count = killCount
@@ -407,13 +538,17 @@ export async function performStrike(userId: number): Promise<StrikeOutcome> {
     maxHp: { m: boss.max_hp_m, e: boss.max_hp_e },
     bossName: boss.name,
     tier: boss.realm_index,
-    reward: { stone, herb },
+    reward: { stone: 0, herb: 0 },
+    difficulty,
+    difficultyName: BOSS_DIFFICULTY_NAMES[difficulty],
+    recipients,
+    equipWinner,
     growthMult: grown,
     killCount: boss.kill_count
   }
 }
 
-/** 出剑:每日限次(默认 1),服务端模拟并即时结算奖励 */
+/** 出剑:每日限次(默认 1),服务端模拟并记榜;击杀赏按功分发,领取见 /claim */
 bossRouter.post('/strike', requireAuth, (req, res) => {
   void (async () => {
     const boss = await ensureBoss()
@@ -427,8 +562,10 @@ bossRouter.post('/strike', requireAuth, (req, res) => {
       res.status(429).json({ error: `今日已出手,明日再战` })
       return
     }
+    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
+    const difficulty = bossDifficultyOf(body.difficulty)
 
-    const r = await performStrike(req.user!.id)
+    const r = await performStrike(req.user!.id, difficulty)
     res.json({
       damage: { m: r.applied.m, e: r.applied.e },
       damageText: geText(r.applied),
@@ -439,7 +576,22 @@ bossRouter.post('/strike', requireAuth, (req, res) => {
       maxHp: r.maxHp,
       bossName: r.bossName,
       tier: r.tier,
-      reward: r.reward
+      reward: r.reward,
+      difficulty: r.difficulty,
+      difficultyName: r.difficultyName,
+      recipients: r.recipients,
+      equipWinner: r.equipWinner
     })
   })().catch(() => res.status(500).json({ error: '出剑失败' }))
+})
+
+/** 领取击杀赏(围妖页加载/托管巡检时领):返回并清零 */
+bossRouter.post('/claim', requireAuth, (req, res) => {
+  void (async () => {
+    const loot = await lootOf(req.user!.id)
+    if (loot !== undefined) await run('DELETE FROM boss_loot WHERE user_id = ?', [req.user!.id])
+    res.json({
+      pending: { stone: loot?.stone_m ?? 0, herb: loot?.herb ?? 0, equip: (loot?.equip ?? 0) === 1 }
+    })
+  })().catch(() => res.status(500).json({ error: '服务器异常' }))
 })

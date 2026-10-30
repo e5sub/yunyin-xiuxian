@@ -533,6 +533,16 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
             ? runGuard(fighters, cfg as GuardCfg, mod)
             : runArray(fighters, cfg as ArrayCfg, mod)
 
+    // 高难掉装备:绝境/炼狱获胜后掷一次(GM 可调掉率);装备本体由抽中者客户端按自身境界生成
+    let equipDrop = false
+    if (sim.win && (difficulty === 'peril' || difficulty === 'abyss')) {
+      const pct = await getConfigNumber(
+        difficulty === 'abyss' ? 'dungeon_equip_drop_abyss' : 'dungeon_equip_drop_peril',
+        difficulty === 'abyss' ? 60 : 25
+      )
+      equipDrop = randomIntRange(0, 100) < pct
+    }
+
     if (code !== '') await disbandRoom(code)
     const starterName = await myName(req.user!.id, req.user!.username)
     for (const f of fighters) {
@@ -547,6 +557,7 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
           win: sim.win,
           stone: sim.stone,
           herb: sim.herb,
+          equipDrop,
           at: Date.now()
         })
       }
@@ -561,6 +572,7 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
       roomSize: fighters.length,
       win: sim.win,
       log: sim.log,
+      equipDrop,
       reward: { stone: sim.stone, herb: sim.herb }
     })
   })().catch(() => res.status(500).json({ error: '副本开拔失败' }))

@@ -256,6 +256,18 @@ CREATE TABLE IF NOT EXISTS boss_damage (
   dmg_m REAL NOT NULL,
   dmg_e INTEGER NOT NULL,
   strikes INTEGER NOT NULL DEFAULT 0,
+  -- 该道友最后一次出剑所选难度:击杀分发时按它定各人的赏格
+  difficulty TEXT NOT NULL DEFAULT 'normal',
+  updated_at INTEGER NOT NULL
+);
+-- 击杀赏待领台账:妖王被推倒时按功分发,玩家上线领取(离线道友也不落空)
+CREATE TABLE IF NOT EXISTS boss_loot (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  stone_m REAL NOT NULL DEFAULT 0,
+  stone_e INTEGER NOT NULL DEFAULT 0,
+  herb INTEGER NOT NULL DEFAULT 0,
+  -- 1 = 本轮装备抽中了我,领取时生成装备
+  equip INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS dungeon_daily (
@@ -293,6 +305,8 @@ CREATE TABLE IF NOT EXISTS autoops_state (
   auto_adventure INTEGER NOT NULL DEFAULT 0,
   region_id TEXT NOT NULL DEFAULT '',
   mode TEXT NOT NULL DEFAULT '',
+  -- 托管出剑所选难度(离线代打按它算赏格)
+  boss_difficulty TEXT NOT NULL DEFAULT 'normal',
   ledger_stone_m REAL NOT NULL DEFAULT 0,
   ledger_stone_e INTEGER NOT NULL DEFAULT 0,
   ledger_herb INTEGER NOT NULL DEFAULT 0,
@@ -319,7 +333,9 @@ CREATE INDEX IF NOT EXISTS idx_save_history_user ON save_history(user_id, id DES
       'ALTER TABLE profiles ADD COLUMN def_e INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE boss_state ADD COLUMN kill_count INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE boss_state ADD COLUMN period_start INTEGER NOT NULL DEFAULT 0',
-      "ALTER TABLE dungeon_teams ADD COLUMN difficulty TEXT NOT NULL DEFAULT 'normal'"
+      "ALTER TABLE dungeon_teams ADD COLUMN difficulty TEXT NOT NULL DEFAULT 'normal'",
+      "ALTER TABLE boss_damage ADD COLUMN difficulty TEXT NOT NULL DEFAULT 'normal'",
+      "ALTER TABLE autoops_state ADD COLUMN boss_difficulty TEXT NOT NULL DEFAULT 'normal'"
     ]) {
       try {
         d.exec(stmt)
@@ -467,8 +483,21 @@ CREATE TABLE IF NOT EXISTS boss_damage (
   dmg_m DOUBLE NOT NULL,
   dmg_e INT NOT NULL,
   strikes INT NOT NULL DEFAULT 0,
+  -- 该道友最后一次出剑所选难度:击杀分发时按它定各人的赏格
+  difficulty VARCHAR(16) NOT NULL DEFAULT 'normal',
   updated_at BIGINT NOT NULL,
   CONSTRAINT fk_bossdmg_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- 击杀赏待领台账:妖王被推倒时按功分发,玩家上线领取(离线道友也不落空)
+CREATE TABLE IF NOT EXISTS boss_loot (
+  user_id BIGINT PRIMARY KEY,
+  stone_m DOUBLE NOT NULL DEFAULT 0,
+  stone_e INT NOT NULL DEFAULT 0,
+  herb INT NOT NULL DEFAULT 0,
+  -- 1 = 本轮装备抽中了我,领取时生成装备
+  equip TINYINT NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL,
+  CONSTRAINT fk_bossloot_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS dungeon_daily (
   user_id BIGINT NOT NULL,
@@ -506,6 +535,8 @@ CREATE TABLE IF NOT EXISTS autoops_state (
   auto_adventure TINYINT NOT NULL DEFAULT 0,
   region_id VARCHAR(64) NOT NULL DEFAULT '',
   mode VARCHAR(16) NOT NULL DEFAULT '',
+  -- 托管出剑所选难度(离线代打按它算赏格)
+  boss_difficulty VARCHAR(16) NOT NULL DEFAULT 'normal',
   -- 离线托管讨伐所得台账(玩家下次上线领取):数量单位与出剑次数
   ledger_stone_m DOUBLE NOT NULL DEFAULT 0,
   ledger_stone_e INT NOT NULL DEFAULT 0,
@@ -534,7 +565,9 @@ CREATE TABLE IF NOT EXISTS autoops_state (
     'ALTER TABLE profiles ADD COLUMN def_e INT NOT NULL DEFAULT 0',
     'ALTER TABLE boss_state ADD COLUMN kill_count INT NOT NULL DEFAULT 0',
     'ALTER TABLE boss_state ADD COLUMN period_start BIGINT NOT NULL DEFAULT 0',
-    "ALTER TABLE dungeon_teams ADD COLUMN difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'"
+    "ALTER TABLE dungeon_teams ADD COLUMN difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'",
+    "ALTER TABLE boss_damage ADD COLUMN difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'",
+    "ALTER TABLE autoops_state ADD COLUMN boss_difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'"
   ]) {
     try {
       await d.query(stmt)
@@ -582,6 +615,8 @@ async function seedConfig(): Promise<void> {
     ['boss_growth_reset_days', '30'],
     // 托管量力而行:1=能打/能补刀才出剑,打不过蓄势留剑;0=有次数就打
     ['boss_autoops_smart', 'true'],
+    // 击杀赏:出剑不再发资粮,妖王被推倒时所有出过剑的道友均分;装备每杀掷一次(60% 中)
+    ['boss_kill_equip_drop', '60'],
     // 副本 · 心魔镜像(血基数=最高攻×N×人数^0.8;atk 倍率为百分比:60 = 最高攻×0.6)
     ['demon_daily_attempts', '1'],
     ['demon_hp_base', '13'],
@@ -605,6 +640,9 @@ async function seedConfig(): Promise<void> {
     // 副本 · 境界难度:房内平均大境界每高一层,妖物强度 +N%(战获 +M%),三档难度(循境/常探/绝境)另在上叠加
     ['dungeon_realm_power_pct', '4'],
     ['dungeon_realm_reward_pct', '2'],
+    // 副本 · 高难掉装备:绝境/炼狱获胜后的装备掉率(%)
+    ['dungeon_equip_drop_peril', '25'],
+    ['dungeon_equip_drop_abyss', '60'],
     ['email_enabled', env('EMAIL_ENABLED', 'false')],
     ['email_code_required', env('EMAIL_CODE_REQUIRED', 'false')],
     ['smtp_host', env('SMTP_HOST')],

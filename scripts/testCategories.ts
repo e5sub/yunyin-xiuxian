@@ -11,7 +11,7 @@ export interface TestCategory {
 export const TEST_CATEGORIES: readonly TestCategory[] = [
   {
     name: 'Unit        数值纯函数',
-    match: ['gnum', 'format', 'setMath', 'saveShape', 'savePlaintext', 'useNativeInsets', 'formulas', 'forgeUpgrade', 'forgeArtifactBatch', 'linggenGen', 'linggenShape', 'inventoryShape', 'equipGen', 'equipmentIcon', 'crypto', 'quests', 'craftability', 'reforge.spec', 'reforgeAuto', 'theme', 'savePersistence', 'dongfu.spec', 'inventory.spec', 'ui.spec', 'inventoryNote', 'affixTransfer.spec', 'affixes', 'appVersion', 'timeUnits']
+    match: ['gnum', 'format', 'setMath', 'saveShape', 'savePlaintext', 'useNativeInsets', 'formulas', 'forgeUpgrade', 'forgeArtifactBatch', 'linggenGen', 'linggenShape', 'inventoryShape', 'equipGen', 'equipmentIcon', 'crypto', 'quests', 'craftability', 'reforge.spec', 'reforgeAuto', 'theme', 'savePersistence', 'dongfu.spec', 'inventory.spec', 'ui.spec', 'inventoryNote', 'affixTransfer.spec', 'affixes', 'appVersion', 'timeUnits', 'bossDifficulty']
   },
   {
     name: 'Combat      战斗规则',
@@ -33,6 +33,7 @@ export const TEST_CATEGORIES: readonly TestCategory[] = [
     name: 'Decision    决策质量',
     match: [
       'decisionAudit', 'synergyScan', 'worldGen', 'ruleUniverse', 'playerLab', 'legacy', 'identity', 'samsara.spec',
+      'autoAdventure',
       'fortune', 'worldEcho', 'regionEvent', 'eventTier', 'eventEngine', 'explorationDnd', 'weather.spec', 'boundaryTribulation', 'tribulation', 'secretRealm', 'petPersonality', 'goal.spec', 'divination', 'fate.spec', 'astronomy', 'artShu'
     ]
   },

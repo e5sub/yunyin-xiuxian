@@ -396,6 +396,7 @@ describe('轮回审计 · 跨店持久化分片最小完备', () => {
       dndEvents: 'keep', battleSpeed: 'keep', decomposeRanks: 'keep', smartKeep: 'keep',
       // VIP 托管偏好属玩家设置不是本世进度,跨世保留(失去 VIP 时 autoOps 循环会自动关停开关)
       autoBoss: 'keep', autoRetreat: 'keep', autoAdventure: 'keep', autoRegionId: 'keep', autoMode: 'keep',
+      bossDifficulty: 'keep',
       privacyAccepted: 'keep', theme: 'keep', installNoticeDismissed: 'keep', lastSeenVersion: 'keep'
     },
     loadouts: { list: 'keep' },

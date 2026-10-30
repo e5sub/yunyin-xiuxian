@@ -77,7 +77,16 @@ export type CloudWsMsg =
   | { type: 'friendRequest'; from: { id: number; name: string } }
   | { type: 'friendAccepted'; by: { id: number; name: string } }
   | { type: 'boss_spawn'; name: string; at: number }
-  | { type: 'boss_killed'; by: string; name: string; top: Array<{ name: string; dmgText: string }>; at: number }
+  | {
+      type: 'boss_killed'
+      by: string
+      name: string
+      top: Array<{ name: string; dmgText: string }>
+      /** 击杀赏分发规模与装备归属(老服务端不带) */
+      recipients?: number
+      equipWinner?: string | null
+      at: number
+    }
   | { type: 'room_join'; code: string; name: string; dungeon: string; at: number }
   | { type: 'room_leave'; code: string; name: string; dungeon: string; at: number }
   | {
@@ -109,7 +118,7 @@ export interface BossState {
   respawnAt: number
   /** 妖王成长:本周期击杀次数 / 当前强度倍率 / 周期重置时刻 */
   growth: { killCount: number; mult: number; resetAt: number }
-  /** 托管预判:这一剑能伤多少、够不够补刀、托管此刻该不该出剑 */
+  /** 托管预判:这一剑能伤多少、够不够补刀、托管此刻该不该出剑(按所传难度档评估) */
   assess?: {
     worthIt: boolean
     steady: boolean
@@ -121,6 +130,8 @@ export interface BossState {
   myAttempts: number
   maxAttempts: number
   myDamage: GEJson
+  /** 击杀赏待领:妖王被推倒时按功分发至此,领取即入账 */
+  pending: { stone: number; herb: number; equip: boolean }
   top: Array<{ name: string; dmg: GEJson; dmgText: string }>
 }
 
@@ -134,15 +145,21 @@ export interface BossStrikeResult {
   maxHp: GEJson
   bossName: string
   tier: number
+  /** 出剑本身无资粮;击杀赏走 pending 台账领取 */
   reward: { stone: number; herb: number }
+  difficulty: 'calm' | 'normal' | 'peril'
+  difficultyName: string
+  /** 击杀时的分发规模与装备归属(未击杀为 0/null) */
+  recipients: number
+  equipWinner: string | null
 }
 
 // ---- 多人副本(房间码) ----
 
 export type DungeonKey = 'demon' | 'explore' | 'guard' | 'array'
 
-/** 副本难度:循境(稳)/ 常探(标准)/ 绝境(凶险而厚报) */
-export type DungeonDifficulty = 'calm' | 'normal' | 'peril'
+/** 副本难度:循境(稳)/ 常探(标准)/ 绝境(凶险而厚报)/ 炼狱(极凶,赏最厚) */
+export type DungeonDifficulty = 'calm' | 'normal' | 'peril' | 'abyss'
 
 export interface DungeonDifficultyBrief {
   key: DungeonDifficulty
@@ -189,6 +206,8 @@ export interface DungeonRunResult {
   roomSize: number
   win: boolean
   log: string[]
+  /** 高难(绝境/炼狱)获胜后服务端掷中的装备掉落:领取时按自身境界生成 */
+  equipDrop: boolean
   reward: { stone: number; herb: number }
 }
 
@@ -305,7 +324,14 @@ export const cloudApi = {
     request('GET', `/vip/order/${encodeURIComponent(outTradeNo)}/status`),
   /** VIP 托管设置 + 未领取的离线讨伐所得 */
   vipAutoOps: (): Promise<{
-    settings: { autoBoss: boolean; autoRetreat: boolean; autoAdventure: boolean; regionId: string; mode: string }
+    settings: {
+      autoBoss: boolean
+      autoRetreat: boolean
+      autoAdventure: boolean
+      regionId: string
+      mode: string
+      bossDifficulty: 'calm' | 'normal' | 'peril'
+    }
     pending: { stoneM: number; stoneE: number; herb: number; strikes: number; tier: number }
   }> => request('GET', '/vip/autoops'),
   /** 同步托管设置到服务端(离线托管按此代打) */
@@ -315,6 +341,7 @@ export const cloudApi = {
     autoAdventure: boolean
     regionId: string
     mode: string
+    bossDifficulty: 'calm' | 'normal' | 'peril'
   }): Promise<{ ok: boolean }> => request('PUT', '/vip/autoops', s),
   /** 领取离线讨伐所得(领取即清零) */
   collectVipAutoOps: (): Promise<{ collected: { stoneM: number; stoneE: number; herb: number; strikes: number; tier: number } }> =>
@@ -356,8 +383,10 @@ export const cloudApi = {
   chatHistory: (): Promise<{ messages: ChatMsg[] }> => request('GET', '/chat/history'),
   pvp: (targetId: number): Promise<{ winner: 'me' | 'target'; rounds: number; log: string[] }> =>
     request('POST', '/pvp', { targetId }),
-  boss: (): Promise<BossState> => request('GET', '/boss'),
-  bossStrike: (): Promise<BossStrikeResult> => request('POST', '/boss/strike'),
+  boss: (difficulty = ''): Promise<BossState> =>
+    request('GET', `/boss${difficulty !== '' ? `?difficulty=${difficulty}` : ''}`),
+  bossStrike: (difficulty = 'normal'): Promise<BossStrikeResult> => request('POST', '/boss/strike', { difficulty }),
+  bossClaim: (): Promise<{ pending: { stone: number; herb: number; equip: boolean } }> => request('POST', '/boss/claim'),
   dungeonOverview: (): Promise<DungeonOverview> => request('GET', '/dungeon'),
   dungeonRoom: (): Promise<{ room: DungeonRoom | null }> => request('GET', '/dungeon/room'),
   dungeonRoomCreate: (dungeon: DungeonKey, difficulty: DungeonDifficulty = 'normal'): Promise<{ room: DungeonRoom }> =>

@@ -91,8 +91,15 @@
           三项托管各自独立,想开哪项开哪项;历练与闭关都开时历练优先,历练间隙才闭关
         </p>
         <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
-          打 BOSS 量力而行:能补刀先补刀,站得住便出剑;力有不及则蓄势,临期兜底出手
+          打 BOSS 量力而行:能补刀先补刀,站得住便出剑;力有不及则蓄势,临期兜底出手。
+          出剑无资粮,妖王被推倒时凡出过剑者按功均分击杀赏
         </p>
+        <label class="mt-2 flex items-center justify-between gap-2">
+          <span class="shrink-0 text-[11px] text-ink-faint">围妖难度</span>
+          <select v-model="settings.bossDifficulty" class="min-w-0 grow rounded border border-ink/20 bg-transparent px-1.5 py-1 text-[12px] text-ink">
+            <option v-for="d in BOSS_DIFFICULTY_OPTIONS" :key="d.key" :value="d.key">{{ d.name }}({{ d.desc }})</option>
+          </select>
+        </label>
         <div v-if="settings.autoAdventure" class="mt-2 space-y-2">
           <label class="flex items-center justify-between gap-2">
             <span class="shrink-0 text-[11px] text-ink-faint">历练去处</span>
@@ -144,6 +151,7 @@
   import { canEnterRegion } from '@/core/mortalWorldService'
   import { AUTO_REGION_ID, EXPLORE_MODES } from '@/data/constants'
   import { REGIONS } from '@/data/regions'
+  import { BOSS_DIFFICULTY_OPTIONS } from '@/data/bossDifficulty'
   import { classicalDuration } from '@/data/timeUnits'
   import { winBandText } from '@/ui/adventureText'
   import { planAutoAdventure } from '@/core/autoOps'

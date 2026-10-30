@@ -32,8 +32,25 @@
         <span class="opacity-70">预判 · </span>{{ assessInfo.text }}
       </p>
 
+      <!-- 出剑难度:妖王越凶削血越难,击杀赏格越厚;出剑无资粮,推倒才论功行赏 -->
+      <div class="mt-3">
+        <span class="text-[11px] text-ink-soft">出剑难度</span>
+        <div class="mt-1.5 flex gap-1.5">
+          <button
+            v-for="d in BOSS_DIFFICULTY_OPTIONS"
+            :key="d.key"
+            class="min-h-[30px] flex-1 rounded-md border px-2 py-1 text-[12px] active:scale-95"
+            :class="settings.bossDifficulty === d.key ? 'border-cinnabar/60 bg-cinnabar/10 text-cinnabar' : 'border-ink/15 text-ink-soft'"
+            @click="setDifficulty(d.key)"
+          >
+            {{ d.name }}
+          </button>
+        </div>
+        <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">{{ difficultyHint }}</p>
+      </div>
+
       <button
-        class="btn-ink mt-4 w-full"
+        class="btn-ink mt-3 w-full"
         :disabled="!alive || usedUp || striking"
         @click="strike"
       >
@@ -43,17 +60,27 @@
       <!-- 战报 -->
       <div v-if="lastResult" class="mt-3 rounded-md border border-ink/15 bg-paper-deep/60 px-3 py-2 text-[12px] leading-relaxed text-ink-soft">
         <template v-if="lastResult.killed">
-          <p class="text-cinnabar">妖王陨落!余众溃散。</p>
+          <p class="text-cinnabar">妖王陨落!击杀赏已按功均分({{ lastResult.recipients }} 人),各自领取。</p>
+          <p v-if="lastResult.equipWinner !== null" class="text-gold-ink">妖王遗宝 · 「{{ lastResult.equipWinner }}」得之。</p>
         </template>
         <p>
           十回合连斩,共伤 {{ lastResult.damageText }}
           <template v-if="lastResult.fell"> · 身陨犹战,余刃减半</template>
         </p>
         <p class="text-ink-faint">
-          资粮:灵石 +{{ rewardStoneText }} · {{ herbText }}灵草 +{{ lastResult.reward.herb }}
-          <template v-if="lastResult.killed">(讨伐之功,三倍)</template>
+          <template v-if="!lastResult.killed">未竟全功 · 无资粮;妖王被推倒时,凡出过剑者按功均分。</template>
+          <template v-else>资粮入「击杀赏」,点按上方领取。</template>
         </p>
       </div>
+
+      <!-- 击杀赏待领 -->
+      <button
+        v-if="pendingInfo !== null"
+        class="mt-3 w-full rounded-md border border-gold-ink/50 bg-gold-ink/10 px-3 py-2 text-[12px] text-gold-ink active:scale-98"
+        @click="claim"
+      >
+        领取击杀赏 · 灵石 {{ pendingInfo.stone }} · 灵草 +{{ pendingInfo.herb }}<template v-if="pendingInfo.equip"> · 有妖王遗宝!</template>
+      </button>
     </div>
 
     <!-- 贡献榜:表格视图 -->
@@ -86,27 +113,28 @@
   import SectionTitle from '@/components/common/SectionTitle.vue'
   import { useUiStore } from '@/stores/ui'
   import { usePlayerStore } from '@/stores/player'
-  import { useResourcesStore } from '@/stores/resources'
+  import { useSettingsStore } from '@/stores/settings'
   import { cloudApi, onCloudWs, type BossState, type BossStrikeResult } from '@/services/cloud'
+  import { BOSS_DIFFICULTY_OPTIONS, type BossDifficulty } from '@/data/bossDifficulty'
   import { gn } from '@/utils/gnum'
   import { formatGN } from '@/utils/format'
-  import { stoneByTier } from '@/core/formulas'
-  import { tierOfMajor } from '@/core/secretRealm'
   import { realmLabel } from '@/data/realms'
-  import { herbGradeOfMajor, HERB_GRADE_SHORT } from '@/data/herbGrades'
+  import { claimBossLoot } from '@/core/bossLoot'
 
   const ui = useUiStore()
   const player = usePlayerStore()
-  const resources = useResourcesStore()
+  const settings = useSettingsStore()
 
   const boss = ref<BossState | null>(null)
   const striking = ref(false)
+  const claiming = ref(false)
   const lastResult = ref<BossStrikeResult | null>(null)
   const now = ref(Date.now())
   let tick: ReturnType<typeof setInterval> | undefined
   const unsubWs = onCloudWs(msg => {
     if (msg.type === 'boss_killed') {
-      ui.toast(`${msg.name}已陨落 · ${msg.by} 予最后一击`, 'success')
+      const tail = msg.equipWinner != null && msg.equipWinner !== '' ? ` · 遗宝归于 ${msg.equipWinner}` : ''
+      ui.toast(`${msg.name}已陨落 · ${msg.by} 予最后一击${tail}`, 'success')
       void reload()
     } else if (msg.type === 'boss_spawn') {
       ui.toast(`${msg.name}再临人间`, 'info')
@@ -148,6 +176,27 @@
     return '出剑'
   })
 
+  /** 所选难度档的说明 */
+  const difficultyHint = computed(() => {
+    const d = BOSS_DIFFICULTY_OPTIONS.find(o => o.key === settings.bossDifficulty)
+    return d?.desc ?? ''
+  })
+
+  /** 击杀赏待领(boss 未加载或无待领时不亮) */
+  const pendingInfo = computed(() => {
+    const p = boss.value?.pending
+    if (p === undefined) return null
+    if (p.stone <= 0 && p.herb <= 0 && !p.equip) return null
+    return p
+  })
+
+  function setDifficulty(key: BossDifficulty): void {
+    if (settings.bossDifficulty === key) return
+    settings.bossDifficulty = key
+    // 预判随难度档:妖王攻势变了,能否站稳/补刀要重算
+    void reload()
+  }
+
   function pctOf(part: { m: number; e: number }, full: { m: number; e: number }): number {
     const a = gn(part)
     const b = gn(full)
@@ -171,14 +220,10 @@
     const m = Math.floor((sec % 3600) / 60)
     return h > 0 ? `${h}时${m}分` : `${m}分${sec % 60}秒`
   })
-  const rewardStoneText = computed(() =>
-    lastResult.value === null ? '' : formatGN(stoneByTier(tierOfMajor(Math.max(0, lastResult.value.tier)), lastResult.value.reward.stone))
-  )
-  const herbText = computed(() => (lastResult.value === null ? '' : HERB_GRADE_SHORT[herbGradeOfMajor(player.major)]))
 
   async function reload(): Promise<void> {
     try {
-      boss.value = await cloudApi.boss()
+      boss.value = await cloudApi.boss(settings.bossDifficulty)
     } catch {
       // 云不可达时静默,保底显示
     }
@@ -188,11 +233,8 @@
     if (striking.value) return
     striking.value = true
     try {
-      const r = await cloudApi.bossStrike()
+      const r = await cloudApi.bossStrike(settings.bossDifficulty)
       lastResult.value = r
-      // 奖励即时入账(数量单位按妖王境界折算),随下次云同步落档
-      resources.addStone(stoneByTier(tierOfMajor(Math.max(0, r.tier)), r.reward.stone))
-      resources.addSmall('herb', r.reward.herb)
       if (r.killed) ui.toast(`${r.bossName}已陨落!`, 'success')
       await reload()
     } catch (e) {
@@ -202,8 +244,37 @@
     }
   }
 
+  /** 领取击杀赏:资粮即领,装备按自身境界生成入包(与托管同一条路) */
+  async function claim(): Promise<void> {
+    if (claiming.value) return
+    claiming.value = true
+    try {
+      const got = await claimBossLoot()
+      if (got === null) {
+        ui.toast('暂无可领的击杀赏', 'info')
+      } else {
+        ui.toast(`击杀赏已领 · 灵石 ${got.stoneText} · 灵草 +${got.herb}`, 'success')
+        if (got.equipLine !== null) ui.toast(`妖王遗宝:${got.equipLine}`, 'rare')
+      }
+      await reload()
+    } catch (e) {
+      ui.toast(e instanceof Error && e.message !== '' ? e.message : '领取失败', 'warn')
+    } finally {
+      claiming.value = false
+    }
+  }
+
   onMounted(() => {
     void reload()
+    // 进页即领:击杀赏不领一直挂在台账上(离线期间的份也在)
+    void claimBossLoot()
+      .then(got => {
+        if (got !== null) {
+          ui.toast(`击杀赏已领 · 灵石 ${got.stoneText} · 灵草 +${got.herb}`, 'success')
+          if (got.equipLine !== null) ui.toast(`妖王遗宝:${got.equipLine}`, 'rare')
+        }
+      })
+      .catch(() => undefined)
     tick = setInterval(() => {
       now.value = Date.now()
     }, 1000)

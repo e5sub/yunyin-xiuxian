@@ -11,7 +11,7 @@ import { isOnline } from './ws.js'
 import { getConfigNumber } from './config.js'
 import { dayKey, attemptsUsed } from './dungeonCore.js'
 import { geNorm, geAdd, type GE } from './gnum.js'
-import { performStrike, ensureBoss, assessStrike } from './routes/boss.js'
+import { performStrike, ensureBoss, assessStrike, bossDifficultyOf, type BossDifficulty } from './routes/boss.js'
 
 export const autoOpsRouter = express.Router()
 
@@ -25,6 +25,7 @@ interface AutoOpsRow {
   auto_adventure: number
   region_id: string
   mode: string
+  boss_difficulty: string
   ledger_stone_m: number
   ledger_stone_e: number
   ledger_herb: number
@@ -42,7 +43,8 @@ function settingsOf(r: AutoOpsRow | undefined): Record<string, unknown> {
     autoRetreat: (r?.auto_retreat ?? 0) === 1,
     autoAdventure: (r?.auto_adventure ?? 0) === 1,
     regionId: r?.region_id ?? '',
-    mode: r?.mode ?? ''
+    mode: r?.mode ?? '',
+    bossDifficulty: bossDifficultyOf(r?.boss_difficulty)
   }
 }
 
@@ -77,6 +79,7 @@ autoOpsRouter.put('/', requireAuth, (req: Request, res: Response) => {
       auto_adventure: b(body.autoAdventure) ? 1 : 0,
       region_id: s(body.regionId, 64),
       mode: s(body.mode, 16),
+      boss_difficulty: bossDifficultyOf(body.bossDifficulty),
       ledger_stone_m: 0,
       ledger_stone_e: 0,
       ledger_herb: 0,
@@ -140,10 +143,12 @@ async function tickOfflineBoss(): Promise<void> {
       const limit = await getConfigNumber('boss_daily_attempts', 1)
       if ((await attemptsUsed(r.user_id, 'boss', dayKey())) >= limit) continue
       // 量力而行:能补刀先补刀,站得住就砍;明显打不过则蓄势留剑(次数不过期,临期兜底)
-      const assess = await assessStrike(r.user_id, boss)
+      const difficulty: BossDifficulty = bossDifficultyOf(r.boss_difficulty)
+      const assess = await assessStrike(r.user_id, boss, difficulty)
       if (!assess.worthIt) continue
 
-      const out = await performStrike(r.user_id)
+      const out = await performStrike(r.user_id, difficulty)
+      // 出剑无资粮:击杀赏走 boss_loot 台账,玩家上线在围妖页领取;这里只记出剑次数
       await creditLedger(r.user_id, geNorm(out.reward.stone, 0), out.reward.herb, out.tier)
     } catch {
       // 单人失败不影响其余道友

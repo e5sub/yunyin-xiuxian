@@ -334,6 +334,7 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'boss_growth_per_kill',
       'boss_growth_reset_days',
       'boss_autoops_smart',
+      'boss_kill_equip_drop',
       // 副本(心魔镜像/秘境共探/洞天守卫/共修大阵)
       'demon_daily_attempts',
       'demon_hp_base',
@@ -353,6 +354,8 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'array_reward_herb',
       'dungeon_realm_power_pct',
       'dungeon_realm_reward_pct',
+      'dungeon_equip_drop_peril',
+      'dungeon_equip_drop_abyss',
       // 邮件 / SMTP
       'email_enabled',
       'email_code_required',
@@ -390,6 +393,7 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'boss_reward_herb',
       'boss_growth_per_kill',
       'boss_growth_reset_days',
+      'boss_kill_equip_drop',
       'demon_daily_attempts',
       'demon_hp_base',
       'demon_atk_mult',
@@ -408,6 +412,8 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'array_reward_herb',
       'dungeon_realm_power_pct',
       'dungeon_realm_reward_pct',
+      'dungeon_equip_drop_peril',
+      'dungeon_equip_drop_abyss',
       'smtp_port'
     ]
     const boolKeys = ['email_enabled', 'email_code_required', 'alipay_enabled', 'boss_autoops_smart']

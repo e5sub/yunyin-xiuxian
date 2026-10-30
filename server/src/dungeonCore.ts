@@ -73,33 +73,37 @@ const ROOM_TTL_MS = 2 * 3600_000
  * 另有一层「境界基准」:房内平均大境界越高,秘境整体越凶险(见 routes/dungeon 的 realmScaling),
  * 即同一档难度下,金丹与合体踏进的是两处不同深浅的秘境。
  */
-export const DIFFICULTIES = ['calm', 'normal', 'peril'] as const
+export const DIFFICULTIES = ['calm', 'normal', 'peril', 'abyss'] as const
 export type DungeonDifficulty = (typeof DIFFICULTIES)[number]
 
 export const DIFFICULTY_NAMES: Record<DungeonDifficulty, string> = {
   calm: '循境',
   normal: '常探',
-  peril: '绝境'
+  peril: '绝境',
+  abyss: '炼狱'
 }
 
 export const DIFFICULTY_DESCS: Record<DungeonDifficulty, string> = {
   calm: '沿旧径缓行,妖气稀薄:强度 ×0.78,战获 ×0.8',
   normal: '与自身境界相称的常道:强度 ×1,战获 ×1',
-  peril: '深入禁区,妖物成群:强度 ×1.5,战获 ×1.75'
+  peril: '深入禁区,妖物成群:强度 ×1.5,战获 ×1.75,胜有概率得装备',
+  abyss: '炼狱无门,妖潮倾巢:强度 ×2.2,战获 ×3,胜更有概率得上品装备'
 }
 
 /** 强度倍率(妖物气血/攻势同乘) */
 export const DIFFICULTY_POWER: Record<DungeonDifficulty, number> = {
   calm: 0.78,
   normal: 1,
-  peril: 1.5
+  peril: 1.5,
+  abyss: 2.2
 }
 
 /** 战获倍率 */
 export const DIFFICULTY_REWARD: Record<DungeonDifficulty, number> = {
   calm: 0.8,
   normal: 1,
-  peril: 1.75
+  peril: 1.75,
+  abyss: 3
 }
 
 export function isDifficulty(v: unknown): v is DungeonDifficulty {

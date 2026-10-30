@@ -250,8 +250,8 @@ describe('灵材照面 · 来源归类', () => {
   const SRC = resolve(__dirname, '..')
   /** addHerb,或 addSmall 首参不是残页/器灵尘/悟道点字面量 */
   const GRANT = /\baddHerb\(|\baddSmall\((?!\s*'(?:page|dust|wudao)')/
-  const COUNTED = ['core/eventEngine.ts', 'core/loot.ts', 'core/offline.ts', 'core/secretRealm.ts']
-  const NOT_COUNTED = ['core/autoOps.ts', 'core/earlyGameService.ts', 'core/progress.ts', 'core/suppress.ts', 'stores/apprentice.ts', 'stores/dongfu.ts', 'stores/market.ts', 'views/BossView.vue', 'views/DungeonView.vue']
+  const COUNTED = ['core/bossLoot.ts', 'core/eventEngine.ts', 'core/loot.ts', 'core/offline.ts', 'core/secretRealm.ts']
+  const NOT_COUNTED = ['core/autoOps.ts', 'core/earlyGameService.ts', 'core/progress.ts', 'core/suppress.ts', 'stores/apprentice.ts', 'stores/dongfu.ts', 'stores/market.ts', 'views/DungeonView.vue']
   /** 库存本体:定义 addHerb / addSmall */
   const STORE = ['stores/resources.ts']
 

@@ -126,8 +126,11 @@
   import { useAuthStore } from '@/stores/auth'
   import { cloudApi, onCloudWs, type DungeonBrief, type DungeonDifficulty, type DungeonDifficultyBrief, type DungeonKey, type DungeonRunResult, type DungeonRoom } from '@/services/cloud'
   import { copyText } from '@/utils/clipboard'
+  import { rng } from '@/utils/random'
   import { stoneByTier } from '@/core/formulas'
   import { tierOfMajor } from '@/core/secretRealm'
+  import { generateEquipment } from '@/core/equipGen'
+  import { acquireEquipment } from '@/core/loot'
 
   const ui = useUiStore()
   const player = usePlayerStore()
@@ -144,11 +147,12 @@
   const joinCode = ref('')
   const myId = computed(() => auth.userId)
 
-  // 难度:建房时定下,独行亦按所选难度入场(先给三档占位,免得总览未到时选择器空着)
+  // 难度:建房时定下,独行亦按所选难度入场(先给四档占位,免得总览未到时选择器空着)
   const difficulties = ref<DungeonDifficultyBrief[]>([
     { key: 'calm', name: '循境', desc: '', power: 0.78, reward: 0.8 },
     { key: 'normal', name: '常探', desc: '', power: 1, reward: 1 },
-    { key: 'peril', name: '绝境', desc: '', power: 1.5, reward: 1.75 }
+    { key: 'peril', name: '绝境', desc: '', power: 1.5, reward: 1.75 },
+    { key: 'abyss', name: '炼狱', desc: '', power: 2.2, reward: 3 }
   ])
   const difficulty = ref<DungeonDifficulty>('normal')
   const myRealm = ref<{ index: number; label: string; power: number; reward: number } | null>(null)
@@ -268,6 +272,13 @@
     running.value = key
     try {
       const r = await cloudApi.dungeonRun(key, code, difficulty.value)
+      // 高难(绝境/炼狱)获胜掉装备:按自身境界生成,绝境良品起步、炼狱灵品起步
+      if (r.win && r.equipDrop) {
+        const inst = generateEquipment(tierOfMajor(Math.max(0, player.major)), rng, {
+          minQualityRank: difficulty.value === 'abyss' ? 3 : 1
+        })
+        r.log = [...r.log, `妖物遗宝:${acquireEquipment(inst).line}`]
+      }
       results.value = { ...results.value, [key]: r }
       // 奖励即时入账(数量单位按自身境界折算),随下次云同步落档
       resources.addStone(stoneByTier(tierOfMajor(Math.max(0, player.major)), r.reward.stone))
