@@ -23,6 +23,14 @@
         <span v-if="!alive">再临:{{ respawnText }}</span>
         <span v-else-if="growthText !== ''">{{ growthText }}</span>
       </div>
+      <!-- 一剑预判:托管据此决定是否出手(能补刀/站得住就打,打不过蓄势留剑) -->
+      <p
+        v-if="assessInfo !== null"
+        class="mt-1 text-[11px]"
+        :class="assessInfo.hot ? 'text-cinnabar' : 'text-ink-faint'"
+      >
+        <span class="opacity-70">预判 · </span>{{ assessInfo.text }}
+      </p>
 
       <button
         class="btn-ink mt-4 w-full"
@@ -121,6 +129,18 @@
     if (g === undefined) return ''
     return g.killCount > 0 ? `周期击杀 ${g.killCount} · 强度 ×${g.mult}` : ''
   })
+  /** 一剑预判文案:与托管同源的服务端评估(能补刀 / 站得住 / 蓄势 / 临期兜底) */
+  const assessInfo = computed<{ text: string; hot: boolean } | null>(() => {
+    const a = boss.value?.assess
+    if (a === undefined || !alive.value || usedUp.value) return null
+    const pct = a.hpShare >= 1 ? '几可补' : a.hpShare < 0.005 ? '不足 1%' : `${Math.round(a.hpShare * 100)}%`
+    if (a.reason === 'finish') return { text: '一剑可补 · 三倍之功', hot: true }
+    if (a.reason === 'steady') return { text: `站得住 · 可削 ${pct}`, hot: false }
+    if (a.reason === 'last-call') return { text: '力有不及 · 临期兜底出剑', hot: false }
+    if (a.reason === 'hold') return { text: `力有不及 · 蓄势留剑(可削 ${pct})`, hot: false }
+    return null
+  })
+
   const strikeLabel = computed(() => {
     if (striking.value) return '斗法中……'
     if (!alive.value) return '妖王已陨落'

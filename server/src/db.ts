@@ -576,6 +576,8 @@ async function seedConfig(): Promise<void> {
     // 妖王成长:每被击杀一次,下只血量/攻势按比例增强;击杀数每 N 天清零重来
     ['boss_growth_per_kill', '5'],
     ['boss_growth_reset_days', '30'],
+    // 托管量力而行:1=能打/能补刀才出剑,打不过蓄势留剑;0=有次数就打
+    ['boss_autoops_smart', 'true'],
     // 副本 · 心魔镜像(血基数=最高攻×N×人数^0.8;atk 倍率为百分比:60 = 最高攻×0.6)
     ['demon_daily_attempts', '1'],
     ['demon_hp_base', '13'],

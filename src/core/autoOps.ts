@@ -88,13 +88,29 @@ function tickMain(): void {
   }
 }
 
-/** 自动打 BOSS:妖王存活且今日还有出剑次数时出剑 */
+/** 上一轮「蓄势」提示对应的原因:同一原因只报一次,免得每分钟刷一条 */
+let lastHoldReason = ''
+
+/**
+ * 自动打 BOSS:按服务端预判决定出剑——
+ * 能补刀先补刀(三倍),站得住就砍;明显打不过则蓄势留剑,次数不过期(临期服务端会兜底出手)。
+ */
 async function tickBoss(): Promise<void> {
   const g = gate()
   if (g === null || !g.settings.autoBoss) return
   try {
     const st = await cloudApi.boss()
     if (!st.alive || st.myAttempts >= st.maxAttempts) return
+    if (st.assess !== undefined && !st.assess.worthIt) {
+      if (st.assess.reason !== lastHoldReason) {
+        lastHoldReason = st.assess.reason
+        if (st.assess.reason === 'hold') {
+          useUiStore().toast('托管:蓄势留剑,待其力竭', 'info')
+        }
+      }
+      return
+    }
+    lastHoldReason = ''
     const r: BossStrikeResult = await cloudApi.bossStrike()
     // 奖励即时入账(与 BossView 手动出剑同一条入账路径)
     const resources = useResourcesStore()

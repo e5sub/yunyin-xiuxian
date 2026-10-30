@@ -11,7 +11,7 @@ import { isOnline } from './ws.js'
 import { getConfigNumber } from './config.js'
 import { dayKey, attemptsUsed } from './dungeonCore.js'
 import { geNorm, geAdd, type GE } from './gnum.js'
-import { performStrike, ensureBoss } from './routes/boss.js'
+import { performStrike, ensureBoss, assessStrike } from './routes/boss.js'
 
 export const autoOpsRouter = express.Router()
 
@@ -139,6 +139,9 @@ async function tickOfflineBoss(): Promise<void> {
       if (boss.dead_at !== 0) continue
       const limit = await getConfigNumber('boss_daily_attempts', 1)
       if ((await attemptsUsed(r.user_id, 'boss', dayKey())) >= limit) continue
+      // 量力而行:能补刀先补刀,站得住就砍;明显打不过则蓄势留剑(次数不过期,临期兜底)
+      const assess = await assessStrike(r.user_id, boss)
+      if (!assess.worthIt) continue
 
       const out = await performStrike(r.user_id)
       await creditLedger(r.user_id, geNorm(out.reward.stone, 0), out.reward.herb, out.tier)

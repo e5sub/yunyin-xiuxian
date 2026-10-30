@@ -333,6 +333,7 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'boss_reward_herb',
       'boss_growth_per_kill',
       'boss_growth_reset_days',
+      'boss_autoops_smart',
       // 副本(心魔镜像/秘境共探/洞天守卫/共修大阵)
       'demon_daily_attempts',
       'demon_hp_base',
@@ -405,7 +406,7 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'array_reward_herb',
       'smtp_port'
     ]
-    const boolKeys = ['email_enabled', 'email_code_required', 'alipay_enabled']
+    const boolKeys = ['email_enabled', 'email_code_required', 'alipay_enabled', 'boss_autoops_smart']
     // VIP 定价:元,最多两位小数(0 = 该档不开放)
     const priceKeys = ['vip_price_month', 'vip_price_half', 'vip_price_year', 'vip_price_forever']
     // 支付宝密钥:PKCS8 base64 较长

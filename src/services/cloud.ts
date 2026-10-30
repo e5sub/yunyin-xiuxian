@@ -98,6 +98,15 @@ export interface BossState {
   respawnAt: number
   /** 妖王成长:本周期击杀次数 / 当前强度倍率 / 周期重置时刻 */
   growth: { killCount: number; mult: number; resetAt: number }
+  /** 托管预判:这一剑能伤多少、够不够补刀、托管此刻该不该出剑 */
+  assess?: {
+    worthIt: boolean
+    steady: boolean
+    canFinish: boolean
+    hpShare: number
+    projected: GEJson
+    reason: 'finish' | 'steady' | 'hold' | 'last-call' | 'no-profile' | 'no-boss'
+  }
   myAttempts: number
   maxAttempts: number
   myDamage: GEJson

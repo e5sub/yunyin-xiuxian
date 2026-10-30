@@ -90,6 +90,9 @@
         <p class="mt-2 text-[10px] leading-relaxed text-ink-faint">
           三项托管各自独立,想开哪项开哪项;历练与闭关都开时历练优先,历练间隙才闭关
         </p>
+        <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
+          打 BOSS 量力而行:能补刀先补刀,站得住便出剑;力有不及则蓄势,临期兜底出手
+        </p>
         <div v-if="settings.autoAdventure" class="mt-2 space-y-2">
           <label class="flex items-center justify-between gap-2">
             <span class="shrink-0 text-[11px] text-ink-faint">历练去处</span>
