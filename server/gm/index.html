@@ -134,9 +134,17 @@
   .cfg-group:first-child { margin-top:0; }
   .cfg-group h3 { font-family:var(--font-kai); font-size:14px; font-weight:600; letter-spacing:.08em;
     color:var(--brand); margin-bottom:10px; }
-  .cfg-fields { display:grid; grid-template-columns:repeat(3,1fr); gap:10px 14px; }
+  .cfg-fields { display:grid; grid-template-columns:repeat(4,1fr); gap:10px 14px; }
   .cfg-field label { display:block; font-size:12px; color:var(--sub); margin-bottom:4px; }
   .cfg-field input { width:100%; }
+  /* 布尔参数滑块开关:不再手输 true/false */
+  .cfg-switch { position:relative; display:inline-block; width:40px; height:22px; border-radius:11px;
+    border:1px solid rgb(var(--c-ink)/0.3); background:rgb(var(--c-ink)/0.12); cursor:pointer; padding:0; transition:background .15s; }
+  .cfg-switch .knob { position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%;
+    background:#fff; box-shadow:0 1px 2px rgb(0 0 0/0.25); transition:left .15s; }
+  .cfg-switch.on { background:var(--brand); border-color:var(--brand); }
+  .cfg-switch.on .knob { left:20px; }
+  .cfg-switch-state { margin-left:8px; font-size:11px; color:var(--sub); vertical-align:middle; }
   .cfg-save { margin-top:12px; }
   .kv { font-size:13px; line-height:1.9; overflow-wrap:anywhere; }
   .kv b { display:inline-block; min-width:84px; color:var(--sub); font-weight:400; }
@@ -634,7 +642,9 @@ const CFG_GROUPS = [
       boss_strike_rounds: ['出剑模拟回合数', 'num'],
       boss_respawn_sec: ['击杀后重生秒数', 'num'],
       boss_reward_stone: ['奖励灵石数', 'num'],
-      boss_reward_herb: ['奖励灵草数', 'num']
+      boss_reward_herb: ['奖励灵草数', 'num'],
+      boss_growth_per_kill: ['每杀增幅%(5=每杀强5%)', 'num'],
+      boss_growth_reset_days: ['成长周期(天,归零重来)', 'num']
     }
   },
   {
@@ -676,8 +686,8 @@ const CFG_GROUPS = [
   {
     title: '邮件 / SMTP',
     keys: {
-      email_enabled: ['邮箱服务开关(true/false)', 'bool'],
-      email_code_required: ['注册强制邮箱验证码(true/false)', 'bool'],
+      email_enabled: ['邮箱服务开关', 'bool'],
+      email_code_required: ['注册强制邮箱验证码', 'bool'],
       smtp_host: ['SMTP 服务器(如 smtp.qq.com)', 'text'],
       smtp_port: ['SMTP 端口(465=SSL)', 'num'],
       smtp_user: ['发信账号', 'text'],
@@ -697,7 +707,7 @@ const CFG_GROUPS = [
   {
     title: '支付宝当面付',
     keys: {
-      alipay_enabled: ['支付开关(true/false)', 'bool'],
+      alipay_enabled: ['支付开关', 'bool'],
       alipay_app_id: ['应用 APPID', 'text'],
       alipay_merchant_private_key: ['应用私钥(PKCS8,支持单行或 PEM)', 'long'],
       alipay_alipay_public_key: ['支付宝公钥(支持单行或 PEM)', 'long']
@@ -707,6 +717,12 @@ const CFG_GROUPS = [
 
 /** 每个字段加载时的原始值:整组保存时只提交改过的项 */
 const cfgOrig = {}
+/** 布尔参数的当前值(true/false):渲染为滑块,不再手输 */
+const cfgBool = {}
+
+function cfgFieldValue (k) {
+  return Object.prototype.hasOwnProperty.call(cfgBool, k) ? String(cfgBool[k]) : $('cfg-' + k).value
+}
 
 async function loadConfig () {
   try {
@@ -721,6 +737,13 @@ async function loadConfig () {
             if (type === 'long') {
               return `<div class="cfg-field" style="grid-column:1/-1"><label>${g.keys[k][0]}</label><textarea id="cfg-${k}" rows="4" style="width:100%;font-family:monospace;font-size:12px;word-break:break-all"></textarea></div>`
             }
+            if (type === 'bool') {
+              delete cfgBool[k]
+              cfgBool[k] = String(cfgOrig[k]).trim().toLowerCase() === 'true'
+              return `<div class="cfg-field"><label>${g.keys[k][0]}</label>` +
+                `<span><button type="button" class="cfg-switch ${cfgBool[k] ? 'on' : ''}" data-bool="${k}" aria-pressed="${cfgBool[k]}" title="${g.keys[k][0]}"><span class="knob"></span></button>` +
+                `<span class="cfg-switch-state" data-bool-state="${k}">${cfgBool[k] ? '开' : '关'}</span></span></div>`
+            }
             return `<div class="cfg-field"><label>${g.keys[k][0]}</label><input id="cfg-${k}" value="${esc(cfgOrig[k])}"></div>`
           }).join('')}
         </div>
@@ -728,15 +751,28 @@ async function loadConfig () {
       </div>`).join('')
   } catch (e) { toast(e.message) }
 }
+
+// 布尔滑块点击翻转(事件委托,不用内联 onclick)
+$('cfg-rows').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-bool]')
+  if (!btn) return
+  const k = btn.dataset.bool
+  cfgBool[k] = !cfgBool[k]
+  btn.classList.toggle('on', cfgBool[k])
+  btn.setAttribute('aria-pressed', String(cfgBool[k]))
+  const state = document.querySelector(`[data-bool-state="${k}"]`)
+  if (state) state.textContent = cfgBool[k] ? '开' : '关'
+})
+
 /** 整组保存:只提交有改动的字段,全部一致时提示不重复提交 */
 async function saveCfgGroup (gi) {
   const g = CFG_GROUPS[gi]
-  const changed = Object.keys(g.keys).filter(k => $('cfg-' + k).value !== cfgOrig[k])
+  const changed = Object.keys(g.keys).filter(k => cfgFieldValue(k) !== cfgOrig[k])
   if (changed.length === 0) { toast('没有改动'); return }
   try {
     for (const k of changed) {
-      await api(`/config/${k}`, { method: 'PUT', body: JSON.stringify({ value: $('cfg-' + k).value }) })
-      cfgOrig[k] = $('cfg-' + k).value
+      await api(`/config/${k}`, { method: 'PUT', body: JSON.stringify({ value: cfgFieldValue(k) }) })
+      cfgOrig[k] = cfgFieldValue(k)
     }
     toast(`${g.title} 已保存 ${changed.length} 项`)
   } catch (e) { toast(e.message) }

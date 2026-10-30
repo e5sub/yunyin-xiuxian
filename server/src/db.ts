@@ -244,7 +244,10 @@ CREATE TABLE IF NOT EXISTS boss_state (
   hp_m REAL NOT NULL,
   hp_e INTEGER NOT NULL,
   spawned_at INTEGER NOT NULL,
-  dead_at INTEGER NOT NULL DEFAULT 0
+  dead_at INTEGER NOT NULL DEFAULT 0,
+  -- 妖王成长:本周期击杀次数;period_start 为周期起点,过 reset 窗口归零
+  kill_count INTEGER NOT NULL DEFAULT 0,
+  period_start INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS boss_damage (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -281,6 +284,21 @@ CREATE TABLE IF NOT EXISTS vip_orders (
   created_at INTEGER NOT NULL,
   paid_at INTEGER NOT NULL DEFAULT 0
 );
+-- VIP 托管设置 + 离线讨伐所得台账(玩家下次上线领取)
+CREATE TABLE IF NOT EXISTS autoops_state (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  auto_boss INTEGER NOT NULL DEFAULT 0,
+  auto_retreat INTEGER NOT NULL DEFAULT 0,
+  auto_adventure INTEGER NOT NULL DEFAULT 0,
+  region_id TEXT NOT NULL DEFAULT '',
+  mode TEXT NOT NULL DEFAULT '',
+  ledger_stone_m REAL NOT NULL DEFAULT 0,
+  ledger_stone_e INTEGER NOT NULL DEFAULT 0,
+  ledger_herb INTEGER NOT NULL DEFAULT 0,
+  ledger_strikes INTEGER NOT NULL DEFAULT 0,
+  ledger_tier INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(id DESC);
 CREATE INDEX IF NOT EXISTS idx_profile_rank ON profiles(realm_index DESC, power_e DESC, power_m DESC);
 CREATE INDEX IF NOT EXISTS idx_save_history_user ON save_history(user_id, id DESC);
@@ -297,7 +315,9 @@ CREATE INDEX IF NOT EXISTS idx_save_history_user ON save_history(user_id, id DES
       'ALTER TABLE users ADD COLUMN vip_until INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE saves ADD COLUMN started INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE profiles ADD COLUMN def_m REAL NOT NULL DEFAULT 0',
-      'ALTER TABLE profiles ADD COLUMN def_e INTEGER NOT NULL DEFAULT 0'
+      'ALTER TABLE profiles ADD COLUMN def_e INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE boss_state ADD COLUMN kill_count INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE boss_state ADD COLUMN period_start INTEGER NOT NULL DEFAULT 0'
     ]) {
       try {
         d.exec(stmt)
@@ -434,7 +454,9 @@ CREATE TABLE IF NOT EXISTS boss_state (
   hp_m DOUBLE NOT NULL,
   hp_e INT NOT NULL,
   spawned_at BIGINT NOT NULL,
-  dead_at BIGINT NOT NULL DEFAULT 0
+  dead_at BIGINT NOT NULL DEFAULT 0,
+  kill_count INT NOT NULL DEFAULT 0,
+  period_start BIGINT NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS boss_damage (
   user_id BIGINT PRIMARY KEY,
@@ -474,6 +496,22 @@ CREATE TABLE IF NOT EXISTS vip_orders (
   INDEX idx_vip_order_user (user_id, created_at),
   CONSTRAINT fk_vip_order_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS autoops_state (
+  user_id BIGINT PRIMARY KEY,
+  auto_boss TINYINT NOT NULL DEFAULT 0,
+  auto_retreat TINYINT NOT NULL DEFAULT 0,
+  auto_adventure TINYINT NOT NULL DEFAULT 0,
+  region_id VARCHAR(64) NOT NULL DEFAULT '',
+  mode VARCHAR(16) NOT NULL DEFAULT '',
+  -- 离线托管讨伐所得台账(玩家下次上线领取):数量单位与出剑次数
+  ledger_stone_m DOUBLE NOT NULL DEFAULT 0,
+  ledger_stone_e INT NOT NULL DEFAULT 0,
+  ledger_herb INT NOT NULL DEFAULT 0,
+  ledger_strikes INT NOT NULL DEFAULT 0,
+  ledger_tier INT NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL,
+  CONSTRAINT fk_autoops_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ` // CREATE INDEX 放后面单独跑(MySQL 无 IF NOT EXISTS,重复启动要容错)
   for (const stmt of ddl.split(';').map(s => s.trim()).filter(Boolean)) {
     await d.query(stmt)
@@ -490,7 +528,9 @@ CREATE TABLE IF NOT EXISTS vip_orders (
     'ALTER TABLE users ADD COLUMN vip_until BIGINT NOT NULL DEFAULT 0',
     'ALTER TABLE saves ADD COLUMN started TINYINT NOT NULL DEFAULT 0',
     'ALTER TABLE profiles ADD COLUMN def_m DOUBLE NOT NULL DEFAULT 0',
-    'ALTER TABLE profiles ADD COLUMN def_e INT NOT NULL DEFAULT 0'
+    'ALTER TABLE profiles ADD COLUMN def_e INT NOT NULL DEFAULT 0',
+    'ALTER TABLE boss_state ADD COLUMN kill_count INT NOT NULL DEFAULT 0',
+    'ALTER TABLE boss_state ADD COLUMN period_start BIGINT NOT NULL DEFAULT 0'
   ]) {
     try {
       await d.query(stmt)
@@ -533,6 +573,9 @@ async function seedConfig(): Promise<void> {
     ['boss_respawn_sec', '86400'],
     ['boss_reward_stone', '30'],
     ['boss_reward_herb', '2'],
+    // 妖王成长:每被击杀一次,下只血量/攻势按比例增强;击杀数每 N 天清零重来
+    ['boss_growth_per_kill', '5'],
+    ['boss_growth_reset_days', '30'],
     // 副本 · 心魔镜像(血基数=最高攻×N×人数^0.8;atk 倍率为百分比:60 = 最高攻×0.6)
     ['demon_daily_attempts', '1'],
     ['demon_hp_base', '13'],

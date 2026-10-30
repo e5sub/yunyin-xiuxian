@@ -14,8 +14,8 @@
       >VIP</span>
     </div>
 
-    <!-- 激活码兑换(开通/续期皆可,永久卡直接补足到永久) -->
-    <div class="py-3">
+    <!-- 激活码兑换(开通/续期皆可,永久卡直接补足到永久;已是永久则无需再兑) -->
+    <div v-if="!auth.vipForever" class="py-3">
       <label class="flex items-center justify-between">
         <span class="text-[13px] text-ink-soft">激活码兑换</span>
         <button
@@ -80,20 +80,7 @@
       <div class="py-3">
         <div class="grid grid-cols-3 gap-2">
           <div v-for="item in AUTO_ITEMS" :key="item.key" class="flex flex-col items-center gap-2">
-            <button
-              type="button"
-              role="switch"
-              :aria-checked="settings[item.key]"
-              :aria-label="item.label"
-              class="relative h-6 w-11 rounded-full border transition-colors"
-              :class="settings[item.key] ? 'border-cinnabar bg-cinnabar' : 'border-ink/25 bg-ink/10'"
-              @click="settings[item.key] = !settings[item.key]"
-            >
-              <span
-                class="absolute top-[2px] h-[18px] w-[18px] rounded-full border border-ink/20 bg-paper transition-all"
-                :class="settings[item.key] ? 'left-[22px]' : 'left-[2px]'"
-              />
-            </button>
+            <ToggleSwitch v-model="settings[item.key]" :label="item.label" />
             <span
               class="text-center text-[11px] leading-tight"
               :class="settings[item.key] ? 'text-ink' : 'text-ink-faint'"
@@ -151,6 +138,7 @@
   import { regionDef } from '@/data/regions'
   import { classicalDuration } from '@/data/timeUnits'
   import BaseModal from '@/components/common/BaseModal.vue'
+  import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 
   const settings = useSettingsStore()
   const auth = useAuthStore()

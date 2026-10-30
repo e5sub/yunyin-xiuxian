@@ -1,10 +1,10 @@
 <template>
   <div class="card-ink divide-y divide-ink/6 px-4">
     <div class="py-3">
-      <label class="flex items-center justify-between">
+      <div class="flex items-center justify-between">
         <span class="text-[13px] text-ink-soft">背景音乐</span>
-        <input v-model="settings.musicOn" type="checkbox" class="h-4 w-4 accent-cinnabar" />
-      </label>
+        <ToggleSwitch v-model="settings.musicOn" label="背景音乐" />
+      </div>
       <div v-if="settings.musicOn" class="mt-2 flex items-center gap-2">
         <span class="text-[10px] text-ink-faint">轻</span>
         <input
@@ -19,10 +19,10 @@
       </div>
     </div>
     <div class="py-3">
-      <label class="flex items-center justify-between">
+      <div class="flex items-center justify-between">
         <span class="text-[13px] text-ink-soft">音效</span>
-        <input v-model="settings.sfxOn" type="checkbox" class="h-4 w-4 accent-cinnabar" />
-      </label>
+        <ToggleSwitch v-model="settings.sfxOn" label="音效" />
+      </div>
       <div v-if="settings.sfxOn" class="mt-2 flex items-center gap-2">
         <span class="text-[10px] text-ink-faint">轻</span>
         <input
@@ -36,15 +36,15 @@
         <span class="w-7 text-right text-[10px] tabular text-ink-faint">{{ settings.sfxVol }}</span>
       </div>
     </div>
-    <label class="flex items-center justify-between py-3">
+    <div class="flex items-center justify-between py-3">
       <span class="text-[13px] text-ink-soft">减少动效</span>
-      <input v-model="settings.reduceMotion" type="checkbox" class="h-4 w-4 accent-cinnabar" />
-    </label>
+      <ToggleSwitch v-model="settings.reduceMotion" label="减少动效" />
+    </div>
     <div class="py-3">
-      <label class="flex items-center justify-between">
+      <div class="flex items-center justify-between">
         <span class="text-[13px] text-ink-soft">遇事勿扰</span>
-        <input v-model="settings.dndEvents" type="checkbox" class="h-4 w-4 accent-cinnabar" />
-      </label>
+        <ToggleSwitch v-model="settings.dndEvents" label="遇事勿扰" />
+      </div>
       <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
         际遇/机缘/奇缘不弹窗,按默认好愿了结
       </p>
@@ -84,6 +84,7 @@
 
 <script setup lang="ts">
   import { useSettingsStore } from '@/stores/settings'
+  import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 
   const settings = useSettingsStore()
 

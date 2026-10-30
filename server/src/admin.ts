@@ -331,6 +331,8 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'boss_respawn_sec',
       'boss_reward_stone',
       'boss_reward_herb',
+      'boss_growth_per_kill',
+      'boss_growth_reset_days',
       // 副本(心魔镜像/秘境共探/洞天守卫/共修大阵)
       'demon_daily_attempts',
       'demon_hp_base',
@@ -383,6 +385,8 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'boss_respawn_sec',
       'boss_reward_stone',
       'boss_reward_herb',
+      'boss_growth_per_kill',
+      'boss_growth_reset_days',
       'demon_daily_attempts',
       'demon_hp_base',
       'demon_atk_mult',

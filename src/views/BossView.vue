@@ -21,6 +21,7 @@
       <div class="mt-1.5 flex items-baseline justify-between text-[11px] text-ink-faint">
         <span>气血 {{ hpText }} / {{ maxHpText }}</span>
         <span v-if="!alive">再临:{{ respawnText }}</span>
+        <span v-else-if="growthText !== ''">{{ growthText }}</span>
       </div>
 
       <button
@@ -112,8 +113,14 @@
     boss.value === null ? '' : `境界 · ${realmLabel(Math.max(0, boss.value.realmIndex), 0)}`
   )
   const attemptsText = computed(() =>
-    boss.value === null ? '' : `今日出剑 ${Math.min(boss.value.myAttempts, boss.value.maxAttempts)}/${boss.value.maxAttempts}`
+    boss.value === null ? '' : `今日出剑 余 ${Math.max(0, boss.value.maxAttempts - Math.min(boss.value.myAttempts, boss.value.maxAttempts))}/${boss.value.maxAttempts}`
   )
+  /** 妖王成长:周期内被击杀越多次,下只越强 */
+  const growthText = computed(() => {
+    const g = boss.value?.growth
+    if (g === undefined) return ''
+    return g.killCount > 0 ? `周期击杀 ${g.killCount} · 强度 ×${g.mult}` : ''
+  })
   const strikeLabel = computed(() => {
     if (striking.value) return '斗法中……'
     if (!alive.value) return '妖王已陨落'

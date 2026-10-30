@@ -39,7 +39,7 @@
   import { useAuthStore } from '@/stores/auth'
   import { subscribeSaveWriteFailure } from '@/utils/storage'
   import { engine } from '@/core/engine'
-  import { startAutoOps, stopAutoOps } from '@/core/autoOps'
+  import { startAutoOps, stopAutoOps, prepOfflineAutoOps, collectOfflineBossLedger } from '@/core/autoOps'
   import { connectCloudWs, disconnectCloudWs, onSessionEnd } from '@/services/cloud'
   import { probeCloudNewer, pushCloudSave, restoreFromCloud, startCloudSync, stopCloudSync, syncNotice } from '@/core/cloudSave'
   import { applyTheme, initTheme } from '@/core/theme'
@@ -91,6 +91,8 @@
     const newerAt = await probeCloudNewer()
     if (newerAt !== null) ui.toast('云端存档比本机新,可在「设置 → 存档」中恢复', 'warn')
     startCloudSync()
+    // 云端就绪后领离线托管讨伐所得(restored 分支已重载,由下一次启动领取)
+    void collectOfflineBossLedger()
   }
 
   /** 首次交互后才能出声(浏览器策略);按钮附带点击音 */
@@ -158,9 +160,13 @@
       if (failure) ui.toast('存档写入失败', 'warn')
       else ui.toast('存档已恢复写入', 'info')
     })
-    engine.start()
+    // VIP 托管离线补推须先于离线结算(补历练会话/闭关到离线窗口,让离线公式整段结算)
+    void (async () => {
+      await prepOfflineAutoOps()
+      engine.start()
+      void bootstrapCloud()
+    })()
     startAutoOps()
-    void bootstrapCloud()
     window.addEventListener('pointerdown', onPointerDown)
   })
 

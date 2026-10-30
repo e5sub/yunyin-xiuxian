@@ -96,6 +96,8 @@ export interface BossState {
   hp: GEJson
   maxHp: GEJson
   respawnAt: number
+  /** 妖王成长:本周期击杀次数 / 当前强度倍率 / 周期重置时刻 */
+  growth: { killCount: number; mult: number; resetAt: number }
   myAttempts: number
   maxAttempts: number
   myDamage: GEJson
@@ -260,6 +262,22 @@ export const cloudApi = {
   /** 轮询订单状态:paid 时服务端已发放 VIP */
   vipOrderStatus: (outTradeNo: string): Promise<{ status: 'pending' | 'paid' | 'closed'; vipUntil?: number }> =>
     request('GET', `/vip/order/${encodeURIComponent(outTradeNo)}/status`),
+  /** VIP 托管设置 + 未领取的离线讨伐所得 */
+  vipAutoOps: (): Promise<{
+    settings: { autoBoss: boolean; autoRetreat: boolean; autoAdventure: boolean; regionId: string; mode: string }
+    pending: { stoneM: number; stoneE: number; herb: number; strikes: number; tier: number }
+  }> => request('GET', '/vip/autoops'),
+  /** 同步托管设置到服务端(离线托管按此代打) */
+  putVipAutoOps: (s: {
+    autoBoss: boolean
+    autoRetreat: boolean
+    autoAdventure: boolean
+    regionId: string
+    mode: string
+  }): Promise<{ ok: boolean }> => request('PUT', '/vip/autoops', s),
+  /** 领取离线讨伐所得(领取即清零) */
+  collectVipAutoOps: (): Promise<{ collected: { stoneM: number; stoneE: number; herb: number; strikes: number; tier: number } }> =>
+    request('POST', '/vip/autoops/collect'),
   emailCode: (email: string, purpose: 'register' | 'reset' | 'bind'): Promise<EmailCodeResp> =>
     request('POST', '/auth/email-code', { email, purpose }),
   /** 修改口令:成功后返回新 token(换上,否则本会话作废) */

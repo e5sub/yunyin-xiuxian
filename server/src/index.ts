@@ -10,6 +10,7 @@ import { saveRouter } from './routes/save.js'
 import { socialRouter, registerPresence } from './routes/social.js'
 import { bossRouter } from './routes/boss.js'
 import { vipRouter } from './vip.js'
+import { autoOpsRouter, startAutoOpsJob } from './autoOps.js'
 import { dungeonRouter } from './routes/dungeon.js'
 import { initDb, run } from './db.js'
 import { gmPath, gmRouter } from './admin.js'
@@ -102,6 +103,7 @@ async function main(): Promise<void> {
   app.use('/api/boss', jsonTiny, bossRouter)
   app.use('/api/dungeon', jsonTiny, dungeonRouter)
   app.use('/api/vip', jsonTiny, vipRouter)
+  app.use('/api/vip/autoops', jsonTiny, autoOpsRouter)
   app.use('/api/save', jsonLarge)
   app.use('/api', jsonSmall, saveRouter)
   app.use('/api', jsonSmall, socialRouter)
@@ -203,6 +205,9 @@ async function main(): Promise<void> {
     void cleanupExpired()
   }, 6 * 3_600_000)
   cleanupTimer.unref()
+
+  // VIP 离线托管巡检:为离线道友代打妖王
+  startAutoOpsJob()
 
   server.listen(PORT, () => {
     console.log(`[yunyin-server] listening on :${PORT} (db=${process.env.DB_DRIVER ?? 'sqlite'}, gm=${gm})`)
