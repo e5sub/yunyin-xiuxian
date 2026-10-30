@@ -41,7 +41,7 @@
   import { engine } from '@/core/engine'
   import { startAutoOps, stopAutoOps, prepOfflineAutoOps, collectOfflineBossLedger } from '@/core/autoOps'
   import { connectCloudWs, disconnectCloudWs, onSessionEnd } from '@/services/cloud'
-  import { probeCloudNewer, pushCloudSave, restoreFromCloud, startCloudSync, stopCloudSync, syncNotice } from '@/core/cloudSave'
+  import { autoRestoreIfNewer, probeCloudNewer, pushCloudSave, restoreFromCloud, startCloudSync, stopCloudSync, syncNotice } from '@/core/cloudSave'
   import { applyTheme, initTheme } from '@/core/theme'
   import { resetModalStack } from '@/composables/useModalStack'
   import { configureAudio, disposeAudio, playSfx, unlockAudio } from '@/core/audio'
@@ -87,7 +87,10 @@
     void auth.refreshVip().catch(() => undefined)
     const restored = await restoreFromCloud()
     if (restored) return // 云端档已应用并重载
-    // 本机已对齐过但云端更新:不擅自覆盖(本机可能有未上传的进度),提示玩家自行决定
+    // 本机已开局但对齐过且本机无未同步进度时,云端更新(别的设备/上一会话末推)即自动接管;
+    // 本机可能有未上传进度则回落为提示,绝不悄悄覆盖
+    const auto = await autoRestoreIfNewer()
+    if (auto) return
     const newerAt = await probeCloudNewer()
     if (newerAt !== null) ui.toast('云端存档比本机新,可在「设置 → 存档」中恢复', 'warn')
     startCloudSync()

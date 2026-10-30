@@ -9,7 +9,8 @@
  * 3. 云端存档应用失败时不进空档流程(否则开局 20 秒后空档会把云端原档推平)。
  */
 import { ref } from 'vue'
-import { buildExportPayload, SAVE_VERSION } from '@/utils/storage'
+import { buildExportPayload, SAVE_VERSION, storageKey } from '@/utils/storage'
+import { readSaveText } from '@/utils/crypto'
 import { realmLabel } from '@/data/realms'
 import { powerScore } from '@/core/formulas'
 import { applySavePayload, reloadGame } from '@/core/save'
@@ -106,14 +107,22 @@ export function buildProfileSnapshot(): {
 let pushing = false
 
 /**
- * 推送当前存档到云端;未登录 / 未开局 / 推送中静默跳过。
- * 返回是否成功(或无需推送)。manual=true 时无视冲突封锁(玩家明确要求以本机为准)。
+ * 推送结果:ok=已上传;skipped-* = 静默跳过(此前一律谎报成功,设置页「立即上传」会弹出
+ * 「已上传到云端」的假象,玩家转头恢复却报「云端还没有存档」);conflict/failed = 失败。
  */
-export async function pushCloudSave(manual = false): Promise<boolean> {
+export type PushOutcome = 'ok' | 'skipped-login' | 'skipped-not-started' | 'skipped-busy' | 'conflict' | 'failed'
+
+/**
+ * 推送当前存档到云端;未登录 / 未开局 / 推送中按 skipped-* 返回,不再谎报成功。
+ * manual=true 时无视冲突封锁(玩家明确要求以本机为准)。
+ */
+export async function pushCloudSave(manual = false): Promise<PushOutcome> {
   const auth = useAuthStore()
   const game = useGameStore()
-  if (!auth.loggedIn || !game.started || pushing) return true
-  if (blocked && !manual) return false
+  if (!auth.loggedIn) return 'skipped-login'
+  if (!game.started) return 'skipped-not-started'
+  if (pushing) return 'skipped-busy'
+  if (blocked && !manual) return 'conflict'
   pushing = true
   try {
     let base = readBase()
@@ -149,17 +158,17 @@ export async function pushCloudSave(manual = false): Promise<boolean> {
     syncState.value = 'ok'
     syncErrorText.value = ''
     lastSyncAt.value = Date.now()
-    return true
+    return 'ok'
   } catch (e) {
     failStreak += 1
     if (e instanceof CloudError && e.status === 409) {
       blocked = true
       report('conflict', e.message)
-    } else {
-      report('error', e instanceof CloudError ? e.message : '网络不通')
+      return 'conflict'
     }
+    report('error', e instanceof CloudError ? e.message : '网络不通')
     // 下一个周期重推
-    return false
+    return 'failed'
   } finally {
     pushing = false
   }
@@ -232,6 +241,61 @@ export async function probeCloudNewer(): Promise<number | null> {
     return base > 0 && res.save.updatedAt > base ? res.save.updatedAt : null
   } catch {
     return null
+  }
+}
+
+/** 客户端与服务端时钟的容差:关页盖章(客户端钟)对锚点(服务端钟)比较时吸收偏差 */
+const CLOCK_SKEW_MS = 120_000
+
+/**
+ * 模块加载时刻读磁盘里上一会话的关页盖章:引擎 start 会立刻在内存里重盖 lastActiveAt,
+ * 但 5 秒刷盘窗口内磁盘仍是旧值;此刻读取(早于任何 store 水合写回)拿到的是关页时刻。
+ */
+function readPersistedLastActive(): number {
+  try {
+    const raw = localStorage.getItem(storageKey('game'))
+    if (raw === null) return 0
+    // 磁盘是密文,须经 readSaveText 解码(明文旧档/待刷队列同样兼容)
+    const obj = JSON.parse(readSaveText(raw)) as { lastActiveAt?: unknown }
+    return typeof obj.lastActiveAt === 'number' && Number.isFinite(obj.lastActiveAt) ? obj.lastActiveAt : 0
+  } catch {
+    return 0
+  }
+}
+
+const bootPersistedLastActive = readPersistedLastActive()
+
+/**
+ * 开局自动接管:本机已开局且对齐过,但云端档更新(别的设备/上一会话的最后一推)。
+ * 仅当本机自上次对齐后没有新进度(关页盖章不晚于锚点+钟差)才自动覆盖,
+ * 否则回落到 probeCloudNewer 的人工提示,绝不悄悄冲掉本机进度。
+ * 返回是否已应用并即将重载。
+ */
+export async function autoRestoreIfNewer(): Promise<boolean> {
+  const auth = useAuthStore()
+  const game = useGameStore()
+  if (!auth.loggedIn || !game.started || !cloudAligned()) return false
+  if (bootPersistedLastActive > readBase() + CLOCK_SKEW_MS) return false
+  try {
+    const res = await cloudApi.getSave()
+    if (res.save === null) return false
+    if (res.save.updatedAt <= readBase()) return false
+    const err = applySavePayload({
+      game: 'yunyin-xiuxian',
+      version: res.save.version,
+      exportedAt: res.save.updatedAt,
+      data: res.save.data
+    })
+    if (err !== null) {
+      report('error', `云端存档应用失败:${err}`)
+      return false
+    }
+    writeBase(res.save.updatedAt)
+    blocked = false
+    reloadGame()
+    return true
+  } catch {
+    return false
   }
 }
 

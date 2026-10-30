@@ -90,9 +90,21 @@
 
   async function uploadNow(): Promise<void> {
     busy.value = true
-    const ok = await pushCloudSave(true)
+    const r = await pushCloudSave(true)
     busy.value = false
-    ui.toast(ok ? '已上传到云端' : '上传失败，请稍后再试', ok ? 'success' : 'warn')
+    const text =
+      r === 'ok'
+        ? '已上传到云端'
+        : r === 'skipped-login'
+          ? '尚未登录,请先登录再上传'
+          : r === 'skipped-not-started'
+            ? '本机尚未开局,没有进度可上传'
+            : r === 'skipped-busy'
+              ? '正在上传中,请稍候'
+              : r === 'conflict'
+                ? '云端已被其他设备更新,上传已暂停'
+                : '上传失败,请稍后再试'
+    ui.toast(text, r === 'ok' ? 'success' : 'warn')
   }
 
   async function confirmPull(): Promise<void> {
@@ -101,7 +113,12 @@
     try {
       const r = await pullCloudSave()
       if (r.status === 'applied') return
-      ui.toast(r.status === 'error' ? `云端存档读取失败:${r.message}` : '云端还没有存档', 'warn')
+      ui.toast(
+        r.status === 'error'
+          ? `云端存档读取失败:${r.message}`
+          : '云端还没有存档 · 若刚上传过,请确认登录的是同一道号、同一服务器',
+        'warn'
+      )
     } catch {
       ui.toast('拉取失败，请检查网络', 'warn')
     }
