@@ -874,12 +874,18 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(text, '短差文案只在传入差数时才写尚差').toContain('`灵石尚差 ${stoneText}`')
   })
 
-  it('强化缺料时置灰并写出实际差额', () => {
+  /**
+   * 强化缺料:置灰、悬停给因、正文列实际差额。
+   * 差数不许写进页脚那颗按钮 —— 「强 化(尘差743)」在页脚半格里会折成两行,
+   * 把整排撑高一倍(页脚三钮与上一排同档,高约 27px)。差额由 UpgradePanel 的缺口行就地报出。
+   */
+  it('强化缺料时置灰,差额在面板里写出而非挤在按钮上', () => {
     const detail = src('../components/equipment/EquipmentDetailDialog.vue')
     const panel = src('../components/equipment/UpgradePanel.vue')
     expect(detail, '强化按钮按缺口置灰').toContain(':disabled="upShort !== null"')
-    expect(detail, '强化按钮就地写石差/尘差').toContain('强 化(石差')
-    expect(detail, '强化按钮就地写尘差').toContain('强 化(尘差')
+    expect(detail, '置灰原因仍由 title 给全').toContain(':title="upTip"')
+    expect(detail, '按钮只写强化与成功率,不写差数(会折行撑高页脚)').not.toContain('强 化(尘差')
+    expect(detail, '按钮只写强化与成功率,不写差数(会折行撑高页脚)').not.toContain('强 化(石差')
     expect(panel, '强化面板列实际缺口').toContain('器灵尘尚差 {{ gap.dust }}')
     expect(panel, '强化面板列灵石缺口').toContain('灵石尚差 {{ formatGN(gap.stone) }}')
   })

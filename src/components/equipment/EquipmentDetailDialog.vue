@@ -125,11 +125,17 @@
           @update:auto-open="autoOpen = $event"
           @transfer="openTransfer"
         />
-        <div class="flex gap-2">
-          <button class="btn-seal flex-1" @click="toggleEquip">{{ isEquipped ? '卸 下' : '装 备' }}</button>
+        <!--
+          页脚三钮与上一排(自动重铸/转移词条)同档尺寸:!py-2 !text-[11px],高约 27px。
+          不带这两样就退回默认的 9×16 与 14px 字,比上面那排高出一大截,看着像两个页脚。
+          强化钮只写「强 化 + 成功率」,不写缺口差数:那一串会把窄格子挤成两行,行高反被撑开
+          (差额由正文 UpgradePanel 的缺口行照旧报出,就在这排上方)。
+        -->
+        <div class="flex gap-2 text-[11px]">
+          <button class="btn-seal flex-1 !px-2.5 !py-2 !text-[11px]" @click="toggleEquip">{{ isEquipped ? '卸 下' : '装 备' }}</button>
           <button
             v-if="upQuote"
-            class="btn-ghost flex-1"
+            class="btn-ghost flex-1 !px-2.5 !py-2 !text-[11px]"
             :disabled="upShort !== null"
             :title="upTip"
             @click="doUpgrade"
@@ -137,7 +143,7 @@
           <!-- 分解须二步确认,防误触 -->
           <template v-if="decomposeArm !== inst?.uid">
             <button
-              class="btn-ghost"
+              class="btn-ghost shrink-0 !px-2.5 !py-2"
               :disabled="isEquipped || inst?.locked"
               :aria-label="decomposeReason"
               :title="decomposeReason"
@@ -214,16 +220,14 @@
   const upQuote = computed(() => (inst.value ? equipUpgradeQuote(inst.value.uid) : null))
   const upShort = computed(() => (upQuote.value ? upgradeShort(upQuote.value) : null))
   const upGap = computed(() => (upQuote.value ? upgradeShortfall(upQuote.value) : null))
-  /** 强化键文案:平时亮成功率,缺料时改报差额(按钮上能看懂的只有一样) */
-  const upLabel = computed(() => {
-    const q = upQuote.value
-    const gap = upGap.value
-    if (!q) return '强 化'
-    if (gap && upShort.value === 'dust') return `强 化(尘差${gap.dust})`
-    if (gap && upShort.value === 'exp') return `强 化(修为差${formatGN(gap.exp)})`
-    if (gap && upShort.value === 'stone') return `强 化(石差${formatGN(gap.stone)})`
-    return `强 化 ${Math.round(q.rate * 100)}%`
-  })
+  /**
+   * 强化键只写「强 化」四个字位,页脚那半格再窄也放得下。
+   * 成功率不写上按钮:正文第一行已有「成功率 54%」,页脚重复一遍只会把格子撑成两行。
+   * 缺料的差数同理不写(「强 化(尘差743)」在窄屏会把整排撑高一倍),
+   * 差额由正文 UpgradePanel 的缺口行报出 —— 器灵尘尚差 / 修为尚差 / 灵石尚差,那行就在这排上方;
+   * 置灰的原因仍由 title 给全(upTip)。
+   */
+  const upLabel = computed(() => '强 化')
   /** 悬停补齐掷骰后果:成功率、失手落到哪、是否踩保级点 */
   const upTip = computed(() => {
     const q = upQuote.value
