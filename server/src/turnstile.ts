@@ -11,6 +11,9 @@ export interface TurnstileConfig {
   secret: string
 }
 
+/** 「开关开着但密钥不全」只提醒一次(每次请求都打会把日志刷满) */
+let warnedIncomplete = false
+
 export async function turnstileConfig(): Promise<TurnstileConfig> {
   const [enabledRaw, siteKey, secret] = await Promise.all([
     getConfig('turnstile_enabled'),
@@ -19,7 +22,18 @@ export async function turnstileConfig(): Promise<TurnstileConfig> {
   ])
   const site = siteKey.trim()
   const key = secret.trim()
-  return { enabled: enabledRaw === 'true' && site !== '' && key !== '', siteKey: site, secret: key }
+  const on = enabledRaw === 'true'
+  // 开关开着但密钥不全:前端拿不到站点密钥就不渲染,这里也就一直放行。
+  // 静默最坑人(后台看着是开的),首次遇上打一行日志,补上密钥后自动复位。
+  if (on && (site === '' || key === '')) {
+    if (!warnedIncomplete) {
+      warnedIncomplete = true
+      console.warn('[turnstile] 开关已开,但站点密钥/私钥没填全 —— 登录页不会出现验证框,也不会拦截。请在 GM 后台补齐两把密钥。')
+    }
+  } else {
+    warnedIncomplete = false
+  }
+  return { enabled: on && site !== '' && key !== '', siteKey: site, secret: key }
 }
 
 /** 校验一个 Turnstile token;ip 仅用于 Cloudflare 侧记录(拿不到也不影响判定) */

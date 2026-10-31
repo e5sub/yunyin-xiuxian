@@ -80,6 +80,10 @@
         />
         <!-- Turnstile 人机验证(服务端开启才渲染) -->
         <div v-show="tsOn" ref="tsBox" class="flex justify-center"></div>
+        <div v-if="tsOn && tsBroken" class="flex items-center justify-center gap-2 text-[11px] text-cinnabar">
+          <span>人机验证没能加载</span>
+          <button type="button" class="btn-ghost !px-2.5 !py-1 !text-[11px]" @click="retryTurnstile">重 试</button>
+        </div>
         <p v-if="error" class="text-[11px] text-cinnabar">{{ error }}</p>
         <button type="submit" class="btn-seal w-full !py-3 text-[15px] tracking-[0.3em]" :disabled="busy">
           {{ busy ? '处理中' : mode === 'login' ? '入 道' : '开 山 门' }}
@@ -132,6 +136,10 @@
           class="w-full rounded-lg border border-ink/15 bg-paper-deep/60 px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-faint focus:border-cinnabar/60 focus:outline-none"
         />
         <div v-show="tsOn" ref="fpTsBox" class="flex justify-center"></div>
+        <div v-if="tsOn && tsBroken" class="flex items-center justify-center gap-2 text-[11px] text-cinnabar">
+          <span>人机验证没能加载</span>
+          <button type="button" class="btn-ghost !px-2.5 !py-1 !text-[11px]" @click="retryTurnstile">重 试</button>
+        </div>
         <p v-if="forgotMsg !== ''" class="text-[11px]" :class="forgotOk ? 'text-teal-700' : 'text-cinnabar'">
           {{ forgotMsg }}
         </p>
@@ -192,8 +200,13 @@
 
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-  /** Turnstile 人机验证:/auth/config 下发站点密钥才有;token 单次有效,每用一次重挂 */
+  /**
+   * Turnstile 人机验证:/auth/config 下发站点密钥才有。三态要分清 ——
+   * 服务端没开(不显示)、开了但脚本没起来(必须说出来,否则玩家对着空白无从下手)、已就绪。
+   * token 单次有效,每用一次重挂。
+   */
   const tsOn = ref(false)
+  const tsBroken = ref(false)
   const tsBox = ref<HTMLElement | null>(null)
   const fpTsBox = ref<HTMLElement | null>(null)
 
@@ -206,21 +219,67 @@
     if (box !== null) resetTurnstile(box)
   }
 
-  onMounted(() => {
-    void cloudApi
+  /** 挂进容器;脚本被拦、超时、画不出来都要冒到界面上,不能静默留白 */
+  async function mountWidget(box: HTMLElement | null): Promise<void> {
+    if (box === null) return
+    try {
+      await renderTurnstile(box)
+      tsBroken.value = false
+    } catch {
+      tsBroken.value = true
+    }
+  }
+
+  async function mountAll(): Promise<void> {
+    await nextTick()
+    await mountWidget(tsBox.value)
+    if (forgotOpen.value) await mountWidget(fpTsBox.value)
+  }
+
+  let loadingConfig: Promise<void> | null = null
+  let configAt = 0
+  /** 拉一次 /auth/config;4 秒内重复调用直接复用,失败不缓存(下次切页还能再试) */
+  function loadAuthConfig(): Promise<void> {
+    if (loadingConfig !== null) return loadingConfig
+    if (Date.now() - configAt < 4000) return Promise.resolve()
+    configAt = Date.now()
+    loadingConfig = cloudApi
       .authConfig()
-      .then(c => {
+      .then(async c => {
         codeRequired.value = c.emailCodeRequired
         configureTurnstile(c.turnstileSiteKey ?? '')
         tsOn.value = c.turnstileEnabled === true && turnstileEnabled()
-        if (tsOn.value) void nextTick(() => void renderTurnstile(tsBox.value!))
+        if (tsOn.value) await mountAll()
       })
-      .catch(() => undefined)
+      .catch(() => {
+        // 拉不到配置就当没启用:真开了也不该让玩家对着空白框干等
+        configAt = 0
+      })
+      .finally(() => {
+        loadingConfig = null
+      })
+    return loadingConfig
+  }
+
+  function retryTurnstile(): void {
+    tsBroken.value = false
+    void mountAll()
+  }
+
+  onMounted(() => {
+    void loadAuthConfig()
   })
 
   // 找回口令弹层里的挂件:开弹层时容器才在 DOM 里,现挂现用
   watch(forgotOpen, open => {
-    if (open && tsOn.value) void nextTick(() => void renderTurnstile(fpTsBox.value!))
+    if (!open) return
+    if (tsOn.value) void nextTick(() => void mountWidget(fpTsBox.value))
+    else void loadAuthConfig()
+  })
+
+  // 管理员刚在后台把人机验证打开时,不必等玩家重开页面:切页/开弹层顺手补拉一次
+  watch(mode, () => {
+    if (!tsOn.value) void loadAuthConfig()
   })
 
   function sendRegisterCode(): void {

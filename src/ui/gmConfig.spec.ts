@@ -84,3 +84,39 @@ describe('GM 后台 · 配置字段与保存校验对得上', () => {
     expect(bad, '布尔键的种子值只能是 "true" / "false"').toEqual([])
   })
 })
+
+/**
+ * 「开关开了却没生效」比「保存失败」更坑:保存失败至少报错,开了没反应只能靠猜。
+ * 人机验证就是这种——真开关是「turnstile_enabled + 两把密钥」三样齐,后台却只摆了一个开关。
+ * 这几条钉住:判定别被放宽成「只认开关」(那就等于谁都能绕过)、后台必须把「开了但没生效」说明白、
+ * 登录页不许把挂件加载失败吞掉。
+ */
+describe('人机验证 · 开关 ≠ 生效', () => {
+  const TURNSTILE = readFileSync(resolve(ROOT, 'server/src/turnstile.ts'), 'utf-8')
+  const LOGIN = readFileSync(resolve(ROOT, 'src/views/LoginView.vue'), 'utf-8')
+
+  it('服务端仍是三样齐才启用(不许把开关当唯一判据)', () => {
+    expect(TURNSTILE, '只认开关就等于开了也没人拦:密钥缺失时必须仍算未启用').toMatch(
+      /enabled:\s*on\s*&&\s*site !== ''\s*&&\s*key !== ''/
+    )
+  })
+
+  it('后台给人机验证配了联合判定提示,且随三个字段更新', () => {
+    expect(GM_PAGE, '缺提示位:管理员只看到开关,以为开了就生效').toContain('id="cfg-ts-hint"')
+    const fn = /function updateTsHint \(\)[\s\S]*?\n}/.exec(GM_PAGE)
+    expect(fn, '找不到 updateTsHint —— 改名了?这份判据要跟着改').not.toBeNull()
+    const body = fn![0]
+    for (const key of ['turnstile_enabled', 'turnstile_site_key', 'turnstile_secret_key']) {
+      expect(body, `提示没看 ${key}`).toContain(key)
+    }
+    expect(body, '开了但密钥不全时要说清「不会生效」').toContain('不会生效')
+    // 三处触发:页面渲染完、掰开关、改密钥
+    expect(GM_PAGE.match(/updateTsHint\(\)/g)?.length ?? 0, '只在渲染时算一次的话,掰开关看不到变化').toBeGreaterThanOrEqual(3)
+  })
+
+  it('登录页不吞挂件加载失败:有可见文案和重试入口', () => {
+    expect(LOGIN).toContain('tsBroken')
+    expect(LOGIN, '脚本被拦/超时时要说话,不能留白').toContain('人机验证没能加载')
+    expect(LOGIN, '重试入口:拦一下就永久废掉太脆').toContain('retryTurnstile')
+  })
+})

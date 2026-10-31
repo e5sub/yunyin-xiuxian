@@ -18,6 +18,9 @@ declare global {
 
 const SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
 
+/** 脚本多久不来就当挂了:Cloudflare 在部分网络下会被拦成「一直转圈不报错」,不设上限等于永远留白 */
+const SCRIPT_TIMEOUT_MS = 12_000
+
 let siteKey = ''
 let scriptLoading: Promise<TurnstileApi> | null = null
 
@@ -41,17 +44,31 @@ function loadScript(): Promise<TurnstileApi> {
   if (scriptLoading !== null) return scriptLoading
   scriptLoading = new Promise((resolve, reject) => {
     const s = document.createElement('script')
+    let settled = false
+    /** 失败一律走这里:清掉缓存的 promise,重试才不会一直拿到同一个 rejected */
+    const fail = (msg: string): void => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timer)
+      scriptLoading = null
+      s.remove()
+      reject(new Error(msg))
+    }
+    const timer = window.setTimeout(() => fail('Turnstile 加载超时'), SCRIPT_TIMEOUT_MS)
     s.src = SCRIPT_SRC
     s.async = true
     s.defer = true
     s.onload = () => {
-      if (window.turnstile !== undefined) resolve(window.turnstile)
-      else reject(new Error('Turnstile 加载失败'))
+      if (window.turnstile === undefined) {
+        fail('Turnstile 加载失败')
+        return
+      }
+      if (settled) return
+      settled = true
+      window.clearTimeout(timer)
+      resolve(window.turnstile)
     }
-    s.onerror = () => {
-      scriptLoading = null
-      reject(new Error('Turnstile 加载失败'))
-    }
+    s.onerror = () => fail('Turnstile 加载失败')
     document.head.appendChild(s)
   })
   return scriptLoading

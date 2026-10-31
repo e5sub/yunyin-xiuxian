@@ -145,6 +145,10 @@
   .cfg-switch.on { background:var(--brand); border-color:var(--brand); }
   .cfg-switch.on .knob { left:20px; }
   .cfg-switch-state { margin-left:8px; font-size:11px; color:var(--sub); vertical-align:middle; }
+  /* 联合判定类的开关(如人机验证=开关+两把密钥)要写明「开了但没生效」,否则掰了开关什么也没发生 */
+  .cfg-hint { margin-top:10px; font-size:12px; line-height:1.7; color:var(--sub); }
+  .cfg-hint.warn { color:var(--warn); }
+  .cfg-hint.ok { color:var(--ok); }
   .cfg-save { margin-top:12px; }
   .kv { font-size:13px; line-height:1.9; overflow-wrap:anywhere; }
   .kv b { display:inline-block; min-width:84px; color:var(--sub); font-weight:400; }
@@ -754,6 +758,31 @@ function cfgFieldValue (k) {
   return Object.prototype.hasOwnProperty.call(cfgBool, k) ? String(cfgBool[k]) : $('cfg-' + k).value
 }
 
+/**
+ * 人机验证是「开关 + 站点密钥 + 私钥」三样齐了才算启用(见 server/src/turnstile.ts)。
+ * 只开开关不填密钥时,服务端照样视为未启用:登录页不出现验证框、注册也不拦人 ——
+ * 后台若不点破,管理员只会以为「开了没反应」。所以这行提示跟着三个字段实时变。
+ */
+function updateTsHint () {
+  const el = $('cfg-ts-hint')
+  if (!el) return
+  const on = cfgFieldValue('turnstile_enabled') === 'true'
+  const site = String(cfgFieldValue('turnstile_site_key') || '').trim()
+  const secret = String(cfgFieldValue('turnstile_secret_key') || '').trim()
+  if (!on) {
+    el.className = 'cfg-hint'
+    el.textContent = '○ 未启用:登录页不出现验证框,注册/找回也不校验人机。'
+    return
+  }
+  if (site === '' || secret === '') {
+    el.className = 'cfg-hint warn'
+    el.textContent = `⚠ 开关已开,但${site === '' && secret === '' ? '站点密钥与私钥都' : site === '' ? '站点密钥' : '私钥'}没填 —— 这一项不会生效:登录页仍然不出现验证框,注册也不会拦人。两把密钥填好并保存后才算真的开了。`
+    return
+  }
+  el.className = 'cfg-hint ok'
+  el.textContent = '✓ 已生效:登录页的注册、找回口令、发验证码都会先过一道人机验证。'
+}
+
 async function loadConfig () {
   try {
     const d = await api('/config')
@@ -777,8 +806,10 @@ async function loadConfig () {
             return `<div class="cfg-field"><label>${g.keys[k][0]}</label><input id="cfg-${k}" value="${esc(cfgOrig[k])}"></div>`
           }).join('')}
         </div>
+        ${gi === 0 ? '<p class="cfg-hint" id="cfg-ts-hint"></p>' : ''}
         <div class="cfg-save"><button class="primary" onclick="saveCfgGroup(${gi})">保存</button></div>
       </div>`).join('')
+    updateTsHint()
   } catch (e) { toast(e.message) }
 }
 
@@ -792,6 +823,13 @@ $('cfg-rows').addEventListener('click', e => {
   btn.setAttribute('aria-pressed', String(cfgBool[k]))
   const state = document.querySelector(`[data-bool-state="${k}"]`)
   if (state) state.textContent = cfgBool[k] ? '开' : '关'
+  updateTsHint()
+})
+
+// 密钥边填边看提示:填齐最后一把才算真的开了
+$('cfg-rows').addEventListener('input', e => {
+  const id = e.target.id || ''
+  if (id === 'cfg-turnstile_site_key' || id === 'cfg-turnstile_secret_key') updateTsHint()
 })
 
 /** 整组保存:只提交有改动的字段,全部一致时提示不重复提交 */
