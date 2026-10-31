@@ -9,7 +9,7 @@
  * 参数化档位(见 otherSourceMods),是估算,按量级读。
  */
 import type { EquipmentInstance, FinalStats, StatMods } from '@/types'
-import { toNum } from '@/utils/gnum'
+import { gn, toNum } from '@/utils/gnum'
 import { mulberry32, RandomService } from '@/utils/random'
 import { COMBAT_ATK_BASE, COMBAT_DEF_BASE, COMBAT_HP_BASE, EQUIP_QUALITY_FLAT_EXP } from '@/data/constants'
 import { GONGFA } from '@/data/gongfa'
@@ -130,7 +130,7 @@ export function modelPlayer(major: number, sub: number, profile: GearProfile, se
     sub,
     linggenMult: 1.6,
     modSources: [equipMods, gongfaMods, otherMods],
-    equipFlats: { attack: { m: flats.attack, e: 0 }, defense: { m: flats.defense, e: 0 }, maxHp: { m: flats.maxHp, e: 0 } },
+    equipFlats: { attack: gn(flats.attack), defense: gn(flats.defense), maxHp: gn(flats.maxHp) },
     daoFruit: 0,
     qiRich: true
   })
@@ -269,7 +269,7 @@ export function powerSourceAudit(major: number, profile: GearProfile, seed = 202
       sub: opts.realm === false ? 0 : 9,
       linggenMult: 1.6,
       modSources: sources,
-      equipFlats: { attack: { m: flats.attack, e: 0 }, defense: { m: flats.defense, e: 0 }, maxHp: { m: flats.maxHp, e: 0 } },
+      equipFlats: { attack: gn(flats.attack), defense: gn(flats.defense), maxHp: gn(flats.maxHp) },
       daoFruit: 0,
       qiRich: true
     })

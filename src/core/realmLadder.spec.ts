@@ -4,8 +4,8 @@ import { resolve } from 'node:path'
 import { realmLadderPoints, realmLadderWorlds } from './realmLadder'
 import { REALMS, WORLDS } from '@/data/realms'
 
-describe('仙路旅途 · 21 境刻度', () => {
-  it('刻度与境界表同长(21 境),每境携带自己的名字', () => {
+describe('仙路旅途 · 全境刻度', () => {
+  it('刻度与境界表同长,每境携带自己的名字', () => {
     const pts = realmLadderPoints(0)
     expect(pts).toHaveLength(REALMS.length)
     expect(pts[0]!.name).toBe(REALMS[0]!.name)
@@ -38,10 +38,10 @@ describe('仙路旅途 · 21 境刻度', () => {
     expect(top[0]!.state).toBe('done')
   })
 
-  it('界首标在世界之别处(isWorldEntry 同源):0/9/14/18 四处', () => {
+  it('界首标在世界之别处(isWorldEntry 同源):0/9/14/18/21 五处', () => {
     const pts = realmLadderPoints(0)
     const starts = pts.filter(p => p.worldStart).map(p => p.index)
-    expect(starts).toEqual([0, 9, 14, 18])
+    expect(starts).toEqual([0, 9, 14, 18, 21])
   })
 
   /**
@@ -57,7 +57,7 @@ describe('仙路旅途 · 21 境刻度', () => {
 })
 
 describe('仙路旅途 · 界段', () => {
-  it('四界与 data 同源,各自给出首尾索引', () => {
+  it('各界与 data 同源,各自给出首尾索引', () => {
     const ws = realmLadderWorlds()
     expect(ws).toHaveLength(WORLDS.length)
     expect(ws.map(w => w.name)).toEqual(WORLDS.map(w => w.name))
@@ -65,10 +65,10 @@ describe('仙路旅途 · 界段', () => {
     expect(ws[3]!.end).toBe(WORLDS[3]!.end)
   })
 
-  it('界名落在各自段的中央:人间≈21%、仙界≈55%、神界≈76%、混沌海≈93%', () => {
+  it('界名落在各自段的中央:人间≈16%、仙界≈40%、神界≈55%、混沌海≈67%、本源≈86%', () => {
     const ws = realmLadderWorlds()
-    // 段 (0,8)/(9,13)/(14,17)/(18,20) 中点折算:((a+b)/2+0.5)/21×100
-    expect(ws.map(w => w.centerPct).map(v => Math.round(v))).toEqual([21, 55, 76, 93])
+    // 段 (0,8)/(9,13)/(14,17)/(18,20)/(21,28) 中点折算:((a+b)/2+0.5)/29×100
+    expect(ws.map(w => w.centerPct).map(v => Math.round(v))).toEqual([16, 40, 55, 67, 86])
     for (let i = 1; i < ws.length; i++) expect(ws[i]!.centerPct).toBeGreaterThan(ws[i - 1]!.centerPct)
     expect(ws[0]!.centerPct).toBeGreaterThan(0)
     expect(ws[ws.length - 1]!.centerPct).toBeLessThan(100)

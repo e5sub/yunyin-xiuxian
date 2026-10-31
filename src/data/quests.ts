@@ -129,7 +129,16 @@ export const MAIN_QUESTS: QuestDef[] = [
     desc: '证道混沌道祖',
     cond: { type: 'realm', major: 20 },
     reward: { stoneTier: 7000, wudao: 2400 }
-  }
+  },
+  // ---- 本源 ----
+  { id: 'q_hunyuan', name: '一气含万有', desc: '突破至混元境', cond: { type: 'realm', major: 21 }, reward: { stoneTier: 8600, wudao: 2900 } },
+  { id: 'q_wuji', name: '无极而太极', desc: '突破至无极境', cond: { type: 'realm', major: 22 }, reward: { stoneTier: 10500, wudao: 3500 } },
+  { id: 'q_taiji', name: '一划开天', desc: '突破至太极境', cond: { type: 'realm', major: 23 }, reward: { stoneTier: 13000, wudao: 4200 } },
+  { id: 'q_taisu', name: '质之始', desc: '突破至太素境', cond: { type: 'realm', major: 24 }, reward: { stoneTier: 16000, wudao: 5000 } },
+  { id: 'q_taishi', name: '形之始', desc: '突破至太始境', cond: { type: 'realm', major: 25 }, reward: { stoneTier: 19500, wudao: 6000 } },
+  { id: 'q_taichu', name: '气之始', desc: '突破至太初境', cond: { type: 'realm', major: 26 }, reward: { stoneTier: 24000, wudao: 7200 } },
+  { id: 'q_hongmeng', name: '浑然未判', desc: '突破至鸿蒙境', cond: { type: 'realm', major: 27 }, reward: { stoneTier: 29000, wudao: 8600 } },
+  { id: 'q_daoyuan', name: '先天地生', desc: '证道道源,仙路至此为极', cond: { type: 'realm', major: 28 }, reward: { stoneTier: 35000, wudao: 10000 } }
 ]
 
 export interface DailyTaskDef {

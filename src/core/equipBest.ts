@@ -62,10 +62,15 @@ function stronger(a: EquipmentInstance, b: EquipmentInstance): boolean {
   return betterEquip(a, b)
 }
 
-/** 该槽最强一件;无可穿戴时返回 null */
+/**
+ * 该槽最强一件;无可穿戴时返回 null。
+ * 「可穿戴」含境界门槛:太初四阶的仙品件未到境者不进候选,一键换装不会替他穿上。
+ */
 export function bestEquipFor(slot: EquipSlot): EquipmentInstance | null {
   const inventory = useInventoryStore()
-  const pool = inventory.items.filter(i => equipmentTemplate(i.templateId)?.slot === slot)
+  const pool = inventory.items.filter(
+    i => equipmentTemplate(i.templateId)?.slot === slot && inventory.canEquipTemplate(i.templateId)
+  )
   if (pool.length === 0) return null
   return pool.reduce((a, b) => (stronger(b, a) ? b : a))
 }
@@ -76,8 +81,7 @@ export function equipBestFor(slot: EquipSlot): boolean {
   const best = bestEquipFor(slot)
   if (!best) return false
   if (inventory.equipped[slot] === best.uid) return false
-  inventory.equip(best.uid, slot)
-  return true
+  return inventory.equip(best.uid, slot)
 }
 
 /** 一键换装全部槽位,返回换了几件 */
@@ -123,8 +127,8 @@ export function equipSetCombo(setId: string): number {
     if (inventory.equipped[slot] === piece.uid) continue
     const occupant = inventory.equipped[slot] ? inventory.findItem(inventory.equipped[slot]!) : undefined
     if (occupant && stronger(occupant, piece)) continue
-    inventory.equip(piece.uid, slot)
-    changed += 1
+    if (!inventory.canEquip(piece.uid)) continue
+    if (inventory.equip(piece.uid, slot)) changed += 1
   }
   return changed
 }
@@ -137,6 +141,7 @@ export function equipSetPreview(setId: string): number {
     if (inventory.equipped[slot] === piece.uid) continue
     const occupant = inventory.equipped[slot] ? inventory.findItem(inventory.equipped[slot]!) : undefined
     if (occupant && stronger(occupant, piece)) continue
+    if (!inventory.canEquip(piece.uid)) continue
     changed += 1
   }
   return changed

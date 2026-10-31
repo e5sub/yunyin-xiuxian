@@ -141,6 +141,24 @@ export const PETS: PetDef[] = [
     quality: 'divine',
     mods: { expGain: 0.18, breakthroughRate: 0.04, eventLuck: 0.15 },
     personality: 'greedy'
+  },
+  {
+    id: 'pet_liangyini',
+    name: '两仪鲵',
+    desc: '半身滚烫半身结冰,冷热自分;静时聚气,动时生风',
+    family: 'piscine',
+    quality: 'divine',
+    mods: { qiRegen: 0.18, cultivationSpeed: 0.14, damageReduction: 0.04 },
+    personality: 'cautious'
+  },
+  {
+    id: 'pet_yuanshihe',
+    name: '元始鹤',
+    desc: '羽下无影,行处无声;它落在谁肩上,谁的路就轻一分',
+    family: 'winged',
+    quality: 'divine',
+    mods: { speed: 0.12, eventLuck: 0.18, explorationSpeed: 0.14 },
+    personality: 'cautious'
   }
 ]
 

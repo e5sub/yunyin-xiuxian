@@ -46,16 +46,21 @@ import {
   GONGFA_UP_WUDAO_BASE,
   UPGRADE_DUST_BASE,
   UPGRADE_DUST_GROWTH,
-  UPGRADE_STONE_TIER_BASE
+  UPGRADE_STONE_TIER_BASE,
+  UPGRADE_EXP_TIER_BASE,
+  UPGRADE_SUCCESS_STEP,
+  UPGRADE_SUCCESS_FLOOR
 } from '@/data/constants'
 import { isWorldEntry, MAX_MAJOR, WORLD_BREAK_MAJOR, worldOf } from '@/data/realms'
 
 /** 区域层级 → 大境界;须与 regions.ts 同步。1-20 对应人间界 0-8,21 起每层一境 */
 const TIER_MAJOR = [
-  0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+  0, 0, 1, 1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28
 ] as const
 /** 区域层级 → 大境界内的小层位置 */
-const TIER_SUB = [1, 4, 1, 4, 7, 2, 6, 1, 4, 8, 2, 7, 2, 7, 2, 7, 2, 7, 2, 7, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4] as const
+const TIER_SUB = [
+  1, 4, 1, 4, 7, 2, 6, 1, 4, 8, 2, 7, 2, 7, 2, 7, 2, 7, 2, 7, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+] as const
 
 export function tierMajor(tier: number): number {
   return TIER_MAJOR[Math.max(0, Math.min(TIER_MAJOR.length - 1, tier - 1))]!
@@ -199,12 +204,35 @@ export function gongfaUpCost(qualityRank: number, level: number): number {
 }
 
 /** 装备强化成本 */
-export function upgradeCost(level: number, tier: number, qualityRank: number, discount: number): { dust: number; stone: GNum } {
+export function upgradeCost(
+  level: number,
+  tier: number,
+  qualityRank: number,
+  discount: number
+): { dust: number; stone: GNum; exp: GNum } {
   const factor = Math.max(0.4, 1 - discount)
   return {
     dust: Math.ceil(UPGRADE_DUST_BASE * Math.pow(UPGRADE_DUST_GROWTH, level) * (1 + qualityRank * 0.3) * factor),
-    stone: mulN(stoneByTier(tier, UPGRADE_STONE_TIER_BASE), (1 + level * 0.5) * factor)
+    stone: mulN(stoneByTier(tier, UPGRADE_STONE_TIER_BASE), (1 + level * 0.5) * factor),
+    // 修为与灵石同量纲:同阶强化所耗修为约为灵石的两三倍,随等级线性走高
+    exp: mulN(stoneByTier(tier, UPGRADE_EXP_TIER_BASE), (1 + level * 0.55) * factor)
   }
+}
+
+/**
+ * 强化成功率:0 级必成,每级递减,不低于下限。
+ * 与 upgradeCost 同住纯公式层,界面价签与结算共用一份,不各写一套。
+ */
+export function upgradeSuccessRate(level: number): number {
+  const lv = Math.max(0, Math.floor(level))
+  return Math.max(UPGRADE_SUCCESS_FLOOR, Math.min(1, 1 - lv * UPGRADE_SUCCESS_STEP))
+}
+
+/** 失败后跌到哪一级:掉一级,但不跌破本档保级点 */
+export function upgradeFailLevel(level: number, safeStep: number): number {
+  const lv = Math.max(0, Math.floor(level))
+  const floor = Math.floor(lv / safeStep) * safeStep
+  return Math.max(floor, lv - 1)
 }
 
 /** 战力比 → 胜率(离线收益估算) */

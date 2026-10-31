@@ -1,5 +1,5 @@
 /**
- * 法宝池 —— 45 件,拥有被动属性与自动触发的主动神通
+ * 法宝池 —— 49 件,拥有被动属性与自动触发的主动神通
  *
  * passive / active.effect 是凡品零重基线(算式第一个因子),品阶与祭炼两条放大由 artifactValue 施加;
  * desc 与 effect 描述的是基线,不是面板。
@@ -611,6 +611,60 @@ export const ARTIFACTS: ArtifactDef[] = [
     3,
     { type: 'drain', mult: 2.6, healPct: 0.6 },
     'scan-eye'
+  ),
+
+  // ============ 本源(33-40 阶)============
+  f(
+    'af_hunyuanzhu',
+    '混元珠',
+    'divine',
+    33,
+    '珠中一气未分,握久了掌心发烫',
+    { damageBonus: 0.07, armorPen: 0.07 },
+    '一气',
+    '每 3 回合一气外放,造成 310% 攻击伤害',
+    3,
+    { type: 'damage', mult: 3.1 },
+    'circle-dot'
+  ),
+  f(
+    'af_wujijing',
+    '无极镜',
+    'divine',
+    35,
+    '镜面无极,照不见来处,也照不见去处',
+    { dodgeRate: 0.04, counterRate: 0.08 },
+    '无终',
+    '每 4 回合无终回护,获得 19% 生命护盾',
+    4,
+    { type: 'shield', pctMaxHp: 0.19 },
+    'moon'
+  ),
+  f(
+    'af_taisudie',
+    '太素蝶',
+    'divine',
+    37,
+    '一只素色的蝶,停在指上便不再走',
+    { cultivationSpeed: 0.16, qiRegen: 0.19 },
+    '素息',
+    '每 4 回合素息回环,回复 30% 生命',
+    4,
+    { type: 'heal', pctMaxHp: 0.3 },
+    'sparkles'
+  ),
+  f(
+    'af_daoyuanfu',
+    '道源符',
+    'divine',
+    40,
+    '符上只有一个字,看久了会忘了自己',
+    { attackPct: 0.15, damageReduction: 0.1 },
+    '归源',
+    '每 3 回合归源一击,造成 320% 攻击伤害并回复其中 55%',
+    3,
+    { type: 'drain', mult: 3.2, healPct: 0.55 },
+    'sun'
   ),
 
   // 防身型:interval 记 1 表示随身常在,不是「每 N 回合出手」(见 combat.tryStun)

@@ -271,7 +271,17 @@ export const EQUIP_QUALITY_FLAT_EXP = 1.8
 export const QUALITY_OUT_OF_BAND = 0.1
 /** 每强化一级基础属性 +12% */
 export const EQUIP_LEVEL_BONUS = 0.12
-export const EQUIP_MAX_LEVEL_BASE = 10
+export const EQUIP_MAX_LEVEL_BASE = 20
+/**
+ * 强化成功率:以 0 级为必成,逐级递减,到下限为止(level 0 = 100%,每级 -3.5%,不低于 25%)。
+ * 失败损失一级,但不会跌破最近的保级点(见 UPGRADE_SAFE_STEP)。
+ */
+export const UPGRADE_SUCCESS_STEP = 0.035
+export const UPGRADE_SUCCESS_FLOOR = 0.25
+/** 每 10 级一个保级点:失败最低跌到 floor(level/10)*10 */
+export const UPGRADE_SAFE_STEP = 10
+/** 强化修为成本:按层级折算的基准(与灵石同量纲,约为同阶灵石的两三倍) */
+export const UPGRADE_EXP_TIER_BASE = 40
 /** 炼器台每 2 级提高强化上限 1 */
 export const FORGE_LEVEL_PER_CAP = 2
 /** 强化成本:灵尘 */

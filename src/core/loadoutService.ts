@@ -66,7 +66,11 @@ export function applyLoadout(id: string): boolean {
     if (!itemUid) continue
     const item = inventory.findItem(itemUid)
     if (item && equipmentTemplate(item.templateId)?.slot === slot) {
-      inventory.equip(itemUid, slot)
+      // 门槛不足按缺件处理:预设里那件仍记着,修为一到再还原即可
+      if (!inventory.equip(itemUid, slot)) {
+        missing += 1
+        missingNames.push(EQUIP_SLOT_NAMES[slot] ?? slot)
+      }
     } else {
       missing += 1
       missingNames.push(EQUIP_SLOT_NAMES[slot] ?? slot)

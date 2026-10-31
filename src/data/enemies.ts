@@ -1,5 +1,5 @@
 /**
- * 敌人库 —— 132 个,含 44 名区域首领;多段/真伤/闪避等机制用于流派克制
+ * 敌人库 —— 180 个,含 68 名区域首领;多段/真伤/闪避等机制用于流派克制
  * 只写族类(`family`),不手写 icon:形由 data/beastFamilies.ts 的 BEAST_FAMILIES 给出,判据在 src/ui/beastFamilies.spec.ts。
  */
 import type { BeastFamily, BossArchetype, BossPhase, ElementId, EnemyDef, EnemySkill, StatMods } from '@/types'
@@ -518,6 +518,215 @@ export const ENEMIES: EnemyDef[] = [
     archetype: 'truedmg',
     mods: { critDamage: 0.5, armorPen: 0.1 },
     phases: [{ hpThreshold: 0.55, skillChanges: [{ name: '悟道·斩念', mult: 4.2, rate: 0.36, effect: 'pierce' }], label: '斩念' }]
+  }),
+  // ============ 本源(33-40 阶,一阶两处)============
+  // t33 混元
+  e('e_hunyuana', '太虚气灵', 33, 'ghost', [1.70, 2.05, 1.40, 1.45], [{ name: '混元千影', mult: 1.5, rate: 0.5, effect: 'multi' }], { element: 'chaos' }),
+  e('e_hunyuanb', '混元兽', 33, 'beast', [2.20, 2.00, 1.75, 1.20], [heavy('混元撞击', 3.40, 0.32)], { element: 'chaos' }),
+  e('e_hunyuanc', '混元羽禽', 33, 'winged', [1.80, 2.10, 1.50, 1.55], [{ name: '混元羽刃', mult: 1.6, rate: 0.3, effect: 'bleed' }], { element: 'chaos' }),
+  e('e_hunyuand', '混元铁甲', 33, 'armored', [2.40, 1.90, 1.90, 1.10], [{ name: '混元壁', mult: 1.2, rate: 0.25, effect: 'shield' }], { element: 'chaos' }),
+  e('e_hunyuanlord', '混元太虚主', 33, 'immortal', [8.50, 2.65, 1.72, 1.30], [
+    { name: '混元一斩', mult: 3.90, rate: 0.32, effect: 'pierce' },
+    { name: '混元千影', mult: 1.5, rate: 0.45, effect: 'multi' }
+  ], {
+    boss: true,
+    element: 'chaos',
+    archetype: 'truedmg',
+    mods: { critDamage: 0.50, armorPen: 0.10 },
+    phases: [{ hpThreshold: 0.5, skillChanges: [{ name: '混元·开天', mult: 4.40, rate: 0.36, effect: 'pierce' }], label: '混元开天' }]
+  }),
+  e('e_hunyuanlord2', '太虚混元台主', 33, 'construct', [7.80, 2.55, 1.80, 1.25], [
+    { name: '混元破界', mult: 3.60, rate: 0.30, effect: 'pierce' },
+    { name: '混元血纹', mult: 1.7, rate: 0.30, effect: 'bleed' }
+  ], {
+    boss: true,
+    element: 'chaos',
+    archetype: 'threshold',
+    mods: { damageReduction: 0.12, shieldOnStart: 0.15 },
+    phases: [{ hpThreshold: 0.66, skillChanges: [{ name: '混元·未判', mult: 4.10, rate: 0.34, effect: 'pierce' }], label: '混元未判' },
+      { hpThreshold: 0.33, skillChanges: [{ name: '混元·终判', mult: 4.60, rate: 0.38, effect: 'pierce' }], label: '混元终判' }]
+  }),
+  // t34 无极
+  e('e_wujia', '无极易影', 34, 'ghost', [1.73, 2.08, 1.42, 1.45], [{ name: '无极千影', mult: 1.5, rate: 0.5, effect: 'multi' }], { element: 'chaos' }),
+  e('e_wujib', '无极玄兽', 34, 'beast', [2.23, 2.03, 1.77, 1.20], [heavy('无极撞击', 3.44, 0.32)], { element: 'chaos' }),
+  e('e_wujic', '玄境飞禽', 34, 'winged', [1.83, 2.13, 1.52, 1.55], [{ name: '无极羽刃', mult: 1.6, rate: 0.3, effect: 'bleed' }], { element: 'chaos' }),
+  e('e_wujid', '无极铁甲', 34, 'armored', [2.43, 1.93, 1.92, 1.10], [{ name: '无极壁', mult: 1.2, rate: 0.25, effect: 'shield' }], { element: 'chaos' }),
+  e('e_wujilord', '无极玄境主', 34, 'immortal', [8.65, 2.67, 1.74, 1.30], [
+    { name: '无极一斩', mult: 3.94, rate: 0.32, effect: 'pierce' },
+    { name: '无极千影', mult: 1.5, rate: 0.45, effect: 'multi' }
+  ], {
+    boss: true,
+    element: 'chaos',
+    archetype: 'spellbane',
+    mods: { damageBonus: 0.14, damageReduction: 0.1 },
+    phases: [{ hpThreshold: 0.5, skillChanges: [{ name: '无极·开天', mult: 4.45, rate: 0.36, effect: 'pierce' }], label: '无极开天' }]
+  }),
+  e('e_wujilord2', '玄境无终者', 34, 'construct', [7.95, 2.57, 1.82, 1.25], [
+    { name: '无极破界', mult: 3.64, rate: 0.30, effect: 'pierce' },
+    { name: '无极血纹', mult: 1.7, rate: 0.30, effect: 'bleed' }
+  ], {
+    boss: true,
+    element: 'chaos',
+    archetype: 'evasive',
+    mods: { damageBonus: 0.12, dodgeRate: 0.14 },
+    phases: [{ hpThreshold: 0.66, skillChanges: [{ name: '无极·未判', mult: 4.15, rate: 0.34, effect: 'pierce' }], label: '无极未判' },
+      { hpThreshold: 0.33, skillChanges: [{ name: '无极·终判', mult: 4.65, rate: 0.38, effect: 'pierce' }], label: '无极终判' }]
+  }),
+  // t35 太极
+  e('e_taijia', '太极影', 35, 'ghost', [1.76, 2.11, 1.44, 1.45], [{ name: '太极千影', mult: 1.5, rate: 0.5, effect: 'multi' }], { element: 'chaos' }),
+  e('e_taijib', '太极两仪兽', 35, 'beast', [2.26, 2.06, 1.79, 1.20], [heavy('太极撞击', 3.48, 0.32)], { element: 'chaos' }),
+  e('e_taijic', '两仪飞禽', 35, 'winged', [1.86, 2.16, 1.54, 1.55], [{ name: '太极羽刃', mult: 1.6, rate: 0.3, effect: 'bleed' }], { element: 'chaos' }),
+  e('e_taijid', '两仪甲士', 35, 'armored', [2.46, 1.96, 1.94, 1.10], [{ name: '太极壁', mult: 1.2, rate: 0.25, effect: 'shield' }], { element: 'chaos' }),
+  e('e_taijilord', '太极两仪主', 35, 'immortal', [8.80, 2.69, 1.76, 1.30], [
+    { name: '太极一斩', mult: 3.98, rate: 0.32, effect: 'pierce' },
+    { name: '太极千影', mult: 1.5, rate: 0.45, effect: 'multi' }
+  ], {
+    boss: true,
+    element: 'chaos',
+    archetype: 'berserk',
+    mods: { critDamage: 0.52, damageReduction: 0.06 },
+    phases: [{ hpThreshold: 0.5, modChanges: { damageBonus: 0.4 }, skillChanges: [{ name: '太极·开天', mult: 4.50, rate: 0.36, effect: 'pierce' }], label: '太极开天' }]
+  }),
+  e('e_taijilord2', '两仪分流者', 35, 'construct', [8.10, 2.59, 1.84, 1.25], [
+    { name: '太极破界', mult: 3.68, rate: 0.30, effect: 'pierce' },
+    { name: '太极血纹', mult: 1.7, rate: 0.30, effect: 'bleed' }
+  ], {
+    boss: true,
+    element: 'chaos',
+    archetype: 'counter',
+    mods: { maxHpPct: 0.15, counterRate: 0.14 },
+    phases: [{ hpThreshold: 0.66, skillChanges: [{ name: '太极·未判', mult: 4.20, rate: 0.34, effect: 'pierce' }], label: '太极未判' },
+      { hpThreshold: 0.33, skillChanges: [{ name: '太极·终判', mult: 4.70, rate: 0.38, effect: 'pierce' }], label: '太极终判' }]
+  }),
+  // t36 太素
+  e('e_taisua', '太素影', 36, 'ghost', [1.79, 2.14, 1.46, 1.45], [{ name: '太素千影', mult: 1.5, rate: 0.5, effect: 'multi' }], { element: 'chaos' }),
+  e('e_taisub', '太素质兽', 36, 'beast', [2.29, 2.09, 1.81, 1.20], [heavy('太素撞击', 3.52, 0.32)], { element: 'chaos' }),
+  e('e_taisuc', '素质飞禽', 36, 'winged', [1.89, 2.19, 1.56, 1.55], [{ name: '太素羽刃', mult: 1.6, rate: 0.3, effect: 'bleed' }], { element: 'chaos' }),
+  e('e_taisud', '素质甲士', 36, 'armored', [2.49, 1.99, 1.96, 1.10], [{ name: '太素壁', mult: 1.2, rate: 0.25, effect: 'shield' }], { element: 'chaos' }),
+  e('e_taisulord', '太素源陆主', 36, 'immortal', [8.95, 2.71, 1.78, 1.30], [
+    { name: '太素一斩', mult: 4.02, rate: 0.32, effect: 'pierce' },
+    { name: '太素千影', mult: 1.5, rate: 0.45, effect: 'multi' }
+  ], {
+    boss: true,
+    element: 'chaos',
+    archetype: 'counter',
+    mods: { armorPen: 0.12, counterRate: 0.14 },
+    phases: [{ hpThreshold: 0.5, skillChanges: [{ name: '太素·开天', mult: 4.55, rate: 0.36, effect: 'pierce' }], label: '太素开天' }]
+  }),
+  e('e_taisulord2', '质始守', 36, 'construct', [8.25, 2.61, 1.86, 1.25], [
+    { name: '太素破界', mult: 3.72, rate: 0.30, effect: 'pierce' },
+    { name: '太素血纹', mult: 1.7, rate: 0.30, effect: 'bleed' }
+  ], {
+    boss: true,
+    element: 'chaos',
+    archetype: 'attrition',
+    mods: { critDamage: 0.48, regenPerRound: 0.02 },
+    phases: [{ hpThreshold: 0.66, skillChanges: [{ name: '太素·未判', mult: 4.25, rate: 0.34, effect: 'pierce' }], label: '太素未判' },
+      { hpThreshold: 0.33, skillChanges: [{ name: '太素·终判', mult: 4.75, rate: 0.38, effect: 'pierce' }], label: '太素终判' }]
+  }),
+  // t37 太始
+  e('e_taishia', '太始影', 37, 'ghost', [1.82, 2.17, 1.48, 1.45], [{ name: '太始千影', mult: 1.5, rate: 0.5, effect: 'multi' }], { element: 'chaos' }),
+  e('e_taishib', '太始形兽', 37, 'beast', [2.32, 2.12, 1.83, 1.20], [heavy('太始撞击', 3.56, 0.32)], { element: 'chaos' }),
+  e('e_taishic', '形初飞禽', 37, 'winged', [1.92, 2.22, 1.58, 1.55], [{ name: '太始羽刃', mult: 1.6, rate: 0.3, effect: 'bleed' }], { element: 'chaos' }),
+  e('e_taishid', '形初甲士', 37, 'armored', [2.52, 2.02, 1.98, 1.10], [{ name: '太始壁', mult: 1.2, rate: 0.25, effect: 'shield' }], { element: 'chaos' }),
+  e('e_taishilord', '太始形初主', 37, 'immortal', [9.10, 2.73, 1.80, 1.30], [
+    { name: '太始一斩', mult: 4.06, rate: 0.32, effect: 'pierce' },
+    { name: '太始千影', mult: 1.5, rate: 0.45, effect: 'multi' }
+  ], {
+    boss: true,
+    element: 'chaos',
+    archetype: 'attrition',
+    mods: { damageReduction: 0.07, regenPerRound: 0.02 },
+    phases: [{ hpThreshold: 0.5, skillChanges: [{ name: '太始·开天', mult: 4.60, rate: 0.36, effect: 'pierce' }], label: '太始开天' }]
+  }),
+  e('e_taishilord2', '端始守', 37, 'construct', [8.40, 2.63, 1.88, 1.25], [
+    { name: '太始破界', mult: 3.76, rate: 0.30, effect: 'pierce' },
+    { name: '太始血纹', mult: 1.7, rate: 0.30, effect: 'bleed' }
+  ], {
+    boss: true,
+    element: 'chaos',
+    archetype: 'berserk',
+    mods: { armorPen: 0.11, critRate: 0.05 },
+    phases: [{ hpThreshold: 0.66, modChanges: { damageBonus: 0.38 }, skillChanges: [{ name: '太始·未判', mult: 4.30, rate: 0.34, effect: 'pierce' }], label: '太始未判' },
+      { hpThreshold: 0.33, skillChanges: [{ name: '太始·终判', mult: 4.80, rate: 0.38, effect: 'pierce' }], label: '太始终判' }]
+  }),
+  // t38 太初
+  e('e_taichua', '太初气影', 38, 'ghost', [1.85, 2.20, 1.50, 1.45], [{ name: '太初千影', mult: 1.5, rate: 0.5, effect: 'multi' }], { element: 'chaos' }),
+  e('e_taichub', '气海兽', 38, 'beast', [2.35, 2.15, 1.85, 1.20], [heavy('太初撞击', 3.60, 0.32)], { element: 'chaos' }),
+  e('e_taichuc', '气始飞禽', 38, 'winged', [1.95, 2.25, 1.60, 1.55], [{ name: '太初羽刃', mult: 1.6, rate: 0.3, effect: 'bleed' }], { element: 'chaos' }),
+  e('e_taichud', '气海甲士', 38, 'armored', [2.55, 2.05, 2.00, 1.10], [{ name: '太初壁', mult: 1.2, rate: 0.25, effect: 'shield' }], { element: 'chaos' }),
+  e('e_taichulord', '气海之主', 38, 'immortal', [9.25, 2.75, 1.82, 1.30], [
+    { name: '太初一斩', mult: 4.10, rate: 0.32, effect: 'pierce' },
+    { name: '太初千影', mult: 1.5, rate: 0.45, effect: 'multi' }
+  ], {
+    boss: true,
+    element: 'chaos',
+    archetype: 'evasive',
+    mods: { critRate: 0.07, dodgeRate: 0.12 },
+    phases: [{ hpThreshold: 0.5, skillChanges: [{ name: '太初·开天', mult: 4.65, rate: 0.36, effect: 'pierce' }], label: '太初开天' }]
+  }),
+  e('e_taichulord2', '气母守', 38, 'construct', [8.55, 2.65, 1.90, 1.25], [
+    { name: '太初破界', mult: 3.80, rate: 0.30, effect: 'pierce' },
+    { name: '太初血纹', mult: 1.7, rate: 0.30, effect: 'bleed' }
+  ], {
+    boss: true,
+    element: 'chaos',
+    archetype: 'spellbane',
+    mods: { damageReduction: 0.10, damageBonus: 0.12 },
+    phases: [{ hpThreshold: 0.66, skillChanges: [{ name: '太初·未判', mult: 4.35, rate: 0.34, effect: 'pierce' }], label: '太初未判' },
+      { hpThreshold: 0.33, skillChanges: [{ name: '太初·终判', mult: 4.85, rate: 0.38, effect: 'pierce' }], label: '太初终判' }]
+  }),
+  // t39 鸿蒙
+  e('e_hongmenga', '鸿蒙残影', 39, 'ghost', [1.88, 2.23, 1.52, 1.45], [{ name: '鸿蒙千影', mult: 1.5, rate: 0.5, effect: 'multi' }], { element: 'chaos' }),
+  e('e_hongmengb', '未判巨兽', 39, 'beast', [2.38, 2.18, 1.87, 1.20], [heavy('鸿蒙撞击', 3.64, 0.32)], { element: 'chaos' }),
+  e('e_hongmengc', '鸿蒙飞禽', 39, 'winged', [1.98, 2.28, 1.62, 1.55], [{ name: '鸿蒙羽刃', mult: 1.6, rate: 0.3, effect: 'bleed' }], { element: 'chaos' }),
+  e('e_hongmengd', '未判甲士', 39, 'armored', [2.58, 2.08, 2.02, 1.10], [{ name: '鸿蒙壁', mult: 1.2, rate: 0.25, effect: 'shield' }], { element: 'chaos' }),
+  e('e_hongmenglord', '鸿蒙渊主', 39, 'immortal', [9.40, 2.77, 1.84, 1.30], [
+    { name: '鸿蒙一斩', mult: 4.14, rate: 0.32, effect: 'pierce' },
+    { name: '鸿蒙千影', mult: 1.5, rate: 0.45, effect: 'multi' }
+  ], {
+    boss: true,
+    element: 'chaos',
+    archetype: 'threshold',
+    mods: { armorPen: 0.13, shieldOnStart: 0.16 },
+    phases: [{ hpThreshold: 0.5, skillChanges: [{ name: '鸿蒙·开天', mult: 4.70, rate: 0.36, effect: 'pierce' }], label: '鸿蒙开天' }]
+  }),
+  e('e_hongmenglord2', '未判台主', 39, 'construct', [8.70, 2.67, 1.92, 1.25], [
+    { name: '鸿蒙破界', mult: 3.84, rate: 0.30, effect: 'pierce' },
+    { name: '鸿蒙血纹', mult: 1.7, rate: 0.30, effect: 'bleed' }
+  ], {
+    boss: true,
+    element: 'chaos',
+    archetype: 'truedmg',
+    mods: { critRate: 0.06, lifesteal: 0.06 },
+    phases: [{ hpThreshold: 0.66, skillChanges: [{ name: '鸿蒙·未判', mult: 4.40, rate: 0.34, effect: 'pierce' }], label: '鸿蒙未判' },
+      { hpThreshold: 0.33, skillChanges: [{ name: '鸿蒙·终判', mult: 4.90, rate: 0.38, effect: 'pierce' }], label: '鸿蒙终判' }]
+  }),
+  // t40 道源
+  e('e_daoyuana', '道源残影', 40, 'ghost', [1.91, 2.26, 1.54, 1.45], [{ name: '道源千影', mult: 1.5, rate: 0.5, effect: 'multi' }], { element: 'chaos' }),
+  e('e_daoyuanb', '彼岸道兽', 40, 'beast', [2.41, 2.21, 1.89, 1.20], [heavy('道源撞击', 3.68, 0.32)], { element: 'chaos' }),
+  e('e_daoyuanc', '道源飞禽', 40, 'winged', [2.01, 2.31, 1.64, 1.55], [{ name: '道源羽刃', mult: 1.6, rate: 0.3, effect: 'bleed' }], { element: 'chaos' }),
+  e('e_daoyuand', '道源甲士', 40, 'armored', [2.61, 2.11, 2.04, 1.10], [{ name: '道源壁', mult: 1.2, rate: 0.25, effect: 'shield' }], { element: 'chaos' }),
+  e('e_daoyuanlord', '道源彼岸主', 40, 'immortal', [9.55, 2.79, 1.86, 1.30], [
+    { name: '道源一斩', mult: 4.18, rate: 0.32, effect: 'pierce' },
+    { name: '道源千影', mult: 1.5, rate: 0.45, effect: 'multi' }
+  ], {
+    boss: true,
+    element: 'chaos',
+    archetype: 'antiheal',
+    mods: { critDamage: 0.58, lifesteal: 0.12 },
+    phases: [{ hpThreshold: 0.5, skillChanges: [{ name: '道源·开天', mult: 4.75, rate: 0.36, effect: 'pierce' }], label: '道源开天' }]
+  }),
+  e('e_daoyuanlord2', '祖庭守', 40, 'construct', [8.85, 2.69, 1.94, 1.25], [
+    { name: '道源破界', mult: 3.88, rate: 0.30, effect: 'pierce' },
+    { name: '道源血纹', mult: 1.7, rate: 0.30, effect: 'bleed' }
+  ], {
+    boss: true,
+    element: 'chaos',
+    archetype: 'threshold',
+    mods: { maxHpPct: 0.16, shieldOnStart: 0.18 },
+    phases: [{ hpThreshold: 0.66, skillChanges: [{ name: '道源·未判', mult: 4.45, rate: 0.34, effect: 'pierce' }], label: '道源未判' },
+      { hpThreshold: 0.33, skillChanges: [{ name: '道源·终判', mult: 4.95, rate: 0.38, effect: 'pierce' }], label: '道源终判' }]
   })
 ]
 

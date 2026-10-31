@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildTribulationPlan, SOULREND_BURST_RELIEF, waveDamage } from './tribulationDecision'
 import { TRIBULATIONS, tribulationDef, type TribulationKind } from '@/data/tribulations'
-import { MAX_MAJOR, REALMS } from '@/data/realms'
+import { MAX_MAJOR, REALMS, worldOf } from '@/data/realms'
 import { WEATHERS, WORLD_WEATHERS } from './weather'
 import { NO_RELIEF } from '@/data/linggenAffinity'
 import type { StatMods } from '@/types'
@@ -52,6 +52,13 @@ const AUDIT_MAJOR = 4
 
 const PASS = new Set(['ok', 'easy'])
 
+/** 该境实际会遇到的最凶天时:天象按界域分池(todayWeather 同源),跨界的最凶不会落到本境头上 */
+function worstWeatherOf(major: number): number {
+  const world = worldOf(major)
+  const pool = world.id === 'mortal' ? WEATHERS : WORLD_WEATHERS[world.id as Exclude<typeof world.id, 'mortal'>]
+  return Math.max(...pool.map(w => w.tribulationMult))
+}
+
 function planOf(shape: Shape, kind: TribulationKind, major = AUDIT_MAJOR, weatherMult = 1) {
   return buildTribulationPlan(major, shape.mods, kind, NO_RELIEF, weatherMult)
 }
@@ -60,9 +67,9 @@ describe('天劫解法空间审计', () => {
   /** 扩界守卫:天劫难度不得随境界失控 */
   it('四维皆优的参考构筑,在每一个需渡劫的境界都能渡任一劫型', () => {
     const maxed = SHAPES.find(s => s.key === 'maxed')!
-    // 取最凶天时:不能靠清和日成立
-    const worstWeather = Math.max(...[...WEATHERS, ...Object.values(WORLD_WEATHERS).flat()].map(w => w.tribulationMult))
+    // 取本界最凶天时:不能靠清和日成立;天象按界域分池,本源的 1.15 不该压到仙界头上
     for (let major = 1; major <= MAX_MAJOR; major += 1) {
+      const worstWeather = worstWeatherOf(major)
       for (const t of TRIBULATIONS) {
         const p = buildTribulationPlan(major, maxed.mods, t.id, NO_RELIEF, worstWeather)
         expect(PASS.has(p.verdict), `${REALMS[major]!.name}·${t.name}劫:四维皆优仍不可渡`).toBe(true)

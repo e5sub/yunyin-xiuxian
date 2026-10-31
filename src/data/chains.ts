@@ -1,5 +1,5 @@
 /**
- * 奇缘 —— 8 条缘 · 21 个阶段事件,只经 pickChainStageEvent 按链条阶段逐段出现。
+ * 奇缘 —— 9 条缘 · 24 个阶段事件,只经 pickChainStageEvent 按链条阶段逐段出现。
  * 链条身份只此一处:一律问 chainOfEvent,不在别处再写一份 id 前缀清单。
  */
 import type { EventChoice, EventDef, EventEffect, EventOutcome } from '@/types'
@@ -80,6 +80,12 @@ export const CHAINS: ChainDef[] = [
     name: '本源一滴',
     hint: '那滴未凝的本源,先认出了你',
     stages: ['benyuan_1', 'benyuan_2', 'benyuan_3']
+  },
+  {
+    id: 'benyuan_prim',
+    name: '一气未判',
+    hint: '掌心那一线凉,比你来时更短了',
+    stages: ['benyuan_prim_1', 'benyuan_prim_2', 'benyuan_prim_3']
   }
 ]
 
@@ -575,6 +581,80 @@ export const CHAIN_EVENTS: EventDef[] = [
         )
       ]),
       leave('你转身走了。回头时,它还在那里亮着。')
+    ]
+  ),
+
+  // ---- 本源:一气未判(混元 21 起) ----
+  ev(
+    'benyuan_prim_1',
+    '一气未判',
+    '你站在混元的边缘,前面没有路,只有一片缓缓流转的气。气里像有什么在等你伸手。',
+    21,
+    [
+      c(
+        '伸手探入',
+        [
+          o(
+            60,
+            '气顺着指尖涌上来,你握住了一线,也听见了里面很远的回声。',
+            { type: 'exp', secs: 70 },
+            { type: 'material', id: 'wudao', amount: 10 }
+          ),
+          o(40, '气忽然一合,把你推了回来。你掌心留下一点凉。', { type: 'exp', secs: 45 })
+        ],
+        { isDefault: true }
+      ),
+      c('先在边缘坐一夜', [
+        o(1, '你坐了一夜,什么也没发生,只是天亮时心静了。', { type: 'buff', id: 'bless_daoyun' })
+      ])
+    ]
+  ),
+  ev(
+    'benyuan_prim_2',
+    '气中有人',
+    '那片未判之气里浮出一个轮廓,像人,又像你自己某个年纪的样子。它没有开口。',
+    22,
+    [
+      c(
+        '与它对面而坐',
+        [
+          o(
+            55,
+            '你们坐了很久。它先散了,散时你忽然想起一句早忘掉的话。',
+            { type: 'exp', secs: 100 },
+            { type: 'material', id: 'wudao', amount: 16 }
+          ),
+          o(45, '它伸出手,指尖抵在你眉心。你眼前黑了很久。', { type: 'buff', id: 'injury' }, { type: 'material', id: 'wudao', amount: 20 })
+        ],
+        { isDefault: true }
+      ),
+      c('绕开它继续走', [o(1, '你从它身侧走过,回头时那里已经空了。', { type: 'exp', secs: 40 })])
+    ]
+  ),
+  ev(
+    'benyuan_prim_3',
+    '那一线凉',
+    '你终于走到了尽头。掌中那一线凉还在,它比你来时更短了,像被谁一直取用。',
+    24,
+    [
+      c(
+        '把它放回气里',
+        [
+          o(
+            60,
+            '凉意脱手,气应声而圆,天地在你眼前合上又睁开。',
+            { type: 'exp', secs: 120 },
+            { type: 'material', id: 'wudao', amount: 20 },
+            { type: 'buff', id: 'bless_daoyun' }
+          ),
+          o(40, '你松手,它却在半途折返,落回你眉心。你什么也没失去。', { type: 'exp', secs: 120 })
+        ],
+        { isDefault: true }
+      ),
+      c('留着它', [
+        o(1, '你收拢五指,把它按进掌心。此后你走到哪里,哪里就静一分。', { type: 'exp', secs: 110 }, { type: 'material', id: 'dust', amount: 20 })
+      ]),
+      leave('你转身走了。身后那片气,仍旧缓缓流着。')
     ]
   )
 ]

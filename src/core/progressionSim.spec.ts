@@ -54,7 +54,7 @@ describe('数值曲线审计(Phase 14)', () => {
     }
   })
 
-  it('界外长尾有界:修满混沌道祖的耗时不到修满真仙的 200 倍', () => {
+  it('界外长尾有界:修满道源的耗时不到修满真仙的 4000 倍', () => {
     const toZhenxian = hoursToReach(WORLD_BREAK_MAJOR, 0)
     const toPeak = hoursToReach(MAX_MAJOR, 0)
     console.log(
@@ -62,8 +62,9 @@ describe('数值曲线审计(Phase 14)', () => {
         `(×${(toPeak / toZhenxian).toFixed(1)})`
     )
     expect(toPeak / toZhenxian).toBeGreaterThan(2) // 四界是长线
-    // 实测长尾 218 倍(LATE_EXP_GROWTH 4.6,渡劫/大罗/神帝圆满各一道修为墙);每境增幅另由 <2 倍判据守
-    expect(toPeak / toZhenxian).toBeLessThan(260) // 有界
+    // 实测长尾 3226 倍(LATE_EXP_GROWTH 4.6,渡劫/大罗/神帝圆满各一道修为墙;本源八境每境再 ×1.5 上下)。
+    // 每境增幅另由上面 (1,2) 那条逐境守,此处只拦整条长尾炸开;本源寿元以百万年计,千年修满仍留余量。
+    expect(toPeak / toZhenxian).toBeLessThan(4000) // 有界
   })
 
   it('界外需求与灵气都是指数复利(每境环比 ≥3 倍)', () => {

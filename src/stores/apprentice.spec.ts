@@ -149,7 +149,7 @@ describe('收徒 · 派发与收割', () => {
     expect(a.apprentices, '没有第六人').toHaveLength(5)
     expect(toNum(res.spiritStone), '满槽不扣费').toBe(before)
     a.$patch({ apprentices: [] })
-    res.spiritStone = gn(1e12)
+    res.spiritStone = gn(1e40) // 本源道童报价随境界抬到四十阶,须给得起
     expect(a.recruit(MAX_MAJOR + 99), '超界境界夹回最高境后仍可收').toBe('ok')
     expect(a.apprentices, '只收一人,不因超界境界多开槽').toHaveLength(1)
   })

@@ -46,7 +46,7 @@ export const STAT_NAMES: Record<AnyStatKey, string> = {
   expGain: '战斗修为',
   /** pillService 把它加进 craftability.bonusChance(再得一枚的概率),掷点封顶 0.8;不是产量 +10% */
   alchemyYield: '双枚成丹',
-  /** 只作用于 forge.equipUpgradeCost;法宝祭炼、重铸、炼制不吃此项。不叫「炼器减耗」:读作整张炼器表 */
+  /** 只作用于 forge.equipUpgradeQuote(尘/石/修为三样同减);法宝祭炼、重铸、炼制不吃此项。不叫「炼器减耗」:读作整张炼器表 */
   forgeDiscount: '强化减耗',
   qiCapPct: '灵气上限',
   beastPct: '灵兽效果',

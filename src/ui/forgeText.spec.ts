@@ -24,8 +24,9 @@ describe('炼器提示 · 只报结果,仍报清尘与石', () => {
     // 只报差额,不附来处
     expect(upgradeShortToast('dust')).not.toContain('分解')
     expect(upgradeShortToast('stone')).not.toContain('历练')
-    expect(upgradeShortToast('stone', { stone: '7', dust: 0 })).toBe('灵石尚差 7')
-    expect(upgradeShortToast('dust', { stone: '0', dust: 2 })).toBe('器灵尘尚差 2')
+    expect(upgradeShortToast('stone', { stone: '7', dust: 0, exp: '0' })).toBe('灵石尚差 7')
+    expect(upgradeShortToast('dust', { stone: '0', dust: 2, exp: '0' })).toBe('器灵尘尚差 2')
+    expect(upgradeShortToast('exp', { stone: '0', dust: 0, exp: '900' })).toBe('修为尚差 900')
     // 无差额时与全仓同词「X不足」
     expect(upgradeShortToast('dust')).toBe('器灵尘不足')
     expect(upgradeDoneToast('玄铁剑', 3)).toBe('「玄铁剑」已至 +3')

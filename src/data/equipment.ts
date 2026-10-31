@@ -1,5 +1,5 @@
 /**
- * 装备模板池 —— 288 件,每一阶各有九件(九个部位各一件)。
+ * 装备模板池 —— 360 件,每一阶各有九件(九个部位各一件)。
  * 一阶一名:名字从该阶的地界长出,不与他阶重名;掉落池按阶取(core/equipGen.templatesAtTier)。
  * 例外:共鸣件的名字归共鸣组(铁壁组、星斗组),不归地界。
  * 平铺基数同部位跨阶同一档,成长由 core/formulas.powerScale(层级) 承担;人间界前段留缓坡
@@ -44,7 +44,7 @@ function t(
   tier: number,
   base: EquipmentTemplate['base'],
   desc: string,
-  opts: { icon?: string; fixedMods?: StatMods; set?: string } = {}
+  opts: { icon?: string; fixedMods?: StatMods; set?: string; minRealm?: number } = {}
 ): EquipmentTemplate {
   const defaultIcon: Record<EquipSlot, string> = {
     weapon: 'sword',
@@ -67,12 +67,13 @@ function t(
     desc,
     icon: opts.icon ?? iconFromName(name, slot, defaultIcon),
     fixedMods: opts.fixedMods,
-    set: opts.set
+    set: opts.set,
+    minRealm: opts.minRealm
   }
 }
 
-/** 装备阶上限;智能收纳「阶级自留线」的档位胶囊共用此数,不另写 32 */
-export const MAX_EQUIP_TIER = 32
+/** 装备阶上限;智能收纳「阶级自留线」的档位胶囊共用此数,不另写 40 */
+export const MAX_EQUIP_TIER = 40
 
 export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   // ============ 人间界(1-20 阶)============
@@ -507,6 +508,98 @@ export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
   t('n_hongmengzhu', '鸿蒙珠坠', 'necklace', 32, { maxHp: 45 }, '珠里鸿蒙未判,连光都还没有', { fixedMods: { qiRegen: 0.16 } }),
   t('r_daozu', '道祖印戒', 'ring', 32, { attack: 7, maxHp: 20 }, '悟道崖下捡的一枚旧印,落印处皆是道', { fixedMods: { attackPct: 0.07 } }),
   t('tl_daozuzhuan', '道祖真篆', 'talisman', 32, { maxHp: 40 }, '篆上只有一个字,看久了会忘了自己', { fixedMods: { breakthroughRate: 0.04 } }),
+
+  // ============ 本源(33-40 阶)============
+  // 八阶皆为「仙品之上」的顶级件:品质窗口在这一段只剩仙品/神品,每阶带 minRealm ——
+  // 未至其境者能捡到、能看,穿不上(见 stores/inventory.equip 与 core/equipBest)。
+
+  // ---- 33 阶 · 混元(须混元境)----
+  t('w_hunyuan', '混元剑', 'weapon', 33, { attack: 20 }, '一气未分。剑上无锋,举之则四方皆利', { fixedMods: { damageBonus: 0.13 }, minRealm: 21 }),
+  t('h_hunyuan', '混元冠', 'head', 33, { defense: 8, maxHp: 32 }, '一气未分。冠成于未形之时,望之如望万界之初', { fixedMods: { cultivationSpeed: 0.1 }, minRealm: 21 }),
+  t('b_hunyuan', '混元神袍', 'body', 33, { defense: 14, maxHp: 62 }, '一气未分。袍色不可名,刀兵无处着力', { fixedMods: { maxHpPct: 0.12 }, minRealm: 21 }),
+  t('wr_hunyuan', '混元腕环', 'wrist', 33, { attack: 6, defense: 6 }, '一气未分。环中转着一缕本源,一声不响', { fixedMods: { attackPct: 0.08 }, minRealm: 21 }),
+  t('bl_hunyuan', '混元绦', 'belt', 33, { defense: 6, maxHp: 46 }, '一气未分。一绦系住将散的根本', { fixedMods: { maxHpPct: 0.11 }, minRealm: 21 }),
+  t('bo_hunyuan', '混元履', 'boots', 33, { defense: 7, maxHp: 26 }, '一气未分。履下无路,踏处即是路', { fixedMods: { dodgeRate: 0.08 }, minRealm: 21 }),
+  t('n_hunyuanzhu', '混元珠坠', 'necklace', 33, { maxHp: 45 }, '一气未分。坠中空无一物,却压得住心神', { fixedMods: { qiRegen: 0.17 }, minRealm: 21 }),
+  t('r_hunyuan', '混元戒', 'ring', 33, { attack: 7, maxHp: 20 }, '一气未分。戒面一片浑圆,照见本来面目', { fixedMods: { attackPct: 0.08 }, minRealm: 21 }),
+  t('tl_hunyuan', '混元真符', 'talisman', 33, { maxHp: 40 }, '一气未分。符上无字,一笔未落而已成', { fixedMods: { breakthroughRate: 0.045 }, minRealm: 21 }),
+
+  // ---- 34 阶 · 无极(须无极境)----
+  t('w_wuji', '无极剑', 'weapon', 34, { attack: 20 }, '无始无终。剑上无锋,举之则四方皆利', { fixedMods: { damageBonus: 0.135 }, minRealm: 22 }),
+  t('h_wuji', '无极冠', 'head', 34, { defense: 8, maxHp: 32 }, '无始无终。冠成于未形之时,望之如望万界之初', { fixedMods: { cultivationSpeed: 0.105 }, minRealm: 22 }),
+  t('b_wuji', '无极神袍', 'body', 34, { defense: 14, maxHp: 62 }, '无始无终。袍色不可名,刀兵无处着力', { fixedMods: { maxHpPct: 0.125 }, minRealm: 22 }),
+  t('wr_wuji', '无极腕环', 'wrist', 34, { attack: 6, defense: 6 }, '无始无终。环中转着一缕本源,一声不响', { fixedMods: { attackPct: 0.085 }, minRealm: 22 }),
+  t('bl_wuji', '无极绦', 'belt', 34, { defense: 6, maxHp: 46 }, '无始无终。一绦系住将散的根本', { fixedMods: { maxHpPct: 0.115 }, minRealm: 22 }),
+  t('bo_wujidao', '无极道履', 'boots', 34, { defense: 7, maxHp: 26 }, '无始无终。履下无路,踏处即是路', { fixedMods: { dodgeRate: 0.085 }, minRealm: 22 }),
+  t('n_wuji', '无极珠坠', 'necklace', 34, { maxHp: 45 }, '无始无终。坠中空无一物,却压得住心神', { fixedMods: { qiRegen: 0.175 }, minRealm: 22 }),
+  t('r_wujidao', '无极道戒', 'ring', 34, { attack: 7, maxHp: 20 }, '无始无终。戒面一片浑圆,照见本来面目', { fixedMods: { attackPct: 0.085 }, minRealm: 22 }),
+  t('tl_wuji', '无极真符', 'talisman', 34, { maxHp: 40 }, '无始无终。符上无字,一笔未落而已成', { fixedMods: { breakthroughRate: 0.046 }, minRealm: 22 }),
+
+  // ---- 35 阶 · 太极(须太极境)----
+  t('w_taiji', '太极剑', 'weapon', 35, { attack: 20 }, '一划开天。剑上无锋,举之则四方皆利', { fixedMods: { damageBonus: 0.14 }, minRealm: 23 }),
+  t('h_taiji', '太极冠', 'head', 35, { defense: 8, maxHp: 32 }, '一划开天。冠成于未形之时,望之如望万界之初', { fixedMods: { cultivationSpeed: 0.11 }, minRealm: 23 }),
+  t('b_taiji', '太极神袍', 'body', 35, { defense: 14, maxHp: 62 }, '一划开天。袍色不可名,刀兵无处着力', { fixedMods: { maxHpPct: 0.13 }, minRealm: 23 }),
+  t('wr_taiji', '太极腕环', 'wrist', 35, { attack: 6, defense: 6 }, '一划开天。环中转着一缕本源,一声不响', { fixedMods: { attackPct: 0.09 }, minRealm: 23 }),
+  t('bl_taiji', '太极绦', 'belt', 35, { defense: 6, maxHp: 46 }, '一划开天。一绦系住将散的根本', { fixedMods: { maxHpPct: 0.12 }, minRealm: 23 }),
+  t('bo_taiji', '太极履', 'boots', 35, { defense: 7, maxHp: 26 }, '一划开天。履下无路,踏处即是路', { fixedMods: { dodgeRate: 0.09 }, minRealm: 23 }),
+  t('n_taiji', '太极珠坠', 'necklace', 35, { maxHp: 45 }, '一划开天。坠中空无一物,却压得住心神', { fixedMods: { qiRegen: 0.18 }, minRealm: 23 }),
+  t('r_taiji', '太极戒', 'ring', 35, { attack: 7, maxHp: 20 }, '一划开天。戒面一片浑圆,照见本来面目', { fixedMods: { attackPct: 0.09 }, minRealm: 23 }),
+  t('tl_taiji', '太极真符', 'talisman', 35, { maxHp: 40 }, '一划开天。符上无字,一笔未落而已成', { fixedMods: { breakthroughRate: 0.047 }, minRealm: 23 }),
+
+  // ---- 36 阶 · 太素(须太素境)----
+  t('w_taisu', '太素剑', 'weapon', 36, { attack: 20 }, '质之始。剑上无锋,举之则四方皆利', { fixedMods: { damageBonus: 0.145 }, minRealm: 24 }),
+  t('h_taisu', '太素冠', 'head', 36, { defense: 8, maxHp: 32 }, '质之始。冠成于未形之时,望之如望万界之初', { fixedMods: { cultivationSpeed: 0.115 }, minRealm: 24 }),
+  t('b_taisu', '太素神袍', 'body', 36, { defense: 14, maxHp: 62 }, '质之始。袍色不可名,刀兵无处着力', { fixedMods: { maxHpPct: 0.135 }, minRealm: 24 }),
+  t('wr_taisu', '太素腕环', 'wrist', 36, { attack: 6, defense: 6 }, '质之始。环中转着一缕本源,一声不响', { fixedMods: { attackPct: 0.095 }, minRealm: 24 }),
+  t('bl_taisu', '太素绦', 'belt', 36, { defense: 6, maxHp: 46 }, '质之始。一绦系住将散的根本', { fixedMods: { maxHpPct: 0.125 }, minRealm: 24 }),
+  t('bo_taisu', '太素履', 'boots', 36, { defense: 7, maxHp: 26 }, '质之始。履下无路,踏处即是路', { fixedMods: { dodgeRate: 0.095 }, minRealm: 24 }),
+  t('n_taisu', '太素珠坠', 'necklace', 36, { maxHp: 45 }, '质之始。坠中空无一物,却压得住心神', { fixedMods: { qiRegen: 0.185 }, minRealm: 24 }),
+  t('r_taisu', '太素戒', 'ring', 36, { attack: 7, maxHp: 20 }, '质之始。戒面一片浑圆,照见本来面目', { fixedMods: { attackPct: 0.095 }, minRealm: 24 }),
+  t('tl_taisu', '太素真符', 'talisman', 36, { maxHp: 40 }, '质之始。符上无字,一笔未落而已成', { fixedMods: { breakthroughRate: 0.048 }, minRealm: 24 }),
+
+  // ---- 37 阶 · 太始(须太始境)----
+  t('w_taishi', '太始剑', 'weapon', 37, { attack: 20 }, '形之始。剑上无锋,举之则四方皆利', { fixedMods: { damageBonus: 0.15 }, minRealm: 25 }),
+  t('h_taishi', '太始冠', 'head', 37, { defense: 8, maxHp: 32 }, '形之始。冠成于未形之时,望之如望万界之初', { fixedMods: { cultivationSpeed: 0.12 }, minRealm: 25 }),
+  t('b_taishi', '太始神袍', 'body', 37, { defense: 14, maxHp: 62 }, '形之始。袍色不可名,刀兵无处着力', { fixedMods: { maxHpPct: 0.14 }, minRealm: 25 }),
+  t('wr_taishi', '太始腕环', 'wrist', 37, { attack: 6, defense: 6 }, '形之始。环中转着一缕本源,一声不响', { fixedMods: { attackPct: 0.1 }, minRealm: 25 }),
+  t('bl_taishi', '太始绦', 'belt', 37, { defense: 6, maxHp: 46 }, '形之始。一绦系住将散的根本', { fixedMods: { maxHpPct: 0.13 }, minRealm: 25 }),
+  t('bo_taishi', '太始履', 'boots', 37, { defense: 7, maxHp: 26 }, '形之始。履下无路,踏处即是路', { fixedMods: { dodgeRate: 0.1 }, minRealm: 25 }),
+  t('n_taishi', '太始珠坠', 'necklace', 37, { maxHp: 45 }, '形之始。坠中空无一物,却压得住心神', { fixedMods: { qiRegen: 0.19 }, minRealm: 25 }),
+  t('r_taishi', '太始戒', 'ring', 37, { attack: 7, maxHp: 20 }, '形之始。戒面一片浑圆,照见本来面目', { fixedMods: { attackPct: 0.1 }, minRealm: 25 }),
+  t('tl_taishi', '太始真符', 'talisman', 37, { maxHp: 40 }, '形之始。符上无字,一笔未落而已成', { fixedMods: { breakthroughRate: 0.049 }, minRealm: 25 }),
+
+  // ---- 38 阶 · 太初(须太初境)----
+  t('w_taichu', '太初剑', 'weapon', 38, { attack: 20 }, '气之始。剑上无锋,举之则四方皆利', { fixedMods: { damageBonus: 0.155 }, minRealm: 26 }),
+  t('h_taichu', '太初冠', 'head', 38, { defense: 8, maxHp: 32 }, '气之始。冠成于未形之时,望之如望万界之初', { fixedMods: { cultivationSpeed: 0.125 }, minRealm: 26 }),
+  t('b_taichu', '太初神袍', 'body', 38, { defense: 14, maxHp: 62 }, '气之始。袍色不可名,刀兵无处着力', { fixedMods: { maxHpPct: 0.145 }, minRealm: 26 }),
+  t('wr_taichu', '太初腕环', 'wrist', 38, { attack: 6, defense: 6 }, '气之始。环中转着一缕本源,一声不响', { fixedMods: { attackPct: 0.105 }, minRealm: 26 }),
+  t('bl_taichu', '太初绦', 'belt', 38, { defense: 6, maxHp: 46 }, '气之始。一绦系住将散的根本', { fixedMods: { maxHpPct: 0.135 }, minRealm: 26 }),
+  t('bo_taichu', '太初履', 'boots', 38, { defense: 7, maxHp: 26 }, '气之始。履下无路,踏处即是路', { fixedMods: { dodgeRate: 0.105 }, minRealm: 26 }),
+  t('n_taichu', '太初珠坠', 'necklace', 38, { maxHp: 45 }, '气之始。坠中空无一物,却压得住心神', { fixedMods: { qiRegen: 0.195 }, minRealm: 26 }),
+  t('r_taichu', '太初戒', 'ring', 38, { attack: 7, maxHp: 20 }, '气之始。戒面一片浑圆,照见本来面目', { fixedMods: { attackPct: 0.105 }, minRealm: 26 }),
+  t('tl_taichu', '太初真符', 'talisman', 38, { maxHp: 40 }, '气之始。符上无字,一笔未落而已成', { fixedMods: { breakthroughRate: 0.05 }, minRealm: 26 }),
+
+  // ---- 39 阶 · 鸿蒙(须鸿蒙境)----
+  t('w_hongmengyi', '鸿蒙一气剑', 'weapon', 39, { attack: 20 }, '浑然未判。剑上无锋,举之则四方皆利', { fixedMods: { damageBonus: 0.16 }, minRealm: 27 }),
+  t('h_hongmeng', '鸿蒙冠', 'head', 39, { defense: 8, maxHp: 32 }, '浑然未判。冠成于未形之时,望之如望万界之初', { fixedMods: { cultivationSpeed: 0.13 }, minRealm: 27 }),
+  t('b_hongmeng', '鸿蒙神袍', 'body', 39, { defense: 14, maxHp: 62 }, '浑然未判。袍色不可名,刀兵无处着力', { fixedMods: { maxHpPct: 0.15 }, minRealm: 27 }),
+  t('wr_hongmeng', '鸿蒙腕环', 'wrist', 39, { attack: 6, defense: 6 }, '浑然未判。环中转着一缕本源,一声不响', { fixedMods: { attackPct: 0.11 }, minRealm: 27 }),
+  t('bl_hongmeng', '鸿蒙绦', 'belt', 39, { defense: 6, maxHp: 46 }, '浑然未判。一绦系住将散的根本', { fixedMods: { maxHpPct: 0.14 }, minRealm: 27 }),
+  t('bo_hongmeng', '鸿蒙履', 'boots', 39, { defense: 7, maxHp: 26 }, '浑然未判。履下无路,踏处即是路', { fixedMods: { dodgeRate: 0.11 }, minRealm: 27 }),
+  t('n_hongmengyi', '鸿蒙一气坠', 'necklace', 39, { maxHp: 45 }, '浑然未判。坠中空无一物,却压得住心神', { fixedMods: { qiRegen: 0.2 }, minRealm: 27 }),
+  t('r_hongmeng', '鸿蒙戒', 'ring', 39, { attack: 7, maxHp: 20 }, '浑然未判。戒面一片浑圆,照见本来面目', { fixedMods: { attackPct: 0.11 }, minRealm: 27 }),
+  t('tl_hongmeng', '鸿蒙真符', 'talisman', 39, { maxHp: 40 }, '浑然未判。符上无字,一笔未落而已成', { fixedMods: { breakthroughRate: 0.051 }, minRealm: 27 }),
+
+  // ---- 40 阶 · 道源(须道源境)----
+  t('w_daoyuan', '道源剑', 'weapon', 40, { attack: 20 }, '先天地生。剑上无锋,举之则四方皆利', { fixedMods: { damageBonus: 0.165 }, minRealm: 28 }),
+  t('h_daoyuan', '道源冠', 'head', 40, { defense: 8, maxHp: 32 }, '先天地生。冠成于未形之时,望之如望万界之初', { fixedMods: { cultivationSpeed: 0.135 }, minRealm: 28 }),
+  t('b_daoyuan', '道源神袍', 'body', 40, { defense: 14, maxHp: 62 }, '先天地生。袍色不可名,刀兵无处着力', { fixedMods: { maxHpPct: 0.155 }, minRealm: 28 }),
+  t('wr_daoyuan', '道源腕环', 'wrist', 40, { attack: 6, defense: 6 }, '先天地生。环中转着一缕本源,一声不响', { fixedMods: { attackPct: 0.115 }, minRealm: 28 }),
+  t('bl_daoyuan', '道源绦', 'belt', 40, { defense: 6, maxHp: 46 }, '先天地生。一绦系住将散的根本', { fixedMods: { maxHpPct: 0.145 }, minRealm: 28 }),
+  t('bo_daoyuan', '道源履', 'boots', 40, { defense: 7, maxHp: 26 }, '先天地生。履下无路,踏处即是路', { fixedMods: { dodgeRate: 0.115 }, minRealm: 28 }),
+  t('n_daoyuan', '道源珠坠', 'necklace', 40, { maxHp: 45 }, '先天地生。坠中空无一物,却压得住心神', { fixedMods: { qiRegen: 0.205 }, minRealm: 28 }),
+  t('r_daoyuan', '道源戒', 'ring', 40, { attack: 7, maxHp: 20 }, '先天地生。戒面一片浑圆,照见本来面目', { fixedMods: { attackPct: 0.115 }, minRealm: 28 }),
+  t('tl_daoyuan', '道源真符', 'talisman', 40, { maxHp: 40 }, '先天地生。符上无字,一笔未落而已成', { fixedMods: { breakthroughRate: 0.052 }, minRealm: 28 })
 ]
 
 const BY_ID = new Map(EQUIPMENT_TEMPLATES.map(x => [x.id, x]))

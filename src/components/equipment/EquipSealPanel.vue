@@ -1,7 +1,7 @@
 <template>
   <button
     v-if="canSealAffix"
-    class="shrink-0 min-h-[28px] rounded-md px-1.5 py-1 text-[10px] text-azure active:scale-90 active:opacity-60 disabled:text-ink-faint disabled:opacity-60"
+    class="shrink-0 min-h-[28px] rounded-md px-1.5 py-1 text-[10px] text-azure ring-1 ring-inset ring-azure/30 active:scale-90 active:opacity-60 disabled:text-ink-faint disabled:opacity-60"
     :disabled="sealShort"
     :aria-label="sealLabel"
     :title="sealShort ? `灵石尚差 ${formatGN(sealGap!)}` : undefined"
@@ -11,7 +11,7 @@
   </button>
   <button
     v-else-if="sealed"
-    class="shrink-0 min-h-[28px] rounded-md px-1.5 py-1 text-[10px] text-jade active:scale-90 active:opacity-60"
+    class="shrink-0 min-h-[28px] rounded-md px-1.5 py-1 text-[10px] text-jade ring-1 ring-inset ring-jade/30 active:scale-90 active:opacity-60"
     :aria-label="`解封词条${name}`"
     @click="doUnsealAffix"
   >

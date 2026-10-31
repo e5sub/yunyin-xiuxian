@@ -39,6 +39,7 @@
   import { EQUIP_SLOT_NAMES, equipmentTemplate } from '@/data/equipment'
   import { useInventoryStore } from '@/stores/inventory'
   import { useUiStore } from '@/stores/ui'
+  import { REALMS } from '@/data/realms'
   import type { EquipSlot } from '@/types'
   import BaseModal from '@/components/common/BaseModal.vue'
   import GameIcon from '@/components/common/GameIcon.vue'
@@ -66,7 +67,11 @@
   })
 
   function equipItem(uid: string): void {
-    if (props.slotName) inventory.equip(uid, props.slotName)
+    if (!props.slotName) return
+    if (inventory.equip(uid, props.slotName)) return
+    // 门槛不足:说清差在哪一境,不静默失败
+    const req = equipmentTemplate(inventory.findItem(uid)?.templateId ?? '')?.minRealm ?? 0
+    ui.toast(`修为未至${REALMS[req]?.name ?? '更高'}境,此物穿不上`, 'warn')
   }
 
   function unequipSlot(): void {

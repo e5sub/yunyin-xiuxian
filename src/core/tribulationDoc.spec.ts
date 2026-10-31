@@ -69,10 +69,13 @@ describe('Phase 39 记录 · 与数值一致', () => {
       [7, '6.8 天'],
       [8, '22.1 天'],
       [9, '72.9 天'],
-      [MAX_MAJOR, '11671.1 天']
+      [20, '11671.1 天']
     ] as const) {
       const row = `| ${REALMS[major]!.name} | ${before} | ${fmt(hoursToReach(major, 0))} |`
       expect(doc, `里程碑这一行与模拟器对不上:\n  ${row}`).toContain(row)
     }
+    // 本源八境是 Phase 39 之后新增的,「改动前」那一栏没有它的读数(记作 ——),只核对改动后这一栏
+    const peak = `| ${REALMS[MAX_MAJOR]!.name} | — | ${fmt(hoursToReach(MAX_MAJOR, 0))} |`
+    expect(doc, `新增末境的里程碑行与模拟器对不上:\n  ${peak}`).toContain(peak)
   })
 })

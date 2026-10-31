@@ -1,5 +1,5 @@
 /**
- * 境界体系 —— 四大界域 · 21 大境界 × (九层 + 圆满)
+ * 境界体系 —— 五大界域 · 29 大境界 × (九层 + 圆满)
  *
  * 下标 = 大境界序号 major。兼容约束:0-9 号境界的 id/名称/寿元/desc 保持原值不动
  * (存档、内容 gate(minRealm)、审计口径都建立在旧下标上);新界只追加,不改旧序号。
@@ -20,7 +20,8 @@ export const WORLDS: WorldDef[] = [
   { id: 'mortal', name: '人间界', desc: '凡尘俗世,修士自此一步步叩问长生', start: 0, end: 8 },
   { id: 'immortal', name: '仙界', desc: '飞升之地,仙灵之气充盈,一步一登天', start: 9, end: 13 },
   { id: 'god', name: '神界', desc: '神域之中,法则凝形', start: 14, end: 17 },
-  { id: 'chaos', name: '混沌海', desc: '万界之始,大道本源', start: 18, end: 20 }
+  { id: 'chaos', name: '混沌海', desc: '万界之始,大道本源', start: 18, end: 20 },
+  { id: 'primordial', name: '本源', desc: '太极之上,一气未判,万法由此而出', start: 21, end: 28 }
 ]
 
 /** 寿元:界域内按固定倍率复利,跨界一次大跃;spec 钉:realms.spec(单调、每境至少翻倍、飞升为唯一大跃) */
@@ -28,7 +29,9 @@ export const LIFESPAN_WORLDS: Record<WorldId, { base: number; growth: number; st
   mortal: { base: 150, growth: 3.0, start: 0 },
   immortal: { base: 100_000_000, growth: 3.2, start: 9 },
   god: { base: 100_000_000_000, growth: 4.5, start: 14 },
-  chaos: { base: 50_000_000_000_000, growth: 4.5, start: 18 }
+  chaos: { base: 50_000_000_000_000, growth: 4.5, start: 18 },
+  /** 太初接混沌海的复利走(4.5e15 恰是混沌海第 21 境的续值),跨界不再另作大跃 —— 大跃只留给飞升 */
+  primordial: { base: 4_500_000_000_000_000, growth: 4.5, start: 21 }
 }
 
 /** 某大境界的寿元 */
@@ -73,7 +76,19 @@ export const REALMS: RealmDef[] = [
   // ---- 混沌海 ----
   { id: 'hundunling', name: '混沌真灵', world: 'chaos', lifespanYears: lifespanOf(18), desc: '混沌初开,一点真灵不昧', lore: '承神帝。《三五历纪》「天地混沌如鸡子」。', basis: '道家本源' },
   { id: 'hundunshenmo', name: '混沌神魔', world: 'chaos', lifespanYears: lifespanOf(19), desc: '神魔一体,开天辟地', lore: '承混沌真灵。神魔以身开界。', basis: '道家本源' },
-  { id: 'hundundaozu', name: '混沌道祖', world: 'chaos', lifespanYears: lifespanOf(20), desc: '万道之祖,与混沌同寿', lore: '承混沌神魔,为全境之极。《道德经》「道生一」。', basis: '道家本源' }
+  { id: 'hundundaozu', name: '混沌道祖', world: 'chaos', lifespanYears: lifespanOf(20), desc: '万道之祖,与混沌同寿', lore: '承混沌神魔,为全境之极。《道德经》「道生一」。', basis: '道家本源' },
+  // ---- 太初 ----
+  // 太初四境取「混元 → 无极 → 太素 → 道源」:由一气之始,历质之始,终归于道。
+  // 这四境不加新的渡劫开关:跨界入口(混元)照旧是一关,与真仙/神人/混沌真灵一视同仁。
+  // 八境取「逆流溯源」:由一气之始,一路退到「未见气」之前,终归于道。
+  { id: 'hunyuan', name: '混元', world: 'primordial', lifespanYears: lifespanOf(21), desc: '混元一气,包罗万象', lore: '承混沌道祖。《云笈七签》以「混元」为天地未判之元气,一气含万有。', basis: '道家本源' },
+  { id: 'wuji', name: '无极', world: 'primordial', lifespanYears: lifespanOf(22), desc: '无极而太极,动而生阳', lore: '承混元。周敦颐《太极图说》「无极而太极」,无极者,未有极也。', basis: '道家本源' },
+  { id: 'taiji', name: '太极', world: 'primordial', lifespanYears: lifespanOf(23), desc: '一划开天,两仪始判', lore: '承无极。《周易·系辞》「易有太极,是生两仪」,太极者,未分之全体。', basis: '道家本源' },
+  { id: 'taisu', name: '太素', world: 'primordial', lifespanYears: lifespanOf(24), desc: '太素者,质之始也', lore: '承太极。《列子·天瑞》列「太易、太初、太始、太素」,太素为形质之始。', basis: '道家本源' },
+  { id: 'taishi', name: '太始', world: 'primordial', lifespanYears: lifespanOf(25), desc: '太始者,形之始也', lore: '承太素。《列子·天瑞》「太始者,形之始也」,形未成而先有其端。', basis: '道家本源' },
+  { id: 'taichu', name: '太初', world: 'primordial', lifespanYears: lifespanOf(26), desc: '太初者,气之始也', lore: '承太始。《列子·天瑞》「太初者,气之始也」,有气而未有形。', basis: '道家本源' },
+  { id: 'hongmeng', name: '鸿蒙', world: 'primordial', lifespanYears: lifespanOf(27), desc: '鸿蒙未判,浑然一体', lore: '承太初。《庄子·在宥》「凿破鸿蒙」,鸿蒙即未分之浑然。', basis: '道家本源' },
+  { id: 'daoyuan', name: '道源', world: 'primordial', lifespanYears: lifespanOf(28), desc: '道之源,先天地生', lore: '承鸿蒙,为全境之终。《道德经》「有物混成,先天地生」,即此源。', basis: '道家本源' }
 ]
 
 export const MAX_MAJOR = REALMS.length - 1

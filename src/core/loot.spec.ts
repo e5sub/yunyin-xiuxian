@@ -324,10 +324,13 @@ describe('装备见闻 · 入账那一刻就记下成色', () => {
 
     res.addSmall('dust', 10_000)
     res.addStone(gn(1e12))
+    usePlayerStore().gainExp(gn(1e20)) // 强化要付修为
+    const roll = vi.spyOn(Math, 'random').mockReturnValue(0) // 必定成功
     const before = lore.equipSeen('w_qingshuang')?.u ?? 0
     expect(before).toBe(0)
     inv.items = [...inv.items, { uid: 'used-2', templateId: 'w_qingshuang', quality: 'heaven', tier: 3, level: 0, affixes: [] }]
-    expect(upgradeEquipment('used-2'), '强化应当成功(素材已给足)').toBe(true)
+    expect(upgradeEquipment('used-2'), '强化应当成功(素材已给足)').toBe('up')
+    roll.mockRestore()
     expect(lore.equipSeen('w_qingshuang')?.u, '强化过也算上手').toBe(1)
   })
 })

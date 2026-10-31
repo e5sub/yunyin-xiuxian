@@ -194,9 +194,11 @@ describe('膨胀治理 · 乘区来源归因', () => {
     // 实测 金丹 21.8% / 炼虚 10.3%
     expect(jindan.share).toBeGreaterThan(0.2)
     expect(lianxu.share).toBeGreaterThan(0.09)
-    // 顶段战力大头在装备平铺,境界基础只剩 1.2% 量级
+    // 顶段战力大头在装备平铺,境界基础只剩 1.1% 量级。
+    // 长尾自 20 境延到 28 境后,「其他来源」按境界线性叠加(每境 +9%),分母变大,占比自 1.2% 再降一档;
+    // 相对线跟着放宽到 15%,仍拦「突破在顶段彻底失声」。
     expect(top.share).toBeGreaterThan(0.01)
-    expect(top.share).toBeGreaterThan(zhenxian.share * 0.2)
+    expect(top.share).toBeGreaterThan(zhenxian.share * 0.15)
     console.log(
       `\n境界基础占比:金丹 ${(jindan.share * 100).toFixed(1)}% / 炼虚 ${(lianxu.share * 100).toFixed(1)}% / ` +
         `真仙 ${(zhenxian.share * 100).toFixed(1)}% / ${REALMS[MAX_MAJOR]!.name} ${(top.share * 100).toFixed(1)}%(治理前 17.2 / 6.4 / 4.4)`

@@ -7,6 +7,7 @@ import { persistConfig } from '@/utils/storage'
 import { resolveEquipStats } from '@/core/equipGen'
 import { mergeMods } from '@/core/statsCalc'
 import { useLoreStore } from '@/stores/lore'
+import { usePlayerStore } from '@/stores/player'
 import { ARTIFACT_MAX_LEVEL, ARTIFACT_MAX_SLOTS, artifactDef, artifactValue } from '@/data/artifacts'
 import { BAG_CAPACITY, EQUIP_MAX_LEVEL_BASE } from '@/data/constants'
 import { EQUIP_SLOTS, MAX_EQUIP_TIER, equipmentTemplate } from '@/data/equipment'
@@ -192,11 +193,32 @@ export const useInventoryStore = defineStore(
       items.value = items.value.map(it => (it.uid === inst.uid ? inst : it))
     }
 
-    function equip(uid: string, slot: EquipSlot): void {
+    /**
+     * 该件是否穿得上:模板的 minRealm 是硬门槛(只有太初四阶的仙品/神品顶级件带)。
+     * 境界在这里现读 player —— 两个 store 互不 import 会比初始化先跑,
+     * 故只在函数体内取,不用顶层常量。
+     */
+    function canEquip(uid: string): boolean {
+      const inst = findItem(uid)
+      if (!inst) return false
+      return canEquipTemplate(inst.templateId)
+    }
+
+    /** 模板级判定:一键换装、穿套、掉落提示都读这一处 */
+    function canEquipTemplate(templateId: string): boolean {
+      const req = equipmentTemplate(templateId)?.minRealm ?? 0
+      if (req <= 0) return true
+      return usePlayerStore().major >= req
+    }
+
+    /** 穿戴;门槛不足返回 false(原样不动,由调用方提示) */
+    function equip(uid: string, slot: EquipSlot): boolean {
+      if (!canEquip(uid)) return false
       equipped.value = { ...equipped.value, [slot]: uid }
       // 记「亲手用过」:图鉴收录深度的一档(见 ui/codex)
       const inst = findItem(uid)
       if (inst) useLoreStore().noteEquipUsed(inst.templateId)
+      return true
     }
 
     function unequip(slot: EquipSlot): void {
@@ -287,6 +309,8 @@ export const useInventoryStore = defineStore(
       removeEquipment,
       replaceItem,
       equip,
+      canEquip,
+      canEquipTemplate,
       unequip,
       addPill,
       spendPill,

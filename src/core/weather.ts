@@ -30,6 +30,10 @@ export type WeatherId =
   | 'hundunchao'
   | 'benyuan'
   | 'daoyin'
+  // 太初
+  | 'yiyuan'
+  | 'taixu'
+  | 'wuji'
 
 export interface WeatherDef {
   id: WeatherId
@@ -148,6 +152,30 @@ export const WORLD_WEATHERS: Record<Exclude<WorldId, 'mortal'>, WeatherDef[]> = 
       desc: '虚空之中道音不绝,福至心灵。',
       mods: { luck: 0.1, dropRate: 0.1, breakthroughRate: 0.03 },
       tribulationMult: 1
+    }
+  ],
+  primordial: [
+    {
+      id: 'yiyuan',
+      name: '一元复始',
+      desc: '一气周流,复归其始。吐纳之间修为自增。',
+      mods: { cultivationSpeed: 0.25, qiRegen: 0.32 },
+      tribulationMult: 1
+    },
+    {
+      id: 'taixu',
+      name: '太虚清光',
+      desc: '太虚无云,清光遍照,万法皆明。',
+      mods: { attackPct: 0.12, damageBonus: 0.1 },
+      tribulationMult: 1
+    },
+    {
+      id: 'wuji',
+      name: '无极之境',
+      desc: '内外俱寂,唯余一线道心;渡劫更险,所得亦厚。',
+      mods: { defensePct: 0.12, maxHpPct: 0.12, tribulationResist: -0.12 },
+      // 与混沌海最凶天时同档:再高一档,四维皆优的参考构筑就渡不过逆流劫(tribulationSpace.spec ①)
+      tribulationMult: 1.12
     }
   ]
 }

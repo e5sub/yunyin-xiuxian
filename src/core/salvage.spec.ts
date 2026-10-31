@@ -2,7 +2,7 @@
  * 分解返还:底材器灵尘 + 强化投入(尘与灵石)的八成;账以实例上记的投入为准,老档按标价补算。
  * 返还不得超过实际投入(「强化再拆」套利)。
  */
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createPinia, setActivePinia } from 'pinia'
@@ -14,12 +14,15 @@ import { upgradeCost } from './formulas'
 import { enhanceInvested, salvageOf, salvageRefundPhrase } from './salvage'
 import { decomposeByRanks, decomposeEquipment, upgradeEquipment, upgradeEquipmentBatch } from './forge'
 import { useInventoryStore } from '@/stores/inventory'
+import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useUiStore } from '@/stores/ui'
 
 function mk(uid: string, quality: QualityId, level = 0, tier = 5): EquipmentInstance {
   return { uid, templateId: 'b_qingyun', quality, tier, level, affixes: [] }
 }
+
+afterEach(() => vi.restoreAllMocks())
 
 describe('分解返还 · 强化投入的八成随件退回', () => {
   beforeEach(() => {
@@ -79,10 +82,13 @@ describe('分解返还 · 强化投入的八成随件退回', () => {
     inventory.addEquipment(mk('e', 'earth', 0, 8))
     resources.addSmall('dust', 100000)
     resources.addStone(gn(1e9))
+    usePlayerStore().exp = gn(1e9)
+    // 强化要掷成败:打桩必成,只验记账
+    vi.spyOn(Math, 'random').mockReturnValue(0)
     let spentDust = 0
     for (let i = 0; i < 3; i += 1) {
       spentDust += upgradeCost(i, 8, qualityDef('earth').rank, 0).dust
-      expect(upgradeEquipment('e')).toBe(true)
+      expect(upgradeEquipment('e')).toBe('up')
     }
     const after = inventory.findItem('e')!
     expect(after.level).toBe(3)
@@ -94,18 +100,19 @@ describe('分解返还 · 强化投入的八成随件退回', () => {
     const resources = useResourcesStore()
     const ui = useUiStore()
     inventory.addEquipment(mk('g', 'earth', 0, 8))
+    usePlayerStore().exp = gn(1e30)
 
     // 只缺尘
     resources.addStone(gn(1e30))
     resources.addSmall('dust', 0)
-    expect(upgradeEquipment('g')).toBe(false)
+    expect(upgradeEquipment('g')).toBe('blocked')
     expect(ui.toasts.at(-1)?.text).toContain('器灵尘')
     expect(ui.toasts.at(-1)?.text).not.toContain('灵石')
 
     // 只缺石
     resources.spendStone(gn(1e30))
     resources.addSmall('dust', 100_000)
-    expect(upgradeEquipment('g')).toBe(false)
+    expect(upgradeEquipment('g')).toBe('blocked')
     expect(ui.toasts.at(-1)?.text).toContain('灵石')
     expect(ui.toasts.at(-1)?.text).not.toContain('器灵尘')
   })
@@ -117,6 +124,7 @@ describe('分解返还 · 强化投入的八成随件退回', () => {
     inventory.addEquipment(mk('h', 'earth', 0, 8))
     resources.addStone(gn(1e30))
     resources.addSmall('dust', 0)
+    usePlayerStore().exp = gn(1e30)
     expect(upgradeEquipmentBatch('h')).toBe(0)
     expect(ui.toasts.at(-1)?.text).toContain('器灵尘')
   })

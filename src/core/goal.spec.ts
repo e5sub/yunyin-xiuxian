@@ -8,9 +8,32 @@ import { useInventoryStore } from '@/stores/inventory'
 import { gn, toNum, gnZero } from '@/utils/gnum'
 import { generateCurrentGoal } from './goal'
 import { SUB_LEVELS } from '@/data/constants'
+import { EQUIP_SLOTS, EQUIPMENT_TEMPLATES } from '@/data/equipment'
 import { breakthroughInfo } from './breakthrough'
 
 const { setBuild } = vi.hoisted(() => ({ setBuild: { value: null as unknown } }))
+
+/** 每槽一件一阶模板(无境界门槛):equip 现在要查模板门槛与实例,凭空的 uid 穿不上 */
+const SLOT_TEMPLATE = EQUIP_SLOTS.map(
+  slot => [slot, EQUIPMENT_TEMPLATES.find(t => t.slot === slot && !t.minRealm)!.id] as const
+)
+
+/** 摆一套真装备进包并穿满 */
+function wearAll(): void {
+  const inv = useInventoryStore()
+  inv.items = [
+    ...inv.items,
+    ...SLOT_TEMPLATE.map(([slot, templateId]) => ({
+      uid: `u-${slot}`,
+      templateId,
+      quality: 'mortal' as const,
+      tier: 1,
+      level: 0,
+      affixes: []
+    }))
+  ]
+  for (const slot of EQUIP_SLOTS) inv.equip(`u-${slot}`, slot)
+}
 vi.mock('./buildDetect', () => ({ detectBuild: () => setBuild.value }))
 
 describe('修行目标(Phase 29)', () => {
@@ -119,9 +142,7 @@ describe('修行目标(Phase 29)', () => {
     player.exp = gnZero()
     useAdventureStore().cleared = [...useAdventureStore().unlocked]
     useResourcesStore().herbByGrade[1] = 12
-    for (const slot of ['weapon', 'head', 'body', 'wrist', 'belt', 'boots', 'necklace', 'ring', 'talisman'] as const) {
-      useInventoryStore().equip(`u-${slot}`, slot)
-    }
+    wearAll()
     expect(generateCurrentGoal(player)).toBeNull()
   })
 
@@ -148,9 +169,7 @@ describe('修行目标(Phase 29)', () => {
     const adventure = useAdventureStore()
     adventure.unlocked = ['qingyun']
     adventure.cleared = ['qingyun']
-    for (const slot of ['weapon', 'head', 'body', 'wrist', 'belt', 'boots', 'necklace', 'ring', 'talisman'] as const) {
-      useInventoryStore().equip(`u-${slot}`, slot)
-    }
+    wearAll()
     useResourcesStore().herbByGrade[1] = 12
     expect(generateCurrentGoal(player)).toBeNull()
   })
@@ -163,6 +182,17 @@ describe('修行目标(Phase 29)', () => {
     adventure.unlocked = ['qingyun']
     adventure.cleared = ['qingyun']
     // 优先级里第一个空槽是 body(衣袍)
+    useInventoryStore().items = [
+      ...useInventoryStore().items,
+      ...SLOT_TEMPLATE.filter(([slot]) => slot === 'weapon' || slot === 'head').map(([slot, templateId]) => ({
+        uid: `u-${slot}`,
+        templateId,
+        quality: 'mortal' as const,
+        tier: 1,
+        level: 0,
+        affixes: []
+      }))
+    ]
     useInventoryStore().equip('u-weapon', 'weapon')
     useInventoryStore().equip('u-head', 'head')
     useResourcesStore().herbByGrade[1] = 12
@@ -208,9 +238,7 @@ describe('修行目标(Phase 29)', () => {
     const adventure = useAdventureStore()
     adventure.unlocked = ['qingyun'] // 只通关凡界(地界 0)
     adventure.cleared = ['qingyun']
-    for (const slot of ['weapon', 'head', 'body', 'wrist', 'belt', 'boots', 'necklace', 'ring', 'talisman'] as const) {
-      useInventoryStore().equip(`u-${slot}`, slot)
-    }
+    wearAll()
     const resources = useResourcesStore()
     resources.herbByGrade[1] = 50 // 地界品(凡品)成堆
     resources.herbByGrade[3] = 0 // 当前大境界品(仙品)见底

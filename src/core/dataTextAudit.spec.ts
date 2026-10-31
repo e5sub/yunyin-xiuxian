@@ -320,7 +320,7 @@ describe('文案数值对账 · 视图不手抄数字', () => {
 })
 
 /**
- * 视图数量对账:页面写的数量(四界二十一境、六十四卦、三层…)由来源表数出,原字面量须消失;
+ * 视图数量对账:页面写的数量(五界二十九境、六十四卦、三层…)由来源表数出,原字面量须消失;
  * 同时钉住数值不变。
  */
 describe('文案数值对账 · 视图不手抄数量', () => {
@@ -331,7 +331,7 @@ describe('文案数值对账 · 视图不手抄数量', () => {
       .replace(/\/\/.*$/gm, '')
 
   it('接线换的是算法,不是玩家看到的数', () => {
-    expect(`${cnNumber(WORLDS.length)}界${cnNumber(REALMS.length)}境`).toBe('四界二十一境')
+    expect(`${cnNumber(WORLDS.length)}界${cnNumber(REALMS.length)}境`).toBe('五界二十九境')
     expect(cnNumber(TRIGRAMS.length)).toBe('八')
     expect(cnNumber(HEXAGRAMS.length)).toBe('六十四')
     expect(cnNumber(PALACES.length)).toBe('十二')
@@ -358,7 +358,7 @@ describe('文案数值对账 · 视图不手抄数量', () => {
     const view = src('../views/CharacterView.vue')
     expect(view).toContain('cnNumber(WORLDS.length)')
     expect(view).toContain('cnNumber(REALMS.length)')
-    expect(view).not.toContain('四界二十一境')
+    expect(view).not.toContain('五界二十九境')
   })
 
   it('界域志各门的数量取自各自的表(易 / 紫微 / 星象 / 奇门)', () => {

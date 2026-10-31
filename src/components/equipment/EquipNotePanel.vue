@@ -8,7 +8,11 @@
       class="min-w-0 grow rounded-md border border-ink/15 bg-paper-deep/60 px-2 py-1 text-[12px] text-ink outline-none placeholder:text-ink-faint focus:border-azure"
       @change="applyNote"
     />
-    <button v-if="noteDraft" class="-my-1 flex min-h-[28px] items-center px-1 py-1 text-[11px] text-ink-faint active:opacity-60" @click="clearNote">
+    <button
+      v-if="noteDraft"
+      class="-my-1 flex min-h-[28px] items-center rounded px-1.5 py-1 text-[11px] text-ink-faint ring-1 ring-inset ring-ink/25 active:opacity-60"
+      @click="clearNote"
+    >
       清除
     </button>
   </div>

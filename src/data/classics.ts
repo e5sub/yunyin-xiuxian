@@ -50,8 +50,40 @@ export const CLASSICS: ClassicDef[] = [
     title: '云笈七签',
     source: '北宋 · 张君房',
     school: '道教',
-    gist: '道教类书,收雷法与劫运之说;「九重雷海、向死而生」的渡劫想象多源于此类典籍。',
-    realms: ['dujie']
+    gist: '道教类书,收雷法与劫运之说;「九重雷海、向死而生」的渡劫想象多源于此类典籍,又以「混元」为天地未判之元气。',
+    realms: ['dujie', 'hunyuan']
+  },
+  {
+    id: 'taijitushuo',
+    title: '太极图说',
+    source: '北宋 · 周敦颐',
+    school: '道家',
+    gist: '「无极而太极。太极动而生阳,静而生阴」:无极、太极两境之名与相生之理俱出于此。',
+    realms: ['wuji', 'taiji']
+  },
+  {
+    id: 'zhouyi_xici',
+    title: '周易·系辞',
+    source: '先秦 · 佚名(传孔子)',
+    school: '道家',
+    gist: '「易有太极,是生两仪」:太极一境的分判之说,本于此篇。',
+    realms: ['taiji']
+  },
+  {
+    id: 'liezi_tianrui',
+    title: '列子·天瑞',
+    source: '战国 · 列御寇(传)',
+    school: '道家',
+    gist: '列「太易、太初、太始、太素」四者,分言气、形、质之始:太素、太始、太初二境由此立名。',
+    realms: ['taisu', 'taishi', 'taichu']
+  },
+  {
+    id: 'zhuangzi_zaiyou',
+    title: '庄子·在宥',
+    source: '战国 · 庄周',
+    school: '道家',
+    gist: '「凿破鸿蒙」:鸿蒙为未分之浑然,凿之则分,分则有生死。鸿蒙一境取其未判之意。',
+    realms: ['hongmeng']
   },
   {
     id: 'zhonglv',
@@ -66,8 +98,8 @@ export const CLASSICS: ClassicDef[] = [
     title: '道德经',
     source: '春秋 · 老子',
     school: '道家',
-    gist: '「玄之又玄」「道生一」:玄仙之「玄」、道祖之「道」皆本于此。',
-    realms: ['xuanxian', 'hundundaozu']
+    gist: '「玄之又玄」「道生一」「有物混成,先天地生」:玄仙之「玄」、道祖之「道」、道源之「源」皆本于此。',
+    realms: ['xuanxian', 'hundundaozu', 'daoyuan']
   },
   {
     id: 'zhuangzi',

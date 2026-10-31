@@ -3,8 +3,8 @@ import type { ArtifactDef, EquipmentInstance, GNum } from '@/types'
 import { qualityDef } from '@/data/qualities'
 import { equipmentTemplate } from '@/data/equipment'
 import { artifactDef, ARTIFACT_MAX_LEVEL, ARTIFACT_UP_STONE_TIER, ARTIFACT_UP_WUDAO_BASE } from '@/data/artifacts'
-import { EQUIP_MAX_LEVEL_BASE } from '@/data/constants'
-import { stoneByTier, upgradeCost } from './formulas'
+import { EQUIP_MAX_LEVEL_BASE, UPGRADE_SAFE_STEP } from '@/data/constants'
+import { stoneByTier, upgradeCost, upgradeFailLevel, upgradeSuccessRate } from './formulas'
 import { add, gnZero, isZero, subClamp } from '@/utils/gnum'
 import { formatGN } from '@/utils/format'
 import {
@@ -19,7 +19,10 @@ import {
   upgradeCapToast,
   upgradeDoneToast,
   upgradeShortToast,
-  upgradeBatchDoneToast
+  upgradeBatchDoneToast,
+  upgradeSafeToast,
+  upgradeFailToast,
+  upgradeBatchBrokenToast
 } from '@/ui/forgeText'
 import { salvageOf, salvageRefundPhrase } from './salvage'
 import { playSfx } from './audio'
@@ -37,134 +40,204 @@ export function equipLevelCap(): number {
   return EQUIP_MAX_LEVEL_BASE + useDongfuStore().forgeCapBonus
 }
 
-export function equipUpgradeCost(uid: string): { dust: number; stone: GNum } | null {
+export interface UpgradeQuote {
+  /** 本次强化价:尘 / 石 / 修为 */
+  dust: number
+  stone: GNum
+  exp: GNum
+  /** 成功率 0~1(0 级必成,越高越难) */
+  rate: number
+  /** 失败会跌到这一级 */
+  failLevel: number
+  /** 正站在保级点:这一掷失败也不掉级 */
+  safe: boolean
+}
+
+/** 本件下一级的强化报价;已满级或查无此件返回 null */
+export function equipUpgradeQuote(uid: string): UpgradeQuote | null {
   const inventory = useInventoryStore()
   const player = usePlayerStore()
   const inst = inventory.findItem(uid)
   if (!inst || inst.level >= equipLevelCap()) return null
   const q = qualityDef(inst.quality)
-  return upgradeCost(inst.level, inst.tier, q.rank, modOf(player.finalStats.mods, 'forgeDiscount'))
+  const cost = upgradeCost(inst.level, inst.tier, q.rank, modOf(player.finalStats.mods, 'forgeDiscount'))
+  const failLevel = upgradeFailLevel(inst.level, UPGRADE_SAFE_STEP)
+  return { ...cost, rate: upgradeSuccessRate(inst.level), failLevel, safe: failLevel === inst.level }
 }
 
 /** 这次强化缺哪一样,付得起为 null;提示与结算共用 */
-export function upgradeShort(cost: { dust: number; stone: GNum }): 'stone' | 'dust' | null {
+export function upgradeShort(cost: { dust: number; stone: GNum; exp: GNum }): 'dust' | 'exp' | 'stone' | null {
   const resources = useResourcesStore()
   if (!resources.hasSmall('dust', cost.dust)) return 'dust'
+  if (!usePlayerStore().spendableExp(cost.exp)) return 'exp'
   if (!resources.hasStone(cost.stone)) return 'stone'
   return null
 }
 
-/** 强化这一级两样各差多少;界面价签、置灰与提示共用 */
-export function upgradeShortfall(cost: { dust: number; stone: GNum }): { dust: number; stone: GNum } {
+/** 强化这一级三样各差多少;界面价签、置灰与提示共用 */
+export function upgradeShortfall(cost: { dust: number; stone: GNum; exp: GNum }): { dust: number; exp: GNum; stone: GNum } {
   const resources = useResourcesStore()
   return {
     dust: Math.max(0, cost.dust - resources.dust),
+    exp: subClamp(cost.exp, usePlayerStore().exp),
     stone: subClamp(cost.stone, resources.spiritStone)
   }
 }
 
-export function upgradeEquipment(uid: string, opts: { quiet?: boolean } = {}): boolean {
+export type UpgradeOutcome = 'up' | 'fail' | 'blocked'
+
+/**
+ * 强化一次:扣尘 / 石 / 修为,再掷成败。
+ * 成则 +1 级;败则跌一级,但不跌破本档保级点(每 10 级一档)。
+ * 三样缺一即 blocked,分文不扣。
+ */
+export function upgradeEquipment(uid: string, opts: { quiet?: boolean } = {}): UpgradeOutcome {
   const inventory = useInventoryStore()
   const resources = useResourcesStore()
+  const player = usePlayerStore()
   const ui = useUiStore()
   const inst = inventory.findItem(uid)
-  const cost = equipUpgradeCost(uid)
-  if (!inst || !cost) {
+  const quote = equipUpgradeQuote(uid)
+  if (!inst || quote === null) {
     if (!opts.quiet) {
       playSfx('warn')
       ui.toast(upgradeCapToast(), 'warn')
     }
-    return false
+    return 'blocked'
   }
-  const short = upgradeShort(cost)
-  if (short) {
+  const short = upgradeShort(quote)
+  if (short !== null) {
     if (!opts.quiet) {
       playSfx('warn')
-      const gap = upgradeShortfall(cost)
-      ui.toast(upgradeShortToast(short, { stone: formatGN(gap.stone), dust: gap.dust }), 'warn')
+      const gap = upgradeShortfall(quote)
+      ui.toast(
+        upgradeShortToast(short, { stone: formatGN(gap.stone), dust: gap.dust, exp: formatGN(gap.exp) }),
+        'warn'
+      )
     }
-    return false
+    return 'blocked'
   }
-  resources.spendSmall('dust', cost.dust)
-  resources.spendStone(cost.stone)
+
+  // 先付:成败都要付,这是强化的规矩
+  resources.spendSmall('dust', quote.dust)
+  resources.spendStone(quote.stone)
+  player.spendExp(quote.exp)
   // 记账实付强化成本(折扣按当时),分解返还按此账
   const invested = inst.invested ?? { dust: 0, stone: gnZero() }
-  inventory.replaceItem({
-    ...inst,
-    level: inst.level + 1,
-    invested: { dust: invested.dust + cost.dust, stone: add(invested.stone, cost.stone) }
-  })
-  track('upgrades')
+  const paid = { dust: invested.dust + quote.dust, stone: add(invested.stone, quote.stone) }
   const t = equipmentTemplate(inst.templateId)
   // 强化也算图鉴「亲手用过」
   useLoreStore().noteEquipUsed(inst.templateId)
   // 矿材记「上手过」;矿石进通晓/锻造技艺的唯一来源
   noteSmithingUsed(inst.tier, true)
-  if (!opts.quiet) {
-    playSfx('success')
-    ui.toast(upgradeDoneToast(t?.name ?? '此器', inst.level + 1), 'success')
+
+  const success = Math.random() < quote.rate
+  if (success) {
+    inventory.replaceItem({ ...inst, level: inst.level + 1, invested: paid })
+    track('upgrades')
+    if (!opts.quiet) {
+      playSfx('success')
+      ui.toast(upgradeDoneToast(t?.name ?? '此器', inst.level + 1), 'success')
+    }
+    return 'up'
   }
-  return true
+
+  const dropped = inst.level - quote.failLevel
+  inventory.replaceItem({ ...inst, level: quote.failLevel, invested: paid })
+  if (!opts.quiet) {
+    playSfx('warn')
+    ui.toast(
+      dropped === 0
+        ? upgradeSafeToast(t?.name ?? '此器', quote.failLevel)
+        : upgradeFailToast(t?.name ?? '此器', quote.failLevel, dropped),
+      'warn'
+    )
+  }
+  return 'fail'
 }
 
 export interface UpgradeBatchPlan {
-  /** 能连升的级数(受上限与余额约束) */
-  levels: number
-  /** 总耗器灵尘 */
+  /** 余额支持的最大尝试次数(每次都可能失手) */
+  attempts: number
+  /** 全成时的总耗器灵尘 */
   dust: number
-  /** 总耗灵石 */
+  /** 全成时的总耗灵石 */
   stone: GNum
+  /** 全成时的总耗修为 */
+  exp: GNum
   /** 因到上限而停(非缺料) */
   atCap: boolean
 }
 
-/** 强化连升计划(只算不扣):逐级累加到上限或余额不足;界面预览与批量执行共用 */
+/** 连续强化计划(只算不扣):逐次累加到上限或余额不足;界面预览与批量执行共用 */
 export function upgradeBatchPlan(uid: string): UpgradeBatchPlan {
   const inventory = useInventoryStore()
   const resources = useResourcesStore()
   const player = usePlayerStore()
   const inst = inventory.findItem(uid)
-  if (!inst) return { levels: 0, dust: 0, stone: gnZero(), atCap: false }
+  const empty: UpgradeBatchPlan = { attempts: 0, dust: 0, stone: gnZero(), exp: gnZero(), atCap: false }
+  if (!inst) return empty
   const cap = equipLevelCap()
-  if (inst.level >= cap) return { levels: 0, dust: 0, stone: gnZero(), atCap: true }
+  if (inst.level >= cap) return { ...empty, atCap: true }
   const q = qualityDef(inst.quality)
   const discount = modOf(player.finalStats.mods, 'forgeDiscount')
   let lv = inst.level
   let dust = 0
   let stone = gnZero()
+  let exp = gnZero()
   while (lv < cap) {
     const c = upgradeCost(lv, inst.tier, q.rank, discount)
-    if (!resources.hasSmall('dust', dust + c.dust) || !resources.hasStone(add(stone, c.stone))) break
+    if (!resources.hasSmall('dust', dust + c.dust)) break
+    if (!resources.hasStone(add(stone, c.stone))) break
+    if (!player.spendableExp(add(exp, c.exp))) break
     dust += c.dust
     stone = add(stone, c.stone)
+    exp = add(exp, c.exp)
     lv += 1
   }
-  return { levels: lv - inst.level, dust, stone, atCap: lv >= cap }
+  return { attempts: lv - inst.level, dust, stone, exp, atCap: lv >= cap }
 }
 
 /**
- * 强化连升:逐级走 upgradeEquipment quiet 版(记账/图鉴/炼器照常),只报一次提示。
- * 返回实际升的级数;0 = 未升。
+ * 连续强化:逐次走 upgradeEquipment quiet 版(记账/图鉴/炼器照常),失手即停,只报一次提示。
+ * 返回本次成功提升的级数。
  */
 export function upgradeEquipmentBatch(uid: string): number {
   const plan = upgradeBatchPlan(uid)
-  if (plan.levels === 0) {
+  const inventory = useInventoryStore()
+  if (plan.attempts === 0) {
     playSfx('warn')
-    // 缺料判定看下一级报价:连一级都不够时计划金额为 0
-    const next = equipUpgradeCost(uid)
-    const short = next ? upgradeShort(next) : null
-    const gap = next ? upgradeShortfall(next) : { dust: 0, stone: gnZero() }
+    const next = equipUpgradeQuote(uid)
+    const short = next === null ? null : upgradeShort(next)
+    const gap = next === null ? { dust: 0, exp: gnZero(), stone: gnZero() } : upgradeShortfall(next)
     useUiStore().toast(
-      plan.atCap ? upgradeCapToast() : upgradeShortToast(short ?? 'stone', { stone: formatGN(gap.stone), dust: gap.dust }),
+      plan.atCap
+        ? upgradeCapToast()
+        : upgradeShortToast(short ?? 'stone', { stone: formatGN(gap.stone), dust: gap.dust, exp: formatGN(gap.exp) }),
       'warn'
     )
     return 0
   }
-  for (let i = 0; i < plan.levels; i += 1) upgradeEquipment(uid, { quiet: true })
-  const inst = useInventoryStore().findItem(uid)
-  playSfx('success')
-  useUiStore().toast(upgradeBatchDoneToast(plan.levels, inst?.level ?? 0, plan.dust, formatGN(plan.stone)), 'success')
-  return plan.levels
+  let up = 0
+  let tries = 0
+  let last: UpgradeOutcome = 'up'
+  for (let i = 0; i < plan.attempts; i += 1) {
+    tries += 1
+    last = upgradeEquipment(uid, { quiet: true })
+    if (last !== 'up') break
+    up += 1
+  }
+  const inst = inventory.findItem(uid)
+  const name = equipmentTemplate(inst?.templateId ?? '')?.name ?? '此器'
+  if (last === 'up') playSfx('success')
+  else playSfx('warn')
+  useUiStore().toast(
+    last === 'up'
+      ? upgradeBatchDoneToast(up, inst?.level ?? 0, plan.dust, formatGN(plan.stone))
+      : upgradeBatchBrokenToast(name, tries, up, inst?.level ?? 0),
+    last === 'up' ? 'success' : 'warn'
+  )
+  return up
 }
 
 export function decomposeEquipment(uid: string, opts: { quiet?: boolean } = {}): boolean {

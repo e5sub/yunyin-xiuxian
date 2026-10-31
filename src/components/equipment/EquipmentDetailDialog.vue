@@ -10,6 +10,8 @@
           {{ EQUIP_SLOT_NAMES[template.slot] }} · {{ worldNameOfTier(inst.tier) }} · {{ inst.tier }} 阶
         </span>
         <span v-if="inst.level > 0" class="text-[11px] text-gold-ink tabular">+{{ inst.level }}</span>
+        <!-- 境界门槛:仙品之上的顶级件,未到境穿不上 -->
+        <span v-if="realmReqText" class="text-[11px] text-cinnabar">{{ realmReqText }}</span>
         <button
           class="-m-1.5 flex min-h-[28px] min-w-[28px] items-center justify-center p-1.5 text-ink-faint active:scale-90"
           :aria-label="inst.locked ? '解锁' : '锁定'"
@@ -126,12 +128,12 @@
         <div class="flex gap-2">
           <button class="btn-seal flex-1" @click="toggleEquip">{{ isEquipped ? '卸 下' : '装 备' }}</button>
           <button
-            v-if="upCost"
+            v-if="upQuote"
             class="btn-ghost flex-1"
             :disabled="upShort !== null"
-            :title="upShort === 'stone' ? `灵石尚差 ${formatGN(upGap?.stone ?? { m: 0, e: 0 })}` : upShort === 'dust' ? `器灵尘尚差 ${upGap?.dust ?? 0}` : undefined"
+            :title="upTip"
             @click="doUpgrade"
-          >{{ upShort === 'stone' ? `强 化(石差${formatGN(upGap?.stone ?? { m: 0, e: 0 })})` : upShort === 'dust' ? `强 化(尘差${upGap?.dust ?? 0})` : '强 化' }}</button>
+          >{{ upLabel }}</button>
           <!-- 分解须二步确认,防误触 -->
           <template v-if="decomposeArm !== inst?.uid">
             <button
@@ -165,11 +167,12 @@
   import { worldNameOfTier } from '@/core/formulas'
   import { resolveEquipStats } from '@/core/equipGen'
   import { equippablePower } from '@/core/equipBest'
-  import { decomposeEquipment, equipUpgradeCost, upgradeEquipment, upgradeShort, upgradeShortfall } from '@/core/forge'
+  import { decomposeEquipment, equipUpgradeQuote, upgradeEquipment, upgradeShort, upgradeShortfall } from '@/core/forge'
   import { salvageOf, salvageRefundPhrase } from '@/core/salvage'
   import { detectBuild } from '@/core/buildDetect'
   import { qualityDef } from '@/data/qualities'
   import { usePlayerStore } from '@/stores/player'
+  import { REALMS } from '@/data/realms'
   import { formatGN, formatNum } from '@/utils/format'
   import { isZero, sub } from '@/utils/gnum'
   import type { AnyStatKey, GNum } from '@/types'
@@ -208,9 +211,29 @@
     if (inst.value?.locked) return '分解(已上锁)'
     return '分解'
   })
-  const upCost = computed(() => (inst.value ? equipUpgradeCost(inst.value.uid) : null))
-  const upShort = computed(() => (upCost.value ? upgradeShort(upCost.value) : null))
-  const upGap = computed(() => (upCost.value ? upgradeShortfall(upCost.value) : null))
+  const upQuote = computed(() => (inst.value ? equipUpgradeQuote(inst.value.uid) : null))
+  const upShort = computed(() => (upQuote.value ? upgradeShort(upQuote.value) : null))
+  const upGap = computed(() => (upQuote.value ? upgradeShortfall(upQuote.value) : null))
+  /** 强化键文案:平时亮成功率,缺料时改报差额(按钮上能看懂的只有一样) */
+  const upLabel = computed(() => {
+    const q = upQuote.value
+    const gap = upGap.value
+    if (!q) return '强 化'
+    if (gap && upShort.value === 'dust') return `强 化(尘差${gap.dust})`
+    if (gap && upShort.value === 'exp') return `强 化(修为差${formatGN(gap.exp)})`
+    if (gap && upShort.value === 'stone') return `强 化(石差${formatGN(gap.stone)})`
+    return `强 化 ${Math.round(q.rate * 100)}%`
+  })
+  /** 悬停补齐掷骰后果:成功率、失手落到哪、是否踩保级点 */
+  const upTip = computed(() => {
+    const q = upQuote.value
+    const gap = upGap.value
+    if (!q) return '强化已至上限'
+    if (gap && upShort.value === 'dust') return `器灵尘尚差 ${gap.dust}`
+    if (gap && upShort.value === 'exp') return `修为尚差 ${formatGN(gap.exp)}`
+    if (gap && upShort.value === 'stone') return `灵石尚差 ${formatGN(gap.stone)}`
+    return q.safe ? '失手不掉级(保级点)' : `成功率 ${Math.round(q.rate * 100)}%,失手回落至 +${q.failLevel}`
+  })
   const salvage = computed(() => (inst.value ? salvageOf(inst.value) : null))
 
   /** 共鸣件数只数已佩戴的(看挂载,不看行囊) */
@@ -345,12 +368,22 @@
     ui.equipDetailUid = null
   }
 
+  /** 本件所需境界;无门槛为空串 */
+  const realmReqText = computed(() => {
+    const req = template.value?.minRealm ?? 0
+    if (req <= 0) return ''
+    return player.major >= req ? `${REALMS[req]?.name ?? ''}境可佩` : `需${REALMS[req]?.name ?? '更高'}境`
+  })
+
   function toggleEquip(): void {
     if (!inst.value || !template.value) return
     if (isEquipped.value) {
       inventory.unequip(template.value.slot)
-    } else {
-      inventory.equip(inst.value.uid, template.value.slot)
+      return
+    }
+    if (!inventory.equip(inst.value.uid, template.value.slot)) {
+      const req = template.value.minRealm ?? 0
+      ui.toast(`修为未至${REALMS[req]?.name ?? '更高'}境,此物穿不上`, 'warn')
     }
   }
 

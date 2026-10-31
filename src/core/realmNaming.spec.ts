@@ -22,7 +22,9 @@ const MARKS: Record<Exclude<WorldId, 'mortal'>, string[]> = {
   // 雷:取自仙界地界太乙雷池
   immortal: ['仙', '云', '玉', '瑶', '星', '虚', '太', '罗', '雷'],
   god: ['神', '帝', '王', '冕', '诏', '法', '则'],
-  chaos: ['混', '沌', '鸿', '蒙', '本', '源', '真', '灵', '无', '极', '开', '道', '界', '神', '魔']
+  chaos: ['混', '沌', '鸿', '蒙', '本', '源', '真', '灵', '无', '极', '开', '道', '界', '神', '魔'],
+  // 本源八境:混元 / 无极 / 太极 / 太素 / 太始 / 太初 / 鸿蒙 / 道源,「太极两仪」的两仪,以及「一气未判」的一
+  primordial: ['混', '元', '无', '极', '太', '素', '道', '源', '一', '有', '鸿', '蒙', '两', '仪']
 }
 
 function hasMark(name: string, world: Exclude<WorldId, 'mortal'>): boolean {
@@ -36,7 +38,7 @@ describe('名与境界同形 · 高界内容的名字带本界印记', () => {
 
   it('每件高界装备的名字里都看得出是哪一界的东西', () => {
     const bad: string[] = []
-    for (const w of ['immortal', 'god', 'chaos'] as const) {
+    for (const w of ['immortal', 'god', 'chaos', 'primordial'] as const) {
       const rows = equipmentByWorld(w)
       expect(rows.length, `${w} 界没有专属装备模板,判据失去对象`).toBeGreaterThan(0)
       for (const t of rows) {
@@ -48,7 +50,7 @@ describe('名与境界同形 · 高界内容的名字带本界印记', () => {
 
   it('每件高界法宝的名字里都看得出是哪一界的东西', () => {
     const bad: string[] = []
-    for (const w of ['immortal', 'god', 'chaos'] as const) {
+    for (const w of ['immortal', 'god', 'chaos', 'primordial'] as const) {
       const rows = ARTIFACTS.filter(a => TIER_WORLD.get(a.fromTier) === w)
       expect(rows.length).toBeGreaterThan(0)
       for (const a of rows) {

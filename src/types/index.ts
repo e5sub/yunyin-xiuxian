@@ -208,6 +208,12 @@ export interface EquipmentTemplate {
    * 与法宝 fromTier(累积池)不同。
    */
   tier: number
+  /**
+   * 穿戴境界门槛(大境界下标)。只给「仙品之上」的顶级件用:
+   * 低于此境者能捡到、能摆着看,但穿不上(stores/inventory.equip 与 core/equipBest 同读此值)。
+   * 缺省即无门槛 —— 旧装备一律不受影响。
+   */
+  minRealm?: number
   /** 装备套装/共鸣组(同组多件触发机制效果,非数值堆叠) */
   set?: string
 }
@@ -376,7 +382,7 @@ export interface BuffInstance {
 
 // ============ 境界 ============
 /** 界域 —— 人间界 / 仙界 / 神界 / 混沌海 */
-export type WorldId = 'mortal' | 'immortal' | 'god' | 'chaos'
+export type WorldId = 'mortal' | 'immortal' | 'god' | 'chaos' | 'primordial'
 
 export interface RealmDef {
   id: string

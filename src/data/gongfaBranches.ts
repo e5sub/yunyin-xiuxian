@@ -317,7 +317,51 @@ export const GONGFA_BRANCHES: GongfaBranchDef[] = [
   b('m_shenmo', 'b_shenmo_mo', '神魔', '气血两旺', { maxHpPct: 0.3, attackPct: 0.24 }),
   // ---- 混沌道祖:道祖本源经 ----
   b('m_daozu', 'b_daozu_ben', '本源', '追本溯源,气机自归', { cultivationSpeed: 0.32, qiRegen: 0.28, breakthroughRate: 0.05 }),
-  b('m_daozu', 'b_daozu_dao', '道祖', '以一御万', { attackPct: 0.3, defensePct: 0.21 })
+  b('m_daozu', 'b_daozu_dao', '道祖', '以一御万', { attackPct: 0.3, defensePct: 0.21 }),
+
+  // ---- 本源八境(21-28):每门两条路 ----
+  // 高界也要守住装备的同名词条上限(attackPct 30% / defensePct 32% / maxHpPct 35% / 速度 25% 等),
+  // 悟道是一条路,不是一件神装;两条路份量对等,深浅只由品质决定。
+  // 混元:一气含万有,可分可聚
+  b('m_hunyuanqi', 'b_hunyuanqi_fen', '散法', '一气散为万法,攻伐自生', { attackPct: 0.3, damageBonus: 0.18, critRate: 0.06 }),
+  b('m_hunyuanqi', 'b_hunyuanqi_ju', '聚气', '一气聚而不散,身如太虚', { maxHpPct: 0.35, defensePct: 0.32, damageReduction: 0.12 }),
+  b('s_hunyuan', 'b_hunyuan_guiyi', '归一', '万法归处无门,气自回涌', { qiRegen: 0.28, cultivationSpeed: 0.32, maxHpPct: 0.24 }),
+  b('s_hunyuan', 'b_hunyuan_shouyi', '守一', '守一不移,形神俱固', { defensePct: 0.32, damageReduction: 0.15, maxHpPct: 0.26 }),
+  // 无极:无始无终,故不可测
+  b('m_wuji', 'b_wuji_wuren', '无刃', '无刃之刃,伤在未觉', { attackPct: 0.3, armorPen: 0.24, critDamage: 0.5 }),
+  b('m_wuji', 'b_wuji_wuzhao', '无招', '无招之招,制在未发', { speed: 0.25, dodgeRate: 0.14, accuracy: 0.14, counterRate: 0.2 }),
+  b('x_wuji', 'b_wuji_guigen', '归根', '归于无极,气机自复', { cultivationSpeed: 0.32, qiRegen: 0.28, breakthroughRate: 0.06 }),
+  b('x_wuji', 'b_wuji_wujin', '无尽', '无极无尽,取之不竭', { qiRegen: 0.28, maxHpPct: 0.3, regenPerRound: 0.04 }),
+  // 太极:两仪相生,攻守互为其根
+  b('m_taiji', 'b_taiji_yang', '阳动', '动而生阳,出手即决', { attackPct: 0.3, critRate: 0.08, damageBonus: 0.16 }),
+  b('m_taiji', 'b_taiji_yin', '阴静', '静而生阴,受力即化', { defensePct: 0.32, maxHpPct: 0.32, damageReduction: 0.12 }),
+  b('s_taiji', 'b_taiji_xiangsheng', '相生', '阴阳互生,绵绵不竭', { qiRegen: 0.28, cultivationSpeed: 0.32, regenPerRound: 0.05 }),
+  b('s_taiji', 'b_taiji_huji', '互根', '攻守互根,两不相失', { attackPct: 0.24, defensePct: 0.24, maxHpPct: 0.24 }),
+  // 太素:质之始,有形者皆可为我所用
+  b('m_taisu', 'b_taisu_chengxing', '成器', '有形成器,器成则坚', { defensePct: 0.32, maxHpPct: 0.35, damageReduction: 0.12 }),
+  b('m_taisu', 'b_taisu_duozhi', '夺质', '夺彼之质,补己之形', { attackPct: 0.3, armorPen: 0.24, lifesteal: 0.16 }),
+  b('x_taisu', 'b_taisu_yangxing', '养形', '养形如养素,愈养愈厚', { maxHpPct: 0.35, regenPerRound: 0.04, defensePct: 0.24 }),
+  b('x_taisu', 'b_taisu_yixing', '易形', '形随念易,来去无踪', { dodgeRate: 0.14, speed: 0.25, accuracy: 0.14 }),
+  // 太始:形未成而先有其端
+  b('m_taishi', 'b_taishi_xianduan', '先端', '先人一步,端已先至', { speed: 0.25, firstStrike: 0.4, attackPct: 0.3 }),
+  b('m_taishi', 'b_taishi_wufang', '无方', '无方无体,故不可测', { dodgeRate: 0.14, accuracy: 0.14, counterRate: 0.2, maxHpPct: 0.15 }),
+  b('s_taishi', 'b_taishi_xingyi', '形移', '形未定而先移,移则生势', { speed: 0.25, comboRate: 0.18, comboDamage: 0.5, attackPct: 0.24 }),
+  b('s_taishi', 'b_taishi_guding', '固定', '先定其形,形定则不可撼', { defensePct: 0.32, maxHpPct: 0.3, shieldOnStart: 0.32 }),
+  // 太初:有气而未有形,含而不发,发则无穷
+  b('m_taichu', 'b_taichu_hanqi', '含气', '含而不发,蓄势愈久愈烈', { qiRegen: 0.28, attackPct: 0.3, critDamage: 0.56 }),
+  b('m_taichu', 'b_taichu_faqi', '发气', '一发无穷,气尽则敌尽', { attackPct: 0.3, damageBonus: 0.2, critRate: 0.08 }),
+  b('x_taichu', 'b_taichu_yinqi', '引气', '引天地未分之气入己身', { qiRegen: 0.28, cultivationSpeed: 0.32, maxHpPct: 0.26 }),
+  b('x_taichu', 'b_taichu_guiqi', '归气', '万气归此一窍', { breakthroughRate: 0.06, cultivationSpeed: 0.32, luck: 0.15 }),
+  // 鸿蒙:浑然一体,无内无外
+  b('m_hongmeng', 'b_hongmeng_weipan', '未判', '浑然未判,无可破之处', { defensePct: 0.32, maxHpPct: 0.35, damageReduction: 0.15 }),
+  b('m_hongmeng', 'b_hongmeng_yiti', '一体', '内外一体,交手即同归', { attackPct: 0.3, defensePct: 0.24, lifesteal: 0.14 }),
+  b('s_hongmeng', 'b_hongmeng_wuxi', '无隙', '混而为一,不见其隙', { defensePct: 0.32, lowHpReduction: 0.32, shieldOnStart: 0.32 }),
+  b('s_hongmeng', 'b_hongmeng_hunran', '浑然', '浑然不辨,伤亦不觉', { maxHpPct: 0.35, regenPerRound: 0.06, qiRegen: 0.28 }),
+  // 道源:先天地生,无经可读
+  b('m_daoyuan', 'b_daoyuan_suyuan', '溯源', '追本溯源,气机自归', { cultivationSpeed: 0.32, qiRegen: 0.28, breakthroughRate: 0.06 }),
+  b('m_daoyuan', 'b_daoyuan_shiyuan', '释源', '释此一源,万法俱应', { attackPct: 0.3, damageBonus: 0.2, critDamage: 0.6 }),
+  b('x_daoyuan', 'b_daoyuan_huishuo', '回溯', '溯流而上,看一念未起', { breakthroughRate: 0.06, luck: 0.15, eventLuck: 0.2, cultivationSpeed: 0.16 }),
+  b('x_daoyuan', 'b_daoyuan_niyi', '逆一', '逆推其始,先立于不败', { speed: 0.25, dodgeRate: 0.14, accuracy: 0.14, counterRate: 0.1 })
 ]
 
 const BY_ID = new Map(GONGFA_BRANCHES.map(b => [b.id, b]))

@@ -20,7 +20,7 @@ import { HEXAGRAMS, TRIGRAMS } from '@/data/yijing'
 import { baseCultPerSec, buildingCost, expRequirement, gongfaUpCost, qiCap, realmScale, stoneByTier, upgradeCost } from './formulas'
 import { MAX_MAJOR, WORLD_BREAK_MAJOR } from '@/data/realms'
 import { toNum } from '@/utils/gnum'
-import { LIFESPAN_WORLDS, REALMS, lifespanOf } from '@/data/realms'
+import { LIFESPAN_WORLDS, REALMS, WORLDS, lifespanOf } from '@/data/realms'
 
 const axis = (id: string) => PROGRESSION_AXES.find(a => a.id === id)!
 
@@ -61,7 +61,7 @@ describe('数值体系说明 · 与公式同源', () => {
     expect(PROGRESSION_NOTES.worldBreakMajor).toBe(WORLD_BREAK_MAJOR)
     expect(PROGRESSION_NOTES.tribulationCapMajor).toBeGreaterThan(0)
     expect(PROGRESSION_NOTES.banking.length).toBeGreaterThanOrEqual(3)
-    expect(PROGRESSION_NOTES.basis.length).toBe(4)
+    expect(PROGRESSION_NOTES.basis.length).toBe(WORLDS.length)
     expect(PROGRESSION_NOTES.breakthrough.length).toBeGreaterThanOrEqual(3)
     // 天劫口径点名的封顶境界 = constants 里那一个
     expect(PROGRESSION_NOTES.breakthrough[1]).toContain(REALMS[PROGRESSION_NOTES.tribulationCapMajor]!.name)
@@ -88,7 +88,7 @@ describe('数值体系说明 · 与公式同源', () => {
   })
 
   it('寿元曲线与 realms 数据同源,且每境至少翻倍', () => {
-    expect(LIFESPAN_CURVES.length).toBe(4)
+    expect(LIFESPAN_CURVES.length).toBe(WORLDS.length)
     for (const c of LIFESPAN_CURVES) {
       const w = Object.values(LIFESPAN_WORLDS).find(x => x.growth === c.growth && x.base === c.base)
       expect(w, `${c.world} 的寿元配置在 LIFESPAN_WORLDS 中找不到`).toBeDefined()

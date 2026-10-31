@@ -1,5 +1,5 @@
 /**
- * 丹药库 —— 72 味。
+ * 丹药库 —— 80 味。
  *
  * 定价法则(spec 钉:core/pillValue.spec.ts,新丹须逐条过):
  * - A 掉落上限:掉落品药力 ≤ 同族、规格不低于它的最近可炼对照 × 0.6。
@@ -299,7 +299,7 @@ export const PILLS: PillDef[] = [
     recipe: { herb: 380, stoneBase: 1160 },
     alchemyLevel: 9
   }),
-  p('p_yiyuan', '一元始丹', 'dao', 20, '一元复始,服之如闭关三个半时辰(7 小时)', {
+  p('p_yiyuan', '一元始丹', 'divine', 20, '一元复始,服之如闭关三个半时辰(7 小时)', {
     instant: { expSecs: 25200 },
     recipe: { herb: 560, stoneBase: 1900 },
     alchemyLevel: 9
@@ -383,7 +383,54 @@ export const PILLS: PillDef[] = [
   p('p_hundunhuo', '混沌火种', 'dao', 19, '开天火种,一点道火不灭,悟道点 +85', { instant: { wudao: 85 } }, 'flame'),
   p('p_shenpan', '神蟠桃', 'divine', 15, '神界蟠桃,增寿两千五百载', { instant: { lifespanYears: 2500 } }, 'leaf'),
   p('p_hundunshou', '混沌寿果', 'dao', 19, '混沌古果,增寿九千载', { instant: { lifespanYears: 9000 } }, 'leaf'),
-  p('p_shenlu', '神露', 'divine', 15, '神泉一滴,灵气回涌', { instant: { qiPct: 0.55 } }, 'droplets')
+  p('p_shenlu', '神露', 'divine', 15, '神泉一滴,灵气回涌', { instant: { qiPct: 0.55 } }, 'droplets'),
+
+  // ============ 本源(准入境界 21-28)============
+  /**
+   * 修为线自混元丹续上一境一味。药力与灵草同步抬,perKsec 恒在 3.9 场/千秒一线:
+   * 法则 G2 要求可炼修为丹折时落在「灵草成本场次 × 2~5」,此处取 3.9 留出炸炉余量。
+   */
+  // 药力写成 30 分钟的整数倍,文案才落得回古语时制(刻 / 时辰);道品名号只留给本族顶阶那一味
+  p('p_yuanshi', '元始丹', 'divine', 21, '元始一气未判,服之如闭关三十刻', {
+    instant: { expSecs: 27000 },
+    recipe: { herb: 560, stoneBase: 1900 },
+    alchemyLevel: 10
+  }),
+  p('p_wuji', '无极丹', 'divine', 22, '无极无终,丹成于未有极之时,服之如闭关四个时辰', {
+    instant: { expSecs: 28800 },
+    recipe: { herb: 590, stoneBase: 2050 },
+    alchemyLevel: 10
+  }),
+  p('p_liangyi', '两仪丹', 'divine', 23, '一炉分两仪,阴阳各半,服之如闭关三十四刻', {
+    instant: { expSecs: 30600 },
+    recipe: { herb: 620, stoneBase: 2200 },
+    alchemyLevel: 10
+  }),
+  p('p_taisudan', '太素丹', 'divine', 24, '质之始也,服之如闭关四个半时辰', {
+    instant: { expSecs: 32400 },
+    recipe: { herb: 650, stoneBase: 2350 },
+    alchemyLevel: 10
+  }),
+  p('p_taishidan', '太始丹', 'divine', 25, '形之始也,服之如闭关三十八刻', {
+    instant: { expSecs: 34200 },
+    recipe: { herb: 680, stoneBase: 2500 },
+    alchemyLevel: 10
+  }),
+  p('p_qishidan', '气始丹', 'divine', 26, '气之始也,一炉气母,服之如闭关五个时辰', {
+    instant: { expSecs: 36000 },
+    recipe: { herb: 710, stoneBase: 2650 },
+    alchemyLevel: 10
+  }),
+  p('p_hongmengdan', '鸿蒙丹', 'divine', 27, '鸿蒙未判,一炉浑然,服之如闭关四十二刻', {
+    instant: { expSecs: 37800 },
+    recipe: { herb: 740, stoneBase: 2800 },
+    alchemyLevel: 10
+  }),
+  p('p_daoyuanzhen', '道源真丹', 'dao', 28, '先天地生的一味,服之如闭关五个半时辰(11 小时)', {
+    instant: { expSecs: 39600 },
+    recipe: { herb: 770, stoneBase: 2950 },
+    alchemyLevel: 10
+  })
 ]
 
 const BY_ID = new Map(PILLS.map(x => [x.id, x]))

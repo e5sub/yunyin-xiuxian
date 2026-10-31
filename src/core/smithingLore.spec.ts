@@ -7,6 +7,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useLoreStore } from '@/stores/lore'
 import { useInventoryStore } from '@/stores/inventory'
 import { useResourcesStore } from '@/stores/resources'
+import { usePlayerStore } from '@/stores/player'
 import { upgradeEquipment } from './forge'
 import { noteSmithingUsed } from './loreService'
 import { LORE_MAX } from '@/data/materials'
@@ -67,9 +68,12 @@ describe('炼器 · 矿石认知与锻造技艺', () => {
     const lore = useLoreStore()
     res.addSmall('dust', 10_000)
     res.addStone(gn(1e12))
+    usePlayerStore().gainExp(gn(1e20)) // 强化要付修为
+    const roll = vi.spyOn(Math, 'random').mockReturnValue(0) // 必定成功
     inv.items = [{ uid: 's1', templateId: 'w_hanfeng', quality: 'heaven', tier: 4, level: 0, affixes: [] }]
     const before = lore.skillLevel('smithing')
-    expect(upgradeEquipment('s1'), '强化应成功(素材给足)').toBe(true)
+    expect(upgradeEquipment('s1'), '强化应成功(素材给足)').toBe('up')
+    roll.mockRestore()
     expect(lore.skillLevel('smithing')).toBeGreaterThan(before)
   })
 })

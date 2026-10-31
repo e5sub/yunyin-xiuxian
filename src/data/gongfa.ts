@@ -1,4 +1,4 @@
-/** 功法库 —— 63 部:主修 27 / 辅修 22 / 秘术 14,每境都有新东西可参 */
+/** 功法库 —— 79 部:主修 35 / 辅修 26 / 秘术 18,每境都有新东西可参(含本源八境 21-28) */
 import type { GongfaDef, GongfaType, QualityId, StatMods } from '@/types'
 
 function g(
@@ -645,6 +645,174 @@ export const GONGFA: GongfaDef[] = [
     { cultivationSpeed: 0.5, attackPct: 0.26, defensePct: 0.24, maxHpPct: 0.24 },
     { cultivationSpeed: 0.06, attackPct: 0.026, defensePct: 0.022 },
     { element: 'chaos', skill: { name: '本源一炁', mult: 4.0, rate: 0.29 } }
+  ),
+  // ---- 本源八境(21-28):每境两门 —— 主修一门,辅修或秘术一门 ----
+  g(
+    'm_hunyuanqi',
+    '混元一气经',
+    'main',
+    'divine',
+    21,
+    '一气含万有,散则为万法,聚则为一',
+    { cultivationSpeed: 0.52, attackPct: 0.28, maxHpPct: 0.26 },
+    { cultivationSpeed: 0.065, attackPct: 0.028, maxHpPct: 0.024 },
+    { element: 'chaos', skill: { name: '混元一气', mult: 4.1, rate: 0.3 } }
+  ),
+  g(
+    's_hunyuan',
+    '混元归一诀',
+    'sub',
+    'divine',
+    21,
+    '万法归一,归处无门',
+    { qiRegen: 0.24, maxHpPct: 0.14, cultivationSpeed: 0.32 },
+    { qiRegen: 0.03, maxHpPct: 0.014 }
+  ),
+  g(
+    'm_wuji',
+    '无极真经',
+    'main',
+    'divine',
+    22,
+    '无极而太极。无刃之刃,无招之招',
+    { attackPct: 0.31, critRate: 0.06, damageBonus: 0.12 },
+    { attackPct: 0.031, critRate: 0.006 },
+    { element: 'chaos', skill: { name: '无极无刃', mult: 4.2, rate: 0.3 } }
+  ),
+  g(
+    'x_wuji',
+    '无极归元术',
+    'secret',
+    'divine',
+    22,
+    '归于无极,则无所不至',
+    { breakthroughRate: 0.08, cultivationSpeed: 0.3 },
+    { breakthroughRate: 0.02, cultivationSpeed: 0.04 }
+  ),
+  g(
+    'm_taiji',
+    '太极两仪经',
+    'main',
+    'divine',
+    23,
+    '一划既开,两仪相生,攻守互为其根',
+    { attackPct: 0.3, defensePct: 0.3, maxHpPct: 0.28 },
+    { attackPct: 0.03, defensePct: 0.028 },
+    { element: 'chaos', skill: { name: '两仪轮转', mult: 4.25, rate: 0.3 } }
+  ),
+  g(
+    's_taiji',
+    '两仪相生诀',
+    'sub',
+    'divine',
+    23,
+    '阴极生阳,阳极生阴,循环不竭',
+    { attackPct: 0.1, defensePct: 0.1, damageBonus: 0.05 },
+    { attackPct: 0.012, defensePct: 0.012 }
+  ),
+  g(
+    'm_taisu',
+    '太素化形经',
+    'main',
+    'divine',
+    24,
+    '质之始,形之端。有形者皆可为我所用',
+    { defensePct: 0.31, maxHpPct: 0.31, damageReduction: 0.09 },
+    { defensePct: 0.031, maxHpPct: 0.029 }
+  ),
+  g(
+    'x_taisu',
+    '太素养形术',
+    'secret',
+    'divine',
+    24,
+    '养形如养素,不增不减',
+    { damageReduction: 0.08, lowHpReduction: 0.18 },
+    { damageReduction: 0.02, lowHpReduction: 0.04 }
+  ),
+  g(
+    'm_taishi',
+    '太始开形经',
+    'main',
+    'divine',
+    25,
+    '形未成而先有其端,故能先人一步',
+    { attackPct: 0.33, critDamage: 0.25, damageBonus: 0.13 },
+    { attackPct: 0.033, critDamage: 0.02 },
+    { element: 'chaos', skill: { name: '形始无方', mult: 4.3, rate: 0.3 } }
+  ),
+  g(
+    's_taishi',
+    '形始无方诀',
+    'sub',
+    'divine',
+    25,
+    '无方无体,故不可测',
+    { critRate: 0.06, critDamage: 0.22 },
+    { critRate: 0.008, critDamage: 0.03 }
+  ),
+  g(
+    'm_taichu',
+    '太初含气经',
+    'main',
+    'divine',
+    26,
+    '有气而未有形,含而不发,发则无穷',
+    { cultivationSpeed: 0.62, attackPct: 0.32, maxHpPct: 0.3 },
+    { cultivationSpeed: 0.07, attackPct: 0.032 },
+    { element: 'chaos', skill: { name: '太初含气', mult: 4.32, rate: 0.3 } }
+  ),
+  g(
+    'x_taichu',
+    '太初引气术',
+    'secret',
+    'divine',
+    26,
+    '引天地未分之气入己身',
+    { luck: 0.1, eventLuck: 0.12, dropRate: 0.06 },
+    { luck: 0.02, eventLuck: 0.03 }
+  ),
+  g(
+    'm_hongmeng',
+    '鸿蒙未判经',
+    'main',
+    'divine',
+    27,
+    '浑然一体,无内无外,故无可破之处',
+    { attackPct: 0.35, defensePct: 0.32, maxHpPct: 0.33 },
+    { attackPct: 0.035, defensePct: 0.03 },
+    { element: 'chaos', skill: { name: '鸿蒙一判', mult: 4.35, rate: 0.3 } }
+  ),
+  g(
+    's_hongmeng',
+    '鸿蒙浑然诀',
+    'sub',
+    'divine',
+    27,
+    '混而为一,不见其隙',
+    { qiRegen: 0.28, maxHpPct: 0.18, lowHpReduction: 0.16 },
+    { qiRegen: 0.03, maxHpPct: 0.018 }
+  ),
+  g(
+    'm_daoyuan',
+    '道源真经',
+    'main',
+    'divine',
+    28,
+    '有物混成,先天地生。修至此,已无经可读',
+    { cultivationSpeed: 0.55, attackPct: 0.32, defensePct: 0.3 },
+    { cultivationSpeed: 0.075, attackPct: 0.036, defensePct: 0.032 },
+    { element: 'chaos', skill: { name: '道源·无始', mult: 4.5, rate: 0.3 } }
+  ),
+  g(
+    'x_daoyuan',
+    '道源回溯术',
+    'secret',
+    'divine',
+    28,
+    '溯流而上,看一念未起时的自己',
+    { luck: 0.12, eventLuck: 0.15, breakthroughRate: 0.1 },
+    { luck: 0.04, eventLuck: 0.05, breakthroughRate: 0.02 }
   )
 ]
 

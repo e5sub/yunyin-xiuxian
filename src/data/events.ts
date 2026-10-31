@@ -1,4 +1,4 @@
-/** 随机事件库 —— 81 个随机事件(含 21 个奇缘阶段) + 11 条机缘,数据驱动,按区域标签匹配 */
+/** 随机事件库 —— 86 个随机事件(含 24 个奇缘阶段) + 11 条机缘,数据驱动,按区域标签匹配 */
 import type { EventChoice, EventDef, EventEffect, EventOutcome } from '@/types'
 import { CHAIN_EVENTS } from './chains'
 
@@ -1054,7 +1054,45 @@ export const EVENTS: EventDef[] = [
       )
     ],
     { minRealm: 20, weight: 60 }
-  )
+  ),
+  // ============ 本源(21-28)============
+  ev(
+    'ev_liangyi_ni',
+    '两仪池中鲵',
+    '池水一半滚烫一半结冰,交界处浮着一尾两色的鲵。它抬头看你,眼里两色分明。',
+    ['general', 'chaos', 'water'],
+    [
+      c(
+        '以气引之',
+        [
+          o(55, '鲵随你出水,鳞上两色在日光下转了半圈,便不再动。', { type: 'pet', id: 'pet_liangyini' }),
+          o(45, '它潜入冰面之下,只留下一圈涟漪。', { type: 'material', id: 'wudao', amount: 40 })
+        ],
+        { isDefault: true }
+      ),
+      c('取一瓢池水', [o(1, '你把水收进玉瓶,回头再饮时,已分不清冷热。', { type: 'material', id: 'wudao', amount: 25 })])
+    ],
+    { minRealm: 23 }
+  ),
+  ev(
+    'ev_yuanshi_he',
+    '元始一鹤',
+    '崖顶立着一只白鹤,羽下没有影子。它侧过头,像在等你说一句话。',
+    ['general', 'chaos', 'sky'],
+    [
+      c(
+        '与它说一句话',
+        [
+          o(50, '鹤鸣一声,落在你肩头。此后行路它都在,影子也终于有了。', { type: 'pet', id: 'pet_yuanshihe' }),
+          o(50, '鹤不回话,展翅去了。你觉得心里的某处忽然轻了。', { type: 'exp', secs: 120 })
+        ],
+        { isDefault: true }
+      ),
+      c('不说话,只是看着', [o(1, '看了半晌,你转身下山。它也走了,没留下羽毛。', { type: 'material', id: 'dust', amount: 14 })])
+    ],
+    { minRealm: 27 }
+  ),
+  // ---- 奇缘:本源三程见 data/chains.ts 的 CHAIN_EVENTS ----
 ]
 
 /**

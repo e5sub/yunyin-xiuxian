@@ -1,7 +1,8 @@
 /**
- * 历练区域 —— 44 处,层级递进,击败首领解锁下一区域。
+ * 历练区域 —— 60 处,层级递进,击败首领解锁下一区域。
  *
- * 1-20 层属人间界(旧表原样保留);21 层起对应仙界/神界/混沌海(minRealm 9-20)。
+ * 1-20 层属人间界(旧表原样保留);21 层起对应仙界/神界/混沌海(minRealm 9-20),
+ * 33-40 层属本源(minRealm 21-28),每层两处。
  */
 import type { RegionDef } from '@/types'
 
@@ -287,7 +288,25 @@ export const REGIONS: RegionDef[] = [
   r('shenmoyuan', '神魔渊', 31, 19, 5, 'skull', '开天辟地的余威仍在此渊回荡', ['e_chaos_demon', 'e_chaos_void'], 'e_chaos_king', ['general', 'chaos', 'dark'], 'youtan'),
   r('guji', '神魔古祭', 31, 19, 5, 'skull', '一座比天地更早的古祭坛,祭的正是开天的那场厮杀', ['e_altar', 'e_riteshadow'], 'e_jitanlord', ['general', 'chaos', 'dark'], 'shenmoyuan'),
   r('hongmengbenyuan', '鸿蒙本源', 32, 20, 5, 'sparkles', '万道之源静悬于此,道祖一念可开天地', ['e_chaos_origin', 'e_chaos_shadow'], 'e_chaos_zu', ['general', 'chaos', 'sky'], 'guji'),
-  r('wudaoya', '道祖悟道崖', 32, 20, 5, 'mountain', '传说混沌道祖曾在这面崖下坐了三万年,崖上字迹至今依稀', ['e_cliffshadow', 'e_wordbeast'], 'e_daoyalord', ['general', 'chaos'], 'hongmengbenyuan')
+  r('wudaoya', '道祖悟道崖', 32, 20, 5, 'mountain', '传说混沌道祖曾在这面崖下坐了三万年,崖上字迹至今依稀', ['e_cliffshadow', 'e_wordbeast'], 'e_daoyalord', ['general', 'chaos'], 'hongmengbenyuan'),
+  // ============ 本源(33-40 层,每层两处)============
+  r('hunyuantaixu', '混元太虚', 33, 21, 5, 'sparkles', '一气未分,太虚之中只有气在缓缓流转', ['e_hunyuana', 'e_hunyuanc'], 'e_hunyuanlord', ['general', 'chaos'], 'wudaoya'),
+  r('hunyuandanxia', '混元丹崖', 33, 21, 5, 'mountain', '崖上寸草不生,崖下丹火不熄,一气在此聚成实形', ['e_hunyuanb', 'e_hunyuand'], 'e_hunyuanlord2', ['general', 'chaos'], 'hunyuantaixu'),
+  r('wujijing', '无极玄境', 34, 22, 5, 'star', '无始无终,无内无外,境界二字在此失了意义', ['e_wujia', 'e_wujic'], 'e_wujilord', ['general', 'chaos'], 'hunyuandanxia'),
+  r('wujidaochang', '无极道场', 34, 22, 5, 'compass', '场中空无一物,前后左右都指不出方向', ['e_wujib', 'e_wujid'], 'e_wujilord2', ['general', 'chaos'], 'wujijing'),
+  r('taijitai', '太极两仪台', 35, 23, 5, 'compass', '一台分两仪,左一半昼,右一半夜', ['e_taijia', 'e_taijic'], 'e_taijilord', ['general', 'chaos'], 'wujidaochang'),
+  r('liangyifeng', '两仪分流', 35, 23, 5, 'droplets', '一水劈作两脉,一脉向东,一脉向西,永不再合', ['e_taijib', 'e_taijid'], 'e_taijilord2', ['general', 'chaos'], 'taijitai'),
+  r('taisuyuan', '太素源陆', 36, 24, 5, 'mountain', '形质初生之地,踏上去才知何为「有」', ['e_taisua', 'e_taisuc'], 'e_taisulord', ['general', 'chaos'], 'liangyifeng'),
+  r('taisuzhilin', '太素质林', 36, 24, 5, 'leaf', '林中草木皆有形无实,穿过时不带一片叶', ['e_taisub', 'e_taisud'], 'e_taisulord2', ['general', 'chaos'], 'taisuyuan'),
+  r('taishidi', '太始形初地', 37, 25, 5, 'gem', '形未成而端已现,看久了会觉得自己的轮廓也在变', ['e_taishia', 'e_taishic'], 'e_taishilord', ['general', 'chaos'], 'taisuzhilin'),
+  r('taishixingtai', '太始形台', 37, 25, 5, 'star', '台上摆着未成形的器胚,一件件都在等一个名字', ['e_taishib', 'e_taishid'], 'e_taishilord2', ['general', 'chaos'], 'taishidi'),
+  r('taichuqihai', '太初气海', 38, 26, 5, 'cloud', '一片未成形之气,呼吸之间涨落如潮', ['e_taichua', 'e_taichuc'], 'e_taichulord', ['general', 'chaos'], 'taishixingtai'),
+  r('qishiyuan', '气始之渊', 38, 26, 5, 'droplets', '渊底一点气母,万气由此生,也由此归', ['e_taichub', 'e_taichud'], 'e_taichulord2', ['general', 'chaos'], 'taichuqihai'),
+  r('hongmengyuan', '鸿蒙未判渊', 39, 27, 5, 'skull', '渊中浑然一体,连上下都还未分开', ['e_hongmenga', 'e_hongmengc'], 'e_hongmenglord', ['general', 'chaos'], 'qishiyuan'),
+  r('hongmengkaichu', '鸿蒙初开处', 39, 27, 5, 'sparkles', '一斧劈开的那道口子还在,风从那头吹来', ['e_hongmengb', 'e_hongmengd'], 'e_hongmenglord2', ['general', 'chaos'], 'hongmengyuan'),
+  r('daoyuanbian', '道源彼岸', 40, 28, 5, 'sparkles', '彼岸无岸,只余道最初的那一步', ['e_daoyuana', 'e_daoyuanc'], 'e_daoyuanlord', ['general', 'chaos'], 'hongmengkaichu'),
+  r('daoyuanzuting', '道源祖庭', 40, 28, 5, 'castle', '庭中不供神像,只供一个空的蒲团', ['e_daoyuanb', 'e_daoyuand'], 'e_daoyuanlord2', ['general', 'chaos'], 'daoyuanbian')
+
 ]
 
 /** 人间界最高区域层级;其上的层级不进凡界路线池 */

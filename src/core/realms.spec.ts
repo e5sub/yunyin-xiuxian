@@ -63,7 +63,7 @@ describe('境界体系 · 结构', () => {
     expect(REBIRTH_REFERENCE_MAJOR).toBe(WORLD_BREAK_MAJOR)
   })
 
-  it('大关皆劫:三个跨界入口一视同仁,境界表上不再有「无劫开关」', () => {
+  it('大关皆劫:四个跨界入口一视同仁,境界表上不再有「无劫开关」', () => {
     // 规则只有一条(小进阶掷点 / 大关渡劫),无劫开关不许复活;行为侧由 core/breakthrough.spec 覆盖
     // 人间界入口炼气(0)是起点,不是要渡的关
     for (const w of WORLDS.slice(1)) {
@@ -89,12 +89,13 @@ describe('境界体系 · 结构', () => {
     }
   })
 
-  it('界域与出处类别自洽:人界内丹/佛道、仙界道教仙阶、神界网文、混沌海道家本源', () => {
+  it('界域与出处类别自洽:人界内丹/佛道、仙界道教仙阶、神界网文、混沌海与太初道家本源', () => {
     const allowed: Record<string, string[]> = {
       mortal: ['内丹', '佛道'],
       immortal: ['道教仙阶'],
       god: ['网文', '道家本源'],
-      chaos: ['道家本源']
+      chaos: ['道家本源'],
+      primordial: ['道家本源']
     }
     for (const r of REALMS) {
       expect(allowed[r.world], `${r.name} 的出处「${r.basis}」与界域「${r.world}」不符`).toContain(r.basis)

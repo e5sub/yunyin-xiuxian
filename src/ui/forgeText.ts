@@ -4,10 +4,25 @@ export function upgradeCapToast(): string {
 }
 
 /** 强化缺料:缺哪一样就说哪一样,不用一句「或」 */
-export function upgradeShortToast(short: 'stone' | 'dust', gap?: { stone: string; dust: number }): string {
-  const amount = short === 'stone' ? gap?.stone : gap?.dust
-  const missing = amount ? `尚差 ${amount}` : '不足'
-  return short === 'stone' ? `灵石${missing}` : `器灵尘${missing}`
+export function upgradeShortToast(short: 'stone' | 'dust' | 'exp', gap?: { stone: string; dust: number; exp: string }): string {
+  if (short === 'stone') return `灵石${gap?.stone ? `尚差 ${gap.stone}` : '不足'}`
+  if (short === 'exp') return `修为${gap?.exp ? `尚差 ${gap.exp}` : '不足'}`
+  return `器灵尘${gap?.dust ? `尚差 ${gap.dust}` : '不足'}`
+}
+
+/** 强化失手:掉了级 */
+export function upgradeFailToast(name: string, level: number, dropped: number): string {
+  return `「${name}」强化失手,回落 ${dropped} 级至 +${level}`
+}
+
+/** 强化失手但踩在保级点上:不掉级 */
+export function upgradeSafeToast(name: string, level: number): string {
+  return `「${name}」强化失手,保级于 +${level}`
+}
+
+/** 连升中途失手 */
+export function upgradeBatchBrokenToast(name: string, tries: number, up: number, level: number): string {
+  return `「${name}」第 ${tries} 次失手 · 成 ${up} 级 · 现 +${level}`
 }
 
 export function upgradeDoneToast(name: string, level: number): string {

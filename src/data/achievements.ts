@@ -1,5 +1,5 @@
 /**
- * 成就库 —— 62 个
+ * 成就库 —— 70 个
  * 未达成者界面一律显示「???」(见 views/CollectionView.vue),此表无隐藏成就。
  */
 import type { AchievementDef, AchvCond, CounterKey, RewardBundle } from '@/types'
@@ -36,6 +36,15 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   ac('a_r18', '混沌真灵', '证得混沌真灵', { type: 'realm', major: 18 }, { stoneTier: 820, wudao: 880, titleId: 'ti_hundunling' }),
   ac('a_r19', '开天辟地', '突破混沌神魔境', { type: 'realm', major: 19 }, { stoneTier: 940, wudao: 1000, titleId: 'ti_hundunshenmo' }),
   ac('a_r20', '万道之祖', '证道混沌道祖', { type: 'realm', major: 20 }, { stoneTier: 1200, wudao: 1300, titleId: 'ti_daozu' }),
+  // ---- 本源八境 ----
+  ac('a_r21', '混元一气', '突破混元境', { type: 'realm', major: 21 }, { stoneTier: 1400, wudao: 1500, titleId: 'ti_hunyuan' }),
+  ac('a_r22', '无极无终', '突破无极境', { type: 'realm', major: 22 }, { stoneTier: 1600, wudao: 1750, titleId: 'ti_wuji' }),
+  ac('a_r23', '两仪相生', '突破太极境', { type: 'realm', major: 23 }, { stoneTier: 1850, wudao: 2000, titleId: 'ti_taiji' }),
+  ac('a_r24', '质之始也', '突破太素境', { type: 'realm', major: 24 }, { stoneTier: 2100, wudao: 2300, titleId: 'ti_taisu' }),
+  ac('a_r25', '形之始也', '突破太始境', { type: 'realm', major: 25 }, { stoneTier: 2400, wudao: 2650, titleId: 'ti_taishi' }),
+  ac('a_r26', '气之始也', '突破太初境', { type: 'realm', major: 26 }, { stoneTier: 2750, wudao: 3000, titleId: 'ti_taichu' }),
+  ac('a_r27', '鸿蒙未判', '突破鸿蒙境', { type: 'realm', major: 27 }, { stoneTier: 3100, wudao: 3400, titleId: 'ti_hongmeng' }),
+  ac('a_r28', '道源无极', '证道道源,仙路至此为极', { type: 'realm', major: 28 }, { stoneTier: 3600, wudao: 4000, titleId: 'ti_daoyuan' }),
   // ---- 突破 ----
   ac('a_bt10', '拾级而上', '累计突破 10 次', counter('breakthroughs', 10), { stoneTier: 30 }),
   ac('a_bt30', '道途不辍', '累计突破 30 次', counter('breakthroughs', 30), { wudao: 20 }),

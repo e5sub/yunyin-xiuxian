@@ -1,10 +1,10 @@
-/** 仙路旅途:按当前境判出 21 境刻度每境的三态与界首标记(纯函数;四界首 0/9/14/18 由测试钉住) */
+/** 仙路旅途:按当前境判出全境刻度(逐境三态 + 界首标记;界首 0/9/14/18/21 由测试钉住) */
 import { REALMS, WORLDS, isWorldEntry, MAX_MAJOR } from '@/data/realms'
 
 export type RealmLadderState = 'done' | 'now' | 'future'
 
 export interface RealmLadderPoint {
-  /** 境界索引(major),0~20 */
+  /** 境界索引(major),0 ~ REALMS.length-1 */
   index: number
   name: string
   /** 是否界首(人间/仙界/神界/混沌海的第一境) */
@@ -21,7 +21,7 @@ export interface RealmLadderWorld {
   centerPct: number
 }
 
-/** 21 境刻度;越界 major 先修正(与 realmDef 同口径)再判三态 */
+/** 全境刻度;越界 major 先修正(与 realmDef 同口径)再判三态 */
 export function realmLadderPoints(major: number): RealmLadderPoint[] {
   const m = Math.max(0, Math.min(MAX_MAJOR, major))
   return REALMS.map((r, i) => ({
@@ -32,7 +32,7 @@ export function realmLadderPoints(major: number): RealmLadderPoint[] {
   }))
 }
 
-/** 四界段位:界名、首尾索引取自 data;段心 = ((a+b)/2+0.5)/21×100(格心在 +0.5) */
+/** 各界段位:界名、首尾索引取自 data;段心 = ((a+b)/2+0.5)/境数×100(格心在 +0.5) */
 export function realmLadderWorlds(): RealmLadderWorld[] {
   return WORLDS.map(w => ({
     id: w.id,

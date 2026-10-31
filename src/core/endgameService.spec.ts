@@ -171,8 +171,8 @@ describe('真仙终局服务', () => {
       guard += 1
     }
     expect(player.atMaxRealm).toBe(true)
-    expect(player.realm.name).toBe('混沌道祖')
-    expect(player.worldName).toBe('混沌海')
+    expect(player.realm.name).toBe('道源')
+    expect(player.worldName).toBe('本源')
     expect(endgameUnlocked()).toBe(true)
   })
 

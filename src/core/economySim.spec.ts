@@ -12,7 +12,7 @@ describe('经济闭环审计(Phase 19 · Phase 40 补界外与修为)', () => {
   const mortal = eras.filter(e => worldOf(e.major).id === 'mortal')
   const outer = eras.filter(e => worldOf(e.major).id !== 'mortal')
 
-  it('输出全时期流水表:0~20 境,含修为', () => {
+  it('输出全时期流水表:0~28 境,含修为', () => {
     console.log('\n—— 资源生产/消耗审计(每小时,按时期摊销) ——')
     for (const era of eras) {
       const cells = era.flows
@@ -22,7 +22,7 @@ describe('经济闭环审计(Phase 19 · Phase 40 补界外与修为)', () => {
     }
     expect(eras.length).toBe(MAX_MAJOR + 1)
     expect(mortal.length, '人间界应有 0~8 共九境').toBe(9)
-    expect(outer.length, '界外应有 9~20 共十二境').toBe(12)
+    expect(outer.length, '界外应有 9~28 共二十境').toBe(MAX_MAJOR - 8)
     for (const era of eras) {
       expect(era.flows.length, `第${era.major}境缺流`).toBe(era.major >= 9 ? 8 : 7)
     }
@@ -44,15 +44,15 @@ describe('经济闭环审计(Phase 19 · Phase 40 补界外与修为)', () => {
     expect(Math.max(...ratios) - Math.min(...ratios), '修为收支比随境界漂移了').toBeLessThan(0.01)
   })
 
-  it('区域层级取自区域表:界外十二境是 21~32,不再压死在 20', () => {
+  it('区域层级取自区域表:界外二十境是 21~40,不再压死在 20', () => {
     for (const era of eras) {
       expect(era.tier, `第${era.major}境的层级`).toBe(maxTierForMajor(era.major))
     }
     expect(eras[0]!.tier).toBe(2)
-    expect(eras.at(-1)!.tier, '混沌道祖的层级应是区域表上限').toBe(32)
+    expect(eras.at(-1)!.tier, '道源的层级应是区域表上限').toBe(maxTierForMajor(MAX_MAJOR))
   })
 
-  it('界外十二境:每一格的读数都有定义(收入与消耗非负且有限)', () => {
+  it('界外二十境:每一格的读数都有定义(收入与消耗非负且有限)', () => {
     for (const era of outer) {
       for (const f of era.flows) {
         expect(Number.isFinite(f.incomePerHour), `第${era.major}境 ${f.resource} 收入`).toBe(true)
@@ -147,9 +147,11 @@ describe('经济闭环审计(Phase 19 · Phase 40 补界外与修为)', () => {
     const max = Math.max(...rows.map(r => r.hours))
     expect(min, '凝一枚道果便宜到几分钟一枚 —— 终局数值出口会失去意义').toBeGreaterThan(0.1)
     expect(max, '凝一枚道果贵到一天以上 —— 终局会变成摆设').toBeLessThan(24)
-    expect(max / min, `道果价随层级漂移了:${min.toFixed(2)}h → ${max.toFixed(2)}h`).toBeLessThan(2)
-    // 量级锚:DAO_SOURCE_PER_FRUIT=200 时全境 ~1.8~3.4h,产品口径「2~3h 节奏」
-    expect(min, '道果节奏不该比 1 小时还快').toBeGreaterThan(1)
+    // 长尾自 t32 延到 t40 后,深层材料产出按境界继续涨,而道果价是绝对数(DAO_SOURCE_PER_FRUIT),
+    // 故深处落到约一小时一枚;梯度须仍是个位倍数,不许回到 ISS-214 那种随层级爆炸的形状。
+    expect(max / min, `道果价随层级漂移了:${min.toFixed(2)}h → ${max.toFixed(2)}h`).toBeLessThan(4)
+    // 量级锚:DAO_SOURCE_PER_FRUIT=200,全境 ~1.0~3.4h,产品口径「一两小时一枚」
+    expect(min, '道果节奏不该比一小时还快太多').toBeGreaterThan(0.8)
     expect(max, '道果节奏不该超过 6 小时').toBeLessThan(6)
   })
 

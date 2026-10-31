@@ -18,9 +18,9 @@ export const QUALITIES: QualityDef[] = [
   { id: 'spirit', name: '灵品', rank: 3, mult: 2.1, affixes: [2, 4], fromTier: 4, toTier: 24, weight: QUALITY_WEIGHTS[3], color: 'var(--color-violet-ink)' },
   { id: 'profound', name: '玄品', rank: 4, mult: 2.8, affixes: [3, 5], fromTier: 8, toTier: 27, weight: QUALITY_WEIGHTS[4], color: '#A85C3F' },
   { id: 'earth', name: '地品', rank: 5, mult: 3.7, affixes: [4, 6], fromTier: 12, toTier: 29, weight: QUALITY_WEIGHTS[5], color: 'var(--color-amber-ink)' },
-  { id: 'heaven', name: '天品', rank: 6, mult: 5.0, affixes: [4, 7], fromTier: 16, toTier: 32, weight: QUALITY_WEIGHTS[6], color: '#C9A227' },
-  { id: 'immortal', name: '仙品', rank: 7, mult: 6.8, affixes: [5, 8], fromTier: 20, toTier: 32, weight: QUALITY_WEIGHTS[7], color: '#3E8E8B' },
-  { id: 'divine', name: '神品', rank: 8, mult: 9.5, affixes: [6, 9], fromTier: 24, toTier: 32, weight: QUALITY_WEIGHTS[8], color: 'var(--color-cinnabar)' }
+  { id: 'heaven', name: '天品', rank: 6, mult: 5.0, affixes: [4, 7], fromTier: 16, toTier: 40, weight: QUALITY_WEIGHTS[6], color: '#C9A227' },
+  { id: 'immortal', name: '仙品', rank: 7, mult: 6.8, affixes: [5, 8], fromTier: 26, toTier: 40, weight: QUALITY_WEIGHTS[7], color: '#3E8E8B' },
+  { id: 'divine', name: '神品', rank: 8, mult: 9.5, affixes: [6, 9], fromTier: 32, toTier: 40, weight: QUALITY_WEIGHTS[8], color: 'var(--color-cinnabar)' }
 ]
 
 const BY_ID = new Map<QualityId, QualityDef>(QUALITIES.map(q => [q.id, q]))

@@ -32,7 +32,16 @@ export const TITLES: TitleDef[] = [
   { id: 'ti_shendi', name: '神帝独尊', desc: '神帝临尘,众神俯首', mods: { cultivationSpeed: 0.08, damageReduction: 0.04 } },
   { id: 'ti_hundunling', name: '混沌真灵', desc: '混沌初开,一点真灵不昧', mods: { cultivationSpeed: 0.08, qiRegen: 0.08 } },
   { id: 'ti_hundunshenmo', name: '开天神魔', desc: '神魔一体,开天辟地', mods: { cultivationSpeed: 0.09, attackPct: 0.07 } },
-  { id: 'ti_daozu', name: '万道之祖', desc: '证道混沌道祖,与混沌同寿', mods: { cultivationSpeed: 0.08, breakthroughRate: 0.015 } }
+  { id: 'ti_daozu', name: '万道之祖', desc: '证道混沌道祖,与混沌同寿', mods: { cultivationSpeed: 0.08, breakthroughRate: 0.015 } },
+  // ---- 本源八境 ----
+  { id: 'ti_hunyuan', name: '混元一气', desc: '一气含万有,聚散由心', mods: { cultivationSpeed: 0.09, attackPct: 0.06 } },
+  { id: 'ti_wuji', name: '无极无终', desc: '无始无终,无内无外', mods: { cultivationSpeed: 0.09, dodgeRate: 0.02 } },
+  { id: 'ti_taiji', name: '太极两仪', desc: '一划既开,两仪相生', mods: { cultivationSpeed: 0.1, attackPct: 0.05, defensePct: 0.05 } },
+  { id: 'ti_taisu', name: '太素质始', desc: '质之始也,有形皆备', mods: { cultivationSpeed: 0.1, maxHpPct: 0.06 } },
+  { id: 'ti_taishi', name: '太始形初', desc: '形未成而先有其端', mods: { cultivationSpeed: 0.11, speed: 0.05 } },
+  { id: 'ti_taichu', name: '太初气始', desc: '气之始也,含而不发', mods: { cultivationSpeed: 0.11, qiRegen: 0.1 } },
+  { id: 'ti_hongmeng', name: '鸿蒙未判', desc: '浑然一体,无可破之处', mods: { cultivationSpeed: 0.12, damageReduction: 0.05 } },
+  { id: 'ti_daoyuan', name: '道源无极', desc: '先天地生,为万法之源', mods: { cultivationSpeed: 0.13, breakthroughRate: 0.02 } }
 ]
 
 const BY_ID = new Map(TITLES.map(x => [x.id, x]))

@@ -6,7 +6,7 @@
         <button
           v-if="flow.affixId"
           type="button"
-          class="-my-1 min-h-[28px] px-1.5 text-[11px] text-azure active:opacity-60"
+          class="-my-1 min-h-[28px] rounded px-1.5 text-[11px] text-azure ring-1 ring-inset ring-azure/30 active:opacity-60"
           @click="flow.pickAffix(null)"
         >
           {{ TRANSFER_LABELS.change }}
@@ -39,10 +39,10 @@
       <p class="flex min-h-[28px] items-center justify-between">
         <span class="font-kai text-[12px] tracking-[0.3em] text-ink-faint">{{ TRANSFER_LABELS.into }}</span>
         <span v-if="flow.targetUid" class="flex gap-1">
-          <button type="button" class="-my-1 min-h-[28px] px-1.5 text-[11px] text-azure active:opacity-60" @click="emit('view', flow.targetUid)">
+          <button type="button" class="-my-1 min-h-[28px] rounded px-1.5 text-[11px] text-azure ring-1 ring-inset ring-azure/30 active:opacity-60" @click="emit('view', flow.targetUid)">
             {{ TRANSFER_LABELS.view }}
           </button>
-          <button type="button" class="-my-1 min-h-[28px] px-1.5 text-[11px] text-azure active:opacity-60" @click="flow.pickTarget(null)">
+          <button type="button" class="-my-1 min-h-[28px] rounded px-1.5 text-[11px] text-azure ring-1 ring-inset ring-azure/30 active:opacity-60" @click="flow.pickTarget(null)">
             {{ TRANSFER_LABELS.change }}
           </button>
         </span>

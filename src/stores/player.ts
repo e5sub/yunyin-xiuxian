@@ -377,6 +377,18 @@ export const usePlayerStore = defineStore(
       exp.value = add(exp.value, v)
     }
 
+    /** 修为是否够付(只查不扣);强化价签与置灰用 */
+    function spendableExp(v: GNum): boolean {
+      return gte(exp.value, v)
+    }
+
+    /** 扣修为(强化等消耗);不足返回 false 且分文不动 */
+    function spendExp(v: GNum): boolean {
+      if (!gte(exp.value, v)) return false
+      exp.value = subClamp(exp.value, v)
+      return true
+    }
+
     function loseExpPct(pct: number): void {
       exp.value = subClamp(exp.value, mulN(exp.value, pct))
     }
@@ -1309,6 +1321,8 @@ export const usePlayerStore = defineStore(
       lifespanRatio,
       initCharacter,
       gainExp,
+      spendExp,
+      spendableExp,
       loseExpPct,
       advanceRealm,
       addAge,
