@@ -295,6 +295,18 @@ CREATE TABLE IF NOT EXISTS event_progress (
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, day, event_id)
 );
+-- 闲趣三则:每人每日每项一行;tries=已用次数,value=状态(签号/答谜结果),payload=垂钓篓
+CREATE TABLE IF NOT EXISTS leisure_log (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  tries INTEGER NOT NULL DEFAULT 0,
+  value INTEGER NOT NULL DEFAULT 0,
+  payload TEXT NOT NULL DEFAULT '',
+  claimed INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, day, kind)
+);
 -- VIP 激活码:days=0 表示永久;一码一用
 CREATE TABLE IF NOT EXISTS vip_codes (
   code TEXT PRIMARY KEY,
@@ -543,6 +555,18 @@ CREATE TABLE IF NOT EXISTS event_progress (
   PRIMARY KEY (user_id, day, event_id),
   CONSTRAINT fk_eventprog_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS leisure_log (
+  user_id BIGINT NOT NULL,
+  day CHAR(10) NOT NULL,
+  kind VARCHAR(16) NOT NULL,
+  tries INT NOT NULL DEFAULT 0,
+  value INT NOT NULL DEFAULT 0,
+  payload TEXT NOT NULL,
+  claimed TINYINT NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, day, kind),
+  CONSTRAINT fk_leisure_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS vip_codes (
   code VARCHAR(20) PRIMARY KEY,
   days INT NOT NULL,
@@ -690,6 +714,8 @@ async function seedConfig(): Promise<void> {
     ['dungeon_equip_drop_abyss', '60'],
     // 周天七会:每日轮值活动总开关(false = 全站关停);活动定义与赏格在 server/src/eventCore.ts
     ['event_enabled', 'true'],
+    // 闲趣三则(观星/垂钓/猜谜)总开关;定义与赏格在 server/src/leisureCore.ts
+    ['leisure_enabled', 'true'],
     ['email_enabled', env('EMAIL_ENABLED', 'false')],
     ['email_code_required', env('EMAIL_CODE_REQUIRED', 'false')],
     ['smtp_host', env('SMTP_HOST')],

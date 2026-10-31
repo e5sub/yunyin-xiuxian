@@ -13,6 +13,7 @@ import { vipRouter } from './vip.js'
 import { autoOpsRouter, startAutoOpsJob } from './autoOps.js'
 import { dungeonRouter } from './routes/dungeon.js'
 import { eventRouter } from './routes/event.js'
+import { leisureRouter } from './routes/leisure.js'
 import { initDb, run } from './db.js'
 import { gmPath, gmRouter } from './admin.js'
 import { initWsServer, isOnline, KICK_WAIT_MS, kickUserSockets, notifyUser, registerChatPersist } from './ws.js'
@@ -104,6 +105,7 @@ async function main(): Promise<void> {
   app.use('/api/boss', jsonTiny, bossRouter)
   app.use('/api/dungeon', jsonTiny, dungeonRouter)
   app.use('/api/event', jsonTiny, eventRouter)
+  app.use('/api/leisure', jsonTiny, leisureRouter)
   app.use('/api/vip', jsonTiny, vipRouter)
   app.use('/api/vip/autoops', jsonTiny, autoOpsRouter)
   app.use('/api/save', jsonLarge)

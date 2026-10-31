@@ -29,6 +29,7 @@ export const router = createRouter({
     { path: '/friends', name: 'friends', component: () => import('@/views/FriendsView.vue') },
     { path: '/boss', name: 'boss', component: () => import('@/views/BossView.vue') },
     { path: '/event', name: 'event', component: () => import('@/views/EventView.vue') },
+    { path: '/leisure', name: 'leisure', component: () => import('@/views/LeisureView.vue') },
     { path: '/dungeon', name: 'dungeon', component: () => import('@/views/DungeonView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' }
   ]

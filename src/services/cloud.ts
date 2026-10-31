@@ -276,6 +276,61 @@ export interface EventArenaRun {
   log: string[]
 }
 
+/** 闲趣赏格:与七会同形,灵石为基础值,客户端按自身层级折算 */
+export interface LeisureReward {
+  stone: number
+  herb: number
+  wudao: number
+  ore: number
+  dust: number
+  page: number
+}
+
+export interface LeisureFortune {
+  /** 签号,同一天同一个人固定 */
+  index: number
+  /** 3 大吉 / 2 吉 / 1 小吉 / 0 平 */
+  rank: number
+  grade: string
+  poem: string
+  read: string
+  reward: LeisureReward
+}
+
+export interface LeisureToday {
+  enabled: boolean
+  day: string
+  now: number
+  secsToNext: number
+  star: { drawn: boolean; fortune: LeisureFortune | null }
+  fish: { casts: number; max: number; basket: LeisureReward; caught: string[]; claimed: boolean }
+  riddle: { q: string; options: string[]; answered: boolean; correct: boolean | null; note: string | null }
+}
+
+export interface LeisureStarResult {
+  fortune: LeisureFortune
+  /** 今日首抽才有;重复点开为全零 */
+  reward: LeisureReward
+  already: boolean
+}
+
+export interface LeisureCastResult {
+  catch: { id: string; label: string; reward: LeisureReward }
+  basket: LeisureReward
+  caught: string[]
+  casts: number
+  max: number
+}
+
+export interface LeisureRiddleResult {
+  correct: boolean
+  /** 正确答案下标,答后才下发 */
+  answer: number
+  note: string
+  reward: LeisureReward
+  already: boolean
+}
+
 export interface EventArenaResult {
   day: string
   eventId: string
@@ -480,7 +535,18 @@ export const cloudApi = {
   /** 领活动赏(达标且未领) */
   eventClaim: (): Promise<{ reward: EventReward; day: string; eventId: string }> => request('POST', '/event/claim', {}),
   /** 擂台连战:服务端按档案生成三关并模拟,返回逐场战报与最好连胜 */
-  eventArena: (): Promise<EventArenaResult> => request('POST', '/event/arena', {})
+  eventArena: (): Promise<EventArenaResult> => request('POST', '/event/arena', {}),
+
+  // ---- 闲趣三则:观星 / 垂钓 / 猜谜 ----
+  leisureToday: (): Promise<LeisureToday> => request('GET', '/leisure/today'),
+  /** 抽签:一日一签,抽过再点只回看(赏为零) */
+  leisureStar: (): Promise<LeisureStarResult> => request('POST', '/leisure/star', {}),
+  /** 起一竿:钓获先入篓,次数用尽会报错 */
+  leisureCast: (): Promise<LeisureCastResult> => request('POST', '/leisure/fish', {}),
+  /** 收篓:把今日累计钓获一次入账 */
+  leisureClaimBasket: (): Promise<{ reward: LeisureReward }> => request('POST', '/leisure/fish/claim', {}),
+  /** 答谜:四选一,一问一次 */
+  leisureAnswer: (choice: number): Promise<LeisureRiddleResult> => request('POST', '/leisure/riddle', { choice })
 }
 
 // ---- WebSocket:聊天 / 在线状态 / 好友通知 ----

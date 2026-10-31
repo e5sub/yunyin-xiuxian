@@ -327,6 +327,7 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'save_push_interval_sec',
       'save_history_keep',
       'event_enabled',
+      'leisure_enabled',
       'turnstile_site_key',
       'turnstile_secret_key',
       'boss_daily_attempts',
@@ -427,7 +428,7 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'dungeon_growth_reset_days',
       'smtp_port'
     ]
-    const boolKeys = ['email_enabled', 'email_code_required', 'alipay_enabled', 'boss_autoops_smart', 'turnstile_enabled', 'event_enabled']
+    const boolKeys = ['email_enabled', 'email_code_required', 'alipay_enabled', 'boss_autoops_smart', 'turnstile_enabled', 'event_enabled', 'leisure_enabled']
     // VIP 定价:元,最多两位小数(0 = 该档不开放)
     const priceKeys = ['vip_price_month', 'vip_price_half', 'vip_price_year', 'vip_price_forever']
     // 支付宝密钥:PKCS8 base64 较长

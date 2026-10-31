@@ -74,6 +74,12 @@
         <span class="w-full truncate text-[9px] leading-tight text-ink-faint">每日一会 · 日换其名</span>
       </RouterLink>
 
+      <RouterLink to="/leisure" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-azure/15 text-azure"><GameIcon name="moon" :size="18" /></span>
+        <span class="font-kai text-[13px] tracking-widest text-ink">闲趣</span>
+        <span class="w-full truncate text-[9px] leading-tight text-ink-faint">观星 · 垂钓 · 猜谜</span>
+      </RouterLink>
+
       <RouterLink to="/boss" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
         <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-cinnabar/10 text-cinnabar"><GameIcon name="swords" :size="18" /></span>
         <span class="font-kai text-[13px] tracking-widest text-ink">围妖</span>
