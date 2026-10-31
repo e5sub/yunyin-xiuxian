@@ -70,6 +70,7 @@
           </div>
           <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">{{ difficultyDesc }}</p>
           <p class="mt-0.5 text-[10px] leading-relaxed text-ink-faint">{{ realmHint }}</p>
+          <p class="mt-0.5 text-[10px] leading-relaxed text-ink-faint">{{ growthHint(roomDungeon) }}</p>
         </div>
 
         <div class="mt-2.5 flex flex-wrap items-center gap-2">
@@ -82,7 +83,7 @@
           >
           <button class="btn-ink px-3 py-1.5 text-[12px]" :disabled="roomBusy || joinCode.trim().length < 4" @click="joinRoom">加入</button>
         </div>
-        <p class="mt-2 text-[10px] leading-relaxed text-ink-faint">道友建房拿到房间码,输入同一串码即自动进房;秘境按房内境界定深浅,境界越高妖物越凶,战获亦厚。</p>
+        <p class="mt-2 text-[10px] leading-relaxed text-ink-faint">道友建房拿到房间码,输入同一串码即自动进房;秘境按房内境界定深浅,境界越高妖物越凶,战获亦厚。凶险亦随通杀次数增长,每 30 天重置;组队以房主的成长档为准。</p>
       </template>
     </div>
 
@@ -93,6 +94,7 @@
         <span class="text-[11px] text-ink-faint tabular">{{ attemptsText(d) }}</span>
       </div>
       <p class="mt-1 text-[11px] leading-relaxed text-ink-soft">{{ d.desc }}</p>
+      <p class="mt-0.5 text-[10px] leading-relaxed text-ink-faint">{{ growthHint(d.key) }}</p>
 
       <button
         class="btn-ink mt-3 w-full"
@@ -124,7 +126,7 @@
   import { usePlayerStore } from '@/stores/player'
   import { useResourcesStore } from '@/stores/resources'
   import { useAuthStore } from '@/stores/auth'
-  import { cloudApi, onCloudWs, type DungeonBrief, type DungeonDifficulty, type DungeonDifficultyBrief, type DungeonKey, type DungeonRunResult, type DungeonRoom } from '@/services/cloud'
+  import { cloudApi, onCloudWs, type DungeonBrief, type DungeonDifficulty, type DungeonDifficultyBrief, type DungeonGrowthBrief, type DungeonKey, type DungeonRunResult, type DungeonRoom } from '@/services/cloud'
   import { copyText } from '@/utils/clipboard'
   import { rng } from '@/utils/random'
   import { stoneByTier } from '@/core/formulas'
@@ -156,6 +158,7 @@
   ])
   const difficulty = ref<DungeonDifficulty>('normal')
   const myRealm = ref<{ index: number; label: string; power: number; reward: number } | null>(null)
+  const myGrowth = ref<Partial<Record<DungeonKey, DungeonGrowthBrief>>>({})
 
   const difficultyDesc = computed(() => difficulties.value.find(d => d.key === difficulty.value)?.desc ?? '')
 
@@ -165,6 +168,14 @@
     if (r === null || r.label === '') return '独行按自身境界定深浅'
     return `我的境界 ${r.label} · 妖物强度 ×${r.power.toFixed(2)} · 战获 ×${r.reward.toFixed(2)}`
   })
+
+  /** 凶险成长:本周期通杀次数与当前倍率(组队开拔以房主为准,此处报的是自己的档) */
+  function growthHint(key: DungeonKey): string {
+    const g = myGrowth.value[key]
+    if (g === undefined || g.kills <= 0) return '凶险尚平 · 本期未通杀'
+    const days = g.resetAt > 0 ? Math.max(1, Math.ceil((g.resetAt - Date.now()) / 86_400_000)) : 0
+    return `凶险成长 ×${g.mult.toFixed(2)} · 本期第 ${g.kills} 杀${days > 0 ? ` · ${days} 天后重置` : ''}`
+  }
 
   const unsubWs = onCloudWs(msg => {
     if (msg.type === 'room_join') {
@@ -218,6 +229,7 @@
       room.value = o.room
       difficulties.value = o.difficulties
       myRealm.value = o.myRealm
+      myGrowth.value = o.myGrowth ?? {}
     } catch {
       // 云不可达时静默
     }

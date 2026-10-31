@@ -20,9 +20,11 @@ import {
   attemptsLimit,
   attemptsUsed,
   bumpDaily,
+  bumpGrowth,
   createRoom,
   currentRoomOf,
   dayKey,
+  dungeonGrowth,
   disbandRoom,
   isDifficulty,
   isDungeonKey,
@@ -31,6 +33,7 @@ import {
   resolveRunRoster,
   roomSnapshot,
   type DungeonDifficulty,
+  type DungeonGrowth,
   type DungeonKey
 } from '../dungeonCore.js'
 import { geAdd, geMulN, geNorm, geSub, geText, randRange, randomIntRange, type GE } from '../gnum.js'
@@ -94,9 +97,10 @@ interface SimResult {
 }
 
 /**
- * 难度修饰:两重相乘。
- * - 档位(建房时选):循境/常探/绝境,妖物强度与战获各按表放大;
- * - 境界基准:房内平均大境界越高,秘境越凶险(每境 +realm_power_pct% 强度,战获小补)。
+ * 难度修饰:三重相乘。
+ * - 档位(建房时选):循境/常探/绝境/炼狱,妖物强度与战获各按表放大;
+ * - 境界基准:房内平均大境界越高,秘境越凶险(每境 +realm_power_pct% 强度,战获小补);
+ * - 凶险成长:本周期每通杀一次,妖物强度再 +growth_power_pct%(封顶 ×2,每 30 天重置,组队以房主为准)。
  * 强度只乘妖物的气血/攻势,不乘玩家自身——玩家强在境界与法宝里,秘境强在妖物里。
  */
 interface DifficultyMod {
@@ -104,10 +108,17 @@ interface DifficultyMod {
   power: number
   reward: number
   avgRealm: number
+  /** 凶险成长:本周期击杀数 / 强度倍率 */
+  growthKills: number
+  growthMult: number
 }
 
-/** 把难度与境界折算成乘数(def 默认值即线上默认:每境强度 +4%、战获 +2%) */
-async function difficultyMod(difficulty: DungeonDifficulty, avgRealm: number): Promise<DifficultyMod> {
+/** 把难度与境界折算成乘数(def 默认值即线上默认:每境强度 +4%、战获 +2%、每杀成长 +2%) */
+async function difficultyMod(
+  difficulty: DungeonDifficulty,
+  avgRealm: number,
+  growth: DungeonGrowth = { kills: 0, mult: 1, periodStart: 0, resetAt: 0 }
+): Promise<DifficultyMod> {
   const powerPct = await getConfigNumber('dungeon_realm_power_pct', 4)
   const rewardPct = await getConfigNumber('dungeon_realm_reward_pct', 2)
   const realm = Math.max(0, Math.min(20, avgRealm))
@@ -115,15 +126,19 @@ async function difficultyMod(difficulty: DungeonDifficulty, avgRealm: number): P
   const realmPower = Math.min(3, 1 + (realm * powerPct) / 100)
   return {
     difficulty,
-    power: DIFFICULTY_POWER[difficulty] * realmPower,
+    power: DIFFICULTY_POWER[difficulty] * realmPower * growth.mult,
     reward: DIFFICULTY_REWARD[difficulty] * (1 + (realm * rewardPct) / 100),
-    avgRealm: realm
+    avgRealm: realm,
+    growthKills: growth.kills,
+    growthMult: growth.mult
   }
 }
 
-/** 战报抬头:这一场是按什么难度、什么境界基准开的 */
+/** 战报抬头:这一场是按什么难度、什么境界基准、什么凶险成长开的 */
 function modLine(mod: DifficultyMod): string {
-  return `【${DIFFICULTY_NAMES[mod.difficulty]}】妖物强度 ×${mod.power.toFixed(2)} · 战获 ×${mod.reward.toFixed(2)}(境界基准 ${mod.avgRealm.toFixed(1)} 重)`
+  const grown =
+    mod.growthKills > 0 ? ` · 凶险成长 ×${mod.growthMult.toFixed(2)}(第 ${mod.growthKills} 杀)` : ''
+  return `【${DIFFICULTY_NAMES[mod.difficulty]}】妖物强度 ×${mod.power.toFixed(2)} · 战获 ×${mod.reward.toFixed(2)}(境界基准 ${mod.avgRealm.toFixed(1)} 重${grown})`
 }
 
 /* ---------------- 心魔镜像 ---------------- */
@@ -430,6 +445,9 @@ dungeonRouter.get('/', requireAuth, (req: Request, res: Response) => {
     )
     const myRealm = realmScale(me?.realm_index ?? 0)
     const myMod = await difficultyMod('normal', myRealm)
+    // 我各副本的凶险成长:本周期击杀数 / 当前倍率 / 重置时刻(组队开拔以房主为准)
+    const myGrowth: Record<string, DungeonGrowth> = {}
+    for (const key of DUNGEONS) myGrowth[key] = await dungeonGrowth(req.user!.id, key)
     res.json({
       dungeons,
       maxSize: ROOM_MAX_SIZE,
@@ -441,7 +459,8 @@ dungeonRouter.get('/', requireAuth, (req: Request, res: Response) => {
         power: DIFFICULTY_POWER[k],
         reward: DIFFICULTY_REWARD[k]
       })),
-      myRealm: { index: myRealm, label: me?.realm_label ?? '', power: myMod.power, reward: myMod.reward }
+      myRealm: { index: myRealm, label: me?.realm_label ?? '', power: myMod.power, reward: myMod.reward },
+      myGrowth
     })
   })().catch(() => res.status(500).json({ error: '副本状态读取失败' }))
 })
@@ -503,7 +522,7 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
     const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : ''
     // 独行时难度随请求(默认常探);入房则以房主建房时定的难度为准,不由客人改
     const soloDifficulty: DungeonDifficulty = isDifficulty(body.difficulty) ? body.difficulty : 'normal'
-    const { members: roster, difficulty } = await resolveRunRoster(req.user!.id, code, soloDifficulty)
+    const { members: roster, difficulty, ownerId } = await resolveRunRoster(req.user!.id, code, soloDifficulty)
     const fighters = await loadFighters(roster)
 
     // 全员次数校验:任何一个不足都不开拔(名单点名);VIP 按各自身份 +1
@@ -523,7 +542,9 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
     const cfg = await dungeonConfig(dungeon)
     // 境界基准按「大境界 + 小层」算,与页面显示的境界名同口径
     const avgRealm = fighters.reduce((acc, f) => acc + f.realmMajor, 0) / Math.max(1, fighters.length)
-    const mod = await difficultyMod(difficulty, avgRealm)
+    // 凶险成长按「基准人」的周期击杀数算:独行即自己,组队即房主
+    const growth = await dungeonGrowth(ownerId, dungeon)
+    const mod = await difficultyMod(difficulty, avgRealm, growth)
     const sim =
       dungeon === 'demon'
         ? runDemon(fighters, cfg as DemonCfg, mod)
@@ -545,6 +566,10 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
 
     if (code !== '') await disbandRoom(code)
     const starterName = await myName(req.user!.id, req.user!.username)
+    // 胜利才算「通杀」:在场成员各自的周期击杀数 +1(下一场凶险按各自的成长档走)
+    if (sim.win) {
+      for (const f of fighters) await bumpGrowth(f.userId, dungeon)
+    }
     for (const f of fighters) {
       if (f.userId !== req.user!.id) {
         notifyUser(f.userId, {
@@ -569,6 +594,7 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
       difficulty,
       difficultyName: DIFFICULTY_NAMES[difficulty],
       scaling: { power: mod.power, reward: mod.reward, avgRealm: mod.avgRealm },
+      growth: { kills: growth.kills, mult: growth.mult, resetAt: growth.resetAt },
       roomSize: fighters.length,
       win: sim.win,
       log: sim.log,

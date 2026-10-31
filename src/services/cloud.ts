@@ -187,6 +187,13 @@ export interface DungeonBrief {
   max: number
 }
 
+/** 凶险成长:某副本本周期击杀数与当前强度倍率(每 30 天重置,组队开拔以房主为准) */
+export interface DungeonGrowthBrief {
+  kills: number
+  mult: number
+  resetAt: number
+}
+
 export interface DungeonOverview {
   dungeons: DungeonBrief[]
   maxSize: number
@@ -194,6 +201,8 @@ export interface DungeonOverview {
   difficulties: DungeonDifficultyBrief[]
   /** 我的境界基准:独行开局的默认强度/战获倍率 */
   myRealm: { index: number; label: string; power: number; reward: number }
+  /** 我各副本的凶险成长(按 dungeon key 索引) */
+  myGrowth: Partial<Record<DungeonKey, DungeonGrowthBrief>>
 }
 
 export interface DungeonRunResult {
@@ -201,8 +210,10 @@ export interface DungeonRunResult {
   name: string
   difficulty: DungeonDifficulty
   difficultyName: string
-  /** 本场实算倍率(难度 × 境界基准) */
+  /** 本场实算倍率(难度 × 境界基准 × 凶险成长) */
   scaling: { power: number; reward: number; avgRealm: number }
+  /** 本场基准人的凶险成长(独行即自己,组队即房主) */
+  growth: { kills: number; mult: number; resetAt: number }
   roomSize: number
   win: boolean
   log: string[]

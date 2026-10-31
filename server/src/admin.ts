@@ -356,6 +356,8 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'dungeon_realm_reward_pct',
       'dungeon_equip_drop_peril',
       'dungeon_equip_drop_abyss',
+      'dungeon_growth_power_pct',
+      'dungeon_growth_reset_days',
       // 邮件 / SMTP
       'email_enabled',
       'email_code_required',
@@ -414,6 +416,8 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'dungeon_realm_reward_pct',
       'dungeon_equip_drop_peril',
       'dungeon_equip_drop_abyss',
+      'dungeon_growth_power_pct',
+      'dungeon_growth_reset_days',
       'smtp_port'
     ]
     const boolKeys = ['email_enabled', 'email_code_required', 'alipay_enabled', 'boss_autoops_smart']

@@ -277,6 +277,14 @@ CREATE TABLE IF NOT EXISTS dungeon_daily (
   count INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, dungeon, day)
 );
+-- 秘境成长:每副本按个人本周期击杀数提升妖物强度,过周期清零
+CREATE TABLE IF NOT EXISTS dungeon_growth (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  dungeon TEXT NOT NULL,
+  kill_count INTEGER NOT NULL DEFAULT 0,
+  period_start INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, dungeon)
+);
 -- VIP 激活码:days=0 表示永久;一码一用
 CREATE TABLE IF NOT EXISTS vip_codes (
   code TEXT PRIMARY KEY,
@@ -507,6 +515,14 @@ CREATE TABLE IF NOT EXISTS dungeon_daily (
   PRIMARY KEY (user_id, dungeon, day),
   CONSTRAINT fk_dungeon_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS dungeon_growth (
+  user_id BIGINT NOT NULL,
+  dungeon VARCHAR(32) NOT NULL,
+  kill_count INT NOT NULL DEFAULT 0,
+  period_start BIGINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, dungeon),
+  CONSTRAINT fk_dgrowth_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS vip_codes (
   code VARCHAR(20) PRIMARY KEY,
   days INT NOT NULL,
@@ -640,6 +656,9 @@ async function seedConfig(): Promise<void> {
     // 副本 · 境界难度:房内平均大境界每高一层,妖物强度 +N%(战获 +M%),三档难度(循境/常探/绝境)另在上叠加
     ['dungeon_realm_power_pct', '4'],
     ['dungeon_realm_reward_pct', '2'],
+    // 秘境成长:本周期每通杀一次,妖物强度 +N%(封顶 ×2);每 30 天重置,组队以房主为准
+    ['dungeon_growth_power_pct', '2'],
+    ['dungeon_growth_reset_days', '30'],
     // 副本 · 高难掉装备:绝境/炼狱获胜后的装备掉率(%)
     ['dungeon_equip_drop_peril', '25'],
     ['dungeon_equip_drop_abyss', '60'],
