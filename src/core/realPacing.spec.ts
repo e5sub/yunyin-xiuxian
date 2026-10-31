@@ -18,6 +18,7 @@ import { useResourcesStore } from '@/stores/resources'
 import { GONGFA } from '@/data/gongfa'
 import { GONGFA_BRANCHES } from '@/data/gongfaBranches'
 import { BUILDINGS } from '@/data/buildings'
+import { SECRET_SEATS } from './gongfaSeats'
 
 /** 修满一个大境界要多久:走真实 store 的 cultPerSec,不另算公式 */
 function realSecondsForMajor(major: number, kind: 'bare' | 'max'): number {
@@ -45,7 +46,11 @@ function realSecondsForMajor(major: number, kind: 'bare' | 'max'): number {
     const mains = usable.filter(g => g.type === 'main').sort((a, b) => cultOf(b.id) - cultOf(a.id))
     const subs = usable.filter(g => g.type !== 'main').sort((a, b) => cultOf(b.id) - cultOf(a.id))
     const mainId = mains[0]!.id
-    const subIds = subs.slice(0, subCap).map(g => g.id)
+    // 席面各算各的账:辅修占满藏经阁预算,秘术另有一席(见 core/gongfaSeats)
+    const subIds = [
+      ...subs.filter(g => g.type === 'sub').slice(0, subCap),
+      ...subs.filter(g => g.type === 'secret').slice(0, SECRET_SEATS)
+    ].map(g => g.id)
     for (const id of [mainId, ...subIds]) {
       const def = GONGFA.find(g => g.id === id)!
       cul.learn(id)

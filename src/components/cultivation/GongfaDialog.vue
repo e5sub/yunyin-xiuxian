@@ -104,7 +104,7 @@
           :disabled="subFull"
           @click="toggleSub"
         >
-          {{ subFull ? `辅修已满 ${cultivation.subGongfa.length}/${dongfu.subGongfaSlots}` : subActionText }}
+          {{ subFull ? `${seatKind === 'secret' ? '秘术' : '辅修'}已满 ${seatUsed}/${seatCap}` : subActionText }}
         </button>
         <button v-if="upCost" class="btn-ghost flex-1" :disabled="upShort !== null" @click="def && upgradeGongfa(def.id)">
           {{ upShort ? '进 修(缺料)' : '进 修' }}
@@ -125,6 +125,7 @@
   import { ELEMENTS } from '@/data/linggen'
   import { branchesFor, gongfaBranchDef } from '@/data/gongfaBranches'
   import { gongfaUpgradeCost, gongfaUpgradeShort, gongfaUpgradeShortfall, upgradeGongfa } from '@/core/gongfaService'
+  import { seatedCount, seatCapOf } from '@/core/gongfaSeats'
   import { gongfaAffinity, rootElements } from '@/core/linggenAffinity'
   import { mergeMods } from '@/core/statsCalc'
   import { gongfaModsAt } from '@/stores/cultivation'
@@ -181,11 +182,15 @@
 
   const isMain = computed(() => def.value && cultivation.mainGongfa === def.value.id)
   const isSub = computed(() => def.value && cultivation.subGongfa.includes(def.value.id))
-  // 辅修/秘术共一个槽位预算;满了且这本不是现有辅修时置灰并报 N/M
-  const subFull = computed(() => !isSub.value && cultivation.subGongfa.length >= dongfu.subGongfaSlots)
-  // 秘术与辅修同槽不同门类,按钮按门类点名
+  /** 副席门类:秘术自成一席,不占藏经阁养出来的辅修席 */
+  const seatKind = computed<'sub' | 'secret'>(() => (def.value?.type === 'secret' ? 'secret' : 'sub'))
+  const seatCap = computed(() => seatCapOf(def.value?.id ?? '', dongfu.subGongfaSlots))
+  const seatUsed = computed(() => seatedCount(cultivation.subGongfa, seatKind.value, dongfu.subGongfaSlots))
+  /** 本门类席面已满,且这本不在席上 → 置灰并报 N/M */
+  const subFull = computed(() => !isSub.value && seatUsed.value >= seatCap.value)
+  // 秘术与辅修同属副席但各算各的账,按钮按门类点名
   const subActionText = computed(() => {
-    const label = def.value?.type === 'secret' ? '秘术' : '辅修'
+    const label = seatKind.value === 'secret' ? '秘术' : '辅修'
     return isSub.value ? `卸下${label}` : `设为${label}`
   })
 
@@ -229,6 +234,6 @@
   function toggleSub(): void {
     if (!def.value) return
     const ok = cultivation.toggleSub(def.value.id, dongfu.subGongfaSlots)
-    if (!ok) ui.toast(gongfaSubFullToast(dongfu.subGongfaSlots), 'warn')
+    if (!ok) ui.toast(gongfaSubFullToast(seatCap.value, seatKind.value === 'secret' ? '秘术' : '辅修'), 'warn')
   }
 </script>

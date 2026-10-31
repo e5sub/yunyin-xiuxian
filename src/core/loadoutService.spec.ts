@@ -180,3 +180,38 @@ describe('构筑快照(保存/一键切换)', () => {
     expect(last).not.toContain('槽位不足')
   })
 })
+
+describe('构筑快照 · 副席:辅修与秘术各算各的账', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('一辅修 + 一秘术的快照,在只一席辅修时也能整套还原', () => {
+    const cultivation = useCultivationStore()
+    const ui = useUiStore()
+    cultivation.learn('s_tuna')
+    cultivation.learn('x_tianyan')
+    cultivation.toggleSub('s_tuna', 1)
+    cultivation.toggleSub('x_tianyan', 1)
+    const loadout = captureLoadout('双席')!
+
+    cultivation.subGongfa = []
+    expect(applyLoadout(loadout.id)).toBe(true)
+    expect(cultivation.subGongfa).toEqual(['s_tuna', 'x_tianyan'])
+    expect(ui.toasts[ui.toasts.length - 1]!.text, '两本都在席,不该报缺件').toBe('已换上「双席」')
+  })
+
+  it('第二本秘术在快照里仍是超席,并带名报出', () => {
+    const cultivation = useCultivationStore()
+    const ui = useUiStore()
+    cultivation.learn('s_tuna')
+    cultivation.learn('x_tianyan')
+    cultivation.learn('x_sanqing')
+    const loadout = captureLoadout('双秘术')!
+    loadout.subGongfa = ['s_tuna', 'x_tianyan', 'x_sanqing']
+    applyLoadout(loadout.id)
+
+    expect(cultivation.subGongfa).toEqual(['s_tuna', 'x_tianyan'])
+    const last = ui.toasts[ui.toasts.length - 1]!.text
+    expect(last).toContain('一气化三清')
+    expect(last).toContain('槽位不足')
+  })
+})

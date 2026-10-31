@@ -17,6 +17,7 @@ import {
   loadoutSavedToast
 } from '@/ui/inventoryText'
 import { detectBuild } from './buildDetect'
+import { effectiveSubs } from './gongfaSeats'
 
 /** 保存当前构筑为快照 */
 export function captureLoadout(name: string): Loadout | null {
@@ -92,17 +93,19 @@ export function applyLoadout(id: string): boolean {
     missingNames.push(gongfaDef(loadout.mainGongfa)?.name ?? '主修功法')
   }
   const subCap = Math.max(0, Math.floor(dongfu.subGongfaSlots))
-  // 快照里的重复项(sanitize 之前的旧档)不能占两次槽、也不能报两次缺件
+  // 快照里的重复项(sanitize 之前的旧档)不能占两次席、也不能报两次缺件
   const snapshotSubs = [...new Set(loadout.subGongfa)]
   // 旧档/手改快照的辅修席可能混入主修门类:与 toggleSub 同一道门类闸
   const eligibleSubs = snapshotSubs.filter(g => {
     const def = gongfaDef(g)
     return !!cultivation.learned[g] && !!def && def.type !== 'main' && g !== cultivation.mainGongfa
   })
-  const validSubs = eligibleSubs.slice(0, subCap)
-  // 缺件分两种,都须点名:没学过(或不是辅修)的,与学过但槽位不够被砍的
+  // 席面按门类各算各的(辅修看藏经阁、秘术固定一席),与 cultivation.gongfaMods 同口径
+  const validSubs = effectiveSubs(eligibleSubs, subCap)
+  const seatedSubs = new Set(validSubs)
+  // 缺件分两种,都须点名:没学过(或不是辅修)的,与学过但席面不够被砍的
   const unownedSubs = snapshotSubs.filter(g => !eligibleSubs.includes(g))
-  const overflowSubs = eligibleSubs.slice(subCap)
+  const overflowSubs = eligibleSubs.filter(g => !seatedSubs.has(g))
   missing += unownedSubs.length + overflowSubs.length
   for (const g of [...unownedSubs, ...overflowSubs]) missingNames.push(gongfaDef(g)?.name ?? g)
   cultivation.subGongfa = validSubs

@@ -419,3 +419,56 @@ describe('悟道分支:选择随转世保留,加成只随满级且装配生效',
     expect(c.gongfaMods.qiRegen, '超席后分支词条不得残留').toBeUndefined()
   })
 })
+
+describe('副席:辅修与秘术各算各的账(秘术自成一席,不挤占辅修席)', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('藏经阁 0 级(一席辅修)时,秘术仍挂得上且词条生效', () => {
+    const cul = useCultivationStore()
+    const dongfu = useDongfuStore()
+    expect(dongfu.subGongfaSlots, '这条判据以「只有一席辅修」为前提').toBe(1)
+
+    cul.learn('s_tuna')
+    cul.learn('x_tianyan')
+    expect(cul.toggleSub('s_tuna', dongfu.subGongfaSlots)).toBe(true)
+    expect(cul.toggleSub('x_tianyan', dongfu.subGongfaSlots), '旧账法在这里返回 false').toBe(true)
+    expect(cul.subGongfa).toEqual(['s_tuna', 'x_tianyan'])
+    expect(modOf(cul.gongfaMods, 'cultivationSpeed'), '辅修词条在').toBeGreaterThan(0)
+    expect(modOf(cul.gongfaMods, 'luck'), '秘术词条也在').toBeGreaterThan(0)
+
+    // 同门类再加一本仍被挡在门外
+    cul.learn('s_lianti')
+    expect(cul.toggleSub('s_lianti', dongfu.subGongfaSlots)).toBe(false)
+    expect(cul.subGongfa).not.toContain('s_lianti')
+  })
+
+  it('卸下秘术只动秘术,辅修仍在席', () => {
+    const cul = useCultivationStore()
+    cul.learn('s_tuna')
+    cul.learn('x_tianyan')
+    cul.toggleSub('s_tuna', 1)
+    cul.toggleSub('x_tianyan', 1)
+    expect(cul.toggleSub('x_tianyan', 1)).toBe(true)
+    expect(cul.subGongfa).toEqual(['s_tuna'])
+    expect(modOf(cul.gongfaMods, 'luck')).toBe(0)
+    expect(modOf(cul.gongfaMods, 'cultivationSpeed')).toBeGreaterThan(0)
+  })
+
+  it('秘术那席不随藏经阁缩水:转世/拆楼后仍在席', () => {
+    const cul = useCultivationStore()
+    const dongfu = useDongfuStore()
+    dongfu.setLevel('library', 3)
+    cul.learn('s_tuna')
+    cul.learn('s_lianti')
+    cul.learn('x_tianyan')
+    cul.toggleSub('s_tuna', dongfu.subGongfaSlots)
+    cul.toggleSub('s_lianti', dongfu.subGongfaSlots)
+    cul.toggleSub('x_tianyan', dongfu.subGongfaSlots)
+    expect(modOf(cul.gongfaMods, 'maxHpPct')).toBeGreaterThan(0)
+
+    dongfu.setLevel('library', 0)
+    expect(cul.subGongfa, '选择不抹掉').toHaveLength(3)
+    expect(modOf(cul.gongfaMods, 'maxHpPct'), '第二本辅修下席').toBe(0)
+    expect(modOf(cul.gongfaMods, 'luck'), '秘术不受影响').toBeGreaterThan(0)
+  })
+})

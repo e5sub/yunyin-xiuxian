@@ -84,6 +84,7 @@
       <p class="px-1 text-[10px] leading-relaxed text-ink-faint">
         <template v-if="poolLeft > 0">此门尚余 {{ poolLeft }} 部</template>
         <template v-else>此门此境已收全</template>
+        <span> · {{ subSeatsText }}</span>
       </p>
 
       <div
@@ -134,6 +135,7 @@
   import { useCultivationStore } from '@/stores/cultivation'
   import { useUiStore } from '@/stores/ui'
   import { comprehendGongfa, gongfaUpgradeCost } from '@/core/gongfaService'
+  import { effectiveSubs, seatedCount, SECRET_SEATS } from '@/core/gongfaSeats'
   import { gn } from '@/utils/gnum'
   import { GONGFA, gongfaDef, gongfaMaxLevel, GONGFA_TYPE_NAMES } from '@/data/gongfa'
   import type { GongfaDef, GongfaType } from '@/types'
@@ -254,14 +256,23 @@
 
   const canComprehend = computed(() => comprehendLeft.value > 0 && pageShort.value === 0)
 
+  /** 真正在席的副席(按装配顺序、各门类封顶),与 store 的 gongfaMods 同口径 */
+  const seatedSubs = computed(() => new Set(effectiveSubs(cultivation.subGongfa, dongfu.subGongfaSlots)))
+
   function equipStateOf(id: string): string {
     if (cultivation.mainGongfa === id) return '主修'
-    const idx = cultivation.subGongfa.indexOf(id)
-    if (idx === -1) return ''
-    // 藏经阁缩水/转世后槽位变少时,超出辅修槽位预算的词条不生效(cultivation.gongfaMods 只 slice 到预算),不标辅修/秘术
-    if (idx >= dongfu.subGongfaSlots) return '超席'
+    // 藏经阁缩水/转世后席面变少时,超席的词条不生效(cultivation.gongfaMods 与 effectiveSubs 同一把尺),不标辅修/秘术
+    if (!cultivation.subGongfa.includes(id)) return ''
+    if (!seatedSubs.value.has(id)) return '超席'
     return gongfaDef(id)?.type === 'secret' ? '秘术' : '辅修'
   }
+
+  /** 席面:辅修看藏经阁预算、秘术固定一席,各算各的账 */
+  const subSeatsText = computed(
+    () =>
+      `辅修 ${seatedCount(cultivation.subGongfa, 'sub', dongfu.subGongfaSlots)}/${dongfu.subGongfaSlots}` +
+      ` · 秘术 ${seatedCount(cultivation.subGongfa, 'secret', dongfu.subGongfaSlots)}/${SECRET_SEATS}`
+  )
 
   /** 功行是否已至顶层 */
   function isFull(id: string): boolean {

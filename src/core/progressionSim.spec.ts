@@ -178,7 +178,7 @@ describe('模型假设 · 每一分都得真实凑得出', () => {
     for (let m = WORLD_BREAK_MAJOR; m <= MAX_MAJOR; m++) {
       const usable = GONGFA.filter(g => g.minRealm <= m)
       const bestMain = Math.max(0, ...usable.filter(g => g.type === 'main').map(g => cultWithBranch(g.id)))
-      // 辅修栏不挑类型(秘术也能占,见 cultivation.toggleSub)
+      // 副席里辅修看藏经阁预算、秘术另有一席;这里按「同一批副席挑最强的 N 本」估上限,只多不少
       const bestSubs = usable
         .filter(g => g.type !== 'main')
         .map(g => cultWithBranch(g.id))

@@ -8,6 +8,7 @@ import { buffDef } from '@/data/buffs'
 import { gongfaBranchDef } from '@/data/gongfaBranches'
 import { mergeMods } from '@/core/statsCalc'
 import { buffCapSec } from '@/core/buffCap'
+import { canSeat, effectiveSubs } from '@/core/gongfaSeats'
 import { useDongfuStore } from '@/stores/dongfu'
 import { asArray, asNumberRecord, asRecord, asStringArray, asFiniteNumber } from '@/utils/saveShape'
 
@@ -100,12 +101,13 @@ export const useCultivationStore = defineStore(
       if (mainGongfa.value && learned.value[mainGongfa.value]) {
         sources.push(gongfaModsAt(mainGongfa.value, learned.value[mainGongfa.value]!))
       }
-      // 有效辅修只计到辅修槽位预算(与装配页 loadout 同口径);超槽的选择保留,槽位恢复后按加装顺序生效
-      const subCap = useDongfuStore().subGongfaSlots
-      for (const id of subGongfa.value.slice(0, subCap)) {
+      // 有效副席只计到各自的席面预算(辅修看藏经阁、秘术固定一席,与装配页 loadout 同口径);
+      // 超席的选择保留,席面恢复后按加装顺序生效
+      const activeSubs = effectiveSubs(subGongfa.value, useDongfuStore().subGongfaSlots)
+      for (const id of activeSubs) {
         if (learned.value[id]) sources.push(gongfaModsAt(id, learned.value[id]!))
       }
-      // 悟道分支词条只在「仍满级且仍装配」时生效
+      // 悟道分支词条只在「仍满级且仍在席」时生效
       for (const [gid, bid] of Object.entries(gongfaBranch.value)) {
         const def = gongfaBranchDef(bid)
         const gdef = gongfaDef(gid)
@@ -115,7 +117,7 @@ export const useCultivationStore = defineStore(
           gdef &&
           lv != null &&
           lv >= gongfaMaxLevel(gdef) &&
-          (gid === mainGongfa.value || subGongfa.value.slice(0, subCap).includes(gid))
+          (gid === mainGongfa.value || activeSubs.includes(gid))
         ) {
           sources.push(def.mods)
         }
@@ -168,13 +170,12 @@ export const useCultivationStore = defineStore(
         subGongfa.value = subGongfa.value.filter(x => x !== id)
         return true
       }
-      // NaN 会让 `length >= maxSlots` 恒为 false,等于绕过槽位上限
-      if (!Number.isFinite(maxSlots) || maxSlots < 1) return false
       const def = gongfaDef(id)
-      // 主修门类不得占辅修席;秘术与辅修共用槽位
+      // 主修门类不得占副席;辅修与秘术各算各的席(见 core/gongfaSeats)
       if (!def || def.type === 'main' || id === mainGongfa.value) return false
-      if (subGongfa.value.length >= Math.floor(maxSlots)) return false
       if (!learned.value[id]) return false
+      // maxSlots 是藏经阁的辅修席预算;秘术的席面由 canSeat 自己按门类取
+      if (!canSeat(subGongfa.value, id, maxSlots)) return false
       subGongfa.value = [...subGongfa.value, id]
       return true
     }

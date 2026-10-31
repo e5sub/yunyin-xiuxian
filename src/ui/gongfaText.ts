@@ -27,6 +27,6 @@ export function gongfaUpDoneToast(name: string, level: number): string {
   return `《${name}》已至第 ${level} 层`
 }
 
-export function gongfaSubFullToast(slots: number): string {
-  return `辅修已满 ${slots} 席`
+export function gongfaSubFullToast(slots: number, kind = '辅修'): string {
+  return `${kind}已满 ${slots} 席`
 }

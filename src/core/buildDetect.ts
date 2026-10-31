@@ -14,6 +14,7 @@ import { useDongfuStore } from '@/stores/dongfu'
 import { useInventoryStore } from '@/stores/inventory'
 import { usePlayerStore } from '@/stores/player'
 import { resolveEquipStats } from './equipGen'
+import { effectiveSubs } from './gongfaSeats'
 import { modOf } from './statsCalc'
 
 export interface BuildStyleDef {
@@ -124,14 +125,14 @@ export function buildSources(style: BuildStyleDef): string[] {
     names.push(equipmentTemplate(it.templateId)?.name ?? '法器')
   }
 
-  // 超洞府槽位预算的辅修不计,与 cultivation.gongfaMods 的 slice 同口径
-  const equippedGongfa = [cultivation.mainGongfa, ...cultivation.subGongfa.slice(0, dongfu.subGongfaSlots)].filter((x): x is string => !!x)
+  // 超席面的副席不计(辅修看藏经阁、秘术自成一席),与 cultivation.gongfaMods 同一把尺
+  const activeSubs = effectiveSubs(cultivation.subGongfa, dongfu.subGongfaSlots)
+  const equippedGongfa = [cultivation.mainGongfa, ...activeSubs].filter((x): x is string => !!x)
   for (const id of equippedGongfa) {
     const def = gongfaDef(id)
     if (def && (hasCore(def.baseMods) || hasCore(def.perLevelMods))) names.push(`《${def.name}》`)
   }
-  // 悟道分支只在仍满级且仍在装配席时算来路,与 store 的 gongfaMods 同口径
-  const activeSubs = cultivation.subGongfa.slice(0, dongfu.subGongfaSlots)
+  // 悟道分支只在仍满级且仍在席时算来路,与 store 的 gongfaMods 同口径
   for (const [gid, bid] of Object.entries(cultivation.gongfaBranch)) {
     const def = gongfaBranchDef(bid)
     const gdef = gongfaDef(gid)
