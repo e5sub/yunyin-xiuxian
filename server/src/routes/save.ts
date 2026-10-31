@@ -2,6 +2,7 @@
 import express, { type Request, type Response } from 'express'
 import { all, get, run, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
+import { getConfigNumber } from '../config.js'
 
 export interface ProfileSnapshot {
   name: string
@@ -17,8 +18,8 @@ export interface ProfileSnapshot {
   defE: number
 }
 
-/** 每用户保留的历史份数 */
-const HISTORY_KEEP = 96
+/** 每用户保留的历史份数上限(钳制用;实际份数走 GM 后台 save_history_keep,默认 3) */
+const HISTORY_KEEP_MAX = 96
 /** 两次留存的最小间隔:客户端 20 秒推一次,不抽稀会一天灌满几千份 */
 const HISTORY_MIN_GAP_MS = 10 * 60_000
 /** 历史留存上限(天) */
@@ -27,6 +28,12 @@ const HISTORY_TTL_MS = 7 * 24 * 3_600_000
 const CONFLICT_TOLERANCE_MS = 2_000
 /** 同一账号两次写档的最小间隔:客户端自动上传最快 3 秒一推,限速防改包刷写档接口 */
 const WRITE_MIN_GAP_MS = 2_000
+
+/** 留档份数上限:GM 后台 save_history_keep 可调,钳 1~96(云存档空间按人头封顶) */
+async function historyKeep(): Promise<number> {
+  const n = await getConfigNumber('save_history_keep', 3)
+  return Math.min(Math.max(Math.trunc(n), 1), HISTORY_KEEP_MAX)
+}
 
 /** 属性快照钳制上限:尾数与十进制指数都远超正常玩法上限(中文单位到「极」≈e48,真仙终局 ≈e80) */
 const SNAP_MANTISSA_MAX = 1e6
@@ -100,12 +107,13 @@ async function backupBeforeOverwrite(userId: number, old: { version: number; dat
       [userId, old.version, old.data, oldMetrics.realmIndex, old.data.length, old.updated_at, now]
     )
   }
-  // 超量清理:留最近 HISTORY_KEEP 份
+  // 超量清理:留最近 N 份(GM 后台 save_history_keep,默认 3)
+  const keep = await historyKeep()
   const count = await get<{ c: number }>('SELECT COUNT(*) AS c FROM save_history WHERE user_id = ?', [userId])
-  if (count !== undefined && count.c > HISTORY_KEEP) {
+  if (count !== undefined && count.c > keep) {
     await run(
       'DELETE FROM save_history WHERE user_id = ? AND id NOT IN (SELECT id FROM (SELECT id FROM save_history WHERE user_id = ? ORDER BY id DESC LIMIT ?) t)',
-      [userId, userId, HISTORY_KEEP]
+      [userId, userId, keep]
     )
   }
   // 超期清理

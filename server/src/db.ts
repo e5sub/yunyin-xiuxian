@@ -620,6 +620,8 @@ async function seedConfig(): Promise<void> {
     ['chat_retention_days', '7'],
     // 云存档自动上传间隔(秒);客户端登录时取一次
     ['save_push_interval_sec', '5'],
+    // 云存档留档份数上限(每玩家;现行档之外的历史备份,钳 1~96)
+    ['save_history_keep', '3'],
     ['boss_daily_attempts', '1'],
     ['boss_hp_atk_mult', '20'],
     ['boss_strike_rounds', '10'],
