@@ -86,9 +86,10 @@
         </button>
       </form>
 
+      <!-- 次要一步:与「入 道」同宽对齐,虚框一档,不做成孤零零一个窄框 -->
       <button
         v-if="mode === 'login'"
-        class="mt-3 inline-flex min-h-[28px] rounded px-2 text-[11px] text-ink-faint ring-1 ring-inset ring-ink/25 active:text-ink-soft"
+        class="btn-ghost mt-2.5 w-full !py-2 !tracking-[0.2em] text-[12px]"
         @click="forgotOpen = true"
       >
         忘记口令
