@@ -2,7 +2,7 @@
  * 邮件发送:验证码(注册预留 / 找回密码)
  * 全部设置读 game_config(GM 后台「邮件 / SMTP」页可改,30 秒缓存):
  *   email_enabled=true 开启 SMTP 实发;未开启时验证码只打到控制台(联调用),响应带 devCode
- *   smtp_host / smtp_port / smtp_user / smtp_pass / smtp_from
+ *   smtp_host / smtp_port / smtp_user / smtp_pass / smtp_from / smtp_from_name
  * 老部署的环境变量(EMAIL_ENABLED / SMTP_*)仅作首次建库种子值
  */
 import { randomInt } from 'node:crypto'
@@ -17,9 +17,19 @@ export interface SmtpSettings {
   user: string
   pass: string
   from: string
+  /** 发件人显示名(收件人信箱里地址前那串字);留空只显示地址 */
+  fromName: string
 }
 
-const SETTING_KEYS = ['email_enabled', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from'] as const
+const SETTING_KEYS = [
+  'email_enabled',
+  'smtp_host',
+  'smtp_port',
+  'smtp_user',
+  'smtp_pass',
+  'smtp_from',
+  'smtp_from_name'
+] as const
 
 export async function smtpSettings(): Promise<SmtpSettings> {
   const v = await Promise.all(SETTING_KEYS.map(k => getConfig(k)))
@@ -29,8 +39,23 @@ export async function smtpSettings(): Promise<SmtpSettings> {
     port: Number(v[2] ?? '') || 465,
     user: v[3] ?? '',
     pass: v[4] ?? '',
-    from: v[5] ?? ''
+    from: v[5] ?? '',
+    fromName: v[6] ?? ''
   }
+}
+
+/**
+ * 组装发件人信头:`"名字" <地址>`。
+ * 名字里若带双引号、尖括号或换行,信头会被撑破(收件端可能解析成两个地址,或干脆当注入),
+ * 这类字符一律剔掉;名字空着就只发地址,与没有这项设置时的老行为一致。
+ */
+export function formatFrom(name: string, address: string): string {
+  const addr = address.trim()
+  const clean = name
+    .replace(/["<>\\\r\n]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return clean === '' ? addr : `"${clean}" <${addr}>`
 }
 
 export async function emailEnabled(): Promise<boolean> {
@@ -79,7 +104,7 @@ export async function sendCodeMail(email: string, code: string, purpose: string)
   try {
     const t = await getTransport(s)
     await t.sendMail({
-      from: s.from || s.user,
+      from: formatFrom(s.fromName, s.from || s.user),
       to: email,
       subject,
       text
@@ -98,7 +123,7 @@ export async function sendTestMail(to: string): Promise<string | null> {
   try {
     const t = await getTransport(s)
     await t.sendMail({
-      from: s.from || s.user,
+      from: formatFrom(s.fromName, s.from || s.user),
       to,
       subject: '【云隐修仙录】SMTP 测试邮件',
       text: '这是一封测试邮件,收到即说明 SMTP 设置生效。'

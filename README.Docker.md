@@ -54,7 +54,7 @@ docker build -t yunyin-xiuxian:latest .
 | `GM_PATH` | `/gm` | GM 后台路径，可自定义（后端自读，改后重启生效） |
 | `DB_DRIVER` | `sqlite` | `sqlite` 或 `mysql` |
 | `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME` | — | MySQL 连接（`DB_DRIVER=mysql` 时必填） |
-| `EMAIL_ENABLED` / `EMAIL_CODE_REQUIRED` / `SMTP_HOST/PORT/USER/PASS/FROM` | — | 邮箱设置**首次建库的种子值**；运行期在 GM 后台「参数设置 → 邮件 / SMTP」页改，改后立即生效（开关最迟 30 秒） |
+| `EMAIL_ENABLED` / `EMAIL_CODE_REQUIRED` / `SMTP_HOST/PORT/USER/PASS/FROM/FROM_NAME` | — | 邮箱设置**首次建库的种子值**；运行期在 GM 后台「参数设置 → 邮件 / SMTP」页改，改后立即生效（开关最迟 30 秒）。`SMTP_FROM_NAME` 是发件人显示名（收件人信箱里地址前那串字），留空只显示地址 |
 | `PORT` | `8787` | **内外统一端口**：后端监听与 compose 端口映射（`"${PORT}:${PORT}"`）同源，改这一处即可 |
 | `STATIC_DIR` | 镜像内 `/app/server/public` | 前端静态站目录；不设则纯 API（本地 dev 如此） |
 | `YUNYIN_JWT_SECRET` | 自动生成落盘 | JWT 密钥（≥16 字符；多实例部署必须统一） |

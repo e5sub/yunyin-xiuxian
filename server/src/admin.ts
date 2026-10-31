@@ -328,6 +328,8 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'save_history_keep',
       'event_enabled',
       'leisure_enabled',
+      // 注意:人机验证是三个键 —— 开关漏登记会让「掰了开关点保存」只回一句「不支持的参数」
+      'turnstile_enabled',
       'turnstile_site_key',
       'turnstile_secret_key',
       'boss_daily_attempts',
@@ -371,6 +373,7 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'smtp_user',
       'smtp_pass',
       'smtp_from',
+      'smtp_from_name',
       // 支付宝当面付 + VIP 定价(元)
       'alipay_enabled',
       'alipay_app_id',
@@ -393,8 +396,7 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'chat_retention_days',
       'save_push_interval_sec',
       'save_history_keep',
-      'turnstile_site_key',
-      'turnstile_secret_key',
+      // 只收真数值键。站点密钥/私钥是文本(「0x4AAA…」),误列进来会被当数值校验,存什么都是「数值参数无效」
       'boss_daily_attempts',
       'boss_hp_atk_mult',
       'boss_strike_rounds',
@@ -450,13 +452,19 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
         res.status(400).json({ error: '只接受 true / false' })
         return
       }
+    } else if (key === 'smtp_from_name') {
+      // 发件人名字写进信头,太长会被邮箱客户端截断,也容易被人拿来伪装;40 字足够
+      if (value.length > 40) {
+        res.status(400).json({ error: '发件人名字最长 40 字' })
+        return
+      }
     } else if (longTextKeys.includes(key)) {
       if (value.length > 4000) {
         res.status(400).json({ error: '密钥过长' })
         return
       }
     } else if (value.length > 500) {
-      res.status(400).json({ error: '公告最长 500 字' })
+      res.status(400).json({ error: key === 'announcement' ? '公告最长 500 字' : '内容最长 500 字' })
       return
     }
     await setConfig(key, value)

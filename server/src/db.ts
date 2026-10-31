@@ -723,6 +723,8 @@ async function seedConfig(): Promise<void> {
     ['smtp_user', env('SMTP_USER')],
     ['smtp_pass', env('SMTP_PASS')],
     ['smtp_from', env('SMTP_FROM')],
+    // 发件人显示名(收件人信箱里地址前那串字);留空只显示地址
+    ['smtp_from_name', env('SMTP_FROM_NAME', '云隐修仙录')],
     // 支付宝当面付:开关 / 密钥 / VIP 各档定价(元)
     ['alipay_enabled', env('ALIPAY_ENABLED', 'false')],
     ['alipay_app_id', env('ALIPAY_APP_ID')],
