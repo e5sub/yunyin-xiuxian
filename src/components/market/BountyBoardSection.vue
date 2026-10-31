@@ -33,7 +33,7 @@
           <button
             v-for="c in equipCandidates(b.idx)"
             :key="c.uid"
-            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left active:bg-ink/6"
+            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left ring-1 ring-inset ring-ink/15 active:bg-ink/6"
             @click="claimEquipOne(b, c)"
           >
             <span class="min-w-0 grow truncate font-kai text-[12px]" :style="{ color: c.color }">{{ c.name }}</span>

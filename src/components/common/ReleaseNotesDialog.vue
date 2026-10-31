@@ -5,7 +5,7 @@
         <header class="flex items-center justify-between gap-2">
           <button
             type="button"
-            class="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
+            class="-mx-1 flex min-w-0 flex-1 items-center justify-between gap-2 rounded px-1 text-left ring-1 ring-inset ring-ink/10"
             :aria-expanded="openVersions[note.version]"
             @click="toggleVersion(note.version)"
           >

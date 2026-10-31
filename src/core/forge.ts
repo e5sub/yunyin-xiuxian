@@ -1,7 +1,7 @@
 /** 炼器服务:强化 / 分解 / 法宝升阶 */
-import type { ArtifactDef, EquipmentInstance, GNum } from '@/types'
+import type { ArtifactDef, EquipmentInstance, EquipSlot, GNum } from '@/types'
 import { qualityDef } from '@/data/qualities'
-import { equipmentTemplate } from '@/data/equipment'
+import { EQUIP_SLOTS, EQUIP_SLOT_NAMES, equipmentTemplate } from '@/data/equipment'
 import { artifactDef, ARTIFACT_MAX_LEVEL, ARTIFACT_UP_STONE_TIER, ARTIFACT_UP_WUDAO_BASE } from '@/data/artifacts'
 import { EQUIP_MAX_LEVEL_BASE, UPGRADE_SAFE_STEP } from '@/data/constants'
 import { stoneByTier, upgradeCost, upgradeFailLevel, upgradeSuccessRate } from './formulas'
@@ -22,7 +22,8 @@ import {
   upgradeBatchDoneToast,
   upgradeSafeToast,
   upgradeFailToast,
-  upgradeBatchBrokenToast
+  upgradeBatchBrokenToast,
+  upgradeEquippedToast
 } from '@/ui/forgeText'
 import { salvageOf, salvageRefundPhrase } from './salvage'
 import { playSfx } from './audio'
@@ -238,6 +239,120 @@ export function upgradeEquipmentBatch(uid: string): number {
     last === 'up' ? 'success' : 'warn'
   )
   return up
+}
+
+export interface EquipSweepPlan {
+  /** 本轮会逐件掷骰的槽位(按 EQUIP_SLOTS 顺序,顺序即优先级) */
+  queue: EquipSlot[]
+  /** 已至强化上限、跳过不掷的件数 */
+  capped: number
+  /** 因缺料停在的那一槽;null = 一路走到底 */
+  stoppedAt: EquipSlot | null
+  /** 停手那一处缺哪一样(short 与 stoppedAt 同生同灭) */
+  short: 'dust' | 'exp' | 'stone' | null
+  /** 停手那一处的缺口(已扣掉本轮排在前面的件将要花的) */
+  gap: { dust: number; exp: GNum; stone: GNum }
+  /** 全成时的总耗;失手会少花,只作量级参考 */
+  dust: number
+  stone: GNum
+  exp: GNum
+}
+
+/**
+ * 一键强化(身上已装备的逐件 +1)计划(只算不扣):按部位顺序看每件下一级付不付得起,
+ * 付得起就排进本轮,遇第一件付不起即止 —— 顺序即优先级,不让便宜的后件挤掉前面的主件。
+ * 按钮上的件数预览与下手共用这一份,免得「说九件、只强三件」。
+ */
+export function equipSweepPlan(): EquipSweepPlan {
+  const inventory = useInventoryStore()
+  const resources = useResourcesStore()
+  const player = usePlayerStore()
+  const plan: EquipSweepPlan = {
+    queue: [],
+    capped: 0,
+    stoppedAt: null,
+    short: null,
+    gap: { dust: 0, exp: gnZero(), stone: gnZero() },
+    dust: 0,
+    stone: gnZero(),
+    exp: gnZero()
+  }
+  for (const slot of EQUIP_SLOTS) {
+    const uid = inventory.equipped[slot]
+    if (!uid) continue
+    const quote = equipUpgradeQuote(uid)
+    if (quote === null) {
+      plan.capped += 1
+      continue
+    }
+    // 累计到这一件时的缺口:前几件也要花,余额得按「已排入的」而不是原始余额算
+    const needDust = plan.dust + quote.dust
+    const needStone = add(plan.stone, quote.stone)
+    const needExp = add(plan.exp, quote.exp)
+    const short: 'dust' | 'exp' | 'stone' | null = !resources.hasSmall('dust', needDust)
+      ? 'dust'
+      : !player.spendableExp(needExp)
+        ? 'exp'
+        : !resources.hasStone(needStone)
+          ? 'stone'
+          : null
+    if (short !== null) {
+      plan.stoppedAt = slot
+      plan.short = short
+      plan.gap = {
+        dust: Math.max(0, needDust - resources.dust),
+        exp: subClamp(needExp, player.exp),
+        stone: subClamp(needStone, resources.spiritStone)
+      }
+      break
+    }
+    plan.queue.push(slot)
+    plan.dust = needDust
+    plan.stone = needStone
+    plan.exp = needExp
+  }
+  return plan
+}
+
+export interface EquipSweep {
+  /** 真的掷了几件 */
+  tried: number
+  /** 掷出 +1 的件数 */
+  ups: number
+  /** 失手(掉到保级点)的件数 */
+  fails: number
+  /** 满级跳过不掷的件数 */
+  capped: number
+}
+
+/**
+ * 一键强化:身上已装备的按部位顺序各掷一次(+1,或失手回落到最近保级点),
+ * 遇第一件付不起即止;每掷都走 upgradeEquipment quiet 版(记账/图鉴/炼器照常),只报一次总账。
+ * 不在服务端代办 —— 强化是本人的手,托管不该替他掷。
+ */
+export function upgradeEquippedOnce(): EquipSweep {
+  const inventory = useInventoryStore()
+  const plan = equipSweepPlan()
+  const out: EquipSweep = { tried: 0, ups: 0, fails: 0, capped: plan.capped }
+  for (const slot of plan.queue) {
+    const uid = inventory.equipped[slot]
+    if (!uid) continue
+    const r = upgradeEquipment(uid, { quiet: true })
+    if (r === 'blocked') break // 计划刚验过账,理论不至此;真被拦就停手,不硬扣
+    out.tried += 1
+    if (r === 'up') out.ups += 1
+    else out.fails += 1
+  }
+  playSfx(out.ups > 0 ? 'success' : 'warn')
+  const stop =
+    plan.stoppedAt !== null && plan.short !== null
+      ? {
+          name: EQUIP_SLOT_NAMES[plan.stoppedAt],
+          text: upgradeShortToast(plan.short, { stone: formatGN(plan.gap.stone), dust: plan.gap.dust, exp: formatGN(plan.gap.exp) })
+        }
+      : undefined
+  useUiStore().toast(upgradeEquippedToast(out, stop), out.ups > 0 ? 'success' : 'warn')
+  return out
 }
 
 export function decomposeEquipment(uid: string, opts: { quiet?: boolean } = {}): boolean {

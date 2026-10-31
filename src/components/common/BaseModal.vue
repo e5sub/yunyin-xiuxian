@@ -23,7 +23,7 @@
             <!-- aria-label 供读屏;30px 触面(负外边距抵消,视觉位置不动),下限 28px -->
             <button
               v-if="props.closable"
-              class="p-1.5 -m-1.5 text-ink-faint active:scale-90"
+              class="rounded-md p-1.5 -m-1.5 text-ink-faint ring-1 ring-inset ring-ink/15 active:scale-90"
               aria-label="关闭"
               @click="emit('close')"
             >

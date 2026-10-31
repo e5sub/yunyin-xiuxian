@@ -241,9 +241,9 @@ describe('空一身(unequipAllEquipped)', () => {
   })
 
   /** 故障注入:把 SLOTS.length 改成字面量 9,本用例红 */
-  it('「卸下全部 N/M 格」的分母读 EQUIP_SLOTS,不写死九格', () => {
+  it('「卸下 N/M 格」的分母读 EQUIP_SLOTS,不写死九格', () => {
     const view = readFileSync(resolve(__dirname, '../views/InventoryView.vue'), 'utf8')
-    expect(view, '分母应由部位表现算').toContain('卸下全部 {{ equippedCount }}/{{ SLOTS.length }} 格')
+    expect(view, '分母应由部位表现算').toContain('卸下 {{ equippedCount }}/{{ SLOTS.length }} 格')
     expect(view, '不许再把槽位数写死成九格').not.toContain('这九格')
   })
 

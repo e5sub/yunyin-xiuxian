@@ -52,7 +52,7 @@
         <SectionTitle title="道躯" />
         <button
           v-if="panelCaveats.length"
-          class="-m-2 p-2 text-ink-faint active:scale-90"
+          class="-m-2 rounded p-2 text-ink-faint ring-1 ring-inset ring-ink/15 active:scale-90"
           aria-label="属性说明"
           @click="caveatsOpen = true"
         >

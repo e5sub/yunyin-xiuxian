@@ -1,10 +1,10 @@
 <template>
-  <div class="card-ink divide-y divide-ink/6 px-4">
-    <button class="flex w-full items-center justify-between py-3 active:opacity-60" @click="aboutOpen = true">
+  <div class="card-ink space-y-1.5 px-3 py-3">
+    <button class="flex w-full items-center justify-between rounded px-2.5 py-2.5 ring-1 ring-inset ring-ink/15 active:opacity-60" @click="aboutOpen = true">
       <span class="text-[13px] text-ink-soft">关于我们</span>
       <span class="text-[11px] text-ink-faint">查看 →</span>
     </button>
-    <button class="flex w-full items-center justify-between py-3 active:opacity-60" @click="openRelease">
+    <button class="flex w-full items-center justify-between rounded px-2.5 py-2.5 ring-1 ring-inset ring-ink/15 active:opacity-60" @click="openRelease">
       <span class="flex items-center gap-2 text-[13px] text-ink-soft">
         版本与更新
         <span
@@ -15,11 +15,11 @@
       </span>
       <span class="text-[11px] text-ink-faint">查看 →</span>
     </button>
-    <button class="flex w-full items-center justify-between py-3 active:opacity-60" @click="privacyOpen = true">
+    <button class="flex w-full items-center justify-between rounded px-2.5 py-2.5 ring-1 ring-inset ring-ink/15 active:opacity-60" @click="privacyOpen = true">
       <span class="text-[13px] text-ink-soft">隐私政策</span>
       <span class="text-[11px] text-ink-faint">查看 →</span>
     </button>
-    <button class="flex w-full items-center justify-between py-3 active:opacity-60" @click="progressionOpen = true">
+    <button class="flex w-full items-center justify-between rounded px-2.5 py-2.5 ring-1 ring-inset ring-ink/15 active:opacity-60" @click="progressionOpen = true">
       <span class="text-[13px] text-ink-soft">数值体系</span>
       <span class="text-[11px] text-ink-faint">查看 →</span>
     </button>

@@ -13,7 +13,7 @@
         <!-- 境界门槛:仙品之上的顶级件,未到境穿不上 -->
         <span v-if="realmReqText" class="text-[11px] text-cinnabar">{{ realmReqText }}</span>
         <button
-          class="-m-1.5 flex min-h-[28px] min-w-[28px] items-center justify-center p-1.5 text-ink-faint active:scale-90"
+          class="-m-1.5 flex min-h-[28px] min-w-[28px] items-center justify-center rounded p-1.5 text-ink-faint ring-1 ring-inset ring-ink/15 active:scale-90"
           :aria-label="inst.locked ? '解锁' : '锁定'"
           @click="toggleLock"
         >

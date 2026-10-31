@@ -32,7 +32,7 @@
       <p v-for="t in autoTargets" :key="t.affixId" class="flex items-center gap-2 text-[10px]">
         <button
           type="button"
-          class="flex min-h-[28px] w-10 shrink-0 items-center truncate text-left font-kai"
+          class="flex min-h-[28px] w-10 shrink-0 items-center truncate rounded px-0.5 text-left font-kai ring-1 ring-inset ring-ink/20"
           :style="{ color: targetColor(t.affixId) }"
           :title="`查看「${affixDef(t.affixId)?.name ?? t.affixId}」`"
           @click="openCodex(t.affixId)"

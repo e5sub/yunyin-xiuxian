@@ -133,7 +133,7 @@
             <RouterLink
               v-if="mainNav"
               :to="mainNav"
-              class="-my-1 -mr-1 p-2 text-[13px] leading-none text-ink-faint active:text-azure"
+              class="-my-1 -mr-1 rounded p-2 text-[13px] leading-none text-ink-faint ring-1 ring-inset ring-ink/20 active:text-azure"
               :aria-label="`去办:${mainQuest.name}`"
               @click="questsOpen = false"
               >›</RouterLink

@@ -60,11 +60,25 @@
       <button class="btn-ghost mt-2 w-full !py-1.5 !text-[11px]" @click="onEquipAllBest">
         一键换装{{ bestSwapPreview }}
       </button>
-      <button
-        v-if="equippedCount > 0"
-        class="btn-ghost mt-2 w-full !py-1.5 !text-[11px] !text-ink-faint"
-        @click="onUnequipAll"
-      >卸下全部 {{ equippedCount }}/{{ SLOTS.length }} 格</button>
+      <!--
+        强化与卸下是次一级动作,并排两格(各半宽),不跟「一键换装」抢同一档份量。
+        两句话都压到五字内:半宽钮放不下长句,细则(各掷一次、失手、料尽)交给提示报。
+      -->
+      <div v-if="equippedCount > 0" class="mt-2 grid grid-cols-2 gap-2">
+        <!--
+          一键强化:身上已装备的按部位顺序各掷一次(+1);料只够几件就强几件,不预支、不借。
+          与「连强」分开:这里是「每件各一次」,不追求把某一件顶到上限。
+        -->
+        <button
+          class="btn-ghost w-full !px-2 !py-1.5 !text-[11px]"
+          :disabled="sweepPlan.queue.length === 0"
+          @click="onUpgradeEquipped"
+        >一键强化{{ sweepHint }}</button>
+        <button
+          class="btn-ghost w-full !px-2 !py-1.5 !text-[11px] !text-ink-faint"
+          @click="onUnequipAll"
+        >卸下 {{ equippedCount }}/{{ SLOTS.length }} 格</button>
+      </div>
 
       <!-- hint「满包掉落化尘」:不可逆后果(见 core/loot),事前只此一处 -->
       <div v-if="allItems.length" class="mt-4">
@@ -234,6 +248,8 @@
 
   import { equipSetDef, setCounts, type EquipSetDef } from '@/core/equipSet'
   import { bestEquipFor, equipAllBest, equipSetCombo, equipSetPreview, unequipAllEquipped } from '@/core/equipBest'
+  import { equipSweepPlan, upgradeEquippedOnce } from '@/core/forge'
+  import { upgradeShortToast } from '@/ui/forgeText'
   import { useLoreStore } from '@/stores/lore'
   import { useBrewing } from '@/composables/useBrewing'
   import { useNow } from '@/composables/useNow'
@@ -430,6 +446,20 @@
   function onUnequipAll(): void {
     const removed = unequipAllEquipped()
     ui.toast(removed > 0 ? `已卸下 ${removed} 件` : '未装备', removed > 0 ? 'success' : 'info')
+  }
+
+  /** 一键强化预告:与下手同一把 equipSweepPlan,件数与缺料口径一致 */
+  const sweepPlan = computed(() => equipSweepPlan())
+  /** 半宽钮里只放得下几字:件数 + 「各 +1」足矣,「各掷一次」与失手在提示里报 */
+  const sweepHint = computed(() => {
+    const plan = sweepPlan.value
+    if (plan.queue.length > 0) return `(${plan.queue.length} 件 +1)`
+    if (plan.short !== null) return `(${upgradeShortToast(plan.short)})`
+    return '(皆已满级)'
+  })
+
+  function onUpgradeEquipped(): void {
+    upgradeEquippedOnce()
   }
 
   function onEquipSet(setId: string): void {

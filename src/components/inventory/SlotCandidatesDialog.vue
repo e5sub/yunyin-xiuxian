@@ -8,7 +8,7 @@
       <div
         v-for="row in rows"
         :key="row.item.uid"
-        class="flex items-center gap-2.5 rounded-md px-2.5 py-2"
+        class="flex items-center gap-2.5 rounded-md px-2.5 py-2 ring-1 ring-inset ring-ink/10"
         :class="row.equipped ? 'bg-jade/10' : 'bg-paper-deep/70'"
       >
         <GameIcon :name="row.template.icon" :size="16" :style="{ color: qualityDef(row.item.quality).color }" />

@@ -13,7 +13,7 @@
       <template v-if="room !== null">
         <div class="mt-3 flex items-center justify-between gap-2">
           <button
-            class="min-w-0 text-left active:opacity-60"
+            class="-ml-1.5 min-w-0 rounded px-1.5 text-left ring-1 ring-inset ring-ink/15 active:opacity-60"
             title="点按复制房间码"
             @click="copyRoomCode"
           >

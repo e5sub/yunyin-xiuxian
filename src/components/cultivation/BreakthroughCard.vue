@@ -7,7 +7,7 @@
   <div class="mt-2 grid gap-2" :class="btInfo.needTribulation ? 'grid-cols-1' : 'grid-cols-2'">
     <div v-if="!btInfo.needTribulation" class="rounded-md bg-paper-deep/60 px-2.5 py-1.5">
       <!-- -my-1 py-2:触面抬到 31px(layout-check 查),负外边距抵回视觉位移 -->
-      <button class="-my-1 flex w-full items-baseline justify-between gap-1 py-2 text-left" @click="rateOpen = true">
+      <button class="-mx-1.5 -my-1 flex w-full items-baseline justify-between gap-1 rounded px-1.5 py-2 text-left ring-1 ring-inset ring-ink/15" @click="rateOpen = true">
         <span class="text-[10px] text-ink-faint">进阶成功率</span>
         <span class="text-[9px] text-ink-faint">来路 →</span>
       </button>

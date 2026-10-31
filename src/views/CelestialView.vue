@@ -10,7 +10,7 @@
         <p class="font-kai text-[15px] tracking-[0.3em] text-ink">天 界</p>
         <div class="flex items-center gap-2">
           <span class="chip-ink border-cinnabar/50 text-[9px] text-cinnabar">此世消耗</span>
-          <button class="group flex items-end gap-1 text-left active:scale-97 active:opacity-60" aria-label="道源说明" @click="openDaoSourceDialog()">
+          <button class="group -mx-1.5 flex items-end gap-1 rounded px-1.5 text-left ring-1 ring-inset ring-ink/15 active:scale-97 active:opacity-60" aria-label="道源说明" @click="openDaoSourceDialog()">
             <span>
               <span class="block text-[10px] leading-tight text-ink-faint">道源</span>
               <span class="block tabular font-kai text-[17px] leading-tight text-cinnabar">{{ formatNum(endgame.daoSource) }}</span>

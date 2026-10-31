@@ -34,6 +34,24 @@ export function upgradeBatchDoneToast(levels: number, newLevel: number, dust: nu
   return `连升 ${levels} 级至 +${newLevel} · 共耗器灵尘×${dust} · 灵石 ${stoneText}`
 }
 
+/**
+ * 一键强化(身上已装备逐件 +1)的总账:掷了几件、成几件、失几件、几件满级;
+ * 缺料停在某件时附上缺的那样与差额。只报一次,逐件的成败不刷屏。
+ */
+export function upgradeEquippedToast(
+  r: { tried: number; ups: number; fails: number; capped: number },
+  stop?: { name: string; text: string }
+): string {
+  if (r.tried === 0) {
+    if (stop) return `「${stop.name}」${stop.text},一件未强`
+    return r.capped > 0 ? '已装备皆至强化上限' : '尚无装备可强'
+  }
+  const parts = [`${r.tried} 件各掷一次`, `成 ${r.ups}`, `失手 ${r.fails}`]
+  if (r.capped > 0) parts.push(`满级 ${r.capped}`)
+  const head = `一键强化:${parts.join(' · ')}`
+  return stop ? `${head},「${stop.name}」${stop.text}未及后件` : head
+}
+
 export function salvageYieldText(dust: number, stoneText?: string): string {
   return stoneText ? `器灵尘×${dust} · 灵石退还 ${stoneText}` : `器灵尘×${dust}`
 }

@@ -80,7 +80,7 @@
       <p v-else class="mt-1.5 text-[11px] text-ink-faint">暂无传承</p>
     </div>
     <button
-      class="mt-3 flex w-full items-center justify-between px-2 py-2 text-left text-[11px] text-ink-soft active:opacity-60"
+      class="mt-3 flex w-full items-center justify-between rounded px-2 py-2 text-left text-[11px] text-ink-soft ring-1 ring-inset ring-ink/15 active:opacity-60"
       @click="heritageOpen = true"
     >
       <span>转世去留一览({{ keepCount }} 留 · {{ resetCount }} 去)</span>
