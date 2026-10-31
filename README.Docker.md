@@ -114,13 +114,18 @@ server {
 
 Traefik / Nginx Proxy Manager / Caddy 同理：整站转发 + 支持 WebSocket Upgrade 即可，无需路径重写。
 
-**若站点另配了 CSP（`Content-Security-Policy`）**：人机验证（Turnstile）要从 `challenges.cloudflare.com` 拉脚本、内嵌它的 iframe，两者都得放行，否则登录页会报「人机验证被站点安全策略拦下」，控制台是 `Loading the script '…/turnstile/v0/api.js' violates … "script-src 'self' 'unsafe-inline' data:"`：
+> **自建镜像请确认前端指向自己**：生产构建未设 `VITE_API_BASE` 时，前端兜底连官方服务器 `https://yy.071717.xyz`（页面里所有请求都发到那儿，包括注册登录）。用官方镜像自建、且前后端同域时，构建时加 `VITE_API_BASE=`（留空＝同域相对路径）或直接填自己的域名；验证方法：登录页 DevTools → Network 看 `/api/auth/config` 的 Host 是不是你自己的站。
+
+**关于 CSP（`Content-Security-Policy`）**：人机验证（Turnstile）要从 `challenges.cloudflare.com` 拉脚本、内嵌它的 iframe，两者都得放行。
+
+- **用官方镜像（`STATIC_DIR` 托管前端）**：这段头是**后端进程自己发的**，镜像内已放行，无需改 nginx。浏览器会同时收到后端与反代两条 CSP（各自独立生效、取交集），所以只要反代那层也配了 CSP，仍须在那边补同样的两域。
+- 症状：登录页报「人机验证被站点安全策略拦下」，控制台 `Loading the script '…/turnstile/v0/api.js' violates … "script-src 'self' 'unsafe-inline' data:"`。
 
 ```nginx
 add_header Content-Security-Policy "script-src 'self' 'unsafe-inline' data: https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com" always;
 ```
 
-即：原 `script-src` 末尾追加 `https://challenges.cloudflare.com`，并**新增** `frame-src https://challenges.cloudflare.com`（原有 `connect-src` 的话也追加该域）。别用 `script-src *` 图省事——那等于把 CSP 关了。没开人机验证的站不必改，但先配上，日后开开关就不会再撞。
+即：原 `script-src` 末尾追加 `https://challenges.cloudflare.com`，并**新增** `frame-src https://challenges.cloudflare.com`（原有 `connect-src` 的话也追加该域）。别用 `script-src *` 图省事——那等于把 CSP 关了。
 
 ## 故障排查
 

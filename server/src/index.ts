@@ -143,11 +143,17 @@ async function main(): Promise<void> {
     // 其他跨域部署用 CSP_CONNECT_SRC 覆盖(如 "'self' https://api.example.com wss://api.example.com")
     const cspConnect =
       (process.env.CSP_CONNECT_SRC ?? "'self' https://yy.071717.xyz wss://yy.071717.xyz").trim() || "'self'"
+    // 人机验证(Turnstile):脚本自 challenges.cloudflare.com 拉,挂件是该域下的 iframe ——
+    // script-src 与 frame-src 各得放行一条,少一条登录页就报「人机验证被站点安全策略拦下」。
+    // **这段 CSP 是本进程自己发的**,不是反代/面板发的:改 nginx 不会有任何效果,
+    // 排查时别往外层找。开关没开时这两条放行也不产生请求,故不按开关条件化
+    // (头是同步写的,读库是异步的;且开关随时会掰,留白反而会再撞一次)。
+    const cspTurnstile = 'https://challenges.cloudflare.com'
     const spaCsp =
-      `default-src 'self'; script-src 'self' 'unsafe-inline' data:; ` +
+      `default-src 'self'; script-src 'self' 'unsafe-inline' data: ${cspTurnstile}; ` +
       `style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; ` +
-      `media-src 'self' data: blob:; connect-src ${cspConnect}; object-src 'none'; ` +
-      `base-uri 'self'; frame-ancestors 'self'`
+      `media-src 'self' data: blob:; connect-src ${cspConnect} ${cspTurnstile}; object-src 'none'; ` +
+      `base-uri 'self'; frame-ancestors 'self'; frame-src ${cspTurnstile}`
     app.use((_req, res, next) => {
       res.setHeader('Content-Security-Policy', spaCsp)
       next()

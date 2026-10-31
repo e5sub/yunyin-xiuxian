@@ -2,6 +2,14 @@
 
 本文件自 v1.33.1 起维护;更早的版本见 [GitHub Releases](https://github.com/setube/yunyin-xiuxian/releases)。
 
+## [1.53.3] - 2026-10-31
+
+- 修正:**容器部署时后端自己发的 CSP 拦掉了人机验证** —— `STATIC_DIR` 模式下游戏页的 `Content-Security-Policy` 由 `server/src/index.ts` 的 `spaCsp` 下发，原先 `script-src 'self' 'unsafe-inline' data:` 没有 Turnstile 域，登录页只会报「被站点安全策略拦下」；照着文档去改 nginx 自然改不好，因为反代那层根本没有这行头。现 `script-src` 追加 `https://challenges.cloudflare.com`，并新增 `frame-src`（挂件是该域下的 iframe），`connect-src` 一并放行。
+- 说明:未开启人机验证时这两条放行不产生任何请求，故不按开关条件化 —— 头是同步写的、读库是异步的，且开关随时会掰，留白等于下次再撞一遍。
+- 修正:**排障口径** —— 登录页控制台提示与 `title`、GM 后台「已生效」那行都改为「若本站由后端静态托管则升级后端；只有另加 nginx/面板 CSP 才需去那边补」，不再一律指向反代。
+- 文档:`README.Docker.md` 与 `nginx.conf` 的 CSP 段说明「后端已放行；反代若也配了 CSP，两条各自独立生效、取交集，同样要补两域」。
+- 判据:`gmConfig.spec.ts` 添一条 —— `cspTurnstile` 必须是 `https://challenges.cloudflare.com`，且 `spaCsp` 的 `script-src` / `frame-src` / `connect-src` 三处都带着它。
+
 ## [1.53.2] - 2026-10-31
 
 - 修正:**人机验证加载失败分清是「CSP 拦」还是「网络拦」** —— 浏览器控制台原话是 `Loading the script 'https://challenges.cloudflare.com/turnstile/v0/api.js…' violates … "script-src 'self' 'unsafe-inline' data:"`，即站点响应头的 CSP 把外部脚本拦了，与网络无关。现在 `src/utils/turnstile.ts` 监听 `securitypolicyviolation` 分辨原因，登录页分别报「人机验证被站点安全策略拦下」（并给出该改哪一条指令）与「人机验证没能加载」；控制台同时留一份可照抄的修法。

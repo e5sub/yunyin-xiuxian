@@ -217,7 +217,7 @@
   const tsFailText = computed(() => (tsFail.value === 'csp' ? '人机验证被站点安全策略拦下' : '人机验证没能加载'))
   const tsFailHint = computed(() =>
     tsFail.value === 'csp'
-      ? '站点响应头的 Content-Security-Policy 需放行 https://challenges.cloudflare.com(script-src 与 frame-src)'
+      ? '本站 Content-Security-Policy 未放行 https://challenges.cloudflare.com(script-src 与 frame-src 各一条)'
       : '多为网络或浏览器扩展拦截,可换网络后点重试'
   )
 
@@ -241,10 +241,13 @@
       const reason: TurnstileFail = e instanceof TurnstileError ? e.reason : 'network'
       tsBroken.value = true
       tsFail.value = reason
-      // 控制台留一份可照抄的说法:玩家看不懂,管理员/自己排障时用得上
+      // 控制台留一份可照抄的说法:玩家看不懂,管理员/自己排障时用得上。
+      // 别只说「改反代」——容器部署(STATIC_DIR)时这行 CSP 是后端进程自己发的,改 nginx 无效果
       console.error(
         reason === 'csp'
-          ? '[turnstile] 脚本被站点 CSP 拦下。响应头需放行 https://challenges.cloudflare.com:script-src 加该域、并加 frame-src https://challenges.cloudflare.com(见仓库 nginx.conf 的示例)。'
+          ? '[turnstile] 脚本被本站 CSP 拦下,需放行 https://challenges.cloudflare.com(script-src 与 frame-src)。' +
+            '若本站由后端静态托管(STATIC_DIR),这段头由 server/src/index.ts 的 spaCsp 发出,升级后端即可;' +
+            '若由独立 nginx/面板托管,则改那边的响应头(示例见仓库 nginx.conf 与 README.Docker.md)。'
           : `[turnstile] 挂件未能加载(${reason})。`,
         e
       )

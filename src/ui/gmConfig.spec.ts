@@ -129,4 +129,19 @@ describe('人机验证 · 开关 ≠ 生效', () => {
     expect(LOGIN, '界面要把「安全策略拦下」与「没能加载」分开说').toContain('人机验证被站点安全策略拦下')
     expect(LOGIN, '控制台留一份能照抄的修法').toContain('challenges.cloudflare.com')
   })
+
+  it('容器部署时后端自己发的 SPA CSP 必须放行 Turnstile', () => {
+    // STATIC_DIR 模式下 spaCsp 由本进程下发:漏放行就只有一句「被站点安全策略拦下」,
+    // 而人跑去改 nginx 永远改不好(反代那层压根没这行头)。脚本走 script-src,挂件框走 frame-src。
+    const index = readFileSync(resolve(ROOT, 'server/src/index.ts'), 'utf-8')
+    const domain = /const cspTurnstile = '([^']+)'/.exec(index)
+    expect(domain, '找不到 cspTurnstile —— 改名了?这份判据要跟着改').not.toBeNull()
+    expect(domain![1]).toBe('https://challenges.cloudflare.com')
+    const m = /const spaCsp =([\s\S]*?)\n\s*app\.use\(/.exec(index)
+    expect(m, '找不到 spaCsp —— 结构变了?').not.toBeNull()
+    const csp = m![1]!
+    expect(csp, 'script-src 缺 Turnstile 域:脚本直接被拦').toMatch(/script-src [^`]*\$\{cspTurnstile\}/)
+    expect(csp, 'frame-src 缺 Turnstile 域:脚本能下来,验证框仍被拦').toMatch(/frame-src \$\{cspTurnstile\}/)
+    expect(csp, 'connect-src 一并放行,免得探活请求被拦成加载失败').toMatch(/connect-src [^`]*\$\{cspTurnstile\}/)
+  })
 })
