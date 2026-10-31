@@ -437,3 +437,50 @@ describe('调色板 · 色阶分得开', () => {
     expect(pair(...l11), '五行两档糊在一起了').toBe('')
   })
 })
+
+describe('调色板 · 组件类不空转', () => {
+  /*
+   * 模板写了、style.css 里却没定义的类名(幽灵类)不报错、不告警,只是静悄悄地不生效 ——
+   * 一个按钮写着 btn-ink 却仍是裸文字,查起来要翻整张样式表。
+   * 只查本仓库自造的前缀:btn- / chip- / card- / seal- / tab-。Tailwind 自带的工具类不含这些前缀,
+   * 不会误伤;animate-* / data-* 也不会被 \b 边界吃到。
+   */
+  const PREFIX = /\b(btn|chip|card|seal|tab)-[a-z][a-z0-9-]*/g
+
+  function walk(dir: string, out: string[] = []): string[] {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = resolve(dir, e.name)
+      if (e.isDirectory()) walk(p, out)
+      else if (e.name.endsWith('.vue')) out.push(p)
+    }
+    return out
+  }
+
+  it('模板里出现的自造组件类,style.css 里都有定义', () => {
+    // 已定义集合:行首的 .foo / .foo::after / .foo:hover 都算
+    const defined = new Set([...CSS.matchAll(/\.([a-z][a-z0-9-]*)/g)].map(m => m[1]!))
+    const missing = new Map<string, Set<string>>()
+    for (const file of walk(resolve(ROOT, 'src'))) {
+      const src = readFileSync(file, 'utf-8')
+      const tpl = src.slice(0, src.indexOf('</template>') + 11)
+      for (const m of tpl.matchAll(PREFIX)) {
+        const cls = m[0]
+        if (defined.has(cls)) continue
+        if (!missing.has(cls)) missing.set(cls, new Set())
+        missing.get(cls)!.add(file.replace(ROOT, '').replace(/\\/g, '/'))
+      }
+    }
+    const report = [...missing].map(([cls, files]) => `${cls} ← ${[...files].join(', ')}`)
+    expect(report, '这些类在模板里用了,样式表里却没有定义,写了等于没写').toEqual([])
+  })
+
+  it('三档按钮各有实体:印面实心 / 墨线描边 / 虚框透明', () => {
+    for (const cls of ['btn-seal', 'btn-ink', 'btn-ghost']) {
+      expect(CSS, `${cls} 缺定义`).toMatch(new RegExp(`\\.${cls} \\{[^}]*display: inline-flex`))
+      expect(CSS, `${cls} 缺禁用态(禁用时字仍要读得出)`).toMatch(new RegExp(`\\.${cls}:disabled \\{[^}]*color:`))
+    }
+    // 墨线钮比虚框重:描边更实、字更黑
+    expect(CSS).toMatch(/\.btn-ink \{[^}]*border: 1px solid rgb\(var\(--color-ink-rgb\) \/ 0\.42\)/)
+    expect(CSS).toMatch(/\.btn-ghost \{[^}]*border: 1px solid rgb\(var\(--color-ink-rgb\) \/ 0\.30\)/)
+  })
+})

@@ -23,10 +23,10 @@
             <p class="font-mono text-[22px] tracking-[0.3em] text-cinnabar tabular">{{ room.code }}</p>
           </button>
           <div class="flex shrink-0 flex-col gap-1.5">
-            <button class="btn-ink px-3 py-1.5 text-[12px]" :disabled="running !== null" @click="startRun(room.dungeon, room.code)">
+            <button class="btn-ink !px-3 !py-1.5 !text-[12px]" :disabled="running !== null" @click="startRun(room.dungeon, room.code)">
               结阵开拔
             </button>
-            <button class="btn-ink px-3 py-1.5 text-[12px]" :disabled="running !== null" @click="leaveRoom">散伙</button>
+            <button class="btn-ink !px-3 !py-1.5 !text-[12px]" :disabled="running !== null" @click="leaveRoom">散伙</button>
           </div>
         </div>
         <table class="mt-3 w-full text-[12px]">
@@ -51,7 +51,7 @@
           <select v-model="roomDungeon" class="rounded-md border border-ink/15 bg-paper-deep/60 px-2 py-1.5 text-[12px] text-ink">
             <option v-for="d in dungeons" :key="d.key" :value="d.key">{{ d.name }}</option>
           </select>
-          <button class="btn-ink px-3 py-1.5 text-[12px]" :disabled="roomBusy" @click="createRoom">创建房间</button>
+          <button class="btn-ink !px-3 !py-1.5 !text-[12px]" :disabled="roomBusy" @click="createRoom">创建房间</button>
         </div>
 
         <!-- 难度:建房时定,独行亦按此难度 -->
@@ -81,7 +81,7 @@
             class="w-36 rounded-md border border-ink/15 bg-paper-deep/60 px-2 py-1.5 font-mono text-[13px] uppercase tracking-widest text-ink placeholder:text-ink-faint"
             @keydown.enter="joinRoom"
           >
-          <button class="btn-ink px-3 py-1.5 text-[12px]" :disabled="roomBusy || joinCode.trim().length < 4" @click="joinRoom">加入</button>
+          <button class="btn-ink !px-3 !py-1.5 !text-[12px]" :disabled="roomBusy || joinCode.trim().length < 4" @click="joinRoom">加入</button>
         </div>
         <p class="mt-2 text-[10px] leading-relaxed text-ink-faint">道友建房拿到房间码,输入同一串码即自动进房;秘境按房内境界定深浅,境界越高妖物越凶,战获亦厚。凶险亦随通杀次数增长,每 30 天重置;组队以房主的成长档为准。</p>
       </template>
