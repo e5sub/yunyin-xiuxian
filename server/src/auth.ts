@@ -10,9 +10,21 @@ import { emailEnabled, makeCode, sendCodeMail } from './mail.js'
 import { getConfig, getConfigNumber } from './config.js'
 import { jwtSecret } from './secret.js'
 import { bodyStr, rateLimit } from './rateLimit.js'
+import { verifyTurnstile, turnstileConfig } from './turnstile.js'
 
 const TOKEN_TTL_SEC = 60 * 60 * 24 * 30
 const CODE_TTL_MS = 10 * 60 * 1000
+
+/** 人机验证:Turnstile 开启时,敏感口(发码/注册/找回/重置)必须带有效 token */
+async function turnstileGuard(req: Request, body: Record<string, unknown>): Promise<boolean> {
+  const headerToken = req.headers['x-turnstile-token']
+  const token = body.turnstileToken ?? (typeof headerToken === 'string' ? headerToken : '')
+  return verifyTurnstile(token, req.ip ?? '')
+}
+
+function turnstileFailed(res: Response): void {
+  res.status(403).json({ code: 'turnstile', error: '人机验证未通过,请重试' })
+}
 
 /**
  * 单设备登录:登录成功 login_seq 自增,旧设备的 token 立即失效。
@@ -252,11 +264,14 @@ export function verifyPassword(hash: string | undefined, password: string): bool
 authRouter.get('/config', (_req, res) => {
   void (async () => {
     const interval = await getConfigNumber('save_push_interval_sec', 5)
+    const ts = await turnstileConfig()
     res.json({
       emailCodeRequired: (await getConfig('email_code_required')) === 'true',
       emailEnabled: await emailEnabled(),
       // 兜底夹取:过短打爆服务器,过长失去「自动保存」意义
-      saveIntervalSec: Math.min(Math.max(interval, 3), 300)
+      saveIntervalSec: Math.min(Math.max(interval, 3), 300),
+      turnstileEnabled: ts.enabled,
+      turnstileSiteKey: ts.enabled ? ts.siteKey : ''
     })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
@@ -269,6 +284,10 @@ authRouter.post('/email-code', mailIpLimit, mailTargetLimit, (req, res) => {
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
     const purpose = body.purpose === 'reset' ? 'reset' : body.purpose === 'bind' ? 'bind' : 'register'
+    if (!(await turnstileGuard(req, body))) {
+      turnstileFailed(res)
+      return
+    }
     if (!EMAIL_RE.test(email) || email.length > 190) {
       res.status(400).json({ error: '邮箱格式不对' })
       return
@@ -334,6 +353,10 @@ authRouter.post('/register', registerLimit, (req, res) => {
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
     const password = typeof body.password === 'string' ? body.password : ''
     const code = typeof body.code === 'string' ? body.code.trim() : ''
+    if (!(await turnstileGuard(req, body))) {
+      turnstileFailed(res)
+      return
+    }
     if (!USERNAME_RE.test(username)) {
       res.status(400).json({ error: '道号 2~12 字,限中文/字母/数字/下划线' })
       return
@@ -424,6 +447,10 @@ authRouter.post('/forgot', mailIpLimit, mailTargetLimit, (req, res) => {
   void (async () => {
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+    if (!(await turnstileGuard(req, body))) {
+      turnstileFailed(res)
+      return
+    }
     if (!EMAIL_RE.test(email) || email.length > 190) {
       res.status(400).json({ error: '邮箱格式不对' })
       return
@@ -456,6 +483,10 @@ authRouter.post('/reset', resetIpLimit, resetTargetLimit, (req, res) => {
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
     const code = typeof body.code === 'string' ? body.code.trim() : ''
     const password = typeof body.password === 'string' ? body.password : ''
+    if (!(await turnstileGuard(req, body))) {
+      turnstileFailed(res)
+      return
+    }
     if (!EMAIL_RE.test(email) || email.length > 190) {
       res.status(400).json({ error: '邮箱格式不对' })
       return

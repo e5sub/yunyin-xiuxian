@@ -2,6 +2,13 @@
 
 本文件自 v1.33.1 起维护;更早的版本见 [GitHub Releases](https://github.com/setube/yunyin-xiuxian/releases)。
 
+## [1.48.0] - 2026-10-31
+
+- 新增:**Turnstile 人机验证** —— 注册、找回口令、重置口令、发邮箱验证码四个口在启用后须先过 Cloudflare Turnstile;token 经 siteverify 服务端二次核验(超时/失败一律拒绝)。
+- 新增:GM 后台「基础参数」三参:`turnstile_enabled` 开关、`turnstile_site_key` 站点密钥(公开)、`turnstile_secret_key` 私钥(保密);二者齐全且开关打开才生效,未配置不影响登录与现有流程。
+- 新增:`/api/auth/config` 下发 `turnstileEnabled` 与站点密钥;登录页在启用时显式渲染挂件(注册表单与找回口令弹层各一枚),token 单次有效、每用一次自动重挂。
+- 说明:登录接口不加验证(已有 IP + 账号双重限速),避免每日登录的额外摩擦。
+
 ## [1.47.1] - 2026-10-31
 
 - 新增:**云存档留档上限** —— 每玩家云端留档(自动备份)至多 3 份(`save_history_keep`,GM 后台「基础参数」可调,钳 1~96);超量在下次写档时自动清理最旧的,现行档不受影响,7 天过期照旧。

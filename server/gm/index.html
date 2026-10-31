@@ -632,7 +632,10 @@ const CFG_GROUPS = [
       chat_history_size: ['聊天历史条数', 'num'],
       chat_retention_days: ['聊天留存天数(超期自动清理)', 'num'],
       save_push_interval_sec: ['云存档自动上传间隔(秒,3~300)', 'num'],
-      save_history_keep: ['云存档留档份数上限(每玩家)', 'num']
+      save_history_keep: ['云存档留档份数上限(每玩家)', 'num'],
+      turnstile_enabled: ['Turnstile 人机验证(开=注册/找回/发码先过人机)', 'bool'],
+      turnstile_site_key: ['Turnstile 站点密钥(site key,公开)', 'text'],
+      turnstile_secret_key: ['Turnstile 私钥(secret key,保密)', 'text']
     }
   },
   {

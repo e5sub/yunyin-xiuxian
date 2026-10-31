@@ -27,8 +27,8 @@ export const useAuthStore = defineStore(
     )
 
     /** 注册并登录(邮箱必填);失败抛 CloudError(界面取 message 显示) */
-    async function register(name: string, email: string, password: string, code = ''): Promise<void> {
-      const res = await cloudApi.register(name, email, password, code)
+    async function register(name: string, email: string, password: string, code = '', turnstileToken = ''): Promise<void> {
+      const res = await cloudApi.register(name, email, password, code, turnstileToken)
       applySession(res.token, res.user.id, res.user.username)
       vipUntil.value = Math.max(0, Math.floor(res.user.vipUntil ?? 0))
     }

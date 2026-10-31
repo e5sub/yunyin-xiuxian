@@ -270,6 +270,10 @@ export interface AuthConfig {
   emailEnabled: boolean
   /** 云存档自动上传间隔(秒);服务端 game_config.save_push_interval_sec,老后端缺省 undefined */
   saveIntervalSec?: number
+  /** Turnstile 人机验证是否启用(注册/找回口令/发验证码) */
+  turnstileEnabled?: boolean
+  /** Turnstile 站点密钥(启用时下发) */
+  turnstileSiteKey?: string
 }
 
 export interface EmailCodeResp {
@@ -313,8 +317,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 export const cloudApi = {
   authConfig: (): Promise<AuthConfig> => request('GET', '/auth/config'),
-  register: (username: string, email: string, password: string, code = ''): Promise<{ token: string; user: CloudUser }> =>
-    request('POST', '/auth/register', { username, email, password, code }),
+  register: (username: string, email: string, password: string, code = '', turnstileToken = ''): Promise<{ token: string; user: CloudUser }> =>
+    request('POST', '/auth/register', { username, email, password, code, turnstileToken }),
   login: (username: string, password: string): Promise<{ token: string; user: CloudUser }> =>
     request('POST', '/auth/login', { username, password }),
   /** 会话信息刷新:取最新 VIP 状态(GM 发放/续期后无需重登) */
@@ -357,17 +361,18 @@ export const cloudApi = {
   /** 领取离线讨伐所得(领取即清零) */
   collectVipAutoOps: (): Promise<{ collected: { stoneM: number; stoneE: number; herb: number; strikes: number; tier: number } }> =>
     request('POST', '/vip/autoops/collect'),
-  emailCode: (email: string, purpose: 'register' | 'reset' | 'bind'): Promise<EmailCodeResp> =>
-    request('POST', '/auth/email-code', { email, purpose }),
+  emailCode: (email: string, purpose: 'register' | 'reset' | 'bind', turnstileToken = ''): Promise<EmailCodeResp> =>
+    request('POST', '/auth/email-code', { email, purpose, turnstileToken }),
   /** 修改口令:成功后返回新 token(换上,否则本会话作废) */
   changePassword: (oldPassword: string, newPassword: string): Promise<{ ok: boolean; token: string }> =>
     request('POST', '/auth/change-password', { oldPassword, newPassword }),
   /** 修改绑定邮箱:邮箱服务开启时需先对新邮箱发验证码(purpose=bind) */
   changeEmail: (password: string, email: string, code = ''): Promise<{ ok: boolean; email: string }> =>
     request('POST', '/auth/change-email', { password, email, code }),
-  forgot: (email: string): Promise<EmailCodeResp> => request('POST', '/auth/forgot', { email }),
-  resetPassword: (email: string, code: string, password: string): Promise<{ ok: boolean }> =>
-    request('POST', '/auth/reset', { email, code, password }),
+  forgot: (email: string, turnstileToken = ''): Promise<EmailCodeResp> =>
+    request('POST', '/auth/forgot', { email, turnstileToken }),
+  resetPassword: (email: string, code: string, password: string, turnstileToken = ''): Promise<{ ok: boolean }> =>
+    request('POST', '/auth/reset', { email, code, password, turnstileToken }),
   deleteSave: (): Promise<{ ok: boolean }> => request('DELETE', '/save'),
   getSave: (): Promise<{ save: CloudSaveInfo | null }> => request('GET', '/save'),
   putSave: (payload: {

@@ -622,6 +622,10 @@ async function seedConfig(): Promise<void> {
     ['save_push_interval_sec', '5'],
     // 云存档留档份数上限(每玩家;现行档之外的历史备份,钳 1~96)
     ['save_history_keep', '3'],
+    // Turnstile 人机验证(注册/找回口令/发验证码);站点密钥公开给前端,私钥保密,二者齐全才生效
+    ['turnstile_enabled', 'false'],
+    ['turnstile_site_key', ''],
+    ['turnstile_secret_key', ''],
     ['boss_daily_attempts', '1'],
     ['boss_hp_atk_mult', '20'],
     ['boss_strike_rounds', '10'],

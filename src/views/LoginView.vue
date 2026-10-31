@@ -78,6 +78,8 @@
           placeholder="再录一遍口令"
           class="w-full rounded-lg border border-ink/15 bg-paper-deep/60 px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-faint focus:border-cinnabar/60 focus:outline-none"
         />
+        <!-- Turnstile 人机验证(服务端开启才渲染) -->
+        <div v-show="tsOn" ref="tsBox" class="flex justify-center"></div>
         <p v-if="error" class="text-[11px] text-cinnabar">{{ error }}</p>
         <button type="submit" class="btn-seal w-full !py-3 text-[15px] tracking-[0.3em]" :disabled="busy">
           {{ busy ? '处理中' : mode === 'login' ? '入 道' : '开 山 门' }}
@@ -128,6 +130,7 @@
           placeholder="新口令(6字以上)"
           class="w-full rounded-lg border border-ink/15 bg-paper-deep/60 px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-faint focus:border-cinnabar/60 focus:outline-none"
         />
+        <div v-show="tsOn" ref="fpTsBox" class="flex justify-center"></div>
         <p v-if="forgotMsg !== ''" class="text-[11px]" :class="forgotOk ? 'text-teal-700' : 'text-cinnabar'">
           {{ forgotMsg }}
         </p>
@@ -143,7 +146,7 @@
 </template>
 
 <script setup lang="ts">
-  import { onMounted, ref } from 'vue'
+  import { nextTick, onMounted, ref, watch } from 'vue'
   import { useRouter } from 'vue-router'
   import { useAuthStore } from '@/stores/auth'
   import { useGameStore } from '@/stores/game'
@@ -151,6 +154,13 @@
   import { CloudError, cloudApi, connectCloudWs } from '@/services/cloud'
   import { pullCloudSave, startCloudSync } from '@/core/cloudSave'
   import BaseModal from '@/components/common/BaseModal.vue'
+  import {
+    configureTurnstile,
+    renderTurnstile,
+    resetTurnstile,
+    turnstileEnabled,
+    turnstileToken
+  } from '@/utils/turnstile'
 
   const router = useRouter()
   const auth = useAuthStore()
@@ -181,13 +191,35 @@
 
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+  /** Turnstile 人机验证:/auth/config 下发站点密钥才有;token 单次有效,每用一次重挂 */
+  const tsOn = ref(false)
+  const tsBox = ref<HTMLElement | null>(null)
+  const fpTsBox = ref<HTMLElement | null>(null)
+
+  function tsReady(box: HTMLElement | null): string {
+    if (!tsOn.value || box === null) return ''
+    return turnstileToken(box)
+  }
+
+  function tsReset(box: HTMLElement | null): void {
+    if (box !== null) resetTurnstile(box)
+  }
+
   onMounted(() => {
     void cloudApi
       .authConfig()
       .then(c => {
         codeRequired.value = c.emailCodeRequired
+        configureTurnstile(c.turnstileSiteKey ?? '')
+        tsOn.value = c.turnstileEnabled === true && turnstileEnabled()
+        if (tsOn.value) void nextTick(() => void renderTurnstile(tsBox.value!))
       })
       .catch(() => undefined)
+  })
+
+  // 找回口令弹层里的挂件:开弹层时容器才在 DOM 里,现挂现用
+  watch(forgotOpen, open => {
+    if (open && tsOn.value) void nextTick(() => void renderTurnstile(fpTsBox.value!))
   })
 
   function sendRegisterCode(): void {
@@ -195,9 +227,14 @@
       error.value = '请填写有效邮箱'
       return
     }
+    const token = tsReady(tsBox.value)
+    if (tsOn.value && token === '') {
+      error.value = '请先完成人机验证'
+      return
+    }
     error.value = ''
     void cloudApi
-      .emailCode(email.value, 'register')
+      .emailCode(email.value, 'register', token)
       .then(r => {
         if (r.devCode !== undefined) ui.toast(`验证码 ${r.devCode}`, 'success')
         else ui.toast('验证码已发送', 'success')
@@ -205,6 +242,7 @@
       .catch(e => {
         error.value = e instanceof CloudError ? e.message : '发送失败'
       })
+      .finally(() => tsReset(tsBox.value))
     codeCooldown.value = 60
     const iv = setInterval(() => {
       codeCooldown.value -= 1
@@ -218,8 +256,14 @@
       forgotOk.value = false
       return
     }
+    const token = tsReady(fpTsBox.value)
+    if (tsOn.value && token === '') {
+      forgotMsg.value = '请先完成人机验证'
+      forgotOk.value = false
+      return
+    }
     void cloudApi
-      .forgot(fpEmail.value)
+      .forgot(fpEmail.value, token)
       .then(r => {
         forgotMsg.value = r.devCode !== undefined ? `验证码 ${r.devCode}` : '验证码已发送'
         forgotOk.value = true
@@ -228,6 +272,7 @@
         forgotMsg.value = e instanceof CloudError ? e.message : '发送失败'
         forgotOk.value = false
       })
+      .finally(() => tsReset(fpTsBox.value))
     fpCooldown.value = 60
     const iv = setInterval(() => {
       fpCooldown.value -= 1
@@ -252,9 +297,15 @@
       forgotOk.value = false
       return
     }
+    const token = tsReady(fpTsBox.value)
+    if (tsOn.value && token === '') {
+      forgotMsg.value = '请先完成人机验证'
+      forgotOk.value = false
+      return
+    }
     forgotBusy.value = true
     try {
-      await cloudApi.resetPassword(fpEmail.value, fpCode.value, fpPassword.value)
+      await cloudApi.resetPassword(fpEmail.value, fpCode.value, fpPassword.value, token)
       forgotMsg.value = '口令已重置'
       forgotOk.value = true
       fpEmail.value = ''
@@ -269,6 +320,7 @@
       forgotMsg.value = e instanceof CloudError ? e.message : '重置失败'
       forgotOk.value = false
     }
+    tsReset(fpTsBox.value)
     forgotBusy.value = false
   }
 
@@ -297,15 +349,22 @@
       error.value = '两次口令不一致'
       return
     }
+    const token = mode.value === 'register' ? tsReady(tsBox.value) : ''
+    if (mode.value === 'register' && tsOn.value && token === '') {
+      error.value = '请先完成人机验证'
+      return
+    }
     busy.value = true
     try {
       if (mode.value === 'login') await auth.login(name.value, password.value)
-      else await auth.register(name.value, email.value, password.value, code.value)
+      else await auth.register(name.value, email.value, password.value, code.value, token)
     } catch (e) {
       error.value = e instanceof CloudError ? e.message : '请求失败'
       busy.value = false
+      if (mode.value === 'register') tsReset(tsBox.value)
       return
     }
+    if (mode.value === 'register') tsReset(tsBox.value)
     connectCloudWs()
     try {
       const r = await pullCloudSave()
