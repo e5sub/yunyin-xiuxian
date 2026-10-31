@@ -119,4 +119,14 @@ describe('人机验证 · 开关 ≠ 生效', () => {
     expect(LOGIN, '脚本被拦/超时时要说话,不能留白').toContain('人机验证没能加载')
     expect(LOGIN, '重试入口:拦一下就永久废掉太脆').toContain('retryTurnstile')
   })
+
+  it('CSP 拦截要单独说出来(否则会让人去查根本不存在的网络问题)', () => {
+    const util = readFileSync(resolve(ROOT, 'src/utils/turnstile.ts'), 'utf-8')
+    expect(util, 'CSP 拦脚本时元素上也只有笼统的 error,得靠 securitypolicyviolation 才分得清').toContain(
+      'securitypolicyviolation'
+    )
+    expect(util).toContain("'csp'")
+    expect(LOGIN, '界面要把「安全策略拦下」与「没能加载」分开说').toContain('人机验证被站点安全策略拦下')
+    expect(LOGIN, '控制台留一份能照抄的修法').toContain('challenges.cloudflare.com')
+  })
 })

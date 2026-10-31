@@ -80,8 +80,8 @@
         />
         <!-- Turnstile 人机验证(服务端开启才渲染) -->
         <div v-show="tsOn" ref="tsBox" class="flex justify-center"></div>
-        <div v-if="tsOn && tsBroken" class="flex items-center justify-center gap-2 text-[11px] text-cinnabar">
-          <span>人机验证没能加载</span>
+        <div v-if="tsOn && tsBroken" class="flex items-center justify-center gap-2 text-[11px] text-cinnabar" :title="tsFailHint">
+          <span>{{ tsFailText }}</span>
           <button type="button" class="btn-ghost !px-2.5 !py-1 !text-[11px]" @click="retryTurnstile">重 试</button>
         </div>
         <p v-if="error" class="text-[11px] text-cinnabar">{{ error }}</p>
@@ -136,8 +136,8 @@
           class="w-full rounded-lg border border-ink/15 bg-paper-deep/60 px-3 py-2.5 text-[14px] text-ink placeholder:text-ink-faint focus:border-cinnabar/60 focus:outline-none"
         />
         <div v-show="tsOn" ref="fpTsBox" class="flex justify-center"></div>
-        <div v-if="tsOn && tsBroken" class="flex items-center justify-center gap-2 text-[11px] text-cinnabar">
-          <span>人机验证没能加载</span>
+        <div v-if="tsOn && tsBroken" class="flex items-center justify-center gap-2 text-[11px] text-cinnabar" :title="tsFailHint">
+          <span>{{ tsFailText }}</span>
           <button type="button" class="btn-ghost !px-2.5 !py-1 !text-[11px]" @click="retryTurnstile">重 试</button>
         </div>
         <p v-if="forgotMsg !== ''" class="text-[11px]" :class="forgotOk ? 'text-teal-700' : 'text-cinnabar'">
@@ -155,7 +155,7 @@
 </template>
 
 <script setup lang="ts">
-  import { nextTick, onMounted, ref, watch } from 'vue'
+  import { computed, nextTick, onMounted, ref, watch } from 'vue'
   import { useRouter } from 'vue-router'
   import { useAuthStore } from '@/stores/auth'
   import { useGameStore } from '@/stores/game'
@@ -168,8 +168,10 @@
     renderTurnstile,
     resetTurnstile,
     turnstileEnabled,
-    turnstileToken
+    turnstileToken,
+    TurnstileError
   } from '@/utils/turnstile'
+  import type { TurnstileFail } from '@/utils/turnstile'
 
   const router = useRouter()
   const auth = useAuthStore()
@@ -207,8 +209,17 @@
    */
   const tsOn = ref(false)
   const tsBroken = ref(false)
+  const tsFail = ref<TurnstileFail | null>(null)
   const tsBox = ref<HTMLElement | null>(null)
   const fpTsBox = ref<HTMLElement | null>(null)
+
+  /** CSP 拦下与网络拦下对玩家是两回事:前者站点没配好,后者换个网络/关扩展就好 */
+  const tsFailText = computed(() => (tsFail.value === 'csp' ? '人机验证被站点安全策略拦下' : '人机验证没能加载'))
+  const tsFailHint = computed(() =>
+    tsFail.value === 'csp'
+      ? '站点响应头的 Content-Security-Policy 需放行 https://challenges.cloudflare.com(script-src 与 frame-src)'
+      : '多为网络或浏览器扩展拦截,可换网络后点重试'
+  )
 
   function tsReady(box: HTMLElement | null): string {
     if (!tsOn.value || box === null) return ''
@@ -225,8 +236,18 @@
     try {
       await renderTurnstile(box)
       tsBroken.value = false
-    } catch {
+      tsFail.value = null
+    } catch (e) {
+      const reason: TurnstileFail = e instanceof TurnstileError ? e.reason : 'network'
       tsBroken.value = true
+      tsFail.value = reason
+      // 控制台留一份可照抄的说法:玩家看不懂,管理员/自己排障时用得上
+      console.error(
+        reason === 'csp'
+          ? '[turnstile] 脚本被站点 CSP 拦下。响应头需放行 https://challenges.cloudflare.com:script-src 加该域、并加 frame-src https://challenges.cloudflare.com(见仓库 nginx.conf 的示例)。'
+          : `[turnstile] 挂件未能加载(${reason})。`,
+        e
+      )
     }
   }
 

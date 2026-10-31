@@ -114,6 +114,14 @@ server {
 
 Traefik / Nginx Proxy Manager / Caddy 同理：整站转发 + 支持 WebSocket Upgrade 即可，无需路径重写。
 
+**若站点另配了 CSP（`Content-Security-Policy`）**：人机验证（Turnstile）要从 `challenges.cloudflare.com` 拉脚本、内嵌它的 iframe，两者都得放行，否则登录页会报「人机验证被站点安全策略拦下」，控制台是 `Loading the script '…/turnstile/v0/api.js' violates … "script-src 'self' 'unsafe-inline' data:"`：
+
+```nginx
+add_header Content-Security-Policy "script-src 'self' 'unsafe-inline' data: https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com" always;
+```
+
+即：原 `script-src` 末尾追加 `https://challenges.cloudflare.com`，并**新增** `frame-src https://challenges.cloudflare.com`（原有 `connect-src` 的话也追加该域）。别用 `script-src *` 图省事——那等于把 CSP 关了。没开人机验证的站不必改，但先配上，日后开开关就不会再撞。
+
 ## 故障排查
 
 ```bash

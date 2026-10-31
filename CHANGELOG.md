@@ -2,6 +2,13 @@
 
 本文件自 v1.33.1 起维护;更早的版本见 [GitHub Releases](https://github.com/setube/yunyin-xiuxian/releases)。
 
+## [1.53.2] - 2026-10-31
+
+- 修正:**人机验证加载失败分清是「CSP 拦」还是「网络拦」** —— 浏览器控制台原话是 `Loading the script 'https://challenges.cloudflare.com/turnstile/v0/api.js…' violates … "script-src 'self' 'unsafe-inline' data:"`，即站点响应头的 CSP 把外部脚本拦了，与网络无关。现在 `src/utils/turnstile.ts` 监听 `securitypolicyviolation` 分辨原因，登录页分别报「人机验证被站点安全策略拦下」（并给出该改哪一条指令）与「人机验证没能加载」；控制台同时留一份可照抄的修法。
+- 文档:`README.Docker.md` 反代示例后补 CSP 一段（`script-src` 追加 `https://challenges.cloudflare.com`、新增 `frame-src https://challenges.cloudflare.com`，有 `connect-src` 也追加），`nginx.conf` 同位置留一份注释示例；GM 后台「已生效」那行也点明这一点。
+- 说明:Turnstile 的脚本与挂件 iframe 都在 `challenges.cloudflare.com`，CSP 少放行一条就只出「没能加载」，光看页面分不出是网络还是策略——这次把这两件事分开说了。
+- 判据:`gmConfig.spec.ts` 添一条 —— 前端必须用 `securitypolicyviolation` 分辨 CSP、界面必须把「安全策略拦下」与「没能加载」分开说、控制台须留下修法。
+
 ## [1.53.1] - 2026-10-31
 
 - 修正:**人机验证「开了没反应」有了解释** —— Turnstile 真开关是三样齐（`turnstile_enabled` + 站点密钥 + 私钥），只掰开关、密钥没填全时服务端照旧按未启用放行，登录页也就不会出现验证框。GM 后台「基础参数」页现在在该开关下方实时报三态：未启用 / 开了但密钥没填（橙字说明「这一项不会生效」）/ 已生效；掰开关、改密钥都即时刷新。

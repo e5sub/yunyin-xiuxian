@@ -780,7 +780,7 @@ function updateTsHint () {
     return
   }
   el.className = 'cfg-hint ok'
-  el.textContent = '✓ 已生效:登录页的注册、找回口令、发验证码都会先过一道人机验证。'
+  el.textContent = '✓ 已生效:登录页的注册、找回口令、发验证码都会先过一道人机验证。若玩家端报「人机验证被站点安全策略拦下」,是站点 CSP 没放行 challenges.cloudflare.com(script-src 与 frame-src 各一条)。'
 }
 
 async function loadConfig () {

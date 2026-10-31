@@ -21,8 +21,27 @@ const SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render
 /** 脚本多久不来就当挂了:Cloudflare 在部分网络下会被拦成「一直转圈不报错」,不设上限等于永远留白 */
 const SCRIPT_TIMEOUT_MS = 12_000
 
+/**
+ * 起不来的三类原因,给界面的说法不一样:
+ * csp = 站点响应头的 Content-Security-Policy 没放行本域(改 nginx/面板即可,不是玩家的问题);
+ * network = 网络拦截/扩展拦插件;timeout = 拉得动但迟迟不回。
+ */
+export type TurnstileFail = 'csp' | 'network' | 'timeout'
+
+export class TurnstileError extends Error {
+  readonly reason: TurnstileFail
+
+  constructor(reason: TurnstileFail, message: string) {
+    super(message)
+    this.name = 'TurnstileError'
+    this.reason = reason
+  }
+}
+
 let siteKey = ''
 let scriptLoading: Promise<TurnstileApi> | null = null
+/** 本轮加载期间是否收到过针对本脚本的 CSP 拦截报告(CSP 拦下时元素同样只报一个笼统的 error 事件) */
+let cspBlocked = false
 
 interface Widget {
   id: string
@@ -42,33 +61,45 @@ export function turnstileEnabled(): boolean {
 function loadScript(): Promise<TurnstileApi> {
   if (window.turnstile !== undefined) return Promise.resolve(window.turnstile)
   if (scriptLoading !== null) return scriptLoading
+  cspBlocked = false
+  // CSP 拦下脚本时,元素上只有一个笼统的 error 事件;CSP 报告才带得出「被哪条规则拦了」
+  const onViolation = (e: SecurityPolicyViolationEvent): void => {
+    if (e.blockedURI.includes('challenges.cloudflare.com')) cspBlocked = true
+  }
+  document.addEventListener('securitypolicyviolation', onViolation)
   scriptLoading = new Promise((resolve, reject) => {
     const s = document.createElement('script')
     let settled = false
     /** 失败一律走这里:清掉缓存的 promise,重试才不会一直拿到同一个 rejected */
-    const fail = (msg: string): void => {
+    const fail = (reason: TurnstileFail, msg: string): void => {
       if (settled) return
       settled = true
       window.clearTimeout(timer)
+      document.removeEventListener('securitypolicyviolation', onViolation)
       scriptLoading = null
       s.remove()
-      reject(new Error(msg))
+      reject(new TurnstileError(reason, msg))
     }
-    const timer = window.setTimeout(() => fail('Turnstile 加载超时'), SCRIPT_TIMEOUT_MS)
+    const timer = window.setTimeout(() => fail('timeout', 'Turnstile 加载超时'), SCRIPT_TIMEOUT_MS)
     s.src = SCRIPT_SRC
     s.async = true
     s.defer = true
     s.onload = () => {
       if (window.turnstile === undefined) {
-        fail('Turnstile 加载失败')
+        fail('network', 'Turnstile 加载失败')
         return
       }
       if (settled) return
       settled = true
       window.clearTimeout(timer)
+      document.removeEventListener('securitypolicyviolation', onViolation)
       resolve(window.turnstile)
     }
-    s.onerror = () => fail('Turnstile 加载失败')
+    s.onerror = () => {
+      // CSP 拦截与网络失败在元素上都表现成 error;有 CSP 报告就按 CSP 说,免得让人去查网络
+      if (cspBlocked) fail('csp', '站点 CSP 拦下了 Turnstile 脚本')
+      else fail('network', 'Turnstile 加载失败')
+    }
     document.head.appendChild(s)
   })
   return scriptLoading
