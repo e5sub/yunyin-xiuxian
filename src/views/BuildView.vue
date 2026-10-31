@@ -49,7 +49,7 @@
             <button
               v-for="l in powerRating.labels"
               :key="l.key"
-              class="-my-1 py-1.5 text-left active:opacity-60"
+              class="-my-1 rounded px-1.5 py-1.5 text-left ring-1 ring-inset ring-ink/20 active:opacity-60"
               @click="toggleDim(l.key)"
             >
               <span class="flex items-center justify-between text-[11px]">

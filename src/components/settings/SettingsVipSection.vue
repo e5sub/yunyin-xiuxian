@@ -76,9 +76,9 @@
         </button>
       </div>
 
-      <!-- 三项托管:一行三个滑块,各自独立 -->
+      <!-- 四项托管:一行四滑块,各自独立 -->
       <div class="py-3">
-        <div class="grid grid-cols-3 gap-2">
+        <div class="grid grid-cols-4 gap-2">
           <div v-for="item in AUTO_ITEMS" :key="item.key" class="flex flex-col items-center gap-2">
             <ToggleSwitch v-model="settings[item.key]" :label="item.label" />
             <span
@@ -88,7 +88,12 @@
           </div>
         </div>
         <p class="mt-2 text-[10px] leading-relaxed text-ink-faint">
-          三项托管各自独立,想开哪项开哪项;历练与闭关都开时历练优先,历练间隙才闭关
+          四项托管各自独立,想开哪项开哪项;历练与闭关都开时历练优先,历练间隙才闭关
+        </p>
+        <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
+          自动活动:七会里代打擂台连战、达标即领赏;闲趣里代抽观星签、竿竿钓满再收篓。
+          切磋要挑道友、秘境要选层数、猜谜只有一次机会,均留待本人;活动托管只在客户端在场时代办,
+          离线归来后第一分钟内补办
         </p>
         <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
           打 BOSS 量力而行:能补刀先补刀,站得住便出剑;力有不及则蓄势,临期兜底出手。
@@ -298,20 +303,24 @@
     stopPolling()
   })
 
-  /** 一行三滑块:key 直指 settings 字段,点滑块即翻转 */
-  const AUTO_ITEMS: ReadonlyArray<{ key: 'autoBoss' | 'autoRetreat' | 'autoAdventure'; label: string }> = [
+  /** 一行四滑块:key 直指 settings 字段,点滑块即翻转 */
+  const AUTO_ITEMS: ReadonlyArray<{ key: 'autoBoss' | 'autoRetreat' | 'autoAdventure' | 'autoDailyEvent'; label: string }> = [
     { key: 'autoBoss', label: '自动打 BOSS' },
     { key: 'autoRetreat', label: '自动闭关' },
-    { key: 'autoAdventure', label: '自动历练' }
+    { key: 'autoAdventure', label: '自动历练' },
+    { key: 'autoDailyEvent', label: '自动活动' }
   ]
 
-  const allOn = computed(() => settings.autoBoss && settings.autoRetreat && settings.autoAdventure)
+  const allOn = computed(
+    () => settings.autoBoss && settings.autoRetreat && settings.autoAdventure && settings.autoDailyEvent
+  )
 
   function toggleAll(): void {
     const next = !allOn.value
     settings.autoBoss = next
     settings.autoRetreat = next
     settings.autoAdventure = next
+    settings.autoDailyEvent = next
   }
 
   /**

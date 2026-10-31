@@ -88,7 +88,7 @@
 
       <button
         v-if="mode === 'login'"
-        class="mt-3 inline-flex min-h-[28px] text-[11px] text-ink-faint active:text-ink-soft"
+        class="mt-3 inline-flex min-h-[28px] rounded px-2 text-[11px] text-ink-faint ring-1 ring-inset ring-ink/25 active:text-ink-soft"
         @click="forgotOpen = true"
       >
         忘记口令

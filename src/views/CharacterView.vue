@@ -3,7 +3,7 @@
     <!-- 名号、境界、年龄、世数在全局顶栏常驻,此处不重复 -->
     <div class="card-ink px-4 py-4">
       <div class="flex items-center justify-between">
-        <button class="-my-1 py-1.5 text-left active:opacity-60" @click="powerOpen = true">
+        <button class="-my-1 rounded px-1.5 py-1.5 text-left ring-1 ring-inset ring-ink/20 active:opacity-60" @click="powerOpen = true">
           <span class="text-[10px] tracking-[0.3em] text-ink-faint">战 力</span>
           <span class="ml-1 text-[9px] text-ink-faint">拆解 →</span>
         </button>
@@ -79,7 +79,7 @@
           <button
             v-for="row in modRows"
             :key="row.label"
-            class="-my-1 flex justify-between py-1.5 text-left text-[11px] active:opacity-60"
+            class="-my-1 flex justify-between rounded px-1.5 py-1.5 text-left text-[11px] ring-1 ring-inset ring-ink/20 active:opacity-60"
             @click="openBreakdown(row.key)"
           >
             <span class="text-ink-faint">

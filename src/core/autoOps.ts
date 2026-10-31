@@ -1,13 +1,19 @@
 /**
- * VIP 托管自动化:自动打 BOSS / 自动闭关 / 自动历练。
+ * VIP 托管自动化:自动打 BOSS / 自动闭关 / 自动历练 / 自动做每日活动。
  * 在线时本循环驱动(App.vue 启停);历练与闭关都开时历练优先。
  * 离线时服务端按同步上来的设置代打妖王(所得记台账,归来领取);
  * 闭关/历练的离线收益在归来结算时补推(见 prepOfflineAutoOps)。
+ * 每日活动(周天七会 / 闲趣三则)只在客户端在场时代办:登录归来第一查即补办一遍。
  * 开关存 settings(持久化)并同步服务端,一律须 VIP;到期自动关停并提示。
  */
 import { watch } from 'vue'
 import type { EnemyDef, ExploreMode, RegionDef } from '@/types'
-import { cloudApi, type BossStrikeResult } from '@/services/cloud'
+import {
+  cloudApi,
+  type BossStrikeResult,
+  type EventReward,
+  type EventToday
+} from '@/services/cloud'
 import { useAuthStore } from '@/stores/auth'
 import { useGameStore } from '@/stores/game'
 import { useSettingsStore } from '@/stores/settings'
@@ -32,6 +38,8 @@ import { dangerFactorFor, explorationRules, regionBossCleared, startExploration 
 import { claimBossLoot } from './bossLoot'
 import { pickAutoPlan, type AutoAdventurePlan } from './autoAdventure'
 import { autoTripText } from '@/ui/adventureText'
+import { eventDone } from '@/ui/sevenDayText'
+import { basketEmpty } from '@/ui/leisureText'
 import { RandomService, mulberry32 } from '@/utils/random'
 import { gnZero } from '@/utils/gnum'
 import { formatGN } from '@/utils/format'
@@ -40,9 +48,17 @@ import { formatGN } from '@/utils/format'
 const MAIN_TICK_MS = 10_000
 /** BOSS 巡检周期:出剑次数每日有限,1 分钟一查不会给服务端添负担 */
 const BOSS_TICK_MS = 60_000
+/** 每日活动巡检周期:活动都是一日一次的额度,1 分钟一查足够 */
+const DAILY_TICK_MS = 60_000
+/** 归来第一查:登录后活动托管尽快补办上一日的缺,不必等满一个周期 */
+const DAILY_WARMUP_MS = 15_000
+/** 擂台当日重试上限:三关全胜约四成把握,八次不过便留待玩家亲自上台 */
+const ARENA_MAX_TRIES = 8
 
 let mainTimer: ReturnType<typeof setInterval> | undefined
 let bossTimer: ReturnType<typeof setInterval> | undefined
+let dailyTimer: ReturnType<typeof setInterval> | undefined
+let dailyWarmup: ReturnType<typeof setTimeout> | undefined
 /** 到期提示只报一次:置位后不再重复 toast,直到重新成为 VIP */
 let expiryNotified = false
 
@@ -51,6 +67,7 @@ function stopAllToggles(): void {
   settings.autoBoss = false
   settings.autoRetreat = false
   settings.autoAdventure = false
+  settings.autoDailyEvent = false
 }
 
 /** 通用前置:游戏已开局、已登录、有任一托管开关;返回 null 表示本次 tick 无事可做 */
@@ -59,7 +76,7 @@ function gate(): { auth: ReturnType<typeof useAuthStore>; settings: ReturnType<t
   const auth = useAuthStore()
   const settings = useSettingsStore()
   if (!game.started || !auth.loggedIn) return null
-  if (!settings.autoBoss && !settings.autoRetreat && !settings.autoAdventure) return null
+  if (!settings.autoBoss && !settings.autoRetreat && !settings.autoAdventure && !settings.autoDailyEvent) return null
   if (!auth.isVip) {
     if (!expiryNotified) {
       expiryNotified = true
@@ -234,10 +251,135 @@ async function claimIfPending(): Promise<void> {
   }
 }
 
+/* ---------------- 每日活动托管:周天七会 + 闲趣三则 ---------------- */
+
+/** 擂台已试次数与所属「账号 + 日号」:换号或换日归零 */
+let arenaKey = ''
+let arenaTries = 0
+/** 今日活动已办妥的「账号 + 日号」:办妥后换日前不再空跑接口 */
+let dailySettledKey = ''
+
+/** 把服务端裁定的一份赏入账(与 EventView.claim / LeisureView.grant 同一条发放路) */
+function grantEventReward(r: EventReward): void {
+  const resources = useResourcesStore()
+  const tier = tierOfMajor(Math.max(0, usePlayerStore().major))
+  if (r.stone > 0) resources.addStone(stoneByTier(tier, r.stone))
+  if (r.wudao > 0) resources.addSmall('wudao', r.wudao)
+  if (r.herb > 0) resources.addSmall('herb', r.herb)
+  if (r.ore > 0) resources.addSmall('ore', r.ore)
+  if (r.dust > 0) resources.addSmall('dust', r.dust)
+  if (r.page > 0) resources.addSmall('page', r.page)
+}
+
+/** 赏格一句话:托管回执用(灵石按自身层级折算,与七会界面的赏格同源) */
+function rewardBrief(r: EventReward): string {
+  const tier = tierOfMajor(Math.max(0, usePlayerStore().major))
+  const parts: string[] = []
+  if (r.stone > 0) parts.push(`灵石 ${formatGN(stoneByTier(tier, r.stone))}`)
+  if (r.wudao > 0) parts.push(`悟道 ${r.wudao}`)
+  if (r.herb > 0) parts.push(`灵草 ${r.herb}`)
+  if (r.ore > 0) parts.push(`玄铁 ${r.ore}`)
+  if (r.dust > 0) parts.push(`器灵尘 ${r.dust}`)
+  if (r.page > 0) parts.push(`残页 ${r.page}`)
+  return parts.join(' · ')
+}
+
+/**
+ * 今日七会:能代办的代办,达标即领。只代「不必玩家本人到场」的那一半 ——
+ *   arena 擂台连战:服务端按档案模拟,纯拼战力、可反复再战,托管代打到达标为止;
+ *   boss 妖潮夜:出剑是 autoBoss 的事,此处只在进度打满后领赏(不擅自用掉当日次数);
+ *   board 天榜论剑:名次由修为定,无手动步骤,入榜即领;
+ *   duel 切磋:要挑一位道友出手,代打等于替玩家去扰人,不做;
+ *   dungeon 秘境:要选层数与应对(输了有伤),不做。
+ * 返回 true = 今日这一会已无事可办(已领到)。
+ * `key` 是「账号 + 服务端日号」:擂台重试的次数按它记,换号或换日即归零。
+ */
+async function autoSevenDay(today: EventToday, key: string): Promise<boolean> {
+  if (!today.enabled || today.mine.claimed) return true
+  let info = today
+  if (info.event.kind === 'arena' && !eventDone(info.event, info.mine.progress, info.rank)) {
+    if (arenaKey !== key) {
+      arenaKey = key
+      arenaTries = 0
+    }
+    if (arenaTries >= ARENA_MAX_TRIES) return false
+    arenaTries += 1
+    const r = await cloudApi.eventArena()
+    if (r.streak > 0) {
+      useUiStore().toast(`托管:上台连战,连胜 ${r.streak} / ${r.target}`, r.mine.progress >= r.target ? 'success' : 'info')
+    }
+    info = await cloudApi.eventToday()
+    if (info.mine.claimed) return true
+  }
+  if (!eventDone(info.event, info.mine.progress, info.rank)) return false
+  const r = await cloudApi.eventClaim()
+  grantEventReward(r.reward)
+  useUiStore().toast(`托管:七会赏已领 · ${rewardBrief(r.reward)}`, 'success')
+  return true
+}
+
+/**
+ * 闲趣三则:观星抽签到手,垂钓竿竿钓满再收篓。
+ * 猜谜**不代答**:四选一只有一次机会,盲答等于把「答对」换成四分之一的碰运气,
+ * 答过的赏在答题当下即入账,本来就无需再领,故托管一概不碰。
+ * 返回 true = 今日闲趣已无可办(签已抽、篓已收或无货可收)。
+ */
+async function autoLeisure(): Promise<boolean> {
+  const info = await cloudApi.leisureToday()
+  if (!info.enabled) return true
+  if (!info.star.drawn) {
+    const r = await cloudApi.leisureStar()
+    if (!r.already) {
+      grantEventReward(r.reward)
+      useUiStore().toast(
+        `托管:观星得「${r.fortune.grade}」· ${rewardBrief(r.reward)}`,
+        r.fortune.rank >= 2 ? 'success' : 'info'
+      )
+    }
+  }
+  if (info.fish.claimed) return info.star.drawn
+  let casts = info.fish.casts
+  let basket = info.fish.basket
+  // 竿数有限,逐竿起满;每竿的钓获先入篓,收篓才算入账
+  for (let i = 0; i < info.fish.max && casts < info.fish.max; i += 1) {
+    const r = await cloudApi.leisureCast()
+    casts = r.casts
+    basket = r.basket
+  }
+  // 空篓不收:收与不收都一样,收了还把这天的额度用掉
+  if (basketEmpty(basket)) return false
+  const c = await cloudApi.leisureClaimBasket()
+  grantEventReward(c.reward)
+  useUiStore().toast(`托管:垂钓收篓 · ${rewardBrief(c.reward)}`, 'success')
+  return true
+}
+
+/**
+ * 每日活动巡检:七会与闲趣各走一趟;今日全办妥则换日(或换号)前不再空跑接口。
+ * 循环每分钟调一次;导出供单测直接驱动一轮。
+ */
+export async function autoDailyTick(): Promise<void> {
+  const g = gate()
+  if (g === null || !g.settings.autoDailyEvent) return
+  try {
+    const today = await cloudApi.eventToday()
+    const key = `${g.auth.userId}|${today.day}`
+    if (dailySettledKey === key) return
+    const sevenSettled = await autoSevenDay(today, key)
+    const leisureSettled = await autoLeisure()
+    if (sevenSettled && leisureSettled) dailySettledKey = key
+  } catch {
+    // 云不可达 / 会话失效 / 今日非此会等:静默跳过,下一轮再说
+  }
+}
+
 export function startAutoOps(): void {
   if (mainTimer !== undefined) return
   mainTimer = setInterval(tickMain, MAIN_TICK_MS)
   bossTimer = setInterval(() => void tickBoss(), BOSS_TICK_MS)
+  dailyTimer = setInterval(() => void autoDailyTick(), DAILY_TICK_MS)
+  // 开局第一查:登录归来先补办一次(离线期间的活动托管不在服务端代办,靠这一次补上)
+  dailyWarmup = setTimeout(() => void autoDailyTick(), DAILY_WARMUP_MS)
   // 托管设置变更(含登录成为 VIP、到期自动关停)即同步服务端:离线托管按这份设置代打
   stopSyncWatch = watch(
     () => {
@@ -259,6 +401,18 @@ export function stopAutoOps(): void {
     clearInterval(bossTimer)
     bossTimer = undefined
   }
+  if (dailyTimer !== undefined) {
+    clearInterval(dailyTimer)
+    dailyTimer = undefined
+  }
+  if (dailyWarmup !== undefined) {
+    clearTimeout(dailyWarmup)
+    dailyWarmup = undefined
+  }
+  // 会话级的当日备忘随循环停启一并归零:重开循环时按当前账号与日号重新核一遍
+  dailySettledKey = ''
+  arenaKey = ''
+  arenaTries = 0
   if (stopSyncWatch !== undefined) {
     stopSyncWatch()
     stopSyncWatch = undefined

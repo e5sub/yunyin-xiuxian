@@ -6,17 +6,18 @@
   <!-- 战斗后统计 + 情报入口 -->
   <p v-if="battleSummary" class="mt-2 flex items-center justify-center gap-2 text-center text-[10px] text-ink-faint tabular">
     {{ battleSummary }}
-    <!-- 触达区 ≥28px(layout-check 判据):min-h 撑高,负外边距抵消,视觉密度不变 -->
+    <!-- 触达区 ≥28px(layout-check 判据):min-h 撑高,负外边距抵消,视觉密度不变;
+         文案旁的小动作一律带一圈细边框(ring 不占位,不挤动这一行的换行) -->
     <button
       v-if="lore"
-      class="-my-2 inline-flex min-h-[28px] items-center px-1 text-violet-ink active:opacity-60"
+      class="-my-2 inline-flex min-h-[28px] items-center rounded px-1.5 text-violet-ink ring-1 ring-inset ring-violet-ink/30 active:opacity-60"
       @click="openLore"
     >
       此物所知 »
     </button>
     <button
       v-if="analysis"
-      class="-my-2 inline-flex min-h-[28px] items-center px-1 text-azure active:opacity-60"
+      class="-my-2 inline-flex min-h-[28px] items-center rounded px-1.5 text-azure ring-1 ring-inset ring-azure/30 active:opacity-60"
       @click="openAnalysis"
     >
       战斗分析 »

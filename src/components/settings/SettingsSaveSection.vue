@@ -20,7 +20,7 @@
       class="rounded-md border border-cinnabar/40 bg-cinnabar/8 px-2 py-1.5 text-[11px] leading-relaxed text-cinnabar"
     >
       存档损坏:{{ corruptedNotice.map(id => STORE_NAMES[id] ?? id).join('、') }} · 原档留在本机
-      <button class="mt-1 block text-ink-faint underline" @click="ui.corruptedNotice = []">知道了</button>
+      <button class="mt-1 inline-block rounded px-2 py-1 text-ink-faint ring-1 ring-inset ring-ink/25" @click="ui.corruptedNotice = []">知道了</button>
     </p>
 
     <div class="flex gap-2">

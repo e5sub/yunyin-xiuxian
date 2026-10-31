@@ -10,9 +10,9 @@
     <button class="btn-seal mt-10 w-full max-w-72 !py-3.5 text-[17px] tracking-[0.3em]" @click="onStart">开 始 游 戏</button>
 
     <div class="mt-6 flex items-center gap-3 text-[11px] text-ink-faint">
-      <button class="inline-flex min-h-[28px] items-center active:text-ink-soft" @click="privacyOpen = true">隐私政策</button>
+      <button class="inline-flex min-h-[28px] items-center rounded px-2 ring-1 ring-inset ring-ink/25 active:text-ink-soft" @click="privacyOpen = true">隐私政策</button>
       <span class="text-ink-faint">·</span>
-      <button class="inline-flex min-h-[28px] items-center active:text-ink-soft" @click="aboutOpen = true">关于我们</button>
+      <button class="inline-flex min-h-[28px] items-center rounded px-2 ring-1 ring-inset ring-ink/25 active:text-ink-soft" @click="aboutOpen = true">关于我们</button>
     </div>
 
     <AboutDialog :open="aboutOpen" @close="aboutOpen = false" />
@@ -26,7 +26,7 @@
         <span class="text-[12px] text-ink-soft">
           我已阅读并同意
           <!-- 行内按钮命中区只有 17px;内联块给拇指 30px 靶面 -->
-          <button class="inline-block py-1.5 text-azure" @click.prevent="privacyOpen = true">《隐私政策》</button>
+          <button class="inline-block rounded px-1.5 py-1.5 text-azure ring-1 ring-inset ring-azure/30" @click.prevent="privacyOpen = true">《隐私政策》</button>
         </span>
       </label>
       <template #footer>

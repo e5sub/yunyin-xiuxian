@@ -8,7 +8,7 @@
     <template v-else>
       <div class="card-ink flex items-center justify-between gap-2 px-4 py-3">
         <!-- 冷启动时也回天界,不退出游戏(同洞府) -->
-        <button class="-my-1.5 py-1.5 text-left text-[12px] text-ink-faint" @click="goBack(router, { name: 'celestial' })">← 天界</button>
+        <button class="-my-1.5 rounded px-2 py-1.5 text-left text-[12px] text-ink-faint ring-1 ring-inset ring-ink/20 active:text-ink" @click="goBack(router, { name: 'celestial' })">← 天界</button>
         <p class="font-kai text-[15px] tracking-[0.3em] text-ink">器 魂</p>
         <div class="text-right">
           <span class="block text-[10px] leading-tight text-ink-faint">道源</span>
@@ -39,7 +39,7 @@
               <span class="mt-1 text-[10px] leading-tight text-ink-soft">{{ soulLabel(endgame.activeSouls[i - 1]!) }}</span>
               <!-- 纯文字只有 15px 高;内联块给拇指 30px 靶面 -->
               <button
-                class="mt-1 inline-block px-2 py-2 text-[10px] text-ink-faint underline"
+                class="mt-1 inline-block rounded px-2 py-2 text-[10px] text-ink-faint ring-1 ring-inset ring-ink/25"
                 @click="removeSoul(endgame.activeSouls[i - 1]!.uid)"
               >
                 卸下

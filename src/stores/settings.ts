@@ -32,12 +32,18 @@ export const useSettingsStore = defineStore(
     /** 遇事勿扰:历练撞见际遇/机缘/奇缘时不弹窗,立刻按默认好愿了结(与超时自动处置同一条路) */
     const dndEvents = ref(false)
     /**
-     * VIP 托管自动化(core/autoOps 循环读取):三个开关独立,「历练优先于闭关」。
+     * VIP 托管自动化(core/autoOps 循环读取):四项开关独立,「历练优先于闭关」。
      * 开关本身持久化,但须 VIP 才能开;VIP 到期由 autoOps 循环复核后自动关停。
      */
     const autoBoss = ref(false)
     const autoRetreat = ref(false)
     const autoAdventure = ref(false)
+    /**
+     * 自动做每日活动(周天七会 + 闲趣三则)。
+     * 只代办「不必玩家本人到场」的那一半:擂台连战、观星抽签、垂钓收篓、达标领赏;
+     * 切磋要挑道友、秘境要选层数、猜谜只有一次机会,都不代做(见 core/autoOps 注释)。
+     */
+    const autoDailyEvent = ref(false)
     /** 自动历练的去处与档位('' = 未选;AUTO_REGION_ID 即 'auto' = 托管自行择地) */
     const autoRegionId = ref('')
     const autoMode = ref<import('@/types').ExploreMode>('normal')
@@ -83,6 +89,7 @@ export const useSettingsStore = defineStore(
       autoBoss.value = autoBoss.value === true
       autoRetreat.value = autoRetreat.value === true
       autoAdventure.value = autoAdventure.value === true
+      autoDailyEvent.value = autoDailyEvent.value === true
       autoRegionId.value = typeof autoRegionId.value === 'string' ? autoRegionId.value : ''
       autoMode.value = exploreModeOf(autoMode.value)
       bossDifficulty.value = bossDifficultyOf(bossDifficulty.value)
@@ -126,6 +133,7 @@ export const useSettingsStore = defineStore(
       autoBoss,
       autoRetreat,
       autoAdventure,
+      autoDailyEvent,
       autoRegionId,
       autoMode,
       bossDifficulty,

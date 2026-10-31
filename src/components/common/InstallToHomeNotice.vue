@@ -7,7 +7,11 @@
     <p class="font-kai text-[13px] tracking-wider text-ink">添加到主屏幕</p>
     <p class="mt-1.5 text-[11px] leading-relaxed text-ink-faint">七天未打开会清除存档</p>
     <p class="mt-1.5 text-[11px] leading-relaxed text-ink-soft">Safari → 分享 → 「添加到主屏幕」</p>
-    <button v-if="!permanent" class="-my-1 mt-2 py-2 text-[11px] text-ink-faint underline" @click="dismiss">知道了</button>
+    <button
+      v-if="!permanent"
+      class="-my-1 mt-2 rounded px-2 py-2 text-[11px] text-ink-faint ring-1 ring-inset ring-ink/25 active:text-ink"
+      @click="dismiss"
+    >知道了</button>
   </div>
 </template>
 

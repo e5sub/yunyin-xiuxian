@@ -7,7 +7,7 @@
         <!-- 须是 button:无 href 的 <a> 不在 Tab 序列里 -->
         <button
           type="button"
-          class="-my-2 inline-block py-2 align-baseline text-azure underline underline-offset-2 active:opacity-60"
+          class="-my-2 inline-block rounded px-1.5 py-2 align-baseline text-azure ring-1 ring-inset ring-azure/30 active:opacity-60"
           @click="emit('close')"
         >
           天道熔炉

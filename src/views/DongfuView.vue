@@ -2,7 +2,7 @@
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
     <div class="card-ink relative flex items-center justify-between gap-2 px-4 py-3">
       <!-- 走 goBack(父页兜底):冷启动直接落在这一页时,裸 router.back() 会退到 about:blank -->
-      <button class="-my-1.5 py-1.5 text-left text-[12px] text-ink-faint" @click="goBack(router, { name: 'home' })">← 返回</button>
+      <button class="-my-1.5 rounded px-2 py-1.5 text-left text-[12px] text-ink-faint ring-1 ring-inset ring-ink/20 active:text-ink" @click="goBack(router, { name: 'home' })">← 返回</button>
       <!-- 标题绝对居中,不随左侧「返回」的宽度偏离中轴 -->
       <p class="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap font-kai text-[15px] tracking-[0.3em] text-ink">
         洞府营造

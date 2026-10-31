@@ -30,10 +30,10 @@
           已立「{{ signedTrial.name }}」· {{ signedTrial.ruleText }}
         </span>
       </span>
-      <!-- 纯文字按钮补到 30px 高:弹窗可点元素受 28px 下限约束 -->
+      <!-- 纯文字按钮补到 30px 高:弹窗可点元素受 28px 下限约束;带一圈细边框才看得出能点 -->
       <button
         v-if="!signedTrial"
-        class="shrink-0 self-center -my-1.5 px-2 py-1.5 text-[12px] text-gold-ink underline underline-offset-2 active:text-cinnabar"
+        class="shrink-0 self-center -my-1.5 rounded px-2 py-1.5 text-[12px] text-gold-ink ring-1 ring-inset ring-gold-ink/40 active:text-cinnabar"
         @click="trialOpen = true"
       >
         立契

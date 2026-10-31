@@ -5,7 +5,10 @@
       <p class="text-[10px] tabular text-ink-faint">
         纪元 {{ RULESET_VERSION }} · 变更 {{ RULESET_CHANGELOG.length }} 回
       </p>
-      <button class="-my-1 py-2 font-kai text-[10px] text-azure active:scale-90" @click="openEra(null)">
+      <button
+        class="-my-1 rounded px-1.5 py-2 font-kai text-[10px] text-azure ring-1 ring-inset ring-azure/30 active:scale-90"
+        @click="openEra(null)"
+      >
         纪元变迁史 →
       </button>
     </div>

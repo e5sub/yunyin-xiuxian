@@ -11,7 +11,7 @@
           <span class="tabular shrink-0" :class="s.active ? 'text-jade' : 'text-ink-faint'">{{ s.count }}/{{ s.def.required }}</span>
           <span class="min-w-0 grow text-[10px] leading-relaxed text-ink-faint">{{ s.def.effectDesc }}</span>
           <!-- 触控靶面:负外边距配正内边距,盒高 31px 过 layout-check(≥28),流中仍占 15px 行高;同页收纳/分解同法 -->
-          <button class="-my-2 shrink-0 px-1 py-2 text-[10px] text-azure active:opacity-60" @click="onEquipSet(s.def.id)">
+          <button class="-my-2 shrink-0 rounded px-1.5 py-2 text-[10px] text-azure ring-1 ring-inset ring-azure/30 active:opacity-60" @click="onEquipSet(s.def.id)">
             穿齐 →({{ s.preview > 0 ? `换 ${s.preview}` : '无可换' }})
           </button>
         </p>
@@ -19,10 +19,10 @@
       <div class="mt-3 flex items-center justify-between px-1">
         <span class="text-[11px] text-ink-faint tabular">行囊 {{ inventory.bagItems.length }} · 器灵尘 {{ resources.dust }}</span>
         <span class="flex gap-3">
-          <button class="-my-1.5 py-1.5 text-[11px] text-azure active:opacity-60" @click="smartOpen = true">
+          <button class="-my-1.5 rounded px-2 py-1.5 text-[11px] text-azure ring-1 ring-inset ring-azure/30 active:opacity-60" @click="smartOpen = true">
             收纳{{ settings.smartKeep.enabled ? '·启' : '' }}
           </button>
-          <button class="-my-1.5 py-1.5 text-[11px] text-cinnabar active:opacity-60" @click="decomposeOpen = true">分解</button>
+          <button class="-my-1.5 rounded px-2 py-1.5 text-[11px] text-cinnabar ring-1 ring-inset ring-cinnabar/30 active:opacity-60" @click="decomposeOpen = true">分解</button>
         </span>
       </div>
       <div class="mt-2 grid grid-cols-3 gap-2">

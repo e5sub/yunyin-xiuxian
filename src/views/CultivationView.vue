@@ -18,7 +18,7 @@
       </div>
       <div class="mt-4">
         <div class="mb-1 flex justify-between text-[11px] text-ink-faint tabular">
-          <button class="-my-1 py-1.5 text-left active:opacity-60" @click="showCultBreakdown = true">
+          <button class="-my-1 rounded px-1.5 py-1.5 text-left ring-1 ring-inset ring-ink/20 active:opacity-60" @click="showCultBreakdown = true">
             修为 +{{ formatRate(player.cultPerSec) }}
             <!-- 与「灵气充盈约 X」那行互斥:一个报「还没到」,一个标「已经到了」(判据同 player.qiRich) -->
             <span v-if="player.qiRich" class="ml-1 rounded bg-jade/10 px-1 py-0.5 align-middle text-[9px] leading-none text-jade">
@@ -46,7 +46,7 @@
       </div>
       <div class="mt-3">
         <div class="mb-1 flex justify-between text-[11px] text-ink-faint tabular">
-          <button class="-my-1 py-1.5 text-left active:opacity-60" @click="showQiBreakdown = true">
+          <button class="-my-1 rounded px-1.5 py-1.5 text-left ring-1 ring-inset ring-ink/20 active:opacity-60" @click="showQiBreakdown = true">
             灵气 +{{ formatRate(player.qiRegenPerSec) }}
             <span class="ml-0.5 text-[9px] text-ink-faint">来路 →</span>
           </button>

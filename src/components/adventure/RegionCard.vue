@@ -72,9 +72,9 @@
       <span class="text-[10px] tabular" :class="reviveNow <= 12 ? 'text-cinnabar' : 'text-ink-faint'">
         妖气 {{ reviveText(reviveNow) }}后复聚
       </span>
-      <!-- 次级动作放产出条里,不占名字那一行 -->
+      <!-- 次级动作放产出条里,不占名字那一行;只有文字时看不出能点,补一圈细边框 -->
       <button
-        class="ml-auto inline-flex min-h-[28px] items-center px-1 text-[10px] text-ink-faint underline underline-offset-2 active:scale-90 active:text-ink"
+        class="ml-auto inline-flex min-h-[28px] items-center rounded px-1.5 text-[10px] text-ink-faint ring-1 ring-inset ring-ink/25 active:scale-90 active:text-ink"
         @click.stop="emit('toggle-suppress', row.def.id)"
       >
         停取收益
