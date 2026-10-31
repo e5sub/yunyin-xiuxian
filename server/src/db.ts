@@ -285,6 +285,16 @@ CREATE TABLE IF NOT EXISTS dungeon_growth (
   period_start INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, dungeon)
 );
+-- 周天七会:每人每日每会的进度;claimed=1 后不再累加(赏只发一次)
+CREATE TABLE IF NOT EXISTS event_progress (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  progress INTEGER NOT NULL DEFAULT 0,
+  claimed INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, day, event_id)
+);
 -- VIP 激活码:days=0 表示永久;一码一用
 CREATE TABLE IF NOT EXISTS vip_codes (
   code TEXT PRIMARY KEY,
@@ -523,6 +533,16 @@ CREATE TABLE IF NOT EXISTS dungeon_growth (
   PRIMARY KEY (user_id, dungeon),
   CONSTRAINT fk_dgrowth_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS event_progress (
+  user_id BIGINT NOT NULL,
+  day CHAR(10) NOT NULL,
+  event_id VARCHAR(32) NOT NULL,
+  progress INT NOT NULL DEFAULT 0,
+  claimed TINYINT NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, day, event_id),
+  CONSTRAINT fk_eventprog_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS vip_codes (
   code VARCHAR(20) PRIMARY KEY,
   days INT NOT NULL,
@@ -668,6 +688,8 @@ async function seedConfig(): Promise<void> {
     // 副本 · 高难掉装备:绝境/炼狱获胜后的装备掉率(%)
     ['dungeon_equip_drop_peril', '25'],
     ['dungeon_equip_drop_abyss', '60'],
+    // 周天七会:每日轮值活动总开关(false = 全站关停);活动定义与赏格在 server/src/eventCore.ts
+    ['event_enabled', 'true'],
     ['email_enabled', env('EMAIL_ENABLED', 'false')],
     ['email_code_required', env('EMAIL_CODE_REQUIRED', 'false')],
     ['smtp_host', env('SMTP_HOST')],

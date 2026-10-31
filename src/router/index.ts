@@ -28,6 +28,7 @@ export const router = createRouter({
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
     { path: '/friends', name: 'friends', component: () => import('@/views/FriendsView.vue') },
     { path: '/boss', name: 'boss', component: () => import('@/views/BossView.vue') },
+    { path: '/event', name: 'event', component: () => import('@/views/EventView.vue') },
     { path: '/dungeon', name: 'dungeon', component: () => import('@/views/DungeonView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' }
   ]

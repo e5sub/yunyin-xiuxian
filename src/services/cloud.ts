@@ -219,7 +219,70 @@ export interface DungeonRunResult {
   log: string[]
   /** 高难(绝境/炼狱)获胜后服务端掷中的装备掉落:领取时按自身境界生成 */
   equipDrop: boolean
+  /** 活动日战获倍率(秘境潮 ×1.5;平日 1) */
+  eventBoon?: number
   reward: { stone: number; herb: number }
+}
+
+// ---- 周天七会:每日轮值活动(服务端权威) ----
+
+export type EventKind = 'duel' | 'arena' | 'boss' | 'dungeon' | 'board'
+
+export interface EventReward {
+  /** 灵石基础值,按自身层级折算(与秘境战获同口径) */
+  stone: number
+  herb: number
+  wudao: number
+  ore: number
+  dust: number
+  page: number
+}
+
+export interface DailyEventView {
+  id: string
+  /** 1 = 周一 … 7 = 周日 */
+  dow: number
+  name: string
+  tag: string
+  desc: string
+  kind: EventKind
+  /** duel 胜场 / arena 连胜 / boss 出剑 / dungeon 通关;board 为名次上限 */
+  target: number
+  rule: string
+  reward: EventReward
+  to: string
+  duelAny?: boolean
+  bonus?: { dungeonReward?: number; bossAttempts?: number; arenaFoe?: number; arenaSelfHp?: number }
+}
+
+export interface EventToday {
+  enabled: boolean
+  /** 北京时间日号;换日以它为准,不看本机时区 */
+  day: string
+  now: number
+  secsToNext: number
+  event: DailyEventView
+  mine: { progress: number; claimed: boolean }
+  /** 天榜型活动给出当前名次 */
+  rank: number | null
+  week: DailyEventView[]
+}
+
+export interface EventArenaRun {
+  round: number
+  foe: string
+  win: boolean
+  rounds: number
+  log: string[]
+}
+
+export interface EventArenaResult {
+  day: string
+  eventId: string
+  runs: EventArenaRun[]
+  streak: number
+  mine: { progress: number; claimed: boolean }
+  target: number
 }
 
 export class CloudError extends Error {
@@ -411,7 +474,13 @@ export const cloudApi = {
     request('POST', '/dungeon/room/join', { code }),
   dungeonRoomLeave: (): Promise<{ ok: boolean }> => request('POST', '/dungeon/room/leave'),
   dungeonRun: (dungeon: DungeonKey, code = '', difficulty: DungeonDifficulty = 'normal'): Promise<DungeonRunResult> =>
-    request('POST', '/dungeon/run', { dungeon, code, difficulty })
+    request('POST', '/dungeon/run', { dungeon, code, difficulty }),
+  /** 今日活动:定义 + 我的进度 + 天榜名次 + 七日一览 */
+  eventToday: (): Promise<EventToday> => request('GET', '/event/today'),
+  /** 领活动赏(达标且未领) */
+  eventClaim: (): Promise<{ reward: EventReward; day: string; eventId: string }> => request('POST', '/event/claim', {}),
+  /** 擂台连战:服务端按档案生成三关并模拟,返回逐场战报与最好连胜 */
+  eventArena: (): Promise<EventArenaResult> => request('POST', '/event/arena', {})
 }
 
 // ---- WebSocket:聊天 / 在线状态 / 好友通知 ----

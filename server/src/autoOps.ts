@@ -10,6 +10,7 @@ import { requireAuth } from './auth.js'
 import { isOnline } from './ws.js'
 import { getConfigNumber } from './config.js'
 import { dayKey, attemptsUsed } from './dungeonCore.js'
+import { bossAttemptBonus } from './eventCore.js'
 import { geNorm, geAdd, type GE } from './gnum.js'
 import { performStrike, ensureBoss, assessStrike, bossDifficultyOf, type BossDifficulty } from './routes/boss.js'
 
@@ -140,7 +141,7 @@ async function tickOfflineBoss(): Promise<void> {
       // 顺带补重生:无人在线时妖王也按重生期回来,离线道友照常可讨
       const boss = await ensureBoss()
       if (boss.dead_at !== 0) continue
-      const limit = await getConfigNumber('boss_daily_attempts', 1)
+      const limit = (await getConfigNumber('boss_daily_attempts', 1)) + (await bossAttemptBonus())
       if ((await attemptsUsed(r.user_id, 'boss', dayKey())) >= limit) continue
       // 量力而行:能补刀先补刀,站得住就砍;明显打不过则蓄势留剑(次数不过期,临期兜底)
       const difficulty: BossDifficulty = bossDifficultyOf(r.boss_difficulty)

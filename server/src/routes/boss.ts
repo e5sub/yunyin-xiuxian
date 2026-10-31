@@ -6,6 +6,7 @@ import { getConfig, getConfigNumber } from '../config.js'
 import { requireAuth } from '../auth.js'
 import { broadcastAll } from '../ws.js'
 import { dayKey, attemptsUsed, bumpDaily, type DungeonDifficulty } from '../dungeonCore.js'
+import { addEventProgress, bossAttemptBonus, todayEvent } from '../eventCore.js'
 import { geNorm, geAdd, geSub, geMulN, geMin, geText, randRange, type GE } from '../gnum.js'
 
 export const bossRouter = express.Router()
@@ -415,7 +416,8 @@ async function distributeKillLoot(killerId: number): Promise<KillDistribution> {
 bossRouter.get('/', requireAuth, (req, res) => {
   void (async () => {
     const boss = await ensureBoss()
-    const maxAttempts = await getConfigNumber('boss_daily_attempts', 1)
+    // 妖潮夜(GM 可关)当日多一剑:上限与出剑口两处须同源,否则页面显示有余、点下去被拒
+    const maxAttempts = (await getConfigNumber('boss_daily_attempts', 1)) + (await bossAttemptBonus())
     const used = await attemptsUsed(req.user!.id, 'boss', dayKey())
     const mine = await get<DamageRow>(
       'SELECT user_id, name, dmg_m, dmg_e, strikes FROM boss_damage WHERE user_id = ?',
@@ -502,6 +504,9 @@ export async function performStrike(userId: number, difficulty: BossDifficulty =
 
   await bumpDaily(userId, 'boss', dayKey())
   await bumpDamage(userId, playerName || `道友${userId}`, applied, difficulty)
+  // 周天七会·妖潮夜:出剑即记一笔(托管代打同样算,不分手动自动)
+  const ev = await todayEvent()
+  if (ev.event.kind === 'boss') await addEventProgress(userId, ev.day, ev.event.id, 1)
 
   let recipients = 0
   let equipWinner: string | null = null
@@ -556,7 +561,7 @@ bossRouter.post('/strike', requireAuth, (req, res) => {
       res.status(409).json({ error: '妖王已陨落,静候重生' })
       return
     }
-    const limit = await getConfigNumber('boss_daily_attempts', 1)
+    const limit = (await getConfigNumber('boss_daily_attempts', 1)) + (await bossAttemptBonus())
     const used = await attemptsUsed(req.user!.id, 'boss', dayKey())
     if (used >= limit) {
       res.status(429).json({ error: `今日已出手,明日再战` })

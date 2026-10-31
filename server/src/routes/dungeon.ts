@@ -37,6 +37,7 @@ import {
   type DungeonKey
 } from '../dungeonCore.js'
 import { geAdd, geMulN, geNorm, geSub, geText, randRange, randomIntRange, type GE } from '../gnum.js'
+import { activeEvent, addEventProgress } from '../eventCore.js'
 
 export const dungeonRouter = express.Router()
 
@@ -554,6 +555,15 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
             ? runGuard(fighters, cfg as GuardCfg, mod)
             : runArray(fighters, cfg as ArrayCfg, mod)
 
+    // 周天七会·秘境潮:今日战获加倍(只乘战获,不碰妖物强度);告捷记一笔进度
+    const ev = await activeEvent()
+    const eventBoon = ev !== null && ev.event.kind === 'dungeon' ? (ev.event.bonus?.dungeonReward ?? 1) : 1
+    if (ev !== null && ev.event.kind === 'dungeon' && sim.win) {
+      sim.stone = Math.max(1, Math.round(sim.stone * eventBoon))
+      sim.herb = Math.round(sim.herb * eventBoon)
+      await addEventProgress(req.user!.id, ev.day, ev.event.id, 1)
+    }
+
     // 高难掉装备:绝境/炼狱获胜后掷一次(GM 可调掉率);装备本体由抽中者客户端按自身境界生成
     let equipDrop = false
     if (sim.win && (difficulty === 'peril' || difficulty === 'abyss')) {
@@ -594,6 +604,7 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
       difficulty,
       difficultyName: DIFFICULTY_NAMES[difficulty],
       scaling: { power: mod.power, reward: mod.reward, avgRealm: mod.avgRealm },
+      eventBoon,
       growth: { kills: growth.kills, mult: growth.mult, resetAt: growth.resetAt },
       roomSize: fighters.length,
       win: sim.win,

@@ -4,6 +4,7 @@ import { all, get, run } from '../db.js'
 import { getConfigNumber } from '../config.js'
 import { requireAuth } from '../auth.js'
 import { simulateDuel } from '../pvp.js'
+import { addEventProgress, todayEvent } from '../eventCore.js'
 import { broadcastAll, onlineCount, onlineList, touchPresence } from '../ws.js'
 
 export const socialRouter = express.Router()
@@ -295,12 +296,16 @@ socialRouter.post('/pvp', requireAuth, (req: Request, res: Response) => {
       res.status(404).json({ error: '对方档案未同步' })
       return
     }
-    res.json(
-      simulateDuel(
-        { id: req.user!.id, name: mine.name, hpM: mine.hp_m, hpE: mine.hp_e, atkM: mine.atk_m, atkE: mine.atk_e, powerM: mine.power_m, powerE: mine.power_e },
-        { id: targetId, name: theirs.name, hpM: theirs.hp_m, hpE: theirs.hp_e, atkM: theirs.atk_m, atkE: theirs.atk_e, powerM: theirs.power_m, powerE: theirs.power_e }
-      )
+    const result = simulateDuel(
+      { id: req.user!.id, name: mine.name, hpM: mine.hp_m, hpE: mine.hp_e, atkM: mine.atk_m, atkE: mine.atk_e, powerM: mine.power_m, powerE: mine.power_e },
+      { id: targetId, name: theirs.name, hpM: theirs.hp_m, hpE: theirs.hp_e, atkM: theirs.atk_m, atkE: theirs.atk_e, powerM: theirs.power_m, powerE: theirs.power_e }
     )
+    // 周天七会·切磋型:胜场记一笔(万剑会只看场次,论道会看胜场,由活动定义决定目标)
+    const { day, event } = todayEvent()
+    if (event.kind === 'duel' && (event.duelAny === true || result.winner === 'me')) {
+      await addEventProgress(req.user!.id, day, event.id, 1)
+    }
+    res.json(result)
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })
