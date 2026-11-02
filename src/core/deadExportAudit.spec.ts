@@ -258,7 +258,8 @@ describe('死导出审计', () => {
     pillValueTable: '丹药价值全表,仅 pillValue.spec 断言价值预算闭环',
     fullEconomyAudit: '经济闭环审计主入口:平均每境产出/自给/死资源汇总,仅 economySim.spec 读;economySim 因 avgDustPerDrop 被离线借用而成为运行时共享源,此审计汇总不由运行时接线',
     qiFillSeconds: '灵脉充盈计时审计口径:仅 economySim.spec 校验灵所充盈曲线用时,运行时走灵脉实时投点',
-    expIncomeAudit: '修为收入审计汇总:仅 expIncome.spec 读;economySim 经 expIncome 取 winsPerHour/tripExpSecsPerHour 使 expIncome 成为运行时共享源,此审计头不进运行时'
+    expIncomeAudit: '修为收入审计汇总:仅 expIncome.spec 读;economySim 经 expIncome 取 winsPerHour/tripExpSecsPerHour 使 expIncome 成为运行时共享源,此审计头不进运行时',
+    snapshotFromSlices: '服务端复算入口:server/src/recompute.ts 动态加载本模块跑无头复算(save.ts 反作弊),消费方在 src 之外,审计扫不到;profileRecompute.spec 守其口径'
   }
 
   it('运行时模块里的导出,不能只被 spec 用到 —— 那是骨架空转的样子', () => {

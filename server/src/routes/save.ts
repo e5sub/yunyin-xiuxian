@@ -3,6 +3,7 @@ import express, { type Request, type Response } from 'express'
 import { all, get, run, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { getConfigNumber } from '../config.js'
+import { recomputeProfile } from '../recompute.js'
 
 export interface ProfileSnapshot {
   name: string
@@ -54,25 +55,18 @@ function finite(v: unknown): v is number {
 
 /**
  * 快照校验:字段缺失或非法按 0 兜底;name/realmLabel 兜空串。
- * 属性按上限钳制:改包客户端上传 1e999 级攻击力,战斗结算与排行榜也不会被其污染。
- * saveRealmIndex 传本次上传存档里的境界(major×100+sub):快照与存档同刻生成,
- * 偏差超过一个大境界说明快照被单独改过(典型:console 改 Pinia 后自动上传),
- * 按存档境界收口,别让「低境界高攻」的快照进 profiles 去打围妖/副本/擂台。
+ * 只做解析,不钳制 —— 钳制统一走 clampSnapshot(复算结果与客户端快照同一把尺)。
  */
-function parseSnapshot(raw: unknown, userId: number, saveRealmIndex: number): ProfileSnapshot | null {
+function parseSnapshot(raw: unknown, userId: number): ProfileSnapshot | null {
   if (typeof raw !== 'object' || raw === null) return null
   const b = raw as Record<string, unknown>
   const str = (v: unknown, max: number): string => (typeof v === 'string' ? v.slice(0, max) : '')
-  const num = (v: unknown): number => (finite(v) ? Math.min(Math.max(v, 0), SNAP_MANTISSA_MAX) : 0)
-  const int = (v: unknown): number => (finite(v) ? Math.trunc(Math.min(Math.max(v, 0), SNAP_EXP_MAX)) : 0)
-  const rawRealm = finite(b.realmIndex) ? Math.trunc(b.realmIndex) : 0
-  // 先按存档境界收口(容忍一个大境界,存档本身没被改就与快照同源),再钳合法上限
-  const realmCeil = Math.min(saveRealmIndex + REALM_SNAP_TOLERANCE, REALM_INDEX_MAX)
-  const realmIndex = Math.min(Math.max(rawRealm, 0), Math.max(realmCeil, 0))
+  const num = (v: unknown): number => (finite(v) ? v : 0)
+  const int = (v: unknown): number => (finite(v) ? Math.trunc(v) : 0)
   return {
     name: str(b.name, 24) || `道友${userId}`,
     realmLabel: str(b.realmLabel, 24),
-    realmIndex,
+    realmIndex: int(b.realmIndex),
     powerM: num(b.powerM),
     powerE: int(b.powerE),
     hpM: num(b.hpM),
@@ -82,6 +76,59 @@ function parseSnapshot(raw: unknown, userId: number, saveRealmIndex: number): Pr
     defM: num(b.defM),
     defE: int(b.defE)
   }
+}
+
+/**
+ * 快照钳制(复算与客户端快照共用):
+ *  - 指数/尾数压到合法玩法上限之外一点点(中文单位到「极」≈e48,真仙终局 ≈e80;e150 高出 70 个数量级,
+ *    正常玩家碰不到 —— 改包写 e300 也到此为止,围妖/副本/擂台与妖王血量不再被天文数字污染);
+ *  - 境界钳到合法上限(5 界 29 境 → 2809,留 3000);
+ *  - 快照境界与存档境界(major×100+sub,同刻生成)偏差超过一个大境界即按存档收口 ——
+ *    拦「低境界高攻」的快照单改(console 改 Pinia 后自动上传)。
+ */
+function clampSnapshot(s: ProfileSnapshot, saveRealmIndex: number, userId: number): ProfileSnapshot {
+  const num = (v: number): number => Math.min(Math.max(v, 0), SNAP_MANTISSA_MAX)
+  const int = (v: number): number => Math.trunc(Math.min(Math.max(v, 0), SNAP_EXP_MAX))
+  const realmCeil = Math.min(saveRealmIndex + REALM_SNAP_TOLERANCE, REALM_INDEX_MAX)
+  return {
+    name: s.name.trim().slice(0, 24) || `道友${userId}`,
+    realmLabel: s.realmLabel.slice(0, 24),
+    realmIndex: Math.min(Math.max(s.realmIndex, 0), Math.max(realmCeil, 0)),
+    powerM: num(s.powerM),
+    powerE: int(s.powerE),
+    hpM: num(s.hpM),
+    hpE: int(s.hpE),
+    atkM: num(s.atkM),
+    atkE: int(s.atkE),
+    defM: num(s.defM),
+    defE: int(s.defE)
+  }
+}
+
+async function upsertProfile(userId: number, s: ProfileSnapshot, now: number): Promise<void> {
+  await upsertByPk('profiles', {
+    user_id: userId,
+    name: s.name,
+    realm_label: s.realmLabel,
+    realm_index: s.realmIndex,
+    power_m: s.powerM,
+    power_e: s.powerE,
+    hp_m: s.hpM,
+    hp_e: s.hpE,
+    atk_m: s.atkM,
+    atk_e: s.atkE,
+    def_m: s.defM,
+    def_e: s.defE,
+    updated_at: now
+  })
+}
+
+/** 复算结果字段完整性:动态模块在服务端是 any,进库前把形态兜死 */
+function snapshotComplete(s: Record<string, unknown> | null): s is ProfileSnapshot & Record<string, unknown> {
+  if (s === null) return false
+  const keys = ['realmIndex', 'powerM', 'powerE', 'hpM', 'hpE', 'atkM', 'atkE', 'defM', 'defE'] as const
+  if (!keys.every(k => finite(s[k]))) return false
+  return typeof s.name === 'string' && typeof s.realmLabel === 'string'
 }
 
 /**
@@ -219,23 +266,15 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       started: metrics.started ? 1 : 0,
       updated_at: now
     })
-    const snapshot = parseSnapshot(body.profile, req.user!.id, metrics.realmIndex)
-    if (snapshot !== null) {
-      await upsertByPk('profiles', {
-        user_id: req.user!.id,
-        name: snapshot.name,
-        realm_label: snapshot.realmLabel,
-        realm_index: snapshot.realmIndex,
-        power_m: snapshot.powerM,
-        power_e: snapshot.powerE,
-        hp_m: snapshot.hpM,
-        hp_e: snapshot.hpE,
-        atk_m: snapshot.atkM,
-        atk_e: snapshot.atkE,
-        def_m: snapshot.defM,
-        def_e: snapshot.defE,
-        updated_at: now
-      })
+    // 快照以复算为准:用上传分片无头水合同一批 store、跑同一份 finalStats 链重算;
+    // 复算失败(分片畸形/链路抛错)才回落客户端快照;两边都拿不到(老客户端不带 profile)就不动 profiles。
+    // 两条路最后都过同一把钳制尺。
+    const clientSnap = parseSnapshot(body.profile, req.user!.id)
+    const recomputed = await recomputeProfile(body.data)
+    if (snapshotComplete(recomputed)) {
+      await upsertProfile(req.user!.id, clampSnapshot(recomputed, metrics.realmIndex, req.user!.id), now)
+    } else if (clientSnap !== null) {
+      await upsertProfile(req.user!.id, clampSnapshot(clientSnap, metrics.realmIndex, req.user!.id), now)
     }
     res.json({ ok: true, updatedAt: now })
   })().catch(() => {

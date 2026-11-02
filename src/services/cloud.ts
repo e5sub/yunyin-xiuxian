@@ -496,7 +496,8 @@ export const cloudApi = {
   putSave: (payload: {
     version: number
     data: Record<string, unknown>
-    profile: unknown
+    /** 档案快照:复算链取不到时省略,服务端保留旧 profile(不该拿空快照顶掉) */
+    profile?: unknown
     /** 本机上次同步到的云端时间戳:服务端据此判断是否被别的设备改过 */
     baseUpdatedAt?: number
   }): Promise<{ ok: boolean; updatedAt: number }> => request('PUT', '/save', payload),

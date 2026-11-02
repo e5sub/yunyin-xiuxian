@@ -3,20 +3,23 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
+    "dev": "tsx watch --tsconfig ../tsconfig.app.json src/index.ts",
+    "start": "tsx --tsconfig ../tsconfig.app.json src/index.ts",
     "admin": "tsx src/scripts/create-admin.ts",
     "check": "tsc --noEmit"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^12.4.1",
+    "crypto-js": "^4.1.1",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.24.6",
     "nodemailer": "^10.2.1",
+    "pinia": "^3.0.1",
     "qrcode": "^1.5.4",
     "tsx": "^4.20.6",
+    "vue": "^3.5.13",
     "ws": "^8.18.3"
   },
   "devDependencies": {

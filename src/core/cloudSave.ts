@@ -11,13 +11,11 @@
 import { ref } from 'vue'
 import { buildExportPayload, SAVE_VERSION, storageKey } from '@/utils/storage'
 import { readSaveText } from '@/utils/crypto'
-import { realmLabel } from '@/data/realms'
-import { powerScore } from '@/core/formulas'
 import { applySavePayload, reloadGame } from '@/core/save'
+import { snapshotFromActiveStores, type ProfileSnapshot } from '@/core/profileRecompute'
 import { CloudError, cloudApi } from '@/services/cloud'
 import { useAuthStore } from '@/stores/auth'
 import { useGameStore } from '@/stores/game'
-import { usePlayerStore } from '@/stores/player'
 
 /** 自动上传间隔:登录时从服务端 game_config(save_push_interval_sec)取,GM 后台可调 */
 let pushIntervalMs = 20_000
@@ -72,36 +70,10 @@ function report(kind: 'error' | 'conflict', text: string): void {
   }
 }
 
-/** 档案快照:随存档上传,供排行榜 / 好友列表 / 切磋 / GM 后台使用 */
-export function buildProfileSnapshot(): {
-  name: string
-  realmLabel: string
-  realmIndex: number
-  powerM: number
-  powerE: number
-  hpM: number
-  hpE: number
-  atkM: number
-  atkE: number
-  defM: number
-  defE: number
-} {
-  const player = usePlayerStore()
-  const { attack, defense, maxHp } = player.finalStats
-  const power = powerScore(attack, defense, maxHp)
-  return {
-    name: player.name,
-    realmLabel: realmLabel(player.major, player.sub),
-    realmIndex: player.major * 100 + player.sub,
-    powerM: power.m,
-    powerE: power.e,
-    hpM: maxHp.m,
-    hpE: maxHp.e,
-    atkM: attack.m,
-    atkE: attack.e,
-    defM: defense.m,
-    defE: defense.e
-  }
+/** 档案快照:随存档上传,供排行榜 / 好友列表 / 切磋 / GM 后台使用。
+ *  计算收进 core/profileRecompute 单点 —— 服务端复算走同一份 finalStats 链,两端口径不会漂 */
+export function buildProfileSnapshot(): ProfileSnapshot | null {
+  return snapshotFromActiveStores()
 }
 
 let pushing = false
@@ -144,10 +116,12 @@ export async function pushCloudSave(manual = false): Promise<PushOutcome> {
       }
     }
     const payload = buildExportPayload()
+    const profile = buildProfileSnapshot()
     const res = await cloudApi.putSave({
       version: SAVE_VERSION,
       data: payload.data,
-      profile: buildProfileSnapshot(),
+      // 快照链万一取不到(理论上只在 store 异常时)就不带 profile:服务端保留旧档,不该拿空快照顶掉
+      ...(profile !== null ? { profile } : {}),
       // 手动上传视为「以本机为准」:不带锚点,服务端不做冲突判定
       ...(manual || base === 0 ? {} : { baseUpdatedAt: base })
     })
