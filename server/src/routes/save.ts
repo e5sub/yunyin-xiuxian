@@ -35,10 +35,15 @@ async function historyKeep(): Promise<number> {
   return Math.min(Math.max(Math.trunc(n), 1), HISTORY_KEEP_MAX)
 }
 
-/** 属性快照钳制上限:尾数与十进制指数都远超正常玩法上限(中文单位到「极」≈e48,真仙终局 ≈e80) */
+/** 属性快照钳制上限:尾数与十进制指数都远超正常玩法上限(中文单位到「极」≈e48,真仙终局 ≈e80)。
+ *  上限要压得足够低才有意义 —— 钳到 e500 等于没钳:改包写 e300 照样秒杀一切服务端玩法、
+ *  还能把妖王血量抬到全服打不动。e150 仍比合法天花板高出 70 个数量级,正常玩家碰不到。 */
 const SNAP_MANTISSA_MAX = 1e6
-const SNAP_EXP_MAX = 500
-const REALM_INDEX_MAX = 20_000
+const SNAP_EXP_MAX = 150
+/** 合法境界上限:5 界 29 境 → major×100+sub 最高 2809;留到 3000,改包写 20000 会把副本/妖王的境界基准拉爆 */
+const REALM_INDEX_MAX = 3_000
+/** 快照境界与存档境界允许的偏差:快照与存档同刻生成,差超过一个大境界即视为被改 */
+const REALM_SNAP_TOLERANCE = 200
 
 /** 每账号上次写档时刻(内存即可:重启清零只影响 2 秒窗口) */
 const lastWriteAt = new Map<number, number>()
@@ -50,18 +55,24 @@ function finite(v: unknown): v is number {
 /**
  * 快照校验:字段缺失或非法按 0 兜底;name/realmLabel 兜空串。
  * 属性按上限钳制:改包客户端上传 1e999 级攻击力,战斗结算与排行榜也不会被其污染。
+ * saveRealmIndex 传本次上传存档里的境界(major×100+sub):快照与存档同刻生成,
+ * 偏差超过一个大境界说明快照被单独改过(典型:console 改 Pinia 后自动上传),
+ * 按存档境界收口,别让「低境界高攻」的快照进 profiles 去打围妖/副本/擂台。
  */
-function parseSnapshot(raw: unknown, userId: number): ProfileSnapshot | null {
+function parseSnapshot(raw: unknown, userId: number, saveRealmIndex: number): ProfileSnapshot | null {
   if (typeof raw !== 'object' || raw === null) return null
   const b = raw as Record<string, unknown>
   const str = (v: unknown, max: number): string => (typeof v === 'string' ? v.slice(0, max) : '')
   const num = (v: unknown): number => (finite(v) ? Math.min(Math.max(v, 0), SNAP_MANTISSA_MAX) : 0)
   const int = (v: unknown): number => (finite(v) ? Math.trunc(Math.min(Math.max(v, 0), SNAP_EXP_MAX)) : 0)
-  const realm = (v: unknown): number => (finite(v) ? Math.trunc(Math.min(Math.max(v, 0), REALM_INDEX_MAX)) : 0)
+  const rawRealm = finite(b.realmIndex) ? Math.trunc(b.realmIndex) : 0
+  // 先按存档境界收口(容忍一个大境界,存档本身没被改就与快照同源),再钳合法上限
+  const realmCeil = Math.min(saveRealmIndex + REALM_SNAP_TOLERANCE, REALM_INDEX_MAX)
+  const realmIndex = Math.min(Math.max(rawRealm, 0), Math.max(realmCeil, 0))
   return {
     name: str(b.name, 24) || `道友${userId}`,
     realmLabel: str(b.realmLabel, 24),
-    realmIndex: realm(b.realmIndex),
+    realmIndex,
     powerM: num(b.powerM),
     powerE: int(b.powerE),
     hpM: num(b.hpM),
@@ -208,7 +219,7 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       started: metrics.started ? 1 : 0,
       updated_at: now
     })
-    const snapshot = parseSnapshot(body.profile, req.user!.id)
+    const snapshot = parseSnapshot(body.profile, req.user!.id, metrics.realmIndex)
     if (snapshot !== null) {
       await upsertByPk('profiles', {
         user_id: req.user!.id,
