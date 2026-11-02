@@ -76,6 +76,28 @@ bun run test:report
 bun run check
 ```
 
+### 本地跑后端（云端存档 / 注册登录 / GM 后台）
+
+进度存云端，服务器是权威副本：注册登录、跨设备同步、GM 后台都走它。单跑前端也能进游戏，但进度只落本机缓存、不会云同步。
+
+```bash
+cd server
+npm install
+
+# 启动后端（:8787，REST + WebSocket 同端口）
+npm run dev
+
+# 建管理员（口令参数在命令行，不会回显进日志）
+npm run admin -- 道号 口令
+# 之后浏览器开 http://localhost:8787/gm 进 GM 后台
+```
+
+常用环境变量：`PORT`（默认 8787）、`DB_DRIVER`（`sqlite` 默认 / `mysql`）、`GM_PATH`（后台路径，默认 `/gm`）、`EMAIL_*` / `SMTP_*`（邮箱设置，只作首次建库种子，运行期在 GM 后台改）。完整清单与 Docker 部署见 [README.Docker.md](README.Docker.md)。
+
+注册须填用户名 + 邮箱；GM 后台「参数设置」里可开 Cloudflare Turnstile 人机验证（开关 + 站点密钥 + 私钥三样齐才生效）、调聊天限速 / 榜单条数 / 公告等游戏参数（改动 30 秒内生效），「邮件 / SMTP」页可发测试信验证邮箱链路。
+
+> 生产构建前端时可用 `VITE_API_BASE` 指定 API 域名：设为空串走同源相对路径（自建同域部署推荐），不设则兜底连默认演示服 —— 自建镜像忘了传这个变量，登录的就是别人的服务器。
+
 ### 性能自检
 
 ```bash
@@ -183,7 +205,7 @@ docker run -d -p 8787:8787 -e PORT=8787 yunyin-xiuxian
 | Vue 3           | 3.5   | 组合式 API + `<script setup>`               |
 | TypeScript      | 6.0   | strict 严格类型检查                         |
 | Vite            | 8     | 构建与开发服务器（legacy 插件兜旧 WebView） |
-| Pinia           | 3     | 状态管理（14 个 store，自动持久化）         |
+| Pinia           | 3     | 状态管理（20 个 store，自动持久化）         |
 | Tailwind CSS    | 3.4   | 水墨色系语义色与暗色主题                    |
 | Vue Router      | 4     | 客户端路由（hash 模式）                     |
 | Tone.js         | 15    | FluidR3 乐器采样播放（BGM + SFX）           |
@@ -192,22 +214,31 @@ docker run -d -p 8787:8787 -e PORT=8787 yunyin-xiuxian
 | Vitest          | 5     | 单元测试与平衡审计（全量 381 个 spec）        |
 | Electron        | 39    | Windows 桌面客户端打包                      |
 | Capacitor       | 8     | Android 客户端打包                          |
+| Node + Express  | 4     | 后端：账号 / 云存档 / 拍卖行 / GM 后台（REST + WebSocket 同端口） |
+| better-sqlite3 / mysql2 | 12 / 3 | 云端数据存储（`DB_DRIVER` 切换，单文件库或外部 MySQL） |
+| JWT + bcryptjs  | 9 / 3 | 登录态与会话口令                            |
+| Nodemailer      | 10    | 验证码与测试邮件（SMTP 设置在 GM 后台可改）   |
 
 ## 项目结构
 
 ```text
+server/                 # 后端（Node + Express + ws，:8787）
+├── src/                    # 账号 / 云存档 / GM 接口 / 邮件 / 双方言数据库
+├── gm/                     # GM 后台单页（参数设置 / 云存档 / 邮件 SMTP）
+└── data/                   # SQLite 库文件（gitignore）
 src/
-├── data/                 # 内容层：纯静态声明式定义（48 个模块）
-│   ├── realms.ts             # 4 界域 · 21 境界
-│   ├── regions.ts            # 44 区域
-│   ├── enemies.ts            # 132 敌人
-│   ├── equipment.ts          # 288 装备模板(一阶一名)
-│   ├── affixes.ts            # 113 词条
-│   ├── gongfa.ts             # 46 功法
-│   ├── gongfaBranches.ts     # 107 悟道分支
-│   ├── pills.ts              # 72 丹药
-│   ├── artifacts.ts          # 45 法宝
+├── data/                 # 内容层：纯静态声明式定义（59 个模块）
+│   ├── realms.ts             # 5 界域 · 29 境界
+│   ├── regions.ts            # 60 区域
+│   ├── enemies.ts            # 180 敌人（含 60 首领）
+│   ├── equipment.ts          # 40 阶 360 装备模板(一阶一名)
+│   ├── affixes.ts            # 119 词条
+│   ├── gongfa.ts             # 79 功法
+│   ├── gongfaBranches.ts     # 173 悟道分支
+│   ├── pills.ts              # 80 丹药
+│   ├── artifacts.ts          # 49 法宝
 │   ├── souls.ts              # 6 类 6 阶器魂
+│   ├── chains.ts             # 9 缘 24 阶奇缘链
 │   ├── xiangxiu.ts           # 28 星宿 · 四象
 │   ├── ziwei.ts              # 12 宫 · 14 主星
 │   ├── yijing.ts             # 8 卦 · 64 重卦
@@ -216,7 +247,7 @@ src/
 │   ├── endgame.ts            # 道途 / 天界 / 试炼
 │   ├── mutators.ts           # 8 变数
 │   └── constants.ts          # 全局平衡参数
-├── core/                 # 逻辑层（128 个模块 + 220 个同目录 spec）
+├── core/                 # 逻辑层（128 个模块 + 237 个同目录 spec）
 │   ├── engine.ts             # 在线心跳驱动（1000ms）
 │   ├── offline.ts            # 离线收益结算
 │   ├── combat.ts             # 回合制战斗预解算
@@ -227,9 +258,10 @@ src/
 │   ├── loot.ts               # 掉落总入口
 │   ├── progress.ts           # 任务成就横向总线
 │   ├── worldGen.ts           # 终局世界生成（三重审计门）
+│   ├── gongfaSeats.ts        # 功法副席账法（辅修 / 秘术席面）
 │   └── *Service.ts           # 各系统服务（另有 *Sim.ts 平衡模拟器）
-├── stores/               # Pinia 状态（14 个，绝大部分自动持久化）
-├── views/                # 17 个页面
+├── stores/               # Pinia 状态（20 个，绝大部分自动持久化）
+├── views/                # 25 个页面
 ├── components/           # 组件（8 组）
 ├── ui/                   # 图标、词条名、图鉴与提示等展示层数据
 ├── utils/                # GNum 大数（m×10^e）/ 格式化 / 随机 / 存档底层
