@@ -310,8 +310,8 @@ src/
 
 ## 交流
 
-- QQ 群：[920930589](https://qm.qq.com/q/2BVaTTwDkI)
-- 在线试玩：[yunyin.wenzi.games](https://yunyin.wenzi.games)
+- QQ 群：169924359
+- 在线试玩：[yy.071717.xyz](https://yy.071717.xyz)（也是客户端默认连接的服务器地址）
 
 ## 许可证
 
