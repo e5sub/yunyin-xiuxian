@@ -250,7 +250,6 @@ describe('死导出审计', () => {
     tribulationSuccessRate: '审计口径:五种劫型的抽样成功率,界面走劫势推演,不展示这一条单一概率',
     div: '数值原语:gNum 库的除法(含零除分支),gnum.spec 覆盖;库完整性优先于"当前无人调"',
     lt: '数值原语:gNum 比较,供公式单调性用例读',
-    gt: '数值原语:gNum 比较,与 lt 成对',
     parseClassicalDuration: '反查原语:classicalDuration 把时长渲染成古语时制后,由它对文案做 round-trip 自检(timeUnits.spec 守卫),运行时从不解析古语文案',
     craftPeerOf: '丹药价值交叉校验:同族可炼品的药力参照,仅 pillValue.spec 读;本轮 STONE_AMT_PER_BATTLE 接进 loot 使 pillValue 成为运行时共享源,其分析导出自此进本表',
     DROP_CRAFT_RATIO: '丹药价值分析的期望炼耗比值,仅 pillValue.spec 校验原则',
@@ -259,7 +258,8 @@ describe('死导出审计', () => {
     fullEconomyAudit: '经济闭环审计主入口:平均每境产出/自给/死资源汇总,仅 economySim.spec 读;economySim 因 avgDustPerDrop 被离线借用而成为运行时共享源,此审计汇总不由运行时接线',
     qiFillSeconds: '灵脉充盈计时审计口径:仅 economySim.spec 校验灵所充盈曲线用时,运行时走灵脉实时投点',
     expIncomeAudit: '修为收入审计汇总:仅 expIncome.spec 读;economySim 经 expIncome 取 winsPerHour/tripExpSecsPerHour 使 expIncome 成为运行时共享源,此审计头不进运行时',
-    snapshotFromSlices: '服务端复算入口:server/src/recompute.ts 动态加载本模块跑无头复算(save.ts 反作弊),消费方在 src 之外,审计扫不到;profileRecompute.spec 守其口径'
+    snapshotFromSlices: '服务端复算入口:server/src/recompute.ts 动态加载本模块跑无头复算(save.ts 反作弊),消费方在 src 之外,审计扫不到;profileRecompute.spec 守其口径',
+    sanitizeSaveSlices: '服务端归一化入口:server/src/saveNormalize.ts 动态加载本模块,把上传分片按客户端读档同一套 sanitize 修平后落库,消费方在 src 之外,审计扫不到;saveSanitize.spec 守其口径'
   }
 
   it('运行时模块里的导出,不能只被 spec 用到 —— 那是骨架空转的样子', () => {

@@ -536,10 +536,13 @@ gmRouter.get('/saves', requireAdmin, (req: Request, res: Response) => {
     params.push(limit)
     const rows = await all<Record<string, unknown>>(
       `SELECT s.user_id, u.username, p.name, p.realm_label, p.realm_index, p.power_e, p.power_m,
-              s.version, s.started, s.updated_at, LENGTH(s.data) AS bytes
+              s.version, s.started, s.updated_at, LENGTH(s.data) AS bytes,
+              f.c AS flag_count, f.last_at AS flag_at
        FROM saves s
        JOIN users u ON u.id = s.user_id
        LEFT JOIN profiles p ON p.user_id = s.user_id
+       LEFT JOIN (SELECT user_id, COUNT(*) AS c, MAX(created_at) AS last_at FROM save_flags GROUP BY user_id) f
+              ON f.user_id = s.user_id
        ${where}
        ORDER BY s.updated_at DESC
        LIMIT ?`,
@@ -557,7 +560,37 @@ gmRouter.get('/saves', requireAdmin, (req: Request, res: Response) => {
         version: r.version,
         started: Number(r.started) === 1,
         updatedAt: r.updated_at,
-        bytes: r.bytes ?? 0
+        bytes: r.bytes ?? 0,
+        flagCount: r.flag_count ?? 0,
+        flagAt: r.flag_at ?? 0
+      }))
+    })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})
+
+/**
+ * 某人的存档审计留痕(归一化改动 / 境界跳变)。
+ * 只管「谁在被改包」,封不封由 GM 自己看数据决定。
+ */
+gmRouter.get('/saves/:userId/flags', requireAdmin, (req: Request, res: Response) => {
+  void (async () => {
+    const userId = Number(req.params.userId)
+    if (!Number.isInteger(userId) || userId <= 0) {
+      res.status(400).json({ error: '参数无效' })
+      return
+    }
+    const rows = await all<Record<string, unknown>>(
+      'SELECT kind, detail, realm_index, created_at FROM save_flags WHERE user_id = ? ORDER BY id DESC LIMIT 20',
+      [userId]
+    )
+    res.json({
+      flags: rows.map(r => ({
+        kind: r.kind,
+        detail: r.detail ?? '',
+        realmIndex: r.realm_index ?? 0,
+        createdAt: r.created_at ?? 0
       }))
     })
   })().catch(() => {
@@ -566,8 +599,7 @@ gmRouter.get('/saves', requireAdmin, (req: Request, res: Response) => {
 })
 
 /** 某人的存档历史(只列元信息,不传档体) */
-gmRouter.get('/saves/:userId/history', requireAdmin, (req: Request, res: Response) => {
-  void (async () => {
+gmRouter.get('/saves/:userId/history', requireAdmin, (req: Request, res: Response) => {  void (async () => {
     const userId = Number(req.params.userId)
     if (!Number.isInteger(userId) || userId <= 0) {
       res.status(400).json({ error: '参数无效' })

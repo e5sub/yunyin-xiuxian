@@ -4,6 +4,7 @@ import { all, get, run, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { getConfigNumber } from '../config.js'
 import { recomputeProfile } from '../recompute.js'
+import { normalizeSaveSlices } from '../saveNormalize.js'
 
 export interface ProfileSnapshot {
   name: string
@@ -34,6 +35,49 @@ const WRITE_MIN_GAP_MS = 2_000
 async function historyKeep(): Promise<number> {
   const n = await getConfigNumber('save_history_keep', 3)
   return Math.min(Math.max(Math.trunc(n), 1), HISTORY_KEEP_MAX)
+}
+
+/** 每账号留痕条数上限与抽稀间隔:自动上传最快 3 秒一推,不留抽稀会把表刷爆 */
+const FLAG_KEEP = 20
+const FLAG_MIN_GAP_MS = 10 * 60_000
+/** 单次上传内境界跳这么多(一个大境界)就留痕:合法玩家升级是渐进的,GM 据此复核 */
+const REALM_JUMP_FLAG = 100
+
+/** 上次留痕时刻(内存即可:重启清零只会多留一条) */
+const lastFlagAt = new Map<number, number>()
+
+/**
+ * 存档审计留痕 —— 只记不改,不拦存档。
+ * 归一化修掉了什么、境界有没有单次跳变,都写进 save_flags 供 GM 判定;
+ * 真的在被改包的号,属性复算会把它压回真实曲线,但「谁在改」只有这里看得出来。
+ */
+async function auditSave(
+  userId: number,
+  name: string,
+  realmIndex: number,
+  prevRealmIndex: number,
+  touched: readonly string[]
+): Promise<void> {
+  const flags: Array<{ kind: string; detail: string }> = []
+  if (touched.length > 0) flags.push({ kind: 'sanitized', detail: touched.join(',') })
+  const jump = realmIndex - prevRealmIndex
+  if (prevRealmIndex > 0 && jump >= REALM_JUMP_FLAG) {
+    flags.push({ kind: 'realm_jump', detail: `${prevRealmIndex}→${realmIndex}` })
+  }
+  if (flags.length === 0) return
+  const now = Date.now()
+  if (now - (lastFlagAt.get(userId) ?? 0) < FLAG_MIN_GAP_MS) return
+  lastFlagAt.set(userId, now)
+  for (const f of flags) {
+    await run(
+      'INSERT INTO save_flags (user_id, name, kind, detail, realm_index, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [userId, name.slice(0, 64), f.kind, f.detail.slice(0, 255), realmIndex, now]
+    )
+  }
+  await run(
+    'DELETE FROM save_flags WHERE user_id = ? AND id NOT IN (SELECT id FROM (SELECT id FROM save_flags WHERE user_id = ? ORDER BY id DESC LIMIT ?) t)',
+    [userId, userId, FLAG_KEEP]
+  )
 }
 
 /** 属性快照钳制上限:尾数与十进制指数都远超正常玩法上限(中文单位到「极」≈e48,真仙终局 ≈e80)。
@@ -218,9 +262,16 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       return
     }
     const now = Date.now()
+    /*
+     * 落库前归一化:野装备 id、超品阶、超词条数、超强化等级、超满级功法、坏大数指数、
+     * 境界越界 —— 全部按客户端读档自愈的同一套判据修平再进库。
+     * 归一化失败(模块加载不了/分片畸形到链路抛错)按原样落库:加固环节不能变成拒收存档。
+     */
+    const normalized = await normalizeSaveSlices(body.data)
+    const data = normalized === null ? body.data : normalized.data
     let json: string
     try {
-      json = JSON.stringify(body.data)
+      json = JSON.stringify(data)
     } catch {
       res.status(400).json({ error: '存档不可序列化' })
       return
@@ -268,13 +319,28 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
     })
     // 快照以复算为准:用上传分片无头水合同一批 store、跑同一份 finalStats 链重算;
     // 复算失败(分片畸形/链路抛错)才回落客户端快照;两边都拿不到(老客户端不带 profile)就不动 profiles。
-    // 两条路最后都过同一把钳制尺。
+    // 用归一化后的 data 复算,与落库内容同源。两条路最后都过同一把钳制尺。
+    const prevProfile = await get<{ realm_index: number }>('SELECT realm_index FROM profiles WHERE user_id = ?', [
+      req.user!.id
+    ])
     const clientSnap = parseSnapshot(body.profile, req.user!.id)
-    const recomputed = await recomputeProfile(body.data)
+    const recomputed = await recomputeProfile(data)
     if (snapshotComplete(recomputed)) {
       await upsertProfile(req.user!.id, clampSnapshot(recomputed, metrics.realmIndex, req.user!.id), now)
     } else if (clientSnap !== null) {
       await upsertProfile(req.user!.id, clampSnapshot(clientSnap, metrics.realmIndex, req.user!.id), now)
+    }
+    const displayName = typeof recomputed?.name === 'string' ? recomputed.name : (clientSnap?.name ?? '')
+    try {
+      await auditSave(
+        req.user!.id,
+        displayName,
+        metrics.realmIndex,
+        prevProfile?.realm_index ?? 0,
+        normalized?.touched ?? []
+      )
+    } catch {
+      // 留痕失败不影响存档本身
     }
     res.json({ ok: true, updatedAt: now })
   })().catch(() => {

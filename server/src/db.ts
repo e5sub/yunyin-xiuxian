@@ -191,6 +191,16 @@ CREATE TABLE IF NOT EXISTS profiles (
   def_e INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
+-- 存档审计:落库前归一化改动过哪些分片 / 境界跳变。不拦存档,只留痕供 GM 判定
+CREATE TABLE IF NOT EXISTS save_flags (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL,
+  detail TEXT NOT NULL DEFAULT '',
+  realm_index INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS friends (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -347,6 +357,7 @@ CREATE TABLE IF NOT EXISTS autoops_state (
 CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(id DESC);
 CREATE INDEX IF NOT EXISTS idx_profile_rank ON profiles(realm_index DESC, power_e DESC, power_m DESC);
 CREATE INDEX IF NOT EXISTS idx_save_history_user ON save_history(user_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_save_flags_user ON save_flags(user_id, id DESC);
 `)
     // 老库迁移:补邮箱/角色/状态列(已存在则忽略)
     for (const stmt of [
@@ -424,6 +435,17 @@ CREATE TABLE IF NOT EXISTS save_history (
   created_at BIGINT NOT NULL,
   CONSTRAINT fk_save_history_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX idx_save_history_user (user_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS save_flags (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  name VARCHAR(64) NOT NULL DEFAULT '',
+  kind VARCHAR(24) NOT NULL,
+  detail VARCHAR(255) NOT NULL DEFAULT '',
+  realm_index INT NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL,
+  CONSTRAINT fk_save_flags_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_save_flags_user (user_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS profiles (
   user_id BIGINT PRIMARY KEY,

@@ -245,7 +245,7 @@
           <table>
             <thead><tr>
               <th>ID</th><th>道号</th><th>角色名</th><th>境界</th><th>战力</th>
-              <th>档大小</th><th>开局</th><th>存档更新</th><th style="width:90px">操作</th>
+              <th>档大小</th><th>开局</th><th>审计</th><th>存档更新</th><th style="width:90px">操作</th>
             </tr></thead>
             <tbody id="sv-rows"></tbody>
           </table>
@@ -884,7 +884,7 @@ async function loadSaves () {
     const d = await api('/saves?limit=100' + (q === '' ? '' : '&q=' + encodeURIComponent(q)))
     saveRows = d.saves
     $('sv-rows').innerHTML = d.saves.length === 0
-      ? '<tr><td colspan="9" class="muted">没有匹配的存档</td></tr>'
+      ? '<tr><td colspan="10" class="muted">没有匹配的存档</td></tr>'
       : d.saves.map((s, i) => `<tr>
           <td>${s.userId}</td>
           <td>${esc(s.username)}</td>
@@ -893,6 +893,7 @@ async function loadSaves () {
           <td>${fmtPower(s)}</td>
           <td>${Math.max(1, Math.round(Number(s.bytes) / 1024))} KB</td>
           <td>${s.started ? '<span class="tag ok">已开局</span>' : '<span class="tag ban">空档</span>'}</td>
+          <td>${Number(s.flagCount) > 0 ? `<span class="tag ban" title="最近一次 ${fmt(s.flagAt)}">改档 ${s.flagCount}</span>` : '—'}</td>
           <td>${fmt(s.updatedAt)}</td>
           <td><button onclick="openHistoryByIndex(${i})">历史</button></td>
         </tr>`).join('')
@@ -909,17 +910,27 @@ async function openHistory (userId, username) {
   $('hs-title').textContent = '存档历史 · ' + username
   $('hs-body').innerHTML = '<div class="muted">读取中…</div>'
   $('dlg-history').showModal()
+  let flagsHtml = ''
+  try {
+    const f = await api('/saves/' + userId + '/flags')
+    if (f.flags.length > 0) {
+      flagsHtml = '<div style="border-bottom:1px solid var(--line);padding:0 0 8px;margin-bottom:6px">'
+        + '<div class="muted" style="margin-bottom:4px">存档审计:服务端归一化改动 / 境界跳变(只留痕,不拦档)</div>'
+        + f.flags.map(x => `<div style="font-size:12px">${fmt(x.createdAt)} · `
+          + (x.kind === 'realm_jump' ? '境界跳变 ' + esc(x.detail) : '改档 ' + esc(x.detail)) + '</div>').join('')
+        + '</div>'
+    }
+  } catch (e) { /* 审计读不到不影响看历史 */ }
   try {
     const d = await api('/saves/' + userId + '/history')
-    if (d.history.length === 0) {
-      $('hs-body').innerHTML = '<div class="muted">暂无历史版本(该玩家的档还没被覆盖过)</div>'
-      return
-    }
-    $('hs-body').innerHTML = d.history.map(h => `<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:5px 0">
+    const body = d.history.length === 0
+      ? '<div class="muted">暂无历史版本(该玩家的档还没被覆盖过)</div>'
+      : d.history.map(h => `<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:5px 0">
       <span>${fmt(h.created_at)} · 境界 ${Math.floor(h.realm_index / 100)}-${h.realm_index % 100} · ${Math.max(1, Math.round(Number(h.size) / 1024))} KB</span>
       <button onclick="restoreVersion(${h.id})">回滚到这份</button>
     </div>`).join('')
-  } catch (e) { $('hs-body').innerHTML = '<div class="muted">' + esc(e.message) + '</div>' }
+    $('hs-body').innerHTML = flagsHtml + body
+  } catch (e) { $('hs-body').innerHTML = flagsHtml + '<div class="muted">' + esc(e.message) + '</div>' }
 }
 
 async function restoreVersion (historyId) {

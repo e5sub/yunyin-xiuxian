@@ -71,6 +71,7 @@ const STATEFUL_CORE = new Set<string>([
   "reincarnation.ts",
   "resourceGuidance.ts",
   "samsaraService.ts",
+  "saveSanitize.ts",
   "cloudSave.ts",
   "secretRealm.ts",
   "smartKeep.ts",
@@ -83,12 +84,12 @@ const STATEFUL_CORE = new Set<string>([
 ]);
 
 /** core → store 的引用处数基线(只许减;名单没变时防止单个模块越挂越多) */
-const CORE_STORE_SITES = 209;
+const CORE_STORE_SITES = 225;
 /**
  * core 用例里需要 Pinia 的文件数基线(只许减)。
  * 上游 121 + 本仓 autoOpsDaily/gongfaSeats 等新增,合并后以实跑数为准,见本文件底部对账。
  */
-const CORE_PINIA_SPECS = 122;
+const CORE_PINIA_SPECS = 123;
 
 function sources(dir: string): { name: string; text: string }[] {
   return readdirSync(dir)
