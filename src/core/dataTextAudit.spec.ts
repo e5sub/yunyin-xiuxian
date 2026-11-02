@@ -25,6 +25,9 @@ import { ARTIFACT_MAX_SLOTS, ARTIFACT_SLOT_UNLOCK_MAJOR } from '@/data/artifacts
 import { EXPEDITION_ROUTE_LAYERS } from '@/data/endgame'
 import { MUTATION_FIGHTS } from '@/core/expedition'
 import { PROFILE_MIN_MARKS } from '@/core/identity'
+import { CELESTIAL_WORLDS } from '@/data/endgame'
+import { BUILDINGS } from '@/data/buildings'
+import { modsText } from '@/data/statNames'
 import { AFFIXES } from '@/data/affixes'
 import { STAT_NAMES } from '@/data/statNames'
 import { classicalDuration } from '@/data/timeUnits'
@@ -110,6 +113,72 @@ describe('文案数值对账 · 增益(Buff)', () => {
       }
     }
     expect(checked, '增益说明里扫到的百分比太少,判据覆盖不足').toBeGreaterThanOrEqual(8)
+  })
+})
+
+describe('文案数值对账 · 天界世界', () => {
+  it('世界规则文案的每个百分比,都能在它自己的 rules 里找到', () => {
+    let checked = 0
+    for (const w of CELESTIAL_WORLDS) {
+      const nums = Object.values(w.rules ?? {}).flatMap(v =>
+        typeof v === 'number' ? [v] : typeof v === 'object' && v !== null ? Object.values(v) : []
+      ) as number[]
+      for (const pc of percentsOf(w.ruleText.join(' '))) {
+        checked += 1
+        expect(percentBacked(pc, nums), `世界「${w.name}」文案写 ${pc}%,rules 里对不上:${w.ruleText.join(' / ')}`).toBe(true)
+      }
+    }
+    expect(checked, '一个百分比都没查到,审计形同虚设').toBeGreaterThan(0)
+  })
+
+  /**
+   * 反向门:rules 里每个机制都须有一条文案提到它。
+   * 实测漏过 —— 四个世界的 enemyExtraMods.critRate(敌方暴击率 +10%~12%)全程生效却没人说过,
+   * 玩家只会觉得「这个世界的敌人怎么老暴击」。故障注入:删掉任一条「敌人暴击率」文案即红。
+   */
+  it('世界 rules 的每个机制都有文案提到,不藏条件', () => {
+    /** 数值键 → 文案里该出现的说法;ExtraMods 按「每条词条各给一个判据」查 */
+    const HINTS: Record<string, RegExp> = {
+      enemyAtkMult: /敌人攻击|敌方攻击/,
+      playerAtkMult: /自身攻击|我方攻击/,
+      enemyHpMult: /敌方生命|敌人生命|血/,
+      healMult: /治疗/,
+      shieldCapRatio: /护盾/,
+      maxRounds: /回合/,
+      perRounds: /每.*回合/
+    }
+    /** StatMods 键 → 文案说法;新增词条键时这里必须补一行,否则本用例直接红 */
+    const MOD_HINTS: Record<string, RegExp> = {
+      critRate: /暴击率/,
+      critDamage: /暴击伤害/,
+      dodgeRate: /闪避/,
+      armorPen: /防御|破甲/,
+      damageReduction: /受到伤害|减伤/,
+      speed: /出手/,
+      lifesteal: /吸血/,
+      damageBonus: /伤害/,
+      defensePct: /防御/
+    }
+    for (const w of CELESTIAL_WORLDS) {
+      const txt = w.ruleText.join(' ')
+      for (const [key, val] of Object.entries(w.rules ?? {})) {
+        if (key === 'playerExtraMods' || key === 'enemyExtraMods') {
+          const who = key === 'playerExtraMods' ? '我' : '敌'
+          for (const modKey of Object.keys(val as Record<string, number>)) {
+            const hint = MOD_HINTS[modKey]
+            expect(hint, `词条键 ${modKey} 没有登记文案判据`).toBeDefined()
+            expect(
+              hint!.test(txt) && new RegExp(who).test(txt),
+              `世界「${w.name}」的 ${key}.${modKey} 全程生效,文案里却没有:${w.ruleText.join(' / ')}`
+            ).toBe(true)
+          }
+          continue
+        }
+        const hint = HINTS[key]
+        expect(hint, `rules 键 ${key} 没有登记判据`).toBeDefined()
+        expect(hint!.test(txt), `世界「${w.name}」的 ${key} 全程生效,文案里却没有:${w.ruleText.join(' / ')}`).toBe(true)
+      }
+    }
   })
 })
 
@@ -401,6 +470,59 @@ describe('文案数值对账 · 视图不手抄数量', () => {
     expect(secret, '秘境入口该读统一在途判据').toContain('endgameBusy(endgame.worldRun, player.secretRealm, useAdventureStore().session)')
     expect(secret, '秘境入口拒因取判据本体').toContain('return { ok: false, reason: busy.reason }')
     expect(secret, '秘境入口不许再手抄一份拒因').not.toContain('须先结束远征方能入秘境')
+  })
+
+  /**
+   * 词条名是玩家在行囊卡、转移面板、战报里认词条的唯一凭据:
+   * 曾有两个都叫「破妄」(增伤 dmg1 与 命中 ac2),同屏两个「破妄」加不同效果,分不清谁是谁。
+   * 故障注入:把任一词条名改成与另一条相同,本条红。
+   */
+  it('词条名唯一', () => {
+    const byName = new Map<string, string[]>()
+    for (const a of AFFIXES) {
+      const ids = byName.get(a.name) ?? []
+      ids.push(`${a.id}(${a.key})`)
+      byName.set(a.name, ids)
+    }
+    const dup = [...byName.entries()].filter(([, ids]) => ids.length > 1)
+    expect(dup.map(([n, ids]) => `${n}: ${ids.join('/')}`), '词条重名会让同屏两件装备的说明分不清').toEqual([])
+  })
+
+  /**
+   * 建筑的 mods 走卡片另一行 modsText(见 BuildingCard.modLine),不进 effectText:
+   * effectText 只写主职能,词条行把 mods 逐项译成中文名(修炼速度 / 灵气恢复 / 战斗修为…)。
+   * 判据:mods 的每个键都要能被 modsText 译出中文名,不许漏出原始键名。
+   * 故障注入:往任一建筑 mods 里塞一个 statNames 不认识的键,本条红。
+   */
+  it('建筑 mods 的每一项都由词条行译出中文名', () => {
+    let checked = 0
+    for (const b of BUILDINGS) {
+      if (!b.mods) continue
+      const text = modsText(b.mods(b.maxLevel))
+      for (const key of Object.keys(b.mods(b.maxLevel))) {
+        expect(text, `建筑「${b.name}」的 ${key} 没有中文名,词条行会漏出原始键`).toMatch(/[\u4e00-\u9fa5]/)
+        checked += 1
+      }
+      expect(text, `建筑「${b.name}」词条行漏出原始 StatMods 键`).not.toMatch(/[a-z][A-Z]|Pct\b/)
+    }
+    expect(checked, '一个键都没查到,审计形同虚设').toBeGreaterThan(0)
+  })
+
+  /**
+   * 在途拒因不许在界面重抄一遍:endgameBusy 已经给出 reason,
+   * 手写 `busy.kind === 'expedition' ? '远征在途' : …` 抄了三处九份,改词就会漏改。
+   * 故障注入:把任一面板改回三元映射,本条红。
+   */
+  it('终局面板的在途拒因一律取 busy.reason,不再按 kind 手抄', () => {
+    const panels = ['ExpeditionPanel', 'TrialPanel', 'MarksPanel'].map(n => src(`../components/celestial/${n}.vue`))
+    let hits = 0
+    for (const [i, body] of panels.entries()) {
+      const name = ['远征', '天劫', '道痕'][i]!
+      expect(panels[i], `${name}面板该读 busy.reason`).toContain('busy.reason')
+      expect(panels[i], `${name}面板又手抄了在途拒因`).not.toMatch(/busy\.kind\s*===\s*'expedition'/)
+      hits += (body.match(/busy\.reason/g) ?? []).length
+    }
+    expect(hits, '一处 busy.reason 都没读到,断言形同虚设').toBeGreaterThanOrEqual(5)
   })
 
   it('远征行程与变数连战数取自 EXPEDITION_* / MUTATION_FIGHTS', () => {

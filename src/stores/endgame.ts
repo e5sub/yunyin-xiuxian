@@ -19,12 +19,14 @@ import { pactDef } from '@/data/pacts'
 import { ARTIFACT_MAX_LEVEL, ARTIFACT_MAX_SLOTS, artifactDef } from '@/data/artifacts'
 import { STAT_KEYS } from '@/data/statNames'
 import { MAX_MAJOR } from '@/data/realms'
-import { gn } from '@/utils/gnum'
 import { useAdventureStore } from '@/stores/adventure'
 import {
   asArray,
   asCarriedHpPct,
+  asCombatRules,
   asCombatSkills,
+  asBoundedGNum,
+  hasCombatRules,
   asFiniteNumber,
   asNumberRecord,
   asObjectOrNull,
@@ -128,7 +130,7 @@ function sanitizeVoidWorld(raw: unknown): CelestialWorldDef | null {
         name: node.name,
         desc: typeof node.desc === 'string' ? node.desc : '',
         foe,
-        ...(node.rules && typeof node.rules === 'object' && !Array.isArray(node.rules) ? { rules: node.rules } : {}),
+        ...(hasCombatRules(node.rules) ? { rules: asCombatRules(node.rules) } : {}),
         bonus: Math.floor(asFiniteNumber(node.bonus, 0, 0)),
         riskText: typeof node.riskText === 'string' ? node.riskText : ''
       }
@@ -143,7 +145,7 @@ function sanitizeVoidWorld(raw: unknown): CelestialWorldDef | null {
     anchorTier: asFiniteNumber(w.anchorTier, 0, 0),
     desc: typeof w.desc === 'string' ? w.desc : '',
     ruleText: asStringArray(w.ruleText),
-    rules: w.rules && typeof w.rules === 'object' && !Array.isArray(w.rules) ? w.rules : {},
+    rules: asCombatRules(w.rules),
     entryCost: Math.floor(asFiniteNumber(w.entryCost, 0, 0)),
     fights: Math.max(1, Math.floor(asFiniteNumber(w.fights, 1, 1))),
     healBetweenPct: asFiniteNumber(w.healBetweenPct, 0.5, 0),
@@ -154,6 +156,7 @@ function sanitizeVoidWorld(raw: unknown): CelestialWorldDef | null {
   }
 }
 
+
 /**
  * 忆战快照修形:`snapFromReplay` 直接 `.map` 技能/法宝,三维经 `gn()` 归一后不能为零。
  * 认不出的技能/法宝逐条剔掉;快照不成立整块作废,界面按「战况不可考」处理。
@@ -162,8 +165,9 @@ function sanitizeMarkReplay(raw: unknown): DaoMark['replay'] | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
   const r = raw as Partial<NonNullable<DaoMark['replay']>>
   if (!Array.isArray(r.skills) || !Array.isArray(r.artifacts)) return undefined
-  // 三维可能缺栏、是裸数字或半截对象:gn() 运行时都能归一
-  const gnumOf = (v: unknown): import('@/types').GNum => gn(v as number | import('@/types').GNum)
+  // 三维可能缺栏、是裸数字或半截对象:asBoundedGNum 既能归一也带指数上界。
+  // 裸 gn() 不设界,坏档能让道痕列表把战力印成「1.00e1000000000」。
+  const gnumOf = (v: unknown): import('@/types').GNum => asBoundedGNum(v)
   const attack = gnumOf(r.attack)
   const defense = gnumOf(r.defense)
   const maxHp = gnumOf(r.maxHp)

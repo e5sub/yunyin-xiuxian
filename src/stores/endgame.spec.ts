@@ -911,4 +911,160 @@ describe('虚界坏档 · 形状不成立整座作废', () => {
     ])
     expect(foe.mods, '野词条键会让构筑厚度虚增').toEqual({ dodgeRate: 0.2 })
   })
+
+/**
+ * 忆战快照的量级守卫。
+ *
+ * sanitizeMarkReplay 原先用裸 gn() 归一三维,它不限指数:
+ * 坏档写 { m: 1, e: 1e9 } 会让道痕列表把战力印成「1.00e1000000000」。
+ * 改走 asBoundedGNum 后越界归零,三维不全的快照整块作废(界面按「不可考」),
+ * 但**道痕本身要留住** —— 那一世的胜负与回合数是玩家的历史,不该因快照坏掉就消失。
+ */
+describe('忆战快照 · 量级', () => {
+  const base = {
+    life: 2,
+    targetId: 'chiyan',
+    targetName: '赤炎天',
+    cleared: true,
+    rounds: 9,
+    buildName: '剑',
+    powerText: '1',
+    at: 5
+  }
+
+  function replayWith(gnum: unknown) {
+    return { mods: {}, attack: gnum, defense: gnum, maxHp: gnum, speed: 1, skills: [], artifacts: [], pactId: null }
+  }
+
+  it('三维指数越界时快照作废,不印出非法数字', () => {
+    const e = useEndgameStore()
+    e.$patch({ marks: [{ ...base, replay: replayWith({ m: 1, e: 1e9 }) }] } as never)
+    e.sanitize()
+    expect(e.marks[0]!.replay, '越界三维归零后不成一局,快照应作废').toBeUndefined()
+  })
+
+  it('快照作废但道痕仍在(那一世的胜负不该因快照坏掉就消失)', () => {
+    const e = useEndgameStore()
+    e.$patch({ marks: [{ ...base, replay: replayWith({ m: 1, e: 1e9 }) }] } as never)
+    e.sanitize()
+    expect(e.marks, '道痕本身必须留住').toHaveLength(1)
+    expect(e.marks[0]!.targetName).toBe('赤炎天')
+    expect(e.marks[0]!.rounds).toBe(9)
+    expect(e.marks[0]!.cleared).toBe(true)
+  })
+
+  it('合法快照原样保留(修形非空转)', () => {
+    const e = useEndgameStore()
+    const ok = { ...replayWith(gn(100)) }
+    e.$patch({ marks: [{ ...base, replay: ok }] } as never)
+    e.sanitize()
+    expect(e.marks[0]!.replay, '合法快照不该被当成坏档').toBeDefined()
+  })
+
+  it('裸数字三维仍被接受(旧档常把 GNum 写成数字)', () => {
+    const e = useEndgameStore()
+    const ok = { ...replayWith(undefined), attack: 100, defense: 55, maxHp: 1400 }
+    e.$patch({ marks: [{ ...base, replay: ok }] } as never)
+    e.sanitize()
+    expect(e.marks[0]!.replay, '裸数字应被归一而非丢弃').toBeDefined()
+  })
+})
+
+
+/**
+ * 远征规则修形。
+ *
+ * `world.rules` 此前只判了「是不是对象」,内部字段一概原样收下 ——
+ * 而 combat.ts 第 202 行是 `mulN(maxHp, rules.playerStartHpPct ?? 1)`,
+ * 实测 `mulN(100, Infinity)` 与 `mulN(100, NaN)` 都回 0:
+ * 坏档写这两个值,玩家一进远征就满血变空血、开局即死。
+ * `maxRounds` 写 Infinity 会让第 547 行的回合循环失去上界。
+ */
+describe('远征规则修形 · 坏档里的 rules 字段', () => {
+  const foe = { name: 'f', icon: 'i', atkR: 1, defR: 1, hpR: 1, speed: 1, skills: [], mods: {} }
+  const node = (id: string) => ({ id, name: 'N', desc: '', foe, bonus: 1, riskText: '' })
+  const worldWith = (rules: unknown, nodeRules?: unknown) => ({
+    id: 'void',
+    name: 'V',
+    seal: 's',
+    anchorTier: 1,
+    desc: '',
+    ruleText: [],
+    rules,
+    foes: [foe],
+    guardian: foe,
+    rewardDaoSource: 1,
+    routes: [
+      [{ ...node('n1'), ...(nodeRules === undefined ? {} : { rules: nodeRules }) }, node('n2')],
+      [node('n3'), node('n4')],
+      [node('n5'), node('n6')]
+    ]
+  })
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('开场气血为 Infinity / NaN 时剔除该字段(否则一进远征即判负)', () => {
+    for (const bad of [Number.POSITIVE_INFINITY, Number.NaN, -1, 5]) {
+      const endgame = useEndgameStore()
+      endgame.$patch({ voidWorld: worldWith({ playerStartHpPct: bad }) as never })
+      endgame.sanitize()
+      const rules = (endgame.voidWorld as never as { rules?: { playerStartHpPct?: number } }).rules
+      const got = rules?.playerStartHpPct
+      expect(got === undefined || (got > 0 && got <= 1), `playerStartHpPct=${bad} 修形后仍是 ${got}`).toBe(true)
+    }
+    // 正常的 0.5 照常保留
+    const endgame = useEndgameStore()
+    endgame.$patch({ voidWorld: worldWith({ playerStartHpPct: 0.5 }) as never })
+    endgame.sanitize()
+    expect((endgame.voidWorld as never as { rules?: { playerStartHpPct?: number } }).rules?.playerStartHpPct).toBe(0.5)
+  })
+
+  it('maxRounds 为 Infinity / 负数时剔除该字段(否则回合循环失去上界)', () => {
+    const endgame = useEndgameStore()
+    endgame.$patch({ voidWorld: worldWith({ maxRounds: Number.POSITIVE_INFINITY }) as never })
+    endgame.sanitize()
+    expect((endgame.voidWorld as never as { rules?: { maxRounds?: number } }).rules?.maxRounds).toBeUndefined()
+
+    const e2 = useEndgameStore()
+    e2.$patch({ voidWorld: worldWith({ maxRounds: 40 }) as never })
+    e2.sanitize()
+    expect((e2.voidWorld as never as { rules?: { maxRounds?: number } }).rules?.maxRounds).toBe(40)
+  })
+
+  it('倍率夹到 [0,100],负治疗与离谱攻击都不留', () => {
+    const endgame = useEndgameStore()
+    endgame.$patch({ voidWorld: worldWith({ playerAtkMult: 1e9, healMult: -5, enemyHpMult: 1e12 }) as never })
+    endgame.sanitize()
+    const rules = (endgame.voidWorld as never as { rules?: { playerAtkMult?: number; healMult?: number; enemyHpMult?: number } }).rules
+    expect(rules?.playerAtkMult).toBe(100)
+    expect(rules?.healMult).toBe(0)
+    expect(rules?.enemyHpMult).toBe(100)
+  })
+
+  it('perRounds.interval 至少为 1(0 会让 round % 0 恒为 NaN,整条规则静默失效)', () => {
+    const endgame = useEndgameStore()
+    endgame.$patch({
+      voidWorld: worldWith({ perRounds: { interval: 0, playerHealPct: 5, playerShieldPct: Number.NaN, enemyAtkGrowth: -3 } }) as never
+    })
+    endgame.sanitize()
+    const per = (endgame.voidWorld as never as { rules?: { perRounds?: { interval: number; playerHealPct: number; playerShieldPct: number; enemyAtkGrowth: number } } })
+      .rules?.perRounds
+    expect(per?.interval).toBe(1)
+    expect(per?.playerHealPct).toBe(1)
+    expect(per?.playerShieldPct).toBe(0)
+    expect(per?.enemyAtkGrowth).toBe(0)
+  })
+
+  it('路线节点的 rules 同样修形(节点规则也会进战斗)', () => {
+    const endgame = useEndgameStore()
+    endgame.$patch({ voidWorld: worldWith({}, { playerStartHpPct: 99, maxRounds: -5 }) as never })
+    endgame.sanitize()
+    const nodeRules = (endgame.voidWorld as never as { routes?: { rules?: { playerStartHpPct?: number; maxRounds?: number } }[][] })
+      .routes?.[0]?.[0]?.rules
+    expect(nodeRules?.playerStartHpPct, '节点开场气血也要夹回 1').toBe(1)
+    expect(nodeRules?.maxRounds, '节点回合上界至少为 1').toBe(1)
+  })
+})
 })

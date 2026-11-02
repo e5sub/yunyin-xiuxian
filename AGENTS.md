@@ -20,9 +20,9 @@ src/stores/ Pinia 状态（持久化 <-> 内存）
 src/ui/    展示层字符串/图标注册（非逻辑）
 ```
 
-- **src/data/** — 纯静态声明式数据，无副作用、单一事实源。55 个模块：realms、regions、enemies（132）、equipment（288 模板）、affixes（119）、statNames（属性键→中文名，唯一命名表）、gongfa、gongfaBranches、pills、artifacts、souls、xiangxiu、ziwei、yijing、qimen、daolu、endgame、mutators、constants（556 行，含 `TICK_MS`、`OFFLINE_MIN_SECONDS`、`AGE_YEARS_PER_HOUR`、`ACTIVE_STAMP_MS` 等）。**这里的数字就是真实游戏数值，改动会影响全流程。**
+- **src/data/** — 纯静态声明式数据，无副作用、单一事实源。58 个模块：realms、regions、enemies（132）、equipment（288 模板）、affixes（119）、statNames（属性键→中文名，唯一命名表）、gongfa、gongfaBranches、pills、artifacts、souls、xiangxiu、ziwei、yijing、qimen、daolu、endgame、mutators、constants（556 行，含 `TICK_MS`、`OFFLINE_MIN_SECONDS`、`AGE_YEARS_PER_HOUR`、`ACTIVE_STAMP_MS` 等）。**这里的数字就是真实游戏数值，改动会影响全流程。**
 - **src/core/** — 游戏逻辑。关键模块：`engine.ts`（在线心跳 1000ms 单例，含 start/stop 与防重复 interval 守卫）、`combat.ts`（后台完整预演后回放）、`statsCalc.ts`（词缀递减 + 软上限）、`equipGen.ts`、`exploration.ts`、`offline.ts`、`progress.ts`（任务/成就横向总线）、`theme.ts`、`worldGen.ts`（终局世界生成，三重审计门）；另有 19 个 `*Service.ts` 与 6 个 `*Sim.ts` 平衡模拟器。
-- **src/stores/** — 19 个 Pinia store；除 `ui.ts` 外 18 个经 `persistConfig('<id>')`（`utils/storage.ts`）持久化。**任何持久化 store 必须暴露 `sanitize()`** 修复损坏存档——`storeResilience.spec.ts` 会从源码正则 `/persistConfig\('([a-zA-Z]+)'\)/` 抓取列表并逐一跑恶意损坏用例，缺 `sanitize` 即测试红。
+- **src/stores/** — 18 个 Pinia store（另有非 store 的 `sanitizeAll.ts` 逐仓自愈入口）；除 `ui.ts` 外 17 个经 `persistConfig('<id>')`（`utils/storage.ts`）持久化。**任何持久化 store 必须暴露 `sanitize()`** 修复损坏存档——`storeResilience.spec.ts` 会从源码正则 `/persistConfig\('([a-zA-Z]+)'\)/` 抓取列表并逐一跑恶意损坏用例，缺 `sanitize` 即测试红。
 - **src/ui/** — 展示层数据（icons 注册、codex、enemyLore、releaseNotes、powerText、`*Text.ts`）。注意 "palette" 不是模块，是 `src/ui/palette.spec.ts` 治理测试。
 - **src/utils/** — `GNum`（大数 `{m,e}=m×10^e`，`gn/ad/mul/div/powN/cmp/toNum`；**`toNum` 在 e>308 返回 Infinity，需守卫**）、`format`（formatGN/Num/Rate/Percent/Duration/Countdown/Clock/Years）、`random`（mulberry32 + RandomService 单例）、`storage`（前缀 `yunyin.`，SAVE_VERSION 2，AES 加密，节流合并写入 `SAVE_FLUSH_MS` 5000，`PERSISTED_STORES` 列表，`subscribeSaveWriteFailure`，preflightScan 隔离，v1→v2 迁移）、`saveShape`（asArray/asStringArray/asRecord/asRecordOf/asFiniteNumber 守卫）、`platform`、`colorToken`（tint）。
 - **src/types/** — 领域类型（CombatResult、CombatSideStats、FoeOrigin、GNum、EquipSlot…）。
@@ -32,8 +32,8 @@ src/ui/    展示层字符串/图标注册（非逻辑）
 | 路径 | 用途 |
 | --- | --- |
 | `src/data/` | 静态声明式游戏内容（唯一事实源） |
-| `src/core/` | 游戏逻辑 + 216 个同目录 `*.spec.ts` |
-| `src/stores/` | Pinia 状态（18 持久化 + ui 临时） |
+| `src/core/` | 游戏逻辑 + 237 个同目录 `*.spec.ts` |
+| `src/stores/` | Pinia 状态（17 持久化 + ui 临时） |
 | `src/ui/` | 展示层字符串 / 图标 |
 | `src/utils/` | 大数、格式化、随机、存储、存档守卫 |
 | `src/types/` | 领域类型 |
@@ -41,9 +41,8 @@ src/ui/    展示层字符串/图标注册（非逻辑）
 | `src/composables/` | useNow / useWallClock 等 |
 | `src/services/` | 网游后端客户端（REST + WebSocket，见 cloud.ts） |
 | `server/` | 网游后端：Node + Express + ws（SQLite/MySQL 双方言，注册登录 / 云存档 / 好友 / 排行榜 / 聊天 / 切磋 / GM 后台） |
-| `scripts/` | test-report.mjs、ui-smoke.mjs、layout-check.mjs、offline-check.mjs、fonts/build-kai-font.py |
+| `scripts/` | test-report.mjs、ui-smoke.mjs、focus-check.mjs、aria-check.mjs、multitab-check.mjs、layout-check.mjs、offline-check.mjs、fonts/build-kai-font.py |
 | `.github/workflows/` | CI（PR 检查、发布 Pages/PWA/Docker/Electron/APK） |
-| `.planning/ril/` | RIL 图（工程记忆，勿手改 JSON） |
 
 tsconfig paths `@/* → ./src/*`，开启 `strict` + `noUncheckedIndexedAccess` + `noUnusedLocals/Parameters`；`vue-tsc -b` 走 project references 做类型检查。
 
@@ -177,7 +176,6 @@ tsconfig paths `@/* → ./src/*`，开启 `strict` + `noUncheckedIndexedAccess` 
   - Don't split for splitting's sake; prefer merging like small changes together.
 - Workflow: `commit_message.txt` → `git commit -F` → delete; **only commit when the user explicitly asks**.
 - **NEVER** `--no-verify`, force-push `main`, or append a `Co-Authored-By` AI attribution.
-- **Batch RIL graph bookkeeping**: accumulate graph.json bookkeeping to roughly 10–50 entries (flexible guidance, not a hard cap), then land one `chore(ril): <summary>` commit; do not fold it into code commits. See the `graph-engineering` skill §LEARN.
 
 ## Important Files
 
@@ -189,7 +187,7 @@ tsconfig paths `@/* → ./src/*`，开启 `strict` + `noUncheckedIndexedAccess` 
 - `src/utils/storage.ts` — 存档持久化/加密/迁移（SAVE_PREFIX、SAVE_VERSION、PERSISTED_STORES）
 - `src/utils/gnum.ts` — 大数
 - `src/router/` — 路由与首启守卫
-- `scripts/test-report.mjs`、`ui-smoke.mjs`、`layout-check.mjs`、`offline-check.mjs`
+- `scripts/test-report.mjs`、`ui-smoke.mjs`、`focus-check.mjs`、`aria-check.mjs`、`multitab-check.mjs`、`layout-check.mjs`、`offline-check.mjs`
 - `.github/workflows/` — CI 定义
 - `vite.config.ts` / `vitest.config.ts` / `tsconfig*.json`
 
@@ -199,11 +197,10 @@ tsconfig paths `@/* → ./src/*`，开启 `strict` + `noUncheckedIndexedAccess` 
 - 包管理：`package.json` 锁定，安装用 `bun install`。
 - Node/TS 栈：Vue 3.5、Pinia 3、TS 6.0 strict、Vite 8、Tailwind 3.4、Vitest 5、lucide-vue-next、Tone.js（音频）、CryptoJS（存档 AES）。Electron 39 / Capacitor 8 / PWA。
 - Browserslist：Chrome≥51 / Android≥7 / iOS≥12 / Safari≥12。
-- **RIL 图**：`.planning/ril/graph.json` 是知识图谱唯一事实源（typed 节点+边：decisions/hypotheses/evidence/tasks）。**只能经 `.agents/skills/graph-engineering/scripts/ril.py` 编辑，绝不手改 JSON**。常用：`ril.py tasks --top N`、`ril.py check`、`ril.py node add/set`、`ril.py edge add`、`ril.py lock/unlock`。graph.json 正常是不随代码提交的工作区文件（git status 常显示其为 modified）。agent 启动时加载活动任务；若无，进入 deep-dive 找新问题（每轮 ≤3 个新任务节点）。
 
 ## Testing & QA
 
-- **框架**：Vitest 5；测试与实现同目录共存 `*.spec.ts`（共 317 个 spec：core 217、ui 46、stores 24、utils 10、data 10、composables 9、router 1）。用例条数不写进文档(`bun run test:report` 每次自己打)。
+- **框架**：Vitest 5；测试与实现同目录共存 `*.spec.ts`（共 381 个 spec：core 237、ui 55、stores 27、utils 13、data 34、composables 13、router 2）。用例条数不写进文档(`bun run test:report` 每次自己打)。
 - **运行**：全量 `bun run test`；分桶报告 `bun run test:report`。
 - **红线测试（改了相关逻辑必须保住）**：
   - `storeResilience.spec.ts` — 持久化 store 必须带 `sanitize`，且经恶意损坏用例。

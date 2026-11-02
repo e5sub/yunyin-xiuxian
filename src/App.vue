@@ -5,9 +5,9 @@
   >
     <TopStatusBar v-if="game.started && route.name !== 'create'" />
 
-    <main ref="scrollHost" class="relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+    <main ref="scrollHost" tabindex="-1" class="relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden outline-none">
       <RouterView v-slot="{ Component }">
-        <Transition name="page-fade" mode="out-in" @before-enter="resetScroll">
+        <Transition name="page-fade" mode="out-in" @before-enter="resetScroll" @after-enter="focusContent">
           <component :is="Component" />
         </Transition>
       </RouterView>
@@ -37,7 +37,7 @@
   import { useUiStore } from '@/stores/ui'
   import { useSettingsStore } from '@/stores/settings'
   import { useAuthStore } from '@/stores/auth'
-  import { subscribeSaveWriteFailure } from '@/utils/storage'
+  import { subscribeOtherTabSave, subscribeSaveWriteFailure, watchOtherTabSave } from '@/utils/storage'
   import { engine } from '@/core/engine'
   import { startAutoOps, stopAutoOps, prepOfflineAutoOps, collectOfflineBossLedger } from '@/core/autoOps'
   import { connectCloudWs, disconnectCloudWs, onSessionEnd } from '@/services/cloud'
@@ -68,15 +68,28 @@
   const scrollHost = ref<HTMLElement | null>(null)
 
   /**
-   * 切页归零滚动:main 常驻,scrollTop 会被下一页继承;router 的 scrollBehavior 只管 window,不顶用。
+   * 切页归零滚动 + 焦点回到内容区。
+   * 滚动:main 常驻,scrollTop 会被下一页继承;router 的 scrollBehavior 只管 window,不顶用。
+   * 焦点:不挪的话键盘/读屏焦点还停在旧页那个已经不在 DOM 里的链接上,浏览器把它甩回 body,
+   * 下一次 Tab 从文档开头重新数起,读屏也不播报「换页了」。main 上 tabindex=-1 只让它可编程聚焦、不进 Tab 序。
    * 挂 before-enter 而非 watch(route):out-in 下此刻旧页已离场,不会跳回顶部。
    */
   function resetScroll(): void {
     if (scrollHost.value) scrollHost.value.scrollTop = 0
   }
 
+  /**
+   * 焦点挪进内容区,须在 after-enter,不能在 before-enter:
+   * out-in 下 beforeEnter 时旧页还在离场,新页尚未插入,此刻 focus() 会被离场收尾抢回。
+   * main 的 tabindex=-1 只让它可编程聚焦、不进 Tab 序。
+   */
+  function focusContent(): void {
+    scrollHost.value?.focus({ preventScroll: true })
+  }
+
   let unsubscribeTheme: () => void = () => undefined
   let unsubscribeSaveFailure: () => void = () => undefined
+  let unsubscribeOtherTab: () => void = () => undefined
 
   /** 网游会话:已登录则连 ws + 拉云端档 + 启动定时推送 */
   async function bootstrapCloud(): Promise<void> {
@@ -149,6 +162,13 @@
     { immediate: true }
   )
 
+  // 只在开局后发跨标签心跳:没开局就没有可被覆盖的进度,不必每 4 秒写一次 localStorage
+  watch(
+    () => game.started,
+    started => watchOtherTabSave(started),
+    { immediate: true }
+  )
+
   // 减少动效类挂 body 而非 .app-shell:Teleport 到 body 的弹层在 .app-shell 之外,吃不到后代选择器
   watch(
     () => settings.reduceMotion,
@@ -163,6 +183,10 @@
       if (failure) ui.toast('存档写入失败', 'warn')
       else ui.toast('存档已恢复写入', 'info')
     })
+    // 两页同开时两边各自落盘、后写的整片覆盖先前那份,进度会静默丢失;只在开始那一次报
+    unsubscribeOtherTab = subscribeOtherTabSave(active => {
+      if (active) ui.toast('存档已在另一页打开', 'warn')
+    })
     // VIP 托管离线补推须先于离线结算(补历练会话/闭关到离线窗口,让离线公式整段结算)
     void (async () => {
       await prepOfflineAutoOps()
@@ -176,6 +200,8 @@
   onUnmounted(() => {
     unsubscribeTheme()
     unsubscribeSaveFailure()
+    unsubscribeOtherTab()
+    watchOtherTabSave(false)
     engine.stop()
     stopAutoOps()
     disconnectCloudWs()

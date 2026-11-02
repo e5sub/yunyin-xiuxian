@@ -1,5 +1,5 @@
 /**
- * 云隐修仙录 Service Worker:离线缓存,只管能退化的缓存层(见 RIL TASK-157 / DEC-033)
+ * 云隐修仙录 Service Worker:离线缓存,只管能退化的缓存层
  *  · 导航请求(hash 路由下都落在 index.html)network-first,离线才回退缓存
  *  · /assets/*(vite 内容哈希命名)与 manifest / 图标 / 音频等 public/ 稳定文件 cache-first
  *  · /api/*(含 /gm/api/*)与带 Authorization 的请求一律直连,绝不入缓存:

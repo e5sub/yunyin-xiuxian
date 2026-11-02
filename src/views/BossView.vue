@@ -52,6 +52,7 @@
       <button
         class="btn-ink mt-3 w-full"
         :disabled="!alive || usedUp || striking"
+        :title="striking ? '出剑判定中' : usedUp ? '今日出剑已用尽' : undefined"
         @click="strike"
       >
         {{ strikeLabel }}

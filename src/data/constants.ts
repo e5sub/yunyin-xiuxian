@@ -109,6 +109,12 @@ export const TRIB_HP_GUARD_CAP = 0.35
 /** 天劫减伤与濒危减伤的同一封顶;结算(waveDamage)与渡劫台账(CultivationView,经 tribulationDecision)同源 */
 export const TRIB_REDUCTION_CAP = 0.6
 /**
+ * 天劫抗性总值封顶(词条抗性 + 灵根折算 + 三维折算的加法项之和)。
+ * 高于减伤封顶:TRIB_REDUCTION_CAP 管「单条减伤词条」,本条管「抗性合起来最多能到多少」。
+ * 原为 tribulationDecision 里的裸 0.8,与同函数上两行的 TRIB_REDUCTION_CAP 用法不一致,故提到此处。
+ */
+export const TRIB_RESIST_CAP = 0.8
+/**
  * 天劫难度(伤害与波次)的境界封顶点:高于此境沿用此境难度。
  * 不封顶则减伤类词条撞绝对上限,神帝以上参考构筑(tribulationSpace.spec 的 maxed)0/5 可渡。
  * 伤害曲线已到上限:再加 4% 参考构筑在雷鸣/逆流劫下不渡。
@@ -297,6 +303,28 @@ export const DECOMPOSE_REFUND_RATE = 0.8
 export const SMART_KEEP_PERFECT_ROLL = 0.85
 export const BAG_CAPACITY = 120
 
+/**
+ * 玩家可输入文本的长度上限(道号、构筑名、试炼备注)。
+ * 建号页与构筑页都在输入侧截到这个数;读档侧也要同样截,
+ * 否则手改存档能塞几十万字符进去 —— 存档爆量,界面还要渲染那一整段。
+ */
+export const NAME_MAX_LENGTH = 8
+
+/**
+ * 单件装备的词条数硬上界。
+ *
+ * 品质表最高 8 条(divine 的 affixes 上界),洗练只换不增,故 9 已是真实峰值。
+ * 这里放到 16 是为了给「未来加词条位」留余量,同时仍能拦下坏档 ——
+ * 读档时不设界,手改存档能塞进几千条,存档爆量且词条面板要渲染那几千行。
+ */
+export const EQUIP_AFFIX_HARD_CAP = 16
+
+/**
+ * 辅修功法的席位数硬上界 = 洞府藏经阁满级时的席数(1 + 12/3)。
+ * 应用侧仍按 `dongfu.subGongfaSlots` 动态限,这里只防读档时的冗余数据。
+ */
+export const SUB_GONGFA_SLOT_HARD_CAP = 5
+
 // ============ 掉落 ============
 /**
  * 品质基础权重(凡→神),与品质窗口(QUALITY_OUT_OF_BAND / data/qualities 的 fromTier/toTier)共同决定获取难度。
@@ -389,8 +417,12 @@ export const GONGFA_UP_GROWTH = 1.45
 // 后期「灵石 → 悟道点」兑换:限量,不重建效率回路,不动熔炉建模(审计敏感)
 /** 兑换开放境界(混沌海起) */
 export const WUDAO_EXCHANGE_MIN_MAJOR = 18
-/** 每次兑换所费灵石 */
-export const WUDAO_EXCHANGE_PRICE_BASE = 3000
+/**
+ * 每次兑换所费灵石,以「层级单位」计(服务层走 stoneByTier 折算)。
+ * 写死绝对值会与境界收入脱钩:3000 石在混沌海只值一战收益的百万分之一,整条兑换形同白送。
+ * 214 约为该境一小时的灵石收入(见 expIncome.winsPerHour)——十次即一日上限约合一小时。
+ */
+export const WUDAO_EXCHANGE_TIER_AMOUNT = 214
 /** 每次兑换所得悟道点 */
 export const WUDAO_EXCHANGE_GAIN = 1
 /** 每游戏日可兑换的次数上限 */

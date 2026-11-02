@@ -270,11 +270,18 @@ export function settleSuppressedRegions(
     return Math.max(0, Math.min(dt, remain))
   }
 
-  // ---- 镇守道韵:逐区按本段生效时长结 ----
+  /*
+   * ---- 镇守道韵:按「总速率封顶」摊到各区 ----
+   * 单位是「挂机产出的百分比」:界面报「修为 +8%/时」,指这一小时按挂机所得的 8% 另结。
+   * 故取 cultPerSec × 秒数 × 倍率 —— 除以 3600 会把「一小时」算成「一秒」的量(少 3600 倍)。
+   * 逐区各发 8% 时第 6 区起越过封顶(7 区实得 56%);摊成「总速率 ÷ 区数」后:
+   * 5 区以内与旧口径逐字相同,6 区起总量停在 40%;某区提前复聚只少自己的那份。
+   */
+  const perRegionRate = active.length > 0 ? suppressionExpRate(active.length) / active.length : 0
   for (const regionId of active) {
     const heldSec = heldSecOf(regionId)
     if (heldSec <= 0) continue
-    const expGain = mulN(gn(player.cultPerSec), suppressionExpRate(1) * (heldSec / 3600))
+    const expGain = mulN(gn(player.cultPerSec), perRegionRate * heldSec)
     if (isZero(expGain)) continue
     player.gainExp(expGain)
     total.expGain = add(total.expGain, expGain)

@@ -95,7 +95,7 @@ export const CELESTIAL_WORLDS: CelestialWorldDef[] = [
     seal: '炎',
     anchorTier: 22,
     desc: '天穹燃烧,雷火贯体',
-    ruleText: ['敌人攻击 +40%', '真伤横行', '治疗 -35%', '回合上限骤减'],
+    ruleText: ['敌人攻击 +40%', '敌人暴击率 +10%', '真伤横行', '治疗 -35%', '回合上限 32'],
     rules: { enemyAtkMult: 1.4, maxRounds: 32, healMult: 0.65, enemyExtraMods: { critRate: 0.1 } },
     entryCost: 20,
     fights: 6,
@@ -173,7 +173,7 @@ export const CELESTIAL_WORLDS: CelestialWorldDef[] = [
     seal: '刃',
     anchorTier: 25,
     desc: '亿万飞刃永不停歇,段段皆可反击',
-    ruleText: ['敌人皆为多段连击且血厚'],
+    ruleText: ['敌人皆为多段连击且血厚', '敌人暴击率 +10%'],
     rules: { enemyExtraMods: { critRate: 0.1 } },
     entryCost: 20,
     fights: 6,
@@ -252,7 +252,7 @@ export const CELESTIAL_WORLDS: CelestialWorldDef[] = [
     seal: '寂',
     anchorTier: 29,
     desc: '此界不容生机,治疗近乎无效',
-    ruleText: ['治疗效率 -70%', '护盾上限减半', '敌人攻击 +15%'],
+    ruleText: ['治疗效率 -70%', '护盾上限减半', '敌人攻击 +15%', '敌人暴击率 +10%'],
     rules: { healMult: 0.3, shieldCapRatio: 0.25, enemyAtkMult: 1.15, enemyExtraMods: { critRate: 0.1 } },
     entryCost: 20,
     fights: 6,
@@ -330,7 +330,7 @@ export const CELESTIAL_WORLDS: CelestialWorldDef[] = [
     seal: '影',
     anchorTier: 32,
     desc: '万物无相,出手落空',
-    ruleText: ['敌人闪避极高', '敌人出手极快'],
+    ruleText: ['敌人闪避极高', '敌人出手极快', '敌人暴击率 +12%'],
     rules: { enemyExtraMods: { critRate: 0.12 } },
     entryCost: 20,
     fights: 6,
@@ -497,7 +497,7 @@ export const FURNACE_STONE_DAO_SOURCE = 5
 
 /**
  * 凝一枚道果所需道源(数值成长唯一出口,受道果软上限约束)。道果价恒定、熔炉平算,品位价值走灵石。
- * economySim 的 daoCostHours = 本值 ÷ 熔炉每小时道源潜力,须在整条界外长尾上不随层级漂移(ISS-214 红线);实测 ~1.8~3.4h。
+ * economySim 的 daoCostHours = 本值 ÷ 熔炉每小时道源潜力,须在整条界外长尾上不随层级漂移(红线);实测 ~1.8~3.4h。
  */
 export const DAO_SOURCE_PER_FRUIT = 200
 

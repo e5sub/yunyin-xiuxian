@@ -6,15 +6,17 @@ import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useInventoryStore } from '@/stores/inventory'
 import { DECOMPOSE_DUST } from '@/data/constants'
-import { regionDef } from '@/data/regions'
+import { REGIONS, regionDef } from '@/data/regions'
 import { herbGradeOfMajor, HERB_GRADE_SHORT } from '@/data/herbGrades'
 import { qualityDef } from '@/data/qualities'
-import { gnZero, mulN, sub, toNum } from '@/utils/gnum'
+import { gn, gnZero, mulN, sub, toNum } from '@/utils/gnum'
 import { formatGN } from '@/utils/format'
 import { RandomService } from '@/utils/random'
 import {
+  SUPPRESS_EXP_MAX,
   checkSuppression,
   settleSuppressedRegions,
+  suppressDaoText,
   suppressionEquipmentLuck,
   suppressionExpRate,
   suppressRateFor,
@@ -113,7 +115,7 @@ describe('区域镇压系统', () => {
     })
   })
 
-  /** DEC-018:资格一次性取得,此后收益只是开关;收益可多处并存,历练一次只一处 */
+  /** 资格一次性取得,此后收益只是开关;收益可多处并存,历练一次只一处 */
   describe('镇压资格 · 收益自由开关', () => {
     it('停取收益不丢资格,可一键切回', () => {
       const player = usePlayerStore()
@@ -393,7 +395,55 @@ describe('区域镇压系统', () => {
         expect(suppressionEquipmentLuck(Number.NaN, now)).toBe(0)
       })
 
-      it('结算:镇压两区一小时,修为红利 = 修速 × 16%', () => {
+      /**
+       * 封顶必须在结算里兑现:界面与 suppressDaoText 报的是 min(区数×8%, 40%),
+       * 逐区各发 8% 时第 6 区起就越过封顶(7 区实得 56%),文案与结算分叉。
+       * 故障注入:把 perRegionRate 换回 suppressionExpRate(1) → 本条红。
+       */
+      it('结算:越过五区后总量停在 40% 封顶,与道韵文案同一把尺', () => {
+        for (const n of [6, 7, 10]) {
+          setActivePinia(createPinia())
+          const player = usePlayerStore()
+          player.major = 5
+          useResourcesStore().spiritStone = gn(1)
+          const ids = REGIONS.slice(0, n).map(r => r.id)
+          player.suppressedRegions = [...ids]
+          player.suppressQualified = [...ids]
+          const cult = player.cultPerSec
+          const hourGain = cult * 3600
+          const before = toNum(player.exp)
+          settleSuppressedRegions(3600)
+          const ratio = (toNum(player.exp) - before) / hourGain
+          expect(ratio, `${n} 区超发:实得挂机收益的 ${(ratio * 100).toFixed(1)}%`).toBeLessThanOrEqual(
+            SUPPRESS_EXP_MAX + 1e-6
+          )
+          expect(ratio, `${n} 区该顶到封顶`).toBeCloseTo(SUPPRESS_EXP_MAX, 6)
+          expect(suppressDaoText(n), '文案报的封顶与结算同一份').toContain(`${Math.round(SUPPRESS_EXP_MAX * 100)}%`)
+        }
+      })
+
+      it('结算:未到封顶时仍按每区 8% 如实叠加,五区之内口径不变', () => {
+        for (const [n, want] of [[1, 0.08], [3, 0.24], [5, 0.4]] as const) {
+          setActivePinia(createPinia())
+          const player = usePlayerStore()
+          player.major = 5
+          useResourcesStore().spiritStone = gn(1)
+          const ids = REGIONS.slice(0, n).map(r => r.id)
+          player.suppressedRegions = [...ids]
+          player.suppressQualified = [...ids]
+          const cult = player.cultPerSec
+          const before = toNum(player.exp)
+          settleSuppressedRegions(3600)
+          expect((toNum(player.exp) - before) / (cult * 3600), `${n} 区应为挂机收益的 ${want}`).toBeCloseTo(want, 6)
+        }
+      })
+
+      /**
+       * 量级:文案说「修为 +8%/时」,指这一小时另结挂机所得的 8%。
+       * 写成 `rate × (秒数 / 3600)` 会只剩「一秒的 8%」,一千倍以上地缩水(实测挂机一小时 2046 万,道韵 455)。
+       * 故障注入:把结算改回除以 3600 → 本条红。
+       */
+      it('结算:镇压两区一小时,修为红利 = 挂机收益 × 16%', () => {
         const player = usePlayerStore()
         player.suppressedRegions = ['qingyun', 'wanyao']
         player.suppressedSince = { qingyun: Date.now(), wanyao: Date.now() }
@@ -402,8 +452,10 @@ describe('区域镇压系统', () => {
         const total = settleSuppressedRegions(3600)
         expect(total).not.toBeNull()
         const gained = toNum(player.exp) - before
-        expect(gained).toBeCloseTo(cult * 0.16, 6)
-        expect(toNum(total!.expGain)).toBeCloseTo(cult * 0.16, 6)
+        expect(gained).toBeCloseTo(cult * 3600 * 0.16, 4)
+        expect(toNum(total!.expGain)).toBeCloseTo(cult * 3600 * 0.16, 4)
+        // 与挂机同量级:一天的道韵不该还不如挂机一分钟
+        expect(gained, '道韵缩水成「一秒的 8%」—— 与文案差三个数量级').toBeGreaterThan(cult * 60)
       })
 
       /** 故障注入:把结算里的 `suppressionEquipmentLuck(since, now)` 改成 `luck: 0`,本用例红 */

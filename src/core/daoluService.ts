@@ -1,6 +1,6 @@
 /**
  * 道侣服务。关系值只转化为事件概率与选项资格,不转化为任何数值;本文件不得出现:
- *   - StatMods / 任何属性键(45 个属性键全部可达 cultivationSpeed)
+ *   - StatMods / 任何属性键(任一属性键都能写成 cultivationSpeed;总数见 data/statNames)
  *   - addDaoFruit / addInsight
  *   - 资源发放(灵石/丹药/材料)
  *   - cultivationSpeed 相关
@@ -276,7 +276,7 @@ function weightFor(ev: BondEventDef, b: BondState): number {
 /**
  * 某个历练情境下是否发生一件共同事件。
  * 情境筛选而非随机抽取:未声明所属情境的事件永不提供(见 bondEvents.spec 的故障注入)。
- * 随机源可注入:自检须能确定性钉住哪条路够得着(见 RIL TASK-049)。
+ * 随机源可注入:自检须能确定性钉住哪条路够得着。
  */
 export function offerBondEvent(trigger: BondTrigger, rand: RandomService = rng): BondEventDef | null {
   const player = usePlayerStore()

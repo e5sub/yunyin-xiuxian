@@ -1,7 +1,8 @@
 <template>
   <!-- 凡境册元婴起(灵石),天界册真仙起(道源) -->
   <section v-if="unlocked" class="card-ink px-4 py-3">
-    <p class="flex items-center gap-2">
+    <!-- 换行放宽:200% 缩放下「秘境」+ 门类芯片 + 层数挤不进一行,不换行会顶出右缘 -->
+    <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
       <span class="font-kai text-[14px] tracking-[0.2em] text-ink">秘境</span>
       <span class="chip-ink !text-[9px]">{{ gate === 'celestial' ? '天界秘境' : '凡境秘境' }} · {{ cnNumber(SECRET_LAYERS) }}层 · 出则散</span>
       <span v-if="state" class="ml-auto text-[10px] tabular text-gold-ink">第 {{ state.layer }}/{{ SECRET_LAYERS }} 层</span>
@@ -12,7 +13,7 @@
       <p class="mt-1.5 text-[11px] leading-relaxed text-ink-soft">
         {{ def?.name }} · {{ def?.desc }}
       </p>
-      <p class="mt-1 text-[10px] leading-relaxed text-violet-ink">此地规则:{{ state.rules.join(' · ') }}</p>
+      <p class="mt-1 text-[10px] leading-relaxed text-violet-ink">此地规则:{{ secretRuleTexts(state).join(' · ') }}</p>
       <p v-if="state.losses > 0" class="mt-0.5 text-[10px] leading-relaxed tabular text-cinnabar">
         已败 {{ state.losses }} 场 · 再败 {{ SECRET_MAX_LOSSES - state.losses }} 场逐出
       </p>
@@ -76,7 +77,8 @@
     entryCostText,
     entryShortfallOf,
     fightSecretLayer,
-    realmUnlock
+    realmUnlock,
+    secretRuleTexts
   } from '@/core/secretRealm'
   import { endgameBusy } from '@/core/endgameActivity'
   import { useAdventureStore } from '@/stores/adventure'

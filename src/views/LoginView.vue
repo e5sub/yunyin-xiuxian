@@ -147,7 +147,7 @@
       <template #footer>
         <div class="flex gap-2">
           <button class="btn-ghost flex-1" @click="forgotOpen = false">再想想</button>
-          <button class="btn-seal flex-1" :disabled="forgotBusy" @click="doReset">重置口令</button>
+          <button class="btn-seal flex-1" :disabled="forgotBusy" :title="forgotBusy ? '请求处理中' : undefined" @click="doReset">重置口令</button>
         </div>
       </template>
     </BaseModal>

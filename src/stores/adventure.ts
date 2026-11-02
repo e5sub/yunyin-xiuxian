@@ -1,11 +1,18 @@
 /** 历练状态 —— 区域解锁 / 历练会话 / 待处理事件 / 最近战报 */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import type { AdventureSession, CombatResult, GNum } from '@/types'
+import type { AdventureSession, CombatResult, CombatSideStats, FoeOrigin, FoeOriginPart, GNum } from '@/types'
 import { persistConfig } from '@/utils/storage'
 import { regionDef, unlockClosure } from '@/data/regions'
-import { gn } from '@/utils/gnum'
-import { asFiniteNumber, asNumberRecord, asObjectOrNull, asRecord, asStringArray } from '@/utils/saveShape'
+import {
+  asBoundedGNum,
+  asCombatRules,
+  asFiniteNumber,
+  asNumberRecord,
+  asObjectOrNull,
+  asRecord,
+  asStringArray
+} from '@/utils/saveShape'
 import { eventDef } from '@/data/events'
 import { exploreModeOf } from '@/core/exploreModes'
 
@@ -45,7 +52,9 @@ function sanitizeMortalWorld(raw: unknown): import('@/core/mortalWorldGen').Mort
       eventTags: asStringArray(p.eventTags)
     })
   }
-  const rules = w.rules && typeof w.rules === 'object' && !Array.isArray(w.rules) ? w.rules : {}
+  // 世界规则会原样进 resolveCombat(mortalWorldGen 第 357 行),须按字段修形:
+  // playerStartHpPct 写 Infinity/NaN 会让玩家一进战斗即判负(详见 saveShape 的说明)
+  const rules = asCombatRules(w.rules)
   return {
     seed: asFiniteNumber(w.seed, 0),
     chain,
@@ -63,6 +72,74 @@ function sanitizeMortalWorld(raw: unknown): import('@/core/mortalWorldGen').Mort
   }
 }
 
+/** CombatSideStats 里全部 GNum 字段;缺一项,战斗分析的 formatGN 就会读到 undefined.m */
+const SIDE_GNUM_KEYS = [
+  'dealt',
+  'taken',
+  'pierceTaken',
+  'biggestHitTaken',
+  'healed',
+  'shieldAbsorbed'
+] as const
+/** 计数类字段,非有限值归零 */
+const SIDE_COUNT_KEYS = [
+  'dodges',
+  'missedHits',
+  'hitsLanded',
+  'counters',
+  'combos',
+  'crits',
+  'skillCasts',
+  'artifactProcs',
+  'stunnedTurns'
+] as const
+
+/**
+ * 战报遥测修形:旧档可能缺后加字段或写成 null,分析面板直接读 `dealt.m`。
+ * 坏到补不出侧数据即整份丢弃(与 stats 缺失同义:分析面板按「无遥测」不渲染)。
+ */
+function sanitizeSideStats(raw: unknown): CombatSideStats | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const r = raw as Record<string, unknown>
+  const out = {} as Record<string, GNum | number>
+  // 读档的 GNum 一律走 asBoundedGNum:gn 不限 e,坏档会让战报印出「1.00e1000000000」
+  for (const key of SIDE_GNUM_KEYS) out[key] = asBoundedGNum(r[key])
+  for (const key of SIDE_COUNT_KEYS) out[key] = Math.max(0, Math.floor(asFiniteNumber(r[key], 0)))
+  return out as unknown as CombatSideStats
+}
+
+/** 敌人加成来源修形:parts 里的倍率进文案与比值,坏形即整条丢弃(报「无加成」比抛错好) */
+function sanitizeFoeOrigin(raw: unknown): FoeOrigin | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const o = raw as Partial<FoeOrigin>
+  if (typeof o.label !== 'string') return undefined
+  const parts = Array.isArray(o.parts)
+    ? o.parts.filter(
+        (p): p is FoeOriginPart =>
+          !!p && typeof p === 'object' && typeof p.label === 'string' && Number.isFinite(p.ratio)
+      )
+    : []
+  return {
+    label: o.label,
+    ratio: asFiniteNumber(o.ratio, 1, 1),
+    damageBonus: asFiniteNumber(o.damageBonus, 0, 0),
+    damageReduction: asFiniteNumber(o.damageReduction, 0, 0),
+    parts,
+    note: typeof o.note === 'string' ? o.note : ''
+  }
+}
+
+/** 先手判定修形:两个速度直接进读数,非有限值即丢这一项 */
+function sanitizeFirstMove(raw: unknown): CombatResult['firstMove'] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const f = raw as Record<string, unknown>
+  if (typeof f.playerFirst !== 'boolean') return undefined
+  const playerSpeed = asFiniteNumber(f.playerSpeed, NaN)
+  const enemySpeed = asFiniteNumber(f.enemySpeed, NaN)
+  if (!Number.isFinite(playerSpeed) || !Number.isFinite(enemySpeed)) return undefined
+  return { playerFirst: f.playerFirst, playerSpeed, enemySpeed }
+}
+
 /** 上一场战报修形:渲染层直接读 `result.win / log / rounds`,结果或日志坏则整份作废 */
 function sanitizeLastBattle(raw: unknown): LastBattleView | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
@@ -70,6 +147,9 @@ function sanitizeLastBattle(raw: unknown): LastBattleView | null {
   if (typeof b.enemyName !== 'string' || typeof b.enemyIcon !== 'string') return null
   const r = b.result as Partial<CombatResult> | undefined
   if (!r || typeof r !== 'object' || typeof r.win !== 'boolean' || !Array.isArray(r.log)) return null
+  const stats = r.stats
+    ? { player: sanitizeSideStats(r.stats.player), enemy: sanitizeSideStats(r.stats.enemy) }
+    : null
   return {
     ...b,
     enemyName: b.enemyName,
@@ -80,7 +160,11 @@ function sanitizeLastBattle(raw: unknown): LastBattleView | null {
       win: r.win,
       log: r.log.filter(x => !!x && typeof x === 'object' && typeof x.text === 'string'),
       rounds: Math.max(0, Math.floor(asFiniteNumber(r.rounds, 0))),
-      playerHpPct: Math.min(1, asFiniteNumber(r.playerHpPct, 0, 0))
+      playerHpPct: Math.min(1, asFiniteNumber(r.playerHpPct, 0, 0)),
+      // 两侧都补得回来才留遥测:只有一侧可读是坏档,分析面板按「无遥测」不渲染更安全
+      stats: stats && stats.player && stats.enemy ? { player: stats.player, enemy: stats.enemy } : undefined,
+      foeOrigin: sanitizeFoeOrigin(r.foeOrigin),
+      firstMove: sanitizeFirstMove(r.firstMove)
     },
     at: asFiniteNumber(b.at, 0),
     loot: b.loot === undefined ? undefined : asStringArray(b.loot),
@@ -110,7 +194,7 @@ export interface LastBattleView {
 
 /** 战力栏修形:gn() 归一,归零视为缺失(卡片 v-if 只渲染有值的 GNum) */
 function gnStrict(v: unknown): GNum | undefined {
-  const g = gn(v as GNum)
+  const g = asBoundedGNum(v)
   return g.m === 0 && g.e === 0 ? undefined : g
 }
 
@@ -169,9 +253,10 @@ export const useAdventureStore = defineStore(
             losses: Math.floor(asFiniteNumber(s.losses, 0, 0)),
             events: Math.floor(asFiniteNumber(s.events, 0, 0)),
             itemGain: Math.floor(asFiniteNumber(s.itemGain, 0, 0)),
-            // 须经 gn() 归一:坏 GNum 会让 exploration 的 add() 每场胜利都抛,历练永久卡死
-            stoneGain: gn(s.stoneGain),
-            expGain: gn(s.expGain)
+            // 须经 asBoundedGNum 归一:坏 GNum 会让 exploration 的 add() 每场胜利都抛,历练永久卡死;
+            // 它同时带指数上界,裸 gn() 不设界会让本世收益印出「1.00e1000000000」
+            stoneGain: asBoundedGNum(s.stoneGain),
+            expGain: asBoundedGNum(s.expGain)
           }
         }
       }

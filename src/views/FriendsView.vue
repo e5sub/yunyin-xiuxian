@@ -7,6 +7,7 @@
         v-for="t in TABS"
         :key="t.id"
         class="rounded-md py-1.5 text-[13px] tracking-[0.2em]"
+        :aria-pressed="tab === t.id"
         :class="tab === t.id ? 'bg-cinnabar text-paper' : 'text-ink-faint'"
         @click="tab = t.id"
       >
@@ -47,7 +48,7 @@
           placeholder="道号"
           class="flex-1 rounded-lg border border-ink/15 bg-paper-deep/60 px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:border-cinnabar/60 focus:outline-none"
         />
-        <button class="btn-ghost !px-4" :disabled="adding" @click="addFriend">加好友</button>
+        <button class="btn-ghost !px-4" :disabled="adding" :title="adding ? '请求处理中' : undefined" @click="addFriend">加好友</button>
       </div>
 
       <div v-if="friends.incoming.length" class="card-ink space-y-2 px-3 py-3">
@@ -65,7 +66,7 @@
           <span class="h-2 w-2 shrink-0 rounded-full" :class="f.online ? 'bg-jade' : 'bg-ink/20'" />
           <span class="font-kai text-[14px] text-ink">{{ f.name }}</span>
           <span class="flex-1 text-[11px] text-ink-faint">{{ f.profile?.realmLabel ?? '' }}</span>
-          <button class="btn-ghost !px-3 !text-[12px]" :disabled="dueling === f.id" @click="duel(f.id)">切磋</button>
+          <button class="btn-ghost !px-3 !text-[12px]" :disabled="dueling === f.id" :title="dueling === f.id ? '切磋判定中' : undefined" @click="duel(f.id)">切磋</button>
           <button class="btn-ghost !px-2 !text-[12px] !text-cinnabar" @click="removeFriend(f.id)">删</button>
         </div>
       </div>
@@ -80,7 +81,7 @@
           <span class="font-kai text-[14px] text-ink">{{ row.name }}</span>
           <span class="flex-1 text-[11px] text-ink-faint">{{ row.realmLabel }}</span>
           <span class="tabular text-[11px] text-ink-soft">{{ powerLabel(row) }}</span>
-          <button v-if="row.id !== auth.userId" class="btn-ghost !px-3 !text-[12px]" :disabled="dueling === row.id" @click="duel(row.id)">切磋</button>
+          <button v-if="row.id !== auth.userId" class="btn-ghost !px-3 !text-[12px]" :disabled="dueling === row.id" :title="dueling === row.id ? '切磋判定中' : undefined" @click="duel(row.id)">切磋</button>
         </div>
       </div>
     </template>

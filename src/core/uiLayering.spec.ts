@@ -346,3 +346,135 @@ describe('界面分层 · 模板用到的组件必须在本文件里有来路', 
     expect(rawImportMissing, '这些文件用了 GameIcon 却没有 import 语句').toEqual([])
   })
 })
+
+/**
+ * 动态状态区须对读屏可播报。
+ * toast 是「存档写入失败」「导出失败」「行囊已满」这类关键状态的唯一通道,
+ * 原模板上没有任何 aria-live / role=status,读屏用户完全听不到 —— 而这些恰恰是必须知道的。
+ * 故障注入:把 ToastHost 上的 role/aria-live 删掉,本条红。
+ */
+describe('可访问性 · 状态播报', () => {
+  it('ToastHost 挂 role=status 且 aria-live,逐条播报', () => {
+    const host = readFileSync(resolve(SRC, 'components/common/ToastHost.vue'), 'utf-8')
+    expect(host, 'toast 容器没有 role=status:读屏不会播报').toMatch(/role="status"/)
+    expect(host, 'toast 容器没有 aria-live:读屏不会播报').toMatch(/aria-live="polite"/)
+    // 逐条播报:合并成一句会把同帧多条提示念成一坨
+    expect(host, 'aria-atomic 应为 false,否则整批提示被拼成一句重复念').toMatch(/aria-atomic="false"/)
+    // toast 会自己消失(2.6s),进 Tab 序会让键盘焦点落到一条随时没影的元素上
+    expect(host, 'toast 按钮不该进 Tab 序:键盘焦点会落到一条即将消失的元素上').toMatch(/tabindex="-1"/)
+  })
+
+  it('其它动态区已有播报的不许回退', () => {
+    const anchors: Array<[string, RegExp]> = [
+      ['src/components/common/SpiritRootReveal.vue', /role="status"/],
+      ['src/components/common/UpdatePrompt.vue', /role="status"/],
+      ['src/components/cultivation/EnlightenmentModal.vue', /aria-live="polite"/]
+    ]
+    for (const [file, pat] of anchors) {
+      const src = readFileSync(resolve(SRC, file.replace('src/', '')), 'utf-8')
+      expect(pat.test(src), `${file} 的读屏播报被删了`).toBe(true)
+    }
+  })
+})
+
+/**
+ * 表单控件须有可访问名:要么被 <label> 包着,要么自己带 aria-label / placeholder。
+ * 实测漏过 AutoReforgePanel 的 range 与 number 两个输入 —— 读屏只念「滑块」「数字输入框」,
+ * 玩家不知道在调哪个词条的下限、也不知道那是洗炼次数。
+ * 隐藏的 input[type=file] 不算:它由同名按钮触发,本身不进焦点序。
+ * 故障注入:删掉任一 aria-label,本条红。
+ */
+describe('可访问性 · 表单控件有名字', () => {
+  it('每个非隐藏表单控件都能被读屏叫出名字', () => {
+    const nameless: string[] = []
+    for (const f of FILES) {
+      // 被 <label> 包住的控件已有名字
+      const labeled = new Set<string>()
+      for (const m of f.src.matchAll(/<label\b[\s\S]*?<\/label>/g)) {
+        for (const im of m[0].matchAll(/<input\b[^>]*>/g)) labeled.add(im[0])
+      }
+      for (const m of f.src.matchAll(/<(?:input|select|textarea)\b[^>]*>/g)) {
+        const tag = m[0]
+        if (tag.includes('type="file"')) continue
+        if (/aria-label|aria-labelledby|placeholder|\bhidden\b/.test(tag)) continue
+        if (labeled.has(tag)) continue
+        nameless.push(`${f.path} → ${tag.replace(/\s+/g, ' ').slice(0, 70)}`)
+      }
+    }
+    expect(nameless, '这些表单控件没有可访问名:读屏只念得出控件类型').toEqual([])
+  })
+})
+
+/**
+ * 图标是装饰,不该进读屏的事件流。
+ * GameIcon 被引 111 处,lucide 生成的 <svg> 默认无 aria-hidden —— 若在每处补,漏一处就多一段噪音;
+ * 收在 GameIcon 一处,新增用法自动继承。
+ * 故障注入:删掉 GameIcon 上的 aria-hidden,本条红。
+ */
+describe('可访问性 · 装饰图标不进读屏', () => {
+  it('GameIcon 统一 aria-hidden 且不进焦点序', () => {
+    const icon = readFileSync(resolve(SRC, 'components/common/GameIcon.vue'), 'utf-8')
+    expect(icon, 'GameIcon 没挂 aria-hidden:读屏会把每个图标念一遍').toMatch(/aria-hidden="true"/)
+    expect(icon, 'SVG 在旧 Edge/IE 下会进 Tab 序,须 focusable="false"').toMatch(/focusable="false"/)
+  })
+
+  it('装饰性内联 SVG/符号也不进读屏', () => {
+    // 抽查几处纯装饰元素:已有 aria-hidden 的不许回退
+    const decor: Array<[string, RegExp]> = [
+      ['src/components/common/BaseModal.vue', /class="modal-edge[^"]*" aria-hidden="true"/],
+      ['src/components/celestial/MarksPanel.vue', /class="empty-seal" aria-hidden="true"/]
+    ]
+    for (const [file, pat] of decor) {
+      const src = readFileSync(resolve(SRC, file.replace('src/', '')), 'utf-8')
+      expect(pat.test(src), `${file} 的装饰元素丢了 aria-hidden`).toBe(true)
+    }
+  })
+})
+
+/**
+ * 切页后焦点要回到内容区。
+ * 不挪焦点:旧页那个链接已不在 DOM,浏览器把焦点甩回 body,下一次 Tab 从文档头重新数,
+ * 读屏也不播报换页。main 上的 tabindex=-1 让它可编程聚焦、但不进 Tab 序。
+ * 故障注入:删掉 main 的 tabindex 或 resetScroll 里的 focus(),本条红。
+ */
+describe('可访问性 · 切页后焦点回到内容区', () => {
+  it('main 可编程聚焦,且切页时调用 focus', () => {
+    const app = readFileSync(resolve(SRC, 'App.vue'), 'utf-8')
+    expect(app, 'main 缺 tabindex=-1:无法用脚本把焦点移过去').toMatch(/<main\b[^>]*tabindex="-1"/)
+    expect(app, '切页时没有把焦点移到内容区:键盘/读屏焦点会掉回 body').toMatch(/scrollHost\.value\?\.focus\(/)
+    // 须挂 after-enter:out-in 下 beforeEnter 时旧页仍在离场、新页未插入,此刻 focus() 会被离场收尾抢回
+    expect(app, '焦点须挂在 @after-enter:挂 before-enter 会被 out-in 的离场收尾抢回').toMatch(/@after-enter="focusContent"/)
+    // preventScroll 必须给:否则浏览器会为「滚动到该元素」再算一次,和手动 scrollTop=0 打架
+    expect(app, 'focus 缺 preventScroll,会和 scrollTop=0 打架').toMatch(/focus\(\{\s*preventScroll:\s*true\s*\}\)/)
+  })
+})
+
+/**
+ * 进程被终结前的最后一步必须是显式刷盘。
+ * 落盘有 SAVE_FLUSH_MS(5 秒)节流,排队中的整批进度要等定时器;exitApp()/进程退出一执行,
+ * 排队的就没了。等微任务(nextTick)等不到 setTimeout。
+ * 故障注入:去掉 ExitConfirmDialog 里的 flushSaveWrites(),本条红。
+ */
+describe('存档 · 退出前须刷盘', () => {
+  it('安卓返回键退出确认:exitApp 之前先 flushSaveWrites', () => {
+    const src = readFileSync(resolve(SRC, 'components/common/ExitConfirmDialog.vue'), 'utf-8')
+    // 取整个 confirm 函数体:从函数头到下一个顶层函数(onMounted)
+    const from = src.indexOf('async function confirm')
+    const confirmBody = src.slice(from, src.indexOf('onMounted', from))
+    // 只认真正的调用点:注释里也提到过这两个名字,须排除
+    const calls = (name: string): number => {
+      for (const m of confirmBody.matchAll(new RegExp(`^\\s*${name}`, 'gm'))) return m.index ?? -1
+      return -1
+    }
+    const flushAt = calls('flushSaveWrites\\(\\)')
+    const exitAt = calls('await CapacitorApp\\.exitApp')
+    expect(flushAt, 'confirm() 里没有 flushSaveWrites:排队的进度会随进程退出丢掉').toBeGreaterThan(-1)
+    expect(exitAt, 'confirm() 里找不到 exitApp()').toBeGreaterThan(-1)
+    expect(flushAt, 'flushSaveWrites 必须排在 exitApp 之前').toBeLessThan(exitAt)
+  })
+
+  it('引擎停止时同样先刷盘再停', () => {
+    const src = readFileSync(resolve(SRC, 'core/engine.ts'), 'utf-8')
+    expect(src, 'engine 停止路径没有刷盘').toMatch(/flushSaveWrites\(\)/)
+  })
+})

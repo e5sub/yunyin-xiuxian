@@ -24,8 +24,8 @@
     </p>
 
     <div class="flex gap-2">
-      <button class="btn-ghost flex-1 !text-[12px]" :disabled="busy" @click="uploadNow">立即上传</button>
-      <button class="btn-ghost flex-1 !text-[12px]" :disabled="busy" @click="pullConfirm = true">从云端恢复</button>
+      <button class="btn-ghost flex-1 !text-[12px]" :disabled="busy" :title="busy ? '云端同步进行中' : undefined" @click="uploadNow">立即上传</button>
+      <button class="btn-ghost flex-1 !text-[12px]" :disabled="busy" :title="busy ? '云端同步进行中' : undefined" @click="pullConfirm = true">从云端恢复</button>
     </div>
 
     <BaseModal :open="pullConfirm" title="从云端恢复" @close="pullConfirm = false">
@@ -34,8 +34,8 @@
       </p>
       <template #footer>
         <div class="flex gap-2">
-          <button class="btn-ghost flex-1" :disabled="busy" @click="pullConfirm = false">取消</button>
-          <button class="btn-seal flex-1" :disabled="busy" @click="confirmPull">确认恢复</button>
+          <button class="btn-ghost flex-1" :disabled="busy" :title="busy ? '云端同步进行中' : undefined" @click="pullConfirm = false">取消</button>
+          <button class="btn-seal flex-1" :disabled="busy" :title="busy ? '云端同步进行中' : undefined" @click="confirmPull">确认恢复</button>
         </div>
       </template>
     </BaseModal>
@@ -110,7 +110,7 @@
               ? '正在上传中,请稍候'
               : r === 'conflict'
                 ? '云端已被其他设备更新,上传已暂停'
-                : '上传失败,请稍后再试'
+                : '上传失败,稍后再来'
     ui.toast(text, r === 'ok' ? 'success' : 'warn')
   }
 

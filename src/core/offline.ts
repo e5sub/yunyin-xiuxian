@@ -30,6 +30,7 @@ import { makeEnemySnap, resolveCombat, sampleWinRate } from './combat'
 import { buildPlayerSnap } from './playerSnap'
 import { generateEquipment } from './equipGen'
 import { onAcquire, acquireArtifactGain, acquireEquipment, afterWin, randomDropArtifact, randomDropPill } from './loot'
+import { STONE_AMT_PER_BATTLE } from './pillValue'
 import { avgDustPerDrop } from './economySim'
 import { autoResolveEvent, regionEventPoolFor } from './eventEngine'
 import {
@@ -114,6 +115,9 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
   const ui = useUiStore()
 
   if (!game.started || player.dead) return null
+  // 时间戳在未来:系统时钟曾被调快,盖下的戳远在当下之后。
+  // 不重锚的话 dtSec 会被下面夹成 0,离线收益从此恒为 0,直到玩家把时钟调回去。
+  if (game.lastActiveAt > nowMs) game.lastActiveAt = nowMs
   const dtSec = Math.max(0, (nowMs - game.lastActiveAt) / 1000)
   if (dtSec < 1) return null
 
@@ -242,11 +246,12 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
         sessionWins += wins
         sessionLosses += battles - wins
 
-        // 与在线 afterWin 同源:乘区域加丰;福缘在线每战掷翻倍,离线按期望 ×(1+p) 计入
-        const doubleMult = 1 + Math.min(1, Math.max(0, modOf(mods, 'doubleDropRate')))
+        // 与在线 afterWin 同源:乘区域加丰;福缘在线每战掷翻倍,离线按期望 ×(1+p) 计入。
+        // 每战灵石基准取 loot 同用的 STONE_AMT_PER_BATTLE,不写死数字 —— 改基准时离线会跟着走。
+        const doubleMult = 1 + capChance(modOf(mods, 'doubleDropRate'))
         const stoneGain = stoneByTier(
           region.tier,
-          10 * wins * modeDef.rewardMult * regionEventReward * (1 + modOf(mods, 'spiritStoneGain')) * doubleMult
+          STONE_AMT_PER_BATTLE * wins * modeDef.rewardMult * regionEventReward * (1 + modOf(mods, 'spiritStoneGain')) * doubleMult
         )
         resources.addStone(stoneGain)
         // 修为与在线 afterWin 同走 expFromSecs:秒数与层上限都随场数线性放大,N 场 = N 次单场
@@ -512,8 +517,7 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
   if (summary.ageYears > 0) notes.push(offlineAgeNote(summary.ageYears))
 
   // 秘境与远征离线原样冻结(见 offlineScope.spec),在途时卷轴写明
-  const inFlight = player as unknown as { secretRealm?: unknown }
-  if (inFlight.secretRealm) notes.push('身在秘境 · 原样保留')
+  if (player.secretRealm) notes.push('身在秘境 · 原样保留')
   if (endgameStore.worldRun) notes.push('远征在途 · 原样保留')
   // 历练会话仍在途时报剩余时长
   // 判据看会话自身剩余,不用 dtSec > capSec 代理:离线时长恰等于上限时它判假

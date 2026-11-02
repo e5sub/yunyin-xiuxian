@@ -72,6 +72,7 @@
         <button
           class="btn-ghost w-full !px-2 !py-1.5 !text-[11px]"
           :disabled="sweepPlan.queue.length === 0"
+          :title="sweepPlan.queue.length === 0 ? '无可强化件或材料不足' : undefined"
           @click="onUpgradeEquipped"
         >一键强化{{ sweepHint }}</button>
         <button

@@ -1,10 +1,10 @@
 <template>
   <div class="card-ink divide-y divide-ink/6 px-4">
     <div class="py-3">
-      <div class="flex items-center justify-between">
+      <label class="flex min-h-[28px] items-center justify-between">
         <span class="text-[13px] text-ink-soft">背景音乐</span>
         <ToggleSwitch v-model="settings.musicOn" label="背景音乐" />
-      </div>
+      </label>
       <div v-if="settings.musicOn" class="mt-2 flex items-center gap-2">
         <span class="text-[10px] text-ink-faint">轻</span>
         <input
@@ -19,10 +19,10 @@
       </div>
     </div>
     <div class="py-3">
-      <div class="flex items-center justify-between">
+      <label class="flex min-h-[28px] items-center justify-between">
         <span class="text-[13px] text-ink-soft">音效</span>
         <ToggleSwitch v-model="settings.sfxOn" label="音效" />
-      </div>
+      </label>
       <div v-if="settings.sfxOn" class="mt-2 flex items-center gap-2">
         <span class="text-[10px] text-ink-faint">轻</span>
         <input
@@ -41,10 +41,10 @@
       <ToggleSwitch v-model="settings.reduceMotion" label="减少动效" />
     </div>
     <div class="py-3">
-      <div class="flex items-center justify-between">
+      <label class="flex min-h-[28px] items-center justify-between">
         <span class="text-[13px] text-ink-soft">遇事勿扰</span>
         <ToggleSwitch v-model="settings.dndEvents" label="遇事勿扰" />
-      </div>
+      </label>
       <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
         际遇/机缘/奇缘不弹窗,按默认好愿了结
       </p>

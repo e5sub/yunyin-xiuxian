@@ -57,6 +57,20 @@ const browser = await chromium.launch({
   // --no-sandbox / --disable-dev-shm-usage:容器里 headless 常崩(无用户命名空间、/dev/shm 只有 64M);同 ui-smoke
   args: ['--allow-file-access-from-files', '--disable-web-security', '--no-sandbox', '--disable-dev-shm-usage']
 })
+
+/** 外域只拦不记:统计脚本的运行时报错由 watchPageErrors 不计 */
+async function blockExternal(ctx) {
+  await ctx.route('**/*', route => {
+    const url = route.request().url()
+    if (/^(file|data|blob):/.test(url)) return route.continue()
+    return route.abort()
+  })
+  return ctx
+}
+
+// 全文二十多处各开各的 context:在此统一包一层,新加的场景不必再想起挂拦截
+const rawNewContext = browser.newContext.bind(browser)
+browser.newContext = async opts => blockExternal(await rawNewContext(opts))
 const failures = []
 let checked = 0
 let zoomSeen = 0
@@ -85,11 +99,87 @@ async function auditModalControls(page) {
         }
       })
       .filter(r => r.h > 0)
+    /*
+     * 弹窗里的禁用按钮对比度。
+     *
+     * 页面那条 dimDisabled 查的是 document,弹窗打开时其实也能扫到 —— 这一点当初写错过,
+     * 以为「只在 measurePage 里就等于扫不到弹窗」,实际 measurePage 扫的是整个文档。
+     * 这里再做一遍不是为了补漏,是为了把范围收在 .modal-panel 内:
+     * 报错能指明是哪个弹窗,且不受面板外节点干扰。两边用同一把尺子(阈值 3、逐层合成底色)。
+     */
+    const luma = rgb => {
+      if (!rgb) return null
+      const f = v => {
+        const s = v / 255
+        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+      }
+      return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2])
+    }
+    const rgbaOf = c => {
+      const m = /rgba?\(([^)]+)\)/.exec(c || '')
+      if (!m) return null
+      const q = m[1].split(/[,\s/]+/).filter(Boolean).map(Number)
+      if (q.length < 3) return null
+      return { rgb: q.slice(0, 3), a: q.length > 3 ? q[3] : 1 }
+    }
+    const backdropOf = start => {
+      const layers = []
+      for (let n = start; n; n = n.parentElement) {
+        const c = rgbaOf(getComputedStyle(n).backgroundColor)
+        if (c && c.a > 0) {
+          layers.push(c)
+          if (c.a >= 0.999) break
+        }
+      }
+      let base = [255, 255, 255]
+      for (let i = layers.length - 1; i >= 0; i -= 1) {
+        const { rgb, a } = layers[i]
+        base = [0, 1, 2].map(k => rgb[k] * a + base[k] * (1 - a))
+      }
+      return base
+    }
+    const dimDisabled = [...panel.querySelectorAll('.btn-seal:disabled, .btn-ghost:disabled')]
+      .map(el => {
+        const lf = luma(rgbaOf(getComputedStyle(el).color)?.rgb ?? null)
+        const lb = luma(backdropOf(el))
+        if (lf === null || lb === null) return null
+        const ratio = Math.round(((Math.max(lf, lb) + 0.05) / (Math.min(lf, lb) + 0.05)) * 100) / 100
+        return { ratio, text: (el.textContent || '').trim().slice(0, 12) }
+      })
+      .filter(x => x && x.ratio < 3)
+      .slice(0, 3)
+      .map(x => `${x.ratio}:1 «${x.text}»`)
+    /*
+     * 弹窗里的选择组。
+     *
+     * 与上面同一件事:页面那条 badGroups 查 document,弹窗打开时也会跑;
+     * 这里限在面板内,分组更准(同父元素即同组),报错也能指明弹窗。
+     * 语义:aria-pressed 是 toggle,允许一个都不选,多于一个才是真错;aria-selected 必须恰有一个。
+     */
+    const badGroups = (() => {
+      const out = []
+      for (const attr of ['aria-pressed', 'aria-selected']) {
+        const byParent = new Map()
+        for (const el of panel.querySelectorAll(`[${attr}]`)) {
+          const parent = el.parentElement
+          if (!parent) continue
+          byParent.set(parent, [...(byParent.get(parent) ?? []), el])
+        }
+        for (const [, els] of byParent) {
+          if (els.length < 2) continue
+          const on = els.filter(e => e.getAttribute(attr) === 'true').length
+          if (attr === 'aria-pressed' ? on > 1 : on !== 1) out.push(`${attr} 组(${els.length} 项)里有 ${on} 个选中`)
+        }
+      }
+      return out
+    })()
     return {
       count: rows.length,
       label: (panel.getAttribute('aria-label') || panel.querySelector('h3')?.textContent || '').trim(),
       unnamed: rows.filter(r => !r.name).map(r => `${r.h.toFixed(1)}px`),
-      small: rows.filter(r => !r.ok).map(r => `${r.h.toFixed(1)}px «${r.name || '无名'}»`)
+      small: rows.filter(r => !r.ok).map(r => `${r.h.toFixed(1)}px «${r.name || '无名'}»`),
+      dimDisabled,
+      badGroups
     }
   })
 }
@@ -188,7 +278,13 @@ async function measurePage(page) {
         })
         .slice(0, 3)
         .map(el => el.outerHTML.slice(0, 80).replace(/\s+/g, ' ')),
-      // 可点元素高度下限 28px
+      /*
+       * 可点元素高度下限 28px。
+       *
+       * 只量高度不量宽度:本项目的钮都靠内边距撑宽(没有写死 w-[Npx] 又去掉 p 的),
+       * 实测全站窄钮为 0;真要窄到点不准,先会撞上页面的横向溢出与孤字自检。
+       * 宽度那一侧将来若要加,须一并给弹窗内那一组(auditModalControls)加,两处同尺。
+       */
       smallTargets: [...document.querySelectorAll('button, a, [role=button]')]
         .map(el => {
           const r = el.getBoundingClientRect()
@@ -378,7 +474,16 @@ async function measurePage(page) {
         }
         return out
       })(),
-      // 选择型控件(aria-pressed / aria-selected / role=tab)每组恰有一个选中
+      /*
+       * 选择型控件每组至多一个选中。
+       *
+       * `aria-pressed` 是 **toggle** 语义(WAI-ARIA):一组开关可以一个都不按,
+       * 也可以各自独立 —— 比如转世弹窗的天赋主题,再点一次就是取消选中(theme = null)。
+       * 早先这里对它和 aria-selected 用同一条「恰有一个」,于是那类可取消的组
+       * 一旦全不选就会被判成「选择组没选中态」,是脚本误报而非界面缺陷。
+       * 故 aria-pressed 只查「不超过一个」:多于一个是真错(两个互斥项同时选中),
+       * 一个都没有是合法的。
+       */
       badGroups: (() => {
         const out = []
         for (const attr of ['aria-pressed', 'aria-selected']) {
@@ -391,7 +496,8 @@ async function measurePage(page) {
           for (const [parent, els] of byParent) {
             if (els.length < 2) continue
             const on = els.filter(e => e.getAttribute(attr) === 'true').length
-            if (on !== 1) out.push(`${attr} 组(${els.length} 项)里有 ${on} 个选中`)
+            // aria-pressed 允许 0(可取消的开关组);aria-selected 仍要求恰有一个
+            if (attr === 'aria-pressed' ? on > 1 : on !== 1) out.push(`${attr} 组(${els.length} 项)里有 ${on} 个选中`)
           }
         }
         const tabsByParent = new Map()
@@ -579,6 +685,8 @@ for (const vp of VIEWPORTS) {
     if (audit && !audit.label) failures.push(`[${vp.tag}] 隐私弹窗没有可访问名(读屏只会念「对话框」)`)
     if (audit?.unnamed.length) failures.push(`[${vp.tag}] 隐私弹窗里有 ${audit.unnamed.length} 个无名控件`)
     if (audit?.small.length) failures.push(`[${vp.tag}] 隐私弹窗里可点元素过小:${audit.small.join(' | ')}`)
+    if (audit?.dimDisabled.length) failures.push(`[${vp.tag}] 隐私弹窗里禁用态的字读不出来:${audit.dimDisabled.join(' | ')}`)
+    if (audit?.badGroups.length) failures.push(`[${vp.tag}] 隐私弹窗里选择组没选中态:${audit.badGroups.join(' | ')}`)
   }
   await page.locator('input[type=checkbox]').first().check()
   await page.getByRole('button', { name: /同意并开始/ }).first().click()
@@ -715,6 +823,8 @@ for (const vp of VIEWPORTS) {
   if (inModal && !inModal.label) failures.push('[375] 弹窗场景:对话框没有可访问名(读屏只会念「对话框」)')
   if (inModal?.unnamed.length) failures.push(`[375] 弹窗场景:面板里有 ${inModal.unnamed.length} 个无名控件(读屏只会念「按钮」)`)
   if (inModal?.small.length) failures.push(`[375] 弹窗场景:面板里可点元素过小:${inModal.small.join(' | ')}`)
+  if (inModal?.dimDisabled.length) failures.push(`[375] 弹窗场景:禁用态的字读不出来:${inModal.dimDisabled.join(' | ')}`)
+  if (inModal?.badGroups.length) failures.push(`[375] 弹窗场景:选择组没选中态:${inModal.badGroups.join(' | ')}`)
 
   let escaped = false
   for (let i = 0; i < 6; i++) {
@@ -1447,8 +1557,9 @@ for (const vp of VIEWPORTS) {
 
   const next = await step('往生后(择姿立题)', /轮回/)
   if (next && !/道果/.test(next.text)) failures.push('[390] 转世场景:轮回那一程没有交代道果')
-  // 有先天之姿就先择一个(不择则「踏入轮回」是灰的)
-  const talent = page.locator('.modal-panel button').first()
+  // 有先天之姿就先择一个(不择则「踏入轮回」是灰的)。
+  // 按品阶名找,不取面板首个按钮:来世灵根那块的「逆天改命」排在天赋之前,点了只会重刷灵根。
+  const talent = page.locator('.modal-panel button', { hasText: /赋|姿/ }).first()
   if (next && next.buttons.some(b => /赋|姿/.test(b))) await talent.click({ timeout: 3000 }).catch(() => {})
   const confirm = page.locator('.modal-panel button', { hasText: /踏\s*入\s*轮\s*回/ }).first()
   if ((await confirm.count()) === 0) failures.push('[390] 转世场景:轮回那程没有「踏入轮回」')
@@ -2563,6 +2674,8 @@ for (const vp of [
     for (const p of problemsOf(info)) failures.push(`${tag} 开炉弹窗 → ${p}`)
     const audit = await auditModalControls(page)
     if (audit?.small.length) failures.push(`${tag} 开炉弹窗里可点元素过小:${audit.small.join(' | ')}`)
+    if (audit?.dimDisabled.length) failures.push(`${tag} 开炉弹窗里禁用态的字读不出来:${audit.dimDisabled.join(' | ')}`)
+    if (audit?.badGroups.length) failures.push(`${tag} 开炉弹窗里选择组没选中态:${audit.badGroups.join(' | ')}`)
     if (audit?.unnamed.length) failures.push(`${tag} 开炉弹窗里有 ${audit.unnamed.length} 个无名控件`)
 
     // 渐隐提示:正文超长时,在顶 → 只亮底边;滚到底 → 只亮顶边
@@ -2698,6 +2811,8 @@ for (const vp of [
     for (const p of problemsOf(info)) failures.push(`${tag} ${step} → ${p}`)
     const audit = await auditModalControls(page)
     if (audit?.small.length) failures.push(`${tag} ${step}:可点元素过小 ${audit.small.join(' | ')}`)
+    if (audit?.dimDisabled.length) failures.push(`${tag} ${step}:禁用态的字读不出来 ${audit.dimDisabled.join(' | ')}`)
+    if (audit?.badGroups.length) failures.push(`${tag} ${step}:选择组没选中态 ${audit.badGroups.join(' | ')}`)
     if (audit?.unnamed.length) failures.push(`${tag} ${step}:${audit.unnamed.length} 个无名控件`)
     const nested = await page.evaluate(() => {
       const panel = document.querySelector('.modal-panel')
@@ -3218,6 +3333,8 @@ for (const vp of [
     if (!audit.label) failures.push(`[弹窗巡逻] ${name} 弹窗没有可访问名(读屏只会念「对话框」)`)
     if (audit.unnamed.length) failures.push(`[弹窗巡逻] ${name} 里有 ${audit.unnamed.length} 个无名控件:${audit.unnamed.join(' | ')}`)
     if (audit.small.length) failures.push(`[弹窗巡逻] ${name} 里可点元素过小(<28px):${audit.small.join(' | ')}`)
+    if (audit.dimDisabled.length) failures.push(`[弹窗巡逻] ${name} 里禁用态的字读不出来:${audit.dimDisabled.join(' | ')}`)
+    if (audit.badGroups.length) failures.push(`[弹窗巡逻] ${name} 里选择组没选中态:${audit.badGroups.join(' | ')}`)
     console.log(`弹窗巡逻:${name} · ${audit.count} 控件${audit.small.length ? ' · 过小:' + audit.small.join(' | ') : ' · 触控达标'}`)
   }
 

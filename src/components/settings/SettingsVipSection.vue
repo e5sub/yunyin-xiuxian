@@ -101,14 +101,14 @@
         </p>
         <label class="mt-2 flex items-center justify-between gap-2">
           <span class="shrink-0 text-[11px] text-ink-faint">围妖难度</span>
-          <select v-model="settings.bossDifficulty" class="min-w-0 grow rounded border border-ink/20 bg-transparent px-1.5 py-1 text-[12px] text-ink">
+          <select v-model="settings.bossDifficulty" aria-label="围妖出剑强度" class="min-w-0 grow rounded border border-ink/20 bg-transparent px-1.5 py-1 text-[12px] text-ink">
             <option v-for="d in BOSS_DIFFICULTY_OPTIONS" :key="d.key" :value="d.key">{{ d.name }}({{ d.desc }})</option>
           </select>
         </label>
         <div v-if="settings.autoAdventure" class="mt-2 space-y-2">
           <label class="flex items-center justify-between gap-2">
             <span class="shrink-0 text-[11px] text-ink-faint">历练去处</span>
-            <select v-model="settings.autoRegionId" class="min-w-0 grow rounded border border-ink/20 bg-transparent px-1.5 py-1 text-[12px] text-ink">
+            <select v-model="settings.autoRegionId" aria-label="托管历练去处" class="min-w-0 grow rounded border border-ink/20 bg-transparent px-1.5 py-1 text-[12px] text-ink">
               <option :value="AUTO_REGION_ID">自动择地(随境界推进)</option>
               <option value="" disabled>手工指定一处</option>
               <option v-for="r in enterableRegions" :key="r.id" :value="r.id">{{ r.name }}</option>
@@ -116,7 +116,7 @@
           </label>
           <label class="flex items-center justify-between gap-2">
             <span class="shrink-0 text-[11px] text-ink-faint">出行档位</span>
-            <select v-model="settings.autoMode" class="min-w-0 grow rounded border border-ink/20 bg-transparent px-1.5 py-1 text-[12px] text-ink">
+            <select v-model="settings.autoMode" aria-label="托管行事风格" class="min-w-0 grow rounded border border-ink/20 bg-transparent px-1.5 py-1 text-[12px] text-ink">
               <option v-for="(m, id) in EXPLORE_MODES" :key="id" :value="id">{{ m.name }}({{ classicalDuration(m.durationSec) }})</option>
             </select>
           </label>

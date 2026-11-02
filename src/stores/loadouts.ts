@@ -6,6 +6,8 @@ import { persistConfig } from '@/utils/storage'
 import { asArray, asFiniteNumber, asRecord, asStringArray } from '@/utils/saveShape'
 import { uid } from '@/utils/id'
 import { EQUIP_SLOTS } from '@/data/equipment'
+import { NAME_MAX_LENGTH, SUB_GONGFA_SLOT_HARD_CAP } from '@/data/constants'
+import { ARTIFACT_MAX_SLOTS } from '@/data/artifacts'
 
 export interface Loadout {
   id: string
@@ -42,12 +44,15 @@ export const useLoadoutsStore = defineStore(
           }
           return {
             id: l.id,
-            name: typeof l.name === 'string' ? l.name : '',
+            // 与输入侧同界:构筑名在 loadoutService 里截到 NAME_MAX_LENGTH,读档侧也要截
+            name: typeof l.name === 'string' ? l.name.trim().slice(0, NAME_MAX_LENGTH) : '',
             seal: typeof l.seal === 'string' ? l.seal : '',
             mainGongfa: typeof l.mainGongfa === 'string' ? l.mainGongfa : null,
             // 辅修/法宝是集合:重复项会被 applyLoadout 原样写回,算两次
-            subGongfa: [...new Set(asStringArray(l.subGongfa))],
-            artifactIds: [...new Set(asStringArray(l.artifactIds))],
+            // 条数设界:应用侧 artifactIds/subGongfa 都会按动态槽位再截一次,
+            // 但存档里留下的冗余数据会一直躺着 —— 手改快照能塞进几千个 id。
+            subGongfa: [...new Set(asStringArray(l.subGongfa))].slice(0, SUB_GONGFA_SLOT_HARD_CAP),
+            artifactIds: [...new Set(asStringArray(l.artifactIds))].slice(0, ARTIFACT_MAX_SLOTS),
             equipment,
             savedAt: asFiniteNumber(l.savedAt, 0, 0)
           }
@@ -58,6 +63,15 @@ export const useLoadoutsStore = defineStore(
         while (seen.has(l.id)) l.id = uid()
         seen.add(l.id)
       }
+      /*
+       * 超上限截断。
+       *
+       * add() 的判据是 `list.length >= MAX_LOADOUTS`,而 sanitize 原先不截断:
+       * 把 list 撑到几十套的坏档会被原样吃下,add 从此恒返 false ——
+       * 玩家再也存不了新构筑(与「行囊已满」「灵脉容量已尽」「收徒恒 full」同构)。
+       * 只留前 MAX_LOADOUTS 套,顺序即存档顺序。
+       */
+      if (list.value.length > MAX_LOADOUTS) list.value = list.value.slice(0, MAX_LOADOUTS)
     }
 
     function add(loadout: Loadout): boolean {

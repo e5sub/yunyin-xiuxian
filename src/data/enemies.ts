@@ -1,5 +1,5 @@
 /**
- * 敌人库 —— 180 个,含 68 名区域首领;多段/真伤/闪避等机制用于流派克制
+ * 敌人库 —— 180 个,含 60 名区域首领;多段/真伤/闪避等机制用于流派克制
  * 只写族类(`family`),不手写 icon:形由 data/beastFamilies.ts 的 BEAST_FAMILIES 给出,判据在 src/ui/beastFamilies.spec.ts。
  */
 import type { BeastFamily, BossArchetype, BossPhase, ElementId, EnemyDef, EnemySkill, StatMods } from '@/types'
@@ -180,7 +180,7 @@ export const ENEMIES: EnemyDef[] = [
   e('e_starpuppet', '星陨傀儡', 17, 'construct', [1.5, 1.4, 1.4, 0.9], [{ name: '星辉贯穿炮', mult: 1.6, rate: 0.3, effect: 'pierce' }], {
     element: 'light'
   }),
-  e('e_meteorbeast', '陨铁兽', 17, 'beast', [1.7, 1.35, 1.5, 0.85], [heavy('陨铁冲撞', 2.0, 0.28)], { element: 'metal' }),
+  e('e_ironmeteor', '陨铁兽', 17, 'beast', [1.7, 1.35, 1.5, 0.85], [heavy('陨铁冲撞', 2.0, 0.28)], { element: 'metal' }),
   e('e_starbeast', '星空古兽', 17, 'beast', [6.0, 2.4, 1.0, 1.1], [heavy('吞星', 2.8, 0.3)], { boss: true, element: 'light', archetype: 'berserk', mods: { armorPen: 0.2 }, phases: [{ hpThreshold: 0.5, modChanges: { damageBonus: 0.6 }, skillChanges: [{ name: '吞星·爆裂', mult: 3.2, rate: 0.4 }], label: '爆裂' }] }),
   // t18 天外天
   e('e_outsider', '天外来客', 18, 'outsider', [1.4, 1.55, 1.25, 1.2], [heavy('域外神通', 2.3, 0.3)]),

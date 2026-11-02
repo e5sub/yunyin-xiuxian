@@ -7,6 +7,7 @@ import { resolve } from 'node:path'
 import { gn, subClamp, toNum } from '@/utils/gnum'
 import { formatGN } from '@/utils/format'
 import { SECRET_REALMS, SECRET_RULES, secretRuleByText } from '@/data/secretRealms'
+import { gateRuleSummary } from './gateRuleText'
 import { MATERIALS, type MaterialBucket, type MaterialDef } from '@/data/materials'
 import { rng } from '@/utils/random'
 import { usePlayerStore } from '@/stores/player'
@@ -23,6 +24,7 @@ import {
   SECRET_MAX_LOSSES,
   abandonRealm,
   availableRealms,
+  carriedHpAfter,
   currentRealm,
   enterSecretRealm,
   entryCostOf,
@@ -33,6 +35,7 @@ import {
   secretFightRules,
   secretLayerFoe,
   secretLayerReward,
+  secretRuleTexts,
   secretRealmDef,
   tierOfMajor
 } from './secretRealm'
@@ -621,5 +624,70 @@ describe('秘境 · 反击规则的文案与旧档', () => {
     const st = currentRealm()!
     expect(st.rules).toEqual([NEW])
     expect(secretFightRules(st).enemyExtraMods?.counterRate).toBeCloseTo(0.15)
+  })
+})
+
+/**
+ * 界面「此地规则」原只报 state.rules(进场随机抽的那一两条),
+ * 而秘境自带规则(归墟之眼:攻 ×1.25 / 敌血 ×1.2 / 回合上限 25)全程作用于战斗却从不显示。
+ * 故障注入:把 secretRuleTexts 改回只返回 state.rules,本条红。
+ */
+describe('秘境 · 自带规则也要报给玩家', () => {
+  it('归墟之眼:三条自带规则与随机规则一并出现在文案里', () => {
+    const st = {
+      realmId: 'sr_guixu',
+      enteredAt: 1,
+      layer: 1,
+      wins: 0,
+      losses: 0,
+      spoils: [],
+      rules: ['治疗减半'],
+      carriedHpPct: 1,
+      finished: false
+    }
+    const texts = secretRuleTexts(st)
+    const joined = texts.join(' ')
+    expect(joined, '自带回合上限没报出来 —— 玩家不知道这场只有 25 回合').toContain('回合上限 25')
+    expect(joined, '敌方气血加成没报出来').toContain('敌方气血')
+    expect(joined, '我方攻击加成没报出来').toContain('攻势 +25%')
+    // 随机规则跟在自带规则之后,一条不丢
+    for (const rolled of st.rules) expect(texts, `随机规则「${rolled}」被吞了`).toContain(rolled)
+  })
+
+  it('自带规则文案随 rules 走:与八门/远征求同一把尺(gateRuleSummary),不另写措辞', () => {
+    for (const def of SECRET_REALMS) {
+      const text = gateRuleSummary(def.rules)
+      if (Object.keys(def.rules).length > 0) {
+        expect(text, `${def.name} 有自带规则却一条文案都没有`).not.toBe('')
+        expect(text, `${def.name} 文案里出现 undefined`).not.toContain('undefined')
+        // 词条键须译成中文名,不许漏出 defensePct 这类原始键
+        expect(text, `${def.name} 文案漏出原始 StatMods 键`).not.toMatch(/[a-z][A-Z]|Pct\b/)
+      } else {
+        expect(text, `${def.name} 无自带规则却产出了文案`).toBe('')
+      }
+    }
+  })
+})
+
+/**
+ * 层间携带气血须有上下限。
+ * 胜利用 Math.min(1, …) 封了顶,败利用 Math.max(0.05, …) 只封底 —— 而「回合耗尽判负」时玩家血量可以接近满
+ * (combat.ts 的 else 分支:双方都没死,按回合上限判负),那一趟 playerHpPct 接近 1,再加 healBetweenPct
+ * 就会超过 1,下一场以 >100% 气血开局。抽成 carriedHpAfter 后两分支共用同一条钳制。
+ */
+describe('秘境 · 携带气血上下限对称', () => {
+  it('满血 + 层间回血也不超过 1', () => {
+    expect(carriedHpAfter(1, 0.5), '满血再回血不能变成 150%').toBe(1)
+    expect(carriedHpAfter(0.8, 0.5)).toBe(1)
+  })
+
+  it('血量低时仍有下限,不会掉到 0', () => {
+    expect(carriedHpAfter(0, -0.1)).toBe(0.05)
+    expect(carriedHpAfter(0.01, 0)).toBe(0.05)
+  })
+
+  it('区间内原样返回', () => {
+    expect(carriedHpAfter(0.4, 0.3)).toBeCloseTo(0.7)
+    expect(carriedHpAfter(0.4, -0.1)).toBeCloseTo(0.3)
   })
 })

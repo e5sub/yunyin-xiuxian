@@ -9,6 +9,11 @@ import { isHerbGrade } from '@/data/herbGrades'
 
 export const SAVE_PREFIX = 'yunyin.'
 export const SAVE_VERSION = 2
+/**
+ * 启动扫描隔离出来的损坏分片存在这个前缀下(原密文原样保留)。
+ * 前缀 + 分片键:键名仍带 SAVE_PREFIX,清档时一并清掉。
+ */
+export const CORRUPT_PREFIX = 'corrupt.'
 
 /**
  * 参与持久化的分片清单:导出/导入/清档/损坏扫描的唯一范围,漏一项即存档少一块且无提示。
@@ -175,6 +180,99 @@ if (typeof document !== 'undefined') {
 }
 
 /**
+ * 另一个标签页也在跑同一份存档。
+ *
+ * 两页各自持一份内存状态、各自每 5 秒落盘,后写的整片覆盖先写的 —— 两边都会掉进度,
+ * 且玩家毫无察觉。检测到就报一声,由 UI 提示「另开一页」。
+ */
+let otherTabActive = false
+type OtherTabHandler = (active: boolean) => void
+const otherTabHandlers = new Set<OtherTabHandler>()
+
+/** 订阅「别的标签页开始/停止写档」;返回退订函数 */
+export function subscribeOtherTabSave(handler: OtherTabHandler): () => void {
+  otherTabHandlers.add(handler)
+  return () => {
+    otherTabHandlers.delete(handler)
+  }
+}
+
+/** 本页活着的心跳键;别的标签页靠它知道对面还开着 */
+const LIVE_KEY = SAVE_PREFIX + '__live'
+const LIVE_PING_MS = 4000
+const LIVE_STALE_MS = LIVE_PING_MS * 3
+
+function markAlive(): void {
+  try {
+    localStorage.setItem(LIVE_KEY, String(Date.now()))
+  } catch {
+    // 存储不可用时忽略
+  }
+}
+
+function setOtherTab(active: boolean): void {
+  if (otherTabActive === active) return
+  otherTabActive = active
+  for (const handler of otherTabHandlers) handler(active)
+}
+
+/**
+ * storage 事件只在「别的标签页」写入时触发,本页自己的写入不会回调 —— 正合用来判重。
+ * 只认分片键与实际存档键;LIVE_KEY 的心跳单独比时间戳,免得把心跳当成写档。
+ */
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', e => {
+    if (e.key === null) return
+    if (e.key === LIVE_KEY) {
+      const at = Number(e.newValue)
+      setOtherTab(Number.isFinite(at) && Date.now() - at < LIVE_STALE_MS)
+      return
+    }
+    if (e.key.startsWith(SAVE_PREFIX) && !e.key.startsWith(SAVE_PREFIX + 'corrupt.')) setOtherTab(true)
+  })
+}
+
+let pingTimer: ReturnType<typeof setInterval> | undefined
+let pingOnVisible: (() => void) | undefined
+
+/**
+ * 开始/停止发心跳。
+ *
+ * 由调用方按「是否在玩」开关,不在模块加载时就跑:欢迎页、设置页也要每 4 秒写一次 localStorage
+ * 太浪费 —— 本项目刻意把存档写入攒到 5 秒一次就是为了手机不发烫。
+ * 没开局就没有可被覆盖的进度,不必参与判重。
+ */
+export function watchOtherTabSave(enabled: boolean): void {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return
+  if (!enabled) {
+    if (pingTimer !== undefined) {
+      clearInterval(pingTimer)
+      pingTimer = undefined
+    }
+    if (pingOnVisible !== undefined) {
+      document.removeEventListener('visibilitychange', pingOnVisible)
+      pingOnVisible = undefined
+    }
+    try {
+      localStorage.removeItem(LIVE_KEY)
+    } catch {
+      // 存储不可用时忽略
+    }
+    setOtherTab(false)
+    return
+  }
+  if (pingTimer !== undefined) return
+  const ping = (): void => {
+    if (document.visibilityState === 'visible') markAlive()
+  }
+  pingOnVisible = ping
+  // 切回前台立刻补一次,避免判定滞后
+  document.addEventListener('visibilitychange', ping)
+  pingTimer = setInterval(ping, LIVE_PING_MS)
+  markAlive()
+}
+
+/**
  * pinia-plugin-persistedstate 序列化器。serialize 只做 JSON,不加密(加密在 flushSaveWrites);
  * deserialize 经 readSaveText,明文(待刷队列)与密文(磁盘)都能解析
  */
@@ -244,7 +342,7 @@ export function preflightScan(): string[] {
       corrupted.push(id)
       try {
         const raw = localStorage.getItem(key)
-        if (raw !== null) localStorage.setItem(`corrupt.${key}`, raw)
+        if (raw !== null) localStorage.setItem(CORRUPT_PREFIX + key, raw)
         localStorage.removeItem(key)
       } catch {
         // 存储不可用时放弃备份,仅保证游戏可启动
@@ -324,6 +422,12 @@ export interface ExportPayload {
   version: number
   exportedAt: number
   data: Record<string, unknown>
+  /**
+   * 启动时被隔离的损坏分片(原密文)。
+   * 「原档留在本机」若只在 localStorage 里躺着,玩家没有任何办法把它交出来——
+   * 导出随包带走,报问题时才能把坏档一并给人看。导入时不回写(坏档不该回到存档位)。
+   */
+  corrupted?: Record<string, string>
 }
 
 export function buildExportPayload(): ExportPayload {
@@ -331,16 +435,46 @@ export function buildExportPayload(): ExportPayload {
   flushSaveWrites()
   const data: Record<string, unknown> = {}
   for (const id of PERSISTED_STORES) {
-    const raw = localStorage.getItem(storageKey(id))
-    if (raw !== null) {
-      try {
-        data[id] = JSON.parse(readSaveText(raw))
-      } catch {
-        // 跳过损坏分片
+    const key = storageKey(id)
+    try {
+      // 待落盘队列里的是内存最新态(写盘失败时磁盘还停在旧值),优先于 localStorage
+      const plain = pending.get(key)
+      if (plain !== undefined) {
+        data[id] = JSON.parse(plain)
+        continue
       }
+      const raw = localStorage.getItem(key)
+      if (raw !== null) data[id] = JSON.parse(readSaveText(raw))
+    } catch {
+      // 跳过损坏分片
     }
   }
-  return { game: 'yunyin-xiuxian', version: SAVE_VERSION, exportedAt: Date.now(), data }
+  return {
+    game: 'yunyin-xiuxian',
+    version: SAVE_VERSION,
+    exportedAt: Date.now(),
+    data,
+    ...(corruptedCount() > 0 ? { corrupted: collectCorrupted() } : {})
+  }
+}
+
+/** 收集本机隔离出来的损坏分片(键 → 原密文);没有则空对象 */
+export function collectCorrupted(): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const id of PERSISTED_STORES) {
+    try {
+      const raw = localStorage.getItem(CORRUPT_PREFIX + storageKey(id))
+      if (raw !== null) out[id] = raw
+    } catch {
+      // 存储不可用:拿不到就当没有
+    }
+  }
+  return out
+}
+
+/** 本机隔离出来的损坏分片数(导出决定是否带这一段) */
+export function corruptedCount(): number {
+  return Object.keys(collectCorrupted()).length
 }
 
 /** 校验导入数据结构,返回错误信息;null 表示通过 */
@@ -363,6 +497,7 @@ export function validateImportPayload(obj: unknown): string | null {
  * 先清空再逐片写入;中途失败(如配额不足)回滚到旧档,不留半清的存档(会造出主页空角色)。
  */
 export function applyImportPayload(payload: ExportPayload): void {
+  // payload.corrupted 是有意不消费的:那是导出方隔离出来的坏档,只供人看,不该回到存档位
   // 快照现有各片(原样密文,回滚时原样写回)
   const backup = new Map<string, string | null>()
   try {

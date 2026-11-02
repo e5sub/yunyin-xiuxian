@@ -5,11 +5,11 @@ import type { FinalStats, GNum, LinggenProfile, StatMods, WorldId } from '@/type
 import { gn, gnZero, add, gte, mulN, progress, subClamp } from '@/utils/gnum'
 import { persistConfig } from '@/utils/storage'
 import { realmDef, realmLabel, worldOf, WORLDS, SUB_NAMES, MAX_MAJOR } from '@/data/realms'
-import { SUB_LEVELS, START_AGE } from '@/data/constants'
+import { NAME_MAX_LENGTH, SUB_LEVELS, START_AGE } from '@/data/constants'
 import { QI_BANK_MULT, QI_RICH_RATIO } from '@/data/constants'
 import {
   STAR_FOCUS_COST_BASE, MANSION_REDIRECT_COST, MANSION_REDIRECT_MAX,
-  WUDAO_EXCHANGE_PRICE_BASE, WUDAO_EXCHANGE_GAIN, WUDAO_EXCHANGE_PER_DAY
+  WUDAO_EXCHANGE_GAIN, WUDAO_EXCHANGE_PER_DAY
 } from '@/data/constants'
 import { legacyInsightOf } from '@/data/samsara'
 import { titleDef } from '@/data/titles'
@@ -28,7 +28,7 @@ import { computeFinalStats, mergeMods, modOf } from '@/core/statsCalc'
 import { todayWeather } from '@/core/weather'
 import { divinationActiveAt, readingFromState, readingMods } from '@/core/divination'
 import { gameNow } from '@/core/enginePause'
-import { asArray, asCarriedHpPct, asFiniteNumber, asNumberRecord, asRecord, asStringArray } from '@/utils/saveShape'
+import { asArray, asBoundedGNum, asCarriedHpPct, asFiniteNumber, asNumberRecord, asRecord, asStringArray } from '@/utils/saveShape'
 import { SECRET_LAYERS, SECRET_MAX_LOSSES, SECRET_REALMS, secretRuleByText } from '@/data/secretRealms'
 import { DAOLU, ENDING_NAMES, STAGE_NAMES, STAGE_ORDER, type BondEnding, type BondStage } from '@/data/daolu'
 import { lifeThemeDef } from '@/data/lifeThemes'
@@ -101,7 +101,8 @@ export const usePlayerStore = defineStore(
     /** 这一世的关系(历史在 reincarnation.bonds);转世时清空 */
     const bond = ref<import('@/core/daoluService').BondState | null>(null)
 
-    const eventChains = ref<import('@/types').EventChainState>({}) // 奇遇连锁进度(链路实装见 RIL)
+    /** 奇缘进度:链 id → 已走完的段数(见 core/eventEngine 的 pendingChainStages) */
+    const eventChains = ref<import('@/types').EventChainState>({})
     const winStreak = ref(0)
     const lastCaveEventDay = ref(0) // 上次洞府巡游日期
 
@@ -615,7 +616,7 @@ export const usePlayerStore = defineStore(
     }
 
     /**
-     * 转世重置。保留:天赋/道果/宿慧/称号/转世次数/宿命传承、区域战绩与宿敌(见 DEC-003)、
+     * 转世重置。保留:天赋/道果/宿慧/称号/转世次数/宿命传承、区域战绩与宿敌、
      * 机缘选择记忆(fortuneChoices)、奇缘(eventChains)
      */
     function rebirth(newLinggen: LinggenProfile): void {
@@ -671,7 +672,21 @@ export const usePlayerStore = defineStore(
 
     /** 存档修复 */
     function sanitize(): void {
-      exp.value = gn(exp.value)
+      // 修为是存档里的 GNum:裸 gn() 不限指数,坏档会让修为条印出「1.00e1000000000」
+      exp.value = asBoundedGNum(exp.value)
+      /*
+       * 只认严格 true:字符串 "false" 与数字 1 都是真值。
+       * dead 为真会让引擎跳过在线收益、离线结算整段返回 null、主页常驻「陨落」——
+       * 一份写坏的布尔就能把整局钉死。口径同 game.started / settings 各开关。
+       */
+      dead.value = dead.value === true
+      // 道号进字符串方法(.trim / 拼接);坏档写成数字会在渲染或建号处抛错。
+      // 空串也算坏档:顶栏是 {{ player.name }} 裸渲染,空串会显示成一片空白(建号与导入检视都有「无名散修」兜底,唯独这里没有)
+      // 长度也要截:输入侧截到 NAME_MAX_LENGTH,读档侧不截就能被手改存档塞进几十万字符
+      name.value =
+        typeof name.value === 'string' && name.value.trim() !== ''
+          ? name.value.trim().slice(0, NAME_MAX_LENGTH)
+          : '无名散修'
       // 角色页/建号页裸用 `ELEMENTS[root.element].color` 与 `linggen.growthMult.toFixed(2)`:坏档在渲染期抛错
       linggen.value = sanitizeLinggen(linggen.value)
       if (!Number.isFinite(age.value)) age.value = START_AGE
@@ -1195,11 +1210,13 @@ export const usePlayerStore = defineStore(
      * 审计敏感:只动这条限量出口,不重建效率回路、不动熔炉。
      */
     function exchangeStoneForWudao(): boolean {
-      if (!wudaoExchangeState.value.canExchange) return false
+      const state = wudaoExchangeState.value
+      if (!state.canExchange) return false
       const day = gameDay(useGameStore().totalPlaySec)
       const cur = wudaoExchange.value
       const today = cur && cur.gameDay === day ? cur : { gameDay: day, count: 0 }
-      if (!resources.spendStone(gn(WUDAO_EXCHANGE_PRICE_BASE))) return false
+      // 扣费取判据算出的那一份:界面报价与实扣同源,各算一次会分叉
+      if (!resources.spendStone(state.cost)) return false
       resources.addSmall('wudao', WUDAO_EXCHANGE_GAIN)
       wudaoExchange.value = { gameDay: day, count: today.count + 1 }
       return true

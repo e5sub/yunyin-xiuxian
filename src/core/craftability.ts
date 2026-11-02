@@ -48,8 +48,12 @@ export function bearableRank(major: number): number {
 /** 超规格惩罚:不禁止,只陡峭 */
 export function overReachFactor(over: number): number {
   if (over <= 0) return 1
+  // 先取整再查表:签名收的是 number,而 TABLE 只认整数下标 ——
+  // 传 1.5 时 `TABLE[1.5]` 是 undefined,`!` 会把它当有效值一路传进成功率算式。
+  // 生产路径上 over = craft.rank - bearableRank(major) 恒为整数,这里是防接口误用。
+  const n = Math.floor(over)
   const TABLE = [1, 0.6, 0.35, 0.18]
-  return over < TABLE.length ? TABLE[over]! : 0.18 * Math.pow(0.45, over - 3)
+  return n < TABLE.length ? TABLE[n]! : 0.18 * Math.pow(0.45, n - 3)
 }
 
 /** 方中灵材的平均认知度(0~1) */
@@ -119,7 +123,17 @@ function weaknessLines(c: {
   return out
 }
 
-/** 双丹(一炉得二)的概率,封顶 0.5。单一事实源,实机与审计共用 */
+/**
+ * 双丹(一炉得二)的基础概率,由熟练与技艺决定。
+ *
+ * 这里的 `Math.min(0.5, ...)` 是**死分支**:mastery∈[0,1]、skill∈[0,100] 时
+ * 公式最大值只有 0.38,永远够不到 0.5。保留它只是防御越界入参。
+ *
+ * 真正生效的封顶在调用侧:`craftability().bonusChanceWithYield` 把本值加上
+ * alchemyYield(丹心/丹圣/称号)后再按 PILL_SECOND_CAP(0.8) 钳一次 —— 那层才有用,
+ * 因为 0.38 + 词条可以超过 0.8。写「封顶 0.5」会让人误以为双丹率到 0.5 就停,
+ * 实际停在 0.8。本条与那个 0.8 是两层不同的限制,不可互换。
+ */
 export function bonusChanceOf(mastery: number, skill: number): number {
   return Math.min(0.5, mastery * 0.18 + skill / 500)
 }

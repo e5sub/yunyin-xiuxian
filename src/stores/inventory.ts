@@ -2,19 +2,20 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type { ArtifactOwned, EquipmentInstance, EquipSlot, GNum, StatMods } from '@/types'
-import { add, gn, gnZero } from '@/utils/gnum'
+import { add, gnZero } from '@/utils/gnum'
 import { persistConfig } from '@/utils/storage'
 import { resolveEquipStats } from '@/core/equipGen'
 import { mergeMods } from '@/core/statsCalc'
 import { useLoreStore } from '@/stores/lore'
 import { usePlayerStore } from '@/stores/player'
 import { ARTIFACT_MAX_LEVEL, ARTIFACT_MAX_SLOTS, artifactDef, artifactValue } from '@/data/artifacts'
-import { BAG_CAPACITY, EQUIP_MAX_LEVEL_BASE } from '@/data/constants'
+import { BAG_CAPACITY, EQUIP_AFFIX_HARD_CAP } from '@/data/constants'
+import { EQUIP_LEVEL_SANITIZE_CAP } from '@/data/buildings'
 import { EQUIP_SLOTS, MAX_EQUIP_TIER, equipmentTemplate } from '@/data/equipment'
 import { pillDef } from '@/data/pills'
 import { QUALITIES } from '@/data/qualities'
 import { affixDef } from '@/data/affixes'
-import { asArray, asFiniteNumber, asNumberRecord, asRecord, asStringArray } from '@/utils/saveShape'
+import { asArray, asBoundedGNum, asFiniteNumber, asNumberRecord, asRecord, asStringArray } from '@/utils/saveShape'
 
 export const useInventoryStore = defineStore(
   'inventory',
@@ -53,6 +54,8 @@ export const useInventoryStore = defineStore(
             // 负 roll 会被 affixValue 当 0 却按满值显示,>1 则超上限
             roll: Math.min(1, asFiniteNumber(a.roll, 0, 0))
           }))
+          // 条数也要设界:品质表最高 8 条、洗练只换不增,坏档却能让一件带几千条
+          .slice(0, EQUIP_AFFIX_HARD_CAP)
         const rawQuality = it.quality as unknown
         cleanItems.push({
           ...it,
@@ -60,8 +63,9 @@ export const useInventoryStore = defineStore(
           templateId: typeof it.templateId === 'string' ? it.templateId : '',
           quality: typeof rawQuality === 'string' && qualityIds.has(rawQuality as never) ? (rawQuality as EquipmentInstance['quality']) : 'mortal',
           tier: Math.min(MAX_EQUIP_TIER, Math.max(1, Math.floor(asFiniteNumber(it.tier, 1, 1)))),
-          // 只夹到「基础上限 + 满建筑加成」量级;实际上限由执行侧 equipLevelCap() 把关
-          level: Math.min(EQUIP_MAX_LEVEL_BASE + 10, Math.max(0, Math.floor(asFiniteNumber(it.level, 0, 0)))),
+          // 只夹到「基础上限 + 满建筑加成」量级;实际上限由执行侧 equipLevelCap() 把关。
+          // 上界取自建筑表推导,不写死数字:炼器台上限一改,这里跟着走。
+          level: Math.min(EQUIP_LEVEL_SANITIZE_CAP, Math.max(0, Math.floor(asFiniteNumber(it.level, 0, 0)))),
           affixes,
           locked: it.locked === true,
           reforgeCount: Math.floor(asFiniteNumber(it.reforgeCount, 0, 0)),
@@ -72,13 +76,36 @@ export const useInventoryStore = defineStore(
             ? {
                 invested: {
                   dust: Math.floor(asFiniteNumber((it.invested as { dust?: unknown }).dust, 0, 0)),
-                  stone: gn((it.invested as { stone?: unknown }).stone as never)
+                  stone: asBoundedGNum((it.invested as { stone?: unknown }).stone)
                 }
               }
             : {})
         })
       }
-      items.value = cleanItems
+      /*
+       * 超容量坏档截断。
+       *
+       * BAG_CAPACITY 原本只用来判 bagFull(「行囊已满」),从不用来限容;
+       * 于是把 items 撑到几千件的坏档会被原样吃下,bagFull 恒为 true,
+       * addItem 从此一律 return false —— 玩家再也捡不到装备,且界面要渲染几千行。
+       *
+       * 截断时优先保住已装备的件(equipped 的原始映射还没被校验,这里只按 uid 认),
+       * 其余按读档顺序保留。容量本身就是玩家正常能持有的上限,不构成惩罚。
+       */
+      if (cleanItems.length > BAG_CAPACITY) {
+        const rawEquippedForCap = asRecord<unknown>(equipped.value)
+        const keepUid = new Set(
+          Object.values(rawEquippedForCap).filter((u): u is string => typeof u === 'string' && u.length > 0)
+        )
+        const equippedKept = cleanItems.filter(it => keepUid.has(it.uid))
+        const restKept = cleanItems.filter(it => !keepUid.has(it.uid))
+        const room = Math.max(0, BAG_CAPACITY - equippedKept.length)
+        // 保持读档顺序:已装备的与其余的各自有序,合并时按原下标重排
+        const keepIds = new Set([...equippedKept, ...restKept.slice(0, room)].map(it => it.uid))
+        items.value = cleanItems.filter(it => keepIds.has(it.uid))
+      } else {
+        items.value = cleanItems
+      }
       // 装备栏只留「槽名合法 + 件存在 + 件属该槽 + 未被前面的槽占用」的映射
       const rawEquipped = asRecord<unknown>(equipped.value)
       const validUids = new Set(items.value.map(it => it.uid))
