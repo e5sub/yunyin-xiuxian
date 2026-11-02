@@ -13,6 +13,7 @@ import { buildExportPayload, SAVE_VERSION, storageKey } from '@/utils/storage'
 import { readSaveText } from '@/utils/crypto'
 import { applySavePayload, reloadGame } from '@/core/save'
 import { snapshotFromActiveStores, type ProfileSnapshot } from '@/core/profileRecompute'
+import { SAVE_SANITIZE_STEPS } from '@/core/saveSanitize'
 import { CloudError, cloudApi } from '@/services/cloud'
 import { useAuthStore } from '@/stores/auth'
 import { useGameStore } from '@/stores/game'
@@ -76,6 +77,28 @@ export function buildProfileSnapshot(): ProfileSnapshot | null {
   return snapshotFromActiveStores()
 }
 
+/** 服务端校正的提示间隔:作弊值每 20 秒被压回一次,不节流会把提示刷满 */
+const CORRECTION_NOTICE_GAP_MS = 5 * 60_000
+let lastCorrectionNoticeAt = 0
+
+/**
+ * 应用服务端压回的字段(境界 / 修为 / 资源 / 装备)。
+ *
+ * 服务端裁决后把 corrections 回传,客户端必须当场覆盖本地 store ——
+ * 否则本地仍按作弊值渲染,下个 20 秒又被压一次,玩家看到的是数值来回跳。
+ * 路径只到分片顶层字段,故 $patch 单字段即可(嵌套 map 由服务端整块给)。
+ */
+function applyAuthorityCorrections(corrections: readonly { path: string; after: unknown }[]): void {
+  for (const c of corrections) {
+    const [slice, field] = c.path.split('.')
+    if (!slice || !field) continue
+    const step = SAVE_SANITIZE_STEPS.find(s => s.slice === slice)
+    if (step === undefined) continue
+    const store = step.use() as unknown as { $patch: (partial: Record<string, unknown>) => void }
+    store.$patch({ [field]: c.after })
+  }
+}
+
 let pushing = false
 
 /**
@@ -127,6 +150,14 @@ export async function pushCloudSave(manual = false): Promise<PushOutcome> {
     })
     // 老后端不返回 updatedAt:保持原锚点,别把已对齐状态清零
     if (typeof res.updatedAt === 'number') writeBase(res.updatedAt)
+    // 服务端压回了字段:立刻以服务端值覆盖本地,别让本地继续按作弊值渲染
+    if (Array.isArray(res.corrections) && res.corrections.length > 0) {
+      applyAuthorityCorrections(res.corrections)
+      if (Date.now() - lastCorrectionNoticeAt > CORRECTION_NOTICE_GAP_MS) {
+        lastCorrectionNoticeAt = Date.now()
+        syncNotice.value = { text: '部分数值经服务端校正,已更新为云端实况', at: Date.now() }
+      }
+    }
     blocked = false
     failStreak = 0
     syncState.value = 'ok'

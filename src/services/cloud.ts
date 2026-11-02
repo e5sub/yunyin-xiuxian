@@ -500,7 +500,15 @@ export const cloudApi = {
     profile?: unknown
     /** 本机上次同步到的云端时间戳:服务端据此判断是否被别的设备改过 */
     baseUpdatedAt?: number
-  }): Promise<{ ok: boolean; updatedAt: number }> => request('PUT', '/save', payload),
+  }): Promise<{
+    ok: boolean
+    updatedAt: number
+    /**
+     * 服务端数值权威化压回的字段(境界/修为/资源/装备)。
+     * 客户端须立刻用 after 覆盖本地 —— 否则本地还按作弊值显示,下个周期又被压回,数值来回跳。
+     */
+    corrections?: Array<{ path: string; before: unknown; after: unknown }>
+  }> => request('PUT', '/save', payload),
   saveHistory: (limit = 30): Promise<{ history: SaveHistoryRow[] }> =>
     request('GET', `/save/history?limit=${limit}`),
   restoreSave: (historyId: number): Promise<{ ok: boolean; updatedAt: number }> =>

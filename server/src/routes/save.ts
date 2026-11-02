@@ -5,6 +5,7 @@ import { requireAuth } from '../auth.js'
 import { getConfigNumber } from '../config.js'
 import { recomputeProfile } from '../recompute.js'
 import { normalizeSaveSlices } from '../saveNormalize.js'
+import { enforceAuthority } from '../saveAuthority.js'
 
 export interface ProfileSnapshot {
   name: string
@@ -48,7 +49,7 @@ const lastFlagAt = new Map<number, number>()
 
 /**
  * 存档审计留痕 —— 只记不改,不拦存档。
- * 归一化修掉了什么、境界有没有单次跳变,都写进 save_flags 供 GM 判定;
+ * 归一化修掉了什么、数值权威化压回了什么、境界有没有单次跳变,都写进 save_flags 供 GM 判定;
  * 真的在被改包的号,属性复算会把它压回真实曲线,但「谁在改」只有这里看得出来。
  */
 async function auditSave(
@@ -56,10 +57,12 @@ async function auditSave(
   name: string,
   realmIndex: number,
   prevRealmIndex: number,
-  touched: readonly string[]
+  touched: readonly string[],
+  authorityNotes: readonly string[] = []
 ): Promise<void> {
   const flags: Array<{ kind: string; detail: string }> = []
   if (touched.length > 0) flags.push({ kind: 'sanitized', detail: touched.join(',') })
+  if (authorityNotes.length > 0) flags.push({ kind: 'authority', detail: authorityNotes.join(' | ') })
   const jump = realmIndex - prevRealmIndex
   if (prevRealmIndex > 0 && jump >= REALM_JUMP_FLAG) {
     flags.push({ kind: 'realm_jump', detail: `${prevRealmIndex}→${realmIndex}` })
@@ -268,7 +271,39 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
      * 归一化失败(模块加载不了/分片畸形到链路抛错)按原样落库:加固环节不能变成拒收存档。
      */
     const normalized = await normalizeSaveSlices(body.data)
-    const data = normalized === null ? body.data : normalized.data
+    const normalizedData = (normalized === null ? body.data : normalized.data) as Record<string, unknown>
+
+    const old = await get<{ version: number; data: string; updated_at: number }>(
+      'SELECT version, data, updated_at FROM saves WHERE user_id = ?',
+      [req.user!.id]
+    )
+    /*
+     * 数值权威化:客户端上报的数值只是「提议」,落库的是服务端裁决后的结果。
+     * 依次裁「境界 → 修为 → 资源 → 装备」,判据全部取自游戏自己的模型
+     * (突破需求 / 每秒产速 / 每境界每小时产出 / 境界解锁层级),见 src/core/saveAuthority.ts。
+     *
+     * 境界基线取 profiles.realm_index 而不是上次存档:玩家删档重传时 saves 会消失,
+     * profiles 不受影响 —— 否则「删档 + 重传高境界档」就是一条绕过路径。
+     */
+    const prevProfileRow = await get<{ realm_index: number }>('SELECT realm_index FROM profiles WHERE user_id = ?', [
+      req.user!.id
+    ])
+    let prevData: Record<string, unknown> | null = null
+    if (old !== undefined) {
+      try {
+        const parsed = JSON.parse(old.data) as unknown
+        prevData = typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null
+      } catch {
+        prevData = null
+      }
+    }
+    const authority = await enforceAuthority({
+      prev: prevData,
+      next: normalizedData,
+      prevRealmIndex: prevProfileRow?.realm_index ?? 0,
+      elapsedMs: old === undefined ? 0 : Math.max(0, now - old.updated_at)
+    })
+    const data = authority === null ? normalizedData : authority.data
     let json: string
     try {
       json = JSON.stringify(data)
@@ -280,11 +315,6 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       res.status(413).json({ error: '存档过大' })
       return
     }
-
-    const old = await get<{ version: number; data: string; updated_at: number }>(
-      'SELECT version, data, updated_at FROM saves WHERE user_id = ?',
-      [req.user!.id]
-    )
 
     const metrics = metricsOf(json)
     if (old !== undefined) {
@@ -320,9 +350,6 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
     // 快照以复算为准:用上传分片无头水合同一批 store、跑同一份 finalStats 链重算;
     // 复算失败(分片畸形/链路抛错)才回落客户端快照;两边都拿不到(老客户端不带 profile)就不动 profiles。
     // 用归一化后的 data 复算,与落库内容同源。两条路最后都过同一把钳制尺。
-    const prevProfile = await get<{ realm_index: number }>('SELECT realm_index FROM profiles WHERE user_id = ?', [
-      req.user!.id
-    ])
     const clientSnap = parseSnapshot(body.profile, req.user!.id)
     const recomputed = await recomputeProfile(data)
     if (snapshotComplete(recomputed)) {
@@ -336,13 +363,15 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
         req.user!.id,
         displayName,
         metrics.realmIndex,
-        prevProfile?.realm_index ?? 0,
-        normalized?.touched ?? []
+        prevProfileRow?.realm_index ?? 0,
+        normalized?.touched ?? [],
+        authority?.notes ?? []
       )
     } catch {
       // 留痕失败不影响存档本身
     }
-    res.json({ ok: true, updatedAt: now })
+    // corrections 回给客户端:被压回的字段要立刻以服务端值覆盖本地,否则玩家看到的是作弊值
+    res.json({ ok: true, updatedAt: now, corrections: authority?.corrections ?? [] })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })
