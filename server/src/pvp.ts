@@ -1,5 +1,6 @@
 /** 切磋:服务端按双方快照做简化对决模拟 */
 import { randomInt } from 'node:crypto'
+import { geNorm, geText } from './gnum.js'
 
 export interface DuelSide {
   id: number
@@ -18,13 +19,10 @@ function mag(m: number, e: number): number {
   return m * Math.pow(10, e)
 }
 
-/** GNum 人类可读:m×10^e → 6 位有效以内 */
-function fmt(m: number, e: number): string {
-  if (m <= 0) return '0'
-  if (e >= 6 || e <= -2) return `${m.toPrecision(4)}e${e}`
-  let s = (m * Math.pow(10, e)).toPrecision(6)
-  if (s.includes('.')) s = s.replace(/0+$/, '').replace(/\.$/, '')
-  return s
+/** GNum 人类可读:与前端 formatGN 同口径(万/亿/兆…),不印原始指数 */
+function fmtLog(v: number): string {
+  if (!Number.isFinite(v) || v <= 0) return '0'
+  return geText(geNorm(v, 0))
 }
 
 function randRange(min: number, max: number): number {
@@ -71,13 +69,7 @@ export function simulateDuel(a: DuelSide, b: DuelSide): {
   }
   const winnerName = winner === 'me' ? a.name : b.name
   const loserName = winner === 'me' ? b.name : a.name
-  log.push(`${winnerName}胜 · ${loserName}余血 ${fmt(Math.max(0, winner === 'me' ? hpB : hpA), winner === 'me' ? b.hpE : a.hpE)}`)
+  // 余血是已解包的实际值(mag 之后),别再按快照指数乘一次
+  log.push(`${winnerName}胜 · ${loserName}余血 ${fmtLog(Math.max(0, winner === 'me' ? hpB : hpA))}`)
   return { winner, rounds, log: log.slice(-40) }
-}
-
-function fmtLog(v: number): string {
-  if (!Number.isFinite(v) || v <= 0) return '0'
-  const e = Math.floor(Math.log10(v))
-  const m = v / Math.pow(10, e)
-  return fmt(m, e)
 }
