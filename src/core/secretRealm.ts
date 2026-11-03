@@ -17,7 +17,7 @@ import { mergeRules, worldFoeSnap } from './gauntlet'
 import { buildPlayerSnap } from './playerSnap'
 import { currentDaoRules } from './endgameService'
 import { stoneByTier } from './formulas'
-import { generateEquipment } from './equipGen'
+import { mintDrops } from './lootClaim'
 import { acquireEquipment } from './loot'
 import { harvestMaterials } from './loreService'
 import { usePlayerStore } from '@/stores/player'
@@ -246,7 +246,7 @@ export function secretLayerReward(tier: number, layer: number, rewardMult: numbe
   return { stone: stoneByTier(tier, (12 + 6 * layer) * rewardMult), material: 2 + layer }
 }
 
-export function fightSecretLayer(): SecretLayerResult | null {
+export async function fightSecretLayer(): Promise<SecretLayerResult | null> {
   const player = usePlayerStore()
   const resources = useResourcesStore()
   const ui = useUiStore()
@@ -270,9 +270,9 @@ export function fightSecretLayer(): SecretLayerResult | null {
     lines.push(`胜 ${snap.name} · 灵石 +${formatGN(stone)} · ${HERB_GRADE_SHORT[herbGradeOfMajor(player.major)]}灵草 +${mat}`)
     const nextLayer = state.layer + 1
     if (nextLayer > SECRET_LAYERS) {
-      // 通关:最终宝藏
-      const inst = generateEquipment(tier, rng, { minQualityRank: 2 })
-      lines.push(`获得 ${acquireEquipment(inst).line}`)
+      // 通关:最终宝藏(品质下限收进签发侧,服务端夹进合法区间)
+      const insts = await mintDrops([{ src: 'secret', tier }])
+      if (insts.length > 0) lines.push(`获得 ${acquireEquipment(insts[0]!).line}`)
       resources.addSmall('wudao', 3)
       lines.push('悟道点 +3')
       player.setSecretRealm(null)

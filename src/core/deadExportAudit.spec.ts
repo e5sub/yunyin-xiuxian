@@ -15,7 +15,8 @@ const SRC = resolve(__dirname, '..')
 
 /** 暂不接线的导出;每一项须写清为什么留、什么时候销账 */
 const ALLOWLIST: Record<string, string> = {
-  studyBlueprint: '炼器图纸骨架:contentReachabilityAudit 已钉"读与给必须一起接",此处不重复扣押'
+  studyBlueprint: '炼器图纸骨架:contentReachabilityAudit 已钉"读与给必须一起接",此处不重复扣押',
+  lootEnvFromSlices: '服务端掉落签发的环境复算入口:server/src/recompute.ts 动态加载本模块,从云档分片复算掉落环境(1.58.0),消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径'
 }
 
 /**

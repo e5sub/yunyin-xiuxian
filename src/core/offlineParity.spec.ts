@@ -21,7 +21,7 @@ const src = (f: string) => resolve(__dirname, f)
 describe('离线历练 · 战斗规则与在线同源(逆旅契)', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('逆旅契合并只此一份:在线与离线都经 explorationRules,离线不再内联 currentDaoRules', () => {
+  it('逆旅契合并只此一份:在线与离线都经 explorationRules,离线不再内联 currentDaoRules', async () => {
     const exploration = readFileSync(src('./exploration.ts'), 'utf8')
     const offline = readFileSync(src('./offline.ts'), 'utf8')
     expect(exploration).toContain('lifeTrialRules()')
@@ -31,20 +31,20 @@ describe('离线历练 · 战斗规则与在线同源(逆旅契)', () => {
     expect(offline).not.toContain('currentDaoRules()')
   })
 
-  it('签下逆锋契后,explorationRules 并入敌攻/敌命加成', () => {
+  it('签下逆锋契后,explorationRules 并入敌攻/敌命加成', async () => {
     usePlayerStore().setLifeTrial({ trialId: 'tr_ni', at: 0, paid: 48 })
     const rules = explorationRules()
     expect(rules?.enemyAtkMult).toBeCloseTo(1.3, 10)
     expect(rules?.enemyHpMult).toBeCloseTo(1.2, 10)
   })
 
-  it('未签契且未择道途时,explorationRules 为空(不叠加任何规则)', () => {
+  it('未签契且未择道途时,explorationRules 为空(不叠加任何规则)', async () => {
     expect(explorationRules()).toBeUndefined()
   })
 })
 
 describe('离线历练 · doubleDropRate 与在线同源', () => {
-  it('离线普通战结算并入福缘词条:doubleDropRate 按期望值乘入灵石/修为/材料/装备', () => {
+  it('离线普通战结算并入福缘词条:doubleDropRate 按期望值乘入灵石/修为/材料/装备', async () => {
     const offline = readFileSync(src('./offline.ts'), 'utf8')
     // 离线普通战公式须读该词条;首领战走 afterWin 已生效
     expect(offline).toContain("modOf(mods, 'doubleDropRate')")
@@ -58,7 +58,7 @@ describe('离线历练 · doubleDropRate 与在线同源', () => {
 })
 
 describe('离线历练 · 溢出装备折尘与在线化尘口径同源(单一事实源)', () => {
-  it('溢出件数折尘走 avgDustPerDrop(tier),不再写死固定 4 尘', () => {
+  it('溢出件数折尘走 avgDustPerDrop(tier),不再写死固定 4 尘', async () => {
     const offline = readFileSync(src('./offline.ts'), 'utf8')
     // 同层平均分解尘取 economySim 采样口径,与在线 salvageOf 同族
     expect(offline).toContain('overflowDust = Math.round((equipCount - realCount) * avgDustPerDrop(region.tier))')
@@ -67,7 +67,7 @@ describe('离线历练 · 溢出装备折尘与在线化尘口径同源(单一�
 })
 
 describe('离线历练 · 事件池与在线同源(本世路线)', () => {
-  it('离线事件走 placeContent 的 regionEventPoolFor,不再只剩硬编码通用池', () => {
+  it('离线事件走 placeContent 的 regionEventPoolFor,不再只剩硬编码通用池', async () => {
     const offline = readFileSync(src('./offline.ts'), 'utf8')
     expect(offline).toContain('regionEventPoolFor')
     expect(offline).toContain('placeContent(region.id).eventTags')
@@ -78,7 +78,7 @@ describe('离线历练 · 事件池与在线同源(本世路线)', () => {
 })
 
 describe('离线历练 · 区域事件加丰与加难成对(regReward)', () => {
-  it('离线普通战与首领战的奖励都并上 regionEventReward,不再只有危险', () => {
+  it('离线普通战与首领战的奖励都并上 regionEventReward,不再只有危险', async () => {
     const offline = readFileSync(src('./offline.ts'), 'utf8')
     // 与 danger 成对:妖潮/古墓/商队加难亦加丰,倍率进石头/修为/掉落数
     expect(offline).toContain('regionEventReward')
@@ -94,7 +94,7 @@ describe('离线历练 · 区域事件加丰与加难成对(regReward)', () => {
 })
 
 describe('离线历练 · 首领判定与在线同源(本世路线)', () => {
-  it('离线首领「是否已清」按本世路线 regionBossCleared 判,不再按旧 REGIONS cleared 链', () => {
+  it('离线首领「是否已清」按本世路线 regionBossCleared 判,不再按旧 REGIONS cleared 链', async () => {
     const offline = readFileSync(src('./offline.ts'), 'utf8')
     // 与在线 exploration.regionBossCleared 同一判据:本世路线下旧 cleared 链留空,按它判会重打已清首领并解锁下一区
     expect(offline).toContain('regionBossCleared(region.id)')
@@ -105,9 +105,9 @@ describe('离线历练 · 首领判定与在线同源(本世路线)', () => {
    * 首领门槛数整趟会话的胜场(在线 `runBattle` 拿 `s.wins`),不是本段挂机窗口的胜场。
    * 断言看播报不看胜负:首领胜则靖平、败则「败于【某】」,都证明已出场。
    */
-  it('离线首领资格并入会话累计胜场,与在线同一趟账', () => {
+  it('离线首领资格并入会话累计胜场,与在线同一趟账', async () => {
     /** 只挂两分钟:本段赢不到 10 场,门槛靠会话已有胜场补齐 */
-    function run(sessionWins: number): boolean {
+    async function run(sessionWins: number): Promise<boolean> {
       setActivePinia(createPinia())
       const game = useGameStore()
       const player = usePlayerStore()
@@ -129,14 +129,14 @@ describe('离线历练 · 首领判定与在线同源(本世路线)', () => {
         expGain: gnZero(),
         itemGain: 0
       }
-      const summary = settleOffline(now)!
+      const summary = (await settleOffline(now))!
       return summary.notes.some(n => n.startsWith('败于【')) || adventure.cleared.includes('qingyun')
     }
 
     // 对照组:只有本段胜场,不够门槛
-    expect(run(0), '本段不满 10 胜时不该出首领').toBe(false)
+    expect(await run(0), '本段不满 10 胜时不该出首领').toBe(false)
     // 实验组:在线已赢 9 场
-    expect(run(9), '整趟已够门槛,挂机这段就该遇首领').toBe(true)
+    expect(await run(9), '整趟已够门槛,挂机这段就该遇首领').toBe(true)
   })
 })
 
@@ -166,12 +166,12 @@ describe('离线历练 · 战后语义与在线同源(图鉴/区域统计/镇压
     }
   }
 
-  it('离线普通战写入区域统计与兴衰胜场,N 场一次入账与逐场 EMA 等价', () => {
+  it('离线普通战写入区域统计与兴衰胜场,N 场一次入账与逐场 EMA 等价', async () => {
     const player = usePlayerStore()
     const lore = useLoreStore()
     seedOfflineTrip()
 
-    expect(settleOffline(Date.now()), '这一档应当结算出离线收益').not.toBeNull()
+    expect(await settleOffline(Date.now()), '这一档应当结算出离线收益').not.toBeNull()
 
     const summary = useAdventureStore().session
     expect(summary, '60 小时该赢下不少场').not.toBeNull()
@@ -189,14 +189,14 @@ describe('离线历练 · 战后语义与在线同源(图鉴/区域统计/镇压
    * 镇压回执两处(普通战 / 首领战)与在线同走 suppressRateLine(灵石/时 × 物产 × 兴衰)。
    * 故障注入:把任一处改成「此地将自动产出资源」,本用例红。
    */
-  it('离线镇压达成的回执报产出账,与在线 suppressRateLine 同源', () => {
+  it('离线镇压达成的回执报产出账,与在线 suppressRateLine 同源', async () => {
     const offline = readFileSync(src('./offline.ts'), 'utf8')
     expect(offline, '两处回执都该调唯一那份产出行').toContain('suppressRateLine(region.id, regionRecallFor(region.id).prosperity)')
     expect(offline.match(/suppressRateLine\(region\.id/g)?.length, '普通战与首领战两处都要报').toBe(2)
     expect(offline, '空话口径不许再出现').not.toContain('此地将自动产出资源')
   })
 
-  it('批量净胜的 EMA 与逐场调用一致(单源口径)', () => {
+  it('批量净胜的 EMA 与逐场调用一致(单源口径)', async () => {
     const player = usePlayerStore()
     player.updateRegionStats('luoxia', true, 9, 0.5)
     const once = { ...player.regionStats.luoxia! }
@@ -222,7 +222,7 @@ describe('离线历练 · 战后语义与在线同源(图鉴/区域统计/镇压
    * 离线计入败场则 7 胜 13 负也能凑满镇压的「20 胜」。
    * 故障注入:把离线批量改成传入 `battles - wins`,本用例红。
    */
-  it('离线批量只按胜场入账,不把败场掺进地界战绩', () => {
+  it('离线批量只按胜场入账,不把败场掺进地界战绩', async () => {
     const offline = readFileSync(src('./offline.ts'), 'utf8')
     expect(offline, '离线区域账按胜场批量入账').toMatch(/applyRegionWinBatch\(\s*region\.id,\s*wins,/)
     expect(offline, '不许把败场数塞进地界战绩').not.toMatch(
@@ -239,10 +239,10 @@ describe('离线历练 · 战后语义与在线同源(图鉴/区域统计/镇压
   })
 
   /** 在线每败一场 losses +1;提前收手时「胜+负 ≥3 才算走过一趟」的判据读它 */
-  it('离线把败场写进会话 losses,与在线同一本账', () => {
+  it('离线把败场写进会话 losses,与在线同一本账', async () => {
     const adventure = useAdventureStore()
     seedOfflineTrip()
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
 
     expect(summary.battles, '这一档该打上不少场').toBeGreaterThan(0)
     expect(summary.wins, '不该一场没赢').toBeGreaterThan(0)
@@ -254,7 +254,7 @@ describe('离线历练 · 战后语义与在线同源(图鉴/区域统计/镇压
   })
 
   /** 在线 `runBattle` 不论首领胜败都先 `track('battles')` 再按结果记账 */
-  it('离线首领战计入归来卷轴与进度计数,与在线同一本账', () => {
+  it('离线首领战计入归来卷轴与进度计数,与在线同一本账', async () => {
     const offline = readFileSync(src('./offline.ts'), 'utf8')
     // 首领分支须同时推进计数与两本账
     expect(offline, '首领战要计入战斗总场次').toMatch(/track\('battles'\)\s*\n\s*battles \+= 1/)

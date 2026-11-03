@@ -29,7 +29,7 @@ function parseGNFmt(s: string): number {
   return base * mult
 }
 
-function suppressionStoneAfterOffline(mansionLevel: number): number {
+async function suppressionStoneAfterOffline(mansionLevel: number): Promise<number> {
   const game = useGameStore()
   const player = usePlayerStore()
   const dongfu = useDongfuStore()
@@ -38,7 +38,7 @@ function suppressionStoneAfterOffline(mansionLevel: number): number {
   player.major = 3
   player.suppressedRegions = ['qingyun']
   dongfu.setLevel('mansion', mansionLevel)
-  settleOffline(Date.now())
+  await settleOffline(Date.now())
   const line = useUiStore().offlineSummary?.notes.find(n => n.startsWith('镇压收益'))
   expect(line, '镇压区域离线应有镇压提示').toBeDefined()
   const m = /灵石 \+([\d.,]+\s*万?亿?兆?京?)/.exec(line!)
@@ -47,19 +47,19 @@ function suppressionStoneAfterOffline(mansionLevel: number): number {
 }
 
 describe('离线结算封顶一致性', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
-  it('洞府 0 级(cap 8h):60h 缺席的镇压收益按 8h 结算,而非 60h', () => {
-    const stone = suppressionStoneAfterOffline(0)
+  it('洞府 0 级(cap 8h):60h 缺席的镇压收益按 8h 结算,而非 60h', async () => {
+    const stone = await suppressionStoneAfterOffline(0)
     // 8h 封顶:stoneByTier(tier1, 150×8×1.0) = 1440;60h 全额 ≈ 10800
     expect(stone).toBeGreaterThan(1000)
     expect(stone).toBeLessThan(2000)
   })
 
-  it('洞府 4 级(cap 72h → capSec 60h):镇压收益随封顶抬升到 60h 量级', () => {
-    const stone = suppressionStoneAfterOffline(4)
+  it('洞府 4 级(cap 72h → capSec 60h):镇压收益随封顶抬升到 60h 量级', async () => {
+    const stone = await suppressionStoneAfterOffline(4)
     // 60h 封顶 ≈ 10800
     expect(stone).toBeGreaterThan(8000)
     expect(stone).toBeLessThan(13000)
@@ -67,11 +67,11 @@ describe('离线结算封顶一致性', () => {
 })
 
 describe('离线结算同源吃天时', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
-  it('灵雨日离线修炼速率高于清和日(天时并入 cultPerSec,离线不再掉加成)', () => {
+  it('灵雨日离线修炼速率高于清和日(天时并入 cultPerSec,离线不再掉加成)', async () => {
     // 清和日无修炼加成,灵雨日 +10%
     const game = useGameStore()
     let lingyuDay = -1
@@ -85,7 +85,7 @@ describe('离线结算同源吃天时', () => {
     expect(lingyuDay).toBeGreaterThanOrEqual(0)
     expect(qingheDay).toBeGreaterThanOrEqual(0)
 
-    function offlineExpOnDay(day: number): number {
+    async function offlineExpOnDay(day: number): Promise<number> {
       const g = useGameStore()
       const p = usePlayerStore()
       g.markStarted()
@@ -94,16 +94,16 @@ describe('离线结算同源吃天时', () => {
       g.$patch({ totalPlaySec: day * 86400 })
       p.initCharacter('离修', { roots: [] } as never)
       const before = toNum(p.exp)
-      settleOffline(Date.now())
+      await settleOffline(Date.now())
       return toNum(p.exp) - before
     }
-    const expLingyu = offlineExpOnDay(lingyuDay)
-    const expQinghe = offlineExpOnDay(qingheDay)
+    const expLingyu = await offlineExpOnDay(lingyuDay)
+    const expQinghe = await offlineExpOnDay(qingheDay)
     // 灵雨 +10%;阈值取 1.05 留余量
     expect(expLingyu).toBeGreaterThan(expQinghe * 1.05)
   })
 
-  it('混沌道祖离线结算不崩:修为有增、数值有限', () => {
+  it('混沌道祖离线结算不崩:修为有增、数值有限', async () => {
     const game = useGameStore()
     const player = usePlayerStore()
     game.markStarted()
@@ -112,7 +112,7 @@ describe('离线结算同源吃天时', () => {
     player.sub = 9
 
     const before = toNum(player.exp)
-    const summary = settleOffline(Date.now())
+    const summary = await settleOffline(Date.now())
 
     expect(summary, '高界离线应产出总结').not.toBeNull()
     expect(toNum(player.exp), '高界离线修为未增长').toBeGreaterThan(before)
@@ -120,7 +120,7 @@ describe('离线结算同源吃天时', () => {
   })
 
   /** 高界全产线体检:镇压按 capSec、洞府按 effSec,量级不同须分别验 */
-  it('混沌道祖离线:五条产线的读数全部有限且非负', () => {
+  it('混沌道祖离线:五条产线的读数全部有限且非负', async () => {
     const game = useGameStore()
     const player = usePlayerStore()
     game.markStarted()
@@ -130,7 +130,7 @@ describe('离线结算同源吃天时', () => {
     player.suppressRegion('hongmengbenyuan')
     player.suppressQualified.push('hongmengbenyuan')
 
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
     expect(summary).not.toBeNull()
     const numeric: Record<string, number> = {
       exp: toNum(summary.exp),
@@ -148,7 +148,7 @@ describe('离线结算同源吃天时', () => {
   })
 
   /** 洞府与藏经阁同走 effSec(时长 × 0.9):同一状态跑离线结算与直接传 effSec 两遍,比对进度读数 */
-  it('洞府与藏经阁的离线折扣与在线同源:进度读数等于「直接传 effSec」那一遍', () => {
+  it('洞府与藏经阁的离线折扣与在线同源:进度读数等于「直接传 effSec」那一遍', async () => {
     // 比 frac/studyFrac 不比资源总额:总额含 track('offlineClaims') 的成就奖励;frac 只由这条产线写
     // 取除不尽的时长:整数时长下 frac 恒为 0,断言失效
     const gapHours = 0.37
@@ -175,7 +175,7 @@ describe('离线结算同源吃天时', () => {
       study: useLoreStore().studyFrac
     })
 
-    settleOffline(setup())
+    await settleOffline(setup())
     const offline = readFrac()
 
     setup()
@@ -193,7 +193,7 @@ describe('离线结算同源吃天时', () => {
   })
 
   /** 离线修为 = 在线速率 × 时长 × OFFLINE_EFFICIENCY,跨界验比率 */
-  it('离线折扣全程一致:人间/真仙/神人/混沌的增益都恰是 在线速率 ×0.9', () => {
+  it('离线折扣全程一致:人间/真仙/神人/混沌的增益都恰是 在线速率 ×0.9', async () => {
     for (const major of [0, 9, 14, 20]) {
       setActivePinia(createPinia())
       const game = useGameStore()
@@ -206,7 +206,7 @@ describe('离线结算同源吃天时', () => {
       const rate = player.cultPerSec
       const effSec = gapHours * 3600 * OFFLINE_EFFICIENCY
       const before = toNum(player.exp)
-      expect(settleOffline(Date.now()), `major ${major} 离线未结算`).not.toBeNull()
+      expect(await settleOffline(Date.now()), `major ${major} 离线未结算`).not.toBeNull()
       const gained = toNum(player.exp) - before
       const expected = toNum(mulN(gn(rate), effSec))
       expect(expected, `major ${major} 期望增益为 0,断言形同虚设`).toBeGreaterThan(0)
@@ -217,11 +217,11 @@ describe('离线结算同源吃天时', () => {
 
 /** 离线总结「报数 == 实发」守卫:OfflineSummary 各项与结算前后快照差逐项核对 */
 describe('离线总结报数 == 实发', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
-  it('非封顶段:stone/qi/herb/herbByGrade/ore/wudao/ageYears 报数==实发,cap 恒假', () => {
+  it('非封顶段:stone/qi/herb/herbByGrade/ore/wudao/ageYears 报数==实发,cap 恒假', async () => {
     // 冻时:lastActiveAt 与 settleOffline 读同一时刻,否则 gap 略超 3600s,报数与实发偶发差 1
     vi.useFakeTimers()
     try {
@@ -247,7 +247,7 @@ describe('离线总结报数 == 实发', () => {
     const age0 = player.age
     const herbBefore = { ...resources.herbByGrade }
 
-    const summary = settleOffline(Date.now())
+    const summary = await settleOffline(Date.now())
     expect(summary, '1h 离线应结算').not.toBeNull()
     const sm = summary!
 
@@ -274,7 +274,7 @@ describe('离线总结报数 == 实发', () => {
     }
   })
 
-  it('封顶段:capped/cappedSeconds/seconds 报数正确,实发按 cap 折算且寿元不封顶', () => {
+  it('封顶段:capped/cappedSeconds/seconds 报数正确,实发按 cap 折算且寿元不封顶', async () => {
     // 冻时:否则跨秒时 seconds 偶发报 216001
     vi.useFakeTimers()
     try {
@@ -292,7 +292,7 @@ describe('离线总结报数 == 实发', () => {
 
       const age0 = player.age
       const rate = player.cultPerSec // 须取结算前速率:结算中可能越层
-      const summary = settleOffline(Date.now())
+      const summary = await settleOffline(Date.now())
       expect(summary, '60h 离线应结算').not.toBeNull()
       const sm = summary!
 
@@ -315,7 +315,7 @@ describe('离线总结报数 == 实发', () => {
 })
 
 /** 离线修炼修为(不挂历练) */
-function offlineCultExp(buff: 'none' | 'expired' | 'active'): number {
+async function offlineCultExp(buff: 'none' | 'expired' | 'active'): Promise<number> {
   // 冻时:endsAt 与 nowMs 读同一时刻,否则过期的聚灵偶发被当成仍有效
   vi.useFakeTimers()
   try {
@@ -332,7 +332,7 @@ function offlineCultExp(buff: 'none' | 'expired' | 'active'): number {
       const endsAt = buff === 'expired' ? Date.now() - 5000 : Date.now() + 3600 * 1000
       useCultivationStore().buffs = [{ defId: 'buff_juling', endsAt, added: 1800000 }] // 聚灵:+50% 修速
     }
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
     return toNum(summary.exp)
   } finally {
     vi.useRealTimers()
@@ -340,26 +340,26 @@ function offlineCultExp(buff: 'none' | 'expired' | 'active'): number {
 }
 
 describe('离线结算 · 已过期 buff 不补贴(结算前先清算)', () => {
-  it('已过期的聚灵(+50% 修速)对离线修为零贡献:与无 buff 完全一致', () => {
-    const expired = offlineCultExp('expired')
-    const none = offlineCultExp('none')
+  it('已过期的聚灵(+50% 修速)对离线修为零贡献:与无 buff 完全一致', async () => {
+    const expired = await offlineCultExp('expired')
+    const none = await offlineCultExp('none')
     expect(expired).toBe(none)
   })
 
-  it('未过期聚灵仍正常抬离线修为(阳性对照:测试不是空转)', () => {
-    const active = offlineCultExp('active')
-    const none = offlineCultExp('none')
+  it('未过期聚灵仍正常抬离线修为(阳性对照:测试不是空转)', async () => {
+    const active = await offlineCultExp('active')
+    const none = await offlineCultExp('none')
     expect(active).toBeGreaterThan(none)
   })
 })
 
 /** 归来卷轴的镇压账:道韵修为、妖气复聚、镇压松开都须写进卷轴 */
 describe('离线归来卷轴 · 镇压账目', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
-  it('镇压产出的那一行带上道韵修为,不只报灵石与物产', () => {
+  it('镇压产出的那一行带上道韵修为,不只报灵石与物产', async () => {
     const game = useGameStore()
     const player = usePlayerStore()
     game.markStarted()
@@ -367,13 +367,13 @@ describe('离线归来卷轴 · 镇压账目', () => {
     player.major = 3
     player.suppressRegion('qingyun')
 
-    settleOffline(Date.now())
+    await settleOffline(Date.now())
     const line = useUiStore().offlineSummary?.notes.find(n => n.startsWith('镇压收益'))
     expect(line, '镇压一区离线应有镇压提示').toBeDefined()
     expect(line, '守着一片地界多拿了修为,卷轴得说清是哪来的').toContain('道韵修为 +')
   })
 
-  it('妖气复聚的旧主要写进归来卷轴,不能只在提示条里闪过', () => {
+  it('妖气复聚的旧主要写进归来卷轴,不能只在提示条里闪过', async () => {
     vi.useFakeTimers()
     try {
       // 起点须取真实量级时刻:≤0 的起钟时刻会被读档守卫丢掉
@@ -391,7 +391,7 @@ describe('离线归来卷轴 · 镇压账目', () => {
       adventure.markCleared(id)
       adventure.clearedAt[id] = started
 
-      settleOffline(Date.now())
+      await settleOffline(Date.now())
       const notes = useUiStore().offlineSummary?.notes.join('\n') ?? ''
       expect(notes, '旧主归来得写进卷轴').toContain('妖气复聚')
       expect(notes, '复聚那一行要点明旧主归来').toContain('旧主归来')
@@ -402,7 +402,7 @@ describe('离线归来卷轴 · 镇压账目', () => {
   })
 
   /** 故障注入:把 offline.ts 的 loosened 分支删掉,本条红 */
-  it('镇压被妖气复聚松开也写进卷轴,并说出「资格仍在」', () => {
+  it('镇压被妖气复聚松开也写进卷轴,并说出「资格仍在」', async () => {
     vi.useFakeTimers()
     try {
       vi.setSystemTime(1_760_000_000_000)
@@ -418,7 +418,7 @@ describe('离线归来卷轴 · 镇压账目', () => {
       player.suppressedRegions = [id]
       player.suppressedSince = { [id]: started }
 
-      settleOffline(Date.now())
+      await settleOffline(Date.now())
 
       expect(player.suppressedRegions, '够钟了镇压该松').toEqual([])
       const notes = useUiStore().offlineSummary?.notes.join('\n') ?? ''

@@ -129,8 +129,8 @@
     ui.toast('已入秘境', 'info')
   }
 
-  function fight(): void {
-    const r = fightSecretLayer()
+  async function fight(): Promise<void> {
+    const r = await fightSecretLayer()
     if (!r) return
     // 合并为单条多行 toast:逐条 push 会被 toast 上限 5 挤掉前面的行
     // 胜归 success(与全库「有得有获」同级),败归 warn

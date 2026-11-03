@@ -1,5 +1,5 @@
 /**
- * 灵兽性格 dropLuck 须接入 afterWin(petPersonality 与图鉴性格说明的承诺)。
+ * 灵兽性格 dropLuck 须接入 await afterWin(petPersonality 与图鉴性格说明的承诺)。
  * 用 mock 的 equipGen 捕获传入的品质 luck。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -26,7 +26,7 @@ vi.mock('./equipGen', async importOriginal => {
 import { usePlayerStore } from '@/stores/player'
 
 describe('灵兽性格 · 掉落倾向(dropLuck 接入 afterWin)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     vi.mocked(generateEquipment).mockClear()
     vi.spyOn(Math, 'random').mockReturnValue(0.5) // 压掉杂项掉落,只留 boss 必掉的那件
@@ -45,26 +45,26 @@ describe('灵兽性格 · 掉落倾向(dropLuck 接入 afterWin)', () => {
     return (kwargs?.luck ?? 0) - (usePlayerStore().fateMods.luck ?? 0)
   }
 
-  it('贪宝灵兽把性格倾向并入装备品质 luck', () => {
+  it('贪宝灵兽把性格倾向并入装备品质 luck', async () => {
     seedPet('pet_qingyu') // greedy → dropLuck 0.06,自身 mods 不带 luck
     const region = regionDef('qingyun')!
-    afterWin(region, 1, true)
+    await afterWin(region, 1, true)
 
     expect(luckExceptFate()).toBeCloseTo(0.06)
   })
 
-  it('无灵兽时品质 luck 不着性格加成', () => {
+  it('无灵兽时品质 luck 不着性格加成', async () => {
     seedPet(null)
     const region = regionDef('qingyun')!
-    afterWin(region, 1, true)
+    await afterWin(region, 1, true)
 
     expect(luckExceptFate()).toBe(0)
   })
 
-  it('谨慎灵兽(dropLuck 为负)拉低品质 luck', () => {
+  it('谨慎灵兽(dropLuck 为负)拉低品质 luck', async () => {
     seedPet('pet_yueying') // cautious → dropLuck -0.02,自身 mods 不带 luck
     const region = regionDef('qingyun')!
-    afterWin(region, 1, true)
+    await afterWin(region, 1, true)
 
     expect(luckExceptFate()).toBeCloseTo(-0.02)
   })

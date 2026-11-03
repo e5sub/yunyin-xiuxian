@@ -108,7 +108,7 @@ describe('离线的作用域 · 在途的东西一律不动', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
   /** 会话 stoneGain/expGain 是战斗页「本次所得」的数据源 */
-  it('挂机期间这趟历练的所得折进会话总账,与离线报的数同源', () => {
+  it('挂机期间这趟历练的所得折进会话总账,与离线报的数同源', async () => {
     const game = useGameStore()
     const player = usePlayerStore()
     const adventure = useAdventureStore()
@@ -132,7 +132,7 @@ describe('离线的作用域 · 在途的东西一律不动', () => {
     const stoneBefore = { ...adventure.session.stoneGain }
     const expBefore = { ...adventure.session.expGain }
 
-    const summary = settleOffline(now)
+    const summary = await settleOffline(now)
     expect(summary, '这档应当结算出离线收益').not.toBeNull()
 
     const s = adventure.session!
@@ -147,7 +147,7 @@ describe('离线的作用域 · 在途的东西一律不动', () => {
     expect(stoneGained, '战斗产出应是离线灵石的大头').toBeGreaterThan(toNum(summary!.stone) * 0.5)
   })
 
-  it('玩家分片只许动 {exp, age, bond};终局分片一个键都不许动', () => {
+  it('玩家分片只许动 {exp, age, bond};终局分片一个键都不许动', async () => {
     setupInFlightSave()
     const player = usePlayerStore()
     const endgame = useEndgameStore()
@@ -156,7 +156,7 @@ describe('离线的作用域 · 在途的东西一律不动', () => {
     const beforePlayer = snap(player.$state)
     const beforeEndgame = snap(endgame.$state)
 
-    const summary = settleOffline(Date.now())
+    const summary = await settleOffline(Date.now())
     expect(summary, '这一档应当结算出离线收益').not.toBeNull()
 
     const playerChanged = changedKeys(beforePlayer, snap(player.$state))
@@ -226,13 +226,13 @@ describe('离线的作用域 · 在途的东西一律不动', () => {
     expect(notes, '在途远征被冻住了,却没跟玩家说').toContain('远征在途')
   })
 
-  it('没有在途内容时,不该凭空说有人等着', () => {
+  it('没有在途内容时,不该凭空说有人等着', async () => {
     const player = usePlayerStore()
     const game = useGameStore()
     game.markStarted()
     game.lastActiveAt = Date.now() - 3 * HOUR
     player.major = 3
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
     const notes = summary.notes.join('\n')
     expect(notes).not.toContain('身在秘境')
     expect(notes).not.toContain('远征在途')

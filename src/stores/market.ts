@@ -5,7 +5,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { persistConfig } from '@/utils/storage'
-import { rng } from '@/utils/random'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useInventoryStore } from '@/stores/inventory'
@@ -22,7 +21,9 @@ import {
   type ConsignPost,
   type MarketSlot
 } from '@/data/market'
-import { consignPrice, generateMarketStock, herbSellBatch, marketEquipInstance, materialSellPrice, pillSellPrice } from '@/core/marketService'
+import { consignPrice, generateMarketStock, herbSellBatch, materialSellPrice, pillSellPrice } from '@/core/marketService'
+import { mintDrops } from '@/core/lootClaim'
+import type { EquipmentInstance } from '@/types'
 import type { HerbGrade } from '@/data/herbGrades'
 import { herbGradeOfMajor, isHerbGrade } from '@/data/herbGrades'
 import { asArray, asFiniteNumber, asPrice } from '@/utils/saveShape'
@@ -160,13 +161,13 @@ export const useMarketStore = defineStore(
     function sync(now: number): void {
       if (stock.value.length > 0 && now < stockedAt.value + MARKET_REFRESH_SECONDS * 1000) return
       const player = usePlayerStore()
-      const gen = generateMarketStock(player.major, rng, now)
+      const gen = generateMarketStock(player.major, now)
       stock.value = gen.goods
       stockedAt.value = gen.stockedAt
     }
 
-    /** 买下第 idx 格;装备须先验行囊满否再扣灵石,反序会花钱不得货 */
-    function buy(idx: number): MarketBuyResult {
+    /** 买下第 idx 格;装备先签发再扣灵石(签发失败不扣钱,反序会花钱不得货),行囊满否先验 */
+    async function buy(idx: number): Promise<MarketBuyResult> {
       const now = Date.now()
       const before = stock.value
       sync(now)
@@ -178,6 +179,13 @@ export const useMarketStore = defineStore(
       const inventory = useInventoryStore()
       if (slot.kind === 'equipment' && inventory.bagFull) return 'bagfull'
       const resources = useResourcesStore()
+      // 装备由签发侧按同一把货架锚再生:预览与购得同一物,uid 换成服务端签发并入台账。
+      // 须在扣灵石前签发 —— 签发失败(网络/服务端)时不扣钱,玩家重试即可
+      let inst: EquipmentInstance | undefined
+      if (slot.kind === 'equipment') {
+        ;[inst] = await mintDrops([{ src: 'market', tier: slot.tier, stockedAt: stockedAt.value, idx }])
+        if (!inst) return 'expired'
+      }
       if (!resources.spendStone(slot.price)) return 'poor'
       if (slot.kind === 'pill') {
         inventory.addPill(slot.pillId, slot.count)
@@ -189,12 +197,11 @@ export const useMarketStore = defineStore(
           resources.addSmall('ore', slot.count)
         }
       } else {
-        const inst = marketEquipInstance(slot, stockedAt.value)
-        inventory.addEquipment(inst)
+        inventory.addEquipment(inst!)
         // 买来的也计入见闻与收藏,见闻深度与掉落同口径;否则图鉴收录了、收藏页却缺这一件
-        const q = qualityDef(inst.quality)
-        useLoreStore().noteEquipSeen(inst.templateId, q.rank, inst.tier)
-        collect('equip', inst.templateId)
+        const q = qualityDef(inst!.quality)
+        useLoreStore().noteEquipSeen(inst!.templateId, q.rank, inst!.tier)
+        collect('equip', inst!.templateId)
       }
       slot.sold = true
       return 'ok'

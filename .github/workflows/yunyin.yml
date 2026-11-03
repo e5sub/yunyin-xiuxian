@@ -72,7 +72,7 @@ jobs:
             echo "构建失败：dist/index.html 不存在"
             exit 1
           fi
-          if [ ! -f "server/vendor/saveSanitize.mjs" ] || [ ! -f "server/vendor/saveAuthority.mjs" ] || [ ! -f "server/vendor/profileRecompute.mjs" ] || [ ! -f "server/vendor/breakthroughResolve.mjs" ]; then
+          if [ ! -f "server/vendor/saveSanitize.mjs" ] || [ ! -f "server/vendor/saveAuthority.mjs" ] || [ ! -f "server/vendor/profileRecompute.mjs" ] || [ ! -f "server/vendor/breakthroughResolve.mjs" ] || [ ! -f "server/vendor/lootGrant.mjs" ]; then
             echo "构建失败：server/vendor 缺少共享模块 bundle"
             exit 1
           fi

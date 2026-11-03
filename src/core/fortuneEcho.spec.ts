@@ -8,18 +8,18 @@ import { eventDef, FORTUNE_EVENTS } from '@/data/events'
 import { recordEvent } from './worldMemory'
 
 describe('遗产回声(fortuneEcho)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
-  it('新玩家:永不回声(无 leave 记录)', () => {
+  it('新玩家:永不回声(无 leave 记录)', async () => {
     const player = usePlayerStore()
     player.setFortuneChoices({})
     expect(echoEligible('ft_reclusive_elder')).toBe(false)
     expect(echoFor('ft_reclusive_elder')).toBeNull()
   })
 
-  it('leave 过的机缘可回声', () => {
+  it('leave 过的机缘可回声', async () => {
     const player = usePlayerStore()
     player.setFortuneChoices({ ft_reclusive_elder: 'leave' })
     expect(echoEligible('ft_reclusive_elder')).toBe(true)
@@ -28,13 +28,13 @@ describe('遗产回声(fortuneEcho)', () => {
     expect(echo.form).toBe('recognize')
   })
 
-  it('take 过的机缘不触发 leave-回声(它已是你的缘)', () => {
+  it('take 过的机缘不触发 leave-回声(它已是你的缘)', async () => {
     const player = usePlayerStore()
     player.setFortuneChoices({ ft_reclusive_elder: 'take' })
     expect(echoEligible('ft_reclusive_elder')).toBe(false)
   })
 
-  it('多次 leave 不叠加(布尔判定)', () => {
+  it('多次 leave 不叠加(布尔判定)', async () => {
     const player = usePlayerStore()
     player.setFortuneChoices({ ft_sword_remnant: 'leave', ft_ancient_elixir: 'leave' })
     expect(echoFor('ft_sword_remnant')?.form).toBe('traces')
@@ -44,17 +44,17 @@ describe('遗产回声(fortuneEcho)', () => {
     expect(echoEligible('ft_sword_remnant')).toBe(true)
   })
 
-  it('回声纯叙事:不改变奖励 / 资源 / 属性 / 战斗规则', () => {
+  it('回声纯叙事:不改变奖励 / 资源 / 属性 / 战斗规则', async () => {
     // resolveEventChoice 的 lines 不因回声而变
     const player = usePlayerStore()
     player.setFortuneChoices({ ft_ancient_elixir: 'leave' })
     const def = eventDef('ft_ancient_elixir')!
     const defaultIdx = def.choices.findIndex(c => c.isDefault)
-    const res = resolveEventChoice(def, defaultIdx >= 0 ? defaultIdx : 0, 3)
+    const res = await resolveEventChoice(def, defaultIdx >= 0 ? defaultIdx : 0, 3)
     expect(res.lines.length).toBe(0) // 放弃选项无效果
   })
 
-  it('回声概率稀有(5%),且五种机缘各有回声文本', () => {
+  it('回声概率稀有(5%),且五种机缘各有回声文本', async () => {
     expect(ECHO_CHANCE).toBe(0.05)
     const player = usePlayerStore()
     const fs = new Set(FORTUNE_EVENTS.map(e => e.id))
@@ -67,7 +67,7 @@ describe('遗产回声(fortuneEcho)', () => {
   })
 
   describe('一次事件的叙事快照', () => {
-    it('重渲染不重掷:同一份快照读两次,回声与余波都不变', () => {
+    it('重渲染不重掷:同一份快照读两次,回声与余波都不变', async () => {
       const player = usePlayerStore()
       player.setFortuneChoices({ ft_sword_remnant: 'leave' })
       const memory = recordEvent({}, 'ft_sword_remnant', 0, 1000)
@@ -83,7 +83,7 @@ describe('遗产回声(fortuneEcho)', () => {
       expect(read()).toEqual(snapshot)
     })
 
-    it('换一件事就重掷:前一件的回声不会继承给下一件', () => {
+    it('换一件事就重掷:前一件的回声不会继承给下一件', async () => {
       const player = usePlayerStore()
       player.setFortuneChoices({ ft_sword_remnant: 'leave' })
       const first = rollEventNarrative('ft_sword_remnant', '剑冢残痕', {}, () => 0)
@@ -94,7 +94,7 @@ describe('遗产回声(fortuneEcho)', () => {
       expect(second.eventId).toBe('ev_merchant')
     })
 
-    it('回声与余波互斥:回声命中时不再掷余波', () => {
+    it('回声与余波互斥:回声命中时不再掷余波', async () => {
       const player = usePlayerStore()
       player.setFortuneChoices({ ft_sword_remnant: 'leave' })
       const memory = recordEvent({}, 'ft_sword_remnant', 0, 1000)
@@ -106,7 +106,7 @@ describe('遗产回声(fortuneEcho)', () => {
       expect(snapshot).toEqual({ eventId: 'ft_sword_remnant', echo: snapshot.echo, aftermath: null })
     })
 
-    it('余波只在事件完成过且掷中时出现', () => {
+    it('余波只在事件完成过且掷中时出现', async () => {
       const fresh = rollEventNarrative('ev_merchant', '行脚商人', {}, () => 0)
       expect(fresh.aftermath).toBeNull()
       const memory = recordEvent(recordEvent({}, 'ev_merchant', 0, 1000), 'ev_merchant', 1, 2000)

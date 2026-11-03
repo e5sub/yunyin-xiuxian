@@ -110,9 +110,9 @@ describe('奇缘 · 结一程才轮到下一程', () => {
     expect(Math.max(...CHAINS.map(c => eventDef(c.stages[0]!)!.minRealm ?? 0))).toBeGreaterThanOrEqual(WORLD_BREAK_MAJOR)
   })
 
-  it('解了哪一程,那条缘才往前一程', () => {
+  it('解了哪一程,那条缘才往前一程', async () => {
     const first = chainOfEvent('old_man_stone_1')!
-    resolveEventChoice(eventDef(first.chain.stages[0]!)!, 0, 1)
+    await resolveEventChoice(eventDef(first.chain.stages[0]!)!, 0, 1)
     expect(chainProgressRows().find(c => c.id === 'old_man_stone')?.stage).toBe(1)
     const pending = pendingChainStages(1)
     const mine = pending.find(p => p.chainId === 'old_man_stone')!
@@ -121,20 +121,20 @@ describe('奇缘 · 结一程才轮到下一程', () => {
     expect(pending.filter(p => p.chainId !== 'old_man_stone').every(p => p.stage === 0)).toBe(true)
   })
 
-  it('走到尽头:不再有待走的程,录上标为已了', () => {
+  it('走到尽头:不再有待走的程,录上标为已了', async () => {
     const chain = CHAINS.find(c => c.id === 'sword_in_lake')!
-    chain.stages.forEach(id => resolveEventChoice(eventDef(id)!, 0, 1))
+    for (const id of chain.stages) await resolveEventChoice(eventDef(id)!, 0, 1)
     expect(chainProgressRows().find(r => r.id === 'sword_in_lake')?.stage).toBe(chain.stages.length)
     expect(pendingChainStages(9).some(p => p.chainId === 'sword_in_lake')).toBe(false)
     const row = chainProgressRows().find(r => r.id === 'sword_in_lake')!
     expect(row.finished).toBe(true)
   })
 
-  it('断了缘就没有后文:取皮毛那一刻,灵狐这条线就尽了', () => {
+  it('断了缘就没有后文:取皮毛那一刻,灵狐这条线就尽了', async () => {
     const ev = eventDef('wounded_fox_1')!
     const idx = ev.choices.findIndex(ch => ch.endsChain)
     expect(idx, '灵狐第一程应有「断缘」选项').toBeGreaterThanOrEqual(0)
-    resolveEventChoice(ev, idx, 1)
+    await resolveEventChoice(ev, idx, 1)
     expect(chainProgressRows().find(r => r.id === 'wounded_fox')?.stage).toBe(3)
     expect(pendingChainStages(9).some(p => p.chainId === 'wounded_fox')).toBe(false)
   })

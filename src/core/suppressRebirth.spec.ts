@@ -23,7 +23,7 @@ describe('转世不残留产出型镇压', () => {
     expect(maxTierForMajor(0)).toBe(2)
   })
 
-  it('转世后,上一世镇压的远境应已复聚:结算不再为其派发装备', () => {
+  it('转世后,上一世镇压的远境应已复聚:结算不再为其派发装备', async () => {
     const player = usePlayerStore()
     const far = REGIONS.filter(r => r.tier >= 20)[0]!
     player.suppressRegion(far.id)
@@ -33,7 +33,7 @@ describe('转世不残留产出型镇压', () => {
 
     expect(player.suppressedRegions).not.toContain(far.id)
 
-    const got = settleSuppressedRegions(3 * 3600, rng)
+    const got = await settleSuppressedRegions(3 * 3600, rng)
     expect(got).toBeNull()
   })
 

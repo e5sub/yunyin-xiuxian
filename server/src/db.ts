@@ -201,6 +201,19 @@ CREATE TABLE IF NOT EXISTS save_flags (
   realm_index INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
+-- 掉落台账:行囊里每件装备的 uid 须由此签发(/api/loot/claim),上传存档时验源,非签发件移除
+CREATE TABLE IF NOT EXISTS loot_ledger (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  uid TEXT NOT NULL,
+  src TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, uid)
+);
+-- 首次验源播种标记:存量档的旧件首传一次性入账,此后只认签发;删档重传不重播(否则删档→播种成作弊环)
+CREATE TABLE IF NOT EXISTS loot_seed (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  seeded_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS friends (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -358,6 +371,7 @@ CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(id DESC);
 CREATE INDEX IF NOT EXISTS idx_profile_rank ON profiles(realm_index DESC, power_e DESC, power_m DESC);
 CREATE INDEX IF NOT EXISTS idx_save_history_user ON save_history(user_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_save_flags_user ON save_flags(user_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_loot_ledger_seed ON loot_ledger(user_id, created_at DESC);
 `)
     // 老库迁移:补邮箱/角色/状态列(已存在则忽略)
     for (const stmt of [
@@ -446,6 +460,19 @@ CREATE TABLE IF NOT EXISTS save_flags (
   created_at BIGINT NOT NULL,
   CONSTRAINT fk_save_flags_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX idx_save_flags_user (user_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS loot_ledger (
+  user_id BIGINT NOT NULL,
+  uid VARCHAR(64) NOT NULL,
+  src VARCHAR(16) NOT NULL DEFAULT '',
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, uid),
+  CONSTRAINT fk_loot_ledger_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS loot_seed (
+  user_id BIGINT PRIMARY KEY,
+  seeded_at BIGINT NOT NULL,
+  CONSTRAINT fk_loot_seed_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS profiles (
   user_id BIGINT PRIMARY KEY,

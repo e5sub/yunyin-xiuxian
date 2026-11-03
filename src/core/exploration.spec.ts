@@ -313,7 +313,7 @@ describe('镇压资格首次自动、此后自由', () => {
     combatWin.value = true
   })
 
-  it('首次达成条件 → 自动转收益并记下资格;停取后再胜,不再自动接管', () => {
+  it('首次达成条件 → 自动转收益并记下资格;停取后再胜,不再自动接管', async () => {
     const player = usePlayerStore()
     player.initCharacter('镇守', { roots: [] } as never)
     // 已达镇压条件的一地
@@ -322,7 +322,7 @@ describe('镇压资格首次自动、此后自由', () => {
 
     const now = Date.now()
     forgeSession(now)
-    tickExploration(now)
+    await tickExploration(now)
     expect(player.suppressedRegions, '首次达成应自动转收益').toContain('qingyun')
     expect(player.suppressQualified).toContain('qingyun')
 
@@ -331,7 +331,7 @@ describe('镇压资格首次自动、此后自由', () => {
     player.regionStats.qingyun = { ...stats }
     const now2 = Date.now() + 60_000
     forgeSession(now2)
-    tickExploration(now2)
+    await tickExploration(now2)
     expect(player.suppressedRegions, '已取得资格后不该再被自动接管').not.toContain('qingyun')
     expect(player.suppressQualified).toContain('qingyun')
   })
@@ -398,7 +398,7 @@ describe('会话账目 · 与真实入账同源', () => {
     combatWin.value = true
   })
 
-  it('得胜后会话累计的灵石/修为,等于行囊与修为的真实增量', () => {
+  it('得胜后会话累计的灵石/修为,等于行囊与修为的真实增量', async () => {
     const adventure = useAdventureStore()
     const player = usePlayerStore()
     const resources = useResourcesStore()
@@ -407,12 +407,12 @@ describe('会话账目 · 与真实入账同源', () => {
     const now = Date.now()
     forgeSession(now)
     // 首战含首胜成就等一次性奖励,对账取第二战增量
-    tickExploration(now)
+    await tickExploration(now)
     const s1 = adventure.session!
     const stoneBefore = { ...resources.spiritStone }
     const expBefore = { ...player.exp }
     adventure.setSession({ ...s1, nextBattleAt: now - 1 })
-    tickExploration(now)
+    await tickExploration(now)
 
     const s = adventure.session!
     expect(s.wins).toBe(2)
@@ -428,14 +428,14 @@ describe('会话账目 · 与真实入账同源', () => {
     expect(toNum(s.expGain)).toBeGreaterThan(0)
   })
 
-  it('战报带上本战掉落明细(原文案不再算作拾获件数)', () => {
+  it('战报带上本战掉落明细(原文案不再算作拾获件数)', async () => {
     const adventure = useAdventureStore()
     const player = usePlayerStore()
     player.initCharacter('战报', { roots: [] } as never)
 
     const now = Date.now()
     forgeSession(now)
-    tickExploration(now)
+    await tickExploration(now)
 
     // 假 rng 概率判定恒否:无实物掉落,明细栏须存在且为空表
     expect(Array.isArray(adventure.lastBattle?.loot)).toBe(true)

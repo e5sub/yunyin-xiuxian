@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { MARKET_MAT_COUNT, MARKET_CONSIGN_SLOTS, MARKET_REFRESH_SECONDS, type MarketSlot } from '@/data/market'
 import { gn, toNum } from '@/utils/gnum'
 import { BAG_CAPACITY } from '@/data/constants'
-import { consignPrice, focusHerbSlot, marketRemainingSec, herbSellBatch, materialSellPrice } from '@/core/marketService'
+import { consignPrice, focusHerbSlot, generateMarketStock, marketRemainingSec, herbSellBatch, materialSellPrice } from '@/core/marketService'
 import { MAX_EQUIP_TIER } from '@/data/equipment'
 import { qualityDef } from '@/data/qualities'
 import { useMarketStore } from '@/stores/market'
@@ -28,35 +28,35 @@ function seedStock(slots: MarketSlot[]): void {
 describe('坊市 · 买卖', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('买丹:扣灵石、入背包、标已售;售罄再买不成交', () => {
+  it('买丹:扣灵石、入背包、标已售;售罄再买不成交', async () => {
     const market = useMarketStore()
     const resources = useResourcesStore()
     const inventory = useInventoryStore()
     seedStock([pillSlot(0)])
     resources.spiritStone = gn(100)
 
-    expect(market.buy(0)).toBe('ok')
+    expect(await market.buy(0)).toBe('ok')
     expect(inventory.pills['p_jvqisan']).toBe(1)
     expect(toNum(resources.spiritStone)).toBe(80)
     expect(market.stock[0]!.sold).toBe(true)
 
-    expect(market.buy(0)).toBe('sold')
+    expect(await market.buy(0)).toBe('sold')
     expect(inventory.pills['p_jvqisan'], '售罄不该二次入账').toBe(1)
   })
 
-  it('买材:入 herb/ore 小资源,按格价扣灵石', () => {
+  it('买材:入 herb/ore 小资源,按格价扣灵石', async () => {
     const market = useMarketStore()
     const resources = useResourcesStore()
     seedStock([{ kind: 'material', idx: 0, matId: 'herb', count: 12, price: { m: 5, e: 0 }, sold: false }])
     resources.spiritStone = gn(100)
 
-    expect(market.buy(0)).toBe('ok')
+    expect(await market.buy(0)).toBe('ok')
     expect(resources.herb).toBe(12)
     expect(resources.ore).toBe(0)
     expect(toNum(resources.spiritStone)).toBeCloseTo(95, 5)
   })
 
-  it('灵草按上货那一刻的品阶入账,不随当下境界飘(转世不再错品)', () => {
+  it('灵草按上货那一刻的品阶入账,不随当下境界飘(转世不再错品)', async () => {
     const market = useMarketStore()
     const resources = useResourcesStore()
     const player = usePlayerStore()
@@ -65,41 +65,43 @@ describe('坊市 · 买卖', () => {
     seedStock([{ kind: 'material', idx: 0, matId: 'herb', grade: 3, count: 12, price: { m: 5, e: 0 }, sold: false }])
     resources.spiritStone = gn(100)
 
-    expect(market.buy(0)).toBe('ok')
+    expect(await market.buy(0)).toBe('ok')
     expect(resources.herbOf(3), '应按货架钉死的 3 品入账').toBe(12)
     expect(resources.herbOf(1), '不该按当下 1 品入账').toBe(0)
     // 旧档货架无 grade:兜底按当下品
     seedStock([{ kind: 'material', idx: 0, matId: 'herb', count: 6, price: { m: 1, e: 0 }, sold: false }])
-    expect(market.buy(0)).toBe('ok')
+    expect(await market.buy(0)).toBe('ok')
     expect(resources.herbOf(1)).toBe(6)
   })
 
-  it('买装备计入收藏与见闻:collection 与图鉴不再分叉', () => {
+  it('买装备计入收藏与见闻:collection 与图鉴不再分叉', async () => {
     const market = useMarketStore()
     const resources = useResourcesStore()
     const inventory = useInventoryStore()
     const quests = useQuestsStore()
-    seedStock([{ kind: 'equipment', idx: 0, tier: 3, minQualityRank: 0, price: { m: 100, e: 0 }, sold: false }])
+    // 装备签发按 (major, stockedAt) 确定性再生货架:须用真实生成的装备格,手写的假格再生不出
+    const shelfEquip = generateMarketStock(0, FAR).goods.find(s => s.kind === 'equipment')!
+    seedStock([shelfEquip])
     resources.spiritStone = gn(1e9)
 
-    expect(market.buy(0)).toBe('ok')
+    expect(await market.buy(shelfEquip.idx)).toBe('ok')
     expect(inventory.items).toHaveLength(1)
     const tpl = inventory.items[0]!.templateId
     expect(quests.collections.equip, '买来的装备应计入收藏').toContain(tpl)
   })
 
-  it('灵石不足:不成交、不扣钱、不标已售', () => {
+  it('灵石不足:不成交、不扣钱、不标已售', async () => {
     const market = useMarketStore()
     const resources = useResourcesStore()
     seedStock([pillSlot(0)])
     resources.spiritStone = gn(10) // 买不起 20
 
-    expect(market.buy(0)).toBe('poor')
+    expect(await market.buy(0)).toBe('poor')
     expect(toNum(resources.spiritStone)).toBe(10)
     expect(market.stock[0]!.sold).toBe(false)
   })
 
-  it('行囊满:装不下兵刃就不收钱(先验满、再扣款)', () => {
+  it('行囊满:装不下兵刃就不收钱(先验满、再扣款)', async () => {
     const market = useMarketStore()
     const resources = useResourcesStore()
     const inventory = useInventoryStore()
@@ -116,12 +118,12 @@ describe('坊市 · 买卖', () => {
       }))
     })
 
-    expect(market.buy(0)).toBe('bagfull')
+    expect(await market.buy(0)).toBe('bagfull')
     expect(toNum(resources.spiritStone), '装不下就不该扣灵石').toBe(100)
     expect(market.stock[0]!.sold).toBe(false)
   })
 
-  it('跨过换货窗口时买下:不成交、不扣灵石、不入袋', () => {
+  it('跨过换货窗口时买下:不成交、不扣灵石、不入袋', async () => {
     const market = useMarketStore()
     const resources = useResourcesStore()
     const inventory = useInventoryStore()
@@ -130,7 +132,7 @@ describe('坊市 · 买卖', () => {
     resources.spiritStone = gn(100)
     const oldShelf = market.stock
 
-    expect(market.buy(0)).toBe('expired')
+    expect(await market.buy(0)).toBe('expired')
     expect(market.stock, '已整架换新').not.toBe(oldShelf)
     expect(oldShelf[0]!.sold, '旧架那格不动').toBe(false)
     expect(toNum(resources.spiritStone), '灵石一枚不扣').toBe(100)
@@ -169,7 +171,7 @@ describe('坊市 · 买卖', () => {
   })
 
   /** 坏价经 asPrice 归零,buy 会把零价当成付得起 */
-  it('sanitize:零价货格丢弃,丹/材数量按上货口径归一,不能零元购或超量到货', () => {
+  it('sanitize:零价货格丢弃,丹/材数量按上货口径归一,不能零元购或超量到货', async () => {
     const market = useMarketStore()
     const resources = useResourcesStore()
     const inventory = useInventoryStore()
@@ -191,27 +193,21 @@ describe('坊市 · 买卖', () => {
     expect(pill.kind === 'pill' && pill.count).toBe(1)
     expect(ore.kind === 'material' && ore.count).toBe(MARKET_MAT_COUNT)
 
-    expect(market.buy(2)).toBe('ok')
-    expect(market.buy(3)).toBe('ok')
+    expect(await market.buy(2)).toBe('ok')
+    expect(await market.buy(3)).toBe('ok')
     expect(inventory.pills['p_jvqisan']).toBe(1)
     expect(resources.ore).toBe(MARKET_MAT_COUNT)
     expect(toNum(resources.spiritStone), '两格都按各自标价扣款').toBe(60)
   })
 
-  it('sanitize:装备层级与品质下限夹回合法域,越界坏格买下也不崩', () => {
+  it('sanitize:装备层级与品质下限夹回合法域,越界坏格买下也不崩', async () => {
     const market = useMarketStore()
     const resources = useResourcesStore()
     const inventory = useInventoryStore()
     market.$patch({
       stock: [
-        {
-          kind: 'equipment',
-          idx: 0,
-          tier: 999,
-          minQualityRank: 999,
-          price: { m: 100, e: 0 },
-          sold: false
-        }
+        // 真实货架的装备格再人为越界:签发按 (major, stockedAt) 再生,手写假格再生不出
+        { ...generateMarketStock(0, FAR).goods.find(s => s.kind === 'equipment')!, tier: 999, minQualityRank: 999, price: { m: 100, e: 0 }, sold: false }
       ] as MarketSlot[],
       stockedAt: FAR
     })
@@ -221,10 +217,11 @@ describe('坊市 · 买卖', () => {
     const slot = market.stock[0]!
     expect(slot.kind === 'equipment' && slot.tier).toBe(MAX_EQUIP_TIER)
     expect(slot.kind === 'equipment' && slot.minQualityRank).toBe(qualityDef('divine').rank)
-    expect(market.buy(0)).toBe('ok')
+    expect(await market.buy(slot.idx)).toBe('ok')
     expect(inventory.items).toHaveLength(1)
-    expect(inventory.items[0]!.tier).toBe(MAX_EQUIP_TIER)
-    expect(qualityDef(inventory.items[0]!.quality).rank).toBe(qualityDef('divine').rank)
+    // 签发按 (major, stockedAt) 再生货架:到手件以再生格为准,客户端篡改的 999/神品不作数
+    const regen = generateMarketStock(0, FAR).goods.find(s => s.idx === slot.idx)!
+    expect(inventory.items[0]!.tier).toBe(regen.tier)
   })
 
   it('sanitize:合法灵草货架的品阶跨读档保留,坏品阶落回无级', () => {
@@ -246,7 +243,7 @@ describe('坊市 · 买卖', () => {
   })
 
   /** 丹/料货格不靠格号再生:重复号重排到最小空闲号,货与价原样保留 */
-  it('sanitize:重复 idx 的丹料格重排保货,两格都可买', () => {
+  it('sanitize:重复 idx 的丹料格重排保货,两格都可买', async () => {
     const market = useMarketStore()
     const resources = useResourcesStore()
     const inventory = useInventoryStore()
@@ -264,8 +261,8 @@ describe('坊市 · 买卖', () => {
     expect(market.stock[0]!.kind === 'material' && market.stock[0]!.matId).toBe('herb')
     expect(market.stock[1]!.kind === 'material' && market.stock[1]!.matId).toBe('ore')
 
-    expect(market.buy(3)).toBe('ok')
-    expect(market.buy(4)).toBe('ok')
+    expect(await market.buy(3)).toBe('ok')
+    expect(await market.buy(4)).toBe('ok')
     expect(resources.herbOf(1)).toBe(12)
     expect(resources.ore).toBe(12)
     expect(inventory.pills).toEqual({})

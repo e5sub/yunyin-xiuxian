@@ -184,8 +184,8 @@
     }
   }
 
-  function buyOne(idx: number): void {
-    const result = market.buy(idx)
+  async function buyOne(idx: number): Promise<void> {
+    const result = await market.buy(idx)
     const slot = market.stock.find(s => s.idx === idx)
     const name = slot ? renderSlot(slot).name : ''
     if (result === 'ok') ui.toast(`购得「${name}」`, 'success')

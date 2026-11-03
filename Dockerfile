@@ -18,7 +18,7 @@ RUN bun run build
 # 不打进去反作弊三层(归一化/复算/权威化)与突破结算会在容器里静默失效(1.57.1)。
 # 直接点平台二进制:oven/bun 镜像无 node,跑不动 node_modules/.bin 的 shim。
 RUN ESBUILD_BIN="$(ls node_modules/@esbuild/*/bin/esbuild | head -n 1)" && \
-    "$ESBUILD_BIN" src/core/saveSanitize.ts src/core/saveAuthority.ts src/core/profileRecompute.ts src/core/breakthroughResolve.ts \
+    "$ESBUILD_BIN" src/core/saveSanitize.ts src/core/saveAuthority.ts src/core/profileRecompute.ts src/core/breakthroughResolve.ts src/core/lootGrant.ts \
       --bundle --platform=node --format=esm --outdir=server/vendor --outbase=src/core \
       --out-extension:.js=.mjs --tsconfig=tsconfig.app.json --legal-comments=none && \
     ls -la server/vendor/

@@ -4,6 +4,7 @@
  *   显式配置优先;生产构建未配置时默认官方服务器(APK/Web/Electron 同),dev 走 vite 代理
  */
 import { useAuthStore } from '@/stores/auth'
+import type { EquipmentInstance } from '@/types'
 
 export const DEFAULT_API_BASE = 'https://yy.071717.xyz'
 
@@ -554,6 +555,12 @@ export const cloudApi = {
     request('GET', `/boss${difficulty !== '' ? `?difficulty=${difficulty}` : ''}`),
   bossStrike: (difficulty = 'normal'): Promise<BossStrikeResult> => request('POST', '/boss/strike', { difficulty }),
   bossClaim: (): Promise<{ pending: { stone: number; herb: number; equip: boolean } }> => request('POST', '/boss/claim'),
+  /**
+   * 掉落签发:服务端按复算出的属性裁决数量与品质窗口,生成实例并记台账(loot_ledger)。
+   * 客户端只报「在哪打」;返回的实例按申请顺序拼接,调用方逐件入包。
+   */
+  claimLoot: (payload: { claims: readonly unknown[] }): Promise<{ equips: EquipmentInstance[] }> =>
+    request('POST', '/loot/claim', payload),
   dungeonOverview: (): Promise<DungeonOverview> => request('GET', '/dungeon'),
   dungeonRoom: (): Promise<{ room: DungeonRoom | null }> => request('GET', '/dungeon/room'),
   dungeonRoomCreate: (dungeon: DungeonKey, difficulty: DungeonDifficulty = 'normal'): Promise<{ room: DungeonRoom }> =>

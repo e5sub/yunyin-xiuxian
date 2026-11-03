@@ -95,12 +95,12 @@ function overflowOf(notes: string[]): number {
   return line ? Number(/另有\s*(\d+)\s*件/.exec(line)![1]) : 0
 }
 
-function runOnce(mode: 'normal' | 'deep' | 'prolonged' | 'marathon' | 'deepExpedition'): Yields {
+async function runOnce(mode: 'normal' | 'deep' | 'prolonged' | 'marathon' | 'deepExpedition'): Promise<Yields> {
   setActivePinia(createPinia())
   seedSession(mode)
   const beforePage = useResourcesStore().page
   const beforePills = invPills()
-  const summary = settleOffline(Date.now())!
+  const summary = (await settleOffline(Date.now()))!
   return {
     page: Math.max(0, useResourcesStore().page - beforePage),
     overflowCount: overflowOf(summary.notes),
@@ -109,31 +109,31 @@ function runOnce(mode: 'normal' | 'deep' | 'prolonged' | 'marathon' | 'deepExped
 }
 
 describe('离线普通战产出吃模式倍率(确定性)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     winRate.value = 0.5
   })
 
   /** 用区间 [×1.3, ×1.5] 而非精确 1.4:产出过 Math.round,精确比会假红 */
-  it('「深入探寻」(×1.4) 残页产出约为「寻常游历」(×1) 的 1.4 倍(±取整噪声)', () => {
-    const deep = runOnce('deep')
-    const normal = runOnce('normal')
+  it('「深入探寻」(×1.4) 残页产出约为「寻常游历」(×1) 的 1.4 倍(±取整噪声)', async () => {
+    const deep = await runOnce('deep')
+    const normal = await runOnce('normal')
     expect(normal.page).toBeGreaterThan(0)
     expect(deep.page).toBeGreaterThanOrEqual(Math.round(normal.page * 1.3))
     expect(deep.page).toBeLessThanOrEqual(Math.round(normal.page * 1.5))
   })
 
-  it('装备掉落同样按模式倍率约 1.4 放大', () => {
-    const deep = runOnce('deep')
-    const normal = runOnce('normal')
+  it('装备掉落同样按模式倍率约 1.4 放大', async () => {
+    const deep = await runOnce('deep')
+    const normal = await runOnce('normal')
     expect(normal.overflowCount).toBeGreaterThan(0)
     expect(deep.overflowCount).toBeGreaterThanOrEqual(Math.round(normal.overflowCount * 1.3))
     expect(deep.overflowCount).toBeLessThanOrEqual(Math.round(normal.overflowCount * 1.5))
   })
 
-  it('普通战会拾得丹药,且与在线 afterWin 同源按模式倍率放大(≈1.4)', () => {
-    const deep = runOnce('deep')
-    const normal = runOnce('normal')
+  it('普通战会拾得丹药,且与在线 afterWin 同源按模式倍率放大(≈1.4)', async () => {
+    const deep = await runOnce('deep')
+    const normal = await runOnce('normal')
     expect(normal.pills, '离线普通战应入囊丹药').toBeGreaterThan(0)
     expect(deep.pills).toBeGreaterThanOrEqual(Math.round(normal.pills * 1.3))
     expect(deep.pills).toBeLessThanOrEqual(Math.round(normal.pills * 1.5))
@@ -141,34 +141,34 @@ describe('离线普通战产出吃模式倍率(确定性)', () => {
 })
 
 describe('离线长档(8h / 16h)吃同一把倍率,且不越过洞府封顶', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     winRate.value = 0.5
   })
 
-  it('「彻夜问道」(8h,×3)的产出高于「长线云游」(4h,×2.4)', () => {
-    const marathon = runOnce('marathon')
-    const prolonged = runOnce('prolonged')
+  it('「彻夜问道」(8h,×3)的产出高于「长线云游」(4h,×2.4)', async () => {
+    const marathon = await runOnce('marathon')
+    const prolonged = await runOnce('prolonged')
     expect(prolonged.page, '4h 档应有产出').toBeGreaterThan(0)
     expect(marathon.page).toBeGreaterThan(prolonged.page)
     expect(marathon.pills).toBeGreaterThan(prolonged.pills)
   })
 
-  it('16h 行程配 8h 洞府:离线只结 8h,不按整程 16h 给', () => {
+  it('16h 行程配 8h 洞府:离线只结 8h,不按整程 16h 给', async () => {
     // 洞府 0 级 = 8h 封顶;capSec 失效则 16h 档按整程结算,产出约为锚点两倍
-    const capped = runOnce('deepExpedition')
-    const anchor = runOnce('marathon') // 8h 档:时长恰为封顶
+    const capped = await runOnce('deepExpedition')
+    const anchor = await runOnce('marathon') // 8h 档:时长恰为封顶
     expect(capped.page, '16h 档应有产出').toBeGreaterThan(0)
     expect(anchor.page).toBeGreaterThan(0)
     // 同为 8h 结算,只差档位倍率 3.6 vs 3.0
     expect(capped.page).toBeLessThan(anchor.page * 1.5)
     expect(capped.pills).toBeLessThan(anchor.pills * 1.5)
     // 会话剩余 16h,离线只推进 8h:不该被判「历练完成」
-    const summary = settleOffline(Date.now())
+    const summary = await settleOffline(Date.now())
     expect(summary).not.toBeNull()
   })
 
-  it('16h 档配 8h 洞府:归来卷轴写明这一程还没走完,并给出剩余时长', () => {
+  it('16h 档配 8h 洞府:归来卷轴写明这一程还没走完,并给出剩余时长', async () => {
     setActivePinia(createPinia())
     // 缺席 12h(超过 8h 上限),会话满程 16h:离线只结 8h,还剩 4h
     const game = useGameStore()
@@ -198,7 +198,7 @@ describe('离线长档(8h / 16h)吃同一把倍率,且不越过洞府封顶', ()
         expGain: { m: 0, e: 0 },
         itemGain: 0
       })
-      const summary = settleOffline(now)!
+      const summary = (await settleOffline(now))!
       const note = summary.notes.find(n => n.includes('历练在途'))
       expect(note, `归来卷轴未提被截断的历练:${summary.notes.join(' | ')}`).toBeTruthy()
       expect(note).toMatch(/尚余\s*4小时/)
@@ -212,7 +212,7 @@ describe('离线长档(8h / 16h)吃同一把倍率,且不越过洞府封顶', ()
   })
 
   /** 会话在途印「历练在途」;remainSec 被缺席走满才印「历练完成」 */
-  it('历练完成与历练在途不共屏', () => {
+  it('历练完成与历练在途不共屏', async () => {
     setActivePinia(createPinia())
     const game = useGameStore()
     const player = usePlayerStore()
@@ -240,7 +240,7 @@ describe('离线长档(8h / 16h)吃同一把倍率,且不越过洞府封顶', ()
         expGain: { m: 0, e: 0 },
         itemGain: 0
       })
-      const summary = settleOffline(now)!
+      const summary = (await settleOffline(now))!
       const done = summary.notes.some(n => n.endsWith('历练完成'))
       const unfinished = summary.notes.some(n => n.includes('历练在途'))
       // 16h 满程 − 12h 缺席,还剩 4h
@@ -256,7 +256,7 @@ describe('离线长档(8h / 16h)吃同一把倍率,且不越过洞府封顶', ()
    * 判据看会话剩余时长,与离线是否超上限无关。
    * 故障注入:把判据改成 `dtSec > capSec + 1`,本用例红。
    */
-  it('离线正好等于洞府上限(8h):截断的半程仍要在卷轴上说一句', () => {
+  it('离线正好等于洞府上限(8h):截断的半程仍要在卷轴上说一句', async () => {
     setActivePinia(createPinia())
     const game = useGameStore()
     const player = usePlayerStore()
@@ -284,7 +284,7 @@ describe('离线长档(8h / 16h)吃同一把倍率,且不越过洞府封顶', ()
         expGain: { m: 0, e: 0 },
         itemGain: 0
       })
-      const summary = settleOffline(now)!
+      const summary = (await settleOffline(now))!
       const note = summary.notes.find(n => n.includes('历练在途'))
       expect(note, `离线正好等于上限时卷轴只字未提:${summary.notes.join(' | ')}`).toBeTruthy()
       expect(note).toMatch(/尚余\s*8小时/)
@@ -297,14 +297,14 @@ describe('离线长档(8h / 16h)吃同一把倍率,且不越过洞府封顶', ()
 
 /** 在线每败一场走一次 `recordLoss`,三次即标宿敌 */
 describe('离线败北记宿敌(与在线同源)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     winRate.value = 0.5
   })
 
-  it('整段败场按批入账,成宿敌时归来卷轴报一声', () => {
+  it('整段败场按批入账,成宿敌时归来卷轴报一声', async () => {
     seedSession('normal')
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
     const losses = summary.battles - summary.wins
     const nemeses = usePlayerStore().nemeses
 
@@ -318,10 +318,10 @@ describe('离线败北记宿敌(与在线同源)', () => {
     expect(summary.notes.some(n => n.includes('宿敌')), '成宿敌要在归来卷轴里说一声').toBe(true)
   })
 
-  it('一场未败时不凭空生出宿敌', () => {
+  it('一场未败时不凭空生出宿敌', async () => {
     winRate.value = 1
     seedSession('normal')
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
 
     // 首领战走真实战斗,顶多败那一场
     expect(summary.wins, '胜率固定为 1,普通战不该有败场').toBeGreaterThanOrEqual(summary.battles - 1)
@@ -337,7 +337,7 @@ import { offlineMaterialGain } from './offline'
 import { HERB_DROP_CHANCE, ORE_DROP_CHANCE, PAGE_DROP_CHANCE, OFFLINE_FLAT_DUST_PER_WIN } from '@/data/constants'
 
 describe('离线单胜材料与在线 afterWin 同一期望(单源取 drop 常量)', () => {
-  it('ore 取 ORE_DROP_CHANCE×1.5(0.525)而非写死 0.5;herb/page 同源;福缘/倍率各自放大', () => {
+  it('ore 取 ORE_DROP_CHANCE×1.5(0.525)而非写死 0.5;herb/page 同源;福缘/倍率各自放大', async () => {
     const g = offlineMaterialGain(120, 1, 1)
     // ore 在线期望 0.35×1.5=0.525/胜:120 胜须 63,写死 0.5 只有 60
     expect(g.ore, 'ore 应随 ORE_DROP_CHANCE×1.5,不可退回写死 0.5').toBe(Math.round(120 * ORE_DROP_CHANCE * 1.5))
@@ -355,14 +355,14 @@ describe('离线单胜材料与在线 afterWin 同一期望(单源取 drop 常�
 
 /** 在线每胜一场按 `ARTIFACT_DROP_CHANCE × (1 + luck)` 掷一次 */
 describe('离线普通战法宝掉落(与在线同源)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     winRate.value = 0.5
   })
 
-  it('按 ARTIFACT_DROP_CHANCE × 胜场折算,且只入囊不自动祭上', () => {
+  it('按 ARTIFACT_DROP_CHANCE × 胜场折算,且只入囊不自动祭上', async () => {
     seedSession('normal')
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
     const inventory = useInventoryStore()
 
     const expected = Math.round(summary.wins * ARTIFACT_DROP_CHANCE)
@@ -376,16 +376,16 @@ describe('离线普通战法宝掉落(与在线同源)', () => {
 
 /** 重复拾得折算的悟道点并进同一行;聚合的是播报,不是入账,件数与折算不缩水 */
 describe('离线法宝掉落不刷屏(同一件只报一行)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     winRate.value = 1
   })
 
-  it('16 小时档的重复拾得并成一行,不淹没归来卷轴', () => {
+  it('16 小时档的重复拾得并成一行,不淹没归来卷轴', async () => {
     seedSession('deepExpedition')
     const inventory = useInventoryStore()
 
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
 
     const artLines = summary.notes.filter(n => n.includes('法宝'))
     expect(artLines, '法宝这一路只该报一行').toHaveLength(1)
@@ -401,9 +401,9 @@ describe('离线法宝掉落不刷屏(同一件只报一行)', () => {
    * 故障注入:把 offline.ts 那段聚合改成「每件 push 一行」,本用例红。
    * 本文件 rng.weighted 恒取首项,掉出的必是同一件。
    */
-  it('判据自家不空转:每件一行的写法会把行数顶上去', () => {
+  it('判据自家不空转:每件一行的写法会把行数顶上去', async () => {
     seedSession('deepExpedition')
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
     const dupLines = summary.notes.filter(n => n.includes('已拥有'))
     expect(dupLines.length, '同一件重复拾得不许每件一行').toBeLessThanOrEqual(1)
   })
@@ -411,17 +411,17 @@ describe('离线法宝掉落不刷屏(同一件只报一行)', () => {
 
 /** 在线逐场 recordWin/recordLoss;离线整段钉「赏格到账」「有败场则连胜归零」 */
 describe('离线连胜(与在线同源)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     winRate.value = 0.5
   })
 
-  it('整段连胜跨过赏格档时,灵石与悟道点按表发放,卷轴写明', () => {
+  it('整段连胜跨过赏格档时,灵石与悟道点按表发放,卷轴写明', async () => {
     seedSession('normal')
     const player = usePlayerStore()
     const stoneBefore = toNum(useResourcesStore().spiritStone)
     const wudaoBefore = useResourcesStore().wudao
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
 
     const tiers = WIN_STREAK_REWARDS.filter(r => r.streak <= summary.wins)
     expect(tiers.length, '这一趟胜场该跨过全部赏格档').toBe(WIN_STREAK_REWARDS.length)
@@ -439,12 +439,12 @@ describe('离线连胜(与在线同源)', () => {
 
 /** 在线打赢账上宿敌当场清账;离线整段净胜为正同样清账 */
 describe('离线雪耻(与在线同源)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     winRate.value = 1
   })
 
-  it('净胜为正时,账上的宿敌被标记为已雪耻并写进卷轴', () => {
+  it('净胜为正时,账上的宿敌被标记为已雪耻并写进卷轴', async () => {
     seedSession('normal')
     const player = usePlayerStore()
     // 预置三次败绩;离线敌群取首项 e_wolf
@@ -454,7 +454,7 @@ describe('离线雪耻(与在线同源)', () => {
     }
     player.setNemeses(list)
 
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
 
     expect(summary.wins, '这一趟该净胜').toBeGreaterThan(0)
     expect(player.nemeses.find(n => n.enemyId === 'e_wolf')?.avengedAt, '离线打赢就该雪耻').toBeDefined()
@@ -464,19 +464,19 @@ describe('离线雪耻(与在线同源)', () => {
 
 /** 在线每交一次手,祭着法宝(非仅持有)就 `noteTaboo('artifact')`;离线整段用同一份 `buildPlayerSnap()`(含法宝被动) */
 describe('离线历练也照在线记法宝破题', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     winRate.value = 1
   })
 
-  it('身怀法宝挂机历练,「独行」之誓同样落空', () => {
+  it('身怀法宝挂机历练,「独行」之誓同样落空', async () => {
     seedSession('normal')
     beginLife('lt_zejian')
     const art = ARTIFACTS.find(a => a.fromTier <= 1)!
     useInventoryStore().addArtifact(art.id, true)
     expect(useInventoryStore().equippedArtifacts, '先得真的祭上一件法宝').not.toHaveLength(0)
 
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
     expect(summary.battles, '这一趟得真的交过手').toBeGreaterThan(0)
     expect(vowResult(), '离线带着法宝打了一夜,题不该还立着').toBe('broken')
     expect(summary.notes.some(n => n.includes('破题')), '破题要在归来卷轴里说一声').toBe(true)
@@ -485,18 +485,18 @@ describe('离线历练也照在线记法宝破题', () => {
 
 /** 在线每遇一个历练情境走一次 `offerBondEvent`,机会点 +1;离线只补记账、不替玩家抽事件 */
 describe('离线只攒道侣机会点,不替玩家推进关系', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     winRate.value = 0.5
   })
 
-  it('整段历练攒下机会点,但缘分/信任/契合与待决事件一律不动', () => {
+  it('整段历练攒下机会点,但缘分/信任/契合与待决事件一律不动', async () => {
     seedSession('normal')
     meet('dl_qingli')
     const player = usePlayerStore()
     const before = { ...player.bond! }
 
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
     expect(summary.battles, '这一趟得真的交过手').toBeGreaterThan(0)
 
     const after = player.bond!
@@ -510,13 +510,13 @@ describe('离线只攒道侣机会点,不替玩家推进关系', () => {
 
 /** 在线首领在同一个 `result.win` 分支里走 `markAvenged`;离线首领战打赢同样清账 */
 describe('离线首领战同样雪耻', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     // 普通战全败:唯一胜场是末尾那场首领战
     winRate.value = 0
   })
 
-  it('整趟只赢在首领头上时,账上的宿敌也被清掉', () => {
+  it('整趟只赢在首领头上时,账上的宿敌也被清掉', async () => {
     seedSession('normal')
     const player = usePlayerStore()
     // 整趟已攒足首领门槛,本段才轮到首领;首领战是真 resolveCombat,境界须打得过
@@ -536,7 +536,7 @@ describe('离线首领战同样雪耻', () => {
     ;(rng as { float: (a: number, b: number) => number }).float = (_a, b) => b
     let summary
     try {
-      summary = settleOffline(Date.now())!
+      summary = (await settleOffline(Date.now()))!
     } finally {
       ;(rng as { chance: (p: number) => boolean }).chance = realChance
       ;(rng as { float: (a: number, b: number) => number }).float = realFloat
@@ -553,20 +553,20 @@ describe('离线首领战同样雪耻', () => {
  * 故障注入:把 offline.ts 首领战那行的第四个参数 false 摘掉,本用例红。
  */
 describe('离线首领战不替玩家祭法宝', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     winRate.value = 0
   })
 
   /** 判据落在调用点:行为判据依赖首领恰好掉法宝(1.5%×6 = 9%),多数 run 空转 */
-  it('首领战的 afterWin 调用把「不自动祭炼」传到底', () => {
+  it('首领战的 afterWin 调用把「不自动祭炼」传到底', async () => {
     const offline = readFileSync(new URL('./offline.ts', import.meta.url), 'utf8')
     expect(offline, '首领战那行必须带第四参 false(玩家不在场)').toMatch(
       /afterWin\([^)]*OFFLINE_BOSS_REWARD_MULT[^)]*,\s*true,\s*false\)/
     )
   })
 
-  it('普通战那条通道本来就不自动祭炼(一并钉住,防回归)', () => {
+  it('普通战那条通道本来就不自动祭炼(一并钉住,防回归)', async () => {
     const offline = readFileSync(new URL('./offline.ts', import.meta.url), 'utf8')
     expect(offline, '普通战法宝通道显式传 autoEquip=false').toContain('acquireArtifactGain(artId, true, false)')
   })

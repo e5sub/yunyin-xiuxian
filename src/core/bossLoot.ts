@@ -5,10 +5,9 @@
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { cloudApi } from '@/services/cloud'
-import { rng } from '@/utils/random'
 import { formatGN } from '@/utils/format'
-import { generateEquipment } from './equipGen'
 import { acquireEquipment } from './loot'
+import { mintDrops } from './lootClaim'
 import { harvestMaterials } from './loreService'
 import { stoneByTier } from './formulas'
 import { tierOfMajor } from './secretRealm'
@@ -35,9 +34,10 @@ export async function claimBossLoot(): Promise<BossLootClaim | null> {
   harvestMaterials(tier, 'herb', pending.herb)
   let equipLine: string | null = null
   if (pending.equip) {
-    // 精品起步(minQualityRank 1 会让品质窗口失效,与历练首领同规):高级装备要有高级的样子
-    const inst = generateEquipment(tier, rng, { minQualityRank: 1 })
-    equipLine = acquireEquipment(inst).line
+    // 精品起步(minQualityRank 1 会让品质窗口失效,与历练首领同规):高级装备要有高级的样子。
+    // 实例由签发侧生成(tier 以服务端复算出的境界为准),本地不再掷
+    const insts = await mintDrops([{ src: 'boss', tier }])
+    equipLine = insts.length > 0 ? acquireEquipment(insts[0]!).line : null
   }
   return { stoneText: formatGN(stone), herb: pending.herb, equipLine }
 }

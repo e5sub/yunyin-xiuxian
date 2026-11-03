@@ -45,7 +45,7 @@ interface FactorCase {
 }
 
 /** 返回本次离线新增的残页页数 */
-function runPage(core: FactorCase): number {
+async function runPage(core: FactorCase): Promise<number> {
   setActivePinia(createPinia())
   const game = useGameStore()
   const player = usePlayerStore()
@@ -81,7 +81,7 @@ function runPage(core: FactorCase): number {
     })
   }
   const beforePage = useResourcesStore().page
-  settleOffline(Date.now())
+  await settleOffline(Date.now())
   return Math.max(0, useResourcesStore().page - beforePage)
 }
 
@@ -90,26 +90,26 @@ describe('离线普通战产出吃区域加丰与福缘(行为层·确定性)', 
     setActivePinia(createPinia())
   })
 
-  it('妖潮区域事件加丰(×1.2):残页产出约为平日 1.2 倍(±取整噪声)', () => {
-    const base = runPage({ regionEvent: false, doubleDrop: false })
-    const yaochao = runPage({ regionEvent: true, doubleDrop: false })
+  it('妖潮区域事件加丰(×1.2):残页产出约为平日 1.2 倍(±取整噪声)', async () => {
+    const base = await runPage({ regionEvent: false, doubleDrop: false })
+    const yaochao = await runPage({ regionEvent: true, doubleDrop: false })
     expect(base).toBeGreaterThan(0)
     expect(yaochao).toBeGreaterThanOrEqual(Math.round(base * 1.13))
     expect(yaochao).toBeLessThanOrEqual(Math.round(base * 1.27))
   })
 
-  it('福缘 doubleDropRate(探宝 ×1.05):残页产出约为平日 1.05 倍(±取整噪声)', () => {
-    const base = runPage({ regionEvent: false, doubleDrop: false })
-    const talented = runPage({ regionEvent: false, doubleDrop: true })
+  it('福缘 doubleDropRate(探宝 ×1.05):残页产出约为平日 1.05 倍(±取整噪声)', async () => {
+    const base = await runPage({ regionEvent: false, doubleDrop: false })
+    const talented = await runPage({ regionEvent: false, doubleDrop: true })
     expect(base).toBeGreaterThan(0)
     expect(talented).toBeGreaterThanOrEqual(Math.round(base * 1.03))
     expect(talented).toBeLessThanOrEqual(Math.round(base * 1.09))
   })
 
-  it('区域加丰与福缘彼此独立可叠加:妖潮+探宝 应显著高于任一单因子', () => {
-    const both = runPage({ regionEvent: true, doubleDrop: true })
-    const yaochao = runPage({ regionEvent: true, doubleDrop: false })
-    const talented = runPage({ regionEvent: false, doubleDrop: true })
+  it('区域加丰与福缘彼此独立可叠加:妖潮+探宝 应显著高于任一单因子', async () => {
+    const both = await runPage({ regionEvent: true, doubleDrop: true })
+    const yaochao = await runPage({ regionEvent: true, doubleDrop: false })
+    const talented = await runPage({ regionEvent: false, doubleDrop: true })
     expect(both).toBeGreaterThan(yaochao)
     expect(both).toBeGreaterThan(talented)
     // 组合 ≈ ×1.2×1.05:相对妖潮单因子再 ×1.05

@@ -103,13 +103,21 @@
   const chainPending = computed(() => pendingChainStages(usePlayerStore().major).length > 0)
   const tier = computed(() => adventure.currentRegion?.tier ?? 1)
   const open = computed(() => def.value !== undefined || result.value !== null)
+  /** 签发在途的防重入:结算期间再点选择会重复入账 */
+  let choosing = false
 
-  function choose(idx: number): void {
-    if (!def.value) return
+  async function choose(idx: number): Promise<void> {
+    if (!def.value || choosing) return
     const choice = def.value.choices[idx]
     if (!choice || !choiceAvailable(choice, tier.value)) return
-    result.value = resolveEventChoice(def.value, idx, tier.value)
-    afterEventResolved(Date.now())
+    choosing = true
+    try {
+      // 签发是异步的:弹窗保持打开,结果回来再摘事件(先行摘除会让弹窗闪没)
+      result.value = await resolveEventChoice(def.value, idx, tier.value)
+      afterEventResolved(Date.now())
+    } finally {
+      choosing = false
+    }
   }
 
   function finish(): void {

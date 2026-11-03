@@ -19,6 +19,8 @@ import { useDongfuStore } from '@/stores/dongfu'
 import { useResourcesStore } from '@/stores/resources'
 import { realmLabel } from '@/data/realms'
 import { powerScore } from '@/core/formulas'
+import { modOf } from '@/core/statsCalc'
+import { personalityEffects } from '@/core/petPersonality'
 
 /** 与云端上传的 profile 字段一一对应(services/cloud.ts putSave 的 payload) */
 export interface ProfileSnapshot {
@@ -82,6 +84,63 @@ export function snapshotFromActiveStores(): ProfileSnapshot | null {
     atkE: attack.e,
     defM: defense.m,
     defE: defense.e
+  }
+}
+
+/**
+ * 掉落签发的环境属性(lootGrant 用):数量与品质裁决全看这仨 ——
+ * 服务端 /api/loot/claim 从分片复算,客户端离线路径从激活 store 直读,同一把尺。
+ * 客户端自报的 dropRate/luck 不作数:console 改 mods 改不动签发侧的裁决。
+ */
+export interface LootEnv {
+  major: number
+  dropRate: number
+  luck: number
+  doubleDropRate: number
+  petDropLuck: number
+}
+
+function lootEnvOfPlayer(): LootEnv | null {
+  const player = usePlayerStore()
+  const mods = player.finalStats.mods
+  const major = Math.trunc(player.major)
+  if (!Number.isFinite(major) || major < 0) return null
+  const env: LootEnv = {
+    major,
+    dropRate: modOf(mods, 'dropRate'),
+    luck: modOf(mods, 'luck'),
+    doubleDropRate: modOf(mods, 'doubleDropRate'),
+    petDropLuck: personalityEffects(player.petId).dropLuck
+  }
+  return Object.values(env).every(Number.isFinite) ? env : null
+}
+
+/** 从当前已激活的 store 取掉落环境;非有限值一律 null(调用方不发) */
+export function lootEnvFromActiveStores(): LootEnv | null {
+  try {
+    return lootEnvOfPlayer()
+  } catch {
+    return null
+  }
+}
+
+/** 从云档分片无头复算掉落环境(服务端 /api/loot/claim 走这条);失败返回 null */
+export function lootEnvFromSlices(data: unknown): LootEnv | null {
+  const slices = asSlices(data)
+  if (slices === null) return null
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  try {
+    usePlayerStore().$patch(slices.player!)
+    if (isPlainObject(slices.inventory)) useInventoryStore().$patch(slices.inventory)
+    if (isPlainObject(slices.cultivation)) useCultivationStore().$patch(slices.cultivation)
+    if (isPlainObject(slices.dongfu)) useDongfuStore().$patch(slices.dongfu)
+    if (isPlainObject(slices.resources)) useResourcesStore().$patch(slices.resources)
+    return lootEnvOfPlayer()
+  } catch {
+    return null
+  } finally {
+    setActivePinia(undefined)
   }
 }
 

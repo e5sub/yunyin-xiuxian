@@ -6,6 +6,7 @@ import { getConfigNumber } from '../config.js'
 import { recomputeProfile } from '../recompute.js'
 import { normalizeSaveSlices } from '../saveNormalize.js'
 import { enforceAuthority } from '../saveAuthority.js'
+import { enforceLootProvenance } from '../lootLedger.js'
 
 export interface ProfileSnapshot {
   name: string
@@ -283,7 +284,15 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
      * 归一化失败(模块加载不了/分片畸形到链路抛错)按原样落库:加固环节不能变成拒收存档。
      */
     const normalized = await normalizeSaveSlices(body.data)
-    const normalizedData = (normalized === null ? body.data : normalized.data) as Record<string, unknown>
+    let normalizedData = (normalized === null ? body.data : normalized.data) as Record<string, unknown>
+
+    /*
+     * 装备验源(1.58.0 掉落服务端权威化):行囊每件装备的 uid 须由签发台账(loot_ledger)发出,
+     * console 造的「合法上限内神装」没有账,上传时移除并留痕。首传播种存量,删档重传不重播。
+     * 放在复算之前:被移除的件不该算进战力。
+     */
+    const provenance = await enforceLootProvenance(req.user!.id, normalizedData)
+    normalizedData = provenance.data
 
     const old = await get<{ version: number; data: string; updated_at: number }>(
       'SELECT version, data, updated_at FROM saves WHERE user_id = ?',

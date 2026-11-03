@@ -16,11 +16,11 @@ import { enterSecretRealm, entryCostOf, fightSecretLayer, availableRealms } from
 const HIGH_REGIONS = ['yunhai', 'zhexian', 'jinyuan', 'shenjihuang', 'guji', 'hongmengbenyuan', 'wudaoya'] as const
 
 describe('高界冒烟 · 敌人快照与掉落结算', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
-  it('新界各层地界的敌人快照数值有限且为正', () => {
+  it('新界各层地界的敌人快照数值有限且为正', async () => {
     for (const rid of HIGH_REGIONS) {
       const region = regionDef(rid)
       expect(region, `样本地界 ${rid} 不存在`).toBeDefined()
@@ -43,14 +43,14 @@ describe('高界冒烟 · 敌人快照与掉落结算', () => {
     }
   })
 
-  it('新界各层地界都能真的结算出战斗奖励(灵石/修为有增、文案非空、无 NaN)', () => {
+  it('新界各层地界都能真的结算出战斗奖励(灵石/修为有增、文案非空、无 NaN)', async () => {
     for (const rid of HIGH_REGIONS) {
       const region = regionDef(rid)!
       const resources = useResourcesStore()
       const player = usePlayerStore()
       const stoneBefore = toNum(resources.spiritStone)
       const expBefore = toNum(player.exp)
-      const drops = afterWin(region, 1, true)
+      const drops = await afterWin(region, 1, true)
       expect(drops.lines.length, `${region.name} 战利品文案为空`).toBeGreaterThan(0)
       expect(toNum(resources.spiritStone), `${region.name} 灵石未增加`).toBeGreaterThan(stoneBefore)
       expect(toNum(player.exp), `${region.name} 修为未增加`).toBeGreaterThan(expBefore)
@@ -61,11 +61,11 @@ describe('高界冒烟 · 敌人快照与掉落结算', () => {
 
 /** 镇压产出与天界秘境:百万级数值下才暴露 NaN / 负值 / 空掉落池 */
 describe('高界冒烟 · 镇压产出与天界秘境', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
-  it('镇压神界/混沌海的地界:产出有限、非负、材料名目有效', () => {
+  it('镇压神界/混沌海的地界:产出有限、非负、材料名目有效', async () => {
     const player = usePlayerStore()
     const resources = useResourcesStore()
     // 神界、混沌海各一处,守 6 小时(避开 72h 复苏判定)
@@ -75,7 +75,7 @@ describe('高界冒烟 · 镇压产出与天界秘境', () => {
       player.suppressQualified.push(id)
     }
     const before = toNum(resources.spiritStone)
-    const out = settleSuppressedRegions(6 * 3600)
+    const out = await settleSuppressedRegions(6 * 3600)
     expect(out, '镇压产出不该为空').not.toBeNull()
     expect(Number.isFinite(toNum(out!.stone))).toBe(true)
     expect(toNum(out!.stone)).toBeGreaterThan(0)
@@ -88,7 +88,7 @@ describe('高界冒烟 · 镇压产出与天界秘境', () => {
     expect(Number.isFinite(out!.recycledDust)).toBe(true)
   })
 
-  it('天界秘境:付道源、三层走完、战利有限且真的到手', () => {
+  it('天界秘境:付道源、三层走完、战利有限且真的到手', async () => {
     const player = usePlayerStore()
     const resources = useResourcesStore()
     const endgame = useEndgameStore()
@@ -105,7 +105,7 @@ describe('高界冒烟 · 镇压产出与天界秘境', () => {
     const stoneBefore = toNum(resources.spiritStone)
     let guard = 0
     while (guard < 10) {
-      const r = fightSecretLayer()
+      const r = await fightSecretLayer()
       if (!r) break
       guard += 1
       for (const line of r.lines) expect(line).not.toContain('NaN')

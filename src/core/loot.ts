@@ -15,15 +15,12 @@ import {
   ARTIFACT_DROP_CHANCE,
   BATTLE_EXP_SECS,
   ARTIFACT_DUPLICATE_WUDAO,
-  EQUIP_DROP_CHANCE,
-  EQUIP_DROP_CHANCE_CAP,
   HERB_DROP_CHANCE,
   INSTANT_EXP_LAYER_CAP,
   ORE_DROP_CHANCE,
   PAGE_DROP_CHANCE,
   PILL_DROP_CHANCE
 } from '@/data/constants'
-import { generateEquipment } from './equipGen'
 import { expFromSecs, stoneByTier } from './formulas'
 import { modOf, capChance } from './statsCalc'
 import { personalityEffects } from './petPersonality'
@@ -31,6 +28,7 @@ import { autoRecycleReason, compareEvictable, keepVerdict, shouldAutoRecycle, sm
 import { salvageOf } from './salvage'
 import { checkQualityAchievement, collect, track } from './progress'
 import { harvestMaterials } from './loreService'
+import { mintDrops } from './lootClaim'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useInventoryStore } from '@/stores/inventory'
@@ -228,9 +226,11 @@ export function randomDropArtifact(tier: number): string | null {
  * 战斗胜利掉落。
  * 概率进 rng.chance 前先归一到 [0,1](rng.chance 不钳制,>1 必然掉落、<0 永不掉落);
  * capChance 取 statsCalc 唯一一份,与 combat 共用。
+ * 装备走签发漏斗 mintDrops(登录 = 服务端裁决生成;未登录 = 本地同一份裁决核心),
+ * 其余(灵石/修为/灵草/玄铁/残页/丹药/法宝)仍本地入账 —— 资源侧有数值权威化兜着。
  * @param autoEquipArtifact 空祭炼位时自动祭上法宝;离线整段结算传 false(玩家不在场,同 autoResolveEvent)
  */
-export function afterWin(region: RegionDef, rewardMult: number, isBoss: boolean, autoEquipArtifact = true): DropSummary {
+export async function afterWin(region: RegionDef, rewardMult: number, isBoss: boolean, autoEquipArtifact = true): Promise<DropSummary> {
   const player = usePlayerStore()
   const resources = useResourcesStore()
   const inventory = useInventoryStore()
@@ -272,16 +272,12 @@ export function afterWin(region: RegionDef, rewardMult: number, isBoss: boolean,
     items += 1
   }
 
-  // luck 并入灵兽性格的 dropLuck(兑现图鉴承诺)
+  // luck 并入灵兽性格的 dropLuck(兑现图鉴承诺);装备由签发侧裁决,本地只留法宝掷点
   const luck = modOf(mods, 'luck') + personalityEffects(player.petId).dropLuck
-  const equipChance = EQUIP_DROP_CHANCE * rewardMult * (1 + modOf(mods, 'dropRate')) * (isBoss ? 2.5 : 1)
-  for (let i = 0; i < doubled; i += 1) {
-    if (rng.chance(Math.min(EQUIP_DROP_CHANCE_CAP, equipChance)) || (isBoss && i === 0)) {
-      // 普通战不传品质下限:传了(哪怕是 0)即「显式下限」,品质窗口失效,在线会比离线/审计多掉低阶高品。首领例外
-      const inst = generateEquipment(tier, rng, isBoss ? { luck, minQualityRank: 1 } : { luck })
-      lines.push(acquireEquipment(inst).line)
-      items += 1
-    }
+  const equipInsts = await mintDrops([{ src: 'battle', tier, rewardMult, isBoss }])
+  for (const inst of equipInsts) {
+    lines.push(acquireEquipment(inst).line)
+    items += 1
   }
 
   if (rng.chance(capChance(PILL_DROP_CHANCE * rewardMult * (isBoss ? 3 : 1)))) {

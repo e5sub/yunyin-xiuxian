@@ -38,19 +38,27 @@ class GameEngine {
       // 先翻日再结算离线:跨午夜的离线收益记入"归来之日"的日课
       rolloverDailyIfNeeded()
       if (game.started && game.lastActiveAt > 0) {
-        settleOffline(now)
-      }
-      // 离线结算只加寿元、不判生死,死亡判定在此补
-      if (game.started) {
+        // 离线结算含装备签发,整段异步;死亡判定在其后串行(结算先加寿元,判死须用加完的数)
+        void settleOffline(now).then(() => {
+          if (game.started) {
+            this.checkDeath()
+            if (usePlayerStore().dead) {
+              this.deathAnnounced = true
+              useUiStore().deathDialog = true
+            }
+            checkStateAchievements()
+          }
+        })
+      } else if (game.started) {
         this.checkDeath()
         // 已死存档须重开轮回入口:ui.deathDialog 不持久化,不重开则低境界软锁
         if (usePlayerStore().dead) {
           this.deathAnnounced = true
           useUiStore().deathDialog = true
         }
+        // 补扫成就:老档/导入档未 track 过的已满足成就当场解锁
+        checkStateAchievements()
       }
-      // 补扫成就:老档/导入档未 track 过的已满足成就当场解锁
-      if (game.started) checkStateAchievements()
     } catch (err) {
       console.error('[引擎] 离线结算异常', err)
     }
@@ -113,10 +121,9 @@ class GameEngine {
     if (dt <= 0) return
 
     if (dt > OFFLINE_MIN_SECONDS) {
-      // 长时间停摆(休眠/后台冻结)走离线结算;先翻日再结算,同 start
+      // 长时间停摆(休眠/后台冻结)走离线结算;先翻日再结算,同 start。死亡判定在其后串行
       rolloverDailyIfNeeded()
-      settleOffline(now)
-      this.checkDeath()
+      void settleOffline(now).then(() => this.checkDeath())
     } else {
       this.advance(dt, now)
     }
@@ -151,7 +158,8 @@ class GameEngine {
       }
       tickExploration(now)
       mayTriggerEnlightenment()
-      settleSuppressedRegions(dt)
+      // 镇压收益含装备签发(异步):重入闸在 settleSuppressedRegions 内部,跳过的时长记在下一段
+      void settleSuppressedRegions(dt)
       studyTick(dt)
       player.addAge((dt / 3600) * AGE_YEARS_PER_HOUR)
       this.checkDeath()

@@ -238,8 +238,8 @@ export function regionBossCleared(regionId: string): boolean {
   return routeNode ? adventure.mortalCleared.includes(routeNode.nodeId) : adventure.cleared.includes(regionId)
 }
 
-/** 战斗遭遇(含首领判定) */
-function runBattle(now: number): void {
+/** 战斗遭遇(含首领判定);装备掉落走签发漏斗(服务端裁决),整段异步,tick 侧已先行推进一步 */
+async function runBattle(now: number): Promise<void> {
   const adventure = useAdventureStore()
   const cultivation = useCultivationStore()
   const player = usePlayerStore()
@@ -316,7 +316,7 @@ function runBattle(now: number): void {
     // 连胜:3/5/10 档发奖(见 earlyGameService.recordWin)
     recordStreakWin()
     const regReward = regEv ? (regionEventDef(regEv.eventId)?.rewardMult ?? 1) : 1
-    const drops = afterWin(region, modeDef.rewardMult * regReward, Boolean(eDef.isBoss))
+    const drops = await afterWin(region, modeDef.rewardMult * regReward, Boolean(eDef.isBoss))
     adventure.recordBattle({ ...view, loot: drops.lines })
     // 会话账目取 afterWin 的真实入账,不得按层级另算(会漏福缘、区域事件与首领倍率)
     adventure.setSession({
@@ -462,7 +462,8 @@ export function exploreEventChance(regionId: string, mods: StatMods): number {
 }
 
 /** 每 Tick 推进历练(由引擎调用) */
-export function tickExploration(now: number): void {
+/** 战斗签发是异步的:返回 runBattle 的 promise 供测试/调用方需要时 await,引擎循环照旧不等待 */
+export function tickExploration(now: number): void | Promise<void> {
   const adventure = useAdventureStore()
   const player = usePlayerStore()
   const s = adventure.session
@@ -472,13 +473,15 @@ export function tickExploration(now: number): void {
   if (adventure.pendingEventId) {
     if (now - adventure.pendingEventSince > EVENT_AUTO_RESOLVE_SECONDS * 1000) {
       const region = regionDef(s.regionId)
-      const res = autoResolveEvent(adventure.pendingEventId, region?.tier ?? 1)
-      // 自动结算的所得须 toast,不得无声入账
-      if (res && res.lines.length) useUiStore().toast(res.lines.join('、'), 'info')
-      else if (res?.outcomeText) useUiStore().toast(res.outcomeText, 'info')
+      // 先摘事件、推进战斗节拍再异步结算:签发是异步的,不先摘掉 tick 会趁隙重入
       adventure.setPendingEvent(null, now)
       const cur = adventure.session
       if (cur) adventure.setSession({ ...cur, events: cur.events + 1, nextBattleAt: nextBattleTime(now) })
+      void autoResolveEvent(adventure.pendingEventId, region?.tier ?? 1).then(res => {
+        // 自动结算的所得须 toast,不得无声入账
+        if (res && res.lines.length) useUiStore().toast(res.lines.join('、'), 'info')
+        else if (res?.outcomeText) useUiStore().toast(res.outcomeText, 'info')
+      })
     }
     return
   }
@@ -497,12 +500,14 @@ export function tickExploration(now: number): void {
       // 遇事勿扰或 VIP 自动历练托管:不弹窗,按超时同一条路(默认好愿)当场结清
       const st = useSettingsStore()
       if (ev && (st.dndEvents || st.autoAdventure)) {
-        // 遇事勿扰:不弹窗,按超时同一条路(默认好愿)当场结清
-        const res = autoResolveEvent(ev.id, region.tier)
-        if (res && res.lines.length) useUiStore().toast(res.lines.join('、'), 'info')
-        else if (res?.outcomeText) useUiStore().toast(res.outcomeText, 'info')
+        // 遇事勿扰:不弹窗,按超时同一条路(默认好愿)当场结清。
+        // 同样先推进节拍再异步结算,防签发等待期间 tick 重入
         const cur = adventure.session
         if (cur) adventure.setSession({ ...cur, events: cur.events + 1, nextBattleAt: nextBattleTime(now) })
+        void autoResolveEvent(ev.id, region.tier).then(res => {
+          if (res && res.lines.length) useUiStore().toast(res.lines.join('、'), 'info')
+          else if (res?.outcomeText) useUiStore().toast(res.outcomeText, 'info')
+        })
         return
       }
       if (ev) {
@@ -514,7 +519,9 @@ export function tickExploration(now: number): void {
         return
       }
     }
-    runBattle(now)
+    // 先把下一战时间推进去再开打:战斗内的掉落签发是异步的,不先推进 tick 会趁隙连开两场
+    adventure.setSession({ ...s, nextBattleAt: nextBattleTime(now) })
+    return runBattle(now)
   }
 }
 

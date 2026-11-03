@@ -29,12 +29,12 @@ import * as equipGen from './equipGen'
 import { prosperityYieldMult, regionRecallFor } from './worldMemory'
 
 describe('区域镇压系统', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
   /** 界面与「镇压达成」回执共用 suppressRateLine */
-  it('suppressRateLine:产出行带数,且与速率表同源', () => {
+  it('suppressRateLine:产出行带数,且与速率表同源', async () => {
     const id = 'wanyao' // 万妖林:forest → 灵草
     const mult = prosperityYieldMult('flourish')
     const line = suppressRateLine(id, 'flourish')
@@ -43,19 +43,19 @@ describe('区域镇压系统', () => {
     expect(line).toMatch(/ · \S*灵草\d+\/时$/)
   })
 
-  it('suppressRateLine:无人产出的地界也不印出半行残句', () => {
+  it('suppressRateLine:无人产出的地界也不印出半行残句', async () => {
     expect(suppressRateLine('not-a-region', 'chaos')).toBe('—')
   })
 
   describe('地界物产(灵石之外的次级产出)', () => {
-    it('按地界气质给物产:林区出草、山地出矿、混沌之滨出尘', () => {
+    it('按地界气质给物产:林区出草、山地出矿、混沌之滨出尘', async () => {
       expect(suppressYield('wanyao')?.id).toBe('herb') // 万妖林:forest
       expect(suppressYield('qingyun')?.id).toBe('ore') // 青云山麓:mountain
       expect(suppressYield('hongmengbenyuan')?.id).toBe('dust') // 鸿蒙本源:sky
       expect(suppressYield('guzhanchang')?.id).toBe('page') // 古战场遗迹:ruin
     })
 
-    it('层级越高,同一物产产出越丰(线性,不随灵石做指数)', () => {
+    it('层级越高,同一物产产出越丰(线性,不随灵石做指数)', async () => {
       // 同为林区:黑风林 tier 3 vs 迷雾沼泽 tier 9
       const low = suppressYield('heifeng')!
       const high = suppressYield('miwu')!
@@ -66,14 +66,14 @@ describe('区域镇压系统', () => {
       expect(high.perHour / low.perHour).toBeLessThan(1 + 0.15 * 8)
     })
 
-    it('结算时物产真的进了库存,并记进产出清单', () => {
+    it('结算时物产真的进了库存,并记进产出清单', async () => {
       const player = usePlayerStore()
       const resources = useResourcesStore()
       player.suppressedRegions = ['wanyao']
       player.suppressedSince = { wanyao: Date.now() }
       const before = resources.herb
 
-      const total = settleSuppressedRegions(3600)
+      const total = await settleSuppressedRegions(3600)
       expect(total).not.toBeNull()
       expect(resources.herb, '林区镇压应产出灵草').toBeGreaterThan(before)
       const row = total!.resources.find(r => r.id === 'herb')
@@ -85,7 +85,7 @@ describe('区域镇压系统', () => {
       expect(row!.amount).toBeGreaterThan(0)
     })
 
-    it('在线「镇压/时」的产草率也写明品阶(suppressYield 不只报「灵草」)', () => {
+    it('在线「镇压/时」的产草率也写明品阶(suppressYield 不只报「灵草」)', async () => {
       const y = suppressYield('wanyao')
       expect(y).not.toBeNull()
       if (y!.id === 'herb') {
@@ -96,12 +96,12 @@ describe('区域镇压系统', () => {
       }
     })
 
-    it('时长线性:六小时产出恰是两小时的三倍(同一片地,不因取整走样)', () => {
+    it('时长线性:六小时产出恰是两小时的三倍(同一片地,不因取整走样)', async () => {
       const player = usePlayerStore()
       player.suppressedRegions = ['wanyao']
       player.suppressedSince = { wanyao: Date.now() }
-      const two = settleSuppressedRegions(2 * 3600)!
-      const six = settleSuppressedRegions(6 * 3600)!
+      const two = (await settleSuppressedRegions(2 * 3600))!
+      const six = (await settleSuppressedRegions(6 * 3600))!
       const twoStone = toNum(two.stone)
       const sixStone = toNum(six.stone)
       expect(twoStone).toBeGreaterThan(0)
@@ -117,7 +117,7 @@ describe('区域镇压系统', () => {
 
   /** 资格一次性取得,此后收益只是开关;收益可多处并存,历练一次只一处 */
   describe('镇压资格 · 收益自由开关', () => {
-    it('停取收益不丢资格,可一键切回', () => {
+    it('停取收益不丢资格,可一键切回', async () => {
       const player = usePlayerStore()
       player.markSuppressQualified('qingyun')
       player.suppressRegion('qingyun')
@@ -131,7 +131,7 @@ describe('区域镇压系统', () => {
       expect(player.suppressedRegions).toContain('qingyun')
     })
 
-    it('收益可多处同时收取,资格各自独立', () => {
+    it('收益可多处同时收取,资格各自独立', async () => {
       const player = usePlayerStore()
       for (const id of ['qingyun', 'luoxia', 'heifeng']) {
         player.markSuppressQualified(id)
@@ -143,14 +143,14 @@ describe('区域镇压系统', () => {
       expect(player.suppressQualified).toContain('luoxia')
     })
 
-    it('资格幂等:重复取得不会写重', () => {
+    it('资格幂等:重复取得不会写重', async () => {
       const player = usePlayerStore()
       player.markSuppressQualified('qingyun')
       player.markSuppressQualified('qingyun')
       expect(player.suppressQualified.filter(id => id === 'qingyun')).toHaveLength(1)
     })
 
-    it('旧存档修复:已有镇压区域自动视为已取得资格', () => {
+    it('旧存档修复:已有镇压区域自动视为已取得资格', async () => {
       const player = usePlayerStore()
       player.suppressedRegions = ['qingyun']
       player.suppressQualified = []
@@ -160,7 +160,7 @@ describe('区域镇压系统', () => {
   })
 
   describe('checkSuppression', () => {
-    it('战斗次数不足时不触发镇压', () => {
+    it('战斗次数不足时不触发镇压', async () => {
       const player = usePlayerStore()
       player.regionStats.qingyun = {
         totalFights: 10,
@@ -173,7 +173,7 @@ describe('区域镇压系统', () => {
       expect(checkSuppression(player, 'qingyun')).toBe(false)
     })
 
-    it('平均回合数过高时不触发镇压', () => {
+    it('平均回合数过高时不触发镇压', async () => {
       const player = usePlayerStore()
       player.regionStats.qingyun = {
         totalFights: 20,
@@ -186,7 +186,7 @@ describe('区域镇压系统', () => {
       expect(checkSuppression(player, 'qingyun')).toBe(false)
     })
 
-    it('平均受伤过高时不触发镇压', () => {
+    it('平均受伤过高时不触发镇压', async () => {
       const player = usePlayerStore()
       player.regionStats.qingyun = {
         totalFights: 20,
@@ -199,7 +199,7 @@ describe('区域镇压系统', () => {
       expect(checkSuppression(player, 'qingyun')).toBe(false)
     })
 
-    it('满足所有条件时触发镇压', () => {
+    it('满足所有条件时触发镇压', async () => {
       const player = usePlayerStore()
       player.regionStats.qingyun = {
         totalFights: 20,
@@ -212,7 +212,7 @@ describe('区域镇压系统', () => {
       expect(checkSuppression(player, 'qingyun')).toBe(true)
     })
 
-    it('已镇压的区域不重复触发', () => {
+    it('已镇压的区域不重复触发', async () => {
       const player = usePlayerStore()
       player.suppressedRegions = ['qingyun']
       player.regionStats.qingyun = {
@@ -232,7 +232,7 @@ describe('区域镇压系统', () => {
      * 断言读结算返回值不读库存:存档水合会抬高库存读数,盖住问题。
      * 故障注入:结算改成 `Math.floor(yieldDef.perHour * hours * yieldMult)`,本用例红。
      */
-    it('在线每 tick 一秒:物产零头攒够就入账(不会被取整吞掉)', () => {
+    it('在线每 tick 一秒:物产零头攒够就入账(不会被取整吞掉)', async () => {
       const player = usePlayerStore()
       player.major = 5
       player.suppressedRegions = ['wanyao'] // 万妖林:灵草 11/h
@@ -241,7 +241,7 @@ describe('区域镇压系统', () => {
       // 零头存在 store 里跨 tick 结转
       let online = 0
       for (let i = 0; i < 3600; i++) {
-        const tick = settleSuppressedRegions(1)
+        const tick = await settleSuppressedRegions(1)
         online += tick?.resources.find(r => r.id === 'herb')?.amount ?? 0
       }
 
@@ -250,14 +250,14 @@ describe('区域镇压系统', () => {
       expect(player.suppressFrac['wanyao'] ?? 0).toBeLessThan(1)
     })
 
-    it('在线分段与离线一次折算等价:同样是 1 小时,入账株数一致', () => {
+    it('在线分段与离线一次折算等价:同样是 1 小时,入账株数一致', async () => {
       const player = usePlayerStore()
       player.major = 5
       player.suppressedRegions = ['wanyao']
       player.suppressedSince = { wanyao: Date.now() }
       let online = 0
       for (let i = 0; i < 3600; i++) {
-        const tick = settleSuppressedRegions(1)
+        const tick = await settleSuppressedRegions(1)
         online += tick?.resources.find(r => r.id === 'herb')?.amount ?? 0
       }
 
@@ -266,35 +266,35 @@ describe('区域镇压系统', () => {
       p2.major = 5
       p2.suppressedRegions = ['wanyao']
       p2.suppressedSince = { wanyao: Date.now() }
-      const once = settleSuppressedRegions(3600)
+      const once = await settleSuppressedRegions(3600)
       const offline = once?.resources.find(r => r.id === 'herb')?.amount ?? 0
 
       expect(offline, '离线一次折算应给足整件').toBeGreaterThan(0)
       expect(online, `在线 ${online} vs 离线 ${offline}`).toBe(offline)
     })
 
-    it('无镇压区域时不产出', () => {
+    it('无镇压区域时不产出', async () => {
       const resources = useResourcesStore()
       const initialStone = { ...resources.spiritStone }
 
-      settleSuppressedRegions(60)
+      await settleSuppressedRegions(60)
 
       expect(resources.spiritStone).toEqual(initialStone)
     })
 
-    it('镇压区域每小时产出灵石', () => {
+    it('镇压区域每小时产出灵石', async () => {
       const player = usePlayerStore()
       player.major = 3 // 筑基境
       player.suppressedRegions = ['qingyun']
       const resources = useResourcesStore()
       const initialStone = { ...resources.spiritStone }
 
-      settleSuppressedRegions(3600)
+      await settleSuppressedRegions(3600)
 
       expect(resources.spiritStone.m).toBeGreaterThan(initialStone.m)
     })
 
-    it('镇压区域产出装备并按回收规则处置(入包或化尘)', () => {
+    it('镇压区域产出装备并按回收规则处置(入包或化尘)', async () => {
       const player = usePlayerStore()
       player.major = 3
       player.suppressedRegions = ['qingyun']
@@ -305,7 +305,7 @@ describe('区域镇压系统', () => {
       const dustBefore = resources.dust
       // 固定随机源确保掉落(equipChance 0.4 × 1h > 0.1)
       // mock 全局 Math.random 无效:rng 构造时已取走原函数
-      const total = settleSuppressedRegions(3600, new RandomService(() => 0.1))
+      const total = await settleSuppressedRegions(3600, new RandomService(() => 0.1))
 
       expect(total).not.toBeNull()
       expect(total!.equipment).toHaveLength(1)
@@ -323,13 +323,13 @@ describe('区域镇压系统', () => {
 
     })
 
-    it('长时离线装备按次数期望产出,不再被压成每区仅 1 件', () => {
+    it('长时离线装备按次数期望产出,不再被压成每区仅 1 件', async () => {
       const player = usePlayerStore()
       player.major = 5
       player.suppressedRegions = ['qingyun']
 
       // 24h → equipChance 9.6:floor 9 件 + 零头 60% 概率第 10 件;注入 0 零头必中,共 10 件
-      const total = settleSuppressedRegions(24 * 3600, new RandomService(() => 0))
+      const total = await settleSuppressedRegions(24 * 3600, new RandomService(() => 0))
 
       expect(total).not.toBeNull()
       expect(total!.equipment.length).toBeGreaterThan(1)
@@ -337,59 +337,59 @@ describe('区域镇压系统', () => {
 
     })
 
-    it('多个镇压区域同时产出', () => {
+    it('多个镇压区域同时产出', async () => {
       const player = usePlayerStore()
       player.major = 5
       player.suppressedRegions = ['qingyun', 'cangwu']
       const resources = useResourcesStore()
       const initialStone = { ...resources.spiritStone }
 
-      settleSuppressedRegions(3600)
+      await settleSuppressedRegions(3600)
 
       const gain = resources.spiritStone.m - initialStone.m
       expect(gain).toBeGreaterThan(0)
     })
 
     /** 读档 sanitize 已去重;此处兜内存里的重复条目 */
-    it('同一地界写两遍只结算一份收益', () => {
+    it('同一地界写两遍只结算一份收益', async () => {
       const player = usePlayerStore()
       player.major = 3
 
       player.suppressedRegions = ['qingyun']
-      const one = settleSuppressedRegions(3600)!
+      const one = (await settleSuppressedRegions(3600))!
       const singleStone = one.stone
 
       setActivePinia(createPinia())
       const p2 = usePlayerStore()
       p2.major = 3
       p2.suppressedRegions = ['qingyun', 'qingyun']
-      const dup = settleSuppressedRegions(3600)!
+      const dup = (await settleSuppressedRegions(3600))!
 
       expect(dup.stone, '重复地界不该结算两份灵石').toEqual(singleStone)
     })
 
     describe('镇守道韵(修为红利)与老区装备成长', () => {
-      it('红利速率:每镇压一区 +8%,封顶 +40%', () => {
+      it('红利速率:每镇压一区 +8%,封顶 +40%', async () => {
         expect(suppressionExpRate(0)).toBe(0)
         expect(suppressionExpRate(1)).toBeCloseTo(0.08, 9)
         expect(suppressionExpRate(3)).toBeCloseTo(0.24, 9)
         expect(suppressionExpRate(7), '第七区起已顶到 40%').toBeCloseTo(0.4, 9)
       })
 
-      it('坏档挡在门口:负区数 / NaN / Infinity 一律 0,不让倍率变负或变 NaN', () => {
+      it('坏档挡在门口:负区数 / NaN / Infinity 一律 0,不让倍率变负或变 NaN', async () => {
         expect(suppressionExpRate(-3)).toBe(0)
         expect(suppressionExpRate(Number.NaN)).toBe(0)
         expect(suppressionExpRate(Number.POSITIVE_INFINITY)).toBe(0)
       })
 
-      it('老区装备气运:镇满一天 +0.1,封顶 +0.8', () => {
+      it('老区装备气运:镇满一天 +0.1,封顶 +0.8', async () => {
         const now = Date.now()
         expect(suppressionEquipmentLuck(now, now)).toBe(0)
         expect(suppressionEquipmentLuck(now - 86_400_000 * 2, now)).toBeCloseTo(0.2, 9)
         expect(suppressionEquipmentLuck(now - 86_400_000 * 12, now)).toBeCloseTo(0.8, 9)
       })
 
-      it('坏档时钟:未来时刻与 NaN 一律 0,不给负气运也不给 NaN', () => {
+      it('坏档时钟:未来时刻与 NaN 一律 0,不给负气运也不给 NaN', async () => {
         const now = Date.now()
         expect(suppressionEquipmentLuck(now + 86_400_000 * 5, now)).toBe(0)
         expect(suppressionEquipmentLuck(Number.NaN, now)).toBe(0)
@@ -400,7 +400,7 @@ describe('区域镇压系统', () => {
        * 逐区各发 8% 时第 6 区起就越过封顶(7 区实得 56%),文案与结算分叉。
        * 故障注入:把 perRegionRate 换回 suppressionExpRate(1) → 本条红。
        */
-      it('结算:越过五区后总量停在 40% 封顶,与道韵文案同一把尺', () => {
+      it('结算:越过五区后总量停在 40% 封顶,与道韵文案同一把尺', async () => {
         for (const n of [6, 7, 10]) {
           setActivePinia(createPinia())
           const player = usePlayerStore()
@@ -412,7 +412,7 @@ describe('区域镇压系统', () => {
           const cult = player.cultPerSec
           const hourGain = cult * 3600
           const before = toNum(player.exp)
-          settleSuppressedRegions(3600)
+          await settleSuppressedRegions(3600)
           const ratio = (toNum(player.exp) - before) / hourGain
           expect(ratio, `${n} 区超发:实得挂机收益的 ${(ratio * 100).toFixed(1)}%`).toBeLessThanOrEqual(
             SUPPRESS_EXP_MAX + 1e-6
@@ -422,7 +422,7 @@ describe('区域镇压系统', () => {
         }
       })
 
-      it('结算:未到封顶时仍按每区 8% 如实叠加,五区之内口径不变', () => {
+      it('结算:未到封顶时仍按每区 8% 如实叠加,五区之内口径不变', async () => {
         for (const [n, want] of [[1, 0.08], [3, 0.24], [5, 0.4]] as const) {
           setActivePinia(createPinia())
           const player = usePlayerStore()
@@ -433,7 +433,7 @@ describe('区域镇压系统', () => {
           player.suppressQualified = [...ids]
           const cult = player.cultPerSec
           const before = toNum(player.exp)
-          settleSuppressedRegions(3600)
+          await settleSuppressedRegions(3600)
           expect((toNum(player.exp) - before) / (cult * 3600), `${n} 区应为挂机收益的 ${want}`).toBeCloseTo(want, 6)
         }
       })
@@ -443,13 +443,13 @@ describe('区域镇压系统', () => {
        * 写成 `rate × (秒数 / 3600)` 会只剩「一秒的 8%」,一千倍以上地缩水(实测挂机一小时 2046 万,道韵 455)。
        * 故障注入:把结算改回除以 3600 → 本条红。
        */
-      it('结算:镇压两区一小时,修为红利 = 挂机收益 × 16%', () => {
+      it('结算:镇压两区一小时,修为红利 = 挂机收益 × 16%', async () => {
         const player = usePlayerStore()
         player.suppressedRegions = ['qingyun', 'wanyao']
         player.suppressedSince = { qingyun: Date.now(), wanyao: Date.now() }
         const cult = player.cultPerSec
         const before = toNum(player.exp)
-        const total = settleSuppressedRegions(3600)
+        const total = await settleSuppressedRegions(3600)
         expect(total).not.toBeNull()
         const gained = toNum(player.exp) - before
         expect(gained).toBeCloseTo(cult * 3600 * 0.16, 4)
@@ -459,12 +459,12 @@ describe('区域镇压系统', () => {
       })
 
       /** 故障注入:把结算里的 `suppressionEquipmentLuck(since, now)` 改成 `luck: 0`,本用例红 */
-      it('守满两天的镇压区,掉落装备带非零气运(与裸运气 0 分叉)', () => {
+      it('守满两天的镇压区,掉落装备带非零气运(与裸运气 0 分叉)', async () => {
         vi.spyOn(equipGen, 'generateEquipment')
         const player = usePlayerStore()
         player.suppressedRegions = ['qingyun']
         player.suppressedSince = { qingyun: Date.now() - 86_400_000 * 2 }
-        settleSuppressedRegions(24 * 3600, new RandomService(() => 0))
+        await settleSuppressedRegions(24 * 3600, new RandomService(() => 0))
         expect(equipGen.generateEquipment).toHaveBeenCalled()
         const opts = vi.mocked(equipGen.generateEquipment).mock.calls[0]![2]!
         expect(opts.luck, '守满两天该带 0.2 气运').toBeCloseTo(0.2, 9)
@@ -477,7 +477,7 @@ describe('区域镇压系统', () => {
 /** 镇压资格进度:界面与判定共用一份阈值(20 战 / 均≤3 回合 / 均受伤≤10%) */
 describe('镇压资格进度', () => {
   // 顶层 beforeEach 只覆盖上一个 describe,本块须自建 pinia,否则沿用上个用例的 store
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
@@ -490,7 +490,7 @@ describe('镇压资格进度', () => {
     ...over
   })
 
-  it('毫无战绩:三判据全不达标,且不显示假的平均值', () => {
+  it('毫无战绩:三判据全不达标,且不显示假的平均值', async () => {
     const p = suppressionProgress(undefined)
     expect(p.wins).toBe(0)
     expect(p.hasStats).toBe(false)
@@ -498,7 +498,7 @@ describe('镇压资格进度', () => {
     expect(p.qualified).toBe(false)
   })
 
-  it('胜场够但打得久:只有回合项不合格,玩家能看出卡在哪', () => {
+  it('胜场够但打得久:只有回合项不合格,玩家能看出卡在哪', async () => {
     const p = suppressionProgress(stats({ totalFights: 25, avgRounds: 4, avgDamageTakenPct: 0.05 }))
     expect(p.winsOk).toBe(true)
     expect(p.roundsOk).toBe(false)
@@ -508,7 +508,7 @@ describe('镇压资格进度', () => {
     expect(p.maxAvgDamagePct).toBe(0.1)
   })
 
-  it('胜场够但挨打多:只有受伤项不合格', () => {
+  it('胜场够但挨打多:只有受伤项不合格', async () => {
     const p = suppressionProgress(stats({ totalFights: 40, avgRounds: 2, avgDamageTakenPct: 0.3 }))
     expect(p.winsOk).toBe(true)
     expect(p.roundsOk).toBe(true)
@@ -516,7 +516,7 @@ describe('镇压资格进度', () => {
     expect(p.qualified).toBe(false)
   })
 
-  it('三判据全达标(阈值取闭区间):qualified 与 checkSuppression 同判', () => {
+  it('三判据全达标(阈值取闭区间):qualified 与 checkSuppression 同判', async () => {
     const boundary = stats({ totalFights: 20, avgRounds: 3, avgDamageTakenPct: 0.1 })
     expect(suppressionProgress(boundary).qualified).toBe(true)
 
@@ -528,7 +528,7 @@ describe('镇压资格进度', () => {
 
 /** 界面速率 × 兴衰系数 = 一小时真实入账 */
 describe('镇压速率:显示与结算同源', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
@@ -538,21 +538,21 @@ describe('镇压速率:显示与结算同源', () => {
     return toNum(rate.stonePerHour) * prosperityYieldMult(regionRecallFor(regionId).prosperity)
   }
 
-  it('刚镇压(混乱 ×1.0):界面速率 = 一小时入账', () => {
+  it('刚镇压(混乱 ×1.0):界面速率 = 一小时入账', async () => {
     const player = usePlayerStore()
     const resources = useResourcesStore()
     player.suppressedRegions = ['qingyun']
     player.suppressedSince = { qingyun: Date.now() }
 
     const before = { ...resources.spiritStone }
-    settleSuppressedRegions(3600, new RandomService(() => 0.99)) // 0.99:不掉装,只比灵石
+    await settleSuppressedRegions(3600, new RandomService(() => 0.99)) // 0.99:不掉装,只比灵石
     const gained = toNum(sub(resources.spiritStone, before))
 
     expect(gained).toBeGreaterThan(0)
     expect(gained).toBeCloseTo(uiStonePerHour('qingyun'), 6)
   })
 
-  it('守满 6 小时(稳定 ×1.05):界面速率随兴衰上浮,与实际入账一致', () => {
+  it('守满 6 小时(稳定 ×1.05):界面速率随兴衰上浮,与实际入账一致', async () => {
     const player = usePlayerStore()
     const resources = useResourcesStore()
     const now = Date.now()
@@ -561,7 +561,7 @@ describe('镇压速率:显示与结算同源', () => {
 
     expect(regionRecallFor('qingyun').prosperity).toBe('stable')
     const before = { ...resources.spiritStone }
-    settleSuppressedRegions(3600, new RandomService(() => 0.99))
+    await settleSuppressedRegions(3600, new RandomService(() => 0.99))
     const gained = toNum(sub(resources.spiritStone, before))
 
     expect(gained).toBeCloseTo(uiStonePerHour('qingyun'), 6)
@@ -572,7 +572,7 @@ describe('镇压速率:显示与结算同源', () => {
    * 结算与界面(regionRecallFor)须读同一份胜场 regionWins,不读 regionStats.totalFights。
    * 故障注入:结算改读 totalFights,本用例红。
    */
-  it('连输五十场、刚镇压不到 6 小时:界面混乱,入账也按混乱,不白给繁盛', () => {
+  it('连输五十场、刚镇压不到 6 小时:界面混乱,入账也按混乱,不白给繁盛', async () => {
     const player = usePlayerStore()
     const resources = useResourcesStore()
     player.suppressedRegions = ['qingyun']
@@ -584,7 +584,7 @@ describe('镇压速率:显示与结算同源', () => {
 
     expect(regionRecallFor('qingyun').prosperity).toBe('chaos')
     const before = { ...resources.spiritStone }
-    settleSuppressedRegions(3600, new RandomService(() => 0.99))
+    await settleSuppressedRegions(3600, new RandomService(() => 0.99))
     const gained = toNum(sub(resources.spiritStone, before))
     expect(gained).toBeCloseTo(uiStonePerHour('qingyun'), 6)
     expect(gained, '不是繁盛的 110%').toBeCloseTo(toNum(suppressRateFor('qingyun')!.stonePerHour), 6)
@@ -594,7 +594,7 @@ describe('镇压速率:显示与结算同源', () => {
    * 直接读 Date.now() 时所在 computed 不重算,读数冻结。
    * 故障注入:把 now.value 改成 `Date.now()`,本用例红。
    */
-  it('历练页的镇压倒计时与已守时长读每秒推进的 now,不直接调 Date.now()', () => {
+  it('历练页的镇压倒计时与已守时长读每秒推进的 now,不直接调 Date.now()', async () => {
     // 计时两列在地界卡里
     const card = readFileSync(resolve(__dirname, '../components/adventure/RegionCard.vue'), 'utf8')
     expect(card, '要有一枚每秒推进的读数').toContain('const now = useNow()')
@@ -610,7 +610,7 @@ describe('镇压速率:显示与结算同源', () => {
   })
 
   /** 故障注入:卡片改读 `props.row.recall` 或 `regionRecallFor(props.row.def.id)`(无 now 实参),本用例红 */
-  it('兴衰章与镇压速率按 now 就地重算,不读区域大表的静态快照', () => {
+  it('兴衰章与镇压速率按 now 就地重算,不读区域大表的静态快照', async () => {
     const card = readFileSync(resolve(__dirname, '../components/adventure/RegionCard.vue'), 'utf8')
     expect(card, '兴衰要由卡片就地派生').toContain('const recall = computed(() => regionRecallFor(props.row.def.id, now.value))')
     expect(card, '速率读同一份兴衰').toContain('suppressRateLine(props.row.def.id, recall.value.prosperity)')
@@ -625,7 +625,7 @@ describe('镇压速率:显示与结算同源', () => {
    * regionRows 只依赖「构筑 × 区域」,读 now 会每秒整表重算。
    * 故障注入:把 `reviveInHours` 放回 regionRows,本用例红。
    */
-  it('复聚倒计时不写进 regionRows 大表,只让那一格跟秒走', () => {
+  it('复聚倒计时不写进 regionRows 大表,只让那一格跟秒走', async () => {
     const rows = readFileSync(resolve(__dirname, '../composables/useRegionRows.ts'), 'utf8')
     const start = rows.indexOf('const regionRows = computed<RegionRow[]>(')
     expect(start, '找不到 regionRows,判据会假绿').toBeGreaterThan(0)
@@ -643,7 +643,7 @@ describe('镇压速率:显示与结算同源', () => {
    * `adventure.revived` 由 core/regionRevival 写入并存档。
    * 故障注入:把 `adventure.revived.includes` 改成 `isReviving(...)`,本用例红。
    */
-  it('历练页的「妖气复聚」读落盘状态 adventure.revived,不拿镇压到期现算', () => {
+  it('历练页的「妖气复聚」读落盘状态 adventure.revived,不拿镇压到期现算', async () => {
     const rows = readFileSync(resolve(__dirname, '../composables/useRegionRows.ts'), 'utf8')
     expect(rows, '复聚章与一行指引要读同一份落盘状态').toContain('const revived = adventure.revived.includes(r.id)')
     const view = readFileSync(resolve(__dirname, '../components/adventure/RegionCard.vue'), 'utf8')
@@ -652,20 +652,20 @@ describe('镇压速率:显示与结算同源', () => {
 })
 
 describe('镇压复苏 · settle 级(72h 复生当拍不产石)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
   const HOUR = 3600_000
 
-  it('镇压超 72h:settle 自动解除(移出镇压表+since 清掉),复生当拍不产一石', () => {
+  it('镇压超 72h:settle 自动解除(移出镇压表+since 清掉),复生当拍不产一石', async () => {
     const player = usePlayerStore()
     const resources = useResourcesStore()
     player.major = 5
     player.suppressedRegions = ['qingyun']
     player.suppressedSince = { qingyun: Date.now() - 73 * HOUR }
     const before = { ...resources.spiritStone }
-    const total = settleSuppressedRegions(3600, new RandomService(() => 0.1))
+    const total = await settleSuppressedRegions(3600, new RandomService(() => 0.1))
     expect(player.suppressedRegions).not.toContain('qingyun')
     expect(player.suppressedSince['qingyun'], '复生后 since 应被删').toBeUndefined()
     expect(resources.spiritStone).toEqual(before)
@@ -675,30 +675,30 @@ describe('镇压复苏 · settle 级(72h 复生当拍不产石)', () => {
     expect(total?.resources ?? []).toHaveLength(0)
   })
 
-  it('未满 72h:仍镇压、且产出灵石(正对照:测试不是空转)', () => {
+  it('未满 72h:仍镇压、且产出灵石(正对照:测试不是空转)', async () => {
     const player = usePlayerStore()
     const resources = useResourcesStore()
     player.major = 5
     player.suppressedRegions = ['qingyun']
     player.suppressedSince = { qingyun: Date.now() - 1 * HOUR }
     const before = { ...resources.spiritStone }
-    settleSuppressedRegions(3600, new RandomService(() => 0.1))
+    await settleSuppressedRegions(3600, new RandomService(() => 0.1))
     expect(player.suppressedRegions, '不满 72h 不该自行解除').toContain('qingyun')
     expect(resources.spiritStone.m, '仍在镇压期间应照常产石').toBeGreaterThan(before.m)
   })
 
-  it('两区并存:只有超 72h 的复苏,未满 72h 的照常留着(逐区独立判定)', () => {
+  it('两区并存:只有超 72h 的复苏,未满 72h 的照常留着(逐区独立判定)', async () => {
     const player = usePlayerStore()
     player.major = 5
     player.suppressedRegions = ['qingyun', 'cangwu']
     player.suppressedSince = { qingyun: Date.now() - 73 * HOUR, cangwu: Date.now() - 1 * HOUR }
-    settleSuppressedRegions(3600, new RandomService(() => 0.1))
+    await settleSuppressedRegions(3600, new RandomService(() => 0.1))
     expect(player.suppressedRegions).not.toContain('qingyun')
     expect(player.suppressedRegions).toContain('cangwu')
   })
 
   /** 收益按 dt 结、复聚按 worldAt 判,收益逐区只结到复聚那一刻;复聚若先判会吞掉整段收益 */
-  it('离线 80 小时跨过复聚线:仍结满 72 小时的租,镇压随之松开', () => {
+  it('离线 80 小时跨过复聚线:仍结满 72 小时的租,镇压随之松开', async () => {
     const T0 = Date.now() - 80 * HOUR
     const player = usePlayerStore()
     player.major = 5
@@ -706,30 +706,30 @@ describe('镇压复苏 · settle 级(72h 复生当拍不产石)', () => {
     player.suppressedSince = { qingyun: T0 }
 
     // dt = 72h(洞府满级的离线上限),worldAt = 80 小时后
-    const total = settleSuppressedRegions(72 * 3600, new RandomService(() => 0.1), T0 + 80 * HOUR)
+    const total = await settleSuppressedRegions(72 * 3600, new RandomService(() => 0.1), T0 + 80 * HOUR)
     expect(toNum(total?.stone ?? gnZero()), '72 小时的租要一分不少').toBeGreaterThan(0)
     expect(player.suppressedRegions, '跨过复聚线就该松开').not.toContain('qingyun')
   })
 
-  it('离线整段未跨复聚线:照旧全收,镇压不动', () => {
+  it('离线整段未跨复聚线:照旧全收,镇压不动', async () => {
     const T0 = Date.now() - 40 * HOUR
     const player = usePlayerStore()
     player.major = 5
     player.suppressedRegions = ['qingyun']
     player.suppressedSince = { qingyun: T0 }
-    const total = settleSuppressedRegions(40 * 3600, new RandomService(() => 0.1), T0 + 40 * HOUR)
+    const total = await settleSuppressedRegions(40 * 3600, new RandomService(() => 0.1), T0 + 40 * HOUR)
     expect(toNum(total?.stone ?? gnZero())).toBeGreaterThan(0)
     expect(player.suppressedRegions).toContain('qingyun')
   })
 
-  it('一段正好跨在复聚线上:只结到复聚那一刻,不收越界的那一截', () => {
+  it('一段正好跨在复聚线上:只结到复聚那一刻,不收越界的那一截', async () => {
     // 本段为第 71→74 小时,第 72 小时复聚:只收 71→72 那 1 小时
     const T0 = Date.now() - 74 * HOUR
     const player = usePlayerStore()
     player.major = 5
     player.suppressedRegions = ['qingyun']
     player.suppressedSince = { qingyun: T0 }
-    const full = settleSuppressedRegions(3 * 3600, new RandomService(() => 0.1), T0 + 74 * HOUR)
+    const full = await settleSuppressedRegions(3 * 3600, new RandomService(() => 0.1), T0 + 74 * HOUR)
     const fullStone = toNum(full?.stone ?? gnZero())
 
     // 正对照:同样 3 小时,整段在镇压期内
@@ -739,7 +739,7 @@ describe('镇压复苏 · settle 级(72h 复生当拍不产石)', () => {
     player2.major = 5
     player2.suppressedRegions = ['qingyun']
     player2.suppressedSince = { qingyun: T1 }
-    const whole = settleSuppressedRegions(3 * 3600, new RandomService(() => 0.1), T1 + 13 * HOUR)
+    const whole = await settleSuppressedRegions(3 * 3600, new RandomService(() => 0.1), T1 + 13 * HOUR)
     const wholeStone = toNum(whole?.stone ?? gnZero())
 
     expect(fullStone, '跨线那一段只结到复聚时刻').toBeGreaterThan(0)

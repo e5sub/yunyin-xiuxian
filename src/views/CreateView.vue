@@ -77,8 +77,8 @@
   import { rootElements, tendencyLines } from '@/core/linggenAffinity'
   import { randomDaoName } from '@/data/names'
   import { ELEMENTS } from '@/data/linggen'
-  import { generateEquipment } from '@/core/equipGen'
   import { acquireEquipment } from '@/core/loot'
+  import { mintDrops } from '@/core/lootClaim'
   import { trackRealm } from '@/core/progress'
   import { seedLoreIfNeeded } from '@/core/loreService'
   import { equipmentTemplate } from '@/data/equipment'
@@ -148,16 +148,18 @@
     }
   }
 
-  function doBegin(): void {
+  async function doBegin(): Promise<void> {
     const finalName = name.value.trim().slice(0, 8) || '无名散修'
     player.initCharacter(finalName, profile.value)
-    // 开局馈赠:入门功法 + 一柄竹剑 + 三枚聚气散
+    // 开局馈赠:入门功法 + 一柄竹剑 + 三枚聚气散(竹剑由签发侧生成,登录走服务端,未登录本地同一份核心)
     cultivation.learn('m_taixuan')
     cultivation.equipMain('m_taixuan')
-    const starter = generateEquipment(1, rng, { slot: 'weapon' })
-    acquireEquipment(starter, { quiet: true, forceKeep: true }) // forceKeep:开局馈赠不受自动回收规则影响
-    const tpl = equipmentTemplate(starter.templateId)
-    if (tpl) inventory.equip(starter.uid, tpl.slot)
+    const [starter] = await mintDrops([{ src: 'starter' }])
+    if (starter) {
+      acquireEquipment(starter, { quiet: true, forceKeep: true }) // forceKeep:开局馈赠不受自动回收规则影响
+      const tpl = equipmentTemplate(starter.templateId)
+      if (tpl) inventory.equip(starter.uid, tpl.slot)
+    }
     inventory.addPill('p_jvqisan', 3)
     // 开局所知:三张入门丹方与方中药材(见 core/loreService.ts)
     seedLoreIfNeeded()

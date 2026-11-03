@@ -129,11 +129,10 @@
   import { useAuthStore } from '@/stores/auth'
   import { cloudApi, onCloudWs, type DungeonBrief, type DungeonDifficulty, type DungeonDifficultyBrief, type DungeonGrowthBrief, type DungeonKey, type DungeonRunResult, type DungeonRoom } from '@/services/cloud'
   import { copyText } from '@/utils/clipboard'
-  import { rng } from '@/utils/random'
   import { stoneByTier } from '@/core/formulas'
   import { tierOfMajor } from '@/core/secretRealm'
-  import { generateEquipment } from '@/core/equipGen'
   import { acquireEquipment } from '@/core/loot'
+  import { mintDrops } from '@/core/lootClaim'
 
   const ui = useUiStore()
   const player = usePlayerStore()
@@ -285,12 +284,11 @@
     running.value = key
     try {
       const r = await cloudApi.dungeonRun(key, code, difficulty.value)
-      // 高难(绝境/炼狱)获胜掉装备:按自身境界生成,绝境良品起步、炼狱灵品起步
+      // 高难(绝境/炼狱)获胜掉装备:实例由签发侧生成,品质下限按难度收进服务端合法区间
       if (r.win && r.equipDrop) {
-        const inst = generateEquipment(tierOfMajor(Math.max(0, player.major)), rng, {
-          minQualityRank: difficulty.value === 'abyss' ? 3 : 1
-        })
-        r.log = [...r.log, `妖物遗宝:${acquireEquipment(inst).line}`]
+        const floor = difficulty.value === 'abyss' ? 3 : 1
+        const insts = await mintDrops([{ src: 'dungeon', tier: tierOfMajor(Math.max(0, player.major)), minQualityRank: floor }])
+        if (insts.length > 0) r.log = [...r.log, `妖物遗宝:${acquireEquipment(insts[0]!).line}`]
       }
       results.value = { ...results.value, [key]: r }
       // 奖励即时入账(数量单位按自身境界折算),随下次云同步落档

@@ -109,17 +109,40 @@ function equipSeed(stockedAt: number, idx: number): number {
   return (Math.floor(stockedAt / 1000) * 31 + idx) >>> 0
 }
 
-/** 生成一整架新货;stockedAt 取调用时刻,装备再生以此为种子锚 */
-export function generateMarketStock(major: number, rng: RandomService, now: number): MarketStock {
+/**
+ * 整架货的种子:与装备种子同族但错开格号区间。服务端(/api/loot/claim 的 market 分支)
+ * 凭 (major, stockedAt) 就能原样再生整架货架 —— 货架内容从此不归客户端说了算。
+ */
+function stockSeed(stockedAt: number): number {
+  return (Math.floor(stockedAt / 1000) * 31 + 0x9e37) >>> 0
+}
+
+/**
+ * 生成一整架新货;stockedAt 取调用时刻,整架内容(门类/品质下限/装备实例)都以此为锚确定性再生。
+ * 不再吃外部 rng:服务端要按同一把锚复现货架,播种权必须收在函数自己手里。
+ */
+export function generateMarketStock(major: number, now: number): MarketStock {
+  const stockRng = new RandomService(mulberry32(stockSeed(now)))
   const feasible: MarketKind[] = ['material', 'equipment']
   if (salePills(major).length > 0) feasible.unshift('pill')
 
   const usedPills = new Set<string>()
   const slots: MarketSlot[] = []
   for (let idx = 0; idx < MARKET_SLOTS; idx += 1) {
-    slots.push(buildSlot(pickKind(rng, feasible), idx, major, rng, usedPills, now))
+    slots.push(buildSlot(pickKind(stockRng, feasible), idx, major, stockRng, usedPills, now))
   }
   return { goods: slots, stockedAt: now }
+}
+
+/**
+ * 货架再生后的第 idx 格(只认装备格):/api/loot/claim 的 market 分支用它核对
+ * 「玩家要买的这格确实是货架上的装备」,再按 marketEquipInstance 出同一件。
+ * 格号不存在/非装备格返回 null,签发侧直接不发。
+ */
+export function marketSlotAt(major: number, stockedAt: number, idx: number): MarketEquipSlot | null {
+  if (!Number.isFinite(stockedAt) || stockedAt <= 0 || !Number.isInteger(idx) || idx < 0 || idx >= MARKET_SLOTS) return null
+  const slot = generateMarketStock(major, stockedAt).goods.find(s => s.idx === idx)
+  return slot && slot.kind === 'equipment' ? slot : null
 }
 
 /** 货架里某件装备的确定性实例:预览与购买同一物(uid 除外,不落库、不进渲染) */

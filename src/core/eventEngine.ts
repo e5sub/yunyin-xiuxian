@@ -10,10 +10,10 @@ import { pillDef, PILLS, pillRank } from '@/data/pills'
 import { HERB_GRADE_SHORT, herbGradeOfMajor } from '@/data/herbGrades'
 import { buffDef } from '@/data/buffs'
 import { petDef, genericPetPool } from '@/data/pets'
-import { personalityEffects } from './petPersonality'
 import { expFromSecs, stoneByTier } from './formulas'
-import { generateEquipment } from './equipGen'
 import { acquireArtifact, acquireEquipment, randomDropArtifact } from './loot'
+import { mintDrops } from './lootClaim'
+import type { LootClaimCtx } from './lootGrant'
 import { harvestMaterials } from './loreService'
 import { gameNow } from './enginePause'
 import { learnRandomGongfa } from './gongfaService'
@@ -21,7 +21,6 @@ import { fortuneAffinity, rootElements } from './linggenAffinity'
 import { collect, track } from './progress'
 import { recordEvent } from './worldMemory'
 import { recordFortuneChoice } from './fortuneChain'
-import { modOf } from './statsCalc'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useInventoryStore } from '@/stores/inventory'
@@ -137,9 +136,15 @@ function foldSession(stone?: GNum, exp?: GNum, items = 0): void {
 export interface EventApplyOpts {
   /** 空祭炼位时自动祭上法宝;默认 true,玩家不在场的自动结算(离线 / 遇事勿扰 / 超时)传 false,同 offline.ts 的 autoEquip=false */
   autoEquipArtifact?: boolean
+  /**
+   * 装备签发收集器:离线整段结算传它,把签发上下文攒起来一次请求要齐(40 场际遇 40 次请求必撞限速)。
+   * 传了它时装备效果当场不入包、不报行,由收集方签发后统一 acquire。
+   */
+  deferEquip?: (ctx: LootClaimCtx) => void
 }
 
-function applyEffect(effect: EventEffect, tier: number, opts: EventApplyOpts = {}): string | null {
+/** 事件效果入账;装备走签发漏斗(服务端裁决),故整段异步 */
+async function applyEffect(effect: EventEffect, tier: number, opts: EventApplyOpts = {}): Promise<string | null> {
   const player = usePlayerStore()
   const resources = useResourcesStore()
   const inventory = useInventoryStore()
@@ -171,12 +176,14 @@ function applyEffect(effect: EventEffect, tier: number, opts: EventApplyOpts = {
       if (effect.id === 'herb') return `${HERB_GRADE_SHORT[herbGradeOfMajor(player.major)]}灵草 +${effect.amount}`
       return `${MATERIAL_NAMES[effect.id]} +${effect.amount}`
     case 'equipment': {
-      const inst = generateEquipment(Math.max(tier, 1), rng, {
-        // luck 与战斗/离线掉落同源,含灵兽性格的掉落倾向
-        luck: modOf(player.finalStats.mods, 'luck') + personalityEffects(player.petId).dropLuck,
-        minQualityRank: effect.minQualityRank
-      })
-      const line = `获得 ${acquireEquipment(inst).line}`
+      // 品质下限来自事件数据(effect.minQualityRank),服务端夹进合法区间,客户端报什么都不提权
+      if (opts.deferEquip) {
+        opts.deferEquip({ src: 'event', tier, minQualityRank: effect.minQualityRank })
+        return null
+      }
+      const insts = await mintDrops([{ src: 'event', tier, minQualityRank: effect.minQualityRank }])
+      if (insts.length === 0) return null
+      const line = `获得 ${acquireEquipment(insts[0]!).line}`
       foldSession(undefined, undefined, 1)
       return line
     }
@@ -245,13 +252,18 @@ export interface EventResolution {
   lines: string[]
 }
 
-export function resolveEventChoice(def: EventDef, choiceIdx: number, tier: number, opts: EventApplyOpts = {}): EventResolution {
+export async function resolveEventChoice(
+  def: EventDef,
+  choiceIdx: number,
+  tier: number,
+  opts: EventApplyOpts = {}
+): Promise<EventResolution> {
   const adventure = useAdventureStore()
   const choice = def.choices[choiceIdx] ?? def.choices[0]!
   const outcome = rng.weighted(choice.outcomes, o => o.weight)
   const lines: string[] = []
   for (const effect of outcome.effects) {
-    const line = applyEffect(effect, tier, opts)
+    const line = await applyEffect(effect, tier, opts)
     if (line) lines.push(line)
   }
   if (def.once) adventure.markEventSeen(def.id)
@@ -276,11 +288,15 @@ export function resolveEventChoice(def: EventDef, choiceIdx: number, tier: numbe
 }
 
 /** 离线/超时/勿扰按默认选项自动结算(三者共用出口);玩家不在场,不自动祭法宝 */
-export function autoResolveEvent(eventId: string, tier: number): EventResolution | null {
+export async function autoResolveEvent(
+  eventId: string,
+  tier: number,
+  opts: Omit<EventApplyOpts, 'autoEquipArtifact'> = {}
+): Promise<EventResolution | null> {
   const def = eventDef(eventId)
   if (!def) return null
   let idx = def.choices.findIndex(c => c.isDefault && choiceAvailable(c, tier))
   if (idx < 0) idx = def.choices.findIndex(c => choiceAvailable(c, tier))
   if (idx < 0) idx = 0
-  return resolveEventChoice(def, idx, tier, { autoEquipArtifact: false })
+  return resolveEventChoice(def, idx, tier, { autoEquipArtifact: false, ...opts })
 }

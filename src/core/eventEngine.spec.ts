@@ -17,11 +17,11 @@ import { stoneByTier } from './formulas'
 import { rollFieldMaterial } from './loreService'
 
 describe('事件结算 · 灵石代价守恒', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
-  it('入不敷出的灵石支出被拒绝,余额一分不动(不因一次越支而清零)', () => {
+  it('入不敷出的灵石支出被拒绝,余额一分不动(不因一次越支而清零)', async () => {
     const resources = useResourcesStore()
     resources.addStone(gn(50))
     const def: EventDef = {
@@ -32,21 +32,21 @@ describe('事件结算 · 灵石代价守恒', () => {
       weight: 1,
       choices: [{ label: '掏钱', outcomes: [{ weight: 1, text: '花掉', effects: [{ type: 'stone', tierAmount: -60 }] }] }]
     }
-    const res = resolveEventChoice(def, 0, 3)
+    const res = await resolveEventChoice(def, 0, 3)
     // 60 → 259.92 > 50,付不起
     expect(res.lines.some(l => l.includes('灵石 -'))).toBe(false)
     // 里程碑顺带发石会让余额变大,只断言下界
     expect(gte(resources.spiritStone, gn(50))).toBe(true)
   })
 
-  it('凝本源为一丹:声明了 300 灵石的门槛,实付就真扣 300(不是白拿丹药)', () => {
+  it('凝本源为一丹:声明了 300 灵石的门槛,实付就真扣 300(不是白拿丹药)', async () => {
     const resources = useResourcesStore()
     const inventory = useInventoryStore()
     resources.addStone(gn(1_000_000_000))
     const def = eventDef('ev_hongmeng_benyuan')!
     const tier = 20 // 该事件 minRealm=20
     const before = resources.spiritStone
-    resolveEventChoice(def, 1, tier) // 「凝本源为一丹」
+    await resolveEventChoice(def, 1, tier) // 「凝本源为一丹」
     const cost = stoneByTier(tier, 300)
     // 大数有尾数噪声,用容差比
     const spent = sub(before, resources.spiritStone)
@@ -57,7 +57,7 @@ describe('事件结算 · 灵石代价守恒', () => {
     expect(gte(cost, gn(1))).toBe(true)
   })
 
-  it('事件 material 发灵草:文案显式报当前品(5 境 → 灵品)', () => {
+  it('事件 material 发灵草:文案显式报当前品(5 境 → 灵品)', async () => {
     const player = usePlayerStore()
     player.initCharacter('事件', { roots: [] } as never)
     player.major = 5 // 灵品带(5~8)
@@ -69,14 +69,14 @@ describe('事件结算 · 灵石代价守恒', () => {
       weight: 1,
       choices: [{ label: '采', outcomes: [{ weight: 1, text: '得', effects: [{ type: 'material', id: 'herb', amount: 6 }] }] }]
     }
-    const res = resolveEventChoice(def, 0, 3)
+    const res = await resolveEventChoice(def, 0, 3)
     expect(res.lines.some(l => l.includes('灵品灵草 +6')), '事件发草也该报品').toBe(true)
     expect(res.lines.some(l => l.includes('灵草 +6') && !l.includes('灵品')), '不得退回不带品的裸数').toBe(false)
   })
 })
 
 describe('际遇 haul(事件所得并入会话账目)', () => {
-  it('历练途中事件修为并入 session.expGain(总结「修为 +」不再漏计际遇)', () => {
+  it('历练途中事件修为并入 session.expGain(总结「修为 +」不再漏计际遇)', async () => {
     const adventure = useAdventureStore()
     const player = usePlayerStore()
     adventure.setSession({
@@ -90,7 +90,7 @@ describe('际遇 haul(事件所得并入会话账目)', () => {
     const expOutcome = spring.choices[0]!.outcomes[0]!
     const spy = vi.spyOn(rng, 'weighted').mockImplementationOnce(() => expOutcome)
     try {
-      resolveEventChoice(spring, 0, 1)
+      await resolveEventChoice(spring, 0, 1)
     } finally {
       spy.mockRestore()
     }
@@ -101,11 +101,11 @@ describe('际遇 haul(事件所得并入会话账目)', () => {
 
 /** 离线整段、事件超时与「遇事勿扰」都走 autoResolveEvent,玩家不在场;纪律同 offline.ts 的 autoEquip=false */
 describe('自动结算不替玩家祭法宝', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
-  it('autoResolveEvent 掉出法宝时只入囊,不占空着的随身位', () => {
+  it('autoResolveEvent 掉出法宝时只入囊,不占空着的随身位', async () => {
     const inventory = useInventoryStore()
     const player = usePlayerStore()
     player.major = 5 // 法宝位已开
@@ -115,7 +115,7 @@ describe('自动结算不替玩家祭法宝', () => {
     const artifactOutcome = wine.choices[0]!.outcomes.find(o => o.effects.some(e => e.type === 'artifact'))!
     const spy = vi.spyOn(rng, 'weighted').mockImplementationOnce(() => artifactOutcome)
     try {
-      autoResolveEvent('ev_wine_immortal', 5)
+      await autoResolveEvent('ev_wine_immortal', 5)
     } finally {
       spy.mockRestore()
     }
@@ -124,13 +124,13 @@ describe('自动结算不替玩家祭法宝', () => {
     expect(inventory.equippedArtifacts, '玩家不在场,空着的随身位也不许被他祭上').toEqual([])
   })
 
-  it('玩家亲手点的选项照旧自动祭上(不因修这条而好心办坏事)', () => {
+  it('玩家亲手点的选项照旧自动祭上(不因修这条而好心办坏事)', async () => {
     const inventory = useInventoryStore()
     const wine = eventDef('ev_wine_immortal')!
     const artifactOutcome = wine.choices[0]!.outcomes.find(o => o.effects.some(e => e.type === 'artifact'))!
     const spy = vi.spyOn(rng, 'weighted').mockImplementationOnce(() => artifactOutcome)
     try {
-      resolveEventChoice(wine, 0, 5)
+      await resolveEventChoice(wine, 0, 5)
     } finally {
       spy.mockRestore()
     }
@@ -142,28 +142,28 @@ describe('自动结算不替玩家祭法宝', () => {
    * 故障注入:去掉 autoResolveEvent 的 { autoEquipArtifact: false },本用例红(手动那条仍绿)。
    * addArtifact 只在空祭炼位自动祭,判据须在空手状态下比。
    */
-  it('判据自家不空转:同一掷点下,自动路径不祭、手动路径祭', () => {
+  it('判据自家不空转:同一掷点下,自动路径不祭、手动路径祭', async () => {
     const wine = eventDef('ev_wine_immortal')!
     const artifactOutcome = wine.choices[0]!.outcomes.find(o => o.effects.some(e => e.type === 'artifact'))!
     expect(artifactOutcome, '该事件里得有法宝结局,否则两条断言都失去对象').toBeDefined()
 
-    const run = (auto: boolean): string[] => {
+    const run = async (auto: boolean): Promise<string[]> => {
       setActivePinia(createPinia())
       const inventory = useInventoryStore()
       usePlayerStore().major = 5 // 法宝位已开
       expect(inventory.equippedArtifacts, '前置:随身那一格得是空的').toEqual([])
       const spy = vi.spyOn(rng, 'weighted').mockImplementationOnce(() => artifactOutcome)
       try {
-        if (auto) autoResolveEvent('ev_wine_immortal', 5)
-        else resolveEventChoice(wine, 0, 5)
+        if (auto) await autoResolveEvent('ev_wine_immortal', 5)
+        else await resolveEventChoice(wine, 0, 5)
       } finally {
         spy.mockRestore()
       }
       expect(inventory.artifacts.length, '法宝都得真的入囊').toBe(1)
       return [...inventory.equippedArtifacts]
     }
-    expect(run(true), '玩家不在场:空手也不该被他手祭上').toEqual([])
-    expect(run(false), '亲手在场:空手照旧自动祭上').toHaveLength(1)
+    expect(await run(true), '玩家不在场:空手也不该被他手祭上').toEqual([])
+    expect(await run(false), '亲手在场:空手照旧自动祭上').toHaveLength(1)
   })
 })
 
@@ -174,7 +174,7 @@ describe('自动结算不替玩家祭法宝', () => {
 describe('事件所得灵材计照面', () => {
   const TIER = 6
 
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
@@ -195,20 +195,20 @@ describe('事件所得灵材计照面', () => {
   }
 
   /** 新 pinia 里结算一件事件,返回灵草/玄铁增量与两类照面数 */
-  function settle(def: EventDef): { herb: number; ore: number; seenHerb: number; seenOre: number } {
+  async function settle(def: EventDef): Promise<{ herb: number; ore: number; seenHerb: number; seenOre: number }> {
     setActivePinia(createPinia())
     const resources = useResourcesStore()
     const herb0 = resources.herb
     const ore0 = resources.ore
-    resolveEventChoice(def, 0, TIER)
+    await resolveEventChoice(def, 0, TIER)
     return { herb: resources.herb - herb0, ore: resources.ore - ore0, seenHerb: seenIn('herb'), seenOre: seenIn('ore') }
   }
 
-  it('发灵草、玄铁各计 1 回照面,数量照旧;残页等不计', () => {
-    const base = settle(
+  it('发灵草、玄铁各计 1 回照面,数量照旧;残页等不计', async () => {
+    const base = await settle(
       eventOf({ type: 'material', id: 'page', amount: 5 }, { type: 'material', id: 'dust', amount: 5 }, { type: 'material', id: 'wudao', amount: 5 })
     )
-    const got = settle(eventOf({ type: 'material', id: 'herb', amount: 5 }, { type: 'material', id: 'ore', amount: 5 }))
+    const got = await settle(eventOf({ type: 'material', id: 'herb', amount: 5 }, { type: 'material', id: 'ore', amount: 5 }))
     expect(base.seenHerb + base.seenOre, '残页、器灵尘、悟道点不是灵材').toBe(0)
     expect(got.seenHerb, '灵草计照面').toBe(1)
     expect(got.seenOre, '玄铁计照面').toBe(1)
@@ -216,7 +216,7 @@ describe('事件所得灵材计照面', () => {
     expect(got.ore - base.ore, '玄铁数照旧').toBe(5)
   })
 
-  it('自动结算(离线 / 勿扰 / 超时)同一出口,照样计照面', () => {
+  it('自动结算(离线 / 勿扰 / 超时)同一出口,照样计照面', async () => {
     const def = eventDef('ev_herb_garden')!
     const outcomes = def.choices.find(c => c.isDefault)!.outcomes
     expect(outcomes, '前置:默认选项只一种结局').toHaveLength(1)
@@ -226,23 +226,23 @@ describe('事件所得灵材计照面', () => {
     expect(herb, '前置:默认结局发灵草').toBeDefined()
     const resources = useResourcesStore()
     const herb0 = resources.herb
-    autoResolveEvent(def.id, TIER)
+    await autoResolveEvent(def.id, TIER)
     expect(resources.herb - herb0, '灵草数照旧').toBe(herb!.amount)
     expect(seenIn('herb')).toBe(1)
     expect(seenIn('ore')).toBe(0)
   })
 
-  it('灵兽撞重折作灵草,同样计 1 回照面', () => {
+  it('灵兽撞重折作灵草,同样计 1 回照面', async () => {
     useQuestsStore().collect('pet', 'pet_qingyu')
     const resources = useResourcesStore()
     const herb0 = resources.herb
-    const res = resolveEventChoice(eventOf({ type: 'pet', id: 'pet_qingyu' }), 0, TIER)
+    const res = await resolveEventChoice(eventOf({ type: 'pet', id: 'pet_qingyu' }), 0, TIER)
     expect(res.lines.some(l => l.includes('灵草 +10')), '前置:撞重折草').toBe(true)
     expect(resources.herb - herb0, '灵草数照旧').toBe(10)
     expect(seenIn('herb')).toBe(1)
   })
 
-  it('照面的是该区域层级的灵材:发草、发铁、折草都按事件层级抽', () => {
+  it('照面的是该区域层级的灵材:发草、发铁、折草都按事件层级抽', async () => {
     // 灵材池一律取最末(最高阶)那味,其余照常掷:照面落在哪味,就钉住了按哪个层级抽
     const weighted = rng.weighted.bind(rng)
     const spy = vi
@@ -256,7 +256,7 @@ describe('事件所得灵材计照面', () => {
       expect(herbTop.id, '前置:层级不同,抽中的不同').not.toBe(rollFieldMaterial(1, 'herb')!.id)
       expect(oreTop.id, '前置:层级不同,抽中的不同').not.toBe(rollFieldMaterial(1, 'ore')!.id)
       useQuestsStore().collect('pet', 'pet_qingyu')
-      resolveEventChoice(
+      await resolveEventChoice(
         eventOf({ type: 'material', id: 'herb', amount: 5 }, { type: 'material', id: 'ore', amount: 5 }, { type: 'pet', id: 'pet_qingyu' }),
         0,
         TIER

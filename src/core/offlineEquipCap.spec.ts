@@ -50,11 +50,11 @@ function overflowFromNotes(notes: string[]): number {
 }
 
 describe('离线装备掉落 · 每场概率吃在线那道封顶(行为层·确定性)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
-  it('裸概率越过 0.9 时,离线期望件数仍按 0.9 计(与在线 afterWin 同一封顶)', () => {
+  it('裸概率越过 0.9 时,离线期望件数仍按 0.9 计(与在线 afterWin 同一封顶)', async () => {
     const game = useGameStore()
     const player = usePlayerStore()
     const adventure = useAdventureStore()
@@ -83,7 +83,7 @@ describe('离线装备掉落 · 每场概率吃在线那道封顶(行为层·确
       itemGain: 0
     })
 
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
     expect(summary.wins).toBeGreaterThan(100) // 场次够多,round 噪声可忽略
 
     const overflow = overflowFromNotes(summary.notes)
@@ -100,7 +100,7 @@ describe('离线装备掉落 · 每场概率吃在线那道封顶(行为层·确
    * 溢出件折尘按 avgDustPerDrop(tier),不按固定 4 尘;用 tier 32(avgDust≈77)验下界。
    * 故障注入:退回固定 4 尘,本用例红。
    */
-  it('溢出件数折尘按 avgDustPerDrop(tier) 折算,高阶不再按固定 4 少付', () => {
+  it('溢出件数折尘按 avgDustPerDrop(tier) 折算,高阶不再按固定 4 少付', async () => {
     const game = useGameStore()
     const player = usePlayerStore()
     const adventure = useAdventureStore()
@@ -127,7 +127,7 @@ describe('离线装备掉落 · 每场概率吃在线那道封顶(行为层·确
     })
 
     const beforeDust = useResourcesStore().dust
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
     const dustGain = useResourcesStore().dust - beforeDust
     const overflow = overflowFromNotes(summary.notes)
     const tier = regionDef('wudaoya')!.tier

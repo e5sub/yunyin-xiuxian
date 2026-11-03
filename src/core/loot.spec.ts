@@ -32,7 +32,7 @@ import { modOf, capChance } from './statsCalc'
 import type { EquipmentInstance, QualityId } from '@/types'
 
 describe('自动回收 · 装备入包前的第一道闸', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
@@ -48,7 +48,7 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
   }
 
   // rng.chance 不钳制,倍率堆叠出界即"必然掉落"或"永不掉落"。
-  it('afterWin 里每个概率输入都钳在 [0,1] 内', () => {
+  it('afterWin 里每个概率输入都钳在 [0,1] 内', async () => {
     const player = usePlayerStore()
     player.initCharacter('概率钳制', { roots: [] } as never)
     const spy = vi.spyOn(rng, 'chance').mockImplementation((p: number) => {
@@ -58,14 +58,14 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
     })
     try {
       const region = regionDef('qingyun')!
-      afterWin(region, 1, true)
+      await afterWin(region, 1, true)
       expect(spy).toHaveBeenCalled()
     } finally {
       vi.restoreAllMocks()
     }
   })
 
-  it('采集给草按「地界」品阶,不按玩家当前大境界(回刷低境只给低品)', () => {
+  it('采集给草按「地界」品阶,不按玩家当前大境界(回刷低境只给低品)', async () => {
     const player = usePlayerStore()
     player.initCharacter('品阶守卫', { roots: [] } as never)
     player.major = 12 // 仙品(3);青云(地界 0)只该给凡品(1)
@@ -75,7 +75,7 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
     const spyC = vi.spyOn(rng, 'chance').mockImplementation(p => p === 0.5)
     const spyI = vi.spyOn(rng, 'int').mockReturnValue(2)
     try {
-      afterWin(regionDef('qingyun')!, 1, false)
+      await afterWin(regionDef('qingyun')!, 1, false)
     } finally {
       spyC.mockRestore()
       spyI.mockRestore()
@@ -84,7 +84,7 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
     expect(resources.herbOf(herbGradeOfMajor(player.major)), '采集不该按玩家当前大境界给品').toBe(0)
   })
 
-  it('出行预览 expectedWinReward 与 afterWin 均值口径同源(所见即所打)', () => {
+  it('出行预览 expectedWinReward 与 afterWin 均值口径同源(所见即所打)', async () => {
     const player = usePlayerStore()
     player.initCharacter('预览', { roots: [] } as never)
     const region = regionDef('qingyun')!
@@ -93,7 +93,7 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
     const spyF = vi.spyOn(rng, 'float').mockReturnValue(1)
     const spyC = vi.spyOn(rng, 'chance').mockReturnValue(false)
     try {
-      const actual = afterWin(region, rewardMult, false)
+      const actual = await afterWin(region, rewardMult, false)
       const preview = expectedWinReward(region, rewardMult)
       expect(toNum(preview.stone), '预览灵石应与实发均值一致').toBeCloseTo(toNum(actual.stone), 6)
       expect(toNum(preview.exp), '预览修为应与实发均值一致').toBeCloseTo(toNum(actual.exp), 6)
@@ -104,7 +104,7 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
     }
   })
 
-  it('智能收纳开启时,低于保留线的凡良拾取即化尘,不入行囊,器灵尘到账', () => {
+  it('智能收纳开启时,低于保留线的凡良拾取即化尘,不入行囊,器灵尘到账', async () => {
     useSettingsStore().smartKeep.enabled = true
     const resources = useResourcesStore()
     for (const q of ['mortal', 'fine'] as const) {
@@ -118,7 +118,7 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
     }
   })
 
-  it('总闸:智能收纳未开启时,任何时候凡良都照常入包,不再自动回收', () => {
+  it('总闸:智能收纳未开启时,任何时候凡良都照常入包,不再自动回收', async () => {
     expect(useSettingsStore().smartKeep.enabled).toBe(false)
     for (const q of ['mortal', 'fine'] as const) {
       const item = mk(q)
@@ -127,20 +127,20 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
     }
   })
 
-  it('灵品及以上(未勾分解,亦足保留线)照常入包', () => {
+  it('灵品及以上(未勾分解,亦足保留线)照常入包', async () => {
     const item = mk('spirit')
     acquireEquipment(item)
     expect(bagUids()).toContain(item.uid)
   })
 
-  it('上锁的分解档装备不会被误回收', () => {
+  it('上锁的分解档装备不会被误回收', async () => {
     const item = mk('mortal')
     item.locked = true
     acquireEquipment(item)
     expect(bagUids()).toContain(item.uid)
   })
 
-  it('智能收纳开启后,低于保留线又无核心词条的精品也会化尘', () => {
+  it('智能收纳开启后,低于保留线又无核心词条的精品也会化尘', async () => {
     useSettingsStore().smartKeep.enabled = true
     const resources = useResourcesStore()
     const item = mk('excellent') // 精品 rank2,低于保留线
@@ -150,7 +150,7 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
     expect(resources.dust).toBeGreaterThanOrEqual(DECOMPOSE_DUST[2] ?? 1)
   })
 
-  it('手动「一键分解」勾到全套,也不影响自动收纳的取舍 —— 该留的照留', () => {
+  it('手动「一键分解」勾到全套,也不影响自动收纳的取舍 —— 该留的照留', async () => {
     const settings = useSettingsStore()
     settings.smartKeep.enabled = true
     settings.decomposeRanks = [0, 1, 2, 3, 4, 5]
@@ -162,13 +162,13 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
     }
   })
 
-  it('新手馈赠(forceKeep)不受回收规则影响,必入包', () => {
+  it('新手馈赠(forceKeep)不受回收规则影响,必入包', async () => {
     const starter = mk('mortal')
     acquireEquipment(starter, { forceKeep: true })
     expect(bagUids()).toContain(starter.uid)
   })
 
-  it('行囊满时,保留下来的新件仍按老规矩腾退包内无缘旧件', () => {
+  it('行囊满时,保留下来的新件仍按老规矩腾退包内无缘旧件', async () => {
     useSettingsStore().smartKeep.enabled = true
     const inventory = useInventoryStore()
     for (let i = 0; i < 120; i += 1) inventory.addEquipment(mk('mortal'))
@@ -179,7 +179,7 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
     expect(inventory.items.length).toBeLessThanOrEqual(120)
   })
 
-  it('回收裁决无随机性:同件装备重复判定结果一致(在线/离线一致的基础)', () => {
+  it('回收裁决无随机性:同件装备重复判定结果一致(在线/离线一致的基础)', async () => {
     useSettingsStore().smartKeep.enabled = true
     const junk = mk('mortal')
     expect(shouldAutoRecycle(junk)).toBe(true)
@@ -190,7 +190,7 @@ describe('自动回收 · 装备入包前的第一道闸', () => {
 
 /** 钉 loot.artifactDropWeight 就近加成三条:同品质下近者更重、旧物不被关掉、高层级时高界之物占多数。 */
 describe('法宝掉落 · 高界的池子该像高界', () => {
-  it('池子不关门:凡层级可及的法宝,权重都大于零', () => {
+  it('池子不关门:凡层级可及的法宝,权重都大于零', async () => {
     for (const tier of [1, 10, 20, 26, 32]) {
       const reachable = ARTIFACTS.filter(a => a.fromTier <= tier)
       expect(reachable.length).toBeGreaterThan(0)
@@ -200,7 +200,7 @@ describe('法宝掉落 · 高界的池子该像高界', () => {
     }
   })
 
-  it('同品质下,同层级的那件明显更重(约二十一倍)', () => {
+  it('同品质下,同层级的那件明显更重(约二十一倍)', async () => {
     // 从表里取一对同品质、相隔 ≥ 就近窗口的真实法宝,不写死 id:品阶重排后判据仍成立
     const pair = ARTIFACTS.map(near => ({
       near,
@@ -215,7 +215,7 @@ describe('法宝掉落 · 高界的池子该像高界', () => {
     expect(ratio, `同品质的「${near.name}」只比 ${ARTIFACT_NEAR_WINDOW} 阶前的「${old.name}」重 ${ratio.toFixed(2)} 倍`).toBeCloseTo(expected, 6)
   })
 
-  it('到混沌海走一趟,掉出来的大半是仙/神/混沌之物', () => {
+  it('到混沌海走一趟,掉出来的大半是仙/神/混沌之物', async () => {
     let high = 0
     const n = 1200
     for (let i = 0; i < n; i += 1) {
@@ -234,7 +234,7 @@ describe('法宝掉落 · 高界的池子该像高界', () => {
  * 故障注入:把 45 件的品阶退回重排之前那一版(18 件神品),第二条红。
  */
 describe('法宝品阶 · 稀缺标签', () => {
-  it('标签跟着 fromTier 走:深地界出的那件,品阶不低于浅地界出的', () => {
+  it('标签跟着 fromTier 走:深地界出的那件,品阶不低于浅地界出的', async () => {
     // 排序键是 artifactValue 之后的被动预算,不是数据里的基线;同预算按品阶排,不让数组书写顺序决定成败
     const ranked = [...ARTIFACTS].sort(
       (a, b) =>
@@ -254,7 +254,7 @@ describe('法宝品阶 · 稀缺标签', () => {
     expect(qualityDef(ranked[ranked.length - 1]!.quality).rank, '最深的那件不是最高档,阶梯形同虚设').toBe(8)
   })
 
-  it('每个界域的池子里,神品都只占个位数百分比(按权重与按件数都算一遍)', () => {
+  it('每个界域的池子里,神品都只占个位数百分比(按权重与按件数都算一遍)', async () => {
     let maxShare = 0
     let maxTier = 0
     for (let tier = 1; tier <= 32; tier += 1) {
@@ -280,12 +280,12 @@ describe('装备见闻 · 入账那一刻就记下成色', () => {
     return { uid, templateId, quality, tier, level: 0, affixes: [] }
   }
 
-  it('拾得一件就记下它的品质与层级', () => {
+  it('拾得一件就记下它的品质与层级', async () => {
     acquireEquipment(mkItem('a', 'heaven', 15), { quiet: true, forceKeep: true })
     expect(useLoreStore().equipSeen('w_xuantie')).toEqual({ q: qualityDef('heaven').rank, t: 15, u: 0 })
   })
 
-  it('后来更差的一件不拉低记录,更好的一件才刷新', () => {
+  it('后来更差的一件不拉低记录,更好的一件才刷新', async () => {
     acquireEquipment(mkItem('a', 'fine', 4), { quiet: true, forceKeep: true })
     acquireEquipment(mkItem('b', 'heaven', 15), { quiet: true, forceKeep: true })
     acquireEquipment(mkItem('c', 'mortal', 2), { quiet: true, forceKeep: true })
@@ -298,7 +298,7 @@ describe('装备见闻 · 入账那一刻就记下成色', () => {
     expect(useLoreStore().equipSeen('w_xuantie')).toEqual({ q: qualityDef('divine').rank, t: 20, u: 0 })
   })
 
-  it('被自动回收(化尘)的那件也算见过 —— 图鉴记的是见闻,不是家当', () => {
+  it('被自动回收(化尘)的那件也算见过 —— 图鉴记的是见闻,不是家当', async () => {
     useSettingsStore().smartKeep.enabled = true
     // 换模板:lore 分片在用例之间随 localStorage 残留
     const res = acquireEquipment(mkItem('a', 'mortal', 7, 'w_qingshuang'), { quiet: true })
@@ -311,7 +311,7 @@ describe('装备见闻 · 入账那一刻就记下成色', () => {
   })
 
   /** 「亲手用过」(u)与「见过什么成色」分开记,供图鉴第二档(见 ui/codex 的装备梯子) */
-  it('装备上身即算上手;强化也算;两者都写进见闻的 u', () => {
+  it('装备上身即算上手;强化也算;两者都写进见闻的 u', async () => {
     const lore = useLoreStore()
     const inv = useInventoryStore()
     const res = useResourcesStore()
@@ -337,7 +337,7 @@ describe('装备见闻 · 入账那一刻就记下成色', () => {
 
 /** 立下 artifact 禁忌之题时,系统不替玩家祭出第一个法宝;破题须是玩家自己的选择。 */
 describe('逆旅「独行」· 到手法宝不默认祭上', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
@@ -345,14 +345,14 @@ describe('逆旅「独行」· 到手法宝不默认祭上', () => {
     return { themeId: 'lt_zejian', at: 0, base: {}, baseBranches: 0, baseAvenged: 0, broken }
   }
 
-  it('未立题时,首个法宝照旧自动祭上(原行为)', () => {
+  it('未立题时,首个法宝照旧自动祭上(原行为)', async () => {
     acquireArtifact('af_muyu')
     const inv = useInventoryStore()
     expect(inv.artifacts).toHaveLength(1)
     expect(inv.equippedArtifacts, '首个法宝默认祭上').toEqual(['af_muyu'])
   })
 
-  it('立下「整世不祭法宝」之题后,到手法宝只入囊、不默认祭上', () => {
+  it('立下「整世不祭法宝」之题后,到手法宝只入囊、不默认祭上', async () => {
     usePlayerStore().setVow(vow(false))
     acquireArtifact('af_muyu')
     const inv = useInventoryStore()
@@ -360,7 +360,7 @@ describe('逆旅「独行」· 到手法宝不默认祭上', () => {
     expect(inv.equippedArtifacts, '立誓不祭法宝时不得自动祭上').toEqual([])
   })
 
-  it('已破题或题目不忌法宝:照旧自动祭上(不得好心办坏事)', () => {
+  it('已破题或题目不忌法宝:照旧自动祭上(不得好心办坏事)', async () => {
     usePlayerStore().setVow(vow(true))
     acquireArtifact('af_muyu')
     expect(useInventoryStore().equippedArtifacts, '破题后恢复默认行为').toEqual(['af_muyu'])
@@ -375,7 +375,7 @@ describe('逆旅「独行」· 到手法宝不默认祭上', () => {
 describe('出行预览 · 福缘翻倍均值', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('预览含 doubleDropRate 的均值期望(探宝构筑"一胜约" == 均值公式× (1+capChance(p)))', () => {
+  it('预览含 doubleDropRate 的均值期望(探宝构筑"一胜约" == 均值公式× (1+capChance(p)))', async () => {
     const player = usePlayerStore()
     player.initCharacter('拾珍', { roots: [] } as never)
     ;(player.reincarnation as { talents: string[] }).talents = ['t_tanbao'] // +0.05 双倍福缘
@@ -394,11 +394,11 @@ describe('出行预览 · 福缘翻倍均值', () => {
 })
 
 describe('矿石掉落战报', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
-  it('矿石掉落要报进「本战拾获」(与灵草同规:给即报品,不能凭空到账)', () => {
+  it('矿石掉落要报进「本战拾获」(与灵草同规:给即报品,不能凭空到账)', async () => {
     const resources = useResourcesStore()
     const before = resources.ore
     // 只放行矿石(rng.chance 判 ORE_DROP_CHANCE=0.35)
@@ -406,7 +406,7 @@ describe('矿石掉落战报', () => {
     const spyI = vi.spyOn(rng, 'int').mockReturnValue(1)
     let lines: string[] = []
     try {
-      lines = afterWin(regionDef('qingyun')!, 1, false).lines
+      lines = (await afterWin(regionDef('qingyun')!, 1, false)).lines
     } finally {
       spyC.mockRestore()
       spyI.mockRestore()

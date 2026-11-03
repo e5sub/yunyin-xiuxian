@@ -54,7 +54,7 @@ vi.mock('./combat', async importOriginal => {
   }
 })
 
-beforeEach(() => {
+beforeEach(async () => {
   setActivePinia(createPinia())
 })
 
@@ -65,7 +65,7 @@ function ready(major = 3): void {
 }
 
 describe('秘境 · 进得去', () => {
-  it('元婴(≥3)起有秘境可探,金丹之前没有', () => {
+  it('元婴(≥3)起有秘境可探,金丹之前没有', async () => {
     const player = usePlayerStore()
     player.major = 2
     expect(realmUnlock()).toBe(false)
@@ -75,7 +75,7 @@ describe('秘境 · 进得去', () => {
     expect(availableRealms().length).toBeGreaterThanOrEqual(2)
   })
 
-  it('进入要付灵石;付不出则拒绝且不落状态', () => {
+  it('进入要付灵石;付不出则拒绝且不落状态', async () => {
     const resources = useResourcesStore()
     usePlayerStore().major = 3
     const def = SECRET_REALMS[0]!
@@ -89,7 +89,7 @@ describe('秘境 · 进得去', () => {
     expect(resources.spiritStone.m).toBeLessThan(before)
   })
 
-  it('灵石付不出:缺口只报尚差多少,卡面与服务拒因同源', () => {
+  it('灵石付不出:缺口只报尚差多少,卡面与服务拒因同源', async () => {
     const resources = useResourcesStore()
     usePlayerStore().major = 3
     const def = SECRET_REALMS[0]!
@@ -107,7 +107,7 @@ describe('秘境 · 进得去', () => {
     expect(currentRealm()).toBeNull()
   })
 
-  it('灵石只差一部分:报实际差额,不是总价', () => {
+  it('灵石只差一部分:报实际差额,不是总价', async () => {
     const resources = useResourcesStore()
     usePlayerStore().major = 3
     const def = SECRET_REALMS[0]!
@@ -119,7 +119,7 @@ describe('秘境 · 进得去', () => {
     expect(short?.stone).not.toEqual(cost.stone)
   })
 
-  it('秘境是一次性的:已在其中不许再进;门槛不够的进不去', () => {
+  it('秘境是一次性的:已在其中不许再进;门槛不够的进不去', async () => {
     ready(3)
     expect(enterSecretRealm('sr_kurong').ok).toBe(true)
     expect(enterSecretRealm('sr_kurong').ok).toBe(false)
@@ -128,7 +128,7 @@ describe('秘境 · 进得去', () => {
     expect(enterSecretRealm('nope').ok).toBe(false)
   })
 
-  it('秘境与历练互斥:历练途中不许入秘境,秘境之中不许开历练', () => {
+  it('秘境与历练互斥:历练途中不许入秘境,秘境之中不许开历练', async () => {
     ready(3)
     const adventure = useAdventureStore()
     // 先证清场状态能开场,排除 qingyun 解锁链失败的干扰
@@ -142,7 +142,7 @@ describe('秘境 · 进得去', () => {
     expect(enterSecretRealm('sr_kurong').ok, '历练途中不许入秘境').toBe(false)
   })
 
-  it('远征在途:秘境入口与核心拒绝同源,界面判据也认出同一原因', () => {
+  it('远征在途:秘境入口与核心拒绝同源,界面判据也认出同一原因', async () => {
     ready(3)
     const endgame = useEndgameStore()
     endgame.worldRun = {
@@ -162,7 +162,7 @@ describe('秘境 · 进得去', () => {
   })
 
   /** 故障注入:把 busy.reason 换回手抄字面量 → 本条红。 */
-  it('秘境入口拒因取自 endgameBusy 本体,核心与界面说同一句话', () => {
+  it('秘境入口拒因取自 endgameBusy 本体,核心与界面说同一句话', async () => {
     ready(3)
     const endgame = useEndgameStore()
     endgame.worldRun = { worldId: 'chiyan', pactId: null, gateId: null, layer: 0, bonus: 0, rows: [], carriedHpPct: 1, totalRounds: 0, winStacks: 0 }
@@ -172,7 +172,7 @@ describe('秘境 · 进得去', () => {
     expect(useUiStore().toasts.at(-1)?.text, 'toast 也是同一句,不再各写一份').toBe(expected.reason)
   })
 
-  it('入口代价按地界层级折算 —— 高境界不是只贵一点', () => {
+  it('入口代价按地界层级折算 —— 高境界不是只贵一点', async () => {
     const def = SECRET_REALMS[0]!
     expect(tierOfMajor(3)).toBeGreaterThan(0)
     expect((entryCostOf(def, 9) as { stone: { m: number } }).stone.m).toBeGreaterThan((entryCostOf(def, 3) as { stone: { m: number } }).stone.m)
@@ -180,7 +180,7 @@ describe('秘境 · 进得去', () => {
 })
 
 describe('秘境 · 规则是真的', () => {
-  it('规则池里每条都能落到既有的战斗规则上(不是纯文本)', () => {
+  it('规则池里每条都能落到既有的战斗规则上(不是纯文本)', async () => {
     expect(SECRET_RULES.length).toBeGreaterThanOrEqual(5)
     for (const r of SECRET_RULES) {
       expect(r.text.length).toBeGreaterThan(1)
@@ -188,7 +188,7 @@ describe('秘境 · 规则是真的', () => {
     }
   })
 
-  it('进入时掷 1~2 条随机规则,不重复', () => {
+  it('进入时掷 1~2 条随机规则,不重复', async () => {
     for (let i = 0; i < 20; i += 1) {
       setActivePinia(createPinia())
       ready(3)
@@ -201,7 +201,7 @@ describe('秘境 · 规则是真的', () => {
     }
   })
 
-  it('本境规则与随机规则都并进战斗(逐条隔离验证,不吃随机掷的运气)', () => {
+  it('本境规则与随机规则都并进战斗(逐条隔离验证,不吃随机掷的运气)', async () => {
     // 固定状态逐条验;用真实掷骰会时红时绿
     const base = {
       realmId: 'sr_kurong',
@@ -227,13 +227,13 @@ describe('秘境 · 规则是真的', () => {
 })
 
 describe('秘境 · 推得动、出得来', () => {
-  it('一直打到结束:状态必被清空,且结算次数有限', () => {
+  it('一直打到结束:状态必被清空,且结算次数有限', async () => {
     ready(3)
     enterSecretRealm('sr_kurong')
     let guard = 0
     let cleared = false
     while (currentRealm() && guard < 20) {
-      const r = fightSecretLayer()
+      const r = await fightSecretLayer()
       expect(r).not.toBeNull()
       if (r!.cleared) cleared = true
       guard += 1
@@ -243,11 +243,11 @@ describe('秘境 · 推得动、出得来', () => {
     console.log(`\n秘境 ${cleared ? '通关' : '被逐出'} · 共 ${guard} 次结算`)
   })
 
-  it('层间按本境规则变法:枯荣古境每层之末损血', () => {
+  it('层间按本境规则变法:枯荣古境每层之末损血', async () => {
     ready(3)
     enterSecretRealm('sr_kurong')
     expect(currentRealm()!.carriedHpPct).toBe(1)
-    fightSecretLayer()
+    await fightSecretLayer()
     const st = currentRealm()
     if (st) {
       expect(st.carriedHpPct).toBeLessThan(1)
@@ -255,27 +255,27 @@ describe('秘境 · 推得动、出得来', () => {
     }
   })
 
-  it('败满两次被逐出,状态清空', () => {
+  it('败满两次被逐出,状态清空', async () => {
     ready(3)
     enterSecretRealm('sr_kurong')
     const st = currentRealm()!
     usePlayerStore().setSecretRealm({ ...st, carriedHpPct: 0.05 })
     let results = 0
     while (currentRealm() && results < 10) {
-      fightSecretLayer()
+      await fightSecretLayer()
       results += 1
     }
     expect(currentRealm()).toBeNull()
     expect(SECRET_MAX_LOSSES).toBe(2)
   })
 
-  it('被逐出那句从 SECRET_MAX_LOSSES 现算,不再手写「两场」', () => {
+  it('被逐出那句从 SECRET_MAX_LOSSES 现算,不再手写「两场」', async () => {
     const src = readFileSync(resolve(__dirname, 'secretRealm.ts'), 'utf8')
     expect(src).toContain('cnNumber(SECRET_MAX_LOSSES)')
     expect(src, '手写的「连败两场」会在门槛改成三场时当场撒谎').not.toContain('连败两场')
   })
 
-  it('秘境卡片在开打前摆出已败场数与剩余容错,并读同一份门槛', () => {
+  it('秘境卡片在开打前摆出已败场数与剩余容错,并读同一份门槛', async () => {
     const card = readFileSync(
       resolve(__dirname, '../components/adventure/SecretRealmCard.vue'),
       'utf8'
@@ -285,14 +285,14 @@ describe('秘境 · 推得动、出得来', () => {
     expect(card).not.toMatch(/再败\s*[0-9]+\s*场/)
   })
 
-  it('放弃即出,状态清空(已得战利不退)', () => {
+  it('放弃即出,状态清空(已得战利不退)', async () => {
     ready(3)
     enterSecretRealm('sr_kurong')
     abandonRealm()
     expect(currentRealm()).toBeNull()
   })
 
-  it('坏档修形:层数/气血/规则越界都夹回来,认不得的秘境直接作废', () => {
+  it('坏档修形:层数/气血/规则越界都夹回来,认不得的秘境直接作废', async () => {
     const player = usePlayerStore()
     // 层数 99 会一路「通关」;气血 5 让开局算成 NaN
     player.setSecretRealm({
@@ -323,7 +323,7 @@ describe('秘境 · 推得动、出得来', () => {
     expect(currentRealm()).toBeNull()
   })
 
-  it('秘境有非 spec 的入口 —— 骨架之所以叫骨架,就是因为没人接它', () => {
+  it('秘境有非 spec 的入口 —— 骨架之所以叫骨架,就是因为没人接它', async () => {
     const files = [resolve(__dirname, '../components/adventure/SecretRealmCard.vue'), resolve(__dirname, '../views/AdventureView.vue')]
     const corpus = files
       .map(f => readFileSync(f, 'utf8'))
@@ -332,7 +332,7 @@ describe('秘境 · 推得动、出得来', () => {
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/.*$/gm, '')
     expect(corpus).toContain('enterSecretRealm(')
-    expect(corpus).toContain('fightSecretLayer(')
+    expect(corpus).toContain('await fightSecretLayer(')
     expect(corpus).toContain('abandonRealm(')
     // 战报级别跟胜负走:胜 success,败 warn;同写 info 则配色与提示音分不出胜负
     expect(corpus, '秘境战报的胜级须是 success').toContain("r.win ? 'success' : 'warn'")
@@ -342,7 +342,7 @@ describe('秘境 · 推得动、出得来', () => {
    * 两张卡(历练页凡境册 / 试炼域天界册)共用全局单份、不分册的 `currentRealm()`,不筛就会串门。
    * 故障注入:把 state 改回 `computed(() => currentRealm())` → 本条红。
    */
-  it('秘境卡的「在境中」只认本册,身在另一册时就地说明', () => {
+  it('秘境卡的「在境中」只认本册,身在另一册时就地说明', async () => {
     const src = readFileSync(resolve(__dirname, '../components/adventure/SecretRealmCard.vue'), 'utf8')
       .replace(/<!--[\s\S]*?-->/g, '')
       .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -354,7 +354,7 @@ describe('秘境 · 推得动、出得来', () => {
 })
 
 describe('秘境 · 两阶(凡境灵石 / 天界道源)', () => {
-  it('凡境册真仙前就有,天界册要真仙(≥9)', () => {
+  it('凡境册真仙前就有,天界册要真仙(≥9)', async () => {
     const player = usePlayerStore()
     player.major = 3
     expect(realmUnlock('mortal')).toBe(true)
@@ -367,7 +367,7 @@ describe('秘境 · 两阶(凡境灵石 / 天界道源)', () => {
     expect(availableRealms('celestial').every(r => r.gate === 'celestial')).toBe(true)
   })
 
-  it('天界秘境付的是道源:够则扣,不够则拒绝', () => {
+  it('天界秘境付的是道源:够则扣,不够则拒绝', async () => {
     const player = usePlayerStore()
     const endgame = useEndgameStore()
     player.major = 9
@@ -382,7 +382,7 @@ describe('秘境 · 两阶(凡境灵石 / 天界道源)', () => {
     expect(endgame.daoSource).toBe(before - cost.daoSource)
   })
 
-  it('道源付不出:缺口只报尚差多少,付得起后判据归空', () => {
+  it('道源付不出:缺口只报尚差多少,付得起后判据归空', async () => {
     const player = usePlayerStore()
     const endgame = useEndgameStore()
     player.major = 9
@@ -398,7 +398,7 @@ describe('秘境 · 两阶(凡境灵石 / 天界道源)', () => {
     expect(entryShortfallOf(def, 9)).toBeNull()
   })
 
-  it('付得起时缺口判据为空,入口按钮按它启用', () => {
+  it('付得起时缺口判据为空,入口按钮按它启用', async () => {
     const player = usePlayerStore()
     player.major = 3
     useResourcesStore().spiritStone = gn(1_000_000_000)
@@ -409,7 +409,7 @@ describe('秘境 · 两阶(凡境灵石 / 天界道源)', () => {
     expect(card, '付不起时就地列差').toContain('entryShort(r)?.reason')
   })
 
-  it('判据通过后扣款瞬间失败:仍点名实际缺口,不退回「灵石或道源」', () => {
+  it('判据通过后扣款瞬间失败:仍点名实际缺口,不退回「灵石或道源」', async () => {
     const player = usePlayerStore()
     const resources = useResourcesStore()
     player.major = 3
@@ -425,7 +425,7 @@ describe('秘境 · 两阶(凡境灵石 / 天界道源)', () => {
     expect(currentRealm()).toBeNull()
   })
 
-  it('代价文案与货币一致(界面上不手写)', () => {
+  it('代价文案与货币一致(界面上不手写)', async () => {
     const mortal = SECRET_REALMS.find(r => r.gate === 'mortal')!
     const celestial = SECRET_REALMS.find(r => r.gate === 'celestial')!
     expect(entryCostText(mortal, 9)).toContain('灵石')
@@ -437,7 +437,7 @@ describe('秘境 · 敌人按玩家缩放(与远征/试炼同法)', () => {
   /** 「玩家相对」口径:同一裸装玩家,真仙与神人两处秘境的敌我比值同量级 */
   const state = { realmId: 'sr_xingchen', enteredAt: 0, layer: 1, wins: 0, losses: 0, spoils: [], rules: [], carriedHpPct: 1, finished: false }
 
-  it('敌我比值由敌人倍率决定,不随境界陡增', () => {
+  it('敌我比值由敌人倍率决定,不随境界陡增', async () => {
     const player = usePlayerStore()
     const ratioAt = (major: number): number => {
       player.major = major
@@ -451,7 +451,7 @@ describe('秘境 · 敌人按玩家缩放(与远征/试炼同法)', () => {
     expect(Math.max(r9, r14) / Math.min(r9, r14), '两界敌我比值量级不同 —— 敌人还在按层级绝对值生成').toBeLessThan(3)
   })
 
-  it('敌人倍率有上界:裸装玩家吃力是设计,但不该出现「绝对数值墙」', () => {
+  it('敌人倍率有上界:裸装玩家吃力是设计,但不该出现「绝对数值墙」', async () => {
     // 裸装吃亏是设计;钉上限:敌攻不超过玩家 5 倍,结算文案有效
     const player = usePlayerStore()
     for (const major of [3, 9, 14, 20]) {
@@ -466,7 +466,7 @@ describe('秘境 · 敌人按玩家缩放(与远征/试炼同法)', () => {
     ready(9)
     useEndgameStore().addDaoSource(100) // 天界秘境付道源
     expect(enterSecretRealm('sr_xingchen').ok).toBe(true)
-    const r = fightSecretLayer()
+    const r = await fightSecretLayer()
     expect(r).not.toBeNull()
     expect(r!.lines.length).toBeGreaterThan(0)
     for (const line of r!.lines) expect(line).not.toContain('NaN')
@@ -474,13 +474,13 @@ describe('秘境 · 敌人按玩家缩放(与远征/试炼同法)', () => {
 })
 
 describe('秘境 · 战利倍率算得出对', () => {
-  it('同一层级同一层数下,灵石战利与本境倍率成正比', () => {
+  it('同一层级同一层数下,灵石战利与本境倍率成正比', async () => {
     const a = secretLayerReward(10, 1, 1.2)
     const b = secretLayerReward(10, 1, 1.5)
     expect(toNum(b.stone) / toNum(a.stone)).toBeCloseTo(1.5 / 1.2, 6)
   })
 
-  it('层数越深灵石越厚,材料只随层数(不吃倍率,免得几条产线被拉平)', () => {
+  it('层数越深灵石越厚,材料只随层数(不吃倍率,免得几条产线被拉平)', async () => {
     const l1 = secretLayerReward(10, 1, 1.4)
     const l3 = secretLayerReward(10, 3, 1.4)
     expect(toNum(l3.stone)).toBeGreaterThan(toNum(l1.stone))
@@ -489,7 +489,7 @@ describe('秘境 · 战利倍率算得出对', () => {
     expect(secretLayerReward(10, 2, 9).material).toBe(secretLayerReward(10, 2, 0.1).material)
   })
 
-  it('层级单调:同层同倍率下,高一层的战利必然更厚', () => {
+  it('层级单调:同层同倍率下,高一层的战利必然更厚', async () => {
     // 只钉单调性,不钉「高一层的第一层 > 低一层的第三层」:
     // 实测 11 层×1.2 倍(1.59万)< 10 层×1.5 倍第 3 层(1.74万),深层厚赏压过是设计允许
     for (let tier = 3; tier < 30; tier += 1) {
@@ -508,7 +508,7 @@ describe('秘境 · 层胜掉灵草计照面', () => {
     return MATERIALS.filter(m => m.bucket === bucket).reduce((n, m) => n + lore.seenOf(m.id), 0)
   }
 
-  it('层胜:灵草照旧入账,同时计照面', () => {
+  it('层胜:灵草照旧入账,同时计照面', async () => {
     ready(3)
     expect(enterSecretRealm('sr_kurong').ok).toBe(true)
     const resources = useResourcesStore()
@@ -523,13 +523,13 @@ describe('秘境 · 层胜掉灵草计照面', () => {
         items.length > 0 && items.every(x => MATERIALS.includes(x as MaterialDef)) ? items[items.length - 1]! : weighted(items, weightOf)
       )
     forceWin.value = true
-    let r: ReturnType<typeof fightSecretLayer> = null
+    let r: Awaited<ReturnType<typeof fightSecretLayer>> = null
     let top: MaterialDef | null = null
     let low: MaterialDef | null = null
     try {
       top = rollFieldMaterial(tier, 'herb')
       low = rollFieldMaterial(1, 'herb')
-      r = fightSecretLayer()
+      r = await fightSecretLayer()
     } finally {
       forceWin.value = false
       spy.mockRestore()
@@ -566,14 +566,14 @@ describe('秘境 · 反击规则的文案与旧档', () => {
     finished: false
   }
 
-  it('文案与实装一致:写的是反击,不是追击', () => {
+  it('文案与实装一致:写的是反击,不是追击', async () => {
     const rule = SECRET_RULES.find(r => r.rules.enemyExtraMods?.counterRate !== undefined)!
     expect(rule.text).toBe(NEW)
     expect(rule.rules.enemyExtraMods!.counterRate).toBeCloseTo(0.15)
     expect(SECRET_RULES.some(r => r.text.includes('追击'))).toBe(false)
   })
 
-  it('旧文案只作别名:不与现行文案重名,且只认一条规则', () => {
+  it('旧文案只作别名:不与现行文案重名,且只认一条规则', async () => {
     const current = new Set(SECRET_RULES.map(r => r.text))
     for (const r of SECRET_RULES) {
       for (const old of r.legacyTexts ?? []) {
@@ -586,7 +586,7 @@ describe('秘境 · 反击规则的文案与旧档', () => {
     expect(secretRuleByText('不存在的规则')).toBeUndefined()
   })
 
-  it('旧档存着旧文案:读档后显示新文案,反击概率照样并入敌方', () => {
+  it('旧档存着旧文案:读档后显示新文案,反击概率照样并入敌方', async () => {
     const player = usePlayerStore()
     player.setSecretRealm({ ...base, rules: [OLD, '治疗减半'] })
     player.sanitize()
@@ -598,11 +598,11 @@ describe('秘境 · 反击规则的文案与旧档', () => {
     expect(rules.healMult).toBe(1)
   })
 
-  it('未经读档清洗的旧文案,反查照样认得', () => {
+  it('未经读档清洗的旧文案,反查照样认得', async () => {
     expect(secretFightRules({ ...base, rules: [OLD] }).enemyExtraMods?.counterRate).toBeCloseTo(0.15)
   })
 
-  it('新旧文案同时在档里只算一次,不叠成 +30%', () => {
+  it('新旧文案同时在档里只算一次,不叠成 +30%', async () => {
     const player = usePlayerStore()
     player.setSecretRealm({ ...base, rules: [OLD, NEW] })
     player.sanitize()
@@ -610,7 +610,7 @@ describe('秘境 · 反击规则的文案与旧档', () => {
     expect(secretFightRules(currentRealm()!).enemyExtraMods?.counterRate).toBeCloseTo(0.15)
   })
 
-  it('新文案能被掷到,落档即是新文案,并入战斗', () => {
+  it('新文案能被掷到,落档即是新文案,并入战斗', async () => {
     ready(3)
     const idx = SECRET_RULES.findIndex(r => r.text === NEW)
     expect(idx).toBeGreaterThanOrEqual(0)
@@ -633,7 +633,7 @@ describe('秘境 · 反击规则的文案与旧档', () => {
  * 故障注入:把 secretRuleTexts 改回只返回 state.rules,本条红。
  */
 describe('秘境 · 自带规则也要报给玩家', () => {
-  it('归墟之眼:三条自带规则与随机规则一并出现在文案里', () => {
+  it('归墟之眼:三条自带规则与随机规则一并出现在文案里', async () => {
     const st = {
       realmId: 'sr_guixu',
       enteredAt: 1,
@@ -654,7 +654,7 @@ describe('秘境 · 自带规则也要报给玩家', () => {
     for (const rolled of st.rules) expect(texts, `随机规则「${rolled}」被吞了`).toContain(rolled)
   })
 
-  it('自带规则文案随 rules 走:与八门/远征求同一把尺(gateRuleSummary),不另写措辞', () => {
+  it('自带规则文案随 rules 走:与八门/远征求同一把尺(gateRuleSummary),不另写措辞', async () => {
     for (const def of SECRET_REALMS) {
       const text = gateRuleSummary(def.rules)
       if (Object.keys(def.rules).length > 0) {
@@ -676,17 +676,17 @@ describe('秘境 · 自带规则也要报给玩家', () => {
  * 就会超过 1,下一场以 >100% 气血开局。抽成 carriedHpAfter 后两分支共用同一条钳制。
  */
 describe('秘境 · 携带气血上下限对称', () => {
-  it('满血 + 层间回血也不超过 1', () => {
+  it('满血 + 层间回血也不超过 1', async () => {
     expect(carriedHpAfter(1, 0.5), '满血再回血不能变成 150%').toBe(1)
     expect(carriedHpAfter(0.8, 0.5)).toBe(1)
   })
 
-  it('血量低时仍有下限,不会掉到 0', () => {
+  it('血量低时仍有下限,不会掉到 0', async () => {
     expect(carriedHpAfter(0, -0.1)).toBe(0.05)
     expect(carriedHpAfter(0.01, 0)).toBe(0.05)
   })
 
-  it('区间内原样返回', () => {
+  it('区间内原样返回', async () => {
     expect(carriedHpAfter(0.4, 0.3)).toBeCloseTo(0.7)
     expect(carriedHpAfter(0.4, -0.1)).toBeCloseTo(0.3)
   })

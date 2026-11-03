@@ -30,7 +30,7 @@ describe('坊市 · 货架生成', () => {
   })
 
   it('一满架六格,每格有货、有价、未售,索引 0 起不重样', () => {
-    const stock = generateMarketStock(3, rng(), 1700000000000)
+    const stock = generateMarketStock(3, 1700000000000)
     expect(stock.goods).toHaveLength(MARKET_SLOTS)
     for (const [i, s] of stock.goods.entries()) {
       expect(s.idx).toBe(i)
@@ -42,7 +42,7 @@ describe('坊市 · 货架生成', () => {
   it('三个门类都可达 —— 架多了,买丹 / 续料 / 淘兵器都得遇上', () => {
     const kinds = new Set<string>()
     for (let s = 0; s < 60; s += 1) {
-      for (const slot of generateMarketStock(6, rng(s + 1), 1).goods) kinds.add(slot.kind)
+      for (const slot of generateMarketStock(6, 1_700_000_000_000 + s * 60_000).goods) kinds.add(slot.kind)
     }
     expect([...kinds].sort()).toEqual(['equipment', 'material', 'pill'])
   })
@@ -58,7 +58,7 @@ describe('坊市 · 货架生成', () => {
       let sum = 0
       let n = 0
       for (let s = 0; s < 120; s += 1) {
-        for (const slot of generateMarketStock(major, rng(major * 1000 + s), 1).goods) {
+        for (const slot of generateMarketStock(major, 1_700_000_000_000 + s * 60_000).goods) {
           if (slot.kind !== 'equipment') continue
           sum += (slot as MarketEquipSlot).minQualityRank
           n += 1
@@ -87,7 +87,7 @@ describe('坊市 · 货架生成', () => {
   it('装备货按市场标尺(层级曲线)生成 —— 不拿 major 大阶按市场层级标价', () => {
     for (let major = 3; major <= 20; major += 5) {
       for (let s = 0; s < 10; s += 1) {
-        for (const slot of generateMarketStock(major, rng(major + s), 1).goods) {
+        for (const slot of generateMarketStock(major, 1_700_000_000_000 + s * 60_000).goods) {
           if (slot.kind !== 'equipment') continue
           // 定价骑在 1.9^市场层级 上;货按 major 层级生成则买来的比掉落次一层
           expect((slot as MarketEquipSlot).tier, `major ${major} 的装备货应为市场层级`).toBe(marketTier(major))
@@ -99,7 +99,7 @@ describe('坊市 · 货架生成', () => {
   it('丹药价 = 炼制石耗 × 倍率,绝不比自炼便宜(无套利,全境界含顶层)', () => {
     // 须含顶层:基准是 layer 曲线上的 pillStoneCost;写死 stoneBase×2.5 时道祖丹低标约 4 千万倍
     for (const major of [0, 3, MAX_MAJOR]) {
-      const stock = generateMarketStock(major, rng(major + 0x222), 1)
+      const stock = generateMarketStock(major, 1_700_000_000_000 + major * 60_000)
       for (const s of stock.goods) {
         if (s.kind !== 'pill') continue
         const def = pillDef(s.pillId)!
@@ -111,11 +111,11 @@ describe('坊市 · 货架生成', () => {
   })
 
   it('材料一摞固定单位数;零境也有丹可售,任何境界都开得出满架', () => {
-    for (const s of generateMarketStock(3, rng(), 1).goods) {
+    for (const s of generateMarketStock(3, 1).goods) {
       if (s.kind === 'material') expect(s.count).toBe(MARKET_MAT_COUNT)
     }
     expect(salePills(0).length, '零境也该有拿得到的丹卖').toBeGreaterThan(0)
-    expect(generateMarketStock(0, rng(9), 1).goods).toHaveLength(MARKET_SLOTS)
+    expect(generateMarketStock(0, 1).goods).toHaveLength(MARKET_SLOTS)
   })
 
   it('装备按货架时刻确定性再生 —— 预览与购买同源同一物', () => {
@@ -134,7 +134,7 @@ describe('坊市 · 购入 vs 悬赏贡器 无套利', () => {
   it('同一件装备的坊价必高于贡器所得 —— 买回来交悬赏亏本,不成环', () => {
     // 坊价按「预览同一件」的真实品质档标价,不按品质下限
     for (let s = 0; s < 60; s += 1) {
-      const stock = generateMarketStock(6, rng(s + 1), 1)
+      const stock = generateMarketStock(6, 1_700_000_000_000 + s * 60_000)
       for (const slot of stock.goods) {
         if (slot.kind !== 'equipment') continue
         const inst = marketEquipInstance(slot, stock.stockedAt)

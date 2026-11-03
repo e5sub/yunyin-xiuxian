@@ -6,8 +6,9 @@ import { regionDef } from '@/data/regions'
 import { herbGradeOfMajor, HERB_GRADE_SHORT } from '@/data/herbGrades'
 import type { HerbGrade } from '@/data/herbGrades'
 import { stoneByTier } from '@/core/formulas'
-import { generateEquipment } from '@/core/equipGen'
 import { acquireEquipment } from '@/core/loot'
+import { mintDrops } from '@/core/lootClaim'
+import type { LootClaimCtx } from '@/core/lootGrant'
 import { rng, type RandomService } from '@/utils/random'
 import { gnZero, add, isZero, mulN, gn } from '@/utils/gnum'
 import { formatGN } from '@/utils/format'
@@ -50,21 +51,14 @@ const SUPPRESS_YIELD_PER_HOUR = {
 export const SUPPRESS_EXP_PER_REGION = 0.08
 export const SUPPRESS_EXP_MAX = 0.4
 
-/** 老镇压区装备运气:每镇满一天 +0.1,封顶 +0.8 */
-export const SUPPRESS_EQUIP_LUCK_CAP = 0.8
-export const SUPPRESS_EQUIP_LUCK_PER_DAY = 0.1
+// 装备运气公式的真身收在 suppressLuck(零依赖单点):lootGrant 打 Node bundle 时只取纯公式,
+// 不经由本模块拖进 loot → cloud 的浏览器链路。此处再导出保住旧引用面。
+export { SUPPRESS_EQUIP_LUCK_CAP, SUPPRESS_EQUIP_LUCK_PER_DAY, suppressionEquipmentLuck } from './suppressLuck'
 
 /** 镇守道韵倍率:乘在挂机曲线(cultPerSec × 时长)上,与境界无关 */
 export function suppressionExpRate(count: number): number {
   if (!Number.isFinite(count) || count <= 0) return 0
   return Math.min(count * SUPPRESS_EXP_PER_REGION, SUPPRESS_EXP_MAX)
-}
-
-/** 老镇压区的装备运气;坏档(非有限、未来时刻)夹到 0,防负运气或 NaN 进品质权重 */
-export function suppressionEquipmentLuck(sinceMs: number, nowMs: number): number {
-  const days = Math.floor(Math.max(0, nowMs - sinceMs) / 86_400_000)
-  if (!Number.isFinite(days)) return 0
-  return Math.min(SUPPRESS_EQUIP_LUCK_CAP, days * SUPPRESS_EQUIP_LUCK_PER_DAY)
 }
 
 /**
@@ -232,11 +226,28 @@ export interface SuppressedYield {
  * @param worldAt 本段结束时世界推进到的时刻(毫秒),默认此刻;妖气复聚按它判,不受离线上限截断
  * 在线路径两个时刻相同(`gameNow()`)
  */
-export function settleSuppressedRegions(
+export async function settleSuppressedRegions(
   dt: number,
   service: RandomService = rng,
   worldAt: number = Date.now()
-): SuppressedYield | null {
+): Promise<SuppressedYield | null> {
+  // 重入闸:engine 每 tick 都会调,签发在途时跳过本次(时长记在下一段,不丢收益)
+  if (settlingSuppress) return null
+  settlingSuppress = true
+  try {
+    return await settleSuppressedRegionsInner(dt, service, worldAt)
+  } finally {
+    settlingSuppress = false
+  }
+}
+
+let settlingSuppress = false
+
+async function settleSuppressedRegionsInner(
+  dt: number,
+  service: RandomService = rng,
+  worldAt: number = Date.now()
+): Promise<SuppressedYield | null> {
   const player = usePlayerStore()
   const resources = useResourcesStore()
 
@@ -249,7 +260,9 @@ export function settleSuppressedRegions(
     revived: [],
     loosened: []
   }
- const now = Date.now()
+  /** 各镇压区的装备签发上下文,尾部并账一次要齐 */
+  const suppressEquipCtxs: LootClaimCtx[] = []
+  const now = Date.now()
 
   // 本段起点(由终点倒推),复聚边界用
   const from = worldAt - dt * 1000
@@ -329,26 +342,32 @@ export function settleSuppressedRegions(
       }
     }
 
-    // 装备按期望件数结算(整数件 + 零头概率);单次概率判定在 hours>2.5 时恒真,长时离线会少掉
+    // 装备按期望件数结算(整数件 + 零头概率);单次概率判定在 hours>2.5 时恒真,长时离线会少掉。
+    // 数量账本留在客户端(可注入随机源,spec 钉确定性);签发侧按 SUPPRESS_COUNT_CAP 钳再生成
     const equipChance = SUPPRESS_YIELD_PER_HOUR.equipmentChance * hours
     // 零头走同一可注入随机源,不裸调 Math.random:rng 构造时已抓走原函数,测试 mock 不到
     const equipCount = Math.floor(equipChance) + (service.chance(equipChance - Math.floor(equipChance)) ? 1 : 0)
-    const since = player.suppressedSince[regionId]
-    const tenureLuck = since === undefined ? 0 : suppressionEquipmentLuck(since, now)
-    for (let i = 0; i < equipCount; i += 1) {
-      // 不传品质下限:传了(哪怕是 0)品质窗口就失效,低阶高品更易出
-      const equip = generateEquipment(region.tier, service, { luck: tenureLuck })
-      const res = acquireEquipment(equip, { quiet: true }) // 免刷屏
-      // 入包与否都列;未入包标注回收
-      total.equipment.push({
-        name: equipmentTemplate(equip.templateId)?.name ?? '未知',
-        quality: equip.quality,
-        recycled: !res.bagged,
-        uid: res.bagged ? equip.uid : undefined
+    if (equipCount > 0) {
+      suppressEquipCtxs.push({
+        src: 'suppress',
+        tier: region.tier,
+        count: equipCount,
+        since: player.suppressedSince[regionId] ?? 0
       })
-      // 腾位时旧件化尘也要记,只看 bagged 会漏报
-      total.recycledDust += res.dust
     }
+  }
+
+  // 装备签发:上下文并账一次要齐;逐件入包(免刷屏),入包与否都列,腾位化尘也要记
+  const granted = await mintDrops(suppressEquipCtxs)
+  for (const equip of granted) {
+    const res = acquireEquipment(equip, { quiet: true })
+    total.equipment.push({
+      name: equipmentTemplate(equip.templateId)?.name ?? '未知',
+      quality: equip.quality,
+      recycled: !res.bagged,
+      uid: res.bagged ? equip.uid : undefined
+    })
+    total.recycledDust += res.dust
   }
 
   // 复聚须在收益结清之后:先跑会在开头松开镇压,整段收益归零

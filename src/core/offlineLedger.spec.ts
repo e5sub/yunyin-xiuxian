@@ -6,19 +6,8 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
-/** 记录每次入账结果,供腾位用例对账(透传,不改行为) */
-const acquired = vi.hoisted(() => [] as { bagged: boolean; evicted: boolean; dust: number }[])
-vi.mock('./loot', async orig => {
-  const mod = await orig<typeof import('./loot')>()
-  return {
-    ...mod,
-    acquireEquipment: (...args: Parameters<typeof mod.acquireEquipment>) => {
-      const res = mod.acquireEquipment(...args)
-      acquired.push({ bagged: res.bagged, evicted: res.evicted, dust: res.dust })
-      return res
-    }
-  }
-})
+/** 记录每次入账结果,供腾位用例对账:用真实 onAcquire 钩子(与 offline.ts 同一实例),不 mock —— 账目必然同源 */
+const acquired = [] as { bagged: boolean; evicted: boolean; dust: number }[]
 
 /** 离线采样胜率:宿敌用例钉 0 才能整批连败;null 时透传真实采样 */
 const forcedWinRate = vi.hoisted(() => ({ value: null as number | null }))
@@ -32,6 +21,7 @@ vi.mock('./combat', async orig => {
 
 import type { OfflineSummary } from '@/types'
 import { settleOffline } from './offline'
+import { onAcquire } from './loot'
 import { exploreBattleGapSec, exploreEventChance } from './exploration'
 import { placeContent } from './mortalWorldService'
 import { modOf } from './statsCalc'
@@ -92,12 +82,12 @@ function setupBusySave(): void {
 }
 
 describe('离线总结 · 变动了多少就报多少', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
   })
 
   /** 故障注入:删掉 settleOffline 里的 collectFinished 调用,本条红 */
-  it('离线期间完工的道童在归来结算时收割并入卷轴,不留到转世被清空', () => {
+  it('离线期间完工的道童在归来结算时收割并入卷轴,不留到转世被清空', async () => {
     const now = Date.now()
     const game = useGameStore()
     const player = usePlayerStore()
@@ -121,7 +111,7 @@ describe('离线总结 · 变动了多少就报多少', () => {
       ]
     })
 
-    const summary = settleOffline(now)!
+    const summary = (await settleOffline(now))!
 
     expect(apprentice.apprentices[0]!.task, '归来结算后任务应已收割').toBeNull()
     expect(resources.herbOf(grade) - before, '道童带回的灵草应已入账').toBe(expected)
@@ -129,9 +119,9 @@ describe('离线总结 · 变动了多少就报多少', () => {
     expect(apprentice.collectFinished(now, player.major), '同一趟不该被二次收割').toEqual([])
   })
 
-  it('装备清单如实标注可看性:入包件带真实 uid,已化尘的不带', () => {
+  it('装备清单如实标注可看性:入包件带真实 uid,已化尘的不带', async () => {
     setupBusySave()
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
     const inventory = useInventoryStore()
     const bagged = summary.equipment.filter(e => !e.recycled)
     const recycled = summary.equipment.filter(e => e.recycled)
@@ -146,14 +136,14 @@ describe('离线总结 · 变动了多少就报多少', () => {
     }
   })
 
-  it('行囊已满归来:装不下的件都标回收且不带 uid(让回收断言真有事可断)', () => {
+  it('行囊已满归来:装不下的件都标回收且不带 uid(让回收断言真有事可断)', async () => {
     setupBusySave()
     const inventory = useInventoryStore()
     // 塞满行囊(未锁),无智能收纳时新掉落一律化尘
     for (let i = 0; i < BAG_CAPACITY; i += 1) {
       inventory.items.push({ uid: `bagfull${i}`, templateId: 'b_mabu', quality: 'mortal', tier: 1, level: 0, affixes: [] })
     }
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
     const recycled = summary.equipment.filter(e => e.recycled)
     const bagged = summary.equipment.filter(e => !e.recycled)
     expect(recycled.length, '行囊塞满,新掉落与抑制区产出都应没处放、化作尘').toBeGreaterThan(0)
@@ -168,7 +158,7 @@ describe('离线总结 · 变动了多少就报多少', () => {
    * 腾位入包时 bagged 为真,dust 是被挤掉旧物的尘。
    * 故障注入:offline.ts / suppress.ts 改回 `if (!res.bagged) recycledDust += res.dust`,本条红。
    */
-  it('智能收纳腾位归来:被挤掉的旧件化出的尘与件数都要报', () => {
+  it('智能收纳腾位归来:被挤掉的旧件化出的尘与件数都要报', async () => {
     setupBusySave()
     const settings = useSettingsStore()
     settings.smartKeep = { ...settings.smartKeep, enabled: true, minQuality: 1, keepCoreAffix: false, keepComboPiece: false, keepSetPiece: false, keepPerfectRolls: false }
@@ -177,7 +167,9 @@ describe('离线总结 · 变动了多少就报多少', () => {
     const junk = Array.from({ length: BAG_CAPACITY }, (_, i) => ({ uid: `junk${i}`, templateId: 'b_mabu', quality: 'mortal' as const, tier: 1, level: 0, affixes: [] }))
     inventory.items = junk.map(j => ({ ...j }))
     acquired.length = 0
-    const summary = settleOffline(Date.now())!
+    const stop = onAcquire((_inst, res) => acquired.push({ bagged: res.bagged, evicted: res.evicted, dust: res.dust }))
+    const summary = (await settleOffline(Date.now()))!
+    stop()
     const removed = junk.filter(j => !inventory.findItem(j.uid))
     expect(removed.length, '这一档该有新件把旧物挤出去,否则判据没跑到东西').toBeGreaterThan(0)
     expect(summary.evicted, '腾位化掉的旧件数').toBe(removed.length)
@@ -186,7 +178,7 @@ describe('离线总结 · 变动了多少就报多少', () => {
     expect(summary.recycledDust, '回收化尘报少了:腾位化掉的旧件没算进去').toBe(producedRecycledDust + evictedDust)
   })
 
-  it('60 小时归来:资源差额与摘要逐项对得上,且每项变动都有交代', () => {
+  it('60 小时归来:资源差额与摘要逐项对得上,且每项变动都有交代', async () => {
     setupBusySave()
     const player = usePlayerStore()
     const resources = useResourcesStore()
@@ -201,7 +193,7 @@ describe('离线总结 · 变动了多少就报多少', () => {
       age: player.age
     }
 
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
     expect(summary, '这一档应当结算出离线收益').not.toBeNull()
 
     const delta = {
@@ -240,13 +232,13 @@ describe('离线总结 · 变动了多少就报多少', () => {
     if (delta.qi > 0) expect(summary.notes.some(n => n.includes('寿元流逝')), '寿元流逝该有一句说明').toBe(true)
   })
 
-  it('封顶也不改变「报的就是实际差额」:洞府 0 级时灵草只按 8 小时结', () => {
+  it('封顶也不改变「报的就是实际差额」:洞府 0 级时灵草只按 8 小时结', async () => {
     setupBusySave()
     const dongfu = useDongfuStore()
     dongfu.setLevel('mansion', 0)
     const resources = useResourcesStore()
     const herbBefore = resources.herb
-    const summary = settleOffline(Date.now())!
+    const summary = (await settleOffline(Date.now()))!
     expect(summary.capped, '洞府 0 级时 60h 缺席应当被封顶').toBe(true)
     expect(summary.herb, '摘要报的灵草数 = 实际进账数').toBe(resources.herb - herbBefore)
     expect(summary.qi, '摘要报的灵气数 = 实际进账数').toBeCloseTo(resources.qi, -1)
@@ -258,7 +250,7 @@ describe('离线总结 · 变动了多少就报多少', () => {
  * 故障注入:offline.ts 宿敌行改回 `败北${NEMESIS_THRESHOLD}次`,两条「5 次」红。
  */
 describe('离线总结 · 宿敌行报实际败北次数', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     forcedWinRate.value = 0
   })
@@ -267,7 +259,7 @@ describe('离线总结 · 宿敌行报实际败北次数', () => {
   })
 
   /** 青云山麓缺席到恰好打 n 场;胜率钉 0,场场皆败 */
-  function settleLosingTrip(n: number): OfflineSummary {
+  async function settleLosingTrip(n: number): Promise<OfflineSummary> {
     const now = Date.now()
     const game = useGameStore()
     const adventure = useAdventureStore()
@@ -294,7 +286,7 @@ describe('离线总结 · 宿敌行报实际败北次数', () => {
       expGain: gn(0),
       itemGain: 0
     }
-    const summary = settleOffline(now)!
+    const summary = (await settleOffline(now))!
     expect([summary.battles, summary.wins], `夹具须恰好连败 ${n} 场`).toEqual([n, 0])
     return summary
   }
@@ -313,31 +305,31 @@ describe('离线总结 · 宿敌行报实际败北次数', () => {
 
   const nemesisNotes = (summary: OfflineSummary): string[] => summary.notes.filter(n => n.startsWith('【宿敌】'))
 
-  it('一批连败 5 次:卷轴报「败北5次」', () => {
-    const summary = settleLosingTrip(5)
+  it('一批连败 5 次:卷轴报「败北5次」', async () => {
+    const summary = await settleLosingTrip(5)
     const nemeses = usePlayerStore().nemeses
     expect(nemeses.map(n => n.lossCount), '5 败整批入账').toEqual([5])
     expect(nemesisNotes(summary)).toEqual([`【宿敌】${nemeses[0]!.enemyName} · 败北5次`])
   })
 
-  it('在线已败 2 次、离线再连败 3 次:报累计「败北5次」,不报本批场数', () => {
+  it('在线已败 2 次、离线再连败 3 次:报累计「败北5次」,不报本批场数', async () => {
     seedLosses(2)
-    const summary = settleLosingTrip(3)
+    const summary = await settleLosingTrip(3)
     const hit = usePlayerStore().nemeses.filter(n => n.lossCount !== 2)
     expect(hit.map(n => n.lossCount), '抽中的敌手 2 + 3 败').toEqual([5])
     expect(nemesisNotes(summary)).toEqual([`【宿敌】${hit[0]!.enemyName} · 败北5次`])
   })
 
-  it('恰好连败 3 次:报「败北3次」', () => {
-    const summary = settleLosingTrip(3)
+  it('恰好连败 3 次:报「败北3次」', async () => {
+    const summary = await settleLosingTrip(3)
     const nemeses = usePlayerStore().nemeses
     expect(nemeses.map(n => n.lossCount), '3 败整批入账').toEqual([3])
     expect(nemesisNotes(summary)).toEqual([`【宿敌】${nemeses[0]!.enemyName} · 败北3次`])
   })
 
-  it('已是宿敌的再败不重复报', () => {
+  it('已是宿敌的再败不重复报', async () => {
     seedLosses(3)
-    const summary = settleLosingTrip(3)
+    const summary = await settleLosingTrip(3)
     expect(usePlayerStore().nemeses.map(n => n.lossCount), '抽中的宿敌照样记败').toContain(6)
     expect(nemesisNotes(summary), '已成宿敌不再报').toEqual([])
   })
@@ -350,7 +342,7 @@ describe('离线总结 · 宿敌行报实际败北次数', () => {
  * 故障注入:删掉 settleOffline 里对未来时间戳的钳制,本条红。
  */
 describe('离线结算 · 时间戳在未来时自愈', () => {
-  it('lastActiveAt 在未来:重锚到当下,下一次离线照常结算', () => {
+  it('lastActiveAt 在未来:重锚到当下,下一次离线照常结算', async () => {
     const now = Date.now()
     const game = useGameStore()
     const player = usePlayerStore()
@@ -359,13 +351,13 @@ describe('离线结算 · 时间戳在未来时自愈', () => {
     // 系统时钟曾被调快一年,盖下的戳远在未来
     game.lastActiveAt = now + 365 * 24 * 3600 * 1000
 
-    const first = settleOffline(now)
+    const first = await settleOffline(now)
     expect(first, '未来时间戳这一趟没有可结算的时长,应为 null').toBeNull()
     expect(game.lastActiveAt, 'lastActiveAt 须被重锚到当下,否则之后每趟 dtSec 都是 0').toBe(now)
 
     // 重锚之后,再过 2 小时就能正常结算
     game.lastActiveAt = now - 2 * 3600 * 1000
-    const second = settleOffline(now)
+    const second = await settleOffline(now)
     expect(second, '重锚后离线结算应恢复正常').not.toBeNull()
     expect(second!.qi, '应有灵气入账').toBeGreaterThan(0)
   })

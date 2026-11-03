@@ -192,8 +192,8 @@ describe('同源审计 · 词条能长在哪(议题 #22)', () => {
 
 describe('同源审计 · 装备掉落概率的封顶', () => {
   /**
-   * 装备掉落概率封顶:在线 afterWin 与离线 settleOffline 只读 constants 的 EQUIP_DROP_CHANCE_CAP;
-   * 离线不夹取则两边装备期望分叉。
+   * 装备掉落概率封顶:在线 afterWin 与离线 settleOffline 都经由共享裁决核心 lootGrant(1.58.0),
+   * 与离线一起只读 constants 的 EQUIP_DROP_CHANCE_CAP;离线不夹取则两边装备期望分叉。
    * 只针对装备掉落这条式子,不判一切 0.9:loreService 另有 `Math.min(0.9, base + familiarity)`(认知上限,语义无关)。
    * 故障注入:把 offline.ts 的封顶改回内联 `Math.min(0.9, …)` → 本条红。
    */
@@ -203,7 +203,7 @@ describe('同源审计 · 装备掉落概率的封顶', () => {
       if (!hit) throw new Error(`审计读不到 ${name} —— glob 没匹配上,断言会假绿`)
       return [name, stripComments(hit[1])]
     }
-    for (const name of ['loot.ts', 'offline.ts']) {
+    for (const name of ['lootGrant.ts', 'offline.ts']) {
       const [file, src] = read(name)
       expect(src, `${file} 该引用具名封顶常量`).toContain('EQUIP_DROP_CHANCE_CAP')
       expect(src, `${file} 又内联了 0.9 装备封顶 —— 改常数时两边会分叉`).not.toMatch(/Math\.min\(\s*0\.9\b/)

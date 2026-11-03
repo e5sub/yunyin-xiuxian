@@ -28,11 +28,12 @@ import {
 } from '@/data/constants'
 import { makeEnemySnap, resolveCombat, sampleWinRate } from './combat'
 import { buildPlayerSnap } from './playerSnap'
-import { generateEquipment } from './equipGen'
 import { onAcquire, acquireArtifactGain, acquireEquipment, afterWin, randomDropArtifact, randomDropPill } from './loot'
 import { STONE_AMT_PER_BATTLE } from './pillValue'
 import { avgDustPerDrop } from './economySim'
 import { autoResolveEvent, regionEventPoolFor } from './eventEngine'
+import { mintDrops } from './lootClaim'
+import type { LootClaimCtx } from './lootGrant'
 import {
   clearRegionAndUnlockNext,
   exploreEventChance,
@@ -102,8 +103,19 @@ function nemesisNote(list: readonly NemesisRecord[], foe: { id: string; name: st
   return `【宿敌】${foe.name} · 败北${lossCount}次`
 }
 
-/** 结算离线收益 */
-export function settleOffline(nowMs: number): OfflineSummary | null {
+/** 结算离线收益;装备签发是异步的,整段异步 —— 重复进入由 settling 闸挡住 */
+let settling = false
+export async function settleOffline(nowMs: number): Promise<OfflineSummary | null> {
+  if (settling) return null
+  settling = true
+  try {
+    return await settleOfflineInner(nowMs)
+  } finally {
+    settling = false
+  }
+}
+
+async function settleOfflineInner(nowMs: number): Promise<OfflineSummary | null> {
   const game = useGameStore()
   const player = usePlayerStore()
   const resources = useResourcesStore()
@@ -124,6 +136,14 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
   const capSec = Math.min(dtSec, dongfu.offlineCapHours * 3600)
   const effSec = capSec * OFFLINE_EFFICIENCY
   const notes: string[] = []
+  /*
+   * 离线际遇的装备签发并账:事件结算时只收集上下文(deferEquip),整段跑完一次签发 ——
+   * 否则 40 场际遇就是 40 次请求,撞限速;签发件数不受际遇文案影响,一次要齐。
+   */
+  const equipCtxs: LootClaimCtx[] = []
+  const deferEquipCtx = (ctx: LootClaimCtx): void => {
+    equipCtxs.push(ctx)
+  }
   const equipmentGained: OfflineSummary['equipment'] = []
   /** 离线化尘所得(自动回收、满包化尘、腾位旧件) */
   let recycledDust = 0
@@ -172,7 +192,7 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
 
   // 镇压收益按 capSec 结:豁免 0.9 离线效率,不豁免洞府离线上限
   // 妖气复聚按真实此刻判(两个时刻分开传);收益先结清再复聚,否则复聚在开头就松开、整段收益归零
-  const suppressYield = settleSuppressedRegions(capSec, rng, nowMs)
+  const suppressYield = await settleSuppressedRegions(capSec, rng, nowMs)
   if (suppressYield && suppressYield.revived.length > 0) {
     // 妖气复聚须写进归来卷轴,不能只靠提示条
     const names = suppressYield.revived.map(id => regionDef(id)?.name ?? id)
@@ -275,18 +295,16 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
         harvestMaterials(region.tier, 'ore', oreGain)
         resources.addSmall('page', pageGain)
         resources.addSmall('dust', dustGain)
-        // 装备:最多生成 6 件,其余折尘;掉落数与在线 afterWin 同源(模式 × 加丰 × 福缘),每场概率同吃 EQUIP_DROP_CHANCE_CAP
+        // 装备:最多签发 6 件,其余折尘;掉落数与在线 afterWin 同源(模式 × 加丰 × 福缘),每场概率同吃 EQUIP_DROP_CHANCE_CAP。
+        // 件数账本留在此处(可注入随机源);实例由签发侧并账生成,本地不再 generateEquipment
         const equipChance = Math.min(
           EQUIP_DROP_CHANCE_CAP,
           EQUIP_DROP_CHANCE * modeDef.rewardMult * regionEventReward * (1 + modOf(mods, 'dropRate'))
         )
         const equipCount = Math.round(wins * equipChance * doubleMult)
         const realCount = Math.min(6, equipCount)
-        for (let i = 0; i < realCount; i += 1) {
-          // 灵兽性格同样管掉落,与在线 afterWin 同源
-          const inst = generateEquipment(region.tier, rng, { luck: modOf(mods, 'luck') + personalityEffects(player.petId).dropLuck })
-          // 入账、化尘、腾位由开头 onAcquire 那本账统一记
-          acquireEquipment(inst, { quiet: true })
+        if (realCount > 0) {
+          equipCtxs.push({ src: 'offline', tier: region.tier, count: realCount })
         }
         trip.items += realCount
         if (equipCount > realCount) {
@@ -392,10 +410,10 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
       if (offlineEventPool.length === 0) offlineEventPool = DEFAULT_OFFLINE_EVENT_IDS
       for (let i = 0; i < evCap; i += 1) {
         if (adventure.pendingEventId) {
-          autoResolveEvent(adventure.pendingEventId, region.tier)
+          await autoResolveEvent(adventure.pendingEventId, region.tier, { deferEquip: deferEquipCtx })
           adventure.setPendingEvent(null, nowMs)
         } else {
-          autoResolveEvent(rng.pick(offlineEventPool), region.tier)
+          await autoResolveEvent(rng.pick(offlineEventPool), region.tier, { deferEquip: deferEquipCtx })
         }
       }
       // summary 与 session 只报实际结算的事件数
@@ -415,7 +433,7 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
           if (bossResult.win) {
             // 与在线首领同乘 mode×regReward,另叠收益折损
             // 第四参 false:玩家不在场,不自动祭上掉落的法宝(同 autoResolveEvent)
-            const drops = afterWin(region, modeDef.rewardMult * OFFLINE_BOSS_REWARD_MULT * regionEventReward, true, false)
+            const drops = await afterWin(region, modeDef.rewardMult * OFFLINE_BOSS_REWARD_MULT * regionEventReward, true, false)
             trip.stone = add(trip.stone, drops.stone)
             trip.exp = add(trip.exp, drops.exp)
             trip.items += drops.items
@@ -487,6 +505,14 @@ export function settleOffline(nowMs: number): OfflineSummary | null {
   player.addAge((dtSec / 3600) * AGE_YEARS_PER_HOUR)
 
   cultivation.pruneBuffs(nowMs)
+
+  // 际遇装备一次签发入包;在途会话的件数账补上(际遇效果走 defer 时不逐笔 foldSession)
+  const deferredEquips = await mintDrops(equipCtxs)
+  for (const inst of deferredEquips) acquireEquipment(inst, { quiet: true })
+  if (deferredEquips.length > 0) {
+    const session = adventure.session
+    if (session) adventure.setSession({ ...session, itemGain: session.itemGain + deferredEquips.length })
+  }
 
   stopLedger()
   const summary: OfflineSummary = {

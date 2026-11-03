@@ -58,10 +58,11 @@ describe('signedPercent', () => {
   it('dropRate 只报装备出现率,不说成一切战利都涨', () => {
     expect(modsText({ dropRate: 0.08 })).toBe('装备掉落率 +8%(只增装备现世;灵石草矿不与)')
     expect(modsText({ dropRate: 0.08 })).not.toBe('掉落率 +8%')
-    const loot = readFileSync(resolve(__dirname, '../core/loot.ts'), 'utf8')
-    expect(loot).toContain("modOf(mods, 'dropRate')")
-    expect(loot).toContain('equipChance')
-    expect(loot).not.toMatch(/stoneAmt[\s\S]{0,80}dropRate/)
+    // 1.58.0 起装备掷点收进共享裁决核心 lootGrant,吃环境复算出的 env.dropRate
+    const grant = readFileSync(resolve(__dirname, '../core/lootGrant.ts'), 'utf8')
+    expect(grant).toContain('env.dropRate')
+    expect(grant).toContain('EQUIP_DROP_CHANCE')
+    expect(grant).not.toMatch(/stoneAmt[\s\S]{0,80}dropRate/)
   })
 
   it('spiritStoneGain 只报历练战胜灵石,不说成一切入账都涨', () => {
