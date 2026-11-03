@@ -1,4 +1,4 @@
-name: 构建多平台程序 (Electron & Android)
+name: 构建发行包 (Android APK)
 
 # tag 触发:校验版本后构建并发布 Release
 # workflow_dispatch:不打 tag 也能出全套产物,并按 package.json 版本自动发 Release(缺 tag 时自动补建)
@@ -10,8 +10,9 @@ on:
 
 # 同一 tag 串行:并发 run 会在 release job 互删对方刚传的资产
 # cancel-in-progress 须为 false:取消可能落在「已删完、还没传完」的窗口,留下资产不全的 Release
+# 组名不取 github.workflow:改名后新旧两次 run 会分属不同组,同 tag 的 release 就不互斥了
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -34,65 +35,6 @@ jobs:
             echo "::error::tag($TAG)与 package.json 的版本($PKG)不一致 —— 先把 package.json 的版本提上去再打 tag"
             exit 1
           fi
-
-  build-electron:
-    name: 构建 Electron (${{ matrix.os }})
-    needs: [guard]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform: win
-    steps:
-      - uses: actions/checkout@v7
-      - name: 安装 Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: 静态检查 + 单元测试
-        run: |
-          bun install --frozen-lockfile
-          bun run check
-          bun run test:report
-
-      - name: 缓存 Electron Builder
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/AppData/Local/electron/Cache
-            ~/AppData/Local/electron-builder/Cache
-          key: electron-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            electron-${{ runner.os }}-
-
-      - name: 构建 Electron
-        run: bun run build:electron --${{ matrix.platform }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 增量包 yunyin-<ver>-win-update.zip:只含 resources/app,解压到安装目录(与 云隐修仙录.exe 同级)覆盖;
-      #   前提是 Electron 运行时版本没变,升 electron 依赖的那一版发布说明须提醒下完整包
-      # Web 包 yunyin-<ver>-web.zip:dist/ 的内容,解压即站点根
-      # tar 是 Windows 自带的 bsdtar(System32\tar.exe),-a 按 .zip 后缀选格式
-      - name: 打增量包与 Web 包
-        shell: bash
-        run: |
-          VER=$(bun -e "console.log(require('./package.json').version)")
-          TAR=/c/Windows/System32/tar.exe
-          "$TAR" -a -cf "pkg/yunyin-$VER-win-update.zip" -C pkg/win-unpacked resources/app
-          "$TAR" -a -cf "pkg/yunyin-$VER-web.zip" -C dist $(cd dist && ls -A)
-          ls -la pkg/*.zip
-
-      # 完整包 + 增量包 + Web 包
-      - name: 上传 Electron 安装包
-        uses: actions/upload-artifact@v7
-        with:
-          name: electron-${{ matrix.platform }}
-          path: |
-            pkg/*.zip
 
   build-android:
     name: 构建 Android APK
@@ -164,9 +106,22 @@ jobs:
           name: android-apk
           path: android/app/build/outputs/apk/release/*.apk
 
+      # 自建站用的 web 包:dist/ 的内容,解压即站点根(README「多端安装 · 自建站」)
+      - name: 打 Web 包
+        run: |
+          VER=$(bun -e "console.log(require('./package.json').version)")
+          mkdir -p web-pkg
+          (cd dist && zip -qr "../web-pkg/yunyin-$VER-web.zip" .)
+          ls -la web-pkg/*.zip
+
+      - name: 上传 Web 包
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-zip
+          path: web-pkg/*.zip
+
   release:
-    # tag 触发按 tag 发版;手动触发按 package.json 版本发版(缺 tag 由 softprops 自动补建)
-    needs: [guard, build-electron, build-android]
+    needs: [guard, build-android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -197,9 +152,9 @@ jobs:
         run: |
           mkdir -p ./final-release
 
-          find ./raw-assets/electron-* -type f -name "*.zip" -exec cp {} ./final-release/ \;
-
           find ./raw-assets/android-apk -type f -name "*.apk" -exec cp {} ./final-release/ \; || true
+
+          find ./raw-assets/web-zip -type f -name "*.zip" -exec cp {} ./final-release/ \; || true
 
           echo "Final assets to upload:"
           ls -R ./final-release

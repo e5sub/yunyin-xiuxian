@@ -6,7 +6,7 @@ import { artifactDef, ARTIFACT_MAX_LEVEL, ARTIFACT_UP_STONE_TIER, ARTIFACT_UP_WU
 import { EQUIP_MAX_LEVEL_BASE, UPGRADE_SAFE_STEP } from '@/data/constants'
 import { stoneByTier, upgradeCost, upgradeFailLevel, upgradeSuccessRate } from './formulas'
 import { add, gnZero, isZero, subClamp } from '@/utils/gnum'
-import { formatGN } from '@/utils/format'
+import { formatGN, formatGap } from '@/utils/format'
 import {
   artifactBatchDoneToast,
   artifactBatchInterruptedToast,
@@ -112,7 +112,7 @@ export function upgradeEquipment(uid: string, opts: { quiet?: boolean } = {}): U
       playSfx('warn')
       const gap = upgradeShortfall(quote)
       ui.toast(
-        upgradeShortToast(short, { stone: formatGN(gap.stone), dust: gap.dust, exp: formatGN(gap.exp) }),
+        upgradeShortToast(short, { stone: formatGap(gap.stone), dust: gap.dust, exp: formatGap(gap.exp) }),
         'warn'
       )
     }
@@ -214,7 +214,7 @@ export function upgradeEquipmentBatch(uid: string): number {
     useUiStore().toast(
       plan.atCap
         ? upgradeCapToast()
-        : upgradeShortToast(short ?? 'stone', { stone: formatGN(gap.stone), dust: gap.dust, exp: formatGN(gap.exp) }),
+        : upgradeShortToast(short ?? 'stone', { stone: formatGap(gap.stone), dust: gap.dust, exp: formatGap(gap.exp) }),
       'warn'
     )
     return 0
@@ -348,7 +348,7 @@ export function upgradeEquippedOnce(): EquipSweep {
     plan.stoppedAt !== null && plan.short !== null
       ? {
           name: EQUIP_SLOT_NAMES[plan.stoppedAt],
-          text: upgradeShortToast(plan.short, { stone: formatGN(plan.gap.stone), dust: plan.gap.dust, exp: formatGN(plan.gap.exp) })
+          text: upgradeShortToast(plan.short, { stone: formatGap(plan.gap.stone), dust: plan.gap.dust, exp: formatGap(plan.gap.exp) })
         }
       : undefined
   useUiStore().toast(upgradeEquippedToast(out, stop), out.ups > 0 ? 'success' : 'warn')
@@ -497,7 +497,7 @@ export function upgradeArtifact(defId: string, opts: { quiet?: boolean } = {}): 
     if (!opts.quiet) {
       playSfx('warn')
       const gap = artifactShortfall(cost)
-      ui.toast(artifactShortToast(short, { wudao: gap.wudao, stone: formatGN(gap.stone) }), 'warn')
+      ui.toast(artifactShortToast(short, { wudao: gap.wudao, stone: formatGap(gap.stone) }), 'warn')
     }
     return false
   }
@@ -561,7 +561,7 @@ export function upgradeArtifactBatch(defId: string): number {
     const text = plan.atCap
       ? artifactCapToast()
       : short && gap
-        ? artifactShortToast(short, { wudao: gap.wudao, stone: formatGN(gap.stone) })
+        ? artifactShortToast(short, { wudao: gap.wudao, stone: formatGap(gap.stone) })
         : '祭炼未成'
     useUiStore().toast(text, 'warn')
     return 0

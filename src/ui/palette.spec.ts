@@ -461,7 +461,7 @@ describe('语义色 · 裸 hex 只许出现在已登记的例外', () => {
         const full = join(dir, ent.name)
         if (ent.isDirectory()) walk(full)
         else if (ent.name.endsWith('.vue')) {
-          // asPosix:Windows 下 relative 给反斜杠,ALLOWED/输出统一用正斜杠
+          // 白名单写的是正斜杠路径,Windows 上 relative 出来是反斜杠
           const rel = relative('src', full).replace(/\\/g, '/')
           const text = readFileSync(full, 'utf-8')
           for (const m of text.matchAll(/#[0-9a-fA-F]{3,8}\b/g)) {

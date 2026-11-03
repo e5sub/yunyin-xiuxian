@@ -29,13 +29,21 @@
         background: tint(qualityDef(row.def.quality).color, 0.06)
       }"
     >
+      <QualityAura :quality="row.def.quality" />
+      <!-- 满重:与品阶光环分开的一套形状(顶边横杠),见 ui/masteryMark -->
+      <span v-if="row.mastery" class="mastery-bar" :title="row.mastery.label" />
       <span v-if="row.rare" class="absolute right-2 top-2 leading-none">
         <QualitySeal :quality="row.def.quality" :size="16" />
       </span>
       <!-- pr-3:给右上 16px 角章让位,否则与重数叠字 -->
       <div class="flex items-center gap-2" :class="{ 'pr-3': row.rare }">
         <GameIcon :name="row.def.icon" :size="18" :style="{ color: qualityDef(row.def.quality).color }" />
-        <span class="font-kai text-[14px]" :style="{ color: qualityDef(row.def.quality).color }">{{ row.def.name }}</span>
+        <span
+          class="font-kai text-[14px]"
+          :class="{ 'q-plaque': row.plaque }"
+          :style="{ color: qualityDef(row.def.quality).color }"
+          >{{ row.def.name }}</span
+        >
         <QualityTag :quality="row.def.quality" />
         <!-- 法宝等级称「重」不称「阶」:阶指地界与装备层级 -->
         <span class="ml-auto tabular text-[11px] text-gold-ink">{{ artifactLevelLabel(row.owned.level) }}</span>
@@ -69,16 +77,21 @@
           @click="toggleArtifact(row.def.id)"
         >
           <!-- 槽满时按钮列出全部让位件(超编时不止一件,见 artifactEvictedBy) -->
-          {{ row.equipped ? '收回法宝' : row.evicts.length ? `替下${row.evicts.join('、')}` : '祭炼随身' }}
+          {{ row.equipped ? '收回法宝' : row.evicts.length ? `替下${row.evicts.join('、')}` : '随身携带' }}
         </button>
+        <!--
+          满重不再让按钮消失:它与「随身携带」并排各占一半,一消失整行布局就变,
+          玩家还看不出是「满了」还是「坏了」。改成禁用并写原因(AGENTS.md「禁用即给原因」)。
+        -->
         <button
-          v-if="row.upCost"
           class="btn-ghost flex-1 !py-1.5 !text-[12px] tabular"
-          :disabled="row.short?.short != null"
+          :disabled="!row.upCost || row.short?.short != null"
+          :title="row.upCost ? undefined : '祭炼已至上限'"
           @click="upgradeArtifact(row.def.id)"
         >
           <!-- 两种代价都须写出:炼化扣悟道点与灵石(见 forge.artifactUpCost) -->
-          炼化(悟道 {{ row.upCost.wudao }} · 灵石 {{ formatGN(row.upCost.stone) }})
+          <template v-if="row.upCost">炼化(悟道 {{ row.upCost.wudao }} · 灵石 {{ formatGN(row.upCost.stone) }})</template>
+          <template v-else>已至上限</template>
         </button>
       </div>
       <!-- 缺料就地报缺口,不靠 hover -->
@@ -107,7 +120,11 @@
       </div>
     </div>
   </div>
-  <p v-else class="mt-16 text-center text-[12px] text-ink-faint">暂无法宝</p>
+  <!-- 空态与名号/灵兽册同一套:哑印 + 楷体标签 -->
+  <p v-else class="mt-12 text-center">
+    <span class="empty-seal" aria-hidden="true">宝</span>
+    <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">暂无法宝</span>
+  </p>
 </template>
 
 <script setup lang="ts">
@@ -133,13 +150,16 @@ import {
 } from '@/data/artifacts'
 import { artifactBatchPlan, artifactShortfall, artifactUpCost, upgradeArtifact, upgradeArtifactBatch } from '@/core/forge'
 import { STAT_NAMES, statCaveat, statModPhrase } from '@/data/statNames'
-import { artifactSlotReplacedToast } from '@/ui/inventoryText'
-import { cnNumber, formatGN, formatPercent } from '@/utils/format'
+import { artifactSlotReplacedToast, artifactToggleToast } from '@/ui/inventoryText'
+import { cnNumber, formatGN, formatGap, formatPercent } from '@/utils/format'
 import { tint } from '@/utils/colorToken'
 import { isRareQuality, qualityTierStyle } from '@/ui/qualityTier'
+import { qualityAura } from '@/ui/qualityAura'
+import { artifactMastery } from '@/ui/masteryMark'
 import GameIcon from '@/components/common/GameIcon.vue'
 import QualityTag from '@/components/common/QualityTag.vue'
 import QualitySeal from '@/components/common/QualitySeal.vue'
+import QualityAura from '@/components/common/QualityAura.vue'
 
 const inventory = useInventoryStore()
 const player = usePlayerStore()
@@ -167,6 +187,9 @@ const artifactRows = computed(() =>
         artPlan: artifactBatchPlan(a.defId),
         equipped: inventory.equippedArtifacts.includes(a.defId),
         rare: isRareQuality(def.quality),
+        plaque: qualityAura(def.quality).plaque,
+        /** 满重标记:与品阶分开的一套形制 */
+        mastery: artifactMastery(a.level),
         /** 按下会替下哪几件;判据与槽位画法同源 */
         evicts: (() => {
           const ids = artifactEvictedBy(inventory.equippedArtifacts, artifactSlots.value)
@@ -189,9 +212,13 @@ function toggleArtifact(defId: string): void {
     id => artifactDef(id)?.name ?? id
   )
   const result = inventory.toggleArtifact(defId, artifactSlots.value)
+  const name = artifactDef(defId)?.name ?? defId
   if (result === 'replaced') {
     // 让位件全念出来,须与按钮点名一致
     ui.toast(artifactSlotReplacedToast(evicted), 'info')
+  } else if (result === 'equipped' || result === 'unequipped') {
+    // 正常祭炼/收回也要有回执:按钮是同一个,不回执就看不出点成没成
+    ui.toast(artifactToggleToast(name, result === 'equipped'), 'info')
   }
 }
 
@@ -205,7 +232,7 @@ function runArtifactBatch(defId: string): void {
 function artifactShortText(short: NonNullable<(typeof artifactRows.value)[number]['short']>): string {
   const parts: string[] = []
   if (short.wudao > 0) parts.push(`悟道点尚差 ${short.wudao}`)
-  if (short.stone.m > 0) parts.push(`灵石尚差 ${formatGN(short.stone)}`)
+  if (short.stone.m > 0) parts.push(`灵石尚差 ${formatGap(short.stone)}`)
   return parts.join(' · ')
 }
 

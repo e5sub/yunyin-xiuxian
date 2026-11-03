@@ -16,9 +16,9 @@
     <p v-if="short" class="mt-1 text-[10px] leading-relaxed text-cinnabar tabular">
       <template v-if="gap.dust > 0">器灵尘尚差 {{ gap.dust }}</template>
       <template v-if="gap.dust > 0 && gap.exp.m > 0"> · </template>
-      <template v-if="gap.exp.m > 0">修为尚差 {{ formatGN(gap.exp) }}</template>
+      <template v-if="gap.exp.m > 0">修为尚差 {{ formatGap(gap.exp) }}</template>
       <template v-if="(gap.dust > 0 || gap.exp.m > 0) && gap.stone.m > 0"> · </template>
-      <template v-if="gap.stone.m > 0">灵石尚差 {{ formatGN(gap.stone) }}</template>
+      <template v-if="gap.stone.m > 0">灵石尚差 {{ formatGap(gap.stone) }}</template>
     </p>
     <!--
       连升二步确认与分解/散去同款。
@@ -45,6 +45,17 @@
       </template>
     </div>
   </template>
+  <!--
+    满级时原先整块消失:面板里既没有「已至上限」也没有下一级预览,
+    玩家只看到强化那一段凭空不见。保留一条状态行,直接说原因。
+  -->
+  <template v-else-if="inst && !quote">
+    <div class="ink-divider my-3" />
+    <p class="flex items-center justify-between text-[12px] text-ink-faint">
+      <span>强化 +{{ inst.level }} / 上限 {{ equipLevelCap() }}</span>
+      <span class="text-gold-ink">{{ upgradeCapToast() }}</span>
+    </p>
+  </template>
 </template>
 
 <script setup lang="ts">
@@ -52,9 +63,10 @@
   import { useUiStore } from '@/stores/ui'
   import { useInventoryStore } from '@/stores/inventory'
   import { equipLevelCap, equipUpgradeQuote, upgradeBatchPlan, upgradeEquipmentBatch, upgradeShort, upgradeShortfall, type UpgradeBatchPlan } from '@/core/forge'
-  import { formatGN } from '@/utils/format'
+  import { formatGN, formatGap } from '@/utils/format'
   import { gnZero } from '@/utils/gnum'
   import { equipNextLevelText } from '@/ui/equipText'
+  import { upgradeCapToast } from '@/ui/forgeText'
 
   /** 成本与预览全读 core/forge,不持第二本账;当前件取 ui.equipDetailUid,与宿主同一份 inst */
   const ui = useUiStore()

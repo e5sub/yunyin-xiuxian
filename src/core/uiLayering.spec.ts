@@ -130,7 +130,7 @@ describe('界面分层 · 浮层只有一个出处', () => {
       ':disabled="player.fateFocus !== s.id && focusShort > 0"'
     )
     expect(codex!.src, '点化差额要走指数感知减法').toContain('subClamp(focusCost, resources.spiritStone)')
-    expect(codex!.src, '点化按钮要直说差多少灵石').toContain('灵石尚差 ${formatGN(focusShortGN)}')
+    expect(codex!.src, '点化按钮要直说差多少灵石').toContain('灵石尚差 ${formatGap(focusShortGN)}')
   })
 
   it('到期倒计时按 1 秒游戏钟走,不借 5 秒修行心跳', () => {
@@ -255,6 +255,41 @@ describe('界面分层 · 块级空态只有一个出处', () => {
     }
     expect(missing, '这些块级空态没收进 .empty-note —— 短横是块级空态的唯一出处').toEqual([])
   })
+
+  /**
+   * 另一档:`.empty-seal` 单字哑印,用于「这一册还没有东西」。
+   *
+   * 背包四册的空态原先只有一行灰字,而且三处位置各不相同(mt-8 / mt-10 / mt-16);
+   * 同为零件的名号册、灵兽册早有哑印 + 楷体标签。这不是文案问题 ——
+   * 「暂无藏品」本身就是规范点名的状态词,缺的是那一档视觉。
+   * 故障注入:把任一处改回裸淡字,本条红。
+   */
+  it('册页级空态挂 empty-seal(哑印),与名号/灵兽册同一套', () => {
+    const SITES: [string, string][] = [
+      ['views/InventoryView.vue', '暂无藏品'],
+      ['views/InventoryView.vue', '暂无丹药'],
+      ['components/inventory/ArtifactPanel.vue', '暂无法宝'],
+      ['views/TitlesView.vue', '暂无灵兽']
+    ]
+    const missing: string[] = []
+    for (const [path, phrase] of SITES) {
+      const f = FILES.find(x => x.path === path)
+      if (!f) {
+        missing.push(`${path} → 文件不见了`)
+        continue
+      }
+      const tag = [...f.src.matchAll(/<p\b[^>]*>/g)].find(m => {
+        const after = f.src.slice(m.index! + m[0].length, m.index! + m[0].length + 260)
+        return /\bv-(?:else|if)\b/.test(m[0]) && after.includes(phrase)
+      })
+      if (!tag) missing.push(`${path} → 找不到「${phrase}」那个空态段落`)
+      else {
+        const block = f.src.slice(tag.index!, tag.index! + 320)
+        if (!block.includes('empty-seal')) missing.push(`${path} → 「${phrase}」还是裸淡字,没挂哑印`)
+      }
+    }
+    expect(missing, '这些册页级空态没有哑印 —— 这一册还没有东西,要给得出「空」的形状').toEqual([])
+  })
 })
 
 /**
@@ -294,6 +329,35 @@ describe('界面分层 · 换件提示的让位名单取在动手之前', () => 
       evictAt,
       '让位名单取在了换件之后 —— toast 会念刚戴上来的那一件,而不是真正让位的那一件'
     ).toBeLessThan(toggleAt)
+  })
+
+  /**
+   * 祭炼与收回是同一颗钮,没有回执就看不出点成哪一种 ——
+   * 原先只处理了 `replaced`,正常祭炼与收回都静默生效。
+   * 称号的佩/卸、灵兽的唤来/暂别、行囊的一键换装都有回执,此处补齐同一套。
+   * 故障注入:删掉 else-if 那一支,本条红。
+   */
+  it('祭炼与收回都报回执,不只报「替下」那一种', () => {
+    const src = readFileSync(PANEL, 'utf8')
+    const start = src.indexOf('function toggleArtifact(defId: string): void {')
+    expect(start).toBeGreaterThan(-1)
+    const open = src.indexOf('{', start)
+    let depth = 0
+    let end = -1
+    for (let i = open; i < src.length; i += 1) {
+      if (src[i] === '{') depth += 1
+      else if (src[i] === '}') {
+        depth -= 1
+        if (depth === 0) {
+          end = i
+          break
+        }
+      }
+    }
+    const body = src.slice(open, end)
+    expect(body, '正常祭炼没有回执').toContain("result === 'equipped'")
+    expect(body, '收回没有回执').toContain("result === 'unequipped'")
+    expect(body, '回执文案应走 ui/inventoryText(不在组件里手拼)').toContain('artifactToggleToast(')
   })
 })
 

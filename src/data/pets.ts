@@ -20,7 +20,7 @@ export const PETS: PetDef[] = [
     desc: '尾生青羽,善寻妖踪;同程多遇,行程不减',
     family: 'beast',
     quality: 'excellent',
-    mods: { explorationSpeed: 0.1, eventLuck: 0.05 },
+    mods: { explorationSpeed: 0.12, eventLuck: 0.06 },
     personality: 'greedy'
   },
   {
@@ -47,7 +47,7 @@ export const PETS: PetDef[] = [
     desc: '昼伏夜出,来去无声',
     family: 'beast',
     quality: 'spirit',
-    mods: { dodgeRate: 0.04, dropRate: 0.08 },
+    mods: { dodgeRate: 0.05, dropRate: 0.1 },
     personality: 'cautious'
   },
   {
@@ -56,7 +56,7 @@ export const PETS: PetDef[] = [
     desc: '口衔铜钱,战胜则灵石自来;洞府之产,不与此蟾',
     family: 'treasure',
     quality: 'spirit',
-    mods: { spiritStoneGain: 0.15, luck: 0.05 },
+    mods: { spiritStoneGain: 0.18, luck: 0.06 },
     personality: 'greedy'
   },
   {
@@ -65,7 +65,7 @@ export const PETS: PetDef[] = [
     desc: '角悬星光,踏梦而行',
     family: 'beast',
     quality: 'profound',
-    mods: { cultivationSpeed: 0.08, qiRegen: 0.1 },
+    mods: { cultivationSpeed: 0.22, qiRegen: 0.26 },
     personality: 'steady'
   },
   {
@@ -74,16 +74,31 @@ export const PETS: PetDef[] = [
     desc: '生于雷泽,不惧天威',
     family: 'beast',
     quality: 'profound',
-    mods: { tribulationResist: 0.1, attackPct: 0.06 },
+    mods: { tribulationResist: 0.26, attackPct: 0.18 },
     personality: 'fierce'
   },
   {
     id: 'pet_longzi',
     name: '螭龙幼子',
-    desc: '龙生九子,此其一也',
+    desc: '龙生九子,此其一也;未成器时,先养根骨',
     family: 'dragon',
     quality: 'heaven',
-    mods: { attackPct: 0.1, maxHpPct: 0.1, cultivationSpeed: 0.06 },
+    /**
+     * 「幼子」的卖点是还可以长,不是已经能打 ——
+     * 原先与应龙同为 attackPct+maxHpPct+cultivationSpeed,只是各项小 1.5 倍,
+     * 同一族里两只同形,仙品那只等于「同样的东西数值更高」。
+     * 改为破境+修为方向(幼龙未成器,先养其根骨),预算仍守天品档 2.10。
+     */
+    mods: { cultivationSpeed: 0.24, breakthroughRate: 0.16, maxHpPct: 0.14 },
+    personality: 'fierce'
+  },
+  {
+    id: 'pet_zidian',
+    name: '紫电貔貅',
+    desc: '紫电缠爪,落处必是七寸',
+    family: 'beast',
+    quality: 'heaven',
+    mods: { critRate: 0.1, critDamage: 0.3, speed: 0.06 },
     personality: 'fierce'
   },
   // ---- 仙界及以上神兽 ----
@@ -93,7 +108,7 @@ export const PETS: PetDef[] = [
     desc: '四爪生翼,云雨相随,仙门之上的护道神兽',
     family: 'dragon',
     quality: 'immortal',
-    mods: { attackPct: 0.15, maxHpPct: 0.15, cultivationSpeed: 0.1 },
+    mods: { attackPct: 0.3, maxHpPct: 0.3, cultivationSpeed: 0.2 },
     personality: 'fierce'
   },
   {
@@ -102,7 +117,7 @@ export const PETS: PetDef[] = [
     desc: '仁兽现世,福泽自生',
     family: 'dragon',
     quality: 'immortal',
-    mods: { luck: 0.15, dropRate: 0.12, defensePct: 0.12 },
+    mods: { luck: 0.32, dropRate: 0.26, defensePct: 0.26 },
     personality: 'steady'
   },
   {
@@ -111,7 +126,7 @@ export const PETS: PetDef[] = [
     desc: '北冥有鱼,化而为鹏,扶摇直上九万里;同程多遇,行程不减',
     family: 'winged',
     quality: 'divine',
-    mods: { explorationSpeed: 0.25, dodgeRate: 0.08, eventLuck: 0.12 },
+    mods: { explorationSpeed: 0.35, dodgeRate: 0.14, eventLuck: 0.2 },
     personality: 'cautious'
   },
   {
@@ -120,7 +135,7 @@ export const PETS: PetDef[] = [
     desc: '混沌所孕,吞天噬地;小进阶亦贪其修,大关天劫不入其腹',
     family: 'beast',
     quality: 'divine',
-    mods: { cultivationSpeed: 0.15, breakthroughRate: 0.05, lifesteal: 0.04 },
+    mods: { cultivationSpeed: 0.36, breakthroughRate: 0.13, lifesteal: 0.11 },
     personality: 'fierce'
   },
   // ---- 补足:每个界域至少两只 ----
@@ -130,7 +145,7 @@ export const PETS: PetDef[] = [
     desc: '羽色如洗,鸣声清越,云海之上的传信神禽',
     family: 'winged',
     quality: 'immortal',
-    mods: { cultivationSpeed: 0.12, qiRegen: 0.12, explorationSpeed: 0.15 },
+    mods: { cultivationSpeed: 0.24, qiRegen: 0.24, explorationSpeed: 0.3 },
     personality: 'cautious'
   },
   {
@@ -139,7 +154,7 @@ export const PETS: PetDef[] = [
     desc: '知万物之名,能言人语,卧于断碑之侧;战胜所得修为,较旁兽更丰',
     family: 'beast',
     quality: 'divine',
-    mods: { expGain: 0.18, breakthroughRate: 0.04, eventLuck: 0.15 },
+    mods: { expGain: 0.6, breakthroughRate: 0.14, eventLuck: 0.45 },
     personality: 'greedy'
   },
   {
@@ -148,7 +163,7 @@ export const PETS: PetDef[] = [
     desc: '半身滚烫半身结冰,冷热自分;静时聚气,动时生风',
     family: 'piscine',
     quality: 'divine',
-    mods: { qiRegen: 0.18, cultivationSpeed: 0.14, damageReduction: 0.04 },
+    mods: { qiRegen: 0.35, cultivationSpeed: 0.3, damageReduction: 0.12 },
     personality: 'cautious'
   },
   {
@@ -157,7 +172,7 @@ export const PETS: PetDef[] = [
     desc: '羽下无影,行处无声;它落在谁肩上,谁的路就轻一分',
     family: 'winged',
     quality: 'divine',
-    mods: { speed: 0.12, eventLuck: 0.18, explorationSpeed: 0.14 },
+    mods: { speed: 0.28, eventLuck: 0.38, explorationSpeed: 0.33 },
     personality: 'cautious'
   }
 ]

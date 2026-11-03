@@ -5,6 +5,13 @@
  * 其余文案的数字可能来自别的表,硬对只会误报。
  */
 import { describe, expect, it } from 'vitest'
+import { ARTIFACTS } from '@/data/artifacts'
+import { PETS } from '@/data/pets'
+import { GONGFA } from '@/data/gongfa'
+import { TITLES } from '@/data/titles'
+import { SOUL_TYPES } from '@/data/souls'
+import { EVENTS, FORTUNE_EVENTS } from '@/data/events'
+import { PILLS } from '@/data/pills'
 import { MUTATORS } from '@/data/mutators'
 import { SECRET_RULES } from '@/data/secretRealms'
 import { BUFFS, buffDef } from '@/data/buffs'
@@ -807,11 +814,11 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
   it('法宝炼化按缺口置灰,行内写清悟道点与灵石各差多少', () => {
     const view = src('../components/inventory/ArtifactPanel.vue')
     expect(view, '禁用态读同一份缺口判定').toContain('artifactShortfall(upCost)')
-    expect(view, '禁用态按缺的那一样判,不能拿整个缺口对象当布尔').toContain(
-      ':disabled="row.short?.short != null"'
-    )
+    // 满重时也禁用(按钮不再消失),故判据取「缺一样 + 满重」两段都写出来
+    expect(view, '禁用态按缺的那一样判,不能拿整个缺口对象当布尔').toContain(':disabled="!row.upCost || row.short?.short != null"')
+    expect(view, '满重不隐藏按钮,改为禁用并写原因').toContain('<template v-else>已至上限</template>')
     expect(view, '行内写悟道缺口').toContain('悟道点尚差 ${short.wudao}')
-    expect(view, '行内写灵石缺口').toContain('灵石尚差 ${formatGN(short.stone)}')
+    expect(view, '行内写灵石缺口').toContain('灵石尚差 ${formatGap(short.stone)}')
     expect(view, '行内不再缀 toast 的来路提示').not.toContain('artifactShortToast(')
     expect(view, '不许再用笼统的「悟道或灵石不足」').not.toContain('悟道或灵石不足')
   })
@@ -892,8 +899,8 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     const market = src('../components/market/MarketShelfSection.vue')
     expect(market, '卡面要有实际缺口字段').toContain('stoneShort:')
     expect(market, '卡面缺口用指数感知减法').toContain('subClamp(slot.price, resources.spiritStone)')
-    expect(market, '按钮直接写出尚差多少').toContain('`尚差 ${formatGN(c.stoneShort)}`')
-    expect(market, '扣款瞬时失败也报实际差额').toContain('灵石尚差 ${formatGN(renderSlot(slot).stoneShort)}')
+    expect(market, '按钮直接写出尚差多少').toContain('`尚差 ${formatGap(c.stoneShort)}`')
+    expect(market, '扣款瞬时失败也报实际差额').toContain('灵石尚差 ${formatGap(renderSlot(slot).stoneShort)}')
     expect(market, '不再用笼统的灵石不足作按钮文案').not.toContain("? '灵石不足'")
   })
 
@@ -929,10 +936,10 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(marks, '道痕在途拒因来自统一判据').toContain('endgameBusy(endgame.worldRun, usePlayerStore().secretRealm, useAdventureStore().session)')
     expect(furnace, '道果付不起要置灰').toContain(':disabled="fruitShort.short.m > 0"')
     expect(furnace, '灵石熔铸付不起也要置灰').toContain(':disabled="stoneShort.m > 0"')
-    expect(furnace, '灵石熔铸按钮就地写实际差额').toContain('灵石尚差 ${formatGN(stoneShort)}')
+    expect(furnace, '灵石熔铸按钮就地写实际差额').toContain('灵石尚差 ${formatGap(stoneShort)}')
     expect(furnace, '灵石熔铸差额走指数感知减法').toContain('subClamp(cost, resources.spiritStone)')
     expect(furnace, '灵石熔铸价与扣费同源').toContain('const cost = furnaceStoneCost()')
-    expect(furnace, '灵石熔铸未付时直接写尚差').toContain('熔铸(灵石尚差 ${formatGN(stoneShort)})')
+    expect(furnace, '灵石熔铸未付时直接写尚差').toContain('熔铸(灵石尚差 ${formatGap(stoneShort)})')
   })
 
   /** 天道熔炉材料差额由 furnaceMaterialShortfall 单源给出,两条失败路径都写实际差量 */
@@ -957,8 +964,8 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     const apprentice = src('../views/ApprenticeView.vue')
     expect(apprentice, '道童报价与缺口同源').toContain('apprenticeRecruitShortfall(player.major, resources.spiritStone)')
     expect(apprentice, '招募付不起要置灰').toContain(':disabled="slotsFull || !canAffordRecruit"')
-    expect(apprentice, '招募按钮就地写实际差额').toContain('(灵石尚差 ${formatGN(recruitShort)})')
-    expect(apprentice, '招募失败 toast 也报实际差额').toContain('灵石尚差 ${formatGN(recruitShort.value)}')
+    expect(apprentice, '招募按钮就地写实际差额').toContain('(灵石尚差 ${formatGap(recruitShort)})')
+    expect(apprentice, '招募失败 toast 也报实际差额').toContain('灵石尚差 ${formatGap(recruitShort.value)}')
   })
 
   /**
@@ -975,8 +982,8 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(gongfa, '兑换钮就地写拒因').toContain("{{ player.canExchangeWudao ? '兑换' : exchangeBlockedText }}")
     expect(exchange, '灵石余额进入兑换判据').toContain('stoneShort')
     expect(card, '备药钮按石差置灰').toContain(':disabled="!prepCanPill"')
-    expect(card, '备药钮写实际石差').toContain('prepPillDisabledLabel(formatGN(prepPillShort))')
-    expect(card, '备药 toast 写实际石差').toContain('prepPillShortToast(formatGN(prepPillShort.value))')
+    expect(card, '备药钮写实际石差').toContain('prepPillDisabledLabel(formatGap(prepPillShort))')
+    expect(card, '备药 toast 写实际石差').toContain('prepPillShortToast(formatGap(prepPillShort.value))')
     expect(service, '突破准备缺口单源').toContain('breakthroughPrepShortfall')
     expect(view, '疗伤钮写实际气差').toContain('formatNum(repair.shortfall)')
   })
@@ -990,9 +997,9 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     const service = src('./veinService.ts')
     const text = src('../ui/veinText.ts')
     expect(card, '投点钮读同源差额').toContain('veinPointShortfall')
-    expect(card, '投点钮就地写实际石差').toContain('灵石尚差 ${formatGN(investGap.value)}')
-    expect(service, '单点拒因写实际石差').toContain('veinShortToast(formatGN(veinPointShortfall()))')
-    expect(service, '批量拒因同写实际石差').toContain('else ui.toast(veinShortToast(formatGN(veinPointShortfall())), \'warn\')')
+    expect(card, '投点钮就地写实际石差').toContain('灵石尚差 ${formatGap(investGap.value)}')
+    expect(service, '单点拒因写实际石差').toContain('veinShortToast(formatGap(veinPointShortfall()))')
+    expect(service, '批量拒因同写实际石差').toContain('else ui.toast(veinShortToast(formatGap(veinPointShortfall())), \'warn\')')
     expect(text, '短差文案只在传入差数时才写尚差').toContain('`灵石尚差 ${stoneText}`')
   })
 
@@ -1004,12 +1011,21 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
   it('强化缺料时置灰,差额在面板里写出而非挤在按钮上', () => {
     const detail = src('../components/equipment/EquipmentDetailDialog.vue')
     const panel = src('../components/equipment/UpgradePanel.vue')
-    expect(detail, '强化按钮按缺口置灰').toContain(':disabled="upShort !== null"')
+    expect(detail, '强化按钮按缺口置灰').toContain(':disabled="!upQuote || upShort !== null"')
     expect(detail, '置灰原因仍由 title 给全').toContain(':title="upTip"')
-    expect(detail, '按钮只写强化与成功率,不写差数(会折行撑高页脚)').not.toContain('强 化(尘差')
-    expect(detail, '按钮只写强化与成功率,不写差数(会折行撑高页脚)').not.toContain('强 化(石差')
+    // 满级时按钮改为禁用并就地写原因(不再凭空消失),见 AGENTS.md「禁用即给原因」
+    expect(detail, '满级时按钮写「已至上限」').toContain("'已至上限'")
+    // 按钮上不写差数:窄格子会被挤成两行,差额由面板缺口行报出
+    expect(detail, '按钮不写尘差').not.toContain('强 化(尘差')
+    expect(detail, '按钮不写石差').not.toContain('强 化(石差')
     expect(panel, '强化面板列实际缺口').toContain('器灵尘尚差 {{ gap.dust }}')
-    expect(panel, '强化面板列灵石缺口').toContain('灵石尚差 {{ formatGN(gap.stone) }}')
+    expect(panel, '强化面板列灵石缺口').toContain('灵石尚差 {{ formatGap(gap.stone) }}')
+    // 满级不再让整块消失:玩家要看得到「已至上限」而不是一片空白
+    expect(panel, '满级时保留一条状态行').toContain('v-else-if="inst && !quote"')
+    expect(panel, '满级状态行写原因').toContain('{{ upgradeCapToast() }}')
+    expect(detail, '详情弹窗满级时按钮不消失,改为禁用并写原因').toContain(':disabled="!upQuote || upShort !== null"')
+    // 按钮只写短状态:这一格原是与「卸 下」并排的两字钮,四个字会折行
+    expect(detail, '满级按钮只写短状态,完整说法放 title').toContain("upQuote ? upLabel : '已至上限'")
   })
 
   /**
@@ -1020,10 +1036,10 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     const flow = src('../composables/useAffixTransfer.ts')
     const service = src('../core/affixTransfer.ts')
     expect(flow, '主按钮缺口读同一份 transferShortfall').toContain('transferShortfall(plan.value.cost)')
-    expect(flow, '按钮写实际石差').toContain('stone: formatGN(shortfall.value.stone)')
+    expect(flow, '按钮写实际石差').toContain('stone: formatGap(shortfall.value.stone)')
     expect(flow, '按钮写实际尘差').toContain('dust: shortfall.value.dust')
     expect(service, '服务拒因读 transferShortfall').toContain('const gap = transferShortfall(check.plan.cost)')
-    expect(service, '服务 toast 带实际石差').toContain('stone: formatGN(gap.stone)')
+    expect(service, '服务 toast 带实际石差').toContain('stone: formatGap(gap.stone)')
     expect(service, '服务 toast 带实际尘差').toContain('dust: gap.dust')
     expect(service, '不许退回只传缺料类型').not.toContain('ui.toast(transferShortText(short)')
   })
@@ -1047,7 +1063,7 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     const service = src('./pillService.ts')
     const text = src('../ui/pillText.ts')
     expect(service, '单炉与计划共用差额函数').toContain('export function craftShortfall(')
-    expect(service, '单炉回执传实际草石差').toMatch(/craftShortToast\(\{[\s\S]{0,120}herb: gap\.herb,[\s\S]{0,120}stone: formatGN\(gap\.stone\)/)
+    expect(service, '单炉回执传实际草石差').toMatch(/craftShortToast\(\{[\s\S]{0,120}herb: gap\.herb,[\s\S]{0,120}stone: formatGap\(gap\.stone\)/)
     expect(service, '计划只缺石时带 shortStone').toContain('shortStone?: GNum')
     expect(service, '计划回执不再写死笼统的灵石不足').not.toMatch(/blocked\('灵石[未不]足'/)
     expect(text, '缺料文案分开报草石').toContain('灵草尚差 ${gap.herb} 株')
@@ -1069,6 +1085,24 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(text, '残页拒因带页数').toContain('残页尚差 ${pageShort} 页')
     expect(text, '进修拒因带悟道差').toContain('悟道点尚差 ${gap.wudao}')
     expect(text, '进修拒因带残页差').toContain('残页尚差 ${gap.page} 页')
+  })
+
+  /**
+   * 主修/辅修的开关回执。
+   *
+   * 原先主修切换完全没有回执、辅修只在槽位满时出声 ——
+   * 这两颗钮会改面板上一整片属性(主修决定功法加成与神通),
+   * 没有回执时玩家只能去角色页比对数值才知道换成了没有。
+   * 换装、佩称号、祭炼法宝都有回执,此处补齐同一套。
+   * 故障注入:删掉任一分支的 ui.toast,本条红。
+   */
+  it('功法主修/辅修的开关都报回执', () => {
+    const dialog = src('../components/cultivation/GongfaDialog.vue')
+    expect(dialog, '主修切换要报回执').toContain('gongfaMainToast(d.name)')
+    expect(dialog, '辅修开关要报回执').toContain('gongfaSubToast(d.name, !wasOn)')
+    expect(dialog, '成功与槽满分开报,不共用一个分支').toContain('else ui.toast(gongfaSubToast')
+    // 回执只在真的切成了才报(equipMain 失败时不出声)
+    expect(dialog, '主修回执应挂在 equipMain 的返回值上').toContain('if (cultivation.equipMain(d.id))')
   })
 
   it('灵兽的性子带数,出处与结算同源', () => {
@@ -1149,5 +1183,47 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(view.match(/fruitDialogOpen(?:\.value)?\s*=\s*false/g), '别处不许绕过保护期直接关').toHaveLength(1)
     expect(view.match(/\bdismissFruitTutorial\(/g), '置已见只经关窗一处').toHaveLength(1)
     expect(view, '别处不许绕过保护期直接置已见').not.toMatch(/markFruitTutorialSeen\(|daoFruitTutorialSeen\s*=/)
+  })
+})
+
+/**
+ * 数据文本的机械体检:括号配对、重复标点、连续空白、混入英文。
+ *
+ * 这类错别字级问题此前没有守卫 —— `artifactEffects` 只对账数值,`petLore` 只查方向,
+ * 而「(先削其防,再入减免」少打一个右括号这种事,两者都看不见。
+ * 覆盖面取叙事与说明字段,不碰 id / 数值。
+ */
+describe('数据文本 · 机械体检', () => {
+  function scan(tag: string, name: string, text: string | undefined, bad: string[]): void {
+    if (!text) return
+    const opens = (text.match(/[(（「《]/g) ?? []).length
+    const closes = (text.match(/[)）」》]/g) ?? []).length
+    if (opens !== closes) bad.push(`${tag}「${name}」括号不配对:${text}`)
+    if (/[,,。;；]{2,}/.test(text)) bad.push(`${tag}「${name}」重复标点:${text}`)
+    if (/\s{2,}/.test(text)) bad.push(`${tag}「${name}」连续空白:${text}`)
+    if (/[a-zA-Z]{2,}/.test(text)) bad.push(`${tag}「${name}」混入英文:${text}`)
+  }
+
+  it('十类数据的文本都没有机械错误', () => {
+    const bad: string[] = []
+    for (const a of ARTIFACTS) {
+      scan('法宝', a.name, a.desc, bad)
+      scan('法宝神通', a.name, a.active.desc, bad)
+    }
+    for (const p of PETS) scan('灵兽', p.name, p.desc, bad)
+    for (const g of GONGFA) scan('功法', g.name, g.desc, bad)
+    for (const t of TITLES) scan('称号', t.name, t.desc, bad)
+    // 事件是仓库里最长的一批散文(81 条随机 + 11 条机缘),最易出标点问题
+    for (const e of EVENTS) scan('事件', e.id, e.text, bad)
+    for (const e of FORTUNE_EVENTS) scan('机缘', e.id, e.text, bad)
+    for (const p of PILLS) scan('丹药', p.name, p.desc, bad)
+    for (const b of BUILDINGS) scan('建筑', b.name, b.desc, bad)
+    for (const s of SOUL_TYPES) scan('器灵', s.name, s.desc, bad)
+    // 奇门有 desc(机制一行)与 gist(八门本义)两段文本,都要过
+    for (const g of GATES) {
+      scan('奇门', g.name, g.desc, bad)
+      scan('奇门本义', g.name, g.gist, bad)
+    }
+    expect(bad, `数据文本有机械错误:\n${bad.join('\n')}`).toEqual([])
   })
 })

@@ -680,6 +680,168 @@ html[data-theme='dark'] .btn-seal:disabled {
   animation: hit-shake-hard 0.4s ease-out;
 }
 
+/* ================= 品阶光环 =================
+ * 稀有件与普通件的「形制」差异,不只靠颜色深浅(见 src/ui/qualityAura.ts)。
+ * 三档浓淡隔着屏幕分不出天品与神品;外发光、角饰、名牌描边是可数的线索。
+ * 色相一律取 --q-tone(使用点由品阶表注入),这里不写死任何一个品阶的颜色。
+ *
+ * 两套主题的发光机理不同,不能共用一组参数:
+ *   · 夜主题:paper 近黑,彩色光晕加在暗底上**越亮越明显**,默认这一套即可;
+ *   · 日主题:paper 是暖白,彩色光晕叠上去仍比纸面亮一点,但对比有限 ——
+ *     实测神品在日主题下几乎看不出光(截图比对),所以日主题改为加深的实边 + 更强的近距光。
+ * 判据:两套主题下「有光环 / 无光环」都必须一眼可分(见 ui/qualityAura.spec)。
+ */
+.q-aura-halo {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 var(--q-glow, 0px) calc(var(--q-glow, 0px) / 5) var(--q-tone, transparent);
+  opacity: 0.5;
+}
+
+/* 日主题:发光在亮纸上不成立,换成「描边 + 近距小光晕」——
+   描边吃的是品阶色与纸面的明暗差,在亮底上才看得出来 */
+html[data-theme='light'] .q-aura-halo {
+  box-shadow:
+    0 0 0 1px var(--q-tone, transparent),
+    0 0 calc(var(--q-glow, 0px) * 0.5) calc(var(--q-glow, 0px) / 12) var(--q-tone, transparent);
+  opacity: 0.62;
+}
+
+/* 稀有档(天/仙/神):呼吸 —— 只有稀有件配动效 */
+.q-aura-halo--radiant {
+  animation: q-aura-breathe 3.6s ease-in-out infinite;
+}
+
+@keyframes q-aura-breathe {
+  0%,
+  100% {
+    opacity: 0.42;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+/* 角饰:两枚/三枚直角,刻意的形制差异;不用颜色区分 */
+.q-aura-corner {
+  position: absolute;
+  pointer-events: none;
+  border-color: var(--q-tone, transparent);
+  border-style: solid;
+  border-width: 0;
+  opacity: 0.75;
+}
+
+/* 双角:左上 + 右下(进阶档与天品) */
+.q-aura-corner--tl {
+  left: 3px;
+  top: 3px;
+  width: 9px;
+  height: 9px;
+  border-left-width: 1.5px;
+  border-top-width: 1.5px;
+}
+.q-aura-corner--br {
+  right: 3px;
+  bottom: 3px;
+  width: 9px;
+  height: 9px;
+  border-right-width: 1.5px;
+  border-bottom-width: 1.5px;
+}
+/* 三角:补右上那枚,描边更亮(仙/神) */
+.q-aura-corner--tr {
+  right: 3px;
+  top: 3px;
+  width: 11px;
+  height: 11px;
+  border-right-width: 2px;
+  border-top-width: 2px;
+  opacity: 0.95;
+}
+/* 稀有档:双角一并加粗加长,与普通件拉开 */
+.q-aura-corner--radiant {
+  width: 11px;
+  height: 11px;
+  border-left-width: 2px;
+  border-top-width: 2px;
+  border-right-width: 2px;
+  border-bottom-width: 2px;
+  opacity: 0.95;
+}
+
+/* 名牌:高级件的名字要自己显眼,不靠玩家比色卡 */
+.q-plaque {
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 10px var(--q-tone, transparent);
+}
+
+/* 神品专属流光:斜向掠过的一道亮线,只在最顶档 */
+.q-aura-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+.q-aura-sheen::after {
+  content: '';
+  position: absolute;
+  top: -60%;
+  bottom: -60%;
+  left: -40%;
+  width: 26%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.5), transparent);
+  transform: skewX(-18deg);
+  animation: q-aura-sheen 5.2s ease-in-out infinite;
+  mix-blend-mode: screen;
+}
+@keyframes q-aura-sheen {
+  0%,
+  62% {
+    transform: translateX(-40%) skewX(-18deg);
+    opacity: 0;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(420%) skewX(-18deg);
+    opacity: 0;
+  }
+}
+
+/* ================= 满级标记 =================
+ * 与品阶光环是两套语言(见 src/ui/masteryMark.ts):
+ *   品阶 = 掉落时就定下的属性 → 角饰 + 外发光,越稀有越亮;
+ *   满级 = 玩家投入后挣来的状态 → 顶边一道实心横杠,与稀有度无关。
+ * 混用会让玩家以为「发光的都是强化过的」,所以形状不同、颜色也不同(金 vs 品阶色)。
+ * 只画一条 2px 的顶边:格子只有 40~44px,再加层就盖住图标了。
+ */
+.mastery-bar {
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  height: 2px;
+  width: 62%;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgb(var(--color-gold-ink-rgb));
+  pointer-events: none;
+}
+
+/* 夜主题:金色在近黑底上够亮,直接复用;日主题的 gold-ink 偏褐,
+   2px 细条在小格子上会糊,加深一档并补一点外扩 */
+html[data-theme='dark'] .mastery-bar {
+  box-shadow: 0 0 6px rgb(var(--color-gold-ink-rgb) / 0.55);
+}
+html[data-theme='light'] .mastery-bar {
+  background: rgb(var(--color-amber-ink-rgb));
+  box-shadow: 0 0 0 0.5px rgb(var(--color-gold-ink-rgb) / 0.45);
+}
+
 /* 稀有天降:全屏金光(叠在 toast 之下) */
 .rare-flash {
   position: fixed;

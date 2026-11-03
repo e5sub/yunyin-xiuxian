@@ -1,5 +1,5 @@
 /**
- * 法宝池 —— 49 件,拥有被动属性与自动触发的主动神通
+ * 法宝池 —— 60 件,拥有被动属性与自动触发的主动神通
  *
  * passive / active.effect 是凡品零重基线(算式第一个因子),品阶与祭炼两条放大由 artifactValue 施加;
  * desc 与 effect 描述的是基线,不是面板。
@@ -188,6 +188,19 @@ export const ARTIFACTS: ArtifactDef[] = [
     'bell-ring'
   ),
   f(
+    'af_xueyu',
+    '血玉戒',
+    'fine',
+    13,
+    '戒面一点血红,饮血则亮',
+    { attackPct: 0.04, lifesteal: 0.03 },
+    '饮血',
+    '每 3 回合饮血而归,造成 145% 攻击伤害并回复其中 35%',
+    3,
+    { type: 'drain', mult: 1.45, healPct: 0.35 },
+    'fish'
+  ),
+  f(
     'af_xingpan',
     '周天星盘',
     'fine',
@@ -227,6 +240,19 @@ export const ARTIFACTS: ArtifactDef[] = [
     'droplets'
   ),
   f(
+    'af_jincheng',
+    '金城罩',
+    'fine',
+    14,
+    '罩下自成一座孤城',
+    { defensePct: 0.26, damageReduction: 0.1 },
+    '金城',
+    '每 4 回合金城自守,获得 29% 生命护盾',
+    4,
+    { type: 'shield', pctMaxHp: 0.29 },
+    'castle'
+  ),
+  f(
     'af_shiling',
     '噬灵幡',
     'fine',
@@ -238,6 +264,32 @@ export const ARTIFACTS: ArtifactDef[] = [
     3,
     { type: 'damage', mult: 4.0 },
     'skull'
+  ),
+  f(
+    'af_poyue',
+    '破岳凿',
+    'fine',
+    17,
+    '凿尖一点寒芒,山岳亦为之开',
+    { attackPct: 0.05, armorPen: 0.02 },
+    '破岳',
+    '每 4 回合凿其护体,余下回合敌人防御降低 25%',
+    4,
+    { type: 'sunder', pct: 0.25 },
+    'mountain'
+  ),
+  f(
+    'af_jingxin',
+    '静心锁',
+    'fine',
+    17,
+    '锁上一点心火,万念不侵',
+    { damageReduction: 0.02, maxHpPct: 0.04 },
+    '静心',
+    '受慑时以四成概率当场挣脱,那一手照出',
+    1,
+    { type: 'purge', pct: 0.4 },
+    'lock'
   ),
   f(
     'af_taixu',
@@ -253,6 +305,19 @@ export const ARTIFACTS: ArtifactDef[] = [
     'mirror-rectangular'
   ),
   f(
+    'af_suohunfu',
+    '锁魂符',
+    'fine',
+    18,
+    '朱砂未干,符下之魂已不得动',
+    { attackPct: 0.12, damageReduction: 0.08 },
+    '锁魂',
+    '每 4 回合符锁其魂,余下回合敌人攻击降低 29%',
+    4,
+    { type: 'weaken', pct: 0.29 },
+    'link'
+  ),
+  f(
     'af_zhanxian',
     '斩仙飞刀',
     'fine',
@@ -266,6 +331,19 @@ export const ARTIFACTS: ArtifactDef[] = [
     'slice'
   ),
   f(
+    'af_lieyingzhua',
+    '裂云爪',
+    'spirit',
+    24,
+    '爪过之处,护体如纸',
+    { armorPen: 0.04, attackPct: 0.02 },
+    '裂影',
+    '每 4 回合裂其护体,余下回合敌人防御降低 20%',
+    4,
+    { type: 'sunder', pct: 0.2 },
+    'swords'
+  ),
+  f(
     'af_hundun',
     '混沌钟',
     'excellent',
@@ -277,6 +355,19 @@ export const ARTIFACTS: ArtifactDef[] = [
     3,
     { type: 'damage', mult: 5.0 },
     'bell'
+  ),
+  f(
+    'af_yinshi',
+    '月蚀匕',
+    'excellent',
+    19,
+    '刃过无痕,只余一线月华',
+    { attackPct: 0.04, lifesteal: 0.03 },
+    '月蚀',
+    '每 3 回合月华蚀骨,造成 150% 攻击伤害并回复其中 60%',
+    3,
+    { type: 'drain', mult: 1.5, healPct: 0.6 },
+    'moon'
   ),
   f(
     'af_zaohua',
@@ -301,9 +392,9 @@ export const ARTIFACTS: ArtifactDef[] = [
     '一鼎仙火不熄,药气缭绕可愈百伤',
     { maxHpPct: 0.18, qiRegen: 0.18 },
     '仙火回春',
-    '每 4 回合仙火护主,回复 40% 生命',
+    '每 4 回合仙火护主,回复 44% 生命',
     4,
-    { type: 'heal', pctMaxHp: 0.4 },
+    { type: 'heal', pctMaxHp: 0.44 },
     'beaker'
   ),
   f(
@@ -320,6 +411,19 @@ export const ARTIFACTS: ArtifactDef[] = [
     'music'
   ),
   f(
+    'af_dinghunling',
+    '玉魂铃',
+    'excellent',
+    23,
+    '铃音一响,神思自归',
+    { damageReduction: 0.04, maxHpPct: 0.05 },
+    '定魂',
+    '受慑时以五成概率当场挣脱,那一手照出',
+    1,
+    { type: 'purge', pct: 0.5 },
+    'shield-check'
+  ),
+  f(
     'af_shenzhong',
     '神钟',
     'profound',
@@ -327,9 +431,9 @@ export const ARTIFACTS: ArtifactDef[] = [
     '钟声一响,神域同震',
     { defensePct: 0.132, damageReduction: 0.076 },
     '神钟护体',
-    '每 4 回合神钟自成壁垒,获得 23% 生命护盾',
+    '每 4 回合神钟自成壁垒,获得 27% 生命护盾',
     4,
-    { type: 'shield', pctMaxHp: 0.23 },
+    { type: 'shield', pctMaxHp: 0.27 },
     'bell-dot'
   ),
   f(
@@ -353,9 +457,9 @@ export const ARTIFACTS: ArtifactDef[] = [
     '天地未开,它便在此',
     { attackPct: 0.08, armorPen: 0.06 },
     '开天',
-    '每 3 回合开天一击,造成 286% 攻击伤害',
+    '每 3 回合开天一击,造成 410% 攻击伤害',
     3,
-    { type: 'damage', mult: 2.86 },
+    { type: 'damage', mult: 4.1 },
     'axe'
   ),
   f(
@@ -366,9 +470,9 @@ export const ARTIFACTS: ArtifactDef[] = [
     '珠中一界,自成生灭',
     { cultivationSpeed: 0.138, maxHpPct: 0.104 },
     '本源滋养',
-    '每 4 回合本源涌动,回复 27% 生命',
+    '每 4 回合本源涌动,回复 45% 生命',
     4,
-    { type: 'heal', pctMaxHp: 0.27 },
+    { type: 'heal', pctMaxHp: 0.45 },
     'gem'
   ),
   // 法宝位只有两个:每个界域须多于两件,否则没有取舍
@@ -380,9 +484,9 @@ export const ARTIFACTS: ArtifactDef[] = [
     '剑光过处,仙庭无声',
     { attackPct: 0.142, critRate: 0.071 },
     '斩尘',
-    '每 3 回合剑气纵横,造成 440% 攻击伤害',
+    '每 3 回合剑气纵横,造成 530% 攻击伤害',
     3,
-    { type: 'damage', mult: 4.4 },
+    { type: 'damage', mult: 5.3 },
     'sword'
   ),
   f(
@@ -393,9 +497,9 @@ export const ARTIFACTS: ArtifactDef[] = [
     '印上云纹流动,身随云走',
     { speed: 0.073, dodgeRate: 0.059 },
     '云行',
-    '每 4 回合踏云掠影,获得 26% 生命护盾',
+    '每 4 回合踏云掠影,获得 29% 生命护盾',
     4,
-    { type: 'shield', pctMaxHp: 0.26 },
+    { type: 'shield', pctMaxHp: 0.29 },
     'wind'
   ),
   f(
@@ -419,9 +523,9 @@ export const ARTIFACTS: ArtifactDef[] = [
     '珠内藏一道不散的神雷',
     { attackPct: 0.127, damageBonus: 0.127 },
     '雷殛',
-    '每 3 回合引雷加身,造成 382% 攻击伤害',
+    '每 3 回合引雷加身,造成 510% 攻击伤害',
     3,
-    { type: 'damage', mult: 3.82 },
+    { type: 'damage', mult: 5.1 },
     'zap'
   ),
   f(
@@ -432,9 +536,9 @@ export const ARTIFACTS: ArtifactDef[] = [
     '莲开于混沌未判之时,不染不灭',
     { cultivationSpeed: 0.126, qiRegen: 0.126 },
     '莲开',
-    '每 4 回合青莲护身,获得 21% 生命护盾',
+    '每 4 回合青莲护身,获得 27% 生命护盾',
     4,
-    { type: 'shield', pctMaxHp: 0.21 },
+    { type: 'shield', pctMaxHp: 0.27 },
     'flower'
   ),
   f(
@@ -445,9 +549,9 @@ export const ARTIFACTS: ArtifactDef[] = [
     '一梭穿虚,来去皆不留痕',
     { luck: 0.06, dropRate: 0.06, explorationSpeed: 0.06 },
     '虚空挪移',
-    '每 4 回合挪移虚界,敌人伤害降低 20%',
+    '每 4 回合挪移虚界,敌人伤害降低 24%',
     4,
-    { type: 'weaken', pct: 0.2 },
+    { type: 'weaken', pct: 0.24 },
     'move-3d'
   ),
 
@@ -460,9 +564,9 @@ export const ARTIFACTS: ArtifactDef[] = [
     '幡一展,周身便是过仙门那一日的云海',
     { dodgeRate: 0.057, speed: 0.071 },
     '云障',
-    '每 4 回合云海四合,获得 29% 生命护盾',
+    '每 4 回合云海四合,获得 33% 生命护盾',
     4,
-    { type: 'shield', pctMaxHp: 0.29 },
+    { type: 'shield', pctMaxHp: 0.33 },
     'cloud'
   ),
   f(
@@ -473,9 +577,9 @@ export const ARTIFACTS: ArtifactDef[] = [
     '盘上星轨自行转动,转一圈便是一劫',
     { accuracy: 0.063, critRate: 0.032 },
     '星陨',
-    '每 3 回合引星陨落,造成 500% 攻击伤害',
+    '每 3 回合引星陨落,造成 560% 攻击伤害',
     3,
-    { type: 'damage', mult: 5 },
+    { type: 'damage', mult: 5.6 },
     'orbit'
   ),
   f(
@@ -499,9 +603,9 @@ export const ARTIFACTS: ArtifactDef[] = [
     '玉京山上的一枚旧印,落印处仙兵皆伏',
     { defensePct: 0.07, shieldPower: 0.08 },
     '玉京',
-    '每 4 回合玉京垂护,敌人伤害降低 21%',
+    '每 4 回合玉京垂护,敌人伤害降低 24%',
     4,
-    { type: 'weaken', pct: 0.21 },
+    { type: 'weaken', pct: 0.24 },
     'landmark'
   ),
 
@@ -514,9 +618,9 @@ export const ARTIFACTS: ArtifactDef[] = [
     '旗出,一方神域随之而动',
     { attackPct: 0.184, speed: 0.132 },
     '神域',
-    '每 3 回合神域压落,造成 440% 攻击伤害',
+    '每 3 回合神域压落,造成 570% 攻击伤害',
     3,
-    { type: 'damage', mult: 4.4 },
+    { type: 'damage', mult: 5.7 },
     'flag-triangle-right'
   ),
   f(
@@ -540,9 +644,9 @@ export const ARTIFACTS: ArtifactDef[] = [
     '灯里燃的是万神殿堂聚了万年的香火',
     { maxHpPct: 0.07, regenPerRound: 0.01 },
     '香火',
-    '每 4 回合香火回照,回复 31% 生命',
+    '每 4 回合香火回照,回复 40% 生命',
     4,
-    { type: 'heal', pctMaxHp: 0.31 },
+    { type: 'heal', pctMaxHp: 0.4 },
     'lamp'
   ),
   f(
@@ -553,10 +657,23 @@ export const ARTIFACTS: ArtifactDef[] = [
     '符上只有一个字,却是帝阙之下九千级天阶的凭据',
     { breakthroughRate: 0.123, luck: 0.145 },
     '帝威',
-    '每 4 回合帝威加身,获得 24% 生命护盾',
+    '每 4 回合帝威加身,获得 29% 生命护盾',
     4,
-    { type: 'shield', pctMaxHp: 0.24 },
+    { type: 'shield', pctMaxHp: 0.29 },
     'scroll'
+  ),
+  f(
+    'af_fentianji',
+    '鸿蒙焚天戟',
+    'heaven',
+    31,
+    '一戟落下,天火自九霄倾泻',
+    { attackPct: 0.07, armorPen: 0.055 },
+    '倾天',
+    '每 3 回合天火倾泻,造成 420% 攻击伤害',
+    3,
+    { type: 'damage', mult: 4.2 },
+    'flame'
   ),
 
   // ============ 混沌海(30-32 阶)============
@@ -568,9 +685,9 @@ export const ARTIFACTS: ArtifactDef[] = [
     '幡上真灵浮沉,徘徊不去',
     { cultivationSpeed: 0.117, qiRegen: 0.134 },
     '真灵',
-    '每 4 回合真灵回照,回复 27% 生命',
+    '每 4 回合真灵回照,回复 42% 生命',
     4,
-    { type: 'heal', pctMaxHp: 0.27 },
+    { type: 'heal', pctMaxHp: 0.42 },
     'flag'
   ),
   f(
@@ -580,11 +697,24 @@ export const ARTIFACTS: ArtifactDef[] = [
     31,
     '一尺量的是天地未判时的长短',
     { armorPen: 0.06, damageBonus: 0.06 },
-    '开天',
-    '每 3 回合开天一击,造成 290% 攻击伤害',
+    '量天',
+    '每 3 回合量其气机,余下回合敌人攻击降低 21%',
     3,
-    { type: 'damage', mult: 2.9 },
+    { type: 'weaken', pct: 0.21 },
     'ruler'
+  ),
+  f(
+    'af_zhenshenzhong',
+    '镇神钟',
+    'earth',
+    30,
+    '一撞之下,神魂俱寂',
+    { maxHpPct: 0.07, damageReduction: 0.04 },
+    '寂钟',
+    '每 5 回合钟声寂神,打断敌人这一手',
+    5,
+    { type: 'stun' },
+    'shield'
   ),
   f(
     'af_benyuanlian',
@@ -594,10 +724,23 @@ export const ARTIFACTS: ArtifactDef[] = [
     '莲台托着一点本源,任劫火也烧不动',
     { defensePct: 0.104, damageReduction: 0.05 },
     '本源',
-    '每 4 回合本源护持,获得 17% 生命护盾',
+    '每 4 回合本源护持,获得 21% 生命护盾',
     4,
-    { type: 'shield', pctMaxHp: 0.17 },
+    { type: 'shield', pctMaxHp: 0.21 },
     'flower-2'
+  ),
+  f(
+    'af_jiuxiao',
+    '混沌垂云冠',
+    'heaven',
+    31,
+    '戴之如承九天,伤重亦有云气来护',
+    { maxHpPct: 0.06, damageReduction: 0.1 },
+    '垂云',
+    '每 4 回合垂云自护,回复 40% 生命',
+    4,
+    { type: 'heal', pctMaxHp: 0.4 },
+    'crown'
   ),
   f(
     'af_shenmojing',
@@ -638,7 +781,7 @@ export const ARTIFACTS: ArtifactDef[] = [
     '每 4 回合无终回护,获得 19% 生命护盾',
     4,
     { type: 'shield', pctMaxHp: 0.19 },
-    'moon'
+    'watch'
   ),
   f(
     'af_taisudie',
@@ -664,7 +807,7 @@ export const ARTIFACTS: ArtifactDef[] = [
     '每 3 回合归源一击,造成 320% 攻击伤害并回复其中 55%',
     3,
     { type: 'drain', mult: 3.2, healPct: 0.55 },
-    'sun'
+    'book'
   ),
 
   // 防身型:interval 记 1 表示随身常在,不是「每 N 回合出手」(见 combat.tryStun)

@@ -5,6 +5,7 @@
     :data-uid="props.item.uid"
     @click="emit('open', props.item.uid)"
   >
+    <QualityAura :quality="props.item.quality" compact />
     <span v-if="props.equipped" class="absolute left-0.5 top-0.5 font-kai text-[8px] leading-none text-jade">佩</span>
     <span v-if="props.item.locked" class="absolute right-0.5 top-0.5 leading-none text-ink-faint">
       <GameIcon name="lock" :size="8" />
@@ -24,12 +25,22 @@
 
     <span class="flex h-full w-full flex-col items-center justify-center gap-0.5 px-1">
       <GameIcon :name="template?.icon ?? 'sword'" :size="20" :style="{ color: quality.color }" />
-      <span class="w-full truncate text-center text-[9px] leading-tight" :style="{ color: quality.color }">
+      <span
+        class="w-full truncate text-center text-[9px] leading-tight"
+        :class="{ 'q-plaque': plaque }"
+        :style="{ color: quality.color }"
+      >
         {{ template?.name ?? '?' }}
       </span>
     </span>
 
-    <span v-if="props.item.level > 0" class="absolute bottom-0.5 right-1 text-[9px] leading-none text-gold-ink tabular">
+    <!-- 满级:与品阶光环分开的一套形状(顶边横杠),见 ui/masteryMark -->
+    <span v-if="mastery" class="mastery-bar" :title="mastery.label" />
+    <span
+      v-if="props.item.level > 0"
+      class="absolute bottom-0.5 right-1 text-[9px] leading-none text-gold-ink tabular"
+      :aria-label="mastery ? `${mastery.label} +${props.item.level}` : undefined"
+    >
       +{{ props.item.level }}
     </span>
     <!-- 自定标记(≤4 字):底边三枚角标共处,左右各让 24px(left-6/right-6),否则盖住「共」与「+N」 -->
@@ -50,8 +61,12 @@
   import { tint } from '@/utils/colorToken'
   import { equipSetDef } from '@/core/equipSet'
   import { isRareQuality, qualityTierStyle } from '@/ui/qualityTier'
+  import { qualityAura } from '@/ui/qualityAura'
+  import { equipMastery } from '@/ui/masteryMark'
+  import { equipLevelCap } from '@/core/forge'
   import GameIcon from '@/components/common/GameIcon.vue'
   import QualitySeal from '@/components/common/QualitySeal.vue'
+  import QualityAura from '@/components/common/QualityAura.vue'
 
   const props = defineProps<{ item: EquipmentInstance; equipped?: boolean }>()
   const emit = defineEmits<{ open: [uid: string] }>()
@@ -60,5 +75,8 @@
   const quality = computed(() => qualityDef(props.item.quality))
   const tier = computed(() => qualityTierStyle(props.item.quality))
   const rare = computed(() => isRareQuality(props.item.quality))
+  const plaque = computed(() => qualityAura(props.item.quality).plaque)
+  // 上限随炼器台等级变,取值在组件里,判定在 ui/masteryMark
+  const mastery = computed(() => equipMastery(props.item.level, equipLevelCap()))
   const setName = computed(() => (template.value?.set ? equipSetDef(template.value.set)?.name ?? '' : ''))
 </script>

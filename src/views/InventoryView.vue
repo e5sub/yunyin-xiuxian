@@ -88,7 +88,11 @@
           <EquipmentCard v-for="row in allItems" :key="row.item.uid" :item="row.item" :equipped="row.equipped" @open="openDetail" />
         </div>
       </div>
-      <p v-else class="mt-8 text-center text-[12px] text-ink-faint">暂无藏品</p>
+      <!-- 空态与名号/灵兽册同一套:哑印 + 楷体标签,不再只是一行灰字 -->
+      <p v-else class="mt-12 text-center">
+        <span class="empty-seal" aria-hidden="true">器</span>
+        <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">暂无藏品</span>
+      </p>
     </template>
 
     <template v-else-if="tab === 'pill'">
@@ -114,6 +118,11 @@
           :style="{ borderColor: tint(pillQualityColor(row.def!), qualityTierByRank(pillRank(row.def!)).border), background: tint(pillQualityColor(row.def!), qualityTierByRank(pillRank(row.def!)).bg) }"
           @click="pillDetail = row.def!.id"
         >
+          <QualityAura
+            :rank="pillRank(row.def!)"
+            :tone="pillQualityColor(row.def!)"
+            compact
+          />
           <span
             v-if="isRareRank(pillRank(row.def!))"
             class="absolute right-0.5 top-0.5 rounded-[3px] border px-[3px] py-px font-kai text-[9px] leading-none text-ink"
@@ -129,7 +138,10 @@
           <span class="absolute bottom-0.5 right-1 text-[9px] leading-none text-ink-soft tabular">×{{ row.count }}</span>
         </button>
       </div>
-      <p v-else class="mt-10 text-center text-[12px] text-ink-faint">暂无丹药</p>
+      <p v-else class="mt-12 text-center">
+        <span class="empty-seal" aria-hidden="true">丹</span>
+        <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">暂无丹药</span>
+      </p>
     </template>
 
     <template v-else-if="tab === 'material'">
@@ -262,6 +274,7 @@
   import SectionTitle from '@/components/common/SectionTitle.vue'
   import InkTabs from '@/components/common/InkTabs.vue'
   import GameIcon from '@/components/common/GameIcon.vue'
+  import QualityAura from '@/components/common/QualityAura.vue'
   import BaseModal from '@/components/common/BaseModal.vue'
   import ArtifactPanel from '@/components/inventory/ArtifactPanel.vue'
   import BrewingDialog from '@/components/inventory/BrewingDialog.vue'

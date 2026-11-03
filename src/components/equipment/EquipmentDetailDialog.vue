@@ -12,6 +12,8 @@
         <span v-if="inst.level > 0" class="text-[11px] text-gold-ink tabular">+{{ inst.level }}</span>
         <!-- 境界门槛:仙品之上的顶级件,未到境穿不上 -->
         <span v-if="realmReqText" class="text-[11px] text-cinnabar">{{ realmReqText }}</span>
+        <!-- 满级时补一句,别让玩家自己去猜还能不能升 -->
+        <span v-if="mastery" class="rounded bg-gold-ink/10 px-1.5 py-0.5 text-[10px] leading-none text-gold-ink">{{ mastery.label }}</span>
         <button
           class="-m-1.5 flex min-h-[28px] min-w-[28px] items-center justify-center rounded p-1.5 text-ink-faint ring-1 ring-inset ring-ink/15 active:scale-90"
           :aria-label="inst.locked ? '解锁' : '锁定'"
@@ -128,18 +130,18 @@
         <!--
           页脚三钮与上一排(自动重铸/转移词条)同档尺寸:!py-2 !text-[11px],高约 27px。
           不带这两样就退回默认的 9×16 与 14px 字,比上面那排高出一大截,看着像两个页脚。
-          强化钮只写「强 化 + 成功率」,不写缺口差数:那一串会把窄格子挤成两行,行高反被撑开
+          强化钮只写「强 化」,不写缺口差数:那一串会把窄格子挤成两行,行高反被撑开
           (差额由正文 UpgradePanel 的缺口行照旧报出,就在这排上方)。
+          满级也不让按钮凭空消失 —— 换禁用态并直接写出原因(AGENTS.md「禁用即给原因」)。
         -->
         <div class="flex gap-2 text-[11px]">
           <button class="btn-seal flex-1 !px-2.5 !py-2 !text-[11px]" @click="toggleEquip">{{ isEquipped ? '卸 下' : '装 备' }}</button>
           <button
-            v-if="upQuote"
             class="btn-ghost flex-1 !px-2.5 !py-2 !text-[11px]"
-            :disabled="upShort !== null"
+            :disabled="!upQuote || upShort !== null"
             :title="upTip"
             @click="doUpgrade"
-          >{{ upLabel }}</button>
+          >{{ upQuote ? upLabel : '已至上限' }}</button>
           <!-- 分解须二步确认,防误触 -->
           <template v-if="decomposeArm !== inst?.uid">
             <button
@@ -173,13 +175,15 @@
   import { worldNameOfTier } from '@/core/formulas'
   import { resolveEquipStats } from '@/core/equipGen'
   import { equippablePower } from '@/core/equipBest'
-  import { decomposeEquipment, equipUpgradeQuote, upgradeEquipment, upgradeShort, upgradeShortfall } from '@/core/forge'
+  import { decomposeEquipment, equipLevelCap, equipUpgradeQuote, upgradeEquipment, upgradeShort, upgradeShortfall } from '@/core/forge'
+  import { upgradeCapToast } from '@/ui/forgeText'
+  import { equipMastery } from '@/ui/masteryMark'
   import { salvageOf, salvageRefundPhrase } from '@/core/salvage'
   import { detectBuild } from '@/core/buildDetect'
   import { qualityDef } from '@/data/qualities'
   import { usePlayerStore } from '@/stores/player'
   import { REALMS } from '@/data/realms'
-  import { formatGN, formatNum } from '@/utils/format'
+  import { formatGN, formatGap, formatNum } from '@/utils/format'
   import { isZero, sub } from '@/utils/gnum'
   import type { AnyStatKey, GNum } from '@/types'
   import { AFFIX_RARITY_META, STAT_NAMES, statValueText } from '@/data/statNames'
@@ -217,6 +221,7 @@
     if (inst.value?.locked) return '分解(已上锁)'
     return '分解'
   })
+  const mastery = computed(() => (inst.value ? equipMastery(inst.value.level, equipLevelCap()) : null))
   const upQuote = computed(() => (inst.value ? equipUpgradeQuote(inst.value.uid) : null))
   const upShort = computed(() => (upQuote.value ? upgradeShort(upQuote.value) : null))
   const upGap = computed(() => (upQuote.value ? upgradeShortfall(upQuote.value) : null))
@@ -232,10 +237,10 @@
   const upTip = computed(() => {
     const q = upQuote.value
     const gap = upGap.value
-    if (!q) return '强化已至上限'
+    if (!q) return upgradeCapToast()
     if (gap && upShort.value === 'dust') return `器灵尘尚差 ${gap.dust}`
-    if (gap && upShort.value === 'exp') return `修为尚差 ${formatGN(gap.exp)}`
-    if (gap && upShort.value === 'stone') return `灵石尚差 ${formatGN(gap.stone)}`
+    if (gap && upShort.value === 'exp') return `修为尚差 ${formatGap(gap.exp)}`
+    if (gap && upShort.value === 'stone') return `灵石尚差 ${formatGap(gap.stone)}`
     return q.safe ? '失手不掉级(保级点)' : `成功率 ${Math.round(q.rate * 100)}%,失手回落至 +${q.failLevel}`
   })
   const salvage = computed(() => (inst.value ? salvageOf(inst.value) : null))
