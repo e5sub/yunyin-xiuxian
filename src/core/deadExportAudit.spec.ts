@@ -265,6 +265,8 @@ describe('死导出审计', () => {
     sanitizeSaveSlices: '服务端归一化入口:server/src/saveNormalize.ts 动态加载本模块,把上传分片按客户端读档同一套 sanitize 修平后落库,消费方在 src 之外,审计扫不到;saveSanitize.spec 守其口径',
     resolveBreakthroughFromSlices: '服务端权威突破入口:server/src/routes/cultivation.ts 动态加载本模块,从云档无头掷点结算(1.57.0),消费方在 src 之外,审计扫不到;breakthroughResolve.spec 守其口径',
     enforceSaveAuthority: '服务端数值权威化入口:server/src/saveAuthority.ts 动态加载本模块,PUT /save 落库前裁决(1.56.0),消费方在 src 之外,审计扫不到;saveAuthority.spec 守其口径',
+    resolveForgeFromSlices:
+      '服务端炼器裁决入口:server/src/routes/forge.ts 动态加载本模块,从云档分片无头水合后跑同一份纯账层(1.58.3),消费方在 src 之外,审计扫不到;forgeResolve.spec 守其口径',
     validateExtraGains:
       '服务端法宝/器魂签发校验:server/src/lootGrant.ts 动态加载本模块,校验 defId 存在、器魂品阶合法、条数封顶后签发入账(1.58.1);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径'
   }

@@ -1038,7 +1038,7 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(flow, '主按钮缺口读同一份 transferShortfall').toContain('transferShortfall(plan.value.cost)')
     expect(flow, '按钮写实际石差').toContain('stone: formatGap(shortfall.value.stone)')
     expect(flow, '按钮写实际尘差').toContain('dust: shortfall.value.dust')
-    expect(service, '服务拒因读 transferShortfall').toContain('const gap = transferShortfall(check.plan.cost)')
+    expect(service, '服务拒因读 transferShortfall').toContain('transferShortfall(run.cost)')
     expect(service, '服务 toast 带实际石差').toContain('stone: formatGap(gap.stone)')
     expect(service, '服务 toast 带实际尘差').toContain('dust: gap.dust')
     expect(service, '不许退回只传缺料类型').not.toContain('ui.toast(transferShortText(short)')

@@ -111,33 +111,50 @@ export function sealCapacity(inst: EquipmentInstance): number {
   return Math.max(0, inst.affixes.length - 1)
 }
 
-/** 重铸一件;quiet=true 供自动重铸用:逐次照常结算,提示由自动那层合为一次 */
-export function reforgeEquipment(uid: string, quiet = false): boolean {
+/** 一次重铸的实账(纯账层的返回值);服务端据它记「该付多少」,客户端据它出提示 */
+export interface ReforgeRun {
+  /** done 成交;empty 无可重铸的词条;short 缺料;gone 查无此件 */
+  outcome: 'done' | 'empty' | 'short' | 'gone'
+  /** 重铸后的整件;未成交为 null */
+  after: EquipmentInstance | null
+  /** 实扣的料;未成交为 null */
+  spent: ReforgeCost | null
+  countBefore: number
+  countAfter: number
+  /** short 时缺的是哪一样 */
+  short?: 'stone' | 'dust'
+  /** 这一炉的价(成交与否都有;empty/gone 为 null),供提示算缺口 */
+  cost?: ReforgeCost | null
+}
+
+/**
+ * 纯账层:扣料 → 重掷条数与词条 → 改件。封存条原样保留,品质/阶数/强化等级不动。
+ *
+ * 只做账:不碰提示、音效、矿材与技艺簿记 —— 见 noteReforge。
+ * 服务端(POST /api/forge/op)无头水合云档后跑的就是这一层;词条从此只在签发路径上变化。
+ */
+export function reforgeOnce(uid: string): ReforgeRun {
   const inventory = useInventoryStore()
   const resources = useResourcesStore()
-  const ui = useUiStore()
   const inst = inventory.findItem(uid)
-  if (!inst) return false
+  if (!inst) return { outcome: 'gone', after: null, spent: null, countBefore: 0, countAfter: 0 }
   const cost = reforgeCost(inst)
-  if (!cost) {
-    if (!quiet) {
-      playSfx('warn')
-      ui.toast(reforgeEmptyToast(), 'warn')
-    }
-    return false
-  }
+  if (!cost) return { outcome: 'empty', after: null, spent: null, countBefore: inst.affixes.length, countAfter: inst.affixes.length }
   const short = reforgeShort(cost)
   if (short) {
-    if (!quiet) {
-      playSfx('warn')
-      const gap = reforgeShortfall(cost)
-      ui.toast(reforgeShortToast(short, { stone: formatGap(gap.stone), dust: gap.dust }), 'warn')
+    return {
+      outcome: 'short',
+      after: null,
+      spent: null,
+      countBefore: inst.affixes.length,
+      countAfter: inst.affixes.length,
+      short,
+      cost
     }
-    return false
   }
 
   const template = equipmentTemplate(inst.templateId)
-  if (!template) return false
+  if (!template) return { outcome: 'gone', after: null, spent: null, countBefore: 0, countAfter: 0 }
   const quality = qualityDef(inst.quality)
   const sealed = new Set(inst.sealedAffixIds ?? [])
   const kept = inst.affixes.filter(a => sealed.has(a.id))
@@ -160,19 +177,52 @@ export function reforgeEquipment(uid: string, quiet = false): boolean {
     fresh.push({ id: picked.id, roll: rng.next() })
   }
   const affixes = [...kept, ...fresh]
-  const before = inst.affixes.length
-  inventory.replaceItem({ ...inst, affixes, reforgeCount: (inst.reforgeCount ?? 0) + 1 })
+  const after: EquipmentInstance = { ...inst, affixes, reforgeCount: (inst.reforgeCount ?? 0) + 1 }
+  inventory.replaceItem(after)
+  return {
+    outcome: 'done',
+    after,
+    spent: cost,
+    countBefore: inst.affixes.length,
+    countAfter: affixes.length,
+    cost
+  }
+}
+
+/** 重铸成交后的簿记:强化/重铸计数、矿材上手、铭纹技艺 */
+export function noteReforge(after: EquipmentInstance): void {
   track('upgrades')
   // 重铸记一味矿材「上手过」(矿石通晓/锻造技艺的唯一活水),并长铭纹技艺
-  noteSmithingUsed(inst.tier, true)
-  useLoreStore().addSkillExp('inscribe', 10 * (1 + inst.tier * 0.2))
+  noteSmithingUsed(after.tier, true)
+  useLoreStore().addSkillExp('inscribe', 10 * (1 + after.tier * 0.2))
+}
 
-  const countNote = before === affixes.length ? `${affixes.length} 条` : `${before} → ${affixes.length} 条`
-  if (!quiet) {
+/** 重铸一次的反馈:音效 + 一条 toast。服务端裁决回来的结果也用它出反馈,免得两套文案走散 */
+export function showReforgeFeedback(run: ReforgeRun): void {
+  const ui = useUiStore()
+  if (run.outcome === 'done') {
+    const note = run.countBefore === run.countAfter ? `${run.countAfter} 条` : `${run.countBefore} → ${run.countAfter} 条`
     playSfx('success')
-    ui.toast(reforgeDoneToast(countNote), 'success')
+    ui.toast(reforgeDoneToast(note), 'success')
+    return
   }
-  return true
+  playSfx('warn')
+  if (run.outcome === 'empty') {
+    ui.toast(reforgeEmptyToast(), 'warn')
+    return
+  }
+  if (run.outcome === 'short') {
+    const gap = run.cost ? reforgeShortfall(run.cost) : { stone: gnZero(), dust: 0, short: run.short ?? 'stone' }
+    ui.toast(reforgeShortToast(run.short ?? 'stone', { stone: formatGap(gap.stone), dust: gap.dust }), 'warn')
+  }
+}
+
+/** 重铸一次(本地链):纯账 + 簿记 + 提示;quiet=true 供自动重铸用,提示由自动那层合为一次 */
+export function reforgeEquipment(uid: string, quiet = false): boolean {
+  const run = reforgeOnce(uid)
+  if (run.after !== null) noteReforge(run.after)
+  if (!quiet) showReforgeFeedback(run)
+  return run.outcome === 'done'
 }
 
 /** 封存成本:第 n 次封存 = 基础 × n(灵石按装备层级换算) */
@@ -313,7 +363,9 @@ export function autoReforge(uid: string, targets: readonly ReforgeTarget[], maxR
     if (short) {
       return { rolls: i, stone, dust, stop: 'broke', short, hit: null }
     }
-    if (!reforgeEquipment(uid, true)) {
+    const run = reforgeOnce(uid)
+    if (run.after !== null) noteReforge(run.after)
+    if (run.outcome !== 'done') {
       return { rolls: i, stone, dust, stop: 'frozen', hit: null }
     }
     stone = add(stone, cost.stone)

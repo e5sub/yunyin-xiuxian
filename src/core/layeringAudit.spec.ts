@@ -44,6 +44,10 @@ const STATEFUL_CORE = new Set<string>([
   "expedition.ts",
   "exploration.ts",
   "forge.ts",
+  // 炼器收进服务端裁决(1.58.3):无头裁决与水合必然要读这几本账,
+  // 两个文件的分工见各自头注(一个跑纯账层,一个管客户端编排与提示)
+  "forgeResolve.ts",
+  "forgeService.ts",
   "fortuneChain.ts",
   "fortuneEcho.ts",
   "firstStep.ts",
@@ -86,12 +90,13 @@ const STATEFUL_CORE = new Set<string>([
 ]);
 
 /** core → store 的引用处数基线(只许减;名单没变时防止单个模块越挂越多) */
-const CORE_STORE_SITES = 231;
+const CORE_STORE_SITES = 242;
 /**
  * core 用例里需要 Pinia 的文件数基线(只许减)。
  * 上游 121 + 本仓 autoOpsDaily/gongfaSeats 等新增,合并后以实跑数为准,见本文件底部对账。
+ * 1.58.3 的 forgeResolve.spec 也是 +1:无头水合必须真开一个 pinia(与 breakthroughResolve 同构)。
  */
-const CORE_PINIA_SPECS = 125;
+const CORE_PINIA_SPECS = 126;
 
 function sources(dir: string): { name: string; text: string }[] {
   return readdirSync(dir)

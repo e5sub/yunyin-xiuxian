@@ -40,15 +40,15 @@ function addReforgeable(uid = 'u_test'): string {
 describe('自动重铸 · 结账提示', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('没有打开任何装备时不炸、不弹提示', () => {
+  it('没有打开任何装备时不炸、不弹提示', async () => {
     const ui = useUiStore()
     ui.toasts.length = 0
     const a = useAutoReforge()
-    expect(() => a.runAutoReforge()).not.toThrow()
+    await expect(a.runAutoReforge()).resolves.toBeUndefined()
     expect(ui.toasts.length, '没有目标装备时不该弹提示').toBe(0)
   })
 
-  it('装备已不在行囊时明确提示「未找到装备」,而不是「无可重铸」', () => {
+  it('装备已不在行囊时明确提示「未找到装备」,而不是「无可重铸」', async () => {
     const ui = useUiStore()
     ui.equipDetailUid = 'u_gone'
     ui.toasts.length = 0
@@ -56,28 +56,28 @@ describe('自动重铸 · 结账提示', () => {
     // 必须先有目标:autoReforge 在「无目标」时直接返回 stop='budget',
     // 走不到 frozen 那条分支(那是对的 —— 没勾目标本就不该开洗)
     a.autoTargets.value = [{ affixId: 'atk1', minRoll: 0.5 }] as never
-    a.runAutoReforge()
+    await a.runAutoReforge()
     const texts = ui.toasts.map(t => t.text)
     expect(texts.join('|'), '这条提示原先永远走不到').toContain('未找到装备')
   })
 
-  it('装备还在但没勾目标时提示「无可重铸」,不误报未找到', () => {
+  it('装备还在但没勾目标时提示「无可重铸」,不误报未找到', async () => {
     const uid = addReforgeable()
     const ui = useUiStore()
     ui.equipDetailUid = uid
     ui.toasts.length = 0
-    useAutoReforge().runAutoReforge()
+    await useAutoReforge().runAutoReforge()
     const texts = ui.toasts.map(t => t.text)
     expect(texts.join('|'), '装备还在时不该说未找到').not.toContain('未找到装备')
   })
 
-  it('两条提示互斥:同一状态下只会出其中一条', () => {
+  it('两条提示互斥:同一状态下只会出其中一条', async () => {
     const ui = useUiStore()
     ui.equipDetailUid = 'u_ghost'
     ui.toasts.length = 0
     const a = useAutoReforge()
     a.autoTargets.value = [{ affixId: 'atk1', minRoll: 0.5 }] as never
-    a.runAutoReforge()
+    await a.runAutoReforge()
     const texts = ui.toasts.map(t => t.text).join('|')
     expect(texts).toContain('未找到装备')
     expect(texts, '不该同时报「无可重铸」').not.toContain('无可重铸')

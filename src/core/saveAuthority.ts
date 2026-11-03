@@ -96,10 +96,11 @@ export interface AuthorityInput {
    */
   prevRebirths?: number
   /**
-   * 上次存档之后、尚未在档里体现的支出(坊市成交成本)。
-   * 扣款在客户端,这里把它从「灵石本窗口可增长量」里扣掉 —— 没付钱的存档必然对不上账。
+   * 上次存档之后、尚未在档里体现的支出(坊市成交 + 炼器料耗)。
+   * 扣款在客户端,这里把它从「灵石 / 器灵尘本窗口可增长量」里扣掉 —— 没付钱的存档必然对不上账。
+   * dust 缺省按 0(1.58.3 起炼器也记账,老调用方不传不会误伤)。
    */
-  pendingSpend?: { m: number; e: number }
+  pendingSpend?: { m: number; e: number; dust?: number }
 }
 
 export interface AuthorityCorrection {
@@ -341,12 +342,15 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
         }
       }
       const smallFields = ['ore', 'page', 'dust', 'wudao'] as const
+      // 未兑现的炼器料耗从器灵尘可增长量里扣(1.58.3):强化的尘写在客户端,不记账就白烧
+      const dustSpend = input.pendingSpend !== undefined ? numOf(input.pendingSpend.dust) : 0
       for (const field of smallFields) {
         const cap = holdCapOf(capMajor, field)
         if (cap <= 0) continue
         const cur = numOf(nextRes[field])
         const prevVal = prevRes !== null ? finiteNum(prevRes[field]) : null
-        const ceil = catchUpCeil(prevVal, (incomeOf(capMajor)[field] ?? 0) * elapsedHours, cap)
+        const catchUp = catchUpCeil(prevVal, (incomeOf(capMajor)[field] ?? 0) * elapsedHours, cap)
+        const ceil = field === 'dust' && dustSpend > 0 ? Math.max(0, catchUp - dustSpend) : catchUp
         if (cur > ceil) {
           corrections.push({ path: `resources.${field}`, before: nextRes[field], after: Math.floor(ceil) })
           nextRes[field] = Math.floor(ceil)

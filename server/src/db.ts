@@ -228,6 +228,34 @@ CREATE TABLE IF NOT EXISTS loot_seed (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   seeded_at INTEGER NOT NULL
 );
+-- 装备状态台账(1.58.3):强化/重铸/词条转移的唯一写入口是 POST /api/forge/op,
+-- 签发后把该件的等级与词条记在此处;上传存档时以台账为准 —— 客户端自报的等级/词条不作数。
+-- 只管「原地改件」的那几个字段(level/affixes/sealed/reforgeCount/transferCount/invested),
+-- 模板/品质/阶数由签发时确定,不在这里重复保管。
+CREATE TABLE IF NOT EXISTS equip_state (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  uid TEXT NOT NULL,
+  level INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL DEFAULT '{}',
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, uid)
+);
+-- 首次登记标记:存量档的旧件首传一次性按当时的件入账(与 loot_seed 同思路,删档重传不重播)
+CREATE TABLE IF NOT EXISTS equip_seed (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  seeded_at INTEGER NOT NULL
+);
+-- 炼器支出账(1.58.3):强化/重铸/词条转移的料耗由服务端复算,但扣款写在客户端 ——
+-- 与坊市同一套机制:上传时从「本窗口可增长量」里扣掉,扣不出来就压回付得起的位置
+CREATE TABLE IF NOT EXISTS forge_spend (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  cost_dust REAL NOT NULL DEFAULT 0,
+  cost_stone_m REAL NOT NULL DEFAULT 0,
+  cost_stone_e INTEGER NOT NULL DEFAULT 0,
+  settled INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS friends (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -386,6 +414,7 @@ CREATE INDEX IF NOT EXISTS idx_profile_rank ON profiles(realm_index DESC, power_
 CREATE INDEX IF NOT EXISTS idx_save_history_user ON save_history(user_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_save_flags_user ON save_flags(user_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_loot_ledger_seed ON loot_ledger(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_equip_state_user ON equip_state(user_id, updated_at DESC);
 `)
     // 老库迁移:补邮箱/角色/状态列(已存在则忽略)
     for (const stmt of [
@@ -499,6 +528,30 @@ CREATE TABLE IF NOT EXISTS loot_seed (
   user_id BIGINT PRIMARY KEY,
   seeded_at BIGINT NOT NULL,
   CONSTRAINT fk_loot_seed_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS equip_state (
+  user_id BIGINT NOT NULL,
+  uid VARCHAR(64) NOT NULL,
+  level INT NOT NULL DEFAULT 0,
+  state TEXT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, uid),
+  CONSTRAINT fk_equip_state_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS equip_seed (
+  user_id BIGINT PRIMARY KEY,
+  seeded_at BIGINT NOT NULL,
+  CONSTRAINT fk_equip_seed_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS forge_spend (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  cost_dust DOUBLE NOT NULL DEFAULT 0,
+  cost_stone_m DOUBLE NOT NULL DEFAULT 0,
+  cost_stone_e INT NOT NULL DEFAULT 0,
+  settled TINYINT NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL,
+  CONSTRAINT fk_forge_spend_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS profiles (
   user_id BIGINT PRIMARY KEY,

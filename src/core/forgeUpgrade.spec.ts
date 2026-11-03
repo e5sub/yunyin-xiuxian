@@ -20,9 +20,9 @@ import {
   equipUpgradeQuote,
   upgradeBatchPlan,
   upgradeEquipment,
-  upgradeEquipmentBatch,
   upgradeShortfall
 } from './forge'
+import { upgradeEquipmentBatch } from './forgeService'
 
 /** 夹具:凡品 rank 0,upgradeCost 只吃 level/tier,折扣恒 0 */
 function mk(uid: string, level: number): EquipmentInstance {
@@ -171,38 +171,38 @@ describe('强化连升 · 批量账', () => {
     expect(upgradeBatchPlan('e1').dust).toBeGreaterThan(upgradeBatchPlan('m1').dust)
   })
 
-  it('批量执行:一路全成时一次升到位,扣款与计划一致', () => {
+  it('批量执行:一路全成时一次升到位,扣款与计划一致', async () => {
     seat(mk('e', 0))
     const r = useResourcesStore()
     r.dust = costOf(0).dust + costOf(1).dust
     r.spiritStone = gn(1e30)
     usePlayerStore().exp = gn(1e30)
     roll('success')
-    expect(upgradeEquipmentBatch('e')).toBe(2)
+    expect(await upgradeEquipmentBatch('e')).toBe(2)
     const inst = useInventoryStore().findItem('e')!
     expect(inst.level).toBe(2)
     expect(inst.invested!.dust).toBe(costOf(0).dust + costOf(1).dust)
     expect(r.dust).toBe(0)
   })
 
-  it('批量执行:失手即停,只升到失手前那一级', () => {
+  it('批量执行:失手即停,只升到失手前那一级', async () => {
     seat(mk('e2', 0))
     rich()
     // 首次必成(0 级 rate=1),第二次在 1 级掷出 1 必失手
     const spy = vi.spyOn(Math, 'random')
     spy.mockReturnValueOnce(0).mockReturnValue(1)
-    expect(upgradeEquipmentBatch('e2')).toBe(1)
+    expect(await upgradeEquipmentBatch('e2')).toBe(1)
     // 1 级失手回落至 0 级(1-1=0)
     expect(useInventoryStore().findItem('e2')!.level).toBe(0)
   })
 
-  it('批量执行:升不动时不扣一分、level 不动、返回 0', () => {
+  it('批量执行:升不动时不扣一分、level 不动、返回 0', async () => {
     seat(mk('f', 0))
     const r = useResourcesStore()
     r.dust = 0
     r.spiritStone = gn(0)
     usePlayerStore().exp = gnZero()
-    expect(upgradeEquipmentBatch('f')).toBe(0)
+    expect(await upgradeEquipmentBatch('f')).toBe(0)
     expect(useInventoryStore().findItem('f')!.level).toBe(0)
     expect(r.dust).toBe(0)
   })

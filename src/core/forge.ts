@@ -1,7 +1,7 @@
 /** 炼器服务:强化 / 分解 / 法宝升阶 */
 import type { ArtifactDef, EquipmentInstance, EquipSlot, GNum } from '@/types'
 import { qualityDef } from '@/data/qualities'
-import { EQUIP_SLOTS, EQUIP_SLOT_NAMES, equipmentTemplate } from '@/data/equipment'
+import { EQUIP_SLOTS, equipmentTemplate } from '@/data/equipment'
 import { artifactDef, ARTIFACT_MAX_LEVEL, ARTIFACT_UP_STONE_TIER, ARTIFACT_UP_WUDAO_BASE } from '@/data/artifacts'
 import { EQUIP_MAX_LEVEL_BASE, UPGRADE_SAFE_STEP } from '@/data/constants'
 import { stoneByTier, upgradeCost, upgradeFailLevel, upgradeSuccessRate } from './formulas'
@@ -19,11 +19,8 @@ import {
   upgradeCapToast,
   upgradeDoneToast,
   upgradeShortToast,
-  upgradeBatchDoneToast,
   upgradeSafeToast,
-  upgradeFailToast,
-  upgradeBatchBrokenToast,
-  upgradeEquippedToast
+  upgradeFailToast
 } from '@/ui/forgeText'
 import { salvageOf, salvageRefundPhrase } from './salvage'
 import { playSfx } from './audio'
@@ -87,37 +84,36 @@ export function upgradeShortfall(cost: { dust: number; stone: GNum; exp: GNum })
 
 export type UpgradeOutcome = 'up' | 'fail' | 'blocked'
 
+/** 一次强化的实账(纯账层的返回值);服务端据它记「该付多少」,客户端据它出提示 */
+export interface UpgradeRun {
+  outcome: UpgradeOutcome
+  /** 结算后的整件;一件未动为 null */
+  after: EquipmentInstance | null
+  /** 实扣的料;一件未动为 null */
+  spent: { dust: number; stone: GNum; exp: GNum } | null
+  /** 未动的原因:缺料(三样之一)或已至上限 */
+  block?: 'dust' | 'exp' | 'stone' | 'cap'
+  /** 掷点前的等级(提示要报「跌了几级」) */
+  levelBefore: number
+}
+
 /**
- * 强化一次:扣尘 / 石 / 修为,再掷成败。
- * 成则 +1 级;败则跌一级,但不跌破本档保级点(每 10 级一档)。
- * 三样缺一即 blocked,分文不扣。
+ * 纯账层:扣尘 / 石 / 修为 → 掷成败 → 改件。成则 +1 级,败则跌到本档保级点。
+ *
+ * 只做账:不碰提示、音效、图鉴与技艺簿记 —— 那些是展示层的事(见 noteUpgrade)。
+ * 服务端(POST /api/forge/op)无头水合云档后跑的就是这一层,与客户端本地逐字段一致;
+ * 装备的等级与投入从此只在服务端签发的路径上变化(台账见 server/src/equipLedger.ts)。
  */
-export function upgradeEquipment(uid: string, opts: { quiet?: boolean } = {}): UpgradeOutcome {
+export function upgradeOnce(uid: string): UpgradeRun {
   const inventory = useInventoryStore()
   const resources = useResourcesStore()
   const player = usePlayerStore()
-  const ui = useUiStore()
   const inst = inventory.findItem(uid)
   const quote = equipUpgradeQuote(uid)
-  if (!inst || quote === null) {
-    if (!opts.quiet) {
-      playSfx('warn')
-      ui.toast(upgradeCapToast(), 'warn')
-    }
-    return 'blocked'
-  }
+  // 查无此件时 levelBefore 记 0:提示只用到「满级」那一路,不读它
+  if (!inst || quote === null) return { outcome: 'blocked', after: null, spent: null, block: 'cap', levelBefore: inst?.level ?? 0 }
   const short = upgradeShort(quote)
-  if (short !== null) {
-    if (!opts.quiet) {
-      playSfx('warn')
-      const gap = upgradeShortfall(quote)
-      ui.toast(
-        upgradeShortToast(short, { stone: formatGap(gap.stone), dust: gap.dust, exp: formatGap(gap.exp) }),
-        'warn'
-      )
-    }
-    return 'blocked'
-  }
+  if (short !== null) return { outcome: 'blocked', after: null, spent: null, block: short, levelBefore: inst.level }
 
   // 先付:成败都要付,这是强化的规矩
   resources.spendSmall('dust', quote.dust)
@@ -126,35 +122,71 @@ export function upgradeEquipment(uid: string, opts: { quiet?: boolean } = {}): U
   // 记账实付强化成本(折扣按当时),分解返还按此账
   const invested = inst.invested ?? { dust: 0, stone: gnZero() }
   const paid = { dust: invested.dust + quote.dust, stone: add(invested.stone, quote.stone) }
-  const t = equipmentTemplate(inst.templateId)
-  // 强化也算图鉴「亲手用过」
-  useLoreStore().noteEquipUsed(inst.templateId)
-  // 矿材记「上手过」;矿石进通晓/锻造技艺的唯一来源
-  noteSmithingUsed(inst.tier, true)
 
   const success = Math.random() < quote.rate
-  if (success) {
-    inventory.replaceItem({ ...inst, level: inst.level + 1, invested: paid })
-    track('upgrades')
-    if (!opts.quiet) {
-      playSfx('success')
-      ui.toast(upgradeDoneToast(t?.name ?? '此器', inst.level + 1), 'success')
-    }
-    return 'up'
+  const after: EquipmentInstance = success
+    ? { ...inst, level: inst.level + 1, invested: paid }
+    : { ...inst, level: quote.failLevel, invested: paid }
+  inventory.replaceItem(after)
+  return {
+    outcome: success ? 'up' : 'fail',
+    after,
+    spent: { dust: quote.dust, stone: quote.stone, exp: quote.exp },
+    levelBefore: inst.level
   }
+}
 
-  const dropped = inst.level - quote.failLevel
-  inventory.replaceItem({ ...inst, level: quote.failLevel, invested: paid })
-  if (!opts.quiet) {
-    playSfx('warn')
-    ui.toast(
-      dropped === 0
-        ? upgradeSafeToast(t?.name ?? '此器', quote.failLevel)
-        : upgradeFailToast(t?.name ?? '此器', quote.failLevel, dropped),
-      'warn'
-    )
+/** 强化成功后的簿记:图鉴「亲手用过」、矿材上手(技艺唯一活水)、强化计数 */
+export function noteUpgrade(after: EquipmentInstance, outcome: UpgradeOutcome): void {
+  useLoreStore().noteEquipUsed(after.templateId)
+  noteSmithingUsed(after.tier, true)
+  if (outcome === 'up') track('upgrades')
+}
+
+/** 强化一次的提示文案(与 upgradeOnce 的结果一一对应) */
+function upgradeToastOf(uid: string, run: UpgradeRun): { text: string; tone: 'success' | 'warn' } | null {
+  const name = equipmentTemplate(useInventoryStore().findItem(uid)?.templateId ?? '')?.name ?? '此器'
+  if (run.outcome === 'blocked') {
+    const quote = equipUpgradeQuote(uid)
+    if (run.block === 'cap' || quote === null) return { text: upgradeCapToast(), tone: 'warn' }
+    const gap = upgradeShortfall(quote)
+    return {
+      text: upgradeShortToast(run.block ?? 'stone', {
+        stone: formatGap(gap.stone),
+        dust: gap.dust,
+        exp: formatGap(gap.exp)
+      }),
+      tone: 'warn'
+    }
   }
-  return 'fail'
+  if (run.outcome === 'up') {
+    return { text: upgradeDoneToast(name, run.after?.level ?? 0), tone: 'success' }
+  }
+  const failLevel = run.after?.level ?? 0
+  const dropped = Math.max(0, run.levelBefore - failLevel)
+  return {
+    text: dropped === 0 ? upgradeSafeToast(name, failLevel) : upgradeFailToast(name, failLevel, dropped),
+    tone: 'warn'
+  }
+}
+
+/** 强化一次的反馈:音效 + 一条 toast。服务端裁决回来的结果也用它出反馈,免得两套文案走散 */
+export function showUpgradeFeedback(uid: string, run: UpgradeRun): void {
+  const toast = upgradeToastOf(uid, run)
+  if (toast === null) return
+  playSfx(toast.tone === 'success' ? 'success' : 'warn')
+  useUiStore().toast(toast.text, toast.tone)
+}
+
+/**
+ * 强化一次(本地链):纯账 + 簿记 + 提示。
+ * 未登录玩家与单测走这条;登录玩家由 core/forgeService 发请求给服务端裁定后,回来跑同一套提示。
+ */
+export function upgradeEquipment(uid: string, opts: { quiet?: boolean } = {}): UpgradeOutcome {
+  const run = upgradeOnce(uid)
+  if (run.after !== null) noteUpgrade(run.after, run.outcome)
+  if (!opts.quiet) showUpgradeFeedback(uid, run)
+  return run.outcome
 }
 
 export interface UpgradeBatchPlan {
@@ -197,48 +229,6 @@ export function upgradeBatchPlan(uid: string): UpgradeBatchPlan {
     lv += 1
   }
   return { attempts: lv - inst.level, dust, stone, exp, atCap: lv >= cap }
-}
-
-/**
- * 连续强化:逐次走 upgradeEquipment quiet 版(记账/图鉴/炼器照常),失手即停,只报一次提示。
- * 返回本次成功提升的级数。
- */
-export function upgradeEquipmentBatch(uid: string): number {
-  const plan = upgradeBatchPlan(uid)
-  const inventory = useInventoryStore()
-  if (plan.attempts === 0) {
-    playSfx('warn')
-    const next = equipUpgradeQuote(uid)
-    const short = next === null ? null : upgradeShort(next)
-    const gap = next === null ? { dust: 0, exp: gnZero(), stone: gnZero() } : upgradeShortfall(next)
-    useUiStore().toast(
-      plan.atCap
-        ? upgradeCapToast()
-        : upgradeShortToast(short ?? 'stone', { stone: formatGap(gap.stone), dust: gap.dust, exp: formatGap(gap.exp) }),
-      'warn'
-    )
-    return 0
-  }
-  let up = 0
-  let tries = 0
-  let last: UpgradeOutcome = 'up'
-  for (let i = 0; i < plan.attempts; i += 1) {
-    tries += 1
-    last = upgradeEquipment(uid, { quiet: true })
-    if (last !== 'up') break
-    up += 1
-  }
-  const inst = inventory.findItem(uid)
-  const name = equipmentTemplate(inst?.templateId ?? '')?.name ?? '此器'
-  if (last === 'up') playSfx('success')
-  else playSfx('warn')
-  useUiStore().toast(
-    last === 'up'
-      ? upgradeBatchDoneToast(up, inst?.level ?? 0, plan.dust, formatGN(plan.stone))
-      : upgradeBatchBrokenToast(name, tries, up, inst?.level ?? 0),
-    last === 'up' ? 'success' : 'warn'
-  )
-  return up
 }
 
 export interface EquipSweepPlan {
@@ -323,36 +313,6 @@ export interface EquipSweep {
   fails: number
   /** 满级跳过不掷的件数 */
   capped: number
-}
-
-/**
- * 一键强化:身上已装备的按部位顺序各掷一次(+1,或失手回落到最近保级点),
- * 遇第一件付不起即止;每掷都走 upgradeEquipment quiet 版(记账/图鉴/炼器照常),只报一次总账。
- * 不在服务端代办 —— 强化是本人的手,托管不该替他掷。
- */
-export function upgradeEquippedOnce(): EquipSweep {
-  const inventory = useInventoryStore()
-  const plan = equipSweepPlan()
-  const out: EquipSweep = { tried: 0, ups: 0, fails: 0, capped: plan.capped }
-  for (const slot of plan.queue) {
-    const uid = inventory.equipped[slot]
-    if (!uid) continue
-    const r = upgradeEquipment(uid, { quiet: true })
-    if (r === 'blocked') break // 计划刚验过账,理论不至此;真被拦就停手,不硬扣
-    out.tried += 1
-    if (r === 'up') out.ups += 1
-    else out.fails += 1
-  }
-  playSfx(out.ups > 0 ? 'success' : 'warn')
-  const stop =
-    plan.stoppedAt !== null && plan.short !== null
-      ? {
-          name: EQUIP_SLOT_NAMES[plan.stoppedAt],
-          text: upgradeShortToast(plan.short, { stone: formatGap(plan.gap.stone), dust: plan.gap.dust, exp: formatGap(plan.gap.exp) })
-        }
-      : undefined
-  useUiStore().toast(upgradeEquippedToast(out, stop), out.ups > 0 ? 'success' : 'warn')
-  return out
 }
 
 export function decomposeEquipment(uid: string, opts: { quiet?: boolean } = {}): boolean {

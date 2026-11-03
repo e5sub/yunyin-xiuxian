@@ -12,7 +12,8 @@ import { qualityDef } from '@/data/qualities'
 import { cmp, gn, toNum } from '@/utils/gnum'
 import { upgradeCost } from './formulas'
 import { enhanceInvested, salvageOf, salvageRefundPhrase } from './salvage'
-import { decomposeByRanks, decomposeEquipment, upgradeEquipment, upgradeEquipmentBatch } from './forge'
+import { decomposeByRanks, decomposeEquipment, upgradeEquipment } from './forge'
+import { upgradeEquipmentBatch } from './forgeService'
 import { useInventoryStore } from '@/stores/inventory'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
@@ -117,7 +118,7 @@ describe('分解返还 · 强化投入的八成随件退回', () => {
     expect(ui.toasts.at(-1)?.text).not.toContain('器灵尘')
   })
 
-  it('连升一级都升不动时也按「下一级」的真实报价说缺哪样', () => {
+  it('连升一级都升不动时也按「下一级」的真实报价说缺哪样', async () => {
     const inventory = useInventoryStore()
     const resources = useResourcesStore()
     const ui = useUiStore()
@@ -125,7 +126,7 @@ describe('分解返还 · 强化投入的八成随件退回', () => {
     resources.addStone(gn(1e30))
     resources.addSmall('dust', 0)
     usePlayerStore().exp = gn(1e30)
-    expect(upgradeEquipmentBatch('h')).toBe(0)
+    expect(await upgradeEquipmentBatch('h')).toBe(0)
     expect(ui.toasts.at(-1)?.text).toContain('器灵尘')
   })
 

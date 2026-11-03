@@ -2,6 +2,15 @@
 
 本文件自 v1.33.1 起维护;更早的版本见 [GitHub Releases](https://github.com/setube/yunyin-xiuxian/releases)。
 
+## [1.58.3] - 2026-11-03
+
+- 新增:**炼器掷点收归服务端** —— 1.58.0 收回了「东西怎么到手」,但「到手的那件怎么变强」仍在客户端:强化成败、重铸出什么词条、出几条、自动重铸、词条转移,全是本地 `Math.random()` 拍板,改一行代码就能件件满级完美词条。现四类动作统一走 `POST /api/forge/op`:服务端无头水合云档、跑客户端同一份裁决代码(`core/forgeResolve`,与 1.57.0 突破裁决同构)、只回传「按 uid 变更的整件」。限速 80ms 一次。
+- 新增:**装备状态台账 `equip_state`** —— 只看住六个字段(level / affixes / sealedAffixIds / reforgeCount / transferCount / invested),不保管模板与品质(静态数据,伪造无意义),那一段仍归归一化链。首传播种走 `equip_seed`,与 1.58.0 的 `loot_seed` 同理:删档重传不重播 —— 否则「造件 → 删档 → 重播」就是无限作弊环。上传时台账有的件按台账覆盖并留痕,台账没有的当场补登。
+- 新增:**炼器支出记账 `forge_spend`** —— 与 `market_purchases` 同一套「上传时从资源增量里扣、落库后清账、删档一并清」,本轮补 `dust` 列(重铸与强化都吃器灵尘)。**修为不入账**:持有上限远高于任何存量,记账无意义(边界写进 `forgeLedger.ts` 头注)。
+- 变更:**纯账层从界面层拆出** —— `upgradeEquipment` / `reforgeEquipment` / `transferAffix` 各自拆成「纯账函数(扣料 + 掷点 + 改件)」+「反馈函数(音效 + 提示)」,服务端只跑前者;簿记(成就/音效/里程碑)留在客户端 —— 服务端在临时 pinia 里跑,写了也会被丢掉。
+- 变更:`core/forge.ts` 不再导出 `upgradeEquipmentBatch` / `upgradeEquippedOnce`(迁到 `core/forgeService.ts` 并改 async,登录走云端裁决、未登录走本地链);调用面 7 处(详情弹窗、强化面板、重铸页脚、背包一键强化、自动重铸、词条转移)全部改走 `forgeService`。
+- 边界:登录玩家签发失败即「未能结算」,不本地补掷也不补签 —— 无账之物上传会被台账覆盖回去。`inventory.sanitize` 仍不验词条槽位与品质适配,台账只保管「已有的那几条」、不校验它们是否配得上这件器。
+
 ## [1.58.2] - 2026-11-03
 
 - 合入:上游(setube) `main` 至 2026-11-02(92 提交,11-01 尾 5 + 11-02 87);本仓内容与守卫一并生效,冲突按「保留本仓版本线、吸收上游实现」解。

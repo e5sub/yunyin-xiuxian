@@ -175,7 +175,8 @@
   import { worldNameOfTier } from '@/core/formulas'
   import { resolveEquipStats } from '@/core/equipGen'
   import { equippablePower } from '@/core/equipBest'
-  import { decomposeEquipment, equipLevelCap, equipUpgradeQuote, upgradeEquipment, upgradeShort, upgradeShortfall } from '@/core/forge'
+  import { decomposeEquipment, equipLevelCap, equipUpgradeQuote, upgradeShort, upgradeShortfall } from '@/core/forge'
+  import { requestUpgrade } from '@/core/forgeService'
   import { upgradeCapToast } from '@/ui/forgeText'
   import { equipMastery } from '@/ui/masteryMark'
   import { salvageOf, salvageRefundPhrase } from '@/core/salvage'
@@ -397,7 +398,7 @@
   }
 
   function doUpgrade(): void {
-    if (inst.value) upgradeEquipment(inst.value.uid)
+    if (inst.value) void requestUpgrade(inst.value.uid)
   }
 
   const decomposeArm = ref<string | null>(null)

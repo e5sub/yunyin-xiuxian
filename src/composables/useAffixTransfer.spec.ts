@@ -26,7 +26,7 @@ const FULL: [string, number][] = [
 ]
 
 /** 等过连点闸再确认 */
-function armAndConfirm(flow: ReturnType<typeof useAffixTransfer>): boolean {
+async function armAndConfirm(flow: ReturnType<typeof useAffixTransfer>): Promise<boolean> {
   flow.arm()
   vi.advanceTimersByTime(400)
   return flow.confirm()
@@ -93,7 +93,7 @@ describe('词条转移面板 · 流程', () => {
     expect(flow.replaceId).toBe('hp1')
   })
 
-  it('二步确认:改了封存、位置或目标,确认自动作废', () => {
+  it('二步确认:改了封存、位置或目标,确认自动作废', async () => {
     const flow = useAffixTransfer('src')
     flow.pickAffix('atk3')
     flow.pickTarget('full')
@@ -112,19 +112,19 @@ describe('词条转移面板 · 流程', () => {
     expect(flow.armed, '目标改了').toBe(false)
     // 没按第一步,确认不算数
     vi.advanceTimersByTime(400)
-    expect(flow.confirm()).toBe(false)
+    expect(await flow.confirm()).toBe(false)
   })
 
-  it('连点两下不跳过确认:进确认态 400ms 内的「确认转移」不作数,刚取消的那一下也不退出', () => {
+  it('连点两下不跳过确认:进确认态 400ms 内的「确认转移」不作数,刚取消的那一下也不退出', async () => {
     const flow = useAffixTransfer('src')
     flow.pickAffix('atk3')
     flow.pickTarget('open')
     flow.arm()
     vi.advanceTimersByTime(150)
-    expect(flow.confirm(), '第二下落在换出来的「确认转移」上').toBe(false)
+    expect(await flow.confirm(), '第二下落在换出来的「确认转移」上').toBe(false)
     expect(useInventoryStore().findItem('src')!.affixes).toHaveLength(2)
     vi.advanceTimersByTime(300)
-    expect(flow.confirm()).toBe(true)
+    expect(await flow.confirm()).toBe(true)
     // 取消后紧接着那一下(落在「返回」上)由页脚按 settling 挡掉
     flow.pickAffix('def3')
     flow.arm()
@@ -146,7 +146,7 @@ describe('词条转移面板 · 流程', () => {
     expect(flow.blockLabel).toMatch(/^器灵尘尚差 \d+$/)
   })
 
-  it('「同时封存」默认勾着,但这一落位封不了时照样能转,目标封存不变', () => {
+  it('「同时封存」默认勾着,但这一落位封不了时照样能转,目标封存不变', async () => {
     const inventory = useInventoryStore()
     // 封满件
     const a = useAffixTransfer('src')
@@ -156,7 +156,7 @@ describe('词条转移面板 · 流程', () => {
     expect(a.sealWanted).toBe(true)
     expect(a.plan?.sealMode).toBe('none')
     expect(a.blockLabel).toBeNull()
-    expect(armAndConfirm(a)).toBe(true)
+    expect(await armAndConfirm(a)).toBe(true)
     expect(inventory.findItem('capped')!.sealedAffixIds).toEqual(['def1'])
     // 零条件
     const b = useAffixTransfer('src')
@@ -165,16 +165,16 @@ describe('词条转移面板 · 流程', () => {
     expect(b.replaceId).toBeNull()
     expect(b.plan?.sealMode).toBe('none')
     expect(b.blockLabel).toBeNull()
-    expect(armAndConfirm(b)).toBe(true)
+    expect(await armAndConfirm(b)).toBe(true)
     expect(inventory.findItem('bare')!.affixes.map(x => x.id)).toEqual(['def3'])
     expect(inventory.findItem('bare')!.sealedAffixIds).toEqual([])
   })
 
-  it('做成之后留在面板:源件少一条,目标仍选中,词条与位置清空', () => {
+  it('做成之后留在面板:源件少一条,目标仍选中,词条与位置清空', async () => {
     const flow = useAffixTransfer('src')
     flow.pickAffix('atk3')
     flow.pickTarget('open')
-    expect(armAndConfirm(flow)).toBe(true)
+    expect(await armAndConfirm(flow)).toBe(true)
     const inventory = useInventoryStore()
     expect(inventory.findItem('src')!.affixes.map(a => a.id)).toEqual(['def3'])
     expect(inventory.findItem('open')!.affixes.map(a => a.id)).toEqual(['hp1', 'atk3'])
@@ -185,13 +185,13 @@ describe('词条转移面板 · 流程', () => {
     expect(flow.armed).toBe(false)
   })
 
-  it('源件转空之后,主按钮写「暂无词条」而不是「未选词条」', () => {
+  it('源件转空之后,主按钮写「暂无词条」而不是「未选词条」', async () => {
     const inventory = useInventoryStore()
     inventory.items = [...inventory.items, mk('one', [['atk3', 0.9]])]
     const flow = useAffixTransfer('one')
     flow.pickAffix('atk3')
     flow.pickTarget('open')
-    expect(armAndConfirm(flow)).toBe(true)
+    expect(await armAndConfirm(flow)).toBe(true)
     expect(inventory.findItem('one')!.affixes).toEqual([])
     expect(flow.blockLabel).toBe('暂无词条')
   })

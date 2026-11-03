@@ -62,7 +62,8 @@
   import { computed, ref } from 'vue'
   import { useUiStore } from '@/stores/ui'
   import { useInventoryStore } from '@/stores/inventory'
-  import { equipLevelCap, equipUpgradeQuote, upgradeBatchPlan, upgradeEquipmentBatch, upgradeShort, upgradeShortfall, type UpgradeBatchPlan } from '@/core/forge'
+  import { equipLevelCap, equipUpgradeQuote, upgradeBatchPlan, upgradeShort, upgradeShortfall, type UpgradeBatchPlan } from '@/core/forge'
+  import { upgradeEquipmentBatch } from '@/core/forgeService'
   import { formatGN, formatGap } from '@/utils/format'
   import { gnZero } from '@/utils/gnum'
   import { equipNextLevelText } from '@/ui/equipText'
@@ -90,6 +91,6 @@
   function runBatchUpgrade(): void {
     if (!inst.value) return
     batchConfirm.value = null
-    upgradeEquipmentBatch(inst.value.uid)
+    void upgradeEquipmentBatch(inst.value.uid)
   }
 </script>

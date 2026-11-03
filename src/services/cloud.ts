@@ -5,6 +5,7 @@
  */
 import { useAuthStore } from '@/stores/auth'
 import type { EquipmentInstance } from '@/types'
+import type { ForgeDetail, ForgeOp, ForgeSpend } from '@/core/forgeResolve'
 
 export const DEFAULT_API_BASE = 'https://yy.071717.xyz'
 
@@ -26,6 +27,18 @@ export interface CloudUser {
   username: string
   /** VIP 到期毫秒时间戳;缺省/0 = 未开通(登录响应老服务端可能不带) */
   vipUntil?: number
+}
+
+/** 炼器裁决的响应(1.58.3);ok=false 时只有 reason/detail,一件未动 */
+export interface ForgeOpResponse {
+  ok: boolean
+  /** 被拒的机读原因:cap / dust / exp / stone / empty / short / gone / frozen / 转移的拒因 */
+  reason?: string
+  op?: string
+  /** 变更后的整件(OK 时以它为准覆盖本地;转移会给两件) */
+  items?: EquipmentInstance[]
+  spend?: ForgeSpend
+  detail?: ForgeDetail
 }
 
 /** VIP 自助开通档位(与 GM 定价四档一致) */
@@ -579,6 +592,16 @@ export const cloudApi = {
     artifacts?: readonly string[]
     souls?: readonly { uid: string; type: string; grade: number }[]
   }): Promise<{ artifacts: string[]; souls: string[] }> => request('POST', '/loot/extras', payload),
+  /**
+   * 炼器裁决(1.58.3):强化/重铸/自动重铸/词条转移的唯一写入口。
+   * 服务端从云档无头水合后掷点,回传变更的整件与「该扣多少」;成功时以 items 为准覆盖本地。
+   */
+  forgeOp: (payload: {
+    op: ForgeOp
+    exp?: { m: number; e: number }
+    dust?: number
+    stone?: { m: number; e: number }
+  }): Promise<ForgeOpResponse> => request('POST', '/forge/op', payload),
   dungeonOverview: (): Promise<DungeonOverview> => request('GET', '/dungeon'),
   dungeonRoom: (): Promise<{ room: DungeonRoom | null }> => request('GET', '/dungeon/room'),
   dungeonRoomCreate: (dungeon: DungeonKey, difficulty: DungeonDifficulty = 'normal'): Promise<{ room: DungeonRoom }> =>

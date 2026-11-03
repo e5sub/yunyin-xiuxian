@@ -261,7 +261,8 @@
 
   import { equipSetDef, setCounts, type EquipSetDef } from '@/core/equipSet'
   import { bestEquipFor, equipAllBest, equipSetCombo, equipSetPreview, unequipAllEquipped } from '@/core/equipBest'
-  import { equipSweepPlan, upgradeEquippedOnce } from '@/core/forge'
+  import { equipSweepPlan } from '@/core/forge'
+  import { upgradeEquippedOnce } from '@/core/forgeService'
   import { upgradeShortToast } from '@/ui/forgeText'
   import { useLoreStore } from '@/stores/lore'
   import { useBrewing } from '@/composables/useBrewing'
@@ -473,7 +474,7 @@
   })
 
   function onUpgradeEquipped(): void {
-    upgradeEquippedOnce()
+    void upgradeEquippedOnce()
   }
 
   function onEquipSet(setId: string): void {

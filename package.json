@@ -1,7 +1,7 @@
 {
   "name": "yunyin-xiuxian",
   "private": true,
-  "version": "1.58.2",
+  "version": "1.58.3",
   "type": "module",
   "description": "云隐修仙录——一款文字修仙放置游戏",
   "author": "谦君",
@@ -27,7 +27,7 @@
     "first-paint": "bun run build && bun scripts/first-paint.mjs",
     "perf-profile": "bun run build && bun scripts/perf-profile.mjs",
     "build:electron": "vue-tsc -b && vite build && esbuild electron/main.js --bundle --platform=node --format=esm --outfile=dist-electron/main.js --external:electron && esbuild electron/preload.js --bundle --platform=node --format=cjs --outfile=dist-electron/preload.js --external:electron && electron-builder --publish never",
-    "build:vendor": "esbuild src/core/saveSanitize.ts src/core/saveAuthority.ts src/core/profileRecompute.ts src/core/breakthroughResolve.ts src/core/lootGrant.ts --bundle --platform=node --format=esm --outdir=server/vendor --outbase=src/core --out-extension:.js=.mjs --tsconfig=tsconfig.app.json --legal-comments=none",
+    "build:vendor": "esbuild src/core/saveSanitize.ts src/core/saveAuthority.ts src/core/profileRecompute.ts src/core/breakthroughResolve.ts src/core/lootGrant.ts src/core/forgeResolve.ts --bundle --platform=node --format=esm --outdir=server/vendor --outbase=src/core --out-extension:.js=.mjs --tsconfig=tsconfig.app.json --legal-comments=none",
     "build:android": "bun run build && bunx cap sync android",
     "build:apk": "bun run build:android && cd android && ./gradlew assembleRelease"
   },

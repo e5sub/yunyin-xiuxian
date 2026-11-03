@@ -11,7 +11,6 @@ import { resolveEquipStats } from '@/core/equipGen'
 import {
   planTransfer,
   targetBlock,
-  transferAffix,
   transferCandidates,
   transferLandings,
   transferShort,
@@ -19,6 +18,7 @@ import {
   type TransferCheck,
   type TransferLanding
 } from '@/core/affixTransfer'
+import { requestTransfer } from '@/core/forgeService'
 import { useInventoryStore } from '@/stores/inventory'
 import {
   TRANSFER_LABELS,
@@ -186,10 +186,12 @@ export function useAffixTransfer(sourceUid: MaybeRefOrGetter<string | null>) {
   }
 
   /** 二步确认的第二步;成功后留在转移模式,目标保持选中 */
-  function confirm(): boolean {
+  async function confirm(): Promise<boolean> {
     const uid = toValue(sourceUid)
     if (!armed.value || settling() || !uid || !state.affixId || !state.targetUid || state.replaceId === undefined) return false
-    const ok = transferAffix({
+    // 先收板再等结算:await 期间若玩家再点一次,用的会是同一份旧 plan 与已消费的资源
+    disarm()
+    const ok = await requestTransfer({
       sourceUid: uid,
       targetUid: state.targetUid,
       affixId: state.affixId,
@@ -200,7 +202,6 @@ export function useAffixTransfer(sourceUid: MaybeRefOrGetter<string | null>) {
       state.affixId = null
       state.replaceId = undefined
     }
-    disarm()
     return ok
   }
 

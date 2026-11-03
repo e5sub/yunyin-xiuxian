@@ -290,7 +290,7 @@ describe('重铸动作 · 条数与数值一起重掷', () => {
   })
 
   /** 故障注入:把 useAutoReforge 的 gap 改成不传 / 固定写「不足」,本用例红 */
-  it('自动重铸首炉缺料回执写出实际差额', () => {
+  it('自动重铸首炉缺料回执写出实际差额', async () => {
     const inst: EquipmentInstance = { ...base, uid: 'auto-short-receipt' }
     useInventoryStore().items = [inst]
     const cost = reforgeCost(inst)!
@@ -300,14 +300,14 @@ describe('重铸动作 · 条数与数值一起重掷', () => {
     useUiStore().equipDetailUid = inst.uid
     const flow = useAutoReforge()
     flow.toggleAutoTarget('hp1')
-    flow.runAutoReforge()
+    await flow.runAutoReforge()
     const text = useUiStore().toasts.at(-1)?.text ?? ''
     expect(text).toContain(`器灵尘尚差 2`)
     expect(text).not.toContain('器灵尘不足')
   })
 
   /** 故障注入:把次数或花销从回执里删掉,本用例红 */
-  it('自动重铸洗满预算:回执是结果标签 + 次数 + 花销', () => {
+  it('自动重铸洗满预算:回执是结果标签 + 次数 + 花销', async () => {
     const inst: EquipmentInstance = { ...base, uid: 'auto-budget-receipt' }
     setup(inst)
     useUiStore().equipDetailUid = inst.uid
@@ -315,7 +315,7 @@ describe('重铸动作 · 条数与数值一起重掷', () => {
     // roll 至多为 1,门槛 2 永远洗不中,必然洗满预算
     flow.autoTargets.value = [{ affixId: 'hp1', minRoll: 2 }]
     flow.autoBudget.value = 3
-    flow.runAutoReforge()
+    await flow.runAutoReforge()
     const text = useUiStore().toasts.at(-1)?.text ?? ''
     expect(text.startsWith('未洗出目标 · 3 次 · 花 '), text).toBe(true)
     expect(text).toMatch(/ · 尘×\d+$/)
@@ -325,14 +325,14 @@ describe('重铸动作 · 条数与数值一起重掷', () => {
    * 「浮 X%」与详情页词条行同一个说法。
    * 故障注入:把 affixRollText 换成裸百分数,本用例红。
    */
-  it('自动重铸洗中目标:回执带浮动标签、次数与花销', () => {
+  it('自动重铸洗中目标:回执带浮动标签、次数与花销', async () => {
     const inst: EquipmentInstance = { ...base, uid: 'auto-hit-receipt' }
     setup(inst)
     useUiStore().equipDetailUid = inst.uid
     const flow = useAutoReforge()
     // 目标是它身上已有的那条(roll 0.5):首轮即命中,0 次、分文不动
     flow.autoTargets.value = [{ affixId: 'atk1' }]
-    flow.runAutoReforge()
+    await flow.runAutoReforge()
     const text = useUiStore().toasts.at(-1)?.text ?? ''
     expect(text).toMatch(/^洗出「.+」浮 50% · 0 次 · 花 .+ · 尘×0$/)
   })

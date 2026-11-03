@@ -72,7 +72,8 @@
   import { computed, ref } from 'vue'
   import { useUiStore } from '@/stores/ui'
   import { useInventoryStore } from '@/stores/inventory'
-  import { reforgeEquipment, reforgeCost, reforgeShortfall, sealCapacity, sealCost, sealShortfall } from '@/core/reforge'
+  import { reforgeCost, reforgeShortfall, sealCapacity, sealCost, sealShortfall } from '@/core/reforge'
+  import { requestReforge } from '@/core/forgeService'
   import { formatGN, formatGap } from '@/utils/format'
   import { TRANSFER_LABELS } from '@/ui/affixTransferText'
 
@@ -109,7 +110,7 @@
 
   function doReforge(): void {
     if (!inst.value) return
-    reforgeEquipment(inst.value.uid)
     reforgeArm.value = null
+    void requestReforge(inst.value.uid)
   }
 </script>

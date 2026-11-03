@@ -5,7 +5,6 @@ import { equipmentTemplate } from '@/data/equipment'
 import { AFFIXES, affixDef, affixFitBlock, affixesByRarity } from '@/data/affixes'
 import { qualityDef } from '@/data/qualities'
 import {
-  autoReforge,
   autoReforgeBudget,
   reforgePlanShortfall,
   reforgeCost,
@@ -13,6 +12,7 @@ import {
   AUTO_REFORGE_MAX_TARGETS,
   type ReforgeTarget
 } from '@/core/reforge'
+import { requestAutoReforge } from '@/core/forgeService'
 import { formatGN, formatGap } from '@/utils/format'
 import { mulN } from '@/utils/gnum'
 import { playSfx } from '@/core/audio'
@@ -82,7 +82,7 @@ export function useAutoReforge() {
   watch([autoTargets, autoBudget], () => {
     autoArm.value = false
   })
-  function runAutoReforge(): void {
+  async function runAutoReforge(): Promise<void> {
     /**
      * 不在这里按 inst 提前返回:装备已被分解/转移时 inst 就是 undefined,
      * 提前 return 会让下面「未找到装备」那条提示永远走不到,玩家点了没反应。
@@ -94,7 +94,7 @@ export function useAutoReforge() {
     autoArm.value = false
     const targets = autoTargets.value
     const budget = autoReforgeBudget(autoBudget.value)
-    const out = autoReforge(uid, targets, budget)
+    const out = await requestAutoReforge(uid, targets, budget)
     const tally = `${out.rolls} 次 · 花 ${formatGN(out.stone)} · 尘×${out.dust}`
     if (out.stop === 'target' && out.hit) {
       playSfx('success')

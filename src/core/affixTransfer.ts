@@ -243,36 +243,72 @@ export function transferLandings(source: EquipmentInstance, target: EquipmentIns
   return [...rows.filter(r => r.check.ok), ...rows.filter(r => !r.check.ok)]
 }
 
-/** 服务:校验 → 扣费 → 写目标 → 写源件;同步执行,被拒则一笔不扣、一处不改 */
-export function transferAffix(req: TransferRequest): boolean {
+/** 一次词条转移的实账(纯账层的返回值);服务端据它记「该付多少」,客户端据它出提示 */
+export type TransferRun =
+  | {
+      ok: true
+      /** 抽走后的源件(已写回 store) */
+      source: EquipmentInstance
+      /** 落地后的目标件(已写回 store) */
+      target: EquipmentInstance
+      moved: AffixRoll
+      cost: TransferCost
+    }
+  | {
+      ok: false
+      /** gone 查无此件;short 缺料;其余为 planTransfer 的拒因 */
+      block: TransferBlock | 'gone' | 'short'
+      /** block === 'short' 时缺的是哪一样 */
+      short?: TransferShort
+      /** block === 'short' 时的这一笔价 */
+      cost?: TransferCost
+    }
+
+/**
+ * 纯账层:校验 → 扣费 → 写目标 → 写源件;被拒则一笔不扣、一处不改。
+ *
+ * 只做账:不碰提示与音效 —— 见 transferAffix。
+ * 服务端(POST /api/forge/op)无头水合云档后跑的就是这一层,转移结果从此只在签发路径上生效。
+ */
+export function transferOnce(req: TransferRequest): TransferRun {
   const inventory = useInventoryStore()
   const resources = useResourcesStore()
-  const ui = useUiStore()
   const source = inventory.findItem(req.sourceUid)
   const target = inventory.findItem(req.targetUid)
-  if (!source || !target) {
-    playSfx('warn')
-    ui.toast(TRANSFER_LABELS.gone, 'warn')
-    return false
-  }
+  if (!source || !target) return { ok: false, block: 'gone' }
   const check = planTransfer(source, target, req.affixId, req.replaceId, req.seal)
-  if (!check.ok) {
-    playSfx('warn')
-    ui.toast(transferBlockText(check.block, req.affixId), 'warn')
-    return false
-  }
+  if (!check.ok) return { ok: false, block: check.block }
   const short = transferShort(check.plan.cost)
-  if (short) {
-    playSfx('warn')
-    const gap = transferShortfall(check.plan.cost)
-    ui.toast(transferShortText(short, { stone: formatGap(gap.stone), dust: gap.dust }), 'warn')
-    return false
-  }
+  if (short) return { ok: false, block: 'short', short, cost: check.plan.cost }
   resources.spendStone(check.plan.cost.stone)
   resources.spendSmall('dust', check.plan.cost.dust)
   inventory.replaceItem(check.plan.target)
   inventory.replaceItem(check.plan.source)
+  return { ok: true, source: check.plan.source, target: check.plan.target, moved: check.plan.moved, cost: check.plan.cost }
+}
+
+/** 词条转移的反馈:音效 + 一条 toast。服务端裁决回来的结果也用它出反馈,免得两套文案走散 */
+export function showTransferFeedback(req: TransferRequest, run: TransferRun): void {
+  const ui = useUiStore()
+  if (!run.ok) {
+    playSfx('warn')
+    if (run.block === 'gone') {
+      ui.toast(TRANSFER_LABELS.gone, 'warn')
+    } else if (run.block === 'short') {
+      const gap = run.cost ? transferShortfall(run.cost) : { stone: gnZero(), dust: 0, short: run.short ?? 'stone' }
+      ui.toast(transferShortText(run.short ?? 'stone', { stone: formatGap(gap.stone), dust: gap.dust }), 'warn')
+    } else {
+      ui.toast(transferBlockText(run.block, req.affixId), 'warn')
+    }
+    return
+  }
   playSfx('success')
   ui.toast(transferDoneToast(affixDef(req.affixId)?.name ?? req.affixId), 'success')
-  return true
+}
+
+/** 词条转移(本地链):纯账 + 提示;登录玩家由 core/forgeService 发请求裁定后回来跑同一套提示 */
+export function transferAffix(req: TransferRequest): boolean {
+  const run = transferOnce(req)
+  showTransferFeedback(req, run)
+  return run.ok
 }

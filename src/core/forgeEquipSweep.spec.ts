@@ -16,7 +16,8 @@ import { EQUIPMENT_TEMPLATES, EQUIP_SLOTS } from '@/data/equipment'
 import { UPGRADE_SAFE_STEP } from '@/data/constants'
 import { gn, gnZero } from '@/utils/gnum'
 import { upgradeCost } from './formulas'
-import { equipLevelCap, equipSweepPlan, upgradeEquippedOnce } from './forge'
+import { equipLevelCap, equipSweepPlan } from './forge'
+import { upgradeEquippedOnce } from './forgeService'
 
 /** 该部位一件无门槛模板:用于摆真装备(equip 要查模板与境界门槛) */
 function templateOf(slot: EquipSlot): string {
@@ -61,13 +62,13 @@ beforeEach(() => {
 })
 
 describe('一键强化 · 计划(只算不扣)', () => {
-  it('空身:无槽位、无停手,一件不动', () => {
+  it('空身:无槽位、无停手,一件不动', async () => {
     const plan = equipSweepPlan()
     expect(plan.queue).toEqual([])
     expect(plan.capped).toBe(0)
     expect(plan.stoppedAt).toBeNull()
     expect(plan.short).toBeNull()
-    const r = upgradeEquippedOnce()
+    const r = await upgradeEquippedOnce()
     expect(r).toEqual({ tried: 0, ups: 0, fails: 0, capped: 0 })
     expect(useUiStore().toasts.at(-1)?.text).toContain('尚无装备可强')
   })
@@ -128,11 +129,11 @@ describe('一键强化 · 计划(只算不扣)', () => {
 })
 
 describe('一键强化 · 下手(每件各掷一次)', () => {
-  it('九件全成:每件只 +1,一次点击齐进一级', () => {
+  it('九件全成:每件只 +1,一次点击齐进一级', async () => {
     wearSlots(EQUIP_SLOTS)
     rich()
     roll('success')
-    const out = upgradeEquippedOnce()
+    const out = await upgradeEquippedOnce()
     expect(out).toEqual({ tried: EQUIP_SLOTS.length, ups: EQUIP_SLOTS.length, fails: 0, capped: 0 })
     for (const slot of EQUIP_SLOTS) {
       expect(useInventoryStore().findItem(`u-${slot}`)!.level).toBe(1)
@@ -140,32 +141,32 @@ describe('一键强化 · 下手(每件各掷一次)', () => {
     expect(useUiStore().toasts.at(-1)?.text).toContain('各掷一次')
   })
 
-  it('每件只掷一次:0 级必成也只到 +1,不会顶到上限', () => {
+  it('每件只掷一次:0 级必成也只到 +1,不会顶到上限', async () => {
     wearSlots(['weapon'])
     rich()
     roll('success')
-    upgradeEquippedOnce()
+    await upgradeEquippedOnce()
     expect(useInventoryStore().findItem('u-weapon')!.level).toBe(1)
   })
 
-  it('失手踩在保级点:不掉级,计一次失手', () => {
+  it('失手踩在保级点:不掉级,计一次失手', async () => {
     wear('weapon', UPGRADE_SAFE_STEP)
     rich()
     roll('fail')
-    const out = upgradeEquippedOnce()
+    const out = await upgradeEquippedOnce()
     expect(out).toEqual({ tried: 1, ups: 0, fails: 1, capped: 0 })
     expect(useInventoryStore().findItem('u-weapon')!.level).toBe(UPGRADE_SAFE_STEP)
     expect(useUiStore().toasts.at(-1)?.text).toContain('失手 1')
   })
 
-  it('料尽即止:第三件分文不动,已强的两件照常留下', () => {
+  it('料尽即止:第三件分文不动,已强的两件照常留下', async () => {
     wearSlots(['weapon', 'head', 'body'])
     const r = useResourcesStore()
     r.dust = costAt(0).dust * 2
     r.spiritStone = gn(1e30)
     usePlayerStore().exp = gn(1e30)
     roll('success')
-    const out = upgradeEquippedOnce()
+    const out = await upgradeEquippedOnce()
     expect(out.tried).toBe(2)
     expect(out.ups).toBe(2)
     expect(useInventoryStore().findItem('u-weapon')!.level).toBe(1)
@@ -176,22 +177,22 @@ describe('一键强化 · 下手(每件各掷一次)', () => {
     expect(useUiStore().toasts.at(-1)?.text).toContain('衣袍')
   })
 
-  it('一件都付不起:不掷、不扣、只报一件未强', () => {
+  it('一件都付不起:不掷、不扣、只报一件未强', async () => {
     wearSlots(['weapon'])
     const r = useResourcesStore()
     r.dust = 0
     r.spiritStone = gnZero()
     usePlayerStore().exp = gnZero()
-    const out = upgradeEquippedOnce()
+    const out = await upgradeEquippedOnce()
     expect(out).toEqual({ tried: 0, ups: 0, fails: 0, capped: 0 })
     expect(useInventoryStore().findItem('u-weapon')!.level).toBe(0)
     expect(useUiStore().toasts.at(-1)?.text).toContain('一件未强')
   })
 
-  it('满级件不掷:全部满级时只报已至上限', () => {
+  it('满级件不掷:全部满级时只报已至上限', async () => {
     wearSlots(EQUIP_SLOTS, equipLevelCap())
     rich()
-    const out = upgradeEquippedOnce()
+    const out = await upgradeEquippedOnce()
     expect(out).toEqual({ tried: 0, ups: 0, fails: 0, capped: EQUIP_SLOTS.length })
     expect(useUiStore().toasts.at(-1)?.text).toContain('上限')
   })
