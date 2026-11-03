@@ -220,8 +220,8 @@ describe('坊市 · 买卖', () => {
     expect(await market.buy(slot.idx)).toBe('ok')
     expect(inventory.items).toHaveLength(1)
     // 签发按 (major, stockedAt) 再生货架:到手件以再生格为准,客户端篡改的 999/神品不作数
-    const regen = generateMarketStock(0, FAR).goods.find(s => s.idx === slot.idx)!
-    expect(inventory.items[0]!.tier).toBe(regen.tier)
+    const regen = generateMarketStock(0, FAR).goods.find(s => s.kind === 'equipment' && s.idx === slot.idx)!
+    expect(inventory.items[0]!.tier).toBe(regen.kind === 'equipment' ? regen.tier : -1)
   })
 
   it('sanitize:合法灵草货架的品阶跨读档保留,坏品阶落回无级', () => {
