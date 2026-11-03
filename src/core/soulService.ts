@@ -7,12 +7,18 @@ import { useInventoryStore } from '@/stores/inventory'
 import { useEndgameStore } from '@/stores/endgame'
 import { useUiStore } from '@/stores/ui'
 import { daoSourceShortfall } from './daoSource'
+import { mintSoul } from './lootClaim'
 
 /** 凝炼一枚器魂需耗的道源 */
 export const SOUL_REFINE_COST = 20
 
-/** 凝炼:销毁装备,得一枚器魂;已装备、已锁定的不可凝 */
-export function refineEquipment(uid: string): boolean {
+/**
+ * 凝炼:销毁装备,得一枚器魂;已装备、已锁定的不可凝。
+ *
+ * 1.58.1 起器魂也要服务端签发(记台账,否则上传时被验源移除):先签发再生效 ——
+ * 签发失败就把道源退回、原器留着,不让玩家白烧一件。
+ */
+export async function refineEquipment(uid: string): Promise<boolean> {
   const inventory = useInventoryStore()
   const endgame = useEndgameStore()
   const ui = useUiStore()
@@ -41,6 +47,11 @@ export function refineEquipment(uid: string): boolean {
   if (!soul) {
     // canRefine 已挡住,退款兜底
     endgame.addDaoSource(SOUL_REFINE_COST)
+    return false
+  }
+  if (!(await mintSoul(soul))) {
+    endgame.addDaoSource(SOUL_REFINE_COST)
+    ui.toast('凝炼失败', 'warn')
     return false
   }
   inventory.removeEquipment(uid)

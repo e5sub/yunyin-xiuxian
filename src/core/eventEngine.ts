@@ -13,6 +13,7 @@ import { petDef, genericPetPool } from '@/data/pets'
 import { expFromSecs, stoneByTier } from './formulas'
 import { acquireArtifact, acquireEquipment, randomDropArtifact } from './loot'
 import { mintDrops } from './lootClaim'
+import { mintArtifacts } from './lootClaim'
 import type { LootClaimCtx } from './lootGrant'
 import { harvestMaterials } from './loreService'
 import { gameNow } from './enginePause'
@@ -206,6 +207,9 @@ async function applyEffect(effect: EventEffect, tier: number, opts: EventApplyOp
     case 'artifact': {
       const id = effect.id ?? randomDropArtifact(tier)
       if (!id) return null
+      // 1.58.1:法宝入档要服务端签发(登录玩家签发失败就不发),与装备同一条口径
+      const signed = await mintArtifacts([id])
+      if (!signed.includes(id)) return null
       const line = `获得 ${acquireArtifact(id, false, opts.autoEquipArtifact ?? true)}`
       foldSession(undefined, undefined, 1)
       return line

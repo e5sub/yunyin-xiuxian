@@ -28,6 +28,12 @@ export function gongfaModsAt(id: string, level: number): StatMods {
   return out
 }
 
+/**
+ * 无 capMs 的状态(闭关/重伤/祝福/顿悟)读档时的时长上限,按「定义时长的几份」计。
+ * 这些状态 apply 一次就叠一份(addBuff 同状态累加),8 份已远超正常玩法。
+ */
+const BUFF_STACK_CEIL = 8
+
 export const useCultivationStore = defineStore(
   'cultivation',
   () => {
@@ -77,8 +83,19 @@ export const useCultivationStore = defineStore(
         const added =
           typeof b.added === 'number' && Number.isFinite(b.added) && b.added > 0 ? b.added : undefined
         if (capMs === undefined) {
-          // 无丹药上限的状态(闭关 / 重伤 / 祝福):不另加上限
-          return { defId: b.defId, endsAt: b.endsAt, ...(added === undefined ? {} : { added }) }
+          /**
+           * 无丹药上限的状态(闭关 / 重伤 / 祝福 / 顿悟):时长可叠加(addBuff 同状态累加),
+           * 所以不能按「一份」收口;但绝不容许 `endsAt` 写到天上 —— 这些 buff 在数据表里
+           * 各自有定义时长,读档时收口到「定义时长 × 8 + 一分钟弛豫」。
+           * 8 份已是「同一状态在一份时长内被施加八次」,正常玩法做不到;
+           * 不这么做,一份手改存档就能把「道韵加身 +40% 修炼」变成永久。
+           */
+          const durMs = (buffDef(b.defId)?.durationSec ?? 0) * 1000
+          return {
+            defId: b.defId,
+            endsAt: Math.min(b.endsAt, now + durMs * BUFF_STACK_CEIL + 60_000),
+            ...(added === undefined ? {} : { added })
+          }
         }
         // 丹药 buff 读档复钳到四个时辰上限(与 addBuff 同口径);旧档较短的合法时长不补长
         return {

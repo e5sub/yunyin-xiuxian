@@ -37,13 +37,23 @@ const DAY_MS = 24 * 3600_000
 
 function run(
   next: Record<string, unknown>,
-  opts: { prev?: Record<string, unknown> | null; prevRealmIndex?: number; elapsedMs?: number } = {}
+  opts: {
+    prev?: Record<string, unknown> | null
+    prevRealmIndex?: number
+    elapsedMs?: number
+    prevRebirths?: number
+    realmAuthoritative?: boolean
+    pendingSpend?: { m: number; e: number }
+  } = {}
 ) {
   const report = enforceSaveAuthority({
     prev: opts.prev ?? null,
     next,
     prevRealmIndex: opts.prevRealmIndex ?? 0,
-    elapsedMs: opts.elapsedMs ?? ONE_TICK_MS
+    elapsedMs: opts.elapsedMs ?? ONE_TICK_MS,
+    prevRebirths: opts.prevRebirths,
+    realmAuthoritative: opts.realmAuthoritative,
+    pendingSpend: opts.pendingSpend
   })
   if (report === null) throw new Error('裁决返回 null')
   return report
@@ -161,6 +171,51 @@ describe('数值权威化 · 修为与资源上限', () => {
     expect(Number(after.ore)).toBeLessThan(1e12)
   })
 
+  it('资源一次拉到持有上限被拦:增量受本窗口可增长量约束(1.58.1)', () => {
+    const prev = baseSave()
+    ;(prev.resources as Record<string, unknown>).spiritStone = { m: 1, e: 3 } // 1000
+    const next = baseSave()
+    ;(next.resources as Record<string, unknown>).spiritStone = { m: 1, e: 7 } // 1e7:远超一窗口的产出
+    const report = run(next, { prev, prevRealmIndex: 0, elapsedMs: ONE_TICK_MS })
+    const stone = (report.data.resources as Record<string, unknown>).spiritStone as GNum
+    expect(num(stone)).toBeLessThan(1e7)
+    expect(report.notes.join(' ')).toContain('灵石超本窗口可增长量')
+  })
+
+  it('坊市支出未在档里体现:灵石被压到「付得起」的位置(1.58.1)', () => {
+    const prev = baseSave()
+    ;(prev.resources as Record<string, unknown>).spiritStone = { m: 2, e: 6 } // 200 万
+    const next = baseSave()
+    ;(next.resources as Record<string, unknown>).spiritStone = { m: 2, e: 6 } // 一分钱没扣
+    const report = run(next, {
+      prev,
+      prevRealmIndex: 0,
+      elapsedMs: 60_000,
+      pendingSpend: { m: 1, e: 6 } // 花了一百万:远超「成批进项」余量
+    })
+    const stone = (report.data.resources as Record<string, unknown>).spiritStone as GNum
+    expect(num(stone)).toBeLessThan(2e6)
+    expect(report.corrections.some(c => c.path === 'resources.spiritStone')).toBe(true)
+  })
+
+  it('坊市支出已兑现(灵石确实少了 8000):零修正通过', () => {
+    const prev = baseSave()
+    ;(prev.resources as Record<string, unknown>).spiritStone = { m: 2, e: 6 } // 200 万
+    const next = baseSave()
+    ;(next.resources as Record<string, unknown>).spiritStone = { m: 1, e: 6 } // 付掉一百万
+    const report = run(next, { prev, prevRealmIndex: 0, elapsedMs: 60_000, pendingSpend: { m: 1, e: 6 } })
+    expect(report.corrections.some(c => c.path === 'resources.spiritStone')).toBe(false)
+  })
+
+  it('成批进项(卖装备/领奖励的价差)仍放行:几倍于上次值不算作弊', () => {
+    const prev = baseSave()
+    ;(prev.resources as Record<string, unknown>).spiritStone = { m: 1, e: 3 } // 1000
+    const next = baseSave()
+    ;(next.resources as Record<string, unknown>).spiritStone = { m: 5, e: 3 } // 5000
+    const report = run(next, { prev, prevRealmIndex: 0, elapsedMs: ONE_TICK_MS })
+    expect(report.corrections.some(c => c.path === 'resources.spiritStone')).toBe(false)
+  })
+
   it('灵气超积余上限被压回', () => {
     const next = baseSave()
     ;(next.resources as Record<string, unknown>).qi = 1e12
@@ -265,5 +320,108 @@ describe('数值权威化 · 境界只认服务端(1.57.0+ 客户端)', () => {
     const report = run(next, { prev: baseSave(), prevRealmIndex: 0 })
     // 预算判据下,紧邻的一小层在 60 秒窗口内付得起 → 放行
     expect((report.data.player as Record<string, unknown>).sub).toBe(1)
+  })
+})
+
+/**
+ * 转世乘区与时间账(1.58.1)。
+ * 这几条的共同点:值域「形状合法」,但**没有与之匹配的底数** ——
+ * 道果/天赋由世号决定,年龄/游玩时长由真实经过时长决定。填多大都得先问底数答不答应。
+ */
+describe('数值权威化 · 转世乘区与时间账', () => {
+  it('世号超服务端基线:压回「基线 + 1」', () => {
+    const next = baseSave()
+    ;(next.player as Record<string, unknown>).reincarnation = { count: 999, daoFruit: 0, talents: [] }
+    const report = run(next, { prev: baseSave(), prevRealmIndex: 0, prevRebirths: 2 })
+    const reinc = (report.data.player as Record<string, unknown>).reincarnation as Record<string, unknown>
+    expect(reinc.count).toBe(3)
+    expect(report.corrections.some(c => c.path === 'player.reincarnation.count')).toBe(true)
+  })
+
+  it('道果超世号支撑:压回「世号 × 满境折算」', () => {
+    const next = baseSave()
+    ;(next.player as Record<string, unknown>).reincarnation = { count: 1, daoFruit: 1e9, talents: [] }
+    const report = run(next, { prev: baseSave(), prevRealmIndex: 0, prevRebirths: 1 })
+    const reinc = (report.data.player as Record<string, unknown>).reincarnation as Record<string, unknown>
+    // 一世满境至多 daoFruitGain(MAX_MAJOR, 满层);1e9 必须被砍下好几个数量级
+    expect(Number(reinc.daoFruit)).toBeLessThan(10_000)
+    expect(report.notes.join(' ')).toContain('道果超世号所支撑')
+  })
+
+  it('零世号不得有道果(新档凭空写乘区)', () => {
+    const next = baseSave()
+    ;(next.player as Record<string, unknown>).reincarnation = { count: 0, daoFruit: 500, talents: [] }
+    const report = run(next, { prev: baseSave(), prevRealmIndex: 0, prevRebirths: 0 })
+    const reinc = (report.data.player as Record<string, unknown>).reincarnation as Record<string, unknown>
+    expect(reinc.daoFruit).toBe(0)
+  })
+
+  it('天赋数超世号支撑:截断(保留最早的)', () => {
+    const next = baseSave()
+    const talents = Array.from({ length: 33 }, (_, i) => `t_${i}`)
+    ;(next.player as Record<string, unknown>).reincarnation = { count: 1, daoFruit: 0, talents }
+    const report = run(next, { prev: baseSave(), prevRealmIndex: 0, prevRebirths: 1 })
+    const reinc = (report.data.player as Record<string, unknown>).reincarnation as Record<string, unknown>
+    // 一世至多 1 + floor(MAX_MAJOR / TALENT_DRAW_DIV) 个
+    expect((reinc.talents as unknown[]).length).toBeLessThan(33)
+    expect((reinc.talents as unknown[])[0]).toBe('t_0')
+    expect(report.notes.join(' ')).toContain('天赋数超世号所支撑')
+  })
+
+  it('寿元加算写天文数字:压回绝对上限', () => {
+    const next = baseSave()
+    ;(next.player as Record<string, unknown>).lifespanBonusYears = 1e9
+    const report = run(next, { prev: baseSave(), prevRealmIndex: 0 })
+    const player = report.data.player as Record<string, unknown>
+    expect(Number(player.lifespanBonusYears)).toBe(1_000_000)
+    expect(report.notes.join(' ')).toContain('寿元加算超上限')
+  })
+
+  it('年龄跳增超本窗口时长:压回可用岁数', () => {
+    const prev = baseSave()
+    ;(prev.player as Record<string, unknown>).age = 30
+    const next = baseSave()
+    ;(next.player as Record<string, unknown>).age = 5000
+    // 20 秒窗口:至多长 0.0056 岁,给 1 岁弛豫
+    const report = run(next, { prev, prevRealmIndex: 0, elapsedMs: ONE_TICK_MS })
+    const player = report.data.player as Record<string, unknown>
+    expect(Number(player.age)).toBeLessThan(32)
+    expect(report.notes.join(' ')).toContain('年龄增长超本窗口时长')
+  })
+
+  it('年龄被回拨:压回上次(除转世外年龄单调)', () => {
+    const prev = baseSave()
+    ;(prev.player as Record<string, unknown>).age = 80
+    const next = baseSave()
+    ;(next.player as Record<string, unknown>).age = 20
+    const report = run(next, { prev, prevRealmIndex: 0, elapsedMs: ONE_TICK_MS })
+    expect((report.data.player as Record<string, unknown>).age).toBe(80)
+    expect(report.notes.join(' ')).toContain('年龄被回拨')
+  })
+
+  it('游玩时长往前推一天:压回真实经过时长', () => {
+    const prev = baseSave()
+    ;(prev.game as Record<string, unknown>).totalPlaySec = 3600
+    const next = baseSave()
+    ;(next.game as Record<string, unknown>).totalPlaySec = 3600 + 86400
+    const report = run(next, { prev, prevRealmIndex: 0, elapsedMs: ONE_TICK_MS })
+    const game = report.data.game as Record<string, unknown>
+    expect(Number(game.totalPlaySec)).toBeLessThan(3600 + 120)
+    expect(report.notes.join(' ')).toContain('游玩时长超真实经过时长')
+  })
+
+  it('合法档:正常年龄增长、时长推进、转世带道果天赋,一律零修正', () => {
+    const prev = baseSave()
+    Object.assign(prev.game as Record<string, unknown>, { totalPlaySec: 7200 })
+    Object.assign(prev.player as Record<string, unknown>, { age: 40, reincarnation: { count: 2, daoFruit: 60, talents: ['t_jianxin'] } })
+    const next = baseSave()
+    // 一小时:年龄 +1(AGE_YEARS_PER_HOUR),时长 +3600
+    Object.assign(next.game as Record<string, unknown>, { totalPlaySec: 7200 + 3600 })
+    Object.assign(next.player as Record<string, unknown>, {
+      age: 41,
+      reincarnation: { count: 2, daoFruit: 80, talents: ['t_jianxin', 't_fuyuan'] }
+    })
+    const report = run(next, { prev, prevRealmIndex: 0, elapsedMs: 3600_000, prevRebirths: 2 })
+    expect(report.corrections).toEqual([])
   })
 })

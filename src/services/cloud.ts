@@ -8,8 +8,18 @@ import type { EquipmentInstance } from '@/types'
 
 export const DEFAULT_API_BASE = 'https://yy.071717.xyz'
 
+/**
+ * Vite 注入的环境变量。**Node 里没有 `import.meta.env`**(vendor bundle:saveSanitize /
+ * profileRecompute 经各 store 的 sanitize 链间接拉到本模块),顶层直接读会抛
+ * `Cannot read properties of undefined` 并让整份模块加载失败 —— 服务端反作弊层会因此静默失效。
+ * 取值一律走本函数:浏览器/打包产物行为不变,Node 里退到默认值(该场景本就不发请求)。
+ */
+function viteEnv(): Record<string, unknown> | undefined {
+  return import.meta.env as Record<string, unknown> | undefined
+}
+
 export const API_BASE: string =
-  import.meta.env.VITE_API_BASE ?? (import.meta.env.PROD ? DEFAULT_API_BASE : '')
+  (viteEnv()?.VITE_API_BASE as string | undefined) ?? (viteEnv()?.PROD ? DEFAULT_API_BASE : '')
 
 export interface CloudUser {
   id: number
@@ -561,6 +571,14 @@ export const cloudApi = {
    */
   claimLoot: (payload: { claims: readonly unknown[] }): Promise<{ equips: EquipmentInstance[] }> =>
     request('POST', '/loot/claim', payload),
+  /** 法宝/器魂签发(1.58.1):入台账后上传才不会在验源时被移除 */
+  /** 坊市成交记账(1.58.1):服务端按货架复算价并落账,上传时把这笔钱从增量里扣掉 */
+  marketBuy: (payload: { stockedAt: number; idx: number }): Promise<{ ok: boolean; recorded: boolean }> =>
+    request('POST', '/market/buy', payload),
+  claimLootExtras: (payload: {
+    artifacts?: readonly string[]
+    souls?: readonly { uid: string; type: string; grade: number }[]
+  }): Promise<{ artifacts: string[]; souls: string[] }> => request('POST', '/loot/extras', payload),
   dungeonOverview: (): Promise<DungeonOverview> => request('GET', '/dungeon'),
   dungeonRoom: (): Promise<{ room: DungeonRoom | null }> => request('GET', '/dungeon/room'),
   dungeonRoomCreate: (dungeon: DungeonKey, difficulty: DungeonDifficulty = 'normal'): Promise<{ room: DungeonRoom }> =>

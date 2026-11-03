@@ -243,12 +243,15 @@ describe('读档复钳上限(sanitize 不放过超限 buff)', () => {
     expect(cultivation.buffs[0]!.added).toBe(dur)
   })
 
-  it('无上限的 buff(闭关/重伤/祝福)读档不受钳制,仅保证有限数字', () => {
+  it('无 capMs 的 buff(闭关/重伤/祝福)可按份叠加,但写一年只留定义时长的 8 份', () => {
     const cultivation = useCultivationStore()
     const now = Date.now()
-    cultivation.buffs = [{ defId: 'injury', endsAt: now + 5000, added: 5000 } as never]
+    const dur = buffDef('injury')!.durationSec * 1000
+    cultivation.buffs = [{ defId: 'injury', endsAt: now + 365 * 24 * 3600_000, added: 5000 } as never]
     cultivation.sanitize()
-    expect(cultivation.buffs[0]!.endsAt).toBe(now + 5000)
+    // 同状态可叠(addBuff 累加),故上限不是「一份」而是「8 份 + 1 分钟弛豫」;永久状态一律收回
+    expect(cultivation.buffs[0]!.endsAt).toBeLessThanOrEqual(now + dur * 8 + 60_000 + 1000)
+    expect(cultivation.buffs[0]!.endsAt).toBeGreaterThan(now + dur * 8 - 5000)
   })
 })
 

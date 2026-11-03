@@ -25,10 +25,10 @@
  *   - 只降不升:本模块从不「给」玩家东西,只把超出的部分压回合法区间。
  *   - 转世(世号增加)视为新世:境界重置与资源归零都放行,但新世的增长照旧受上一条约束。
  */
-import { add, gn, gnZero, gt, mulN, sub } from '@/utils/gnum'
+import { add, gn, gnZero, gt, mulN, sub, toNum } from '@/utils/gnum'
 import type { GNum } from '@/types'
-import { baseCultPerSec, expRequirement, qiCap } from '@/core/formulas'
-import { QI_BANK_MULT, SUB_LEVELS } from '@/data/constants'
+import { baseCultPerSec, daoFruitGain, expRequirement, qiCap } from '@/core/formulas'
+import { AGE_YEARS_PER_HOUR, QI_BANK_MULT, SUB_LEVELS, TALENT_DRAW_DIV } from '@/data/constants'
 import { MAX_MAJOR } from '@/data/realms'
 import { maxTierForMajor } from '@/data/regions'
 import { auditEra } from '@/core/economySim'
@@ -47,6 +47,29 @@ const PILL_STACK_MAX = 9999
 const QI_HOLD_MULT = QI_BANK_MULT * 4
 /** 修为持有上限相对「本境界突破需求」的倍数:正常玩家不会囤到 100 倍 */
 const EXP_HOARD_LIMIT = 100
+/**
+ * 寿元加算(丹药/际遇)的绝对上限:百万年。
+ * 正常一世能吃到的加寿是「千」到「万」的量级(蟠桃 500、仙丹 3 万),百万是百倍余量;
+ * 上限只拦「填个 1e9 就永不老死」这一路,不参与任何玩法口径。
+ */
+const LIFESPAN_BONUS_MAX_YEARS = 1_000_000
+/**
+ * 单次上传之间最多允许「转世」几次。
+ * 一世人寿以「时辰」计(AGE_YEARS_PER_HOUR),两次上传相距 20 秒,连转两次不可能是玩出来的。
+ */
+const REBIRTH_PER_UPLOAD = 1
+/** 游玩时长的弛豫:客户端 tick 与上传时刻有偏差,给 5% + 60 秒余量 */
+const PLAY_SEC_SLACK = 1.05
+/**
+ * 资源「追赶」倍率:本窗口最多长到 产速 × 窗口 × 该倍率。
+ * 8 倍是给离线段各种加成(福缘/妖潮/道士加成)叠出来的余量,实测量级在 2~5 之间。
+ */
+const RESOURCE_CATCHUP_MULT = 8
+/**
+ * 资源成批进项的余量:卖装备、领奖励这类即时进项,按持有上限的这个比例放行。
+ * 5% 相当于「满产 36 小时」的量 —— 卖一背包、一场首领的赏都够,而「一次写满仓」远远不够。
+ */
+const RESOURCE_BURST_FRACTION = 0.05
 
 export interface AuthorityInput {
   /** 上次落库的存档 data(资源基线);首次上传为 null */
@@ -66,6 +89,17 @@ export interface AuthorityInput {
    * 老客户端不带标记,沿用「付得起」预算判据(兼容旧版与自建部署的存量客户端)。
    */
   realmAuthoritative?: boolean
+  /**
+   * 服务端记录的**最大已见世号**(profiles.rebirths / 旧档播种值)。
+   * 世号是道果与天赋的乘数底数,不能由客户端自报:两次上传之间至多一次转世,
+   * 报多大就按基线放大一次,超出的压回 —— 否则「count 填 1e6」等于把永久乘区开到天上。
+   */
+  prevRebirths?: number
+  /**
+   * 上次存档之后、尚未在档里体现的支出(坊市成交成本)。
+   * 扣款在客户端,这里把它从「灵石本窗口可增长量」里扣掉 —— 没付钱的存档必然对不上账。
+   */
+  pendingSpend?: { m: number; e: number }
 }
 
 export interface AuthorityCorrection {
@@ -88,6 +122,11 @@ function objOf(v: unknown): Record<string, unknown> | null {
 
 function numOf(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0
+}
+
+/** 读数值;**缺字段返回 null** —— 「没基线」与「基线是 0」必须分开(旧档没有这一栏) */
+function finiteNum(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
 }
 
 /** 读 GNum;形态非法返回 null(交给归一化兜,不在这里造值) */
@@ -268,37 +307,71 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
     if (nextRes !== null) {
       // 取「上次与本次境界的较大者」的产出模型:玩家在这一段里升过境就按高境界算,不误伤
       const capMajor = Math.max(prevRealm.major, nextMajor)
+      // 产出模型给的是「每小时」:统一换成小时再乘,别拿秒数直接乘(差 3600 倍)
+      const elapsedHours = Math.max(0, input.elapsedMs) / 3_600_000
+      const prevRes = objOf(input.prev?.resources)
+      /**
+       * 一次上传允许的资源**增量**(1.58.1):只看「持有上限」时,把数值一次写到上限就等于
+       * 永远满仓(上限本身是 720 小时满产出的量)。这里再叠一层「追赶速度」——
+       * 本窗口最多长到 `上次值 + max(产速 × 窗口 × 4, 上限 × 0.3)`。
+       * 4 倍覆盖离线段的各种加成叠加,0.3 是「卖一背包、领一批奖励」这类成批进项的余量。
+       * 没有上次基线(首传/删档重传)时不套这一层,只按持有上限收。
+       *
+       * 说明:这是「不许一步到位」,不是「严格按产速记账」—— 游戏里卖件、领奖都是即时的成批进项,
+       * 真按产速记账会把正常玩家误判成作弊;要彻底收口得把经济动作本身搬上服务端。
+       */
+      const catchUpCeil = (prevValue: number | null, produced: number, cap: number): number => {
+        if (prevValue === null) return cap
+        return Math.min(cap, prevValue + Math.max(produced * RESOURCE_CATCHUP_MULT, cap * RESOURCE_BURST_FRACTION))
+      }
       const stoneCap = holdCapOf(capMajor, 'stone')
       const curStone = gnumOf(nextRes.spiritStone)
-      if (stoneCap > 0 && curStone !== null && gt(curStone, gn(stoneCap))) {
-        corrections.push({ path: 'resources.spiritStone', before: nextRes.spiritStone, after: gn(stoneCap) })
-        nextRes.spiritStone = gn(stoneCap)
-        notes.push(`灵石超持有上限(${stoneCap.toExponential(2)})`)
+      if (stoneCap > 0 && curStone !== null) {
+        const prevStone = gnumOf(prevRes?.spiritStone)
+        const producedStone = (incomeOf(capMajor).stone ?? 0) * elapsedHours
+        const spend = input.pendingSpend
+        const spendOf = spend !== undefined ? toNum({ m: numOf(spend.m), e: numOf(spend.e) }) : 0
+        const catchUp = catchUpCeil(prevStone === null ? null : toNum(prevStone), producedStone, stoneCap)
+        // 未兑现的坊市支出从可增长量里扣:付不起就压到付得起的位置(Infinity 也按「付不起」算)
+        const ceil = Number.isNaN(spendOf) ? catchUp : Math.max(0, catchUp - spendOf)
+        if (gt(curStone, gn(ceil))) {
+          corrections.push({ path: 'resources.spiritStone', before: nextRes.spiritStone, after: gn(ceil) })
+          nextRes.spiritStone = gn(ceil)
+          notes.push(`灵石超本窗口可增长量(${ceil.toExponential(2)})`)
+        }
       }
       const smallFields = ['ore', 'page', 'dust', 'wudao'] as const
       for (const field of smallFields) {
         const cap = holdCapOf(capMajor, field)
+        if (cap <= 0) continue
         const cur = numOf(nextRes[field])
-        if (cap > 0 && cur > cap) {
-          corrections.push({ path: `resources.${field}`, before: nextRes[field], after: Math.floor(cap) })
-          nextRes[field] = Math.floor(cap)
-          notes.push(`${field} 超持有上限(${cap.toFixed(0)})`)
+        const prevVal = prevRes !== null ? finiteNum(prevRes[field]) : null
+        const ceil = catchUpCeil(prevVal, (incomeOf(capMajor)[field] ?? 0) * elapsedHours, cap)
+        if (cur > ceil) {
+          corrections.push({ path: `resources.${field}`, before: nextRes[field], after: Math.floor(ceil) })
+          nextRes[field] = Math.floor(ceil)
+          notes.push(`${field} 超本窗口可增长量(${ceil.toFixed(0)})`)
         }
       }
       const herbCap = holdCapOf(capMajor, 'herb')
       const herbs = objOf(nextRes.herbByGrade)
       if (herbCap > 0 && herbs !== null) {
+        const prevHerbs = objOf(prevRes?.herbByGrade)
+        const produced = (incomeOf(capMajor).herb ?? 0) * elapsedHours
         let touched = false
         const fixed: Record<string, number> = {}
         for (const [grade, raw] of Object.entries(herbs)) {
           const n = Math.trunc(numOf(raw))
-          if (n > herbCap) touched = true
-          fixed[grade] = Math.min(Math.max(n, 0), Math.floor(herbCap))
+          const prevVal = prevHerbs !== null ? finiteNum(prevHerbs[grade]) : null
+          const ceil = catchUpCeil(prevVal, produced, herbCap)
+          const capped = Math.min(Math.max(n, 0), Math.floor(ceil))
+          if (capped !== n) touched = true
+          fixed[grade] = capped
         }
         if (touched) {
           corrections.push({ path: 'resources.herbByGrade', before: nextRes.herbByGrade, after: fixed })
           nextRes.herbByGrade = fixed
-          notes.push(`灵草超持有上限(${herbCap.toFixed(0)}/品)`)
+          notes.push(`灵草超本窗口可增长量(${Math.floor(herbCap)}/品上限)`)
         }
       }
       // 灵气:瞬间资源,上限取积余容量
@@ -345,6 +418,93 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
           nextInv.items = fixed
           notes.push(`装备阶数超境界解锁上限(tier ${tierCap})`)
         }
+      }
+    }
+
+    // ---------- 转世乘区:世号 / 道果 / 天赋 ----------
+    /*
+     * 道果与天赋是**永久乘区**,直接加进 finalStats(daoFruit 进攻击/防御/气血乘区,
+     * 天赋按 % 叠加),而它们的「自然上限」由世号唯一决定:
+     *   每次转世至多得 daoFruitGain(最高境界满层) 点道果;
+     *   每次转世至多取走 draws = 1 + floor(major / TALENT_DRAW_DIV) 个天赋(三选一 + 额外抽)。
+     * 世号本身也不采信客户端:两次上传之间至多一次转世。三条合起来,填一个天文数字
+     * 也只能拿到「这一世该有的」乘区 —— 与境界那一条同源(先裁底数,再裁派生值)。
+     */
+    const nextReinc = objOf(nextPlayer.reincarnation)
+    if (nextReinc !== null) {
+      const prevRebirths =
+        input.prevRebirths !== undefined
+          ? Math.max(0, Math.trunc(numOf(input.prevRebirths)))
+          : // 调用方没给服务端基线(单测/老链路):退回上次存档的世号,与旧行为一致
+            Math.max(0, Math.trunc(numOf(objOf(prevPlayer.reincarnation)?.count)))
+      const rebirthCeil = prevRebirths + REBIRTH_PER_UPLOAD
+      const claimedCount = Math.max(0, Math.trunc(numOf(nextReinc.count)))
+      const count = Math.min(claimedCount, rebirthCeil)
+      if (claimedCount > rebirthCeil) {
+        corrections.push({ path: 'player.reincarnation.count', before: nextReinc.count, after: count })
+        nextReinc.count = count
+        notes.push(`世号超出服务端基线(${prevRebirths} + 1)`)
+      }
+      const fruitCeil = count * daoFruitGain(MAX_MAJOR, SUB_LEVELS - 1)
+      const curFruit = numOf(nextReinc.daoFruit)
+      if (curFruit > fruitCeil) {
+        corrections.push({ path: 'player.reincarnation.daoFruit', before: nextReinc.daoFruit, after: fruitCeil })
+        nextReinc.daoFruit = fruitCeil
+        notes.push(`道果超世号所支撑(${count} 世 × 满境折算)`)
+      }
+      const talentCeil = count * (1 + Math.floor(MAX_MAJOR / TALENT_DRAW_DIV))
+      const talents = nextReinc.talents
+      if (Array.isArray(talents) && talents.length > talentCeil) {
+        // 顺序即获得顺序:保留最早的,砍掉后塞进来的
+        const kept = talents.slice(0, talentCeil)
+        corrections.push({ path: 'player.reincarnation.talents', before: talents, after: kept })
+        nextReinc.talents = kept
+        notes.push(`天赋数超世号所支撑(${count} 世 × 每世抽取数)`)
+      }
+    }
+
+    // ---------- 寿元:加算有绝对上限,年龄只能往前 ----------
+    const bonusYears = numOf(nextPlayer.lifespanBonusYears)
+    if (bonusYears > LIFESPAN_BONUS_MAX_YEARS) {
+      corrections.push({ path: 'player.lifespanBonusYears', before: nextPlayer.lifespanBonusYears, after: LIFESPAN_BONUS_MAX_YEARS })
+      nextPlayer.lifespanBonusYears = LIFESPAN_BONUS_MAX_YEARS
+      notes.push('寿元加算超上限')
+    }
+    /*
+     * 年龄:一岁 = 一个时辰(AGE_YEARS_PER_HOUR),离线结算按真实时长补,所以
+     * 「本窗口能长的岁数」服务端自己算得出来。往前(变年轻)只有转世一种合法情形。
+     * 只在「上次档确有基线」时裁:旧档缺 age/totalPlaySec 时按 0 当基线会把正常档打回开局。
+     */
+    const prevAge = finiteNum(prevPlayer.age)
+    if (prevAge !== null && input.elapsedMs > 0 && !rebirth) {
+      const curAge = numOf(nextPlayer.age)
+      const elapsedHours = input.elapsedMs / 3_600_000
+      const ageCeil = prevAge + elapsedHours * AGE_YEARS_PER_HOUR + 1
+      if (curAge > ageCeil) {
+        corrections.push({ path: 'player.age', before: nextPlayer.age, after: Math.floor(ageCeil) })
+        nextPlayer.age = Math.floor(ageCeil)
+        notes.push('年龄增长超本窗口时长')
+      } else if (curAge < prevAge - 1) {
+        corrections.push({ path: 'player.age', before: nextPlayer.age, after: Math.floor(prevAge) })
+        nextPlayer.age = Math.floor(prevAge)
+        notes.push('年龄被回拨')
+      }
+    }
+
+    // ---------- 游玩时长:日切配额的唯一底数 ----------
+    /*
+     * totalPlaySec 派生 gameDay,垂钓/观星/悟道兑换/悬赏/卦象的「今日」全看它 ——
+     * 每次上传往前推一天就等于日限无限。游玩时长不可能超过真实经过时长,按 elapsed 收口。
+     */
+    const prevPlay = finiteNum(objOf(input.prev?.game)?.totalPlaySec)
+    if (prevPlay !== null && nextGame !== null && input.elapsedMs > 0) {
+      const elapsedSec = input.elapsedMs / 1000
+      const curPlay = numOf(nextGame.totalPlaySec)
+      const playCeil = prevPlay + elapsedSec * PLAY_SEC_SLACK + MIN_ELAPSED_SEC
+      if (curPlay > playCeil) {
+        corrections.push({ path: 'game.totalPlaySec', before: nextGame.totalPlaySec, after: Math.floor(playCeil) })
+        nextGame.totalPlaySec = Math.floor(playCeil)
+        notes.push('游玩时长超真实经过时长')
       }
     }
 

@@ -189,7 +189,9 @@ CREATE TABLE IF NOT EXISTS profiles (
   atk_e INTEGER NOT NULL,
   def_m REAL NOT NULL,
   def_e INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  /** 已见最大世号:道果/天赋的乘数基线(1.58.1 起),只在存档上传时抬高 */
+  rebirths INTEGER NOT NULL DEFAULT 0
 );
 -- 存档审计:落库前归一化改动过哪些分片 / 境界跳变。不拦存档,只留痕供 GM 判定
 CREATE TABLE IF NOT EXISTS save_flags (
@@ -207,7 +209,19 @@ CREATE TABLE IF NOT EXISTS loot_ledger (
   uid TEXT NOT NULL,
   src TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL,
+  -- 物件类别:equip(行囊装备)/ artifact(法宝,键为 defId)/ soul(器魂,键为 uid)
+  kind TEXT NOT NULL DEFAULT 'equip',
   PRIMARY KEY (user_id, uid)
+);
+-- 坊市购买账(1.58.1):每笔成交记成本,上传存档时从「本窗口可增长量」里扣掉 ——
+-- 扣款在客户端,不记账就等于可以白拿(货架本身按 (major, stockedAt) 确定性再生,物是真的)
+CREATE TABLE IF NOT EXISTS market_purchases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  cost_m REAL NOT NULL,
+  cost_e INTEGER NOT NULL,
+  settled INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
 );
 -- 首次验源播种标记:存量档的旧件首传一次性入账,此后只认签发;删档重传不重播(否则删档→播种成作弊环)
 CREATE TABLE IF NOT EXISTS loot_seed (
@@ -386,6 +400,8 @@ CREATE INDEX IF NOT EXISTS idx_loot_ledger_seed ON loot_ledger(user_id, created_
       'ALTER TABLE saves ADD COLUMN started INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE profiles ADD COLUMN def_m REAL NOT NULL DEFAULT 0',
       'ALTER TABLE profiles ADD COLUMN def_e INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE profiles ADD COLUMN rebirths INTEGER NOT NULL DEFAULT 0',
+      "ALTER TABLE loot_ledger ADD COLUMN kind TEXT NOT NULL DEFAULT 'equip'",
       'ALTER TABLE boss_state ADD COLUMN kill_count INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE boss_state ADD COLUMN period_start INTEGER NOT NULL DEFAULT 0',
       "ALTER TABLE dungeon_teams ADD COLUMN difficulty TEXT NOT NULL DEFAULT 'normal'",
@@ -466,8 +482,18 @@ CREATE TABLE IF NOT EXISTS loot_ledger (
   uid VARCHAR(64) NOT NULL,
   src VARCHAR(16) NOT NULL DEFAULT '',
   created_at BIGINT NOT NULL,
+  kind VARCHAR(16) NOT NULL DEFAULT 'equip',
   PRIMARY KEY (user_id, uid),
   CONSTRAINT fk_loot_ledger_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS market_purchases (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  cost_m DOUBLE NOT NULL,
+  cost_e INT NOT NULL,
+  settled TINYINT NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL,
+  CONSTRAINT fk_market_purchases_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS loot_seed (
   user_id BIGINT PRIMARY KEY,
@@ -488,6 +514,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   def_m DOUBLE NOT NULL,
   def_e INT NOT NULL,
   updated_at BIGINT NOT NULL,
+  rebirths INT NOT NULL DEFAULT 0,
   CONSTRAINT fk_profiles_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX idx_profile_rank (realm_index DESC, power_e DESC, power_m DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -672,6 +699,8 @@ CREATE TABLE IF NOT EXISTS autoops_state (
     'ALTER TABLE saves ADD COLUMN started TINYINT NOT NULL DEFAULT 0',
     'ALTER TABLE profiles ADD COLUMN def_m DOUBLE NOT NULL DEFAULT 0',
     'ALTER TABLE profiles ADD COLUMN def_e INT NOT NULL DEFAULT 0',
+    'ALTER TABLE profiles ADD COLUMN rebirths INT NOT NULL DEFAULT 0',
+    "ALTER TABLE loot_ledger ADD COLUMN kind VARCHAR(16) NOT NULL DEFAULT 'equip'",
     'ALTER TABLE boss_state ADD COLUMN kill_count INT NOT NULL DEFAULT 0',
     'ALTER TABLE boss_state ADD COLUMN period_start BIGINT NOT NULL DEFAULT 0',
     "ALTER TABLE dungeon_teams ADD COLUMN difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'",

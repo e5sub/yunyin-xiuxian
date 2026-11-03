@@ -32,3 +32,38 @@ export async function mintDrops(ctxs: readonly LootClaimCtx[]): Promise<Equipmen
 }
 
 export type { LootClaimCtx } from './lootGrant'
+
+/* ------------------------------------------------------------------ *
+ * 法宝与器魂的签发(1.58.1)
+ *
+ * 与装备同一条漏斗:登录走服务端记台账,未登录放行(首传会把现有物件播种进台账),
+ * 登录玩家请求失败时宁可不发 —— 无账之物上传时会被验源移除。
+ * 放在本文件而不是另立模块:core 里 import store 的处数有硬基线(见 layeringAudit),
+ * 同一件事没必要多开一个接线点。
+ * ------------------------------------------------------------------ */
+import type { SoulGain } from './lootGrant'
+
+/** 批量签发法宝;返回服务端确认签发的那几件(顺序按申请) */
+export async function mintArtifacts(defIds: readonly string[]): Promise<string[]> {
+  if (defIds.length === 0) return []
+  const auth = useAuthStore()
+  if (!auth.loggedIn) return [...defIds]
+  try {
+    const { artifacts } = await cloudApi.claimLootExtras({ artifacts: [...defIds] })
+    return artifacts
+  } catch {
+    return []
+  }
+}
+
+/** 签发一枚器魂;true 表示可入档 */
+export async function mintSoul(soul: SoulGain): Promise<boolean> {
+  const auth = useAuthStore()
+  if (!auth.loggedIn) return true
+  try {
+    const { souls } = await cloudApi.claimLootExtras({ souls: [soul] })
+    return souls.includes(soul.uid)
+  } catch {
+    return false
+  }
+}

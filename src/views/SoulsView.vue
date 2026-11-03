@@ -184,7 +184,8 @@
   const pendingDissolveUid = ref<string | null>(null)
 
   function doRefine(uid: string): void {
-    refineEquipment(uid)
+    // 签发是异步的(1.58.1 器魂要过台账),不阻塞界面:失败会自己退款并提示
+    void refineEquipment(uid)
     pendingRefineUid.value = null
   }
 

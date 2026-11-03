@@ -21,7 +21,9 @@ import { generateEquipment } from './equipGen'
 import { capChance } from './statsCalc'
 import { EQUIP_DROP_CHANCE, EQUIP_DROP_CHANCE_CAP } from '@/data/constants'
 import { maxTierForMajor } from '@/data/regions'
-import { marketEquipInstance, marketSlotAt } from './marketService'
+import { artifactDef } from '@/data/artifacts'
+import { SOUL_GRADES, soulTypeDef } from '@/data/souls'
+import { generateMarketStock, marketEquipInstance, marketSlotAt } from './marketService'
 import { suppressionEquipmentLuck, SUPPRESS_EQUIP_LUCK_CAP } from './suppressLuck'
 
 /** 掉落来源:与 /api/loot/claim 的裁决分支一一对应 */
@@ -168,4 +170,85 @@ export function grantEquips(
   }
 
   return { equips, overflow }
+}
+
+/* ------------------------------------------------------------------ *
+ * 法宝与器魂的签发(1.58.1)
+ *
+ * 这两类物件原先「有合法性、没来源」:法宝在档里是 `{ defId, level }`(同 defId 只一件),
+ * 器魂虽有 uid 却由客户端 `refineSoul` 现生成 —— 一份手改存档就能把 49 件法宝全收齐、
+ * 把顶阶器魂堆成山。这里补的仍是同一件事:**只签发数据表里确有其物的增益**,
+ * 台账键法宝取 defId、器魂取 uid,上传时按 kind 分别验源(见 server/src/lootLedger.ts)。
+ *
+ * 判据不碰随机:法宝掉不掉、器魂凝出哪一阶,本来就在客户端掷(与装备不同,
+ * 它们的「获得」由战斗/凝炼动作触发,不是掉落流程的一部分);这里只保证
+ * 「这件东西真的存在,且确实有人为它买过单」。
+ * ------------------------------------------------------------------ */
+export interface SoulGain {
+  uid: string
+  type: string
+  grade: number
+}
+
+export interface ExtraGains {
+  artifacts: string[]
+  souls: SoulGain[]
+}
+
+/** 单次签发允许的件数:一次战斗最多一件法宝、一次凝炼一枚器魂,32 是离线整段的余量 */
+export const EXTRA_BATCH_MAX = 32
+
+/** 校验并收口一次法宝/器魂签发申请(野 id、坏品阶一律丢弃,不报错) */
+export function validateExtraGains(raw: unknown): ExtraGains {
+  const out: ExtraGains = { artifacts: [], souls: [] }
+  const body = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {}
+  const maxGrade = SOUL_GRADES.length - 1
+  // 先按 2 倍上限截原始数组(挡超大 body),校验后再收到 EXTRA_BATCH_MAX:
+  // 野 id 与坏条目不该占掉合法件的名额
+  for (const a of (Array.isArray(body.artifacts) ? body.artifacts : []).slice(0, EXTRA_BATCH_MAX * 2)) {
+    if (out.artifacts.length >= EXTRA_BATCH_MAX) break
+    if (typeof a === 'string' && artifactDef(a) !== undefined && !out.artifacts.includes(a)) out.artifacts.push(a)
+  }
+  for (const s of (Array.isArray(body.souls) ? body.souls : []).slice(0, EXTRA_BATCH_MAX * 2)) {
+    if (out.souls.length >= EXTRA_BATCH_MAX) break
+    if (typeof s !== 'object' || s === null) continue
+    const o = s as Record<string, unknown>
+    const uid = typeof o.uid === 'string' ? o.uid : ''
+    const type = typeof o.type === 'string' ? o.type : ''
+    // uid 进台账主键:限长,空串与超长一律不收
+    if (uid === '' || uid.length > 64) continue
+    if (soulTypeDef(type as never) === undefined) continue
+    const grade = typeof o.grade === 'number' && Number.isFinite(o.grade) ? Math.trunc(o.grade) : 0
+    out.souls.push({ uid, type, grade: Math.max(0, Math.min(maxGrade, grade)) })
+  }
+  return out
+}
+
+/* ------------------------------------------------------------------ *
+ * 坊市定价(1.58.1)
+ *
+ * 货架内容早就由 (major, stockedAt) 确定性再生,但**价格**只在客户端用过 ——
+ * 于是「白拿」只需把扣款那几行删掉。这里把某一格的价格也交出来,
+ * 服务端据此记账(server/src/marketLedger),存档上传时把该付的钱从增量里扣掉。
+ * 格号不存在/非货格返回 null(与 marketSlotAt 同口径)。
+ * ------------------------------------------------------------------ */
+export interface MarketPrice {
+  m: number
+  e: number
+  /** 该格是不是装备(装备要另外走签发,丹药/材料直接入账) */
+  equipment: boolean
+  tier: number
+}
+
+export function marketPriceAt(major: number, stockedAt: number, idx: number): MarketPrice | null {
+  if (!Number.isFinite(stockedAt) || stockedAt <= 0 || !Number.isInteger(idx) || idx < 0) return null
+  const shelf = generateMarketStock(major, stockedAt)
+  const slot = shelf.goods.find(s => s.idx === idx)
+  if (slot === undefined || slot.sold) return null
+  const price = slot.price
+  if (typeof price !== 'object' || price === null) return null
+  const m = typeof price.m === 'number' && Number.isFinite(price.m) ? price.m : 0
+  const e = typeof price.e === 'number' && Number.isFinite(price.e) ? price.e : 0
+  if (m <= 0 && e <= 0) return null
+  return { m, e, equipment: slot.kind === 'equipment', tier: slot.kind === 'equipment' ? slot.tier : 0 }
 }

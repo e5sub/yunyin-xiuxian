@@ -18,10 +18,17 @@ export interface LootGrantResult {
 
 type GrantFn = (ctx: unknown, env: unknown, rng?: unknown) => LootGrantResult | null
 
-let cached: Promise<{ grantEquips: GrantFn }> | null = null
+export interface ExtraGains {
+  artifacts: string[]
+  souls: Array<{ uid: string; type: string; grade: number }>
+}
 
-function clientGrant(): Promise<{ grantEquips: GrantFn }> {
-  cached ??= loadClientModule<{ grantEquips: GrantFn }>(SOURCE_MODULE, VENDOR_FILE)
+type ValidateExtrasFn = (raw: unknown) => ExtraGains
+
+let cached: Promise<{ grantEquips: GrantFn; validateExtraGains: ValidateExtrasFn }> | null = null
+
+function clientGrant(): Promise<{ grantEquips: GrantFn; validateExtraGains: ValidateExtrasFn }> {
+  cached ??= loadClientModule<{ grantEquips: GrantFn; validateExtraGains: ValidateExtrasFn }>(SOURCE_MODULE, VENDOR_FILE)
   return cached
 }
 
@@ -32,6 +39,37 @@ export async function grantLoot(ctx: unknown, env: unknown): Promise<LootGrantRe
     return mod.grantEquips(ctx, env)
   } catch (err) {
     console.warn('[loot] 掉落裁决失败,按没掉落处理:', err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
+/** 校验一次法宝/器魂签发申请;失败返回 null(调用方按「不签发」处理) */
+export async function verifyExtraGains(raw: unknown): Promise<ExtraGains | null> {
+  try {
+    const mod = await clientGrant()
+    return mod.validateExtraGains(raw)
+  } catch (err) {
+    console.warn('[loot] 法宝/器魂校验失败,按不签发处理:', err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
+export interface MarketPrice {
+  m: number
+  e: number
+  equipment: boolean
+  tier: number
+}
+
+type MarketPriceFn = (major: number, stockedAt: number, idx: number) => MarketPrice | null
+
+/** 复算货架某格的价(服务端按 (major, stockedAt) 原样再生);失败返回 null */
+export async function quoteMarket(major: number, stockedAt: number, idx: number): Promise<MarketPrice | null> {
+  try {
+    const mod = await loadClientModule<{ marketPriceAt: MarketPriceFn }>(SOURCE_MODULE, VENDOR_FILE)
+    return mod.marketPriceAt(major, stockedAt, idx)
+  } catch (err) {
+    console.warn('[market] 货架定价失败,按不成交处理:', err instanceof Error ? err.message : err)
     return null
   }
 }

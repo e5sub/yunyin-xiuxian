@@ -9,6 +9,7 @@ import { authRouter, KICK_GRACE_MS, registerSessionKick } from './auth.js'
 import { saveRouter } from './routes/save.js'
 import { cultivationRouter } from './routes/cultivation.js'
 import { lootRouter } from './routes/loot.js'
+import { marketRouter } from './routes/market.js'
 import { socialRouter, registerPresence } from './routes/social.js'
 import { bossRouter } from './routes/boss.js'
 import { vipRouter } from './vip.js'
@@ -113,6 +114,7 @@ async function main(): Promise<void> {
   app.use('/api/save', jsonLarge)
   app.use('/api', jsonSmall, cultivationRouter)
   app.use('/api', jsonSmall, lootRouter)
+  app.use('/api', jsonSmall, marketRouter)
   app.use('/api', jsonSmall, saveRouter)
   app.use('/api', jsonSmall, socialRouter)
 

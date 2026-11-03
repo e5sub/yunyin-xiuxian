@@ -23,6 +23,8 @@ import {
 } from '@/data/market'
 import { consignPrice, generateMarketStock, herbSellBatch, materialSellPrice, pillSellPrice } from '@/core/marketService'
 import { mintDrops } from '@/core/lootClaim'
+import { useAuthStore } from '@/stores/auth'
+import { cloudApi } from '@/services/cloud'
 import type { EquipmentInstance } from '@/types'
 import type { HerbGrade } from '@/data/herbGrades'
 import { herbGradeOfMajor, isHerbGrade } from '@/data/herbGrades'
@@ -166,6 +168,22 @@ export const useMarketStore = defineStore(
       stockedAt.value = gen.stockedAt
     }
 
+    /**
+     * 成交记账漏斗(1.58.1):登录玩家下单前先让服务端按货架复算价并记一笔账。
+     * 扣款写在客户端,不记账就等于白拿;记不上就不成交(与掉落签发「宁可不掉」同一口径)。
+     * 未登录的单机玩家直接放行 —— 他们没有云档,服务端也无从记账。
+     */
+    async function quotePurchase(stockedAt: number, idx: number): Promise<boolean> {
+      const auth = useAuthStore()
+      if (!auth.loggedIn) return true
+      try {
+        const res = await cloudApi.marketBuy({ stockedAt, idx })
+        return res.ok
+      } catch {
+        return false
+      }
+    }
+
     /** 买下第 idx 格;装备先签发再扣灵石(签发失败不扣钱,反序会花钱不得货),行囊满否先验 */
     async function buy(idx: number): Promise<MarketBuyResult> {
       const now = Date.now()
@@ -178,6 +196,8 @@ export const useMarketStore = defineStore(
       if (slot.sold) return 'sold'
       const inventory = useInventoryStore()
       if (slot.kind === 'equipment' && inventory.bagFull) return 'bagfull'
+      // 1.58.1:登录玩家先让服务端记这笔账(它按同一把货架锚复算价格);记不上就不成交
+      if (!(await quotePurchase(stockedAt.value, idx))) return 'expired'
       const resources = useResourcesStore()
       // 装备由签发侧按同一把货架锚再生:预览与购得同一物,uid 换成服务端签发并入台账。
       // 须在扣灵石前签发 —— 签发失败(网络/服务端)时不扣钱,玩家重试即可

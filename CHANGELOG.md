@@ -2,6 +2,17 @@
 
 本文件自 v1.33.1 起维护;更早的版本见 [GitHub Releases](https://github.com/setube/yunyin-xiuxian/releases)。
 
+## [1.58.1] - 2026-11-03
+
+- 新增:**转世乘区纳入裁决** —— 1.56.0 管住了境界与资源,但乘区仍是裸的:`reincarnation.daoFruit` 直接进 `statsCalc` 的攻/防/血乘区(`1 + pct + fruit^0.9 × 0.015`),`reincarnation.talents` 的 33 个天赋各带百分比修正,`count`(世号)本身又决定前两者的上限 —— 三者都在客户端自报。现按游戏自有模型封顶:道果 ≤ `count × daoFruitGain(MAX_MAJOR, SUB_LEVELS-1)`、天赋数 ≤ `count × (1 + floor(MAX_MAJOR / TALENT_DRAW_DIV))`(同一份 `reincarnation.ts` 的抽奖模型,不另设常数)、世号两次上传间至多 +1(`REBIRTH_PER_UPLOAD`)。世号基线落到 `profiles.rebirths`(新列,双方言 DDL + 迁移),与 `realm_index` 同理——删档重传绕不过。
+- 新增:**时间账不变量** —— 年龄/寿元/游玩时长决定日限、活动次数与「永不老死」。现 `Δage ≤ 流逝时长 × AGE_YEARS_PER_HOUR + 1`(唯一推进点在 `offline.ts`,取同一常数)、`ΔtotalPlaySec ≤ 流逝秒 × 1.05 + 60`、`lifespanBonusYears ≤ 1e6`。基线缺省时按 0 计(`finiteNum` 区分「没基线」与「基线是 0」,后者不能被当成没基线放行)。
+- 新增:**法宝与器魂纳入签发验源** —— 1.58.0 只签装备,法宝(`{defId, level}`)与器魂(`uid`)无台账可查。现 `loot_ledger` 加 `kind` 列(`equip`/`artifact`/`soul`),法宝以 `defId` 为键、器魂以 `uid` 为键,首传播种(`loot_seed`)三类一并签,上传验源时被剥的器魂连 `endgame.equippedSouls` 引用一并清。发放侧同步收口:`core/loot`、`core/eventEngine`、`core/offline` 的法宝改走 `POST /api/loot/extras` 签发(未签发 = 这一件不掉);器魂凝炼改为**先签发、再生效** —— 签发失败则道源退回、原器留着,不让玩家白烧一件。
+- 新增:**资源增量收口** —— 上一版只压「持有上限」,不压「一步到位」:合法上限内一次填满照样过。现按「上次持有 + 这段时间产出 × 8(不低于持有上限的 5%)」设追赶上限,再减去服务端记账的待结算支出。产出取 `economySim.auditEra` 的**每小时**产出(量纲:此前误乘秒数会差 3600 倍,导致任何档都零修正)。
+- 新增:**坊市扣款记账** —— 成交改由 `POST /api/market/buy` 记入 `market_purchases`(价格按 `(major, stockedAt)` 从云档境界确定性复算,不信客户端自报),上传时作为 `pendingSpend` 从资源上限里扣;落库后 `settled` 清账,删档一并清账。此前「买了再把灵石改回去」可以两头都占。
+- 修正:**服务端反作弊层被 `import.meta.env` 拖崩** —— 本轮的坊市成交让 `stores/market`(归一化链的一环)静态引入 `services/cloud`,后者顶层读 `import.meta.env`;该表达式在 Vite 里被静态替换,但在 Node(vendor bundle 与源码直载)**一装载就抛** `Cannot read properties of undefined`,归一化会整层 fail-open 回落到「不加固」。现 `API_BASE` 改经 `viteEnv()` 取值并在缺省时退到默认地址,浏览器/打包产物行为逐字不变(已验:dist 无 `import.meta.env` 残留、`DEFAULT_API_BASE` 正常入包)。
+- 变更:buff 时长按定义时长封顶至 8 份(`BUFF_STACK_CEIL`)。`addBuff` 对同状态是累加,「写一年到期」= 无限份。
+- 边界:重铸/强化/词条转移的掷点仍在客户端(材料消耗有资源权威化兜底,`inventory.sanitize` 只验词条定义存在、不验槽位与品质适配,可构造完美组合但条数与 roll 已钳);存量档首传的世号靠旧档播种(最多采信 1000 世)。
+
 ## [1.58.0] - 2026-11-03
 
 - 新增:**掉落发放服务端权威化** —— 1.56.0 封住了「凭空造神装」,但「合法上限内的神装」仍是一条口子:客户端自报掉落,服务端照单全收。现把装备实例的**生成**(品质/词条/强化/阶数掷点)搬进共享裁决核心 `core/lootGrant`,客户端离线与服务端签发跑同一份代码;九种来源(战斗/首领/秘境/事件/副本/镇压/离线/开山/坊市)逐分支收口。

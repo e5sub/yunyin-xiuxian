@@ -10,7 +10,7 @@ import express, { type Request, type Response } from 'express'
 import { get } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { lootEnv } from '../recompute.js'
-import { grantLoot } from '../lootGrant.js'
+import { grantLoot, verifyExtraGains } from '../lootGrant.js'
 import { recordLoot } from '../lootLedger.js'
 
 export const lootRouter = express.Router()
@@ -111,3 +111,46 @@ lootRouter.post('/loot/claim', requireAuth, (req: Request, res: Response) => {
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
+
+/**
+ * 法宝与器魂签发(1.58.1)。
+ *
+ * 这两类物件不是「掉落流程」的一部分:法宝掉不掉在战斗/际遇里掷,器魂由「烧一件凡器」凝出 ——
+ * 所以服务端不重新掷点,只做**存在性**与**归属**两件事:数据表里确有其物(validateExtraGains)、
+ * 记进台账后上传才不会被验源移除。客户端自报的品阶会被夹回表内合法域。
+ *
+ * 与 /loot/claim 共用同一套限速与小时封顶:签发流量不因多开一个口子而放大。
+ */
+lootRouter.post('/loot/extras', requireAuth, (req: Request, res: Response) => {
+  void (async () => {
+    const userId = req.user!.id
+    const now = Date.now()
+    const last = lastClaimAt.get(userId) ?? 0
+    if (now - last < CLAIM_MIN_GAP_MS) {
+      res.status(429).json({ error: '操作太快,稍候再试' })
+      return
+    }
+    lastClaimAt.set(userId, now)
+
+    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
+    const gains = await verifyExtraGains(body)
+    if (gains === null) {
+      res.json({ artifacts: [], souls: [] })
+      return
+    }
+    const want = gains.artifacts.length + gains.souls.length
+    if (want === 0) {
+      res.json({ artifacts: [], souls: [] })
+      return
+    }
+    if (!underHourlyCap(userId, want)) {
+      res.status(429).json({ error: '签发过于频繁,稍候再试' })
+      return
+    }
+    await recordLoot(userId, gains.artifacts, 'artifact', 'artifact')
+    await recordLoot(userId, gains.souls.map(s => s.uid), 'soul', 'soul')
+    res.json({ artifacts: gains.artifacts, souls: gains.souls.map(s => s.uid) })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})

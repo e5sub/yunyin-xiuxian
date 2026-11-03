@@ -5,6 +5,9 @@
 import { describe, expect, it } from 'vitest'
 import { grantEquips, LOOT_FLOOR_MAX, OFFLINE_COUNT_CAP, SUPPRESS_COUNT_CAP, type LootEnv } from './lootGrant'
 import { maxTierForMajor } from '@/data/regions'
+import { ARTIFACTS } from '@/data/artifacts'
+import { SOUL_GRADES, SOUL_TYPES } from '@/data/souls'
+import { EXTRA_BATCH_MAX, validateExtraGains } from '@/core/lootGrant'
 import { qualityDef } from '@/data/qualities'
 import { generateMarketStock } from '@/core/marketService'
 import { RandomService } from '@/utils/random'
@@ -92,5 +95,44 @@ describe('掉落签发 · 数量与品质的边界', () => {
         expect(inventory.addEquipment(inst), '入包须成功(行囊足够大)').toBe(true)
       }
     }
+  })
+})
+
+/**
+ * 法宝与器魂的签发校验(1.58.1)。
+ * 这两类物件的「掉不掉/凝出哪一阶」仍在客户端掷 —— 服务端只管两件事:
+ * 东西在数据表里存在、品阶落在表内合法域。野 id 一律丢弃,不报错(加固不拒收)。
+ */
+describe('法宝/器魂签发校验', () => {
+  it('法宝:野 defId 丢弃,重复去重,只留表内真品', () => {
+    const out = validateExtraGains({ artifacts: ['a_ghost', ARTIFACTS[0]!.id, ARTIFACTS[0]!.id, 42] })
+    expect(out.artifacts).toEqual([ARTIFACTS[0]!.id])
+  })
+
+  it('器魂:野 type 与空 uid 丢弃,品阶夹回 [0, 顶阶]', () => {
+    const out = validateExtraGains({
+      souls: [
+        { uid: 'u1', type: 'ghost', grade: 3 },
+        { uid: '', type: SOUL_TYPES[0]!.id, grade: 3 },
+        { uid: 'u2', type: SOUL_TYPES[0]!.id, grade: 999 },
+        { uid: 'u3', type: SOUL_TYPES[0]!.id, grade: -5 }
+      ]
+    })
+    expect(out.souls.map(s => s.uid)).toEqual(['u2', 'u3'])
+    expect(out.souls[0]!.grade).toBe(SOUL_GRADES.length - 1)
+    expect(out.souls[1]!.grade).toBe(0)
+  })
+
+  it('超长 uid 不收(台账主键限长),批内条数按 EXTRA_BATCH_MAX 截断', () => {
+    const longUid = 'x'.repeat(80)
+    const many = Array.from({ length: EXTRA_BATCH_MAX + 5 }, (_, i) => ({ uid: `s${i}`, type: SOUL_TYPES[0]!.id, grade: 1 }))
+    const out = validateExtraGains({ souls: [{ uid: longUid, type: SOUL_TYPES[0]!.id, grade: 1 }, ...many] })
+    expect(out.souls).toHaveLength(EXTRA_BATCH_MAX)
+    expect(out.souls.some(s => s.uid === longUid)).toBe(false)
+  })
+
+  it('形态畸形(非对象/无字段)一律当空申请,不抛错', () => {
+    expect(validateExtraGains(null)).toEqual({ artifacts: [], souls: [] })
+    expect(validateExtraGains({ artifacts: 'a_x', souls: {} })).toEqual({ artifacts: [], souls: [] })
   })
 })

@@ -29,6 +29,7 @@ import { salvageOf } from './salvage'
 import { checkQualityAchievement, collect, track } from './progress'
 import { harvestMaterials } from './loreService'
 import { mintDrops } from './lootClaim'
+import { mintArtifacts } from './lootClaim'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useInventoryStore } from '@/stores/inventory'
@@ -294,8 +295,12 @@ export async function afterWin(region: RegionDef, rewardMult: number, isBoss: bo
   if (rng.chance(capChance(ARTIFACT_DROP_CHANCE * (isBoss ? 6 : 1) * (1 + luck)))) {
     const artId = randomDropArtifact(tier)
     if (artId) {
-      lines.push(acquireArtifact(artId, false, autoEquipArtifact))
-      items += 1
+      // 1.58.1:法宝要服务端签发才进得了档(登录玩家签发失败 = 这一件不掉)
+      const signed = await mintArtifacts([artId])
+      if (signed.includes(artId)) {
+        lines.push(acquireArtifact(artId, false, autoEquipArtifact))
+        items += 1
+      }
     }
   }
 

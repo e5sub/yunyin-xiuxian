@@ -33,6 +33,7 @@ import { STONE_AMT_PER_BATTLE } from './pillValue'
 import { avgDustPerDrop } from './economySim'
 import { autoResolveEvent, regionEventPoolFor } from './eventEngine'
 import { mintDrops } from './lootClaim'
+import { mintArtifacts } from './lootClaim'
 import type { LootClaimCtx } from './lootGrant'
 import {
   clearRegionAndUnlockNext,
@@ -332,9 +333,15 @@ async function settleOfflineInner(nowMs: number): Promise<OfflineSummary | null>
         const artifactCount = Math.round(wins * artifactChance)
         /** 按 defId 聚合:同件只报一行,重复件折悟道点并入(见 offlineArtifactNote) */
         const artifactTally = new Map<string, { name: string; count: number; wudao: number }>()
+        const drawnArtifacts: string[] = []
         for (let i = 0; i < artifactCount; i += 1) {
           const artId = randomDropArtifact(region.tier)
           if (!artId) break
+          drawnArtifacts.push(artId)
+        }
+        // 1.58.1:离线段一次签发完(登录玩家签发失败的不入囊,与装备 deferEquipCtx 同一口径)
+        const signedArtifacts = await mintArtifacts(drawnArtifacts)
+        for (const artId of signedArtifacts) {
           const gain = acquireArtifactGain(artId, true, false)
           if (!gain) break
           const tallied = artifactTally.get(gain.defId)

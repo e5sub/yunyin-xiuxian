@@ -7,6 +7,7 @@ import { recomputeProfile } from '../recompute.js'
 import { normalizeSaveSlices } from '../saveNormalize.js'
 import { enforceAuthority } from '../saveAuthority.js'
 import { enforceLootProvenance } from '../lootLedger.js'
+import { clearPurchases, pendingSpend, settlePurchases } from '../marketLedger.js'
 
 export interface ProfileSnapshot {
   name: string
@@ -153,7 +154,7 @@ function clampSnapshot(s: ProfileSnapshot, saveRealmIndex: number, userId: numbe
   }
 }
 
-async function upsertProfile(userId: number, s: ProfileSnapshot, now: number): Promise<void> {
+async function upsertProfile(userId: number, s: ProfileSnapshot, now: number, rebirths?: number): Promise<void> {
   await upsertByPk('profiles', {
     user_id: userId,
     name: s.name,
@@ -167,8 +168,16 @@ async function upsertProfile(userId: number, s: ProfileSnapshot, now: number): P
     atk_e: s.atkE,
     def_m: s.defM,
     def_e: s.defE,
-    updated_at: now
+    updated_at: now,
+    // REPLACE INTO 会把没列出的列写回默认值:世号基线必须显式带上,否则每次上传都归零
+    rebirths: rebirths ?? (await currentRebirths(userId))
   })
+}
+
+/** 已见最大世号;表里没有行(新号)按 0 */
+async function currentRebirths(userId: number): Promise<number> {
+  const row = await get<{ rebirths: number }>('SELECT rebirths FROM profiles WHERE user_id = ?', [userId])
+  return row?.rebirths ?? 0
 }
 
 /** 复算结果字段完整性:动态模块在服务端是 any,进库前把形态兜死 */
@@ -205,6 +214,20 @@ export function metricsOf(json: string): { started: boolean; realmIndex: number 
     return { started: game.started === true, realmIndex: major * 100 + sub }
   } catch {
     return { started: false, realmIndex: 0 }
+  }
+}
+
+/** 从存档 JSON 里取世号(转世次数);缺栏按 0 */
+export function rebirthsOf(json: string): number {
+  try {
+    const data = JSON.parse(json) as Record<string, unknown>
+    const player = typeof data.player === 'object' && data.player !== null ? (data.player as Record<string, unknown>) : {}
+    const reinc = typeof player.reincarnation === 'object' && player.reincarnation !== null
+      ? (player.reincarnation as Record<string, unknown>)
+      : {}
+    return finite(reinc.count) ? Math.max(0, Math.trunc(reinc.count)) : 0
+  } catch {
+    return 0
   }
 }
 
@@ -306,9 +329,10 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
      * 境界基线取 profiles.realm_index 而不是上次存档:玩家删档重传时 saves 会消失,
      * profiles 不受影响 —— 否则「删档 + 重传高境界档」就是一条绕过路径。
      */
-    const prevProfileRow = await get<{ realm_index: number }>('SELECT realm_index FROM profiles WHERE user_id = ?', [
-      req.user!.id
-    ])
+    const prevProfileRow = await get<{ realm_index: number; rebirths: number }>(
+      'SELECT realm_index, rebirths FROM profiles WHERE user_id = ?',
+      [req.user!.id]
+    )
     let prevData: Record<string, unknown> | null = null
     if (old !== undefined) {
       try {
@@ -318,6 +342,19 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
         prevData = null
       }
     }
+    /*
+     * 世号基线:profiles.rebirths。
+     * 列刚加上时老档一律是 0 —— 若直接当基线,多世玩家的 count/道果/天赋会被一次性砍到「一世」的量
+     * (数据事故)。所以基线为 0 且云端确有旧档时,用旧档自己的世号播种一次,与 loot_seed 同思路:
+     * 只认「上一次已经落库的档」,不认本次上传 —— 否则先传一个 count=1e6 就把基线毒化了。
+     * 播种值加 1000 的封顶:超过这个数本来就不是玩出来的。
+     */
+    let prevRebirths = prevProfileRow?.rebirths ?? 0
+    if (prevRebirths === 0 && old !== undefined) {
+      prevRebirths = Math.min(1000, rebirthsOf(old.data))
+    }
+    // 上次存档后成交、尚未在档里体现的坊市支出:从灵石可增长量里扣(见 core/saveAuthority)
+    const spend = await pendingSpend(req.user!.id)
     const authority = await enforceAuthority({
       prev: prevData,
       next: normalizedData,
@@ -325,7 +362,10 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       elapsedMs: old === undefined ? 0 : Math.max(0, now - old.updated_at),
       // 1.57.0+ 客户端标记:境界只认 profiles(唯一写入口是突破 API),上传里的 major/sub 不采信。
       // 老客户端不带标记,沿用「付得起」预算判据 —— 存量客户端与自建部署的兼容口。
-      realmAuthoritative: body.realmAuth === 2
+      realmAuthoritative: body.realmAuth === 2,
+      // 1.58.1:道果/天赋/年龄/游玩时长的乘数基线(见 core/saveAuthority 的「转世乘区」一节)
+      prevRebirths,
+      pendingSpend: spend
     })
     const data = authority === null ? normalizedData : authority.data
     let json: string
@@ -382,6 +422,22 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       await upsertProfile(req.user!.id, clampSnapshot(clientSnap, metrics.realmIndex, req.user!.id), now)
     }
     const displayName = typeof recomputed?.name === 'string' ? recomputed.name : (clientSnap?.name ?? '')
+    /*
+     * 世号基线只抬不降:裁决已把本次的 count 压到 prevRebirths + 1 以内,这里把它记成新的基线。
+     * 必须在 upsertProfile 之后 —— REPLACE INTO 会把 rebirths 写成默认值,顺序反了基线就丢了。
+     */
+    const acceptedRebirths = Math.max(prevRebirths, rebirthsOf(json))
+    try {
+      await run('UPDATE profiles SET rebirths = ? WHERE user_id = ?', [acceptedRebirths, req.user!.id])
+    } catch {
+      // 基线更新失败不影响存档本身:下一次上传会重新按旧档播种
+    }
+    // 存档已落库:这批坊市支出算兑现了,下一笔重新记账(清账失败只是下一份档再扣一次,不会漏)
+    try {
+      await settlePurchases(req.user!.id)
+    } catch {
+      /* 同上方:留到下一次 */
+    }
     try {
       await auditSave(
         req.user!.id,
@@ -405,7 +461,10 @@ saveRouter.delete('/save', requireAuth, (req: Request, res: Response) => {
   void (async () => {
     await run('DELETE FROM saves WHERE user_id = ?', [req.user!.id])
     // 境界基线一并归零:删档重修是合法路径,基线不归零,权威化会把新档的境界强行顶回旧值
-    await run("UPDATE profiles SET realm_index = 0, realm_label = '' WHERE user_id = ?", [req.user!.id])
+    // 世号基线同归零:新档从第一世起算,否则「删档」会留下一个永远兑现不了的高世号
+    await run("UPDATE profiles SET realm_index = 0, realm_label = '', rebirths = 0 WHERE user_id = ?", [req.user!.id])
+    // 旧账不该压在新档头上(删档重修是合法路径)
+    await clearPurchases(req.user!.id)
     res.json({ ok: true })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })

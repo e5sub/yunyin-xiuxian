@@ -16,7 +16,9 @@ const SRC = resolve(__dirname, '..')
 /** 暂不接线的导出;每一项须写清为什么留、什么时候销账 */
 const ALLOWLIST: Record<string, string> = {
   studyBlueprint: '炼器图纸骨架:contentReachabilityAudit 已钉"读与给必须一起接",此处不重复扣押',
-  lootEnvFromSlices: '服务端掉落签发的环境复算入口:server/src/recompute.ts 动态加载本模块,从云档分片复算掉落环境(1.58.0),消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径'
+  lootEnvFromSlices: '服务端掉落签发的环境复算入口:server/src/recompute.ts 动态加载本模块,从云档分片复算掉落环境(1.58.0),消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径',
+  marketPriceAt:
+    '服务端坊市定价:server/src/routes/market.ts 经 server/src/lootGrant.ts 动态加载本模块,按 (major, stockedAt) 确定性复算货格价格,不让客户端自报成交价(1.58.1);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径'
 }
 
 /**
@@ -262,7 +264,9 @@ describe('死导出审计', () => {
     snapshotFromSlices: '服务端复算入口:server/src/recompute.ts 动态加载本模块跑无头复算(save.ts 反作弊),消费方在 src 之外,审计扫不到;profileRecompute.spec 守其口径',
     sanitizeSaveSlices: '服务端归一化入口:server/src/saveNormalize.ts 动态加载本模块,把上传分片按客户端读档同一套 sanitize 修平后落库,消费方在 src 之外,审计扫不到;saveSanitize.spec 守其口径',
     resolveBreakthroughFromSlices: '服务端权威突破入口:server/src/routes/cultivation.ts 动态加载本模块,从云档无头掷点结算(1.57.0),消费方在 src 之外,审计扫不到;breakthroughResolve.spec 守其口径',
-    enforceSaveAuthority: '服务端数值权威化入口:server/src/saveAuthority.ts 动态加载本模块,PUT /save 落库前裁决(1.56.0),消费方在 src 之外,审计扫不到;saveAuthority.spec 守其口径'
+    enforceSaveAuthority: '服务端数值权威化入口:server/src/saveAuthority.ts 动态加载本模块,PUT /save 落库前裁决(1.56.0),消费方在 src 之外,审计扫不到;saveAuthority.spec 守其口径',
+    validateExtraGains:
+      '服务端法宝/器魂签发校验:server/src/lootGrant.ts 动态加载本模块,校验 defId 存在、器魂品阶合法、条数封顶后签发入账(1.58.1);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径'
   }
 
   it('运行时模块里的导出,不能只被 spec 用到 —— 那是骨架空转的样子', () => {
