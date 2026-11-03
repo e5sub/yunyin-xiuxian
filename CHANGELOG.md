@@ -2,6 +2,12 @@
 
 本文件自 v1.33.1 起维护;更早的版本见 [GitHub Releases](https://github.com/setube/yunyin-xiuxian/releases)。
 
+## [1.57.1] - 2026-11-03
+
+- 修正:**生产容器里反作弊三层静默失效** —— 运行时镜像只复制 `server/`,服务端动态加载的四个客户端共享模块(`src/core/` 的 saveSanitize / saveAuthority / profileRecompute / breakthroughResolve)不在镜像里,容器反复报 `Cannot find module '/app/src/core/...'`,归一化/复算/数值权威化与突破结算全部走 fail-open 回落,1.55.0 以来的加固在生产上形同虚设(开发环境仓库根在场,故本地无感)。
+- 新增:构建期把共享模块用 esbuild 打成 Node bundle(`server/vendor/*.mjs`,入口 `bun run build:vendor`);运行时装载顺序改为「源码优先、vendor 兜底」(`server/src/clientVendor.ts`)—— 开发改代码即时生效,镜像里没有 src 就用 bundle,两者都失败才走原有回落链路。本地 Dockerfile 在 web-builder 阶段产出 vendor 并覆盖进运行时镜像;CI(yunyin.yml)在 runner 上构建,并在验证四个 bundle 齐全后才推镜像。
+- 验证:纯 Node(无 tsx、无 src 源码,等同容器环境)冒烟通过 —— 作弊档(境界 28-9 / 修为 e500 / 灵石 e100)过归一化 + 权威化被压回基线(0-4,5 条修正),四模块导出齐全,突破无头结算正常。
+
 ## [1.57.0] - 2026-11-03
 
 - 新增:**服务端权威境界(突破走服务端)** —— 1.56.0 的裁决只能「事后钳」:console 改 `player.major` 在下一次上传(≤20 秒)前仍会短暂生效,且只要改的值落在「合法追赶范围」内就会被当成离线挂机放行。现把境界的唯一写入口收进服务端:`POST /api/cultivation/breakthrough` —— 客户端只发请求,**掷点、渡劫推演、进境或赔偿全部在服务端结算**(无头水合云档后跑客户端同一份裁决代码 `core/breakthroughResolve`),改动的字段(境界/修为/灵气/伤势/突破准备)以顶层键级 diff 回传客户端当场落账,并写回云档与 `profiles.realm_index`。

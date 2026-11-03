@@ -52,3 +52,4 @@ android/keystore.local.properties
 *.keystore
 *.jks
 android/keystore-secrets.local.txt
+server/vendor/

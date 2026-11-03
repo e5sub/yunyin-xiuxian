@@ -10,8 +10,10 @@ import express, { type Request, type Response } from 'express'
 import { get, run, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { metricsOf, backupBeforeOverwrite, syncProfileFromData } from './save.js'
+import { loadClientModule } from '../clientVendor.js'
 
-const CLIENT_MODULE: string = '../../../src/core/breakthroughResolve'
+const SOURCE_MODULE = '../../../src/core/breakthroughResolve'
+const VENDOR_FILE = 'breakthroughResolve'
 
 /** core/breakthroughResolve 的形状;动态 import 拿到的是 any,这里把字段兜死 */
 interface ResolveResult {
@@ -40,7 +42,7 @@ type ResolveFn = (
 let cached: Promise<{ resolveBreakthroughFromSlices: ResolveFn }> | null = null
 
 function clientResolve(): Promise<{ resolveBreakthroughFromSlices: ResolveFn }> {
-  cached ??= import(CLIENT_MODULE)
+  cached ??= loadClientModule<{ resolveBreakthroughFromSlices: ResolveFn }>(SOURCE_MODULE, VENDOR_FILE)
   return cached
 }
 

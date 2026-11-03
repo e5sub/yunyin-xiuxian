@@ -1,6 +1,7 @@
 node_modules
 server/node_modules
 server/data
+server/vendor
 npm-debug.log
 package-lock.json
 

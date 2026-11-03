@@ -14,6 +14,15 @@ COPY . .
 
 RUN bun run build
 
+# 服务端动态加载的客户端共享模块打成 Node bundle:运行时镜像只复制 server/,没有 src/ 源码,
+# 不打进去反作弊三层(归一化/复算/权威化)与突破结算会在容器里静默失效(1.57.1)。
+# 直接点平台二进制:oven/bun 镜像无 node,跑不动 node_modules/.bin 的 shim。
+RUN ESBUILD_BIN="$(ls node_modules/@esbuild/*/bin/esbuild | head -n 1)" && \
+    "$ESBUILD_BIN" src/core/saveSanitize.ts src/core/saveAuthority.ts src/core/profileRecompute.ts src/core/breakthroughResolve.ts \
+      --bundle --platform=node --format=esm --outdir=server/vendor --outbase=src/core \
+      --out-extension:.js=.mjs --tsconfig=tsconfig.app.json --legal-comments=none && \
+    ls -la server/vendor/
+
 FROM node:22-bookworm-slim
 
 ARG BUILD_DATE
@@ -29,6 +38,8 @@ RUN apt-get update && \
 
 COPY --from=web-builder /app/dist /app/server/public
 COPY server /app/server
+# 共享模块 bundle 覆盖进运行时镜像(COPY server 不带 vendor:本机的落后产物不该混进镜像)
+COPY --from=web-builder /app/server/vendor /app/server/vendor
 WORKDIR /app/server
 RUN npm install --omit=dev --no-fund --no-audit && npm cache clean --force
 

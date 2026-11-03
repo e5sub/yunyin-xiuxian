@@ -8,7 +8,9 @@
  * 返回 null 表示「没归一化」(模块加载失败/分片畸形到链路抛错):
  * 调用方按原样落库 —— 归一化是加固,不是存档的前置条件,不能因为它坏了而拒收存档。
  */
-const CLIENT_MODULE: string = '../../src/core/saveSanitize'
+import { loadClientModule } from './clientVendor.js'
+const SOURCE_MODULE = '../../src/core/saveSanitize'
+const VENDOR_FILE = 'saveSanitize'
 
 interface SanitizeReport {
   data: Record<string, unknown>
@@ -18,7 +20,7 @@ interface SanitizeReport {
 let cached: Promise<{ sanitizeSaveSlices: (data: unknown) => SanitizeReport | null }> | null = null
 
 function clientSanitize(): Promise<{ sanitizeSaveSlices: (data: unknown) => SanitizeReport | null }> {
-  cached ??= import(CLIENT_MODULE)
+  cached ??= loadClientModule(SOURCE_MODULE, VENDOR_FILE)
   return cached
 }
 

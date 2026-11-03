@@ -7,7 +7,10 @@
  * 这里故意用 string 型变量当说明符让 tsc 不跟随,运行时由 tsx 的 tsconfig paths 解析。
  * 复算任何一步失败都返回 null,调用方(save.ts)回落到旧的钳制快照 —— 宁可宽,不可崩。
  */
-const CLIENT_MODULE: string = '../../src/core/profileRecompute'
+import { loadClientModule } from './clientVendor.js'
+
+const SOURCE_MODULE = '../../src/core/profileRecompute'
+const VENDOR_FILE = 'profileRecompute'
 
 let cached: Promise<{
   snapshotFromSlices: (data: unknown) => Record<string, unknown> | null
@@ -16,7 +19,7 @@ let cached: Promise<{
 function clientRecompute(): Promise<{
   snapshotFromSlices: (data: unknown) => Record<string, unknown> | null
 }> {
-  cached ??= import(CLIENT_MODULE)
+  cached ??= loadClientModule(SOURCE_MODULE, VENDOR_FILE)
   return cached
 }
 

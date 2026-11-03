@@ -57,6 +57,11 @@ jobs:
       - name: 构建项目
         run: bun run build
 
+      # 容器里没有 src/ 源码,服务端动态加载的四个客户端共享模块(反作弊三层 + 突破结算)
+      # 必须以 Node bundle 形式随镜像分发,否则在容器里静默失效(1.57.1)
+      - name: 构建服务端 vendor bundle
+        run: bun run build:vendor
+
       - name: 验证构建产物
         run: |
           if [ ! -d "dist" ]; then
@@ -65,6 +70,10 @@ jobs:
           fi
           if [ ! -f "dist/index.html" ]; then
             echo "构建失败：dist/index.html 不存在"
+            exit 1
+          fi
+          if [ ! -f "server/vendor/saveSanitize.mjs" ] || [ ! -f "server/vendor/saveAuthority.mjs" ] || [ ! -f "server/vendor/profileRecompute.mjs" ] || [ ! -f "server/vendor/breakthroughResolve.mjs" ]; then
+            echo "构建失败：server/vendor 缺少共享模块 bundle"
             exit 1
           fi
           grep -q 'id="app"' dist/index.html || { echo "构建失败：index.html 缺少 #app 挂载点"; exit 1; }

@@ -8,7 +8,10 @@
  * 返回 null 表示「没裁决成」(模块加载失败/链路抛错):调用方按归一化结果落库 ——
  * 权威化是加固,不是存档的前置条件,不能因为它坏了而拒收存档。
  */
-const CLIENT_MODULE: string = '../../src/core/saveAuthority'
+import { loadClientModule } from './clientVendor.js'
+
+const SOURCE_MODULE = '../../src/core/saveAuthority'
+const VENDOR_FILE = 'saveAuthority'
 
 export interface AuthorityCorrection {
   path: string
@@ -36,7 +39,7 @@ type AuthorityFn = (input: AuthorityInput) => AuthorityReport | null
 let cached: Promise<{ enforceSaveAuthority: AuthorityFn }> | null = null
 
 function clientAuthority(): Promise<{ enforceSaveAuthority: AuthorityFn }> {
-  cached ??= import(CLIENT_MODULE)
+  cached ??= loadClientModule<{ enforceSaveAuthority: AuthorityFn }>(SOURCE_MODULE, VENDOR_FILE)
   return cached
 }
 
