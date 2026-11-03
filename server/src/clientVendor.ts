@@ -13,6 +13,7 @@ export async function loadClientModule<T>(sourceSpec: string, vendorFile: string
   try {
     return (await import(sourceSpec)) as T
   } catch {
-    return (await import(`./vendor/${vendorFile}.mjs`)) as T
+    // 本文件在 server/src/ 下,vendor 在 server/vendor/:须上一级
+    return (await import(`../vendor/${vendorFile}.mjs`)) as T
   }
 }
