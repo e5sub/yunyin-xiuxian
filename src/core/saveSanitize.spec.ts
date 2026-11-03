@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { SAVE_SANITIZE_STEPS, sanitizeSaveSlices } from './saveSanitize'
-import { AFFIXES } from '@/data/affixes'
+import { AFFIXES, affixFitBlock } from '@/data/affixes'
 import { EQUIPMENT_TEMPLATES } from '@/data/equipment'
 import { EQUIP_MAX_LEVEL_BASE } from '@/data/constants'
 import { SAVE_GNUM_MAX_EXP } from '@/utils/saveShape'
@@ -95,12 +95,39 @@ describe('存档归一化 · 越界项按玩法链钳回', () => {
   })
 
   it('词条条数按品质上限收口(凡品只 1 条)', () => {
-    const affixId = AFFIXES[0]!.id
-    const result = sanitizeSaveSlices(
-      withItem({ affixes: Array.from({ length: 16 }, () => ({ id: affixId, roll: 1 })) })
-    )!
+    // 用 16 条**各不相同**且装得上的词条:同 id 重复会先被去重,测不到「按品质上限收口」这一层
+    const tpl = EQUIPMENT_TEMPLATES.find(t => t.slot === 'weapon')!
+    const ids = AFFIXES.filter(a => affixFitBlock(a, tpl.slot, 0) === null)
+      .slice(0, 16)
+      .map(a => a.id)
+    expect(ids.length).toBe(16)
+    const result = sanitizeSaveSlices(withItem({ affixes: ids.map(id => ({ id, roll: 1 })) }))!
     const item = (inventoryOf(result.data).items as Array<Record<string, unknown>>)[0]!
     expect((item.affixes as unknown[]).length).toBe(1)
+  })
+
+  /**
+   * 形状合法但不适配的词条要被剔掉 —— 这是「完美词条组合」唯一还剩的入口:
+   * 条数与 roll 早就钳住了,可凡品武器挂六条传世词条一直能过秤,再被台账播种成「合法旧物」。
+   */
+  it('部位不符 / 品质门槛不够的词条被剔除', () => {
+    const template = EQUIPMENT_TEMPLATES.find(t => t.slot === 'weapon')!
+    const offSlot = AFFIXES.find(a => a.slots !== undefined && !a.slots.includes(template.slot))!
+    const rankGated = AFFIXES.find(
+      a => (a.minRank ?? 0) > 0 && (!a.slots || a.slots.includes(template.slot))
+    )!
+    const strip = (affixes: unknown[]): string[] => {
+      const result = sanitizeSaveSlices(withItem({ templateId: template.id, quality: 'mortal', affixes }))!
+      const item = (inventoryOf(result.data).items as Array<Record<string, unknown>>)[0]!
+      return (item.affixes as Array<{ id: string }>).map(a => a.id)
+    }
+    expect(strip([{ id: offSlot.id, roll: 1 }])).toEqual([])
+    expect(strip([{ id: rankGated.id, roll: 1 }])).toEqual([])
+    // 反向:装得上的那条一条不少(否则这层就是在无差别剪玩家词条)
+    const fit = AFFIXES.find(
+      a => (!a.slots || a.slots.includes(template.slot)) && (a.minRank ?? 0) <= 0
+    )!
+    expect(strip([{ id: fit.id, roll: 1 }])).toEqual([fit.id])
   })
 
   it('野装备模板/野词条/坏大数指数都被清掉', () => {

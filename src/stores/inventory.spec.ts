@@ -7,6 +7,9 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useInventoryStore } from '@/stores/inventory'
 import { mergeMods } from '@/core/statsCalc'
 import { BAG_CAPACITY, EQUIP_AFFIX_HARD_CAP } from '@/data/constants'
+import { AFFIXES, affixFitBlock } from '@/data/affixes'
+import { EQUIPMENT_TEMPLATES, equipmentTemplate } from '@/data/equipment'
+import { qualityDef } from '@/data/qualities'
 import { resolveEquipStats } from '@/core/equipGen'
 import { ARTIFACT_MAX_LEVEL, ARTIFACT_MAX_SLOTS, artifactDef, artifactEvictedBy, artifactValue } from '@/data/artifacts'
 import { artifactUpCost, upgradeArtifact } from '@/core/forge'
@@ -446,7 +449,15 @@ describe('行囊容量 · 坏档截断', () => {
  * 手改存档能给一件装备塞几千条,存档爆量且词条面板要渲染那几千行。
  */
 describe('装备 · 词条数上限', () => {
-  const DEFS = ['atk1', 'atk2', 'atk3', 'def1', 'def2', 'crit1', 'crit2', 'dg1', 'dg2', 'ac1']
+  /**
+   * 取「凡品武器装得上」的全部词条(部位不限或含 weapon、品质门槛 ≤ 0)——
+   * sanitize 现在会剔掉装不上的词条,这里只测条数,别让适配规则掺进来。
+   */
+  const MORTAL_WEAPON_FIT = AFFIXES.filter(
+    a => affixFitBlock(a, equipmentTemplate('w_zhuqing')!.slot, qualityDef('mortal').rank) === null
+  ).map(a => a.id)
+  /** 条数上限是 16,取词条池前先确保池子够大(不够说明适配规则收得太紧) */
+  const DEFS = MORTAL_WEAPON_FIT.slice(0, Math.max(EQUIP_AFFIX_HARD_CAP, 10))
 
   function withAffixes(n: number) {
     const inv = useInventoryStore()
@@ -464,6 +475,10 @@ describe('装备 · 词条数上限', () => {
     inv.sanitize()
     return inv.items[0]!.affixes
   }
+
+  it('词条池够撑满上限(否则下面的用例测不到截断)', () => {
+    expect(DEFS.length).toBeGreaterThanOrEqual(EQUIP_AFFIX_HARD_CAP)
+  })
 
   it('正常条数原样保留(9 条是品质表峰值)', () => {
     expect(withAffixes(9)).toHaveLength(9)
@@ -488,4 +503,74 @@ describe('装备 · 词条数上限', () => {
     }
   })
 })
+})
+
+/**
+ * 词条适配:此前 sanitize 只验「这个词条 id 存在」,于是往凡品武器塞六条传世词条
+ * 形状完全合法 —— 掉落、重铸、自动重铸、词条转移四处都走 affixFitBlock,唯独修档这处漏了。
+ * 4 条用例分别钉:部位不符、品质门槛不够、装得上的不误伤、同 id 不叠份。
+ */
+describe('装备 · 词条适配(部位 + 品质门槛)', () => {
+  const weapon = equipmentTemplate('w_zhuqing')!
+  /** 只落在护甲/饰品上的词条:放到武器上部位不符 */
+  const offSlot = AFFIXES.find(a => a.slots !== undefined && !a.slots.includes(weapon.slot))!
+  /** 品质门槛高于凡品的词条(部位不限或含武器,确保只被 rank 挡住) */
+  const rankGated = AFFIXES.find(
+    a => (a.minRank ?? 0) > qualityDef('mortal').rank && (!a.slots || a.slots.includes(weapon.slot))
+  )!
+  const universal = AFFIXES.filter(a => !a.slots && !a.minRank)
+
+  function sanitized(patch: Partial<EquipmentInstance>): EquipmentInstance {
+    const inv = useInventoryStore()
+    inv.items = [
+      {
+        uid: 'u1',
+        templateId: weapon.id,
+        tier: 1,
+        quality: 'mortal',
+        level: 1,
+        locked: false,
+        affixes: [],
+        ...patch
+      }
+    ] as never
+    inv.sanitize()
+    return inv.items[0]!
+  }
+
+  it('部位不符的词条被剔除', () => {
+    const it = sanitized({ affixes: [{ id: offSlot.id, roll: 1 }] })
+    expect(it.affixes).toHaveLength(0)
+    // 同一条落在装得上的部位时照旧保留:被剔的是「适配」,不是「这个 id 不许用」
+    const armor = EQUIPMENT_TEMPLATES.find(t => offSlot.slots!.includes(t.slot))!
+    const ok = sanitized({ templateId: armor.id, quality: 'divine', affixes: [{ id: offSlot.id, roll: 1 }] })
+    expect(ok.affixes.map(a => a.id)).toEqual([offSlot.id])
+  })
+
+  it('品质门槛不够的词条被剔除(凡品装不了高阶词条)', () => {
+    expect(sanitized({ affixes: [{ id: rankGated.id, roll: 1 }] }).affixes).toHaveLength(0)
+    // 同一件换成够格的品质就留得住 —— 证明卡的是门槛而不是词条本身
+    const high = sanitized({ quality: 'divine', affixes: [{ id: rankGated.id, roll: 1 }] })
+    expect(high.affixes.map(a => a.id)).toEqual([rankGated.id])
+  })
+
+  it('装得上的词条一条不误伤', () => {
+    const ids = universal.slice(0, 2).map(a => a.id)
+    const it = sanitized({ affixes: ids.map(id => ({ id, roll: 0.5 })) })
+    expect(it.affixes.map(a => a.id)).toEqual(ids)
+  })
+
+  it('同一个词条写两遍只留一条(否则一份词条能叠出几倍属性)', () => {
+    const id = universal[0]!.id
+    const it = sanitized({ affixes: [{ id, roll: 1 }, { id, roll: 1 }] })
+    expect(it.affixes.map(a => a.id)).toEqual([id])
+    // 封存引用跟着条数走,不会指向已被去掉的那一份
+    expect(it.sealedAffixIds ?? []).toEqual([])
+  })
+
+  it('认不出模板的旧物保留词条:它本就不进属性,别让玩家白丢', () => {
+    const it = sanitized({ templateId: 'not-a-template', affixes: [{ id: offSlot.id, roll: 1 }] })
+    expect(it.affixes.map(a => a.id)).toEqual([offSlot.id])
+    expect(resolveEquipStats(it).mods).toEqual({})
+  })
 })

@@ -13,8 +13,8 @@ import { BAG_CAPACITY, EQUIP_AFFIX_HARD_CAP } from '@/data/constants'
 import { EQUIP_LEVEL_SANITIZE_CAP } from '@/data/buildings'
 import { EQUIP_SLOTS, MAX_EQUIP_TIER, equipmentTemplate } from '@/data/equipment'
 import { pillDef } from '@/data/pills'
-import { QUALITIES } from '@/data/qualities'
-import { affixDef } from '@/data/affixes'
+import { QUALITIES, qualityDef } from '@/data/qualities'
+import { affixDef, affixFitBlock } from '@/data/affixes'
 import { asArray, asBoundedGNum, asFiniteNumber, asNumberRecord, asRecord, asStringArray } from '@/utils/saveShape'
 
 export const useInventoryStore = defineStore(
@@ -32,6 +32,7 @@ export const useInventoryStore = defineStore(
      * 重复 uid 只留首件:`equippedUids` 是 uid 集合,同号两件会同时算进属性。
      * tier/level/词条 roll 的 NaN 会让 `finalStats` 攻防血归零;
      * affixes 非数组会让背包/详情/重铸读 `.length` 抛错。
+     * 词条须真能落在这一件上(部位 + 品质门槛),判据与掉落/重铸/转移同源 `affixFitBlock`。
      */
     function sanitize(): void {
       const seenUid = new Set<string>()
@@ -43,12 +44,34 @@ export const useInventoryStore = defineStore(
         // 认不出的模板不丢:界面以「旧物」兜底名显示,玩家可自行处置
         if (typeof it.uid !== 'string' || !it.uid || seenUid.has(it.uid)) continue
         seenUid.add(it.uid)
+        const rawQuality = it.quality as unknown
+        const quality: EquipmentInstance['quality'] =
+          typeof rawQuality === 'string' && qualityIds.has(rawQuality as never)
+            ? (rawQuality as EquipmentInstance['quality'])
+            : 'mortal'
+        /**
+         * 词条适配:掉落生成、重铸抽取、自动重铸候选、词条转移四处共用 `affixFitBlock`
+         * (部位 + 品质门槛),这里是最后一道 —— 此前只验「这个词条 id 存在」,
+         * 于是往凡品武器塞六条传世词条形状完全合法,能一路走到云档与台账里。
+         * 认不出模板的旧物无从判部位:那类件 `resolveEquipStats` 直接返回空属性,
+         * 词条本就不进战力,原样留着不构成收益。
+         * 同 id 重复也在这里去掉:重铸池排除已有词条、转移是整条搬走,正常玩法出不来重复。
+         */
+        const tpl = equipmentTemplate(typeof it.templateId === 'string' ? it.templateId : '')
+        const rank = qualityDef(quality).rank
+        const seenAffix = new Set<string>()
         const affixes = asArray<{ id: string; roll: number }>(
           it.affixes,
           [],
           a => !!a && typeof a === 'object' && typeof (a as { id?: unknown }).id === 'string'
         )
-          .filter(a => !!affixDef(a.id))
+          .filter(a => {
+            const def = affixDef(a.id)
+            if (!def || seenAffix.has(a.id)) return false
+            if (tpl && affixFitBlock(def, tpl.slot, rank) !== null) return false
+            seenAffix.add(a.id)
+            return true
+          })
           .map(a => ({
             id: a.id,
             // 负 roll 会被 affixValue 当 0 却按满值显示,>1 则超上限
@@ -56,12 +79,11 @@ export const useInventoryStore = defineStore(
           }))
           // 条数也要设界:品质表最高 8 条、洗练只换不增,坏档却能让一件带几千条
           .slice(0, EQUIP_AFFIX_HARD_CAP)
-        const rawQuality = it.quality as unknown
         cleanItems.push({
           ...it,
           uid: it.uid,
           templateId: typeof it.templateId === 'string' ? it.templateId : '',
-          quality: typeof rawQuality === 'string' && qualityIds.has(rawQuality as never) ? (rawQuality as EquipmentInstance['quality']) : 'mortal',
+          quality,
           tier: Math.min(MAX_EQUIP_TIER, Math.max(1, Math.floor(asFiniteNumber(it.tier, 1, 1)))),
           // 只夹到「基础上限 + 满建筑加成」量级;实际上限由执行侧 equipLevelCap() 把关。
           // 上界取自建筑表推导,不写死数字:炼器台上限一改,这里跟着走。
