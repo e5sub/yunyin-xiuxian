@@ -102,7 +102,7 @@ export function grantEquips(
   const tier = clampTier(ctx.tier ?? LOOT_DEFAULT_TIER, env)
   const luck = env.luck + env.petDropLuck
   const equips: EquipmentInstance[] = []
-  let overflow = 0
+  const overflow = 0
 
   switch (ctx.src) {
     case 'battle': {
