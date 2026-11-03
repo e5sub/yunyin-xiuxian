@@ -177,18 +177,18 @@ describe('真仙终局服务', () => {
   })
 
   /** 飞升是三次「换一片天」之一(另两次是入神、归返混沌);同样要渡劫,见文件顶部 mock */
-  it('飞升真仙:记下跨世节点 first_immortal,并给出界域叙事', () => {
+  it('飞升真仙:记下跨世节点 first_immortal,并给出界域叙事', async () => {
     const player = usePlayerStore()
     const resources = useResourcesStore()
     const endgame = useEndgameStore()
     player.major = 8 // 渡劫圆满,下一步即飞升
     player.sub = 9
 
-    let view = null as ReturnType<typeof attemptBreakthrough>
+    let view = null as Awaited<ReturnType<typeof attemptBreakthrough>>
     for (let i = 0; i < 200 && !view?.success; i += 1) {
       player.exp = player.expReq
       resources.setQi(player.qiCapValue, player.qiCapValue)
-      view = attemptBreakthrough()
+      view = await attemptBreakthrough()
     }
 
     expect(view?.success).toBe(true)

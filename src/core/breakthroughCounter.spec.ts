@@ -30,23 +30,23 @@ describe('突破 · 天劫计数口径', () => {
     mockTribRand = 0.5
   })
 
-  it('渡劫失败不计数:连败不该解锁「渡过 3 次天劫」', () => {
+  it('渡劫失败不计数:连败不该解锁「渡过 3 次天劫」', async () => {
     mockTribRand = 1 // 必败
     const quests = useQuestsStore()
     for (let i = 0; i < 3; i += 1) {
       atTribeGate() // 失败掉修为,重试前回补
-      const view = attemptBreakthrough()
+      const view = await attemptBreakthrough()
       expect(view?.success).toBe(false)
       expect(quests.counter('tribulations')).toBe(0)
     }
   })
 
-  it('渡劫成功才计数:每渡一劫 +1,为「劫后余生」攒进度', () => {
+  it('渡劫成功才计数:每渡一劫 +1,为「劫后余生」攒进度', async () => {
     mockTribRand = 0 // 必过
     atTribeGate()
     const quests = useQuestsStore()
     const player = usePlayerStore()
-    const view = attemptBreakthrough()
+    const view = await attemptBreakthrough()
     expect(view?.success).toBe(true)
     expect(player.major).toBe(1)
     expect(quests.counter('tribulations')).toBe(1)

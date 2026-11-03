@@ -44,23 +44,23 @@ describe('突破 · 门槛不满足时一分不动', () => {
     settleRewards()
   })
 
-  it('修为未满:不给结算,也不扣灵气', () => {
+  it('修为未满:不给结算,也不扣灵气', async () => {
     const player = usePlayerStore()
     const resources = useResourcesStore()
     player.$patch({ major: 0, sub: 3, exp: { m: 0, e: 0 } })
     const qiBefore = resources.qi
-    expect(attemptBreakthrough()).toBeNull()
+    expect(await attemptBreakthrough()).toBeNull()
     expect(player.sub).toBe(3)
     expect(resources.qi).toBe(qiBefore)
     expect(useUiStore().breakthrough).toBeNull()
   })
 
-  it('灵气不足:同样不给结算 —— 门槛资源不是摆设', () => {
+  it('灵气不足:同样不给结算 —— 门槛资源不是摆设', async () => {
     const player = usePlayerStore()
     const resources = useResourcesStore()
     player.$patch({ major: 0, sub: 3, exp: { m: 1, e: 12 } })
     resources.$patch({ qi: 0 })
-    expect(attemptBreakthrough()).toBeNull()
+    expect(await attemptBreakthrough()).toBeNull()
     expect(player.sub, '灵气不够却进境了').toBe(3)
     expect(resources.qi).toBe(0)
   })
@@ -73,7 +73,7 @@ describe('突破 · 小关(无劫)', () => {
     settleRewards()
   })
 
-  it('成了:进一小层,灵气与修为照门槛付清', () => {
+  it('成了:进一小层,灵气与修为照门槛付清', async () => {
     ready(0, 3)
     const player = usePlayerStore()
     const resources = useResourcesStore()
@@ -82,7 +82,7 @@ describe('突破 · 小关(无劫)', () => {
     const qiBefore = resources.qi
     const expBefore = toNum(player.exp)
 
-    const view = attemptBreakthrough()
+    const view = await attemptBreakthrough()
     expect(view?.success).toBe(true)
     expect(player.major, '小关不该跨大境界').toBe(0)
     expect(player.sub).toBe(4)
@@ -91,14 +91,14 @@ describe('突破 · 小关(无劫)', () => {
     expect(useQuestsStore().counter('breakthroughs')).toBe(1)
   })
 
-  it('败了:境界不动,掉修为、添伤势、记一次失败', () => {
+  it('败了:境界不动,掉修为、添伤势、记一次失败', async () => {
     ready(0, 3)
     mockRand = 0.999
     const player = usePlayerStore()
     const cultivation = useCultivationStore()
     const expBefore = toNum(player.exp)
 
-    const view = attemptBreakthrough()
+    const view = await attemptBreakthrough()
     expect(view?.success).toBe(false)
     expect(player.sub, '失败却进境了').toBe(3)
     expect(useQuestsStore().counter('breakthroughFails')).toBe(1)
@@ -110,7 +110,7 @@ describe('突破 · 小关(无劫)', () => {
     expect(toNum(player.exp) / expBefore).toBeCloseTo(1 - BT_FAIL_EXP_LOSS, 3)
   })
 
-  it('失败返还只少掉修为损耗,灵气仍按门槛扣光', () => {
+  it('失败返还只少掉修为损耗,灵气仍按门槛扣光', async () => {
     ready(0, 3)
     mockRand = 0.999
     const player = usePlayerStore()
@@ -122,7 +122,7 @@ describe('突破 · 小关(无劫)', () => {
     const qiBefore = resources.qi
     const expBefore = toNum(player.exp)
 
-    const view = attemptBreakthrough()
+    const view = await attemptBreakthrough()
     expect(view?.success).toBe(false)
     expect(qiBefore - resources.qi, '失败不该把灵气退回来').toBe(info.qiCost)
     expect(toNum(player.exp) / expBefore).toBeCloseTo(1 - BT_FAIL_EXP_LOSS * (1 - refund), 3)
@@ -136,14 +136,14 @@ describe('突破 · 大关(渡劫)', () => {
     settleRewards()
   })
 
-  it('渡过了:跨大境界,寿元随之抬升,天劫战报如实带出', () => {
+  it('渡过了:跨大境界,寿元随之抬升,天劫战报如实带出', async () => {
     ready(0, 9)
     const player = usePlayerStore()
     const info = breakthroughInfo()
     expect(info.needTribulation, '练气圆满该引动天劫').toBe(true)
     const lifespanBefore = player.lifespanMax
 
-    const view = attemptBreakthrough()
+    const view = await attemptBreakthrough()
     expect(view?.success).toBe(true)
     expect(player.major).toBe(1)
     expect(player.sub).toBe(0)
@@ -153,12 +153,12 @@ describe('突破 · 大关(渡劫)', () => {
     expect(useQuestsStore().counter('tribulations')).toBe(1)
   })
 
-  it('没渡过:境界不动,一样要赔修为与疗伤', () => {
+  it('没渡过:境界不动,一样要赔修为与疗伤', async () => {
     ready(0, 9)
     mockRand = 0.999
     const player = usePlayerStore()
     const cultivation = useCultivationStore()
-    const view = attemptBreakthrough()
+    const view = await attemptBreakthrough()
     expect(view?.success).toBe(false)
     expect(player.major, '渡劫失败却飞升了').toBe(0)
     expect(player.sub).toBe(9)

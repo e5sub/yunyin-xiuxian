@@ -27,6 +27,8 @@ interface AuthorityInput {
   next: Record<string, unknown>
   prevRealmIndex: number
   elapsedMs: number
+  /** 1.57.0+ 客户端标记:境界只认 profiles,上传里的 major/sub 不采信(转世除外) */
+  realmAuthoritative?: boolean
 }
 
 type AuthorityFn = (input: AuthorityInput) => AuthorityReport | null

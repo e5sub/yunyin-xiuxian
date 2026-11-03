@@ -202,3 +202,68 @@ describe('数值权威化 · 不改动输入', () => {
     expect(JSON.stringify(next)).toBe(snapshot)
   })
 })
+
+describe('数值权威化 · 境界只认服务端(1.57.0+ 客户端)', () => {
+  function runAuth(
+    next: Record<string, unknown>,
+    opts: { prev?: Record<string, unknown> | null; prevRealmIndex?: number; elapsedMs?: number } = {}
+  ) {
+    const report = enforceSaveAuthority({
+      prev: opts.prev ?? null,
+      next,
+      prevRealmIndex: opts.prevRealmIndex ?? 0,
+      elapsedMs: opts.elapsedMs ?? ONE_TICK_MS,
+      realmAuthoritative: true
+    })
+    if (report === null) throw new Error('裁决返回 null')
+    return report
+  }
+
+  it('上报抬境:即使修为预算付得起,也一律压回服务端基线', () => {
+    const next = baseSave()
+    ;(next.player as Record<string, unknown>).major = 5
+    ;(next.player as Record<string, unknown>).sub = 0
+    const report = runAuth(next, { prev: baseSave(), prevRealmIndex: 0 })
+    expect((report.data.player as Record<string, unknown>).major).toBe(0)
+    expect((report.data.player as Record<string, unknown>).sub).toBe(0)
+    expect(report.corrections.some(c => c.path === 'player.major')).toBe(true)
+  })
+
+  it('上报压境(改包/回档残影):同样压回基线', () => {
+    const next = baseSave()
+    ;(next.player as Record<string, unknown>).major = 0
+    ;(next.player as Record<string, unknown>).sub = 0
+    const report = runAuth(next, { prev: baseSave(), prevRealmIndex: 205 })
+    expect((report.data.player as Record<string, unknown>).major).toBe(2)
+    expect((report.data.player as Record<string, unknown>).sub).toBe(5)
+  })
+
+  it('境界与基线一致:零修正通过(突破 API 落账后的正常上传)', () => {
+    const next = baseSave()
+    ;(next.player as Record<string, unknown>).major = 1
+    ;(next.player as Record<string, unknown>).sub = 4
+    const report = runAuth(next, { prev: baseSave(), prevRealmIndex: 104 })
+    expect(report.corrections).toEqual([])
+    expect(report.notes).toEqual([])
+  })
+
+  it('转世(世号增加):新世从 0-0 起算,不受基线约束', () => {
+    const prev = baseSave()
+    ;(prev.player as Record<string, unknown>).reincarnation = { count: 3 }
+    const next = baseSave()
+    ;(next.player as Record<string, unknown>).major = 0
+    ;(next.player as Record<string, unknown>).sub = 0
+    ;(next.player as Record<string, unknown>).reincarnation = { count: 4 }
+    const report = runAuth(next, { prev, prevRealmIndex: 608 })
+    expect((report.data.player as Record<string, unknown>).major).toBe(0)
+  })
+
+  it('对照:同样上报抬境,不带标记的老客户端沿用预算判据(可能被放行)', () => {
+    const next = baseSave()
+    ;(next.player as Record<string, unknown>).major = 0
+    ;(next.player as Record<string, unknown>).sub = 1
+    const report = run(next, { prev: baseSave(), prevRealmIndex: 0 })
+    // 预算判据下,紧邻的一小层在 60 秒窗口内付得起 → 放行
+    expect((report.data.player as Record<string, unknown>).sub).toBe(1)
+  })
+})

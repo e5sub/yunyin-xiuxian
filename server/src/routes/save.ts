@@ -179,10 +179,22 @@ function snapshotComplete(s: Record<string, unknown> | null): s is ProfileSnapsh
 }
 
 /**
+ * 按存档内容同步档案快照(复算优先,失败不动 profiles)。
+ * 供存档被服务端单方面改写的地方共用:突破结算、回档 —— 这些场景 profiles 必须跟着存档走,
+ * 否则权威化会把客户端境界压回旧值,回档等于没回、突破等于白突。
+ */
+export async function syncProfileFromData(userId: number, data: unknown, now: number): Promise<void> {
+  const recomputed = await recomputeProfile(data)
+  if (!snapshotComplete(recomputed)) return
+  const realmIndex = finite(recomputed.realmIndex) ? Math.trunc(recomputed.realmIndex) : 0
+  await upsertProfile(userId, clampSnapshot(recomputed, realmIndex, userId), now)
+}
+
+/**
  * 从存档 JSON 里取判定用的两个指标。
  * 服务端只做「是否已开局 / 境界高低」的比较,不解析其余内容(玩法字段归客户端)。
  */
-function metricsOf(json: string): { started: boolean; realmIndex: number } {
+export function metricsOf(json: string): { started: boolean; realmIndex: number } {
   try {
     const data = JSON.parse(json) as Record<string, unknown>
     const game = typeof data.game === 'object' && data.game !== null ? (data.game as Record<string, unknown>) : {}
@@ -196,7 +208,7 @@ function metricsOf(json: string): { started: boolean; realmIndex: number } {
 }
 
 /** 覆盖前留一份旧档:同份不重存、按间隔抽稀、突破(境界提升)必存,并顺手清理超量/超期 */
-async function backupBeforeOverwrite(userId: number, old: { version: number; data: string; updated_at: number }): Promise<void> {
+export async function backupBeforeOverwrite(userId: number, old: { version: number; data: string; updated_at: number }): Promise<void> {
   const now = Date.now()
   const oldMetrics = metricsOf(old.data)
   const last = await get<{ id: number; updated_at: number; realm_index: number; created_at: number }>(
@@ -301,7 +313,10 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       prev: prevData,
       next: normalizedData,
       prevRealmIndex: prevProfileRow?.realm_index ?? 0,
-      elapsedMs: old === undefined ? 0 : Math.max(0, now - old.updated_at)
+      elapsedMs: old === undefined ? 0 : Math.max(0, now - old.updated_at),
+      // 1.57.0+ 客户端标记:境界只认 profiles(唯一写入口是突破 API),上传里的 major/sub 不采信。
+      // 老客户端不带标记,沿用「付得起」预算判据 —— 存量客户端与自建部署的兼容口。
+      realmAuthoritative: body.realmAuth === 2
     })
     const data = authority === null ? normalizedData : authority.data
     let json: string
@@ -380,6 +395,8 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
 saveRouter.delete('/save', requireAuth, (req: Request, res: Response) => {
   void (async () => {
     await run('DELETE FROM saves WHERE user_id = ?', [req.user!.id])
+    // 境界基线一并归零:删档重修是合法路径,基线不归零,权威化会把新档的境界强行顶回旧值
+    await run("UPDATE profiles SET realm_index = 0, realm_label = '' WHERE user_id = ?", [req.user!.id])
     res.json({ ok: true })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
@@ -430,6 +447,12 @@ saveRouter.post('/save/restore', requireAuth, (req: Request, res: Response) => {
       started: metricsOf(row.data).started ? 1 : 0,
       updated_at: now
     })
+    // 境界基线跟着回档走:不同步的话,权威化会把客户端境界压回回档前的旧值,回档等于没回
+    try {
+      await syncProfileFromData(req.user!.id, JSON.parse(row.data), now)
+    } catch {
+      // 快照复算失败时 profiles 不动:下一次上传仍会按存档内容重算
+    }
     res.json({ ok: true, updatedAt: now })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })

@@ -500,6 +500,8 @@ export const cloudApi = {
     profile?: unknown
     /** 本机上次同步到的云端时间戳:服务端据此判断是否被别的设备改过 */
     baseUpdatedAt?: number
+    /** 客户端能力标记(2 = 1.57.0+):服务端境界一律以 profiles 为准,上传里的 major/sub 只当提议 */
+    realmAuth?: number
   }): Promise<{
     ok: boolean
     updatedAt: number
@@ -509,6 +511,28 @@ export const cloudApi = {
      */
     corrections?: Array<{ path: string; before: unknown; after: unknown }>
   }> => request('PUT', '/save', payload),
+  /**
+   * 服务端权威突破:掷点与渡劫推演只在服务端做,成败都回传被改动的字段。
+   * outcome 为裁决结果(成败/是否大关/劫报/前后境界);slices 按分片分组只含变更的顶层键。
+   * ok=false 时突破未发生(门槛不满足等原因),reason 是给玩家看的文案。
+   */
+  resolveBreakthrough: (payload: { exp?: unknown; qi?: number }): Promise<{
+    ok: boolean
+    reason?: string
+    outcome?: {
+      ok: boolean
+      reason: string
+      success: boolean
+      isMajor: boolean
+      needTribulation: boolean
+      tribulationLog: string[]
+      fromMajor: number
+      fromSub: number
+      newMajor: number
+      newSub: number
+    }
+    slices?: Record<string, Record<string, unknown>>
+  }> => request('POST', '/cultivation/breakthrough', payload),
   saveHistory: (limit = 30): Promise<{ history: SaveHistoryRow[] }> =>
     request('GET', `/save/history?limit=${limit}`),
   restoreSave: (historyId: number): Promise<{ ok: boolean; updatedAt: number }> =>

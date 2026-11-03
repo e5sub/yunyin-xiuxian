@@ -146,7 +146,9 @@ export async function pushCloudSave(manual = false): Promise<PushOutcome> {
       // 快照链万一取不到(理论上只在 store 异常时)就不带 profile:服务端保留旧档,不该拿空快照顶掉
       ...(profile !== null ? { profile } : {}),
       // 手动上传视为「以本机为准」:不带锚点,服务端不做冲突判定
-      ...(manual || base === 0 ? {} : { baseUpdatedAt: base })
+      ...(manual || base === 0 ? {} : { baseUpdatedAt: base }),
+      // 1.57.0+:境界唯一写入口是突破 API,服务端只认 profiles —— 上传里的 major/sub 不再采信
+      realmAuth: 2
     })
     // 老后端不返回 updatedAt:保持原锚点,别把已对齐状态清零
     if (typeof res.updatedAt === 'number') writeBase(res.updatedAt)

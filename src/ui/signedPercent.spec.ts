@@ -14,7 +14,8 @@ describe('signedPercent', () => {
     expect(modsText({ luck: 0.1 })).toBe('气运 +10%(主器物成色;小进阶另借此数半成)')
     const gen = readFileSync(resolve(__dirname, '../core/equipGen.ts'), 'utf8')
     expect(gen).toContain('luckBoost')
-    const bt = readFileSync(resolve(__dirname, '../core/breakthrough.ts'), 'utf8')
+    // 结算判据在突破裁决单点(breakthroughResolve);breakthrough.ts 只是编排层
+    const bt = readFileSync(resolve(__dirname, '../core/breakthroughResolve.ts'), 'utf8')
     expect(bt).toContain("modOf(mods, 'luck') * 0.05")
     const explore = readFileSync(resolve(__dirname, '../core/exploration.ts'), 'utf8')
     expect(explore).not.toContain("modOf(mods, 'luck')")
@@ -48,7 +49,7 @@ describe('signedPercent', () => {
   it('breakRefund 只报失败少损修为,不说成突破返还', () => {
     expect(modsText({ breakRefund: 0.1 })).toBe('失败返还修为 +10%(只还败时所损修为;灵气不退)')
     expect(modsText({ breakRefund: 0.1 })).not.toContain('突破返还')
-    const bt = readFileSync(resolve(__dirname, '../core/breakthrough.ts'), 'utf8')
+    const bt = readFileSync(resolve(__dirname, '../core/breakthroughResolve.ts'), 'utf8')
     expect(bt).toContain("modOf(mods, 'breakRefund')")
     expect(bt).toContain('loseExpPct')
     expect(bt.indexOf('setQi')).toBeLessThan(bt.indexOf("modOf(mods, 'breakRefund')"))
@@ -165,7 +166,7 @@ describe('signedPercent', () => {
     expect(modsText({ tribulationResist: 0.2 })).toBe('御劫 +20%(只减天劫之伤;小进阶之骰不改)')
     const trib = readFileSync(resolve(__dirname, '../core/tribulationDecision.ts'), 'utf8')
     expect(trib).toContain("modOf(mods, 'tribulationResist')")
-    const bt = readFileSync(resolve(__dirname, '../core/breakthrough.ts'), 'utf8')
+    const bt = readFileSync(resolve(__dirname, '../core/breakthroughResolve.ts'), 'utf8')
     expect(bt).toContain("modOf(mods, 'breakthroughRate')")
     expect(bt).not.toContain("modOf(mods, 'tribulationResist')")
   })

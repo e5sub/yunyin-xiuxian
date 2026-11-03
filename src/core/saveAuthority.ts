@@ -60,6 +60,12 @@ export interface AuthorityInput {
   prevRealmIndex: number
   /** 上次落库到本次的毫秒间隔;无基线时传 0 */
   elapsedMs: number
+  /**
+   * 新客户端(1.57.0+)标记:境界的唯一写入口是突破 API(服务端掷点后落 profiles),
+   * 上传分片里的 major/sub 一律按「提议」处理,直接压回基线 —— 转世(世号增加)除外。
+   * 老客户端不带标记,沿用「付得起」预算判据(兼容旧版与自建部署的存量客户端)。
+   */
+  realmAuthoritative?: boolean
 }
 
 export interface AuthorityCorrection {
@@ -143,6 +149,16 @@ function expBudgetPerWindow(prevMajor: number, prevSub: number, nextMajor: numbe
 }
 
 /**
+ * 当前境界、给定时间窗内「可信的修为增量」上限 —— 突破结算收口客户端上报修为用。
+ * 与上传裁决同一把尺(同产速、同加成上界、同窗口钳制),不出现第二套口径。
+ */
+export function expAccrualBudget(major: number, sub: number, elapsedSec: number): GNum {
+  const rate = baseCultPerSec(major, sub)
+  const span = Math.max(MIN_ELAPSED_SEC, Math.min(Math.max(0, elapsedSec), MAX_ELAPSED_SEC))
+  return gn(rate * span * CULT_MULT_CEIL)
+}
+
+/**
  * 从 from 起逐层上行,返回「付得起的最远境界」。
  * 预算 = 上次存量修为 + 本窗口可产出修为;每走一层扣掉该层突破需求。
  */
@@ -195,22 +211,40 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
     let nextMajor = Math.trunc(Math.min(Math.max(numOf(nextPlayer.major), 0), MAX_MAJOR))
     let nextSub = Math.trunc(Math.min(Math.max(numOf(nextPlayer.sub), 0), SUB_LEVELS - 1))
 
-    // 倒退:除转世外不允许(境界是单调的,掉境意味着档被改过)
-    const claimed = { major: nextMajor, sub: nextSub }
-    if (!rebirth && cmpRealm(claimed, prevRealm) < 0) {
-      notes.push(`境界倒退被拒:${prevRealm.major}-${prevRealm.sub} ← ${claimed.major}-${claimed.sub}`)
-      nextMajor = prevRealm.major
-      nextSub = prevRealm.sub
-    }
-
     // 付得起:沿途每层突破需求之和不得超过「上次修为 + 本窗口可产出修为」
     const elapsedSec = Math.max(0, input.elapsedMs) / 1000
-    const budget = add(prevExp, expBudgetPerWindow(prevRealm.major, prevRealm.sub, nextMajor, elapsedSec))
-    const affordable = affordableRealm(prevRealm, { major: nextMajor, sub: nextSub }, budget)
-    if (affordable.blocked) {
-      notes.push(`境界超出修为支撑:${nextMajor}-${nextSub} → ${affordable.realm.major}-${affordable.realm.sub}`)
-      nextMajor = affordable.realm.major
-      nextSub = affordable.realm.sub
+
+    if (input.realmAuthoritative === true && !rebirth) {
+      // 境界唯一写入口是突破 API(服务端掷点后落 profiles):上传里的 major/sub 只当提议,
+      // 无论高低一律压回基线。抬境界是老路子的作弊入口;压境界只可能是改包或回档残影。
+      const claimed = { major: nextMajor, sub: nextSub }
+      if (claimed.major !== prevRealm.major || claimed.sub !== prevRealm.sub) {
+        notes.push(`境界以服务端为准:${prevRealm.major}-${prevRealm.sub}(上报 ${claimed.major}-${claimed.sub})`)
+        if (numOf(nextPlayer.major) !== prevRealm.major) {
+          corrections.push({ path: 'player.major', before: nextPlayer.major, after: prevRealm.major })
+        }
+        if (numOf(nextPlayer.sub) !== prevRealm.sub) {
+          corrections.push({ path: 'player.sub', before: nextPlayer.sub, after: prevRealm.sub })
+        }
+        nextMajor = prevRealm.major
+        nextSub = prevRealm.sub
+      }
+    } else {
+      // 倒退:除转世外不允许(境界是单调的,掉境意味着档被改过)
+      const claimed = { major: nextMajor, sub: nextSub }
+      if (!rebirth && cmpRealm(claimed, prevRealm) < 0) {
+        notes.push(`境界倒退被拒:${prevRealm.major}-${prevRealm.sub} ← ${claimed.major}-${claimed.sub}`)
+        nextMajor = prevRealm.major
+        nextSub = prevRealm.sub
+      }
+
+      const budget = add(prevExp, expBudgetPerWindow(prevRealm.major, prevRealm.sub, nextMajor, elapsedSec))
+      const affordable = affordableRealm(prevRealm, { major: nextMajor, sub: nextSub }, budget)
+      if (affordable.blocked) {
+        notes.push(`境界超出修为支撑:${nextMajor}-${nextSub} → ${affordable.realm.major}-${affordable.realm.sub}`)
+        nextMajor = affordable.realm.major
+        nextSub = affordable.realm.sub
+      }
     }
     if (numOf(nextPlayer.major) !== nextMajor) {
       corrections.push({ path: 'player.major', before: nextPlayer.major, after: nextMajor })

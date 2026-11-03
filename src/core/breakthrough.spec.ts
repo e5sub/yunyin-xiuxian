@@ -133,7 +133,7 @@ describe('渡劫成功率推演', () => {
     }
   })
 
-  it('突破准备就绪计入成功率;尝试突破后一次性消耗', () => {
+  it('突破准备就绪计入成功率;尝试突破后一次性消耗', async () => {
     vi.useFakeTimers()
     try {
       vi.setSystemTime(1_000_000)
@@ -152,7 +152,7 @@ describe('渡劫成功率推演', () => {
       expect(withPrep.rate).toBeCloseTo(Math.min(1, base + 0.05))
 
       // 消费在掷点前,与成败无关;不做概率断言:rng 按值捕获 Math.random,spyOn 替不掉
-      const view = attemptBreakthrough()
+      const view = await attemptBreakthrough()
       expect(view).not.toBeNull()
       expect(breakthroughPrepState().ready).toBe(false)
       expect(consumeBreakthroughPrep()).toBe(0)

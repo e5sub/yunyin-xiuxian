@@ -259,7 +259,9 @@ describe('死导出审计', () => {
     qiFillSeconds: '灵脉充盈计时审计口径:仅 economySim.spec 校验灵所充盈曲线用时,运行时走灵脉实时投点',
     expIncomeAudit: '修为收入审计汇总:仅 expIncome.spec 读;economySim 经 expIncome 取 winsPerHour/tripExpSecsPerHour 使 expIncome 成为运行时共享源,此审计头不进运行时',
     snapshotFromSlices: '服务端复算入口:server/src/recompute.ts 动态加载本模块跑无头复算(save.ts 反作弊),消费方在 src 之外,审计扫不到;profileRecompute.spec 守其口径',
-    sanitizeSaveSlices: '服务端归一化入口:server/src/saveNormalize.ts 动态加载本模块,把上传分片按客户端读档同一套 sanitize 修平后落库,消费方在 src 之外,审计扫不到;saveSanitize.spec 守其口径'
+    sanitizeSaveSlices: '服务端归一化入口:server/src/saveNormalize.ts 动态加载本模块,把上传分片按客户端读档同一套 sanitize 修平后落库,消费方在 src 之外,审计扫不到;saveSanitize.spec 守其口径',
+    resolveBreakthroughFromSlices: '服务端权威突破入口:server/src/routes/cultivation.ts 动态加载本模块,从云档无头掷点结算(1.57.0),消费方在 src 之外,审计扫不到;breakthroughResolve.spec 守其口径',
+    enforceSaveAuthority: '服务端数值权威化入口:server/src/saveAuthority.ts 动态加载本模块,PUT /save 落库前裁决(1.56.0),消费方在 src 之外,审计扫不到;saveAuthority.spec 守其口径'
   }
 
   it('运行时模块里的导出,不能只被 spec 用到 —— 那是骨架空转的样子', () => {

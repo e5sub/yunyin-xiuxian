@@ -10,6 +10,7 @@ import { setConfig } from './config.js'
 import { requireAdmin, verifyPassword } from './auth.js'
 import { onlineCount } from './ws.js'
 import { bodyStr, rateLimit } from './rateLimit.js'
+import { syncProfileFromData } from './routes/save.js'
 import { CODE_TYPE_DAYS, generateCode, grantVipDays, isCodeType } from './vip.js'
 
 /** 后台挂载路径;必须是一个独立子路径(不允许根路径),非法值回落 /gm */
@@ -646,6 +647,12 @@ gmRouter.post('/saves/:userId/restore', requireAdmin, (req: Request, res: Respon
     }
     const started = row.data.includes('"started":true') ? 1 : 0
     await upsertByPk('saves', { user_id: userId, version: row.version, data: row.data, started, updated_at: now })
+    // 境界基线跟着回档走:不同步的话,权威化会把客户端境界压回回档前的旧值,回档等于没回
+    try {
+      await syncProfileFromData(userId, JSON.parse(row.data), now)
+    } catch {
+      // 快照复算失败时 profiles 不动:下一次上传仍会按存档内容重算
+    }
     res.json({ ok: true, updatedAt: now, fromHistoryId: historyId })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })

@@ -1,223 +1,81 @@
-/** 突破服务:成功率计算 / 天劫 / 结算 */
-import { mulberry32, rng } from '@/utils/random'
-import { formatNum, formatYears } from '@/utils/format'
-import {
-  breakthroughExpReason,
-  breakthroughPeakReason,
-  breakthroughQiReason
-} from '@/ui/cultivationText'
-import { realmDef, realmLabel, worldOf, isWorldEntry } from '@/data/realms'
-import { BT_FAIL_EXP_LOSS, BT_QI_COST_RATIO } from '@/data/constants'
-import { breakthroughBaseRate, clampRate } from './formulas'
-import { modOf } from './statsCalc'
-import { hasBreakExemption } from './heritageEffects'
-import {
-  rollTribulation,
-  sustainScore,
-  guardScore,
-  waveDamage,
-  tribulationWaves,
-  currentTribulationRelief,
-  currentStatGuard,
-  NO_STAT_GUARD,
-  type TribStatGuard
-} from './tribulationDecision'
-import { todayWeather } from './weather'
-import { tribulationDef, TRIBULATIONS, type TribulationKind } from '@/data/tribulations'
-import { NO_RELIEF, type TribulationRelief } from '@/data/linggenAffinity'
-import { reliefFelt } from './linggenAffinity'
+/** 突破编排:门槛提示 / 服务端权威结算 / 簿记与展示。判据本体在 core/breakthroughResolve。 */
+import { formatYears } from '@/utils/format'
+import { worldOf, isWorldEntry } from '@/data/realms'
 import { track, trackRealm, checkStateAchievements } from './progress'
 import { recordMilestone } from './identity'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
-import { useCultivationStore } from '@/stores/cultivation'
+import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import type { BreakthroughView } from '@/stores/ui'
-import type { StatMods } from '@/types'
 import { playSfx } from './audio'
-import { gameNow } from './enginePause'
-import { breakthroughPrepState, consumeBreakthroughPrep, type BreakthroughPrepView } from './earlyGameService'
+import { SAVE_SANITIZE_STEPS } from './saveSanitize'
+import { cloudApi, CloudError } from '@/services/cloud'
+import { breakthroughInfo, resolveBreakthroughOnStores, type BreakthroughOutcome } from './breakthroughResolve'
 
-/** 进阶成功率的一个构成项(展示用) */
-export interface RatePart {
-  label: string
-  /** 加合值,以 1.0 = 100% 计 */
-  value: number
-}
+export { breakthroughInfo, tribulationSuccessRate } from './breakthroughResolve'
+export type { BreakthroughInfo, RatePart } from './breakthroughResolve'
 
-export interface BreakthroughInfo {
-  ready: boolean
-  reason: string
-  /** 修炼突破的基础成功率(未计天劫) */
-  rate: number
-  /** rate 的构成项,与 rate 同一批操作数;0 项省略 */
-  rateParts: RatePart[]
-  qiCost: number
-  isMajor: boolean
-  needTribulation: boolean
-  targetLabel: string
-  /** 突破准备状态;就绪时 rate 已并入加成(大关不食) */
-  prep: BreakthroughPrepView
-}
-
-/** 蒙特卡洛采样次数;波次 4~15,几千次仍在毫秒级 */
-const TRIB_SAMPLE = 4000
-
-/**
- * 按玩家词条推演渡劫成功率:审计口径,只服务平衡审计与回归测试,不进 UI。
- * 不传 kind 时取五种劫型的平均。数学主干与 runTribulation 共用 tribulationDecision 的度量函数。
- */
-export function tribulationSuccessRate(
-  targetMajor: number,
-  mods: StatMods,
-  kind?: TribulationKind,
-  relief: TribulationRelief = NO_RELIEF,
-  /** 三维折算(防御→抗性 / 气血→水位);默认不传 = 只看词条,读数偏保守 */
-  stat: TribStatGuard = NO_STAT_GUARD
-): number {
-  const kinds = kind ? [tribulationDef(kind)] : TRIBULATIONS
-  const rand = mulberry32(0x5eed)
-  const waves = tribulationWaves(targetMajor)
-  let survived = 0
-  let total = 0
-  for (const def of kinds) {
-    const regen = sustainScore(mods, def, relief)
-    for (let s = 0; s < TRIB_SAMPLE; s += 1) {
-      let hpLeft = 1 + guardScore(mods, def, relief) + stat.guard
-      for (let w = 1; w <= waves; w += 1) {
-        hpLeft =
-          hpLeft - waveDamage(def, mods, targetMajor, w, hpLeft, relief, 1, stat) * (0.85 + rand() * 0.3) + regen
-        if (hpLeft <= 0) break
-      }
-      if (hpLeft > 0) survived += 1
-      total += 1
-    }
+/** 把服务端回传的变更字段落进本地 store(键集只含被结算改动的顶层字段) */
+function applySlices(slices: Record<string, unknown> | undefined): void {
+  if (slices === undefined || slices === null) return
+  for (const [slice, fields] of Object.entries(slices)) {
+    if (fields === null || typeof fields !== 'object') continue
+    const step = SAVE_SANITIZE_STEPS.find(s => s.slice === slice)
+    if (step === undefined) continue
+    const store = step.use() as unknown as { $patch: (partial: Record<string, unknown>) => void }
+    store.$patch(fields as Record<string, unknown>)
   }
-  return survived / total
 }
 
-export function breakthroughInfo(at: number = gameNow()): BreakthroughInfo {
+/** 尝试突破,返回展示数据(由 UI 弹窗呈现)。
+ *  登录玩家:掷点与渡劫只在服务端结算,本地只按回传字段落账 —— 改 store 改不动天命;
+ *  未登录(离线单机):无服务端可裁,走同一条本地结算链,联网后由上传权威化收口。 */
+export async function attemptBreakthrough(): Promise<BreakthroughView | null> {
   const player = usePlayerStore()
-  const resources = useResourcesStore()
-  const isMajor = player.isMajorStep
-  const nextMajor = isMajor ? player.major + 1 : player.major
-  const nextSub = isMajor ? 0 : player.sub + 1
-  /** 大关皆劫,跨界入口(真仙/神人/混沌真灵)不例外:小进阶掷点,大关渡劫 */
-  const needTribulation = isMajor
-  const qiCost = Math.floor(player.qiCapValue * BT_QI_COST_RATIO)
-  const mods = player.finalStats.mods
-  // 就绪的突破准备并入展示率;消费在 attemptBreakthrough,一次性
-  const prep = breakthroughPrepState(at)
-  // 4 项操作数先各自成行再合出 rate,供界面列明细
-  const baseRate = breakthroughBaseRate(player.major, player.sub)
-  const rateMod = modOf(mods, 'breakthroughRate')
-  const luckPart = modOf(mods, 'luck') * 0.05
-  // 大关成败走 runTribulation,不吃准备加成;须与消费端(仅无劫分支)同口径
-  const prepBonus = !needTribulation && prep.ready ? prep.bonus : 0
-  const rateParts: RatePart[] = [{ label: '基础', value: baseRate }]
-  if (rateMod !== 0) rateParts.push({ label: '词条加成', value: rateMod })
-  if (luckPart !== 0) rateParts.push({ label: '气运 ×5%', value: luckPart })
-  if (prepBonus !== 0) rateParts.push({ label: prep.kind === 'meditate' ? '静坐调息' : '聚气丹', value: prepBonus })
-  const rawRate = baseRate + rateMod + luckPart + prepBonus
-  const rate = clampRate(rawRate)
-  // 越过上下限的差额单列一行:各行相加正好是展示率
-  if (Math.abs(rate - rawRate) > 1e-9) rateParts.push({ label: rate < rawRate ? '封顶' : '保底', value: rate - rawRate })
-  let ready = true
-  let reason = ''
-  if (player.atMaxRealm) {
-    ready = false
-    reason = breakthroughPeakReason()
-  } else if (!player.expFull) {
-    ready = false
-    reason = breakthroughExpReason()
-  } else if (resources.qi < qiCost) {
-    ready = false
-    reason = breakthroughQiReason(formatNum(qiCost))
-  }
-  return {
-    ready,
-    reason,
-    rate,
-    rateParts,
-    qiCost,
-    isMajor,
-    needTribulation,
-    targetLabel: player.atMaxRealm ? breakthroughPeakReason() : realmLabel(nextMajor, nextSub),
-    prep
-  }
-}
-
-/**
- * 模拟渡劫:返回(是否渡过, 战报)。与预览同源:度量函数共用 tribulationDecision,
- * 灵根解法经 currentTribulationRelief,天时乘数与 currentTribulationPlan 相同(雷鸣日+8%)。
- */
-function runTribulation(targetMajor: number): { survived: boolean; log: string[] } {
-  const player = usePlayerStore()
-  const mods = player.finalStats.mods
-  const waves = tribulationWaves(targetMajor)
-  const kind = rollTribulation(targetMajor)
-  const tDef = tribulationDef(kind)
-  const relief = currentTribulationRelief(kind)
-  const weatherMult = todayWeather().tribulationMult
-  // 三维折算与预览同源(currentTribulationPlan 走同一个 helper)
-  const stat = currentStatGuard()
-  const regen = sustainScore(mods, tDef, relief)
-  let hpLeft = 1 + guardScore(mods, tDef, relief) + stat.guard
-  const log: string[] = [`乌云压顶,${realmDef(targetMajor).name}劫将至。${tDef.name}之劫,共 ${waves} 道。`]
-  if (reliefFelt(relief)) log.push('你体内灵根与此劫气机相应。')
-  for (let w = 1; w <= waves; w += 1) {
-    hpLeft =
-      hpLeft - waveDamage(tDef, mods, targetMajor, w, hpLeft, relief, weatherMult, stat) * rng.float(0.85, 1.15) + regen
-    if (hpLeft <= 0) {
-      log.push(`第 ${w} 道天雷轰然落下,你护体灵光崩碎,重伤坠地。`)
-      return { survived: false, log }
-    }
-    const pct = Math.max(1, Math.round(hpLeft * 100))
-    log.push(`第 ${w} 道天雷落下,你咬牙硬撼,气血余 ${Math.min(999, pct)}%。`)
-  }
-  log.push('雷云散尽,你于劫灰中立起,渡劫已成。')
-  return { survived: true, log }
-}
-
-/** 尝试突破,返回展示数据(由 UI 弹窗呈现) */
-export function attemptBreakthrough(): BreakthroughView | null {
-  const player = usePlayerStore()
-  const resources = useResourcesStore()
-  const cultivation = useCultivationStore()
   const ui = useUiStore()
+  const auth = useAuthStore()
   const info = breakthroughInfo()
   if (!info.ready) {
     ui.toast(info.reason, 'warn')
     return null
   }
   const fromLabel = player.realmName
-  resources.setQi(resources.qi - info.qiCost, player.qiCapValue)
 
-  let success: boolean
-  let tribulationLog: string[] = []
-  if (info.needTribulation) {
-    const result = runTribulation(player.major + 1)
-    success = result.survived
-    tribulationLog = result.log
-    // 失败不计数,否则连败三次即解锁 a_trib3
-    if (success) track('tribulations')
+  let outcome: BreakthroughOutcome
+  if (auth.loggedIn) {
+    try {
+      const res = await cloudApi.resolveBreakthrough({ exp: player.exp, qi: useResourcesStore().qi })
+      if (!res.ok || res.outcome === undefined || res.outcome === null) {
+        ui.toast(res.reason ?? '突破未能结算', 'warn')
+        return null
+      }
+      outcome = res.outcome
+      // 服务端改过的字段(境界/修为/灵气/伤势/突破准备)当场落进本地
+      applySlices(res.slices)
+    } catch (e) {
+      ui.toast(e instanceof CloudError ? e.message : '突破结算失败', 'warn')
+      return null
+    }
   } else {
-    // info.rate 已并入准备加成
-    consumeBreakthroughPrep()
-    success = rng.chance(info.rate)
+    outcome = resolveBreakthroughOnStores()
+    if (!outcome.ok) {
+      ui.toast(outcome.reason, 'warn')
+      return null
+    }
   }
 
   let view: BreakthroughView
-  if (success) {
-    player.advanceRealm()
-    cultivation.clearNegativeBuffs()
+  if (outcome.success) {
     track('breakthroughs')
     trackRealm()
     checkStateAchievements()
+    // 失败不计数,否则连败三次即解锁 a_trib3
+    if (outcome.needTribulation) track('tribulations')
     playSfx('breakthrough')
     const realm = player.realm
     // 跨界飞升三步(入仙界/神界/混沌海)给独立叙事与跨世节点,人间界入口不算
-    const crossedWorld = info.isMajor && player.major > 0 && isWorldEntry(player.major)
+    const crossedWorld = outcome.isMajor && player.major > 0 && isWorldEntry(player.major)
     const world = crossedWorld ? worldOf(player.major) : null
     if (world) recordMilestone(`first_${world.id}`)
     const baseMessage = `${realm.desc}。寿元增至 ${formatYears(player.lifespanMax)}。`
@@ -227,36 +85,26 @@ export function attemptBreakthrough(): BreakthroughView | null {
       success: true,
       fromLabel,
       toLabel: player.realmName,
-      isMajor: info.isMajor,
-      tribulationLog,
+      isMajor: outcome.isMajor,
+      tribulationLog: outcome.tribulationLog,
       // 小进阶不附言:成败与境界去向弹窗已写明
-      message: !info.isMajor
+      message: !outcome.isMajor
         ? ''
         : world
           ? `已入${world.name}。${world.desc}。${baseMessage}${loreLine}`
           : `${baseMessage}${loreLine}`
     }
   } else {
-    // 渡劫跬步(宿命传承):本世一次突破失败豁免,不散修为,跨世不带
-    const exempted =
-      hasBreakExemption(player.reincarnation.heritage) && player.consumeHeritageUse('dubu', 1)
-    if (!exempted) {
-      const mods = player.finalStats.mods
-      const refund = Math.min(0.8, modOf(mods, 'breakRefund'))
-      player.loseExpPct(BT_FAIL_EXP_LOSS * (1 - refund))
-    }
-    // 到期判定读游戏时钟(见 enginePause):写墙钟会在暂停恢复后多出一段
-    cultivation.addBuff('injury', gameNow())
     track('breakthroughFails')
     playSfx('fail')
     view = {
       success: false,
       fromLabel,
       toLabel: info.targetLabel,
-      isMajor: info.isMajor,
-      tribulationLog,
+      isMajor: outcome.isMajor,
+      tribulationLog: outcome.tribulationLog,
       // 渡劫败局伤势已在劫报末行;小进阶无劫报,附一句状态
-      message: info.needTribulation ? '' : '重伤'
+      message: outcome.needTribulation ? '' : '重伤'
     }
   }
   ui.breakthrough = view
