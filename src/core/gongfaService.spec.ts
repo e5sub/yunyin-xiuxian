@@ -29,36 +29,36 @@ describe('功法到顶守卫(upgradeGongfa / gongfaUpgradeCost)', () => {
     expect(gongfaUpgradeCost('no_such_gongfa')).toBeNull()
   })
 
-  it('到顶再升级:拒绝、一文不花、等级停在 maxLevel(永不过顶)', () => {
+  it('到顶再升级:拒绝、一文不花、等级停在 maxLevel(永不过顶)', async () => {
     const cul = useCultivationStore()
     const res = useResourcesStore()
     cul.learned = { [G]: MAXLV }
     res.wudao = 1_000_000
     res.page = 1_000_000
-    expect(upgradeGongfa(G)).toBe(false)
+    expect(await upgradeGongfa(G)).toBe(false)
     expect(cul.learned[G]).toBe(MAXLV)
     expect(res.wudao).toBe(1_000_000)
     expect(res.page).toBe(1_000_000)
   })
 
-  it('悟道点不足:拒绝、不扣残页、等级不变', () => {
+  it('悟道点不足:拒绝、不扣残页、等级不变', async () => {
     const cul = useCultivationStore()
     const res = useResourcesStore()
     cul.learned = { [G]: 1 }
     res.wudao = 0
     res.page = 1_000_000
-    expect(upgradeGongfa(G)).toBe(false)
+    expect(await upgradeGongfa(G)).toBe(false)
     expect(cul.learned[G]).toBe(1)
     expect(res.page).toBe(1_000_000)
   })
 
-  it('残页不足:拒绝、不扣悟道点、等级不变', () => {
+  it('残页不足:拒绝、不扣悟道点、等级不变', async () => {
     const cul = useCultivationStore()
     const res = useResourcesStore()
     cul.learned = { [G]: 1 }
     res.wudao = 1_000_000
     res.page = 0
-    expect(upgradeGongfa(G)).toBe(false)
+    expect(await upgradeGongfa(G)).toBe(false)
     expect(cul.learned[G]).toBe(1)
     expect(res.wudao).toBe(1_000_000)
   })
@@ -79,21 +79,21 @@ describe('功法到顶守卫(upgradeGongfa / gongfaUpgradeCost)', () => {
     expect(gongfaUpgradeShort(cost)).toBeNull()
   })
 
-  it('缺残页时提示只报残页,不再说悟道点也未足', () => {
+  it('缺残页时提示只报残页,不再说悟道点也未足', async () => {
     const cul = useCultivationStore()
     const res = useResourcesStore()
     cul.learned = { [G]: 1 }
     res.wudao = 1_000_000
     res.page = 0
     const cost = gongfaUpgradeCost(G)!
-    expect(upgradeGongfa(G)).toBe(false)
+    expect(await upgradeGongfa(G)).toBe(false)
     const text = useUiStore().toasts.at(-1)?.text ?? ''
     expect(text).toContain('残页')
     expect(text).not.toContain('悟道点')
     expect(text, '拒因要报实际残页差').toContain(`残页尚差 ${cost.page} 页`)
   })
 
-  it('两样都缺时回执同报悟道点与残页的实际差额', () => {
+  it('两样都缺时回执同报悟道点与残页的实际差额', async () => {
     const cul = useCultivationStore()
     const res = useResourcesStore()
     cul.learned = { [G]: 1 }
@@ -101,13 +101,13 @@ describe('功法到顶守卫(upgradeGongfa / gongfaUpgradeCost)', () => {
     res.wudao = 0
     res.page = 0
     expect(gongfaUpgradeShortfall(cost)).toEqual({ wudao: cost.wudao, page: cost.page })
-    expect(upgradeGongfa(G)).toBe(false)
+    expect(await upgradeGongfa(G)).toBe(false)
     const text = useUiStore().toasts.at(-1)?.text ?? ''
     expect(text).toContain(`悟道点尚差 ${cost.wudao}`)
     expect(text).toContain(`残页尚差 ${cost.page} 页`)
   })
 
-  it('成功:返回 true、等级 +1、精确扣 gongfaUpgradeCost 的悟道点+残页', () => {
+  it('成功:返回 true、等级 +1、精确扣 gongfaUpgradeCost 的悟道点+残页', async () => {
     const cul = useCultivationStore()
     const res = useResourcesStore()
     cul.learned = { [G]: 1 }
@@ -118,7 +118,7 @@ describe('功法到顶守卫(upgradeGongfa / gongfaUpgradeCost)', () => {
     expect(cost.page).toBeGreaterThan(0)
     const w0 = res.wudao
     const p0 = res.page
-    expect(upgradeGongfa(G)).toBe(true)
+    expect(await upgradeGongfa(G)).toBe(true)
     expect(cul.learned[G]).toBe(2)
     expect(res.wudao).toBe(w0 - cost.wudao)
     expect(res.page).toBe(p0 - cost.page)

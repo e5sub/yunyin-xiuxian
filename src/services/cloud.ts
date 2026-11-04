@@ -6,6 +6,7 @@
 import { useAuthStore } from '@/stores/auth'
 import type { EquipmentInstance } from '@/types'
 import type { ForgeDetail, ForgeOp, ForgeSpend } from '@/core/forgeResolve'
+import type { LevelDetail, LevelOp, LevelSpend } from '@/core/levelResolve'
 
 export const DEFAULT_API_BASE = 'https://yy.071717.xyz'
 
@@ -39,6 +40,18 @@ export interface ForgeOpResponse {
   items?: EquipmentInstance[]
   spend?: ForgeSpend
   detail?: ForgeDetail
+}
+
+/** 升级裁决的响应(1.59.0:功法进修 / 建筑升级);ok=false 时只有 reason,一级未升 */
+export interface LevelOpResponse {
+  ok: boolean
+  /** 被拒的机读原因:gone / cap / wudao / page / both / realm / max / gate / stone / ore / empty */
+  reason?: string
+  op?: string
+  /** 变更分片:顶层键级(OK 时按它覆盖本地;只含有改动的分片与键) */
+  slices?: Record<string, Record<string, unknown>>
+  spend?: LevelSpend
+  detail?: LevelDetail
 }
 
 /** VIP 自助开通档位(与 GM 定价四档一致) */
@@ -610,6 +623,17 @@ export const cloudApi = {
     dust?: number
     stone?: { m: number; e: number }
   }): Promise<ForgeOpResponse> => request('POST', '/forge/op', payload),
+  /**
+   * 升级裁决(1.59.0):功法进修 / 建筑升级的唯一写入口。
+   * 服务端从云档无头水合后算价扣款,回传改动的分片与「该扣多少」;成功时以 slices 为准覆盖本地。
+   */
+  progressOp: (payload: {
+    op: LevelOp
+    wudao?: number
+    page?: number
+    ore?: number
+    stone?: { m: number; e: number }
+  }): Promise<LevelOpResponse> => request('POST', '/progress/op', payload),
   dungeonOverview: (): Promise<DungeonOverview> => request('GET', '/dungeon'),
   dungeonRoom: (): Promise<{ room: DungeonRoom | null }> => request('GET', '/dungeon/room'),
   dungeonRoomCreate: (dungeon: DungeonKey, difficulty: DungeonDifficulty = 'normal'): Promise<{ room: DungeonRoom }> =>

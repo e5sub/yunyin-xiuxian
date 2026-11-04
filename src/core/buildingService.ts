@@ -1,15 +1,16 @@
 /** 洞府建筑服务:升级 */
 import type { BuildingId, GNum } from '@/types'
 import { buildingDef } from '@/data/buildings'
-import { buildingCost } from './formulas'
 import { track } from './progress'
-import { add, gte, gnZero, subClamp } from '@/utils/gnum'
+import { gnZero, gte, subClamp } from '@/utils/gnum'
 import { formatGN, formatGap } from '@/utils/format'
 import { playSfx } from './audio'
-import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useDongfuStore } from '@/stores/dongfu'
+import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
+import { cloudApi, type LevelOpResponse } from '@/services/cloud'
+import { applyLevelSlices, buildingBatchQuote, buildingUpgradeQuote } from './levelResolve'
 import {
   buildingBatchDoneToast,
   buildingDoneToast,
@@ -95,39 +96,63 @@ export function buildingShortfall(stone: GNum, ore: number): BuildingShortfall {
 }
 
 export function buildingUpgradeInfo(id: BuildingId): BuildingUpgradeInfo {
-  const dongfu = useDongfuStore()
-  const player = usePlayerStore()
   const def = buildingDef(id)!
-  const lv = dongfu.levels[id] ?? 0
-  const stone = buildingCost(def.costBase, lv)
-  const ore = def.costOre * (lv + 1)
-  let canUpgrade = true
+  // 门槛与价目在 core/levelResolve,与服务端裁决共用同一份;这里只把机读拒因翻成文案
+  const q = buildingUpgradeQuote(id)
   let reason = ''
-  if (player.major < def.unlockRealm) {
-    canUpgrade = false
-    reason = buildingRealmGate(buildingGateRealmName(def.unlockRealm))
-  } else if (lv >= def.maxLevel) {
-    canUpgrade = false
-    reason = buildingPeakToast()
-  } else if (id !== 'mansion' && lv >= dongfu.buildingLevelCap) {
-    canUpgrade = false
-    reason = buildingMansionGateToast()
-  } else {
-    // 资源不足即置灰并列差
-    const shortfall = buildingShortfall(stone, ore)
-    if (shortfall.side) {
-      canUpgrade = false
-      reason = shortfall.reason
-    }
+  if (!q.can) {
+    if (q.block === 'realm') reason = buildingRealmGate(buildingGateRealmName(def.unlockRealm))
+    else if (q.block === 'max') reason = buildingPeakToast()
+    else if (q.block === 'gate') reason = buildingMansionGateToast()
+    else reason = buildingShortfall(q.stone, q.ore).reason
   }
-  return { canUpgrade, reason, stone, ore, nextLevel: lv + 1 }
+  return { canUpgrade: q.can, reason, stone: q.stone, ore: q.ore, nextLevel: q.nextLevel }
 }
 
-export function upgradeBuilding(id: BuildingId): boolean {
+/** 建筑升级的机读拒因 → 文案(单升/连升/服务端响应共用) */
+function buildingBlockText(id: BuildingId, block: string): string {
+  const def = buildingDef(id)!
+  if (block === 'realm') return buildingRealmGate(buildingGateRealmName(def.unlockRealm))
+  if (block === 'max') return buildingPeakToast()
+  if (block === 'gate') return buildingMansionGateToast()
+  const q = buildingUpgradeQuote(id)
+  const side = block === 'stone' || block === 'ore' || block === 'both' ? block : null
+  if (side === null) return buildingShortToast()
+  const shortfall = buildingShortfall(q.stone, q.ore)
+  return buildingShortToast(side, formatGap(shortfall.stone), shortfall.ore)
+}
+
+/** 单升:登录走服务端裁决(POST /api/progress/op);未登录走本地同一份纯账层 */
+export async function upgradeBuilding(id: BuildingId): Promise<boolean> {
   const dongfu = useDongfuStore()
   const resources = useResourcesStore()
   const ui = useUiStore()
   const def = buildingDef(id)!
+  if (useAuthStore().loggedIn) {
+    let res: LevelOpResponse | null = null
+    try {
+      res = await cloudApi.progressOp({
+        op: { op: 'buildingUpgrade', id, steps: 1 },
+        ore: resources.ore,
+        stone: resources.spiritStone
+      })
+    } catch {
+      res = null
+    }
+    if (res === null) {
+      playSfx('warn')
+      ui.toast('未能结算', 'warn')
+      return false
+    }
+    if (!res.ok) {
+      ui.toast(buildingBlockText(id, res.reason ?? ''), 'warn')
+      return false
+    }
+    applyLevelSlices(res.slices)
+    track('buildingUpgrades')
+    ui.toast(buildingDoneToast(def.name, dongfu.levels[id] ?? 0), 'success')
+    return true
+  }
   const info = buildingUpgradeInfo(id)
   if (!info.canUpgrade) {
     ui.toast(info.reason, 'warn')
@@ -167,48 +192,30 @@ export interface BuildingBatchPlan {
  * 门槛/上限须与 buildingUpgradeInfo 同步。
  */
 export function buildingBatchPlan(id: BuildingId): BuildingBatchPlan {
-  const dongfu = useDongfuStore()
-  const player = usePlayerStore()
-  const resources = useResourcesStore()
   const def = buildingDef(id)!
-  const from = dongfu.levels[id] ?? 0
-  const zero = (blocked: string | null, atMax = false): BuildingBatchPlan => ({
-    levels: 0,
-    stone: gnZero(),
-    ore: 0,
-    atMax,
-    blocked
-  })
-  if (player.major < def.unlockRealm) return zero(buildingRealmGate(buildingGateRealmName(def.unlockRealm)))
-  if (from >= def.maxLevel) return zero(buildingPeakToast(), true)
-  if (id !== 'mansion' && from >= dongfu.buildingLevelCap) return zero(buildingMansionGateToast())
-
-  let lv = from
-  let stone = gnZero()
-  let ore = 0
-  // 洞府自身不受辖限约束
-  while (lv < def.maxLevel && (id === 'mansion' || lv < dongfu.buildingLevelCap)) {
-    const c = buildingCost(def.costBase, lv)
-    const o = def.costOre * (lv + 1)
-    if (!resources.hasStone(add(stone, c)) || !resources.hasSmall('ore', ore + o)) break
-    stone = add(stone, c)
-    ore += o
-    lv += 1
+  // 连升计划在 core/levelResolve 的同一份判据上跑(逐级重算价目,与裁决逐字段一致);这里翻文案
+  const q = buildingBatchQuote(id)
+  if (q.levels === 0) {
+    const blocked =
+      q.block === 'realm'
+        ? buildingRealmGate(buildingGateRealmName(def.unlockRealm))
+        : q.block === 'max'
+          ? buildingPeakToast()
+          : q.block === 'gate'
+            ? buildingMansionGateToast()
+            : (() => {
+                const shortfall = buildingShortfall(q.stone, q.ore)
+                return shortfall.side
+                  ? buildingShortToast(shortfall.side, formatGap(shortfall.stone), shortfall.ore)
+                  : buildingShortToast()
+              })()
+    return { levels: 0, stone: gnZero(), ore: 0, atMax: q.atMax, blocked }
   }
-  const levels = lv - from
-  if (levels === 0) {
-    const shortfall = buildingShortfall(buildingCost(def.costBase, from), def.costOre * (from + 1))
-    return zero(
-      shortfall.side
-        ? buildingShortToast(shortfall.side, formatGap(shortfall.stone), shortfall.ore)
-        : buildingShortToast()
-    )
-  }
-  return { levels, stone, ore, atMax: lv >= def.maxLevel, blocked: null }
+  return { levels: q.levels, stone: q.stone, ore: q.ore, atMax: q.atMax, blocked: null }
 }
 
-/** 建筑连升:按计划一笔扣、一笔加(逐级累扣有 GNum 尾差);返回实际升的级数,0 = 未升 */
-export function upgradeBuildingBatch(id: BuildingId): number {
+/** 建筑连升:一次请求升到付不起为止;登录走服务端裁决,未登录走本地同一份纯账层 */
+export async function upgradeBuildingBatch(id: BuildingId): Promise<number> {
   const dongfu = useDongfuStore()
   const resources = useResourcesStore()
   const ui = useUiStore()
@@ -218,6 +225,42 @@ export function upgradeBuildingBatch(id: BuildingId): number {
     playSfx('warn')
     ui.toast(plan.blocked ?? buildingShortToast(), 'warn')
     return 0
+  }
+  if (useAuthStore().loggedIn) {
+    let res: LevelOpResponse | null = null
+    try {
+      res = await cloudApi.progressOp({
+        op: { op: 'buildingUpgrade', id, steps: 0 },
+        ore: resources.ore,
+        stone: resources.spiritStone
+      })
+    } catch {
+      res = null
+    }
+    if (res === null) {
+      playSfx('warn')
+      ui.toast('未能结算', 'warn')
+      return 0
+    }
+    if (!res.ok || res.detail?.kind !== 'building' || res.detail.levels <= 0) {
+      playSfx('warn')
+      ui.toast('未能结算', 'warn')
+      return 0
+    }
+    applyLevelSlices(res.slices)
+    track('buildingUpgrades', res.detail.levels)
+    playSfx('success')
+    ui.toast(
+      buildingBatchDoneToast(
+        def.name,
+        res.detail.levels,
+        res.detail.to,
+        formatGN(res.spend?.stone ?? gnZero()),
+        res.spend?.ore ?? 0
+      ),
+      'success'
+    )
+    return res.detail.levels
   }
   const from = dongfu.levels[id] ?? 0
   resources.spendStone(plan.stone)

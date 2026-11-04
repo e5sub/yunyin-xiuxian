@@ -96,11 +96,11 @@ export interface AuthorityInput {
    */
   prevRebirths?: number
   /**
-   * 上次存档之后、尚未在档里体现的支出(坊市成交 + 炼器料耗)。
-   * 扣款在客户端,这里把它从「灵石 / 器灵尘本窗口可增长量」里扣掉 —— 没付钱的存档必然对不上账。
-   * dust 缺省按 0(1.58.3 起炼器也记账,老调用方不传不会误伤)。
+   * 上次存档之后、尚未在档里体现的支出(坊市成交 + 炼器料耗 + 升级价目)。
+   * 扣款在客户端,这里把它从「各资源本窗口可增长量」里扣掉 —— 没付钱的存档必然对不上账。
+   * 各键缺省按 0(1.58.3 起炼器记账,1.59.0 起功法进修/建筑升级也记账,老调用方不传不会误伤)。
    */
-  pendingSpend?: { m: number; e: number; dust?: number }
+  pendingSpend?: { m: number; e: number; dust?: number; ore?: number; wudao?: number; page?: number }
 }
 
 export interface AuthorityCorrection {
@@ -342,15 +342,22 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
         }
       }
       const smallFields = ['ore', 'page', 'dust', 'wudao'] as const
-      // 未兑现的炼器料耗从器灵尘可增长量里扣(1.58.3):强化的尘写在客户端,不记账就白烧
-      const dustSpend = input.pendingSpend !== undefined ? numOf(input.pendingSpend.dust) : 0
+      // 未兑现的账面支出从小资源可增长量里扣(1.58.3 炼器的器灵尘;1.59.0 起建筑玄铁、
+      // 功法进修的悟道点与残页也走台账):扣款写在客户端,不记账就白烧
+      const s = input.pendingSpend
+      const smallSpend: Record<(typeof smallFields)[number], number> = {
+        dust: s !== undefined ? numOf(s.dust) : 0,
+        ore: s !== undefined ? numOf(s.ore) : 0,
+        page: s !== undefined ? numOf(s.page) : 0,
+        wudao: s !== undefined ? numOf(s.wudao) : 0
+      }
       for (const field of smallFields) {
         const cap = holdCapOf(capMajor, field)
         if (cap <= 0) continue
         const cur = numOf(nextRes[field])
         const prevVal = prevRes !== null ? finiteNum(prevRes[field]) : null
         const catchUp = catchUpCeil(prevVal, (incomeOf(capMajor)[field] ?? 0) * elapsedHours, cap)
-        const ceil = field === 'dust' && dustSpend > 0 ? Math.max(0, catchUp - dustSpend) : catchUp
+        const ceil = smallSpend[field] > 0 ? Math.max(0, catchUp - smallSpend[field]) : catchUp
         if (cur > ceil) {
           corrections.push({ path: `resources.${field}`, before: nextRes[field], after: Math.floor(ceil) })
           nextRes[field] = Math.floor(ceil)

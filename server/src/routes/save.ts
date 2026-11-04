@@ -10,6 +10,7 @@ import { enforceLootProvenance } from '../lootLedger.js'
 import { clearEquipStates, enforceEquipStates, pruneEquipStates } from '../equipLedger.js'
 import { clearPurchases, pendingSpend, settlePurchases } from '../marketLedger.js'
 import { clearForgeSpend, pendingForgeSpend, settleForgeSpend } from '../forgeLedger.js'
+import { clearProgressSpend, pendingProgressSpend, settleProgressSpend } from '../progressLedger.js'
 
 export interface ProfileSnapshot {
   name: string
@@ -376,6 +377,8 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
     // 坊市成交与炼器料耗两本账合成一份:两处都是「扣款在客户端,服务端只认账」
     const spend = await pendingSpend(req.user!.id)
     const forgeSpend = await pendingForgeSpend(req.user!.id)
+    // 升级支出账(1.59.0):功法进修(悟道点/残页)与建筑升级(灵石/玄铁),同套机制
+    const progressSpend = await pendingProgressSpend(req.user!.id)
     const authority = await enforceAuthority({
       prev: prevData,
       next: normalizedData,
@@ -387,9 +390,12 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       // 1.58.1:道果/天赋/年龄/游玩时长的乘数基线(见 core/saveAuthority 的「转世乘区」一节)
       prevRebirths,
       pendingSpend: {
-        m: spend.m + forgeSpend.stone.m,
-        e: spend.e + forgeSpend.stone.e,
-        dust: forgeSpend.dust
+        m: spend.m + forgeSpend.stone.m + progressSpend.stone.m,
+        e: spend.e + forgeSpend.stone.e + progressSpend.stone.e,
+        dust: forgeSpend.dust,
+        ore: progressSpend.ore,
+        wudao: progressSpend.wudao,
+        page: progressSpend.page
       }
     })
     const data = authority === null ? normalizedData : authority.data
@@ -468,6 +474,11 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
     } catch {
       /* 同上方:留到下一次 */
     }
+    try {
+      await settleProgressSpend(req.user!.id)
+    } catch {
+      /* 同上方:留到下一次 */
+    }
     // 台账随行囊瘦身:分解/出售掉的件不该在表里留一辈子(失败只影响体积)
     try {
       const inv = data.inventory as { items?: unknown } | undefined
@@ -511,6 +522,7 @@ saveRouter.delete('/save', requireAuth, (req: Request, res: Response) => {
     // 旧账不该压在新档头上(删档重修是合法路径)
     await clearPurchases(req.user!.id)
     await clearForgeSpend(req.user!.id)
+    await clearProgressSpend(req.user!.id)
     // 装备台账一并清空:新档的件按新档播种(与 loot_seed 同:删档即放弃这批物件)
     await clearEquipStates(req.user!.id)
     res.json({ ok: true })

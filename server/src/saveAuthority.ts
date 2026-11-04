@@ -34,8 +34,8 @@ interface AuthorityInput {
   realmAuthoritative?: boolean
   /** 服务端记录的已见最大世号(profiles.rebirths);道果/天赋的乘数基线,见 core/saveAuthority */
   prevRebirths?: number
-  /** 上次存档后成交、尚未兑现的支出(坊市成本 + 炼器料耗),从灵石/器灵尘可增长量里扣 */
-  pendingSpend?: { m: number; e: number; dust?: number }
+  /** 上次存档后成交、尚未兑现的支出(坊市/炼器/升级:石+尘+玄铁+悟道点+残页),从各自可增长量里扣 */
+  pendingSpend?: { m: number; e: number; dust?: number; ore?: number; wudao?: number; page?: number }
 }
 
 type AuthorityFn = (input: AuthorityInput) => AuthorityReport | null

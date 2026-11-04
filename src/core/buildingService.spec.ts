@@ -76,7 +76,7 @@ describe('buildingUpgradeInfo · 资源检查与列差', () => {
     expect(oreOnly.reason).not.toContain('灵石')
   })
 
-  it('资源不足时单升拒因与卡面同源,不退回「灵石或玄铁」', () => {
+  it('资源不足时单升拒因与卡面同源,不退回「灵石或玄铁」', async () => {
     useDongfuStore().setLevel('array', 3)
     fund(10_000_000_000, 99999)
     const resources = useResourcesStore()
@@ -86,7 +86,7 @@ describe('buildingUpgradeInfo · 资源检查与列差', () => {
       resources.ore = 0
       return false
     })
-    expect(upgradeBuilding('array')).toBe(false)
+    expect(await upgradeBuilding('array')).toBe(false)
     const toast = useUiStore().toasts.at(-1)
     expect(toast?.text).toContain('尚差')
     expect(toast?.text).toContain('玄铁')

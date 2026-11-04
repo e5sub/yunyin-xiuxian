@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useLoreStore, ENEMY_LORE_MAX } from '@/stores/lore'
 import { LORE_MAX } from '@/data/materials'
+import { SKILL_EXP_SCALE } from '@/data/crafting'
 
 describe('图鉴见闻收录守卫(useLoreStore)', () => {
   beforeEach(() => {
@@ -145,5 +146,17 @@ describe('图鉴见闻收录守卫(useLoreStore)', () => {
 
     expect(lore.studyFrac, '负钻研量会让 studyFrac < 0.001 长期短路').toBe(0)
     expect(lore.seeded, '只认真正的布尔 true,否则跳过入门播种').toBe(false)
+  })
+
+  it('sanitize:技艺经验钳在熟练度 99 的经验处,灌进来的宿慧折算有顶', () => {
+    const lore = useLoreStore()
+    // 1e12 的经验改档写得出,熟练度曲线在 600 处饱和 —— 无界的数字不该进档
+    lore.$patch({ skillExp: { discern: 1e12, flame: 5_000 } } as never)
+
+    lore.sanitize()
+
+    expect(lore.expOf('discern')).toBe(SKILL_EXP_SCALE * 100)
+    // 没到顶的正常值原样保留
+    expect(lore.expOf('flame')).toBe(5_000)
   })
 })

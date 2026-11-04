@@ -108,12 +108,12 @@ describe('建筑连升 · 批量账', () => {
     expect(plan.atMax).toBe(true)
   })
 
-  it('连升按计划一次到位:等级升到计划数、扣费与计划一致、报实际级', () => {
+  it('连升按计划一次到位:等级升到计划数、扣费与计划一致、报实际级', async () => {
     // 首次 track 会把可达成的成就/主线/日课奖励一起入账,期初须记在其后
     track('buildingUpgrades', 500) // 带过全部阈值,a_bd10/a_bd40 全发
     const before = useResourcesStore().spiritStone
     const plan = buildingBatchPlan('array')
-    const n = upgradeBuildingBatch('array')
+    const n = await upgradeBuildingBatch('array')
     expect(n).toBe(plan.levels)
     expect(useDongfuStore().levels.array).toBe(plan.levels)
     // 期初减期末有 ~1e-4 石浮点尾差(~1e12 端点相减),只断言到显示粒度
@@ -121,16 +121,16 @@ describe('建筑连升 · 批量账', () => {
     expect(useResourcesStore().ore).toBe(1e9 - plan.ore)
   })
 
-  it('连升一次计 N 次营建:成就/主线的「累计升级建筑」按实际级数记账,不按批数', () => {
+  it('连升一次计 N 次营建:成就/主线的「累计升级建筑」按实际级数记账,不按批数', async () => {
     track('buildingUpgrades', 100) // 先发走一次性阈值
     const plan = buildingBatchPlan('array')
-    upgradeBuildingBatch('array')
+    await upgradeBuildingBatch('array')
     expect(useQuestsStore().counter('buildingUpgrades')).toBe(100 + plan.levels)
   })
 
-  it('一升都升不动(境界闸)时:返回 0,分文不扣、等级不动', () => {
+  it('一升都升不动(境界闸)时:返回 0,分文不扣、等级不动', async () => {
     seat(0, 0)
-    const n = upgradeBuildingBatch('forge')
+    const n = await upgradeBuildingBatch('forge')
     expect(n).toBe(0)
     expect(useDongfuStore().levels.forge).toBe(0)
     expect(useResourcesStore().ore).toBe(1e9)

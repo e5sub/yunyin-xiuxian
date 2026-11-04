@@ -2,7 +2,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { LORE_MAX, materialDef } from '@/data/materials'
-import { SKILL_IDS, skillLevelFromExp, type SkillId } from '@/data/crafting'
+import { SKILL_EXP_SCALE, SKILL_IDS, skillLevelFromExp, type SkillId } from '@/data/crafting'
 import { pillDef } from '@/data/pills'
 import { enemyDef } from '@/data/enemies'
 import { persistConfig } from '@/utils/storage'
@@ -19,6 +19,13 @@ export const ENEMY_LORE_STAGE_NAMES = ['未识', '眼熟', '知其路数', '洞�
 function emptySkillExp(): Record<SkillId, number> {
   return Object.fromEntries(SKILL_IDS.map(id => [id, 0])) as Record<SkillId, number>
 }
+
+/**
+ * 技艺经验的读档上限:熟练度曲线(见 data/crafting 的 SKILL_EXP_SCALE)在 600 处双曲饱和,
+ * 60000 已是熟练度 99(「大成」之后几乎不再长)。正常玩法靠一次几点的进项攒不到,
+ * 改档灌进来的经验也只到此为止 —— 宿慧折算与技艺境地都按熟练度计,数字本身不该无界。
+ */
+const SKILL_EXP_CAP = SKILL_EXP_SCALE * 100
 
 export const useLoreStore = defineStore(
   'lore',
@@ -173,7 +180,8 @@ export const useLoreStore = defineStore(
       const fixedExp: Record<string, number> = {}
       for (const id of SKILL_IDS) {
         const v = skillExp.value[id]
-        fixedExp[id] = Number.isFinite(v) ? Math.max(0, v as number) : 0
+        // 上限钳在熟练度 99 的经验处:曲线饱和后多攒的只长小数,灌进来的也别想顶穿
+        fixedExp[id] = Number.isFinite(v) ? Math.min(Math.max(0, v as number), SKILL_EXP_CAP) : 0
       }
       skillExp.value = fixedExp as Record<SkillId, number>
       // 按 id 认对象,认不出的清掉:图鉴「已识 N 味」与宿慧折算按 Object.values 数条目

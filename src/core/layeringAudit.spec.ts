@@ -48,6 +48,9 @@ const STATEFUL_CORE = new Set<string>([
   // 两个文件的分工见各自头注(一个跑纯账层,一个管客户端编排与提示)
   "forgeResolve.ts",
   "forgeService.ts",
+  // 升级收进服务端裁决(1.59.0):功法进修/建筑升级的纯账层,与 forgeResolve 同构;
+  // 客户端编排留在 gongfaService / buildingService(已在名单里)
+  "levelResolve.ts",
   "fortuneChain.ts",
   "fortuneEcho.ts",
   "firstStep.ts",
@@ -90,13 +93,14 @@ const STATEFUL_CORE = new Set<string>([
 ]);
 
 /** core → store 的引用处数基线(只许减;名单没变时防止单个模块越挂越多) */
-const CORE_STORE_SITES = 242;
+const CORE_STORE_SITES = 246;
 /**
  * core 用例里需要 Pinia 的文件数基线(只许减)。
  * 上游 121 + 本仓 autoOpsDaily/gongfaSeats 等新增,合并后以实跑数为准,见本文件底部对账。
  * 1.58.3 的 forgeResolve.spec 也是 +1:无头水合必须真开一个 pinia(与 breakthroughResolve 同构)。
+ * 1.59.0 的 levelResolve.spec 同理 +1(升级裁决的同一份水合)。
  */
-const CORE_PINIA_SPECS = 126;
+const CORE_PINIA_SPECS = 127;
 
 function sources(dir: string): { name: string; text: string }[] {
   return readdirSync(dir)

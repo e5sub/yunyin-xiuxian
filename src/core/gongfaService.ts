@@ -3,15 +3,16 @@ import { rng } from '@/utils/random'
 import { GONGFA, gongfaDef } from '@/data/gongfa'
 import { qualityDef } from '@/data/qualities'
 import { COMPREHEND_PAGE_COST } from '@/data/constants'
-import { INSIGHT_DISCOUNT_CAP } from '@/data/veins'
-import { gongfaUpCost } from './formulas'
 import { gongfaAffinity, rootElements } from './linggenAffinity'
 import { collect, track } from './progress'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useCultivationStore } from '@/stores/cultivation'
-import { useDongfuStore } from '@/stores/dongfu'
+import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
+import { cloudApi, type LevelOpResponse } from '@/services/cloud'
+import { playSfx } from './audio'
+import { applyLevelSlices, gongfaUpgradeQuote } from './levelResolve'
 import {
   gongfaAllLearnedToast,
   gongfaComprehendToast,
@@ -68,16 +69,9 @@ export function comprehendGongfa(): boolean {
   return false
 }
 
-/** 功法升级消耗 */
+/** 功法升级消耗(价目在 core/levelResolve,与服务端裁决共用同一份) */
 export function gongfaUpgradeCost(id: string): { wudao: number; page: number } | null {
-  const cultivation = useCultivationStore()
-  const def = gongfaDef(id)
-  const lv = cultivation.learned[id]
-  if (!def || !lv || lv >= def.maxLevel) return null
-  const q = qualityDef(def.quality)
-  // 寒冥灵脉:参悟悟道点折扣
-  const discount = Math.min(INSIGHT_DISCOUNT_CAP, useDongfuStore().insightDiscount)
-  return { wudao: Math.max(1, Math.ceil(gongfaUpCost(q.rank, lv) * (1 - discount))), page: Math.ceil(lv * (1 + q.rank * 0.5)) }
+  return gongfaUpgradeQuote(id)
 }
 
 /** 本层缺哪一样;付得起为 null */
@@ -100,10 +94,48 @@ export function gongfaUpgradeShortfall(cost: { wudao: number; page: number }): {
   }
 }
 
-export function upgradeGongfa(id: string): boolean {
+/**
+ * 功法进修一层。登录走服务端裁决(POST /api/progress/op,见 core/levelResolve);
+ * 未登录走本地同一份纯账层,行为逐字段一致。
+ * 服务端回传改动的分片(resources / cultivation),以它为准覆盖本地。
+ */
+export async function upgradeGongfa(id: string): Promise<boolean> {
   const resources = useResourcesStore()
   const cultivation = useCultivationStore()
   const ui = useUiStore()
+  if (useAuthStore().loggedIn) {
+    let res: LevelOpResponse | null = null
+    try {
+      res = await cloudApi.progressOp({
+        op: { op: 'gongfaUpgrade', id },
+        wudao: resources.wudao,
+        page: resources.page
+      })
+    } catch {
+      res = null
+    }
+    if (res === null) {
+      playSfx('warn')
+      ui.toast('未能结算', 'warn')
+      return false
+    }
+    if (!res.ok) {
+      // 缺料报缺口(按本地余额算差额,与服务端同一套价目);满级/认不出保持安静(按钮本就该禁用)
+      const reason = res.reason
+      if (reason === 'wudao' || reason === 'page' || reason === 'both') {
+        const cost = gongfaUpgradeCost(id)
+        if (cost) ui.toast(gongfaUpShortToast(reason, gongfaUpgradeShortfall(cost)), 'warn')
+        else playSfx('warn')
+      } else {
+        playSfx('warn')
+      }
+      return false
+    }
+    applyLevelSlices(res.slices)
+    const def = gongfaDef(id)
+    ui.toast(gongfaUpDoneToast(def?.name ?? '此功', cultivation.learned[id] ?? 0), 'success')
+    return true
+  }
   const cost = gongfaUpgradeCost(id)
   if (!cost) return false
   const short = gongfaUpgradeShort(cost)

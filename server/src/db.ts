@@ -256,6 +256,19 @@ CREATE TABLE IF NOT EXISTS forge_spend (
   settled INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
+-- 升级支出账(1.59.0):功法进修(悟道点/残页)与建筑升级(灵石/玄铁)的价目由服务端复算,
+-- 扣款写在客户端 —— 与 forge_spend 同一套机制:上传时从「本窗口可增长量」里扣掉
+CREATE TABLE IF NOT EXISTS progress_spend (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  cost_stone_m REAL NOT NULL DEFAULT 0,
+  cost_stone_e INTEGER NOT NULL DEFAULT 0,
+  cost_ore REAL NOT NULL DEFAULT 0,
+  cost_wudao REAL NOT NULL DEFAULT 0,
+  cost_page REAL NOT NULL DEFAULT 0,
+  settled INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS friends (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -552,6 +565,18 @@ CREATE TABLE IF NOT EXISTS forge_spend (
   settled TINYINT NOT NULL DEFAULT 0,
   created_at BIGINT NOT NULL,
   CONSTRAINT fk_forge_spend_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS progress_spend (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  cost_stone_m DOUBLE NOT NULL DEFAULT 0,
+  cost_stone_e INT NOT NULL DEFAULT 0,
+  cost_ore DOUBLE NOT NULL DEFAULT 0,
+  cost_wudao DOUBLE NOT NULL DEFAULT 0,
+  cost_page DOUBLE NOT NULL DEFAULT 0,
+  settled TINYINT NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL,
+  CONSTRAINT fk_progress_spend_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS profiles (
   user_id BIGINT PRIMARY KEY,
