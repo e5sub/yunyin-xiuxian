@@ -65,7 +65,7 @@ bun run build
 # 预览构建结果
 bun preview
 
-# 全量测试（数值/战斗/流派/曲线/经济/回归/终局/决策，全量 409 个 spec）
+# 全量测试（数值/战斗/流派/曲线/经济/回归/终局/决策，全量 427 个 spec）
 # 注意用 bun run test,不能用 bun test —— 后者会调 Bun 自带的测试器而非 Vitest
 bun run test
 
@@ -133,6 +133,9 @@ bun run build:android
 
 # 直接出 Release APK（签名材料不入库，见下方「APK 签名」）
 bun run build:apk
+
+# Windows 桌面客户端（Electron）：产物在 pkg/
+bun run build:electron --win
 ```
 
 > **APK 签名**：`android/release.keystore` 与 `android/keystore.properties` **不入库**（已在 `.gitignore` 中）。CI 从仓库 Secrets 还原：
@@ -153,12 +156,16 @@ bun run build:apk
 
 - **Web / PWA**：直接部署 `dist/`（或走下方 Docker 镜像），移动浏览器打开即玩，可「添加到主屏幕」；Service Worker 会缓存静态资源，**首次在线打开后，断网重开也能进游戏**（发版更新仍即时生效，不卡旧版本）。**iOS 上请务必「添加到主屏幕」**：Safari 会在网页七天没被打开后清掉它的本地数据（存档与离线缓存一起没），而已安装的 Web App 不受这条规则约束——游戏检测到这种情况会在主页提示一次，设置页里也常驻可查。
 - **Android**：CI 会把签好的 APK 作为 `android-apk` 产物上传；本地出包在 `android/app/build/outputs/apk/release/yunyin-<版本号>.apk`。把 APK 传到手机后点击安装（系统会提示允许安装未知来源应用，放行即可；覆盖安装需签名一致——自己构建的包与官方签名不同，需先卸载旧版）。
-- **桌面**：直接用浏览器开网页（可「添加到主屏幕 / 固定到任务栏」装成 PWA）。桌面不另发行客户端。
+- **Windows 桌面**：CI 同时出两个压缩包，解压到同一目录即可用（`云隐修仙录.exe`）。
+  - `yunyin-<版本号>-win.zip` — 完整包，解压即用；首次装、或换过 Electron 版本时用这个。
+  - `yunyin-<版本号>-win-update.zip` — 增量包，只含 `resources/app`，解压覆盖到安装目录即可。**升 Electron 依赖的那一版必须用完整包**，发布说明里会写明。
+
+  桌面外壳另带两样网页给不了的东西：托盘与开机自启（菜单「设置」里开），以及 WebDAV 备份的 CORS 直连。不想装客户端的话，浏览器开网页并「添加到主屏幕 / 固定到任务栏」装成 PWA 也一样能玩。
 - **自建站**：`yunyin-<版本号>-web.zip` 就是 `dist/` 的内容，解压后整个目录扔给任意静态服务器即可（也可走下方 Docker 镜像）。
 
 推送到 `main` 会经 GitHub Actions 走同一道闸：类型检查、ESLint、单元测试全绿后才部署 Web/PWA 到 Pages、推送 Docker 镜像。
 
-**发版是一个显式动作 —— 推 tag，或手动触发构建。** 构建 Android 产物、发布 Release 的那条流水线在 tag 上触发；在 Actions 里手动 Run workflow 也会按 `package.json` 的版本构建并发 Release（缺 tag 时自动补建）。桌面端不再随发版打包，直接走网页（`bun run build:electron` 仍可本地出包）：
+**发版是一个显式动作 —— 推 tag，或手动触发构建。** 构建 Windows 桌面客户端与 Android 产物、发布 Release 的那条流水线在 tag 上触发；在 Actions 里手动 Run workflow 也会按 `package.json` 的版本构建并发 Release（缺 tag 时自动补建）：
 
 ```bash
 # 1. 先提 package.json 的版本号(它决定 APK 的 versionName/versionCode)
@@ -201,14 +208,15 @@ docker run -d -p 8787:8787 -e PORT=8787 yunyin-xiuxian
 | Vue 3           | 3.5   | 组合式 API + `<script setup>`               |
 | TypeScript      | 6.0   | strict 严格类型检查                         |
 | Vite            | 8     | 构建与开发服务器（legacy 插件兜旧 WebView） |
-| Pinia           | 3     | 状态管理（20 个 store，自动持久化）         |
+| Pinia           | 3     | 状态管理（除 ui 外自动持久化）              |
 | Tailwind CSS    | 3.4   | 水墨色系语义色与暗色主题                    |
 | Vue Router      | 4     | 客户端路由（hash 模式）                     |
 | Tone.js         | 15    | FluidR3 乐器采样播放（BGM + SFX）           |
 | CryptoJS        | 4     | 存档 AES 加密                               |
 | lucide-vue-next | 0.577 | 图标库                                      |
-| Vitest          | 5     | 单元测试与平衡审计（全量 409 个 spec）        |
+| Vitest          | 5     | 单元测试与平衡审计（全量 427 个 spec）        |
 | Capacitor       | 8     | Android 客户端打包                          |
+| Electron        | 39    | Windows 桌面客户端打包（electron-builder）  |
 | Node + Express  | 4     | 后端：账号 / 云存档 / 拍卖行 / GM 后台（REST + WebSocket 同端口） |
 | better-sqlite3 / mysql2 | 12 / 3 | 云端数据存储（`DB_DRIVER` 切换，单文件库或外部 MySQL） |
 | JWT + bcryptjs  | 9 / 3 | 登录态与会话口令                            |
@@ -222,7 +230,7 @@ server/                 # 后端（Node + Express + ws，:8787）
 ├── gm/                     # GM 后台单页（参数设置 / 云存档 / 邮件 SMTP）
 └── data/                   # SQLite 库文件（gitignore）
 src/
-├── data/                 # 内容层：纯静态声明式定义（59 个模块）
+├── data/                 # 内容层：纯静态声明式定义，唯一数据源
 │   ├── realms.ts             # 5 界域 · 29 境界
 │   ├── regions.ts            # 60 区域
 │   ├── enemies.ts            # 180 敌人（含 60 首领）
@@ -240,9 +248,9 @@ src/
 │   ├── qimen.ts              # 奇门八门
 │   ├── daolu.ts              # 道侣
 │   ├── endgame.ts            # 道途 / 天界 / 试炼
-│   ├── mutators.ts           # 8 变数
+│   ├── mutators.ts           # 变数
 │   └── constants.ts          # 全局平衡参数
-├── core/                 # 逻辑层（138 个模块 + 248 个同目录 spec）
+├── core/                 # 逻辑层：引擎、战斗、数值、存档（测试与实现同目录）
 │   ├── engine.ts             # 在线心跳驱动（1000ms）
 │   ├── offline.ts            # 离线收益结算
 │   ├── combat.ts             # 回合制战斗预解算
@@ -255,15 +263,17 @@ src/
 │   ├── worldGen.ts           # 终局世界生成（三重审计门）
 │   ├── gongfaSeats.ts        # 功法副席账法（辅修 / 秘术席面）
 │   └── *Service.ts           # 各系统服务（另有 *Sim.ts 平衡模拟器）
-├── stores/               # Pinia 状态（20 个，绝大部分自动持久化）
-├── views/                # 25 个页面
-├── components/           # 组件（12 组）
+├── stores/               # Pinia 状态（绝大部分自动持久化）
+├── views/                # 页面
+├── components/           # 组件
 ├── ui/                   # 图标、词条名、图鉴与提示等展示层数据
-├── utils/                # GNum 大数（m×10^e）/ 格式化 / 随机 / 存档底层
+├── utils/                # GNum 大数 / 格式化 / 随机 / 存档底层
 ├── composables/          # useNow / useWallClock 等
 ├── types/                # 领域类型定义
 └── router/               # 路由与首次流程守卫
 ```
+
+> 各模块的具体条目数不在这里复述 —— 数字以数据表为准，由 `dataHeaderAudit.spec.ts` 从表实际数出并核对。
 
 ## 游戏系统一览
 

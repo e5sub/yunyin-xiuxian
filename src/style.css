@@ -800,6 +800,74 @@ html[data-theme='light'] .q-aura-halo {
   text-shadow: 0 0 10px var(--q-tone, transparent);
 }
 
+/* 行内品阶光环(功法列表这类「一行一件」的宿主)。
+ * 与卡片上的 QualityAura 不同:行只有 36~40px 高、左右两侧紧邻文字与角标,
+ * 四角角饰会压到「N 层」「主修」这些读数上,故只留一条左内沿的竖线 ——
+ * 竖线不占正文宽度(落在 px-2.5 的内边距里),稀有档再配一层极淡的横向晕染。
+ * 形制仍可数:凡/良/精无、灵~地一道、天~神一道 + 晕染。 */
+.q-row-aura {
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 999px;
+  pointer-events: none;
+  background: var(--q-tone, transparent);
+  opacity: 0.55;
+}
+.q-row-aura--radiant {
+  opacity: 0.9;
+  box-shadow: 0 0 8px var(--q-tone, transparent);
+}
+/* 横向晕染:用整条渐变 + 整体 opacity 做淡,不用 color-mix(Chrome 111+)与相对颜色(119+),
+   两端浏览器的下限按 AGENTS.md 是 Chrome 51 —— 那是明写的兼容目标。 */
+/* 行内的最上档御纹:卡片上那套四角在 40px 高、两侧紧邻读数的行里会压到文字,
+ * 故行内只取「右上 + 左下」两枚短角,长度收一半。仍与光环竖线构成两层框。 */
+.q-row-cornice {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.q-row-cornice::before,
+.q-row-cornice::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: rgb(var(--luster-tone) / 0.7);
+  border-style: solid;
+  border-width: 0;
+}
+.q-row-cornice::before {
+  right: 2px;
+  top: 2px;
+  border-right-width: 1px;
+  border-top-width: 1px;
+  border-top-right-radius: 4px;
+}
+.q-row-cornice::after {
+  left: 2px;
+  bottom: 2px;
+  border-left-width: 1px;
+  border-bottom-width: 1px;
+  border-bottom-left-radius: 4px;
+}
+
+.q-row-aura--radiant::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 180px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--q-tone, transparent), transparent 65%);
+  opacity: 0.1;
+  pointer-events: none;
+}
+
 /* 神品专属流光:斜向掠过的一道亮线,只在最顶档 */
 .q-aura-sheen {
   position: absolute;
@@ -983,6 +1051,862 @@ html[data-theme='dark'] {
   text-shadow:
     0 0 12px rgb(var(--luster-tone) / 0.5),
     0 1px 0 rgb(var(--luster-tone) / 0.35);
+}
+
+/* ================= 器魂阶位形制(soulMark) =================
+ * 六阶只在「锋/盾/棘」那个字的颜色上差一档,而颜色是连续量 —— 三阶以后读不出层数。
+ * 这里补两样可数、可用形状说清的线索(见 src/ui/soulMark.ts):
+ *   阶点:一阶一点,六阶六点,数得出来;
+ *   魂环:最上阶(化真)独有的一圈,与 luster 同一条铁律 —— 每阶都给等于都没给。
+ * 色一律由调用点经 --soul-tone 注入(data/souls 是唯一事实源),这里不写死器魂色。
+ */
+.soul-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+}
+.soul-pips i {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--soul-tone, currentColor);
+  opacity: 0.9;
+}
+/* 最上阶:点改成菱形,形状再拉开一档 —— 除了数得出几枚,还要有「另一种形状」 */
+.soul-pips--top i {
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+.soul-halo {
+  position: absolute;
+  /* 退到卡片外沿 2px:画在 inset:0 上会被卡片自己的 1px 边框压住,等于没画 */
+  inset: -2px;
+  border-radius: 12px;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 1.5px rgb(var(--color-gold-ink-rgb) / 0.55),
+    0 0 16px rgb(var(--color-gold-ink-rgb) / 0.3);
+  animation: soul-halo-breathe 4.2s ease-in-out infinite;
+}
+/* 夜纸近黑,金环再提一档才立得住 */
+html[data-theme='dark'] .soul-halo {
+  box-shadow:
+    0 0 0 1.5px rgb(var(--color-gold-ink-rgb) / 0.7),
+    0 0 20px rgb(var(--color-gold-ink-rgb) / 0.38);
+}
+@keyframes soul-halo-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+/* ================= 道途形制(daoMark) =================
+ * 四条道途(剑/长生/天机/杀伐)此前只有一枚朱砂方印,四道同一个红底。
+ * 道途是「一世一择、不可更改」的东西,该比一枚通用印章更有分量(见 src/ui/daoMark.ts)。
+ *
+ * 形制是卡角的一枚**道纹水印**,不是压在印字上的花纹 ——
+ * 印面上只有 8~10px 的字,底纹一叠就读不清了(实测:机字的膈线正好劈开三道横)。
+ * 四道靠**形状**区分,不靠色:色弱玩家也分得开,也免得给道途再造第五套色表。
+ *   剑   单锋(一道斜刃)
+ *   长生 回环(一枚圆环)
+ *   天机 三横(卦象式横线)
+ *   杀伐 交刃(两道交叉)
+ * 线色一律 currentColor:调用点按需给道色(取既有语义色),纹样本身不写死。
+ */
+html[data-theme='dark'] .dao-crest {
+  /* 夜纸近黑,同样的不透明度会糊成一团灰,略收一档 */
+  opacity: 0.3;
+}
+.dao-crest {
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  /* 只做底噪:卡上有正文,纹样不能比字更响。
+     日主题的纸本就浅,0.16 下金/靛两道几乎看不见,故日夜分开给。 */
+  opacity: 0.22;
+}
+.dao-crest--blade {
+  background-image: linear-gradient(135deg, transparent 0 42%, currentColor 42% 50%, transparent 50% 100%);
+}
+.dao-crest--ring {
+  background-image: radial-gradient(circle, transparent 0 44%, currentColor 44% 56%, transparent 56%);
+}
+.dao-crest--bars {
+  background-image:
+    linear-gradient(0deg, transparent 0 22%, currentColor 22% 30%, transparent 30% 100%),
+    linear-gradient(0deg, transparent 0 46%, currentColor 46% 54%, transparent 54% 100%),
+    linear-gradient(0deg, transparent 0 70%, currentColor 70% 78%, transparent 78% 100%);
+}
+.dao-crest--cross {
+  background-image:
+    linear-gradient(45deg, transparent 0 43%, currentColor 43% 51%, transparent 51% 100%),
+    linear-gradient(-45deg, transparent 0 43%, currentColor 43% 51%, transparent 51% 100%);
+}
+
+/* ================= 天道契约形制(pactMark) =================
+ * 六张契摆在眼前,要做的判断是「这一趟敢下多大的注」。此前六张只差一个字与一个 ×N,
+ * 轻重得逐个读倍数(见 src/ui/pactMark.ts)。这里补两样:
+ *   契纹:每张契一枚自己的线纹(裂/缺/促/独/完/逆);
+ *   契重:轻/中/重三档描边 —— 阈值取 data/pacts.PACT_HEAVY_MULT,与画像那边同一根线。
+ * 色只表达轻重,不表达「这几张不一样」:色弱玩家靠纹样与描边仍然分得开。
+ *
+ * 契纹是印面**旁边**的一枚独立纹样,不与那个 11px 的印字重叠 ——
+ * 实测叠在一起时六张契反而更像同一张。纹样色跟随上下文(currentColor)。
+ */
+.pact-crest {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  color: currentColor;
+}
+.pact-crest::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+}
+/* 血契:一道细裂 */
+.pact-crest--crack::before {
+  background-image: linear-gradient(158deg, transparent 0 46%, currentColor 46% 54%, transparent 54% 100%);
+}
+/* 天残契:缺角 —— 两道边线,右上那一段是空的 */
+.pact-crest--broken::before {
+  background-image:
+    linear-gradient(currentColor, currentColor),
+    linear-gradient(currentColor, currentColor);
+  background-size: 1.5px 100%, 62% 1.5px;
+  background-position: left bottom, left bottom;
+}
+/* 疾战契:两道并行短促斜线 */
+.pact-crest--haste::before {
+  background-image:
+    linear-gradient(118deg, transparent 0 40%, currentColor 40% 48%, transparent 48% 100%),
+    linear-gradient(118deg, transparent 0 58%, currentColor 58% 66%, transparent 66% 100%);
+}
+/* 孤剑契:一枚空心圆 */
+.pact-crest--solo::before {
+  inset: 22%;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+/* 无伤契:一圈闭合方框 */
+.pact-crest--whole::before {
+  inset: 22%;
+  border: 1.5px solid currentColor;
+  border-radius: 1px;
+}
+/* 逆命契:一道折返的尖角(人字) */
+.pact-crest--reversed::before {
+  background-image:
+    linear-gradient(48deg, transparent 0 52%, currentColor 52% 62%, transparent 62% 100%),
+    linear-gradient(-48deg, transparent 0 52%, currentColor 52% 62%, transparent 62% 100%);
+  background-size: 100% 64%, 100% 64%;
+  background-position: left top, right top;
+}
+
+/* 契重描边:轻/中/重三档。只用描边粗细与明度,不另造颜色 */
+.pact-weight-light {
+  outline: 1px solid rgb(var(--color-ink-rgb) / 0.16);
+  outline-offset: -1px;
+}
+.pact-weight-mid {
+  outline: 1.5px solid rgb(var(--color-amber-ink-rgb) / 0.4);
+  outline-offset: -1px;
+}
+.pact-weight-heavy {
+  outline: 2px solid rgb(var(--color-cinnabar-rgb) / 0.5);
+  outline-offset: -1px;
+}
+
+/* ================= 悟道分支形制(branchMark) =================
+ * 分支是「不可更改、转世不失」的一次抉择,而界面此前三个分支排成一模一样的按钮。
+ * 这一层给三个槽位三套线纹(见 src/ui/branchMark.ts):
+ *   一 · 一道直纹  ／ 二 · 两道折纹  ／ 三 · 三环  ／ 四 · 回字(超过四条时复用一)
+ * 以**序号**定位而不按分支名 —— 「开天」在四门功法里各有其一,按名字画会把它们画成同一个。
+ * 色由使用点注入(取所属功法的品阶色),纹样只吃 currentColor。
+ */
+.branch-glyph {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  color: currentColor;
+}
+.branch-glyph::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  opacity: 0.85;
+}
+/* 第一道:一条直纹 */
+.branch-glyph--branch-1::before {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 2px 100%;
+  background-position: center;
+}
+/* 第二道:两道并行 */
+.branch-glyph--branch-2::before {
+  background-image:
+    linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor);
+  background-size: 2px 100%, 2px 100%;
+  background-position: 26% center, 74% center;
+}
+/* 第三道:三枚点列 */
+.branch-glyph--branch-3::before {
+  background-image: radial-gradient(circle, currentColor 0 45%, transparent 45%);
+  background-size: 26% 26%;
+  background-position: 0 center;
+  background-repeat: repeat-x;
+}
+/* 第四道:回字(一圈加一点) */
+.branch-glyph--branch-4::before {
+  background-image: radial-gradient(circle, currentColor 0 30%, transparent 30%);
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+}
+
+/* 分支卡:品阶淡底 + 左内沿一道品阶色竖条(与功法列表同一套语言) */
+.branch-card {
+  position: relative;
+  overflow: hidden;
+}
+.branch-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--branch-tone, transparent);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* ================= 道侣缘阶形制(bondMark) =================
+ * 道侣七阶(素昧平生 → 道侣)此前只有一行阶名小字,「知交」与「同行」长得一样。
+ * 关系推进是本作里唯一「只进不退、由选择累积」的一条线,该有可数的形制(见 src/ui/bondMark.ts):
+ *   阶点:一阶一点、七阶七点;
+ *   缘纹:每阶一枚线纹,形状可数;最上阶(道侣)另有外环。
+ * 色由使用点注入(--bond-tone / color),纹样只吃 currentColor。
+ */
+.bond-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+}
+.bond-pips i {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bond-tone, currentColor);
+  opacity: 0.9;
+}
+/* 最上阶:点改菱形 —— 除点数外还要有「另一种形状」 */
+.bond-pips--top i {
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+
+/* 缘纹:每阶一枚,画在独立的小方徽里 */
+.bond-crest {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  color: currentColor;
+}
+.bond-crest::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+}
+/* 素昧平生:一枚虚点 */
+.bond-crest--none::before {
+  background-image: radial-gradient(circle, transparent 0 24%, currentColor 34% 44%, transparent 46%);
+}
+/* 萍水相逢:一道斜线 */
+.bond-crest--met::before {
+  background-image: linear-gradient(128deg, transparent 0 44%, currentColor 44% 54%, transparent 54% 100%);
+}
+/* 相识:两道并行 */
+.bond-crest--known::before {
+  background-image:
+    linear-gradient(128deg, transparent 0 36%, currentColor 36% 46%, transparent 46% 100%),
+    linear-gradient(128deg, transparent 0 56%, currentColor 56% 66%, transparent 66% 100%);
+}
+/* 同行:两道相接,成一条折线 */
+.bond-crest--together::before {
+  background-image:
+    linear-gradient(128deg, transparent 0 44%, currentColor 44% 54%, transparent 54% 100%),
+    linear-gradient(52deg, transparent 0 44%, currentColor 44% 54%, transparent 54% 100%);
+}
+/* 知交:一圈内一横 */
+.bond-crest--confidant::before {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 46% 1.5px;
+  background-position: center;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+/* 结契:一圈内一菱(方转一角) */
+.bond-crest--pledged::before {
+  inset: 14%;
+  border: 1.5px solid currentColor;
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+/* 道侣:双环相叠 */
+.bond-crest--daolv::before {
+  inset: 4%;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+.bond-crest--daolv::after {
+  content: '';
+  position: absolute;
+  inset: 26%;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.75;
+}
+
+/* 道侣外环:最上阶专属。与器魂的魂环同一套做法 —— 每阶都加等于都没有 */
+.bond-halo {
+  position: absolute;
+  inset: -2px;
+  border-radius: 14px;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 1.5px rgb(var(--color-cinnabar-rgb) / 0.4),
+    0 0 14px rgb(var(--color-cinnabar-rgb) / 0.2);
+}
+html[data-theme='dark'] .bond-halo {
+  box-shadow:
+    0 0 0 1.5px rgb(var(--color-cinnabar-rgb) / 0.55),
+    0 0 18px rgb(var(--color-cinnabar-rgb) / 0.3);
+}
+
+/* ================= 奇门九宫盘(gateBoard) =================
+ * 八门各居洛书一宫(中五无门),而界面此前把它们平铺成一列文字 ——
+ * 九宫是位置信息,竖排读不出来(见 src/ui/gateBoard.ts)。
+ * 这里只给盘面与吉凶边框:吉=实线、平=虚线、凶=双线,色弱玩家靠形状也分得开。
+ */
+.gate-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+/* 一宫:方形格,宫位号压在角上,门名居中 */
+.gate-palace {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  /* 弹窗里给九宫留的高度有限:方角 + 上限高度,窄屏也不把下面的说明挤出视口 */
+  max-height: 72px;
+  border-radius: 6px;
+  border: 1px solid rgb(var(--color-ink-rgb) / 0.14);
+  background: rgb(var(--color-paper-lifted-rgb));
+  padding: 6px 2px;
+}
+/* 中五无门:留一格空,不画门 */
+.gate-palace--void {
+  border-style: dashed;
+  background: rgb(var(--color-ink-rgb) / 0.03);
+}
+.gate-palace__no {
+  position: absolute;
+  left: 3px;
+  top: 2px;
+  font-size: 9px;
+  line-height: 1;
+  color: rgb(var(--color-ink-faint-rgb));
+  font-variant-numeric: tabular-nums;
+}
+
+/* 吉凶:靠边框形态区分,不只靠颜色 */
+.gate-kind-solid {
+  border-style: solid;
+  border-width: 1.5px;
+}
+.gate-kind-dashed {
+  border-style: dashed;
+}
+.gate-kind-double {
+  border-style: double;
+  border-width: 3px;
+}
+
+/* 择门态:在盘上直接标出「这一趟走哪一门」 */
+.gate-palace--picked {
+  box-shadow:
+    0 0 0 1.5px rgb(var(--color-cinnabar-rgb) / 0.55),
+    0 0 12px rgb(var(--color-cinnabar-rgb) / 0.2);
+}
+
+/* ================= 远征路线节点形制(routeMark) =================
+ * 每重两径择一,而两张卡此前是同一个灰框:「这一径险在哪」得读小字。
+ * 这里给两个形制(见 src/ui/routeMark.ts):
+ *   险纹:敌手首个技艺的类型各一枚线纹,形状可数;
+ *   份量:额外道源的高低,用左内沿一道色条的长短表达。
+ * 险纹只吃 currentColor,色由使用点按险情给。
+ */
+.route-peril {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  color: currentColor;
+}
+.route-peril::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+}
+/* 多段连击:三道并行的短斜线 */
+.route-peril--multi::before {
+  background-image:
+    linear-gradient(115deg, transparent 0 30%, currentColor 30% 40%, transparent 40% 100%),
+    linear-gradient(115deg, transparent 0 46%, currentColor 46% 56%, transparent 56% 100%),
+    linear-gradient(115deg, transparent 0 62%, currentColor 62% 72%, transparent 72% 100%);
+}
+/* 真伤穿透:一条贯穿的横线 + 右端一个箭头 */
+.route-peril--pierce::before {
+  background-image:
+    linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor),
+    linear-gradient(currentColor, currentColor);
+  background-size: 72% 1.5px, 34% 1.5px, 34% 1.5px;
+  background-position: left center, right top, right bottom;
+  background-repeat: no-repeat;
+  transform: translateX(6%);
+}
+/* 流血消耗:一滴下坠 */
+.route-peril--bleed::before {
+  background-image: radial-gradient(circle at 50% 62%, currentColor 0 26%, transparent 26%),
+    linear-gradient(180deg, transparent 0 34%, currentColor 34% 44%, transparent 44% 62%);
+}
+/* 汲血:一道回流弧 */
+.route-peril--drain::before {
+  background-image: radial-gradient(circle, transparent 0 34%, currentColor 34% 46%, transparent 46%);
+  clip-path: polygon(0 0, 62% 0, 62% 100%, 0 100%);
+}
+/* 震慑打断:一道断口 */
+.route-peril--stun::before {
+  background-image:
+    linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor);
+  background-size: 42% 1.5px, 42% 1.5px;
+  background-position: left center, right center;
+}
+/* 重击高爆:一枚实心菱 */
+.route-peril--burst::before {
+  background-image: radial-gradient(circle, currentColor 0 30%, transparent 30%);
+  transform: rotate(45deg);
+  border-radius: 1px;
+}
+/* 寻常:一枚空心点 */
+.route-peril--plain::before {
+  background-image: radial-gradient(circle, transparent 0 26%, currentColor 26% 40%, transparent 40%);
+}
+
+/* 份量:左内沿一道竖条,越长越重 */
+.route-weight {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 999px;
+  pointer-events: none;
+}
+.route-weight--light {
+  background: rgb(var(--color-ink-rgb) / 0.18);
+}
+.route-weight--mid {
+  background: rgb(var(--color-amber-ink-rgb) / 0.5);
+}
+.route-weight--heavy {
+  background: rgb(var(--color-gold-ink-rgb) / 0.75);
+}
+
+/* ================= 天道变数主题形制(mutatorTheme) =================
+ * 变数池按五轴组织(生机/天时/杀伐/虚影/坚守),而界面此前只印成「◇ 名称:说明」一行字。
+ * 这里给五轴各一枚轴纹(见 src/ui/mutatorTheme.ts):
+ *   生(芽) 时(漏) 杀(锋) 影(叠影) 守(垒)
+ * 轴纹只吃 currentColor,色由使用点按轴给。
+ */
+.axis-glyph {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  color: currentColor;
+}
+.axis-glyph::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+}
+/* 生机:一株芽(一竖两叶) */
+.axis-glyph--sprout::before {
+  background-image:
+    linear-gradient(currentColor, currentColor),
+    linear-gradient(45deg, transparent 0 42%, currentColor 42% 56%, transparent 56% 100%),
+    linear-gradient(-45deg, transparent 0 42%, currentColor 42% 56%, transparent 56% 100%);
+  background-size: 1.5px 52%, 42% 42%, 42% 42%;
+  background-position: center bottom, left top, right top;
+}
+/* 天时:一只沙漏(两横 + 交线) */
+.axis-glyph--hourglass::before {
+  background-image:
+    linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor),
+    linear-gradient(45deg, transparent 0 44%, currentColor 44% 56%, transparent 56% 100%),
+    linear-gradient(-45deg, transparent 0 44%, currentColor 44% 56%, transparent 56% 100%);
+  background-size: 76% 1.5px, 76% 1.5px, 76% 76%, 76% 76%;
+  background-position: left top, left bottom, center, center;
+}
+/* 杀伐:一把斜刃(粗斜线 + 左下短柄),与虚影的两点形状拉开 */
+.axis-glyph--blade::before {
+  background-image:
+    linear-gradient(135deg, transparent 0 40%, currentColor 40% 58%, transparent 58% 100%),
+    linear-gradient(135deg, transparent 0 66%, currentColor 66% 78%, transparent 78% 100%);
+  background-size: 100% 100%, 46% 46%;
+  background-position: center, left bottom;
+}
+/* 虚影:三枚错开的点(叠影)—— 数量与杀伐的线、生机的芽都不同 */
+.axis-glyph--shadow::before {
+  background-image:
+    radial-gradient(circle, currentColor 0 40%, transparent 40%),
+    radial-gradient(circle, currentColor 0 34%, transparent 34%),
+    radial-gradient(circle, currentColor 0 28%, transparent 28%);
+  background-size: 44% 44%, 36% 36%, 28% 28%;
+  background-position: left center, center, right center;
+}
+/* 坚守:一段垒(下沿 + 两垛) */
+.axis-glyph--rampart::before {
+  background-image:
+    linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor),
+    linear-gradient(currentColor, currentColor);
+  background-size: 100% 1.5px, 34% 44%, 34% 44%;
+  background-position: left bottom, left bottom, right bottom;
+}
+
+/* ================= 道果边际刻度(fruitMargin) =================
+ * 道果收益递减(有效值 = 枚数^0.9),而界面此前只写「边际渐减」四个字。
+ * 这里给两样(见 src/ui/fruitMargin.ts):
+ *   刻度:本枚还剩几成力,满格 6,分段可数;
+ *   折线:最近几枚的边际效率,下跌在图形里比在文字里直接。
+ * 色取既有语义 token;都只是装饰,不吃指针事件。
+ */
+.fruit-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5px;
+  pointer-events: none;
+}
+.fruit-pips i {
+  display: block;
+  width: 9px;
+  height: 4px;
+  border-radius: 1px;
+  background: rgb(var(--color-ink-rgb) / 0.14);
+}
+/* 已亮的格:金。段数递减,长度不变 —— 少的是格数,不是格长 */
+.fruit-pips i.on {
+  background: rgb(var(--color-gold-ink-rgb) / 0.75);
+}
+
+.fruit-curve {
+  display: block;
+  width: 100%;
+  height: 24px;
+  pointer-events: none;
+}
+.fruit-curve polyline {
+  fill: none;
+  stroke: rgb(var(--color-gold-ink-rgb) / 0.65);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+/* 夜纸近黑:同一条线要再亮一档才立得住 */
+html[data-theme='dark'] .fruit-curve polyline {
+  stroke: rgb(var(--color-gold-ink-rgb) / 0.85);
+}
+
+/* ================= 天道试炼形制(trialMark) =================
+ * 三场试炼此前只有一枚共用金印:「这场难在哪」得逐条读规则。
+ * 这里把三个可数的量画出来(见 src/ui/trialMark.ts):
+ *   战纹:连战几场就几枚(七/四/五,封顶七);
+ *   恢复档:全满 / 部分 / 无 —— 实心 / 半实心 / 空心,靠形状不靠色;
+ *   层阶:锚点层级刻度,两端取三场试炼的最小与最大。
+ */
+.trial-fights {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5px;
+  pointer-events: none;
+}
+.trial-fights i {
+  display: block;
+  width: 3.5px;
+  height: 9px;
+  border-radius: 1px;
+  /* 每一枚都是「这一场」:只有实心一种形态,没有空槽 */
+  background: rgb(var(--color-cinnabar-rgb) / 0.7);
+}
+
+/* 恢复档:三枚点,实心/半实心/空心 */
+.trial-recover {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+}
+.trial-recover i {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--color-jade-rgb) / 0.7);
+}
+.trial-recover--full i {
+  background: rgb(var(--color-jade-rgb) / 0.85);
+}
+.trial-recover--partial i:nth-child(1),
+.trial-recover--partial i:nth-child(2) {
+  background: rgb(var(--color-jade-rgb) / 0.5);
+}
+.trial-recover--none i {
+  border-color: rgb(var(--color-cinnabar-rgb) / 0.6);
+  background: transparent;
+}
+
+/* 层阶刻度:一条浅槽 + 一个当前位置的点 */
+.trial-tier {
+  position: relative;
+  display: block;
+  height: 3px;
+  border-radius: 999px;
+  background: rgb(var(--color-ink-rgb) / 0.12);
+  pointer-events: none;
+}
+.trial-tier::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: var(--tier-pos, 0%);
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: rgb(var(--color-violet-ink-rgb) / 0.9);
+  box-shadow: 0 0 6px rgb(var(--color-violet-ink-rgb) / 0.45);
+}
+
+/* ================= 秘境双轴(realmMark) =================
+ * 五处秘境在清单上只差名字与代价,而玩家要比较的是「能撑几层」与「值得走多远」。
+ * 两根轴各说各的真话(见 src/ui/realmMark.ts):
+ *   上轴回血(青):层间回血比例,枯荣每层倒扣落在最左;
+ *   下轴战利(金):战利倍率,归墟最丰落在最右。
+ * 两轴共用五处秘境的最小与最大,任意两处可横向比。
+ * 不合成一根「险」:试过,结果是「受伤」一个量在冒充「凶险」,反而把归墟判得居中。
+ */
+.realm-axes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  pointer-events: none;
+}
+.realm-axis {
+  position: relative;
+  display: block;
+  height: 3px;
+  border-radius: 999px;
+  background: rgb(var(--color-ink-rgb) / 0.12);
+}
+.realm-axis::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: var(--axis-pos, 0%);
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: var(--axis-tone, rgb(var(--color-ink-rgb)));
+  box-shadow: 0 0 5px var(--axis-tone, transparent);
+}
+.realm-axis--heal {
+  --axis-tone: rgb(var(--color-jade-rgb) / 0.85);
+}
+.realm-axis--gain {
+  --axis-tone: rgb(var(--color-gold-ink-rgb) / 0.9);
+}
+
+/* 战利最丰的那一处:一道极淡的整卡描边。与「最上档才给」同一条铁律 */
+.realm-top-gain {
+  box-shadow: inset 0 0 0 1px rgb(var(--color-gold-ink-rgb) / 0.25);
+}
+
+/* ================= 天道熔炉熔率形制(furnaceRate) =================
+ * 四类物资的兑换率差三倍多(25/15/60/80),而四行此前长得一样,
+ * 「这一堆先熔哪个」得自己拿数字去比(见 src/ui/furnaceRate.ts)。
+ * 这里给一条率条:越划算越长,不必读数字也能比。
+ * 色取既有语义 token;率条不吃指针事件。
+ */
+.furnace-rate {
+  display: block;
+  height: 3px;
+  border-radius: 999px;
+  background: rgb(var(--color-ink-rgb) / 0.1);
+  pointer-events: none;
+  overflow: hidden;
+}
+.furnace-rate::before {
+  content: '';
+  display: block;
+  height: 100%;
+  width: var(--rate-fill, 0%);
+  border-radius: inherit;
+  background: var(--rate-tone, rgb(var(--color-gold-ink-rgb)));
+}
+/* 三档:丰最亮、中次之、薄最暗 —— 明度随划算程度递减,与条长同向 */
+.furnace-rate--rich {
+  --rate-tone: rgb(var(--color-gold-ink-rgb) / 0.9);
+}
+.furnace-rate--mid {
+  --rate-tone: rgb(var(--color-amber-ink-rgb) / 0.7);
+}
+.furnace-rate--thin {
+  --rate-tone: rgb(var(--color-ink-faint-rgb) / 0.55);
+}
+
+/* ================= 灵兽族徽(beastCrest) =================
+ * 灵兽卡此前只写名字与品阶,「这一头是走兽还是龙属」一字未提(见 src/ui/beastCrest.ts)。
+ * 族类是分类不是品阶,故印面取中性墨色,不套品阶色、不做稀有度排序。
+ */
+.beast-crest {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  font-family: var(--font-kai);
+  font-size: 11px;
+  line-height: 1;
+  /* 淡墨印底:比正文重一档,又不到品阶印章的浓度 */
+  color: rgb(var(--color-ink-soft-rgb));
+  background: rgb(var(--color-ink-rgb) / 0.07);
+  box-shadow: inset 0 0 0 1px rgb(var(--color-ink-rgb) / 0.12);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 族谱:一行一族,印 + 族名 + 已有/共有 */
+.beast-roster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.beast-roster-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+
+/* ================= 师承契合十格印(mentorShare) =================
+ * 弹窗原先写「当下契合 +1.00 / 1.0」:四门里三门都满格,读不出差别
+ * —— 那个数是钳位后的结果(原始分 8.69 / 2.55 / 7.27),且只能得非负值,
+ * 「未纯」那一档永远打不出来(见 src/ui/mentorShare.ts)。
+ * 现改为四门分账的份额,落成十格:可数的形制,不靠颜色连续量。
+ * 色取既有语义 token;形制层不吃指针事件。
+ */
+.mentor-pips {
+  display: inline-flex;
+  gap: 2px;
+  pointer-events: none;
+}
+.mentor-pips i {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  /* 未到的格子:空心中性,不抢已到的格 */
+  box-shadow: inset 0 0 0 1px currentColor;
+  opacity: 0.35;
+}
+.mentor-pips i.is-on {
+  background: currentColor;
+  opacity: 1;
+}
+
+/* ================= 灵脉预算条与共用横轴(veinShape) =================
+ * 四条脉原先各按本脉上限填条:主脉 42 点填到 60%、副脉 20 点填到 67% ——
+ * 点数多的那条反而显得短,「哪条投得多」读不出来(见 src/ui/veinShape.ts)。
+ * 这里一把尺:四条都按 0→主脉上限,副脉上限在轴上落刻度。
+ * 色取既有语义 token;形制层不吃指针事件。
+ */
+.vein-budget {
+  display: flex;
+  width: 100%;
+  gap: 1px;
+  pointer-events: none;
+}
+/* 一段一脉:段长就是点数,空着的那截就是还能投多少 */
+.vein-budget-seg,
+.vein-budget-free {
+  height: 6px;
+  border-radius: 1px;
+  pointer-events: none;
+}
+.vein-budget-seg {
+  background: var(--vein-tone, rgb(var(--color-ink-rgb) / 0.35));
+}
+/* 还能投的那截:最淡,与已投的分开但不断开 */
+.vein-budget-free {
+  background: rgb(var(--color-ink-rgb) / 0.07);
+}
+
+.vein-axis {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(var(--color-ink-rgb) / 0.06);
+  pointer-events: none;
+}
+.vein-axis-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--vein-tone, rgb(var(--color-ink-rgb) / 0.4));
+}
+/* 副脉上限刻度:轴上同一位,四条横条共用它 */
+.vein-axis-tick {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 1px;
+  background: rgb(var(--color-ink-faint-rgb) / 0.5);
+  pointer-events: none;
 }
 
 /* ================= 满级标记 =================
