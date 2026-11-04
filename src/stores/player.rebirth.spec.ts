@@ -8,6 +8,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { usePlayerStore } from '@/stores/player'
 import { useDongfuStore } from '@/stores/dongfu'
 import { useInventoryStore } from '@/stores/inventory'
+import { useQuestsStore } from '@/stores/quests'
 import type { SecretRealmState } from '@/core/secretRealm'
 
 function seedPlayer(p: ReturnType<typeof usePlayerStore>): void {
@@ -220,6 +221,8 @@ describe('读写档:认不出的称号/灵兽/师承回落空', () => {
     expect(p.mentor).toBeNull()
 
     p.$patch({ titleId: 'ti_churu', petId: 'pet_qingyu', mentor: 'swordsman' } as never)
+    // 1.59.1 起佩戴称号须有兑现它的成就(a_r0 奖 ti_churu),不种成就视为改档直注
+    useQuestsStore().$patch({ achieved: ['a_r0'] } as never)
     p.sanitize()
     expect(p.titleId).toBe('ti_churu')
     expect(p.petId).toBe('pet_qingyu')

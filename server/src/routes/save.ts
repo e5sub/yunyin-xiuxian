@@ -11,6 +11,7 @@ import { clearEquipStates, enforceEquipStates, pruneEquipStates } from '../equip
 import { clearPurchases, pendingSpend, settlePurchases } from '../marketLedger.js'
 import { clearForgeSpend, pendingForgeSpend, settleForgeSpend } from '../forgeLedger.js'
 import { clearProgressSpend, pendingProgressSpend, settleProgressSpend } from '../progressLedger.js'
+import { clearLevelStates, enforceLevelStates } from '../levelLedger.js'
 
 export interface ProfileSnapshot {
   name: string
@@ -337,6 +338,19 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       equipCorrected = []
     }
 
+    /*
+     * 等级以台账为准(1.59.1):功法进修与建筑升级的唯一写入口是 POST /api/progress/op,
+     * 签发时已把新等级记进 level_state。上传里自报的等级超台账的一律按台账压回 ——
+     * 拦的是「不调接口、直接在存档里塞等级」。首传播种存量(唯一一次采信客户端),删档重传不重播。
+     * 台账模块不可用时按上一层结果落库:加固环节不能变成拒收存档。
+     */
+    let levelCorrected: string[] = []
+    try {
+      levelCorrected = await enforceLevelStates(req.user!.id, normalizedData)
+    } catch {
+      levelCorrected = []
+    }
+
     const old = await get<{ version: number; data: string; updated_at: number }>(
       'SELECT version, data, updated_at FROM saves WHERE user_id = ?',
       [req.user!.id]
@@ -501,7 +515,7 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
         metrics.realmIndex,
         prevProfileRow?.realm_index ?? 0,
         normalized?.touched ?? [],
-        [...(authority?.notes ?? []), ...equipCorrected.map(uid => `装备状态按台账覆盖(${uid})`)]
+        [...(authority?.notes ?? []), ...equipCorrected.map(uid => `装备状态按台账覆盖(${uid})`), ...levelCorrected.map(s => `等级按台账压回:${s}`)]
       )
     } catch {
       // 留痕失败不影响存档本身
@@ -525,6 +539,7 @@ saveRouter.delete('/save', requireAuth, (req: Request, res: Response) => {
     await clearProgressSpend(req.user!.id)
     // 装备台账一并清空:新档的件按新档播种(与 loot_seed 同:删档即放弃这批物件)
     await clearEquipStates(req.user!.id)
+    await clearLevelStates(req.user!.id)
     res.json({ ok: true })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })

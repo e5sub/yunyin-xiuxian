@@ -23,6 +23,8 @@ import { birthMajorFloor } from '@/core/heritageEffects'
 import { sanitizeLinggen } from '@/core/linggenGen'
 import { randomDaoName } from '@/data/names'
 import { rng } from '@/utils/random'
+import { useQuestsStore } from '@/stores/quests'
+import { titleIdsFromAchieved } from '@/data/achievements'
 import { baseCultPerSec, baseQiRegen, expRequirement, gameDay, qiCap } from '@/core/formulas'
 import { todayLocalNum } from '@/utils/time'
 import { computeFinalStats, mergeMods, modOf } from '@/core/statsCalc'
@@ -695,7 +697,16 @@ export const usePlayerStore = defineStore(
       // 大阶是境界表下标、层数直接进公式
       major.value = Math.min(MAX_MAJOR, Math.max(0, Math.floor(asFiniteNumber(major.value, 0))))
       sub.value = Math.min(SUB_LEVELS - 1, Math.max(0, Math.floor(asFiniteNumber(sub.value, 0))))
-      if (titleId.value !== null && !titleDef(titleId.value)) titleId.value = null
+      // 1.59.1:佩戴的称号必须是「已达成成就的奖励里给的那枚」—— 称号 mods 进 finalStats,
+      // 直改 titleId 就是直改战力。不查 titlesOwned 本身(它由 quests.sanitize 洗,
+      // 而 sanitize 的第二遍里 player 排在 quests 前面,读到的是未洗的),直接对成就集合推导,
+      // 与执行顺序无关;服务端 saveAuthority 剥成就后也按同一集合复查。
+      if (
+        titleId.value !== null &&
+        (!titleDef(titleId.value) || !titleIdsFromAchieved(useQuestsStore().achieved).has(titleId.value))
+      ) {
+        titleId.value = null
+      }
       if (petId.value !== null && !petDef(petId.value)) petId.value = null
       // 师承一经拜定不再更改:认不出的 id 占住 mentor 会永久挡回拜师
       if (mentor.value !== null && !mentorDef(mentor.value)) mentor.value = null

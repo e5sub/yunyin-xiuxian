@@ -69,14 +69,22 @@ describe('sanitize:重复条目不再把计数撑破', () => {
       achieved: ['a_r0', 'a_r0'],
       daily: { date: '2026-10-20', base: {}, done: ['d_kill', 'd_kill'] },
       titlesOwned: ['ti_churu', 'ti_churu'],
-      collections: { equip: ['e1', 'e1'], gongfa: [], pill: [], artifact: [], pet: ['p1', 'p1'], event: [], talent: [] }
+      collections: {
+        equip: ['w_zhuqing', 'w_zhuqing'],
+        gongfa: [],
+        pill: [],
+        artifact: [],
+        pet: ['pet_qingyu', 'pet_qingyu'],
+        event: [],
+        talent: []
+      }
     } as never)
     quests.sanitize()
     expect(quests.achieved, '成就同一条只留一次').toEqual(['a_r0'])
     expect(quests.daily.done, '日课同一条只留一次').toEqual(['d_kill'])
     expect(quests.titlesOwned, '名号同一条只留一次').toEqual(['ti_churu'])
-    expect(quests.collections.equip, '装备图鉴去重').toEqual(['e1'])
-    expect(quests.collections.pet, '灵兽册去重后不会画两行同 key').toEqual(['p1'])
+    expect(quests.collections.equip, '装备图鉴去重').toEqual(['w_zhuqing'])
+    expect(quests.collections.pet, '灵兽册去重后不会画两行同 key').toEqual(['pet_qingyu'])
   })
 
   it('认不出的成就/名号 id 清掉,不再虚增「N/总数」', () => {
@@ -88,6 +96,69 @@ describe('sanitize:重复条目不再把计数撑破', () => {
     quests.sanitize()
     expect(quests.achieved, '野成就画不出来,也不该占一格计数').toEqual(['a_r0'])
     expect(quests.titlesOwned, '野名号不产生词条,也不该占一格计数').toEqual(['ti_churu'])
+  })
+
+  it('名号只认已达成成就的奖励:没拿过对应成就的真称号也进不来(1.59.1)', () => {
+    const quests = useQuestsStore()
+    quests.$patch({
+      achieved: ['a_r0'],
+      // ti_jindan 是真称号,但它的来源 a_r2 没达成 —— 改档塞进来要被洗
+      titlesOwned: ['ti_churu', 'ti_jindan']
+    } as never)
+    quests.sanitize()
+    expect(quests.titlesOwned).toEqual(['ti_churu'])
+  })
+
+  it('计数器钳上界:灌进来的天文数字压回 1e7,负数归零(1.59.1)', () => {
+    const quests = useQuestsStore()
+    quests.$patch({ counters: { kills: 1e15, battles: -5 } } as never)
+    quests.sanitize()
+    expect(quests.counter('kills')).toBe(10_000_000)
+    expect(quests.counter('battles')).toBe(0)
+  })
+
+  it('日课基线钳上界、done 只认目录里的任务(1.59.1)', () => {
+    const quests = useQuestsStore()
+    quests.$patch({
+      daily: { date: '2026-11-04', base: { kills: 5e9 }, done: ['d_kill', 'd_ghost', 'd_ghost'] }
+    } as never)
+    quests.sanitize()
+    expect(quests.daily.base.kills).toBe(1000)
+    expect(quests.daily.done).toEqual(['d_kill'])
+  })
+
+  it('图鉴只留认得的 def id,收录时刻表跟着集合瘦身(1.59.1)', () => {
+    const quests = useQuestsStore()
+    quests.$patch({
+      collections: {
+        equip: ['w_zhuqing', 'e_ghost'],
+        gongfa: ['s_tuna'],
+        pill: ['p_jvqisan', 'p_ghost'],
+        artifact: ['af_muyu'],
+        pet: ['pet_qingyu'],
+        event: ['ev_jade_slip'],
+        talent: ['t_jianxin', 't_ghost']
+      },
+      collectedAt: { 'equip:e_ghost': 1, 'equip:w_zhuqing': 2, 'pet:pet_qingyu': 3 }
+    } as never)
+    quests.sanitize()
+    expect(quests.collections.equip).toEqual(['w_zhuqing'])
+    expect(quests.collections.pill).toEqual(['p_jvqisan'])
+    expect(quests.collections.talent).toEqual(['t_jianxin'])
+    // 野条目的时刻一并清掉;幽灵条目占着的「已收 N」不再多报
+    expect(quests.collectedAt['equip:e_ghost']).toBeUndefined()
+    expect(quests.collectedAt['equip:w_zhuqing']).toBe(2)
+    expect(quests.collectedAt['pet:pet_qingyu']).toBe(3)
+  })
+
+  it('达成时刻表跟着成就集合瘦身(1.59.1)', () => {
+    const quests = useQuestsStore()
+    quests.$patch({
+      achieved: ['a_r0'],
+      achievedAt: { a_r0: 7, a_ghost: 8 }
+    } as never)
+    quests.sanitize()
+    expect(quests.achievedAt).toEqual({ a_r0: 7 })
   })
 })
 

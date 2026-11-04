@@ -98,3 +98,18 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   // 「炼气修士」称号的获取路径(删掉则该称号无来源)
   ac('a_lianqi_full', '炼气圆满', '炼气境修至圆满', { type: 'custom', key: 'realm_0_9' }, { stoneTier: 30, titleId: 'ti_lianqi' })
 ]
+
+/**
+ * 已达成成就可兑现的称号集合(1.59.1)。
+ * 称号的唯一发放路径是成就奖励(grantReward 的 titleId → ownTitle),所以
+ * titlesOwned 必须是本集合的子集,这是可推导的硬约束 —— 直接改档塞称号(称号 mods 进 finalStats,
+ * 是实打实的战力)会被两头清洗:客户端 sanitize 与服务端 saveAuthority 同读这一份。
+ */
+export function titleIdsFromAchieved(achieved: readonly string[] | ReadonlySet<string>): Set<string> {
+  const owned = new Set<string>()
+  for (const id of achieved) {
+    const def = ACHIEVEMENTS.find(a => a.id === id)
+    if (def?.reward?.titleId) owned.add(def.reward.titleId)
+  }
+  return owned
+}

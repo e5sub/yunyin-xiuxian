@@ -4,11 +4,26 @@ import { computed, ref } from 'vue'
 import type { CounterKey } from '@/types'
 import { persistConfig } from '@/utils/storage'
 import { DAILY_TASKS, MAIN_QUESTS } from '@/data/quests'
-import { ACHIEVEMENTS } from '@/data/achievements'
-import { TITLES } from '@/data/titles'
+import { ACHIEVEMENTS, titleIdsFromAchieved } from '@/data/achievements'
+import { equipmentTemplate } from '@/data/equipment'
+import { gongfaDef } from '@/data/gongfa'
+import { pillDef } from '@/data/pills'
+import { artifactDef } from '@/data/artifacts'
+import { petDef } from '@/data/pets'
+import { eventDef } from '@/data/events'
+import { talentDef } from '@/data/talents'
 import { asFiniteNumber, asNumberRecord, asObjectOrNull, asRecord, asStringArray } from '@/utils/saveShape'
 
 export type CollectionCategory = 'equip' | 'gongfa' | 'pill' | 'artifact' | 'pet' | 'event' | 'talent'
+
+/**
+ * 计数器上界(1.59.1)。计数是终身事件数,成就/主线的门槛都在千以内;
+ * 正常玩法连点一辈子也到不了 1e7(每次 +1 都是真实游戏事件),灌档的先把数压平再谈。
+ * 与其「无界」,不如给个宽到不影响任何判定的硬顶:钳掉的只可能是注入值。
+ */
+const COUNTER_CAP = 10_000_000
+/** 每日基线只服务于「今日增量 = 今日计数 - 基线」的小减法,门槛 ≤ 15,给 1000 已是百倍冗余 */
+const DAILY_BASE_CAP = 1000
 
 export const useQuestsStore = defineStore(
   'quests',
@@ -38,34 +53,63 @@ export const useQuestsStore = defineStore(
 
     /** 存档修复:计数/图鉴表写坏会让成就判定与图鉴页在渲染期抛错 */
     function sanitize(): void {
-      counters.value = asNumberRecord(counters.value, 0)
+      // 计数钳上界:负数归零(asNumberRecord 只保形),超 1e7 的只可能是灌的
+      counters.value = Object.fromEntries(
+        Object.entries(asNumberRecord(counters.value, 0)).map(([k, v]) => [k, Math.min(Math.max(0, v), COUNTER_CAP)])
+      )
       // 成就是集合语义:与 unlockAchievement 同口径去重;只留认得的 id(野 id 画不出来却照样计数)
       const achievementIds = new Set(ACHIEVEMENTS.map(a => a.id))
-      achieved.value = [...new Set(asStringArray(achieved.value))].filter(id => achievementIds.has(id))
+      const achievedSet = new Set(asStringArray(achieved.value).filter(id => achievementIds.has(id)))
+      achieved.value = [...achievedSet]
       const maxIdx = Math.max(0, MAIN_QUESTS.length - 1)
       mainIdx.value = Math.min(Math.floor(asFiniteNumber(mainIdx.value, 0, 0)), maxIdx)
       const d = asObjectOrNull<{ date?: unknown; base?: unknown; done?: unknown }>(daily.value)
+      const dailyTaskIds = new Set(DAILY_TASKS.map(t => t.id))
       daily.value = {
         date: typeof d?.date === 'string' ? d.date : '',
-        base: asNumberRecord(d?.base, 0),
-        done: [...new Set(asStringArray(d?.done))]
+        base: Object.fromEntries(
+          Object.entries(asNumberRecord(d?.base, 0)).map(([k, v]) => [k, Math.min(Math.max(0, v), DAILY_BASE_CAP)])
+        ),
+        done: [...new Set(asStringArray(d?.done))].filter(id => dailyTaskIds.has(id))
       }
-      // 名号同为集合:去重;认不出的 id 不产生词条,只在计数上虚增
-      const titleIds = new Set(TITLES.map(t => t.id))
+      // 名号只认「已达成成就的奖励里给的那枚」:称号 mods 进 finalStats,是实打实的战力,
+      // 改档塞称号(或塞一条没拿过的成就再兑称号)在这里与服务端 saveAuthority 两头被洗
+      const titleIds = titleIdsFromAchieved(achievedSet)
       titlesOwned.value = [...new Set(asStringArray(titlesOwned.value))].filter(id => titleIds.has(id))
       const cats = asRecord<string[]>(collections.value)
-      // 图鉴各类同为集合语义(collect 只在没有时追加):重复 id 让「已收 N」多报、灵兽册出重复 v-for key
+      // 图鉴各类同为集合语义(collect 只在没有时追加):重复 id 让「已收 N」多报、灵兽册出重复 v-for key。
+      // 1.59.1 起再收一道:只留认得的 def id —— 收录集从未发过奖励,但灌野 id / 灌没见过面的 id
+      // 会虚抬「已收 N/总数」与图鉴完成度,白嫖收集型成就的判定素材。
+      const knownFns = {
+        equip: (id: string) => equipmentTemplate(id) !== undefined,
+        gongfa: (id: string) => gongfaDef(id) !== undefined,
+        pill: (id: string) => pillDef(id) !== undefined,
+        artifact: (id: string) => artifactDef(id) !== undefined,
+        pet: (id: string) => petDef(id) !== undefined,
+        event: (id: string) => eventDef(id) !== undefined,
+        talent: (id: string) => talentDef(id) !== undefined
+      } satisfies Record<CollectionCategory, (id: string) => boolean>
       collections.value = {
-        equip: [...new Set(asStringArray(cats.equip))],
-        gongfa: [...new Set(asStringArray(cats.gongfa))],
-        pill: [...new Set(asStringArray(cats.pill))],
-        artifact: [...new Set(asStringArray(cats.artifact))],
-        pet: [...new Set(asStringArray(cats.pet))],
-        event: [...new Set(asStringArray(cats.event))],
-        talent: [...new Set(asStringArray(cats.talent))]
+        equip: [...new Set(asStringArray(cats.equip))].filter(knownFns.equip),
+        gongfa: [...new Set(asStringArray(cats.gongfa))].filter(knownFns.gongfa),
+        pill: [...new Set(asStringArray(cats.pill))].filter(knownFns.pill),
+        artifact: [...new Set(asStringArray(cats.artifact))].filter(knownFns.artifact),
+        pet: [...new Set(asStringArray(cats.pet))].filter(knownFns.pet),
+        event: [...new Set(asStringArray(cats.event))].filter(knownFns.event),
+        talent: [...new Set(asStringArray(cats.talent))].filter(knownFns.talent)
       }
-      collectedAt.value = asNumberRecord(collectedAt.value, 0)
-      achievedAt.value = asNumberRecord(achievedAt.value, 0)
+      // 时间戳表跟着集合瘦身:收录/达成已被洗掉的条目,时刻留着只会让页面渲染出幽灵条目
+      const collectedKeys = new Set(
+        (Object.keys(collections.value) as CollectionCategory[]).flatMap(cat =>
+          collections.value[cat].map(id => `${cat}:${id}`)
+        )
+      )
+      collectedAt.value = Object.fromEntries(
+        Object.entries(asNumberRecord(collectedAt.value, 0)).filter(([k]) => collectedKeys.has(k))
+      )
+      achievedAt.value = Object.fromEntries(
+        Object.entries(asNumberRecord(achievedAt.value, 0)).filter(([k]) => achievedSet.has(k))
+      )
     }
 
     const currentMainQuest = computed(() => MAIN_QUESTS[mainIdx.value])

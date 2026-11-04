@@ -18,6 +18,7 @@ import { requireAuth } from '../auth.js'
 import { metricsOf, backupBeforeOverwrite, syncProfileFromData } from './save.js'
 import { loadClientModule } from '../clientVendor.js'
 import { recordProgressSpend } from '../progressLedger.js'
+import { recordLevelStates } from '../levelLedger.js'
 
 const SOURCE_MODULE = '../../../src/core/levelResolve'
 const VENDOR_FILE = 'levelResolve'
@@ -146,6 +147,18 @@ progressRouter.post('/progress/op', requireAuth, (req: Request, res: Response) =
       })
     } catch {
       /* 记不上只是这一次不扣,不影响本次结算 */
+    }
+    // 等级入账(1.59.1):新等级进了台账,上传存档时才能按台账压回直注的等级
+    try {
+      await recordLevelStates(userId, [
+        {
+          kind: result.detail.kind === 'gongfa' ? ('gongfa' as const) : ('building' as const),
+          itemId: result.detail.id,
+          level: result.detail.to
+        }
+      ])
+    } catch {
+      /* 记不上只是这条压不住,下次签发再补;不影响本次结算 */
     }
     // 战力变了,概要跟着走(建筑与功法都进属性)
     try {

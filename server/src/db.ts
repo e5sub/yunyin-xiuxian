@@ -269,6 +269,23 @@ CREATE TABLE IF NOT EXISTS progress_spend (
   settled INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
+-- 等级台账(1.59.1):功法进修与建筑升到几级以服务端为准(唯一写入口 POST /api/progress/op,
+-- 签发后把新等级记在这里);上传时自报等级超台账的一律按台账压回 —— 拦「绕过接口直接改档」。
+-- kind: 'gongfa' | 'building';item_id 为功法/建筑 id
+CREATE TABLE IF NOT EXISTS level_state (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  level INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE (user_id, kind, item_id)
+);
+-- 首次登记标记:存量档的等级首传一次性按当时的等级入账(与 equip_seed/loot_seed 同思路,删档重传不重播)
+CREATE TABLE IF NOT EXISTS level_seed (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  seeded_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS friends (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -577,6 +594,21 @@ CREATE TABLE IF NOT EXISTS progress_spend (
   settled TINYINT NOT NULL DEFAULT 0,
   created_at BIGINT NOT NULL,
   CONSTRAINT fk_progress_spend_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS level_state (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  kind VARCHAR(16) NOT NULL,
+  item_id VARCHAR(64) NOT NULL,
+  level INT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  UNIQUE KEY uk_level_state (user_id, kind, item_id),
+  CONSTRAINT fk_level_state_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS level_seed (
+  user_id BIGINT PRIMARY KEY,
+  seeded_at BIGINT NOT NULL,
+  CONSTRAINT fk_level_seed_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS profiles (
   user_id BIGINT PRIMARY KEY,

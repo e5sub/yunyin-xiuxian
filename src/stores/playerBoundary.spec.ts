@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { usePlayerStore } from '@/stores/player'
+import { useQuestsStore } from '@/stores/quests'
 import type { RegionStats } from '@/core/suppress'
 import { MAX_MAJOR } from '@/data/realms'
 import { SUB_LEVELS } from '@/data/constants'
@@ -172,5 +173,27 @@ describe('玩家区域统计与奇缘公共写入边界', () => {
     player.$patch({ name: '青玄' })
     player.sanitize()
     expect(player.name, '正常道号不许被改').toBe('青玄')
+  })
+})
+
+describe('佩戴称号的归属一致性(1.59.1)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('直改 titleId 戴上没拿过成就的称号:读档清洗时摘下', () => {
+    const player = usePlayerStore()
+    player.$patch({ titleId: 'ti_daozu' })
+    player.sanitize()
+    expect(player.titleId, '称号 mods 进 finalStats,无成就兑现的佩戴一律摘除').toBeNull()
+  })
+
+  it('达成了给称号的成就后,佩戴原样保留', () => {
+    const player = usePlayerStore()
+    const quests = useQuestsStore()
+    quests.$patch({ achieved: ['a_r0'] })
+    player.$patch({ titleId: 'ti_churu' })
+    player.sanitize()
+    expect(player.titleId).toBe('ti_churu')
   })
 })

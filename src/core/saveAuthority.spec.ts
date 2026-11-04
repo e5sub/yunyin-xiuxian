@@ -425,3 +425,68 @@ describe('数值权威化 · 转世乘区与时间账', () => {
     expect(report.corrections).toEqual([])
   })
 })
+
+describe('数值权威化 · 成就与称号(1.59.1)', () => {
+  it('直注佩戴称号(无对应成就):titleId 被清空', () => {
+    const save = baseSave()
+    ;(save.player as Record<string, unknown>).titleId = 'ti_daozu'
+    const report = run(save, { prevRealmIndex: 0 })
+    expect((report.data.player as Record<string, unknown>).titleId).toBeNull()
+    expect(report.notes.some(n => n.includes('称号'))).toBe(true)
+  })
+
+  it('直注境界成就 + 称号:成就被剥,称号链跟着清空', () => {
+    const save = baseSave()
+    save.quests = {
+      achieved: ['a_r8'],
+      titlesOwned: ['ti_daozu', 'ti_churu']
+    }
+    ;(save.player as Record<string, unknown>).titleId = 'ti_daozu'
+    const report = run(save, { prevRealmIndex: 0 })
+    const quests = report.data.quests as Record<string, unknown>
+    expect(quests.achieved).toEqual([])
+    // ti_churu 来自 a_r0(major 0 ≤ 裁决境界 0):不在被剥之列,但它不在 kept 的成就奖励里?
+    // a_r0 也是被剥对象之外的合法 id —— kept 里没有 a_r0,所以称号也不该留
+    expect(quests.titlesOwned).toEqual([])
+    expect((report.data.player as Record<string, unknown>).titleId).toBeNull()
+  })
+
+  it('上次存档已有的境界成就(转世后重传)保留不剥', () => {
+    const prev = baseSave()
+    prev.quests = { achieved: ['a_r2'], titlesOwned: ['ti_jindan'] }
+    const save = baseSave()
+    save.quests = { achieved: ['a_r2'], titlesOwned: ['ti_jindan'] }
+    // 转世上传:新世境界归零,但成就是终身记号
+    ;(save.player as Record<string, unknown>).reincarnation = { count: 1 }
+    ;(prev.player as Record<string, unknown>).reincarnation = { count: 0 }
+    const report = run(save, { prev, prevRealmIndex: 0 })
+    const quests = report.data.quests as Record<string, unknown>
+    expect(quests.achieved).toEqual(['a_r2'])
+    expect(quests.titlesOwned).toEqual(['ti_jindan'])
+    expect(report.corrections).toEqual([])
+  })
+
+  it('合法新达成(境界没超)的成就与称号原样通过', () => {
+    const save = baseSave()
+    save.quests = { achieved: ['a_r0'], titlesOwned: ['ti_churu'] }
+    ;(save.player as Record<string, unknown>).titleId = 'ti_churu'
+    const report = run(save, { prevRealmIndex: 0 })
+    expect(report.corrections).toEqual([])
+    expect((report.data.quests as Record<string, unknown>).titlesOwned).toEqual(['ti_churu'])
+    expect((report.data.player as Record<string, unknown>).titleId).toBe('ti_churu')
+  })
+
+  it('计数型新成就(无服务端出处)不剥,但其伪造称号一样进不来', () => {
+    const save = baseSave()
+    save.quests = {
+      achieved: ['a_k300'],
+      titlesOwned: ['ti_slayer', 'ti_wanfa']
+    }
+    const report = run(save, { prevRealmIndex: 0 })
+    const quests = report.data.quests as Record<string, unknown>
+    // 计数成就保留(出处留给以后台账化)
+    expect(quests.achieved).toEqual(['a_k300'])
+    // ti_slayer 是 a_k300 的奖励 → 可兑现;ti_wanfa 没有对应成就 → 剥
+    expect(quests.titlesOwned).toEqual(['ti_slayer'])
+  })
+})

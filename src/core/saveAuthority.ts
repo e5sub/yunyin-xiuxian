@@ -29,6 +29,7 @@ import { add, gn, gnZero, gt, mulN, sub, toNum } from '@/utils/gnum'
 import type { GNum } from '@/types'
 import { baseCultPerSec, daoFruitGain, expRequirement, qiCap } from '@/core/formulas'
 import { AGE_YEARS_PER_HOUR, QI_BANK_MULT, SUB_LEVELS, TALENT_DRAW_DIV } from '@/data/constants'
+import { ACHIEVEMENTS, titleIdsFromAchieved } from '@/data/achievements'
 import { MAX_MAJOR } from '@/data/realms'
 import { maxTierForMajor } from '@/data/regions'
 import { auditEra } from '@/core/economySim'
@@ -302,6 +303,68 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
       corrections.push({ path: 'player.exp', before: nextPlayer.exp, after: expCeil })
       nextPlayer.exp = { ...expCeil }
       notes.push('修为超本境界持有上限')
+    }
+
+    // ---------- 成就 / 称号(1.59.1)----------
+    // 境界成就是「曾经到过该大境界」的终身记号。服务端没有「历史最高境界」的台账
+    // (转世后 profiles 会归零重算),所以判据取两端:
+    //   · 上次存档里已有的成就一律保留 —— 那是既成历史,不是本次的提议;
+    //   · 本次**新出现**的境界成就,其 major 不得超过本次裁决出的境界 ——
+    //     首传(无上次档)同样适用,存量的真成就不会超过当时的真实境界。
+    // 其余类型(计数/品质/特判)没有服务端可验的出处,留给台账化以后再收;称号链照收:
+    // 称号的唯一来源是成就奖励,titlesOwned 与 player.titleId 都只认「裁决后成就集合」能兑现的那几枚。
+    const nextQuests = objOf(next.quests)
+    const rawAchieved =
+      nextQuests !== null && Array.isArray(nextQuests.achieved) ? nextQuests.achieved : []
+    const prevQuests = objOf(prevData.quests)
+    const prevAchieved = new Set(
+      Array.isArray(prevQuests?.achieved) ? prevQuests.achieved.filter((x): x is string => typeof x === 'string') : []
+    )
+    const kept: string[] = []
+    let stripped = false
+    for (const raw of rawAchieved) {
+      if (typeof raw !== 'string') {
+        stripped = true
+        continue
+      }
+      const def = ACHIEVEMENTS.find(a => a.id === raw)
+      if (def === undefined) {
+        stripped = true
+        continue
+      }
+      if (prevAchieved.has(raw)) {
+        kept.push(raw)
+        continue
+      }
+      if (def.cond.type === 'realm' && def.cond.major > nextMajor) {
+        stripped = true
+        notes.push(`境界成就越界被剥:${raw}(major ${def.cond.major} > ${nextMajor})`)
+        continue
+      }
+      kept.push(raw)
+    }
+    if (nextQuests !== null && Array.isArray(nextQuests.achieved) && stripped) {
+      corrections.push({ path: 'quests.achieved', before: nextQuests.achieved, after: kept })
+      nextQuests.achieved = kept
+    }
+    // 称号链与裁决后的成就集合对齐(含没有成就被剥、但 titleId/titleOwned 被直注的情形;
+    // 档里没有 quests 分片时成就集合按空算 —— 没有达成记录,就没有可兑现的称号)
+    const titleFloor = titleIdsFromAchieved(kept)
+    if (nextQuests !== null && Array.isArray(nextQuests.titlesOwned)) {
+      const keptTitles = nextQuests.titlesOwned.filter(
+        (x): x is string => typeof x === 'string' && titleFloor.has(x)
+      )
+      if (keptTitles.length !== nextQuests.titlesOwned.length) {
+        corrections.push({ path: 'quests.titlesOwned', before: nextQuests.titlesOwned, after: keptTitles })
+        nextQuests.titlesOwned = keptTitles
+        notes.push('称号超出已达成成就可兑现的范围')
+      }
+    }
+    const worn = nextPlayer.titleId
+    if (typeof worn === 'string' && !titleFloor.has(worn)) {
+      corrections.push({ path: 'player.titleId', before: worn, after: null })
+      nextPlayer.titleId = null
+      notes.push(`佩戴的称号无可兑现的成就(${worn})`)
     }
 
     // ---------- 资源 ----------

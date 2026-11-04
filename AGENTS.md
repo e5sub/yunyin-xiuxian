@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-**云隐修仙录** — 一款 Vue 3 驱动的文字修仙放置（idle）游戏，进度存云端（`server/`），本地只作缓存。版本 1.59.0，`type: module`。支持 Web/PWA 与 Android（Capacitor）两端；桌面直接用浏览器开网页，不另发行客户端（`bun run build:electron` 仍可本地出包）。许可证 CC BY-NC 4.0（禁止商用）；打包的楷体字型为 LXGW WenKai，SIL OFL 1.1（许可证文本在 `public/fonts/OFL.txt`，再分发时须保留）。
+**云隐修仙录** — 一款 Vue 3 驱动的文字修仙放置（idle）游戏，进度存云端（`server/`），本地只作缓存。版本 1.59.1，`type: module`。支持 Web/PWA 与 Android（Capacitor）两端；桌面直接用浏览器开网页，不另发行客户端（`bun run build:electron` 仍可本地出包）。许可证 CC BY-NC 4.0（禁止商用）；打包的楷体字型为 LXGW WenKai，SIL OFL 1.1（许可证文本在 `public/fonts/OFL.txt`，再分发时须保留）。
 
 ## Architecture & Data Flow
 
