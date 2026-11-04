@@ -28,23 +28,25 @@
         class="card-ink flex w-full items-center gap-3 px-4 py-3 text-left active:scale-98"
         @click="ui.gongfaDetailId = mainDef.id"
       >
-        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-cinnabar/10 font-kai text-cinnabar">主</span>
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-cinnabar/40 bg-cinnabar/10 font-kai text-ink">主</span>
         <span class="min-w-0 grow">
           <span class="flex items-center gap-1.5">
             <span class="min-w-0 truncate font-kai text-[14px] text-ink">{{ mainDef.name }}</span>
             <span
               v-if="branchName(mainDef.id)"
-              class="min-w-0 shrink truncate rounded bg-gold-ink/10 px-1.5 py-0.5 text-[10px] text-gold-ink"
+              class="min-w-0 shrink truncate rounded border px-1.5 py-0.5 text-[10px]"
+              :class="branchActive(mainDef.id) ? 'border-gold-ink/40 bg-gold-ink/10 text-ink' : 'border-ink/15 text-ink-faint'"
+              :title="branchInactiveReason(mainDef.id)"
             >
               {{ branchName(mainDef.id) }}
             </span>
             <span
               v-else-if="canEnlighten(mainDef.id)"
-              class="shrink-0 rounded bg-azure/10 px-1.5 py-0.5 text-[10px] text-azure"
+              class="shrink-0 rounded border border-azure/40 bg-azure/10 px-1.5 py-0.5 text-[10px] text-ink"
             >
               待悟道
             </span>
-            <span v-if="mainCanUpgrade" class="shrink-0 rounded bg-jade/10 px-1.5 py-0.5 text-[10px] text-jade">可升层</span>
+            <span v-if="mainCanUpgrade" class="shrink-0 rounded border border-jade/40 bg-jade/10 px-1.5 py-0.5 text-[10px] text-ink">可升层</span>
           </span>
           <span class="block text-[11px] text-ink-faint">
             第 {{ cultivation.learned[mainDef.id] }} 层 · {{ qualityDef(mainDef.quality).name }}
@@ -74,10 +76,11 @@
         >
           <span
             class="grid h-5 w-5 place-items-center rounded font-kai text-[11px]"
-            :class="gongfaCat === g.type ? 'bg-paper/15 text-paper' : gongfaCatSeal(g.type)"
+            :class="gongfaCat === g.type ? 'bg-ink/8' : gongfaCatSeal(g.type)"
           >{{ g.seal }}</span>
           <span>{{ GONGFA_TYPE_NAMES[g.type] }}</span>
-          <span class="text-[10px]" :class="gongfaCat === g.type ? 'text-paper/60' : 'text-ink-faint'">{{ g.items.length }} 部</span>
+          <!-- 半透明字在两主题都跌破 AA(纸/15 内格 4.17:1、奶油 60% 2.95:1);层级由字号承担,颜色继承印面 -->
+          <span class="text-[10px]" :class="gongfaCat === g.type ? '' : 'text-ink-faint'">{{ g.items.length }} 部</span>
         </button>
       </div>
 
@@ -103,12 +106,17 @@
             class="grid h-8 w-8 shrink-0 place-items-center rounded-md font-kai text-[13px]"
             :class="gongfaCatSeal(def.type)"
           >{{ sealOf(def.type) }}</span>
-          <span class="min-w-0 grow truncate font-kai text-[13px]" :style="{ color: qualityDef(def.quality).color }">{{ def.name }}</span>
+          <span class="min-w-0 grow truncate font-kai text-[13px]" :style="{ color: qualityTextColor(def.quality) }">{{ def.name }}</span>
           <span class="shrink-0 text-[10px] text-ink-faint">{{ cultivation.learned[def.id] }} 层</span>
-          <span v-if="branchName(def.id)" class="max-w-24 shrink-0 truncate rounded bg-gold-ink/10 px-1.5 py-0.5 text-[10px] text-gold-ink">
+          <span
+            v-if="branchName(def.id)"
+            class="max-w-24 shrink-0 truncate rounded border px-1.5 py-0.5 text-[10px]"
+            :class="branchActive(def.id) ? 'border-gold-ink/40 bg-gold-ink/10 text-ink' : 'border-ink/15 text-ink-faint'"
+            :title="branchInactiveReason(def.id)"
+          >
             {{ branchName(def.id) }}
           </span>
-          <span v-else-if="canEnlighten(def.id)" class="shrink-0 rounded bg-azure/10 px-1.5 py-0.5 text-[10px] text-azure">待悟道 →</span>
+          <span v-else-if="canEnlighten(def.id)" class="shrink-0 rounded border border-azure/40 bg-azure/10 px-1.5 py-0.5 text-[10px] text-ink">待悟道 →</span>
           <span v-else-if="isFull(def.id)" class="shrink-0 rounded bg-ink/6 px-1.5 py-0.5 text-[10px] text-ink-faint">圆满</span>
           <span class="shrink-0 text-[10px]" :class="equipStateOf(def.id) ? 'text-jade' : 'text-ink-faint'">
             {{ equipStateOf(def.id) || '未装配' }}
@@ -138,7 +146,7 @@
   import { effectiveSubs, seatedCount, SECRET_SEATS } from '@/core/gongfaSeats'
   import { GONGFA, gongfaDef, gongfaMaxLevel, GONGFA_TYPE_NAMES } from '@/data/gongfa'
   import type { GongfaDef, GongfaType } from '@/types'
-  import { canEnlighten as canEnlightenGongfa, gongfaBranchDef } from '@/data/gongfaBranches'
+  import { branchEffective, canEnlighten as canEnlightenGongfa, gongfaBranchDef } from '@/data/gongfaBranches'
   import {
     COMPREHEND_PAGE_COST,
     WUDAO_EXCHANGE_MIN_MAJOR, WUDAO_EXCHANGE_PER_DAY, WUDAO_EXCHANGE_GAIN
@@ -146,7 +154,7 @@
   import { formatGN, formatGap } from '@/utils/format'
   import { gongfaAllLearnedToast } from '@/ui/gongfaText'
   import { exchangeOkToast, exchangeFailText } from '@/ui/cultivationText'
-  import { qualityDef } from '@/data/qualities'
+  import { qualityDef, qualityTextColor } from '@/data/qualities'
   import SectionTitle from '@/components/common/SectionTitle.vue'
   import GameIcon from '@/components/common/GameIcon.vue'
 
@@ -190,21 +198,27 @@
   )
 
   /** 门类印章配色(非激活态) */
+  /**
+   * 未选中门类的方印底色。字色走墨色(见上一条判据:彩色字压同色淡底过不了 4.5),
+   * 门类的区分交给色块与描边。
+   */
   function gongfaCatSeal(type: GongfaType): string {
     return type === 'secret'
-      ? 'bg-violet-ink/15 text-violet-ink'
+      ? 'border border-violet-ink/40 bg-violet-ink/15 text-ink'
       : type === 'main'
-        ? 'bg-cinnabar/10 text-cinnabar'
-        : 'bg-jade/15 text-jade'
+        ? 'border border-cinnabar/40 bg-cinnabar/10 text-ink'
+        : 'border border-jade/40 bg-jade/15 text-ink'
   }
 
-  /** 激活态配色:沿用该门类印章色 */
+  /**
+   * 激活态配色:整颗 tab 走 .seal-face,不用 text-paper。
+   * text-paper 依纸色路由,而夜主题把 paper 翻成近黑(33 31 28),印底却是亮朱/亮紫/亮绿:
+   * 实测朱印 3.83:1、内层 bg-paper/15 再降到 3.13:1,同一屏的 .btn-seal 是奶油字,两套脸。
+   * .seal-face 把夜主题整面压成深朱并固定奶油字,与 .btn-seal / .world-seal 同源(AGENTS.md 明文)。
+   * 只给这颗 tab 挂,不给里面的字形与「N 部」挂:类里有背景,挂到子节点就会在印面上再压两块深朱。
+   */
   function gongfaCatActive(type: GongfaType): string {
-    return type === 'secret'
-      ? 'bg-violet-ink text-paper'
-      : type === 'main'
-        ? 'bg-cinnabar text-paper'
-        : 'bg-jade text-paper'
+    return type === 'secret' ? 'bg-violet-ink seal-face' : type === 'main' ? 'bg-cinnabar seal-face' : 'bg-jade seal-face'
   }
 
   /** WAI-ARIA tabs 键盘导航:左右键在门类间回绕,Home/End 直达首尾(与 InkTabs 同约定) */
@@ -287,6 +301,37 @@
   function branchName(id: string): string | undefined {
     const branchId = cultivation.gongfaBranch[id]
     return branchId ? gongfaBranchDef(branchId)?.name : undefined
+  }
+
+  /**
+   * 分支是否正在生效。
+   *
+   * 词条只在功法**满级**时并进 mods(见 cultivation 的 gongfaMods),
+   * 而转世只留一门功法的等级、其余落回 1 层(carryGongfa) ——
+   * 于是「转世不失」的分支会留在界面上却不产生任何效果。
+   * 这里把那个状态标出来,免得玩家以为它还在加属性。
+   */
+  function branchActive(id: string): boolean {
+    // 与 store 的 gongfaMods 同读一条判据:两处各写一遍就会分叉
+    return branchEffective(id, {
+      level: cultivation.learned[id] ?? 0,
+      hasBranch: !!cultivation.gongfaBranch[id],
+      isMain: cultivation.mainGongfa === id,
+      isEffectiveSub: cultivation.subGongfa.slice(0, dongfu.subGongfaSlots).includes(id)
+    })
+  }
+
+  /**
+   * 分支不生效的**那一个**原因(生效时不写 title)。
+   * 满级与装配是两件独立的事,分开说 —— 合成「未满级 · 暂不生效」会把
+   * 「等级不够」和「没装配」混成同一个状态,玩家照着提示做也无从下手。
+   */
+  function branchInactiveReason(id: string): string | undefined {
+    if (branchActive(id)) return undefined
+    const def = gongfaDef(id)
+    if (!def) return undefined
+    if ((cultivation.learned[id] ?? 0) < gongfaMaxLevel(def)) return '未满级'
+    return '未装配'
   }
 
   function doExchange(): void {

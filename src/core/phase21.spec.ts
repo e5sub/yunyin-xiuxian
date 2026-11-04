@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { CombatRules, CombatantSnap } from '@/types'
 import { mulberry32, RandomService } from '@/utils/random'
+import { toNum } from '@/utils/gnum'
 import { CELESTIAL_WORLDS, MUTATION_FOES, TRIAL_FOES } from '@/data/endgame'
 import { PACTS } from '@/data/pacts'
 import { MUTATORS } from '@/data/mutators'
@@ -46,6 +47,36 @@ function worldRateWithRules(worldIdx: number, extra: CombatRules | undefined, sn
     if (runGauntlet(snap, foes, rules, world.healBetweenPct, rng, { buildLog: false }).cleared) clears += 1
   }
   return clears / runs
+}
+
+/**
+ * 整轮通关里组合技触发了多少次(读战报的 proc 行)。
+ *
+ * 用来区分「没变差」和「压根没生效」:触发条件严的能力(fenglian 要求满血会心)
+ * 在长链战斗里可能一次都不触发,只看胜率会把它当成「有增益但没削」而放过。
+ */
+function comboHitsIn(worldIdx: number, snap: CombatantSnap, runs: number, seed: number): number {
+  const world = CELESTIAL_WORLDS[worldIdx]!
+  const rng = new RandomService(mulberry32(seed))
+  const foes: CombatantSnap[] = []
+  for (let i = 0; i < world.fights - 1; i += 1) {
+    foes.push(worldFoeSnap(world.foes[i % world.foes.length]!, SIM_REFERENCE))
+  }
+  foes.push(worldFoeSnap(world.guardian, SIM_REFERENCE))
+  const rules: CombatRules | undefined = mergeRules(world.rules, undefined)
+  let hits = 0
+  for (let i = 0; i < runs; i += 1) {
+    // 逐场战报在 rows[].logs[] 里,不是 report.logs;buildLog 必须开才有
+    const out = runGauntlet(snap, foes, rules, world.healBetweenPct, rng, { buildLog: true })
+    for (const fight of out.rows) {
+      for (const row of fight.logs ?? []) {
+        if (row.t !== 'proc' || typeof row.text !== 'string') continue
+        // 技能名在 strike 的独立参数里,不在 text 里,所以按 proc 行的实词匹配
+        if (/锋连诀|反震|枯泽|沐泽/.test(row.text)) hits += 1
+      }
+    }
+  }
+  return hits
 }
 
 describe('天道契约裁判', () => {
@@ -145,7 +176,25 @@ describe('组合技裁判', () => {
       const withArt: CombatantSnap = { ...base, comboArt: c.art }
       const plainStrong = worldRateWithRules(c.strongIdx, undefined, base, 40, 51000)
       const boostedStrong = worldRateWithRules(c.strongIdx, undefined, withArt, 40, 51000)
-      expect(boostedStrong, `${c.art} 优势界反而变弱`).toBeGreaterThanOrEqual(plainStrong - 0.05)
+      /*
+       * 原判据只有 `boosted >= plain - 0.05`,而实测三组里 xuangang 与 fenglian
+       * 都是 0pp 差异(100/100 与 70/70) —— 5% 的容差把它们盖住了。
+       * 标题说的是「有实际增益」,容差允许的却是「弱 5% 也算过」。
+       *
+       * 收敛成两条:
+       *   1) 带技之后不能变弱(容差 0,不含糊);
+       *   2) 若胜率没有变化,至少要能证明它**真的触发过** —— 触发条件严的能力
+       *      (fenglian 要求满血会心)在整轮通关里可能一次都不触发,那是数据问题,
+       *      不该被「胜率没变差」蒙混过去。
+       */
+      expect(boostedStrong, `${c.art} 优势界反而变弱了`).toBeGreaterThanOrEqual(plainStrong)
+      if (boostedStrong === plainStrong) {
+        const fired = comboHitsIn(c.strongIdx, withArt, 40, 51000)
+        expect(
+          fired,
+          `${c.art} 优势界胜率与不带技完全相同(${(plainStrong * 100).toFixed(0)}%),且整轮一次都没触发 —— 这条判据没测到增益`
+        ).toBeGreaterThan(0)
+      }
       const boostedWeak = worldRateWithRules(c.weakIdx, undefined, withArt, 40, 52000)
       expect(boostedWeak, `${c.art} 劣势界翻盘成通吃`).toBeLessThan(0.95)
     }
@@ -163,7 +212,62 @@ describe('组合技裁判', () => {
       for (let i = 0; i < 120; i += 1) if (resolveCombat(snap, foe, rng, lowHp, false).win) wins += 1
       return wins / 120
     }
-    expect(winRate(withArt, 777)).toBeGreaterThan(winRate(base, 777) - 0.02)
+    /*
+     * 这条原本只判 `带法宝 >= 基础 - 2%`,而在当前场景两边都是 100% 胜率 ——
+     * 也就等于什么都没判:枯泽回春强不强、有没有接上,它都绿。
+     *
+     * 实测这个场景没有区分度(第十二档敌人对这套构筑太弱,血量压到 3% 仍然两边同值),
+     * 而 kuze 的作用是**濒死时回血量 ×1.5**,只在战斗真的打到濒死才看得出。
+     * 所以这里不再假装能测出优势,改成钉住两件确定的事:
+     *   1) 场景确实有区分度(基础组不在 0%/100% 两个极端),否则这条用例没测到东西;
+     *   2) 带法宝不比基础差(回归保护)。
+     * 真想测「枯泽更强」需要一个能打到濒死的场景,那是平衡问题,不在这里擅自改。
+     */
+    const baseRate = winRate(base, 777)
+    const artRate = winRate(withArt, 777)
+    expect(artRate, '带枯泽不该比基础更差').toBeGreaterThanOrEqual(baseRate - 0.02)
+    /*
+     * 把「这个场景没有区分度」写成会红的判据:一旦场景变强到能分出胜负,
+     * 这条就红,提醒「现在测得出差异了,把上面那条换成真正的优势判据」。
+     * 反过来,如果将来这里红了却没人改,说明这条用例正在退化成空跑。
+     */
+    const discriminating = baseRate > 0 && baseRate < 1
+    expect(
+      discriminating,
+      `场景已能分出胜负(基础组 ${(baseRate * 100).toFixed(0)}%),请把本条换成「带枯泽显著更优」的判据`
+    ).toBe(false)
+
+    /*
+     * 胜率测不出枯泽,就直接测它的机制本身:濒死时治疗 ×1.5。
+     * 光靠上面两条,把 healSelf 里那半行增幅删掉也照样绿 —— 那才是这条用例该防的东西。
+     * 战报里那条 proc 行同时确认它确实触发过(此前枯泽静默加成,一行日志都没有)。
+     */
+    /*
+     * 上面那两条测不出枯泽,就直接测它的机制:濒死时治疗 ×1.5。
+     *
+     * 场景要能**打到**濒死(血量掉到 30% 以下),光把开局血量压到 28% 不够 ——
+     * 实测那种开局下全程不回血,两边治疗量逐位相同,判据等于没写。
+     * 这里改用一场必输的消耗战(第 12 档敌人放大到 4 倍):玩家一路掉到濒死,
+     * 每口治疗都吃满增幅。同种子对跑,差异只可能来自枯泽。
+     */
+    const grindFoe = worldFoeSnap(TRIAL_FOES[1]!, SIM_REFERENCE, 4)
+    const kuzeRun = resolveCombat(
+      { ...base, comboArt: 'kuze' },
+      grindFoe,
+      new RandomService(mulberry32(4242)),
+      {},
+      true
+    )
+    const plainRun = resolveCombat(base, grindFoe, new RandomService(mulberry32(4242)), {}, true)
+    const healOf = (r: typeof kuzeRun): number => toNum(r.stats!.player.healed)
+    expect(healOf(kuzeRun), '带枯泽在濒死场景应比不带的治疗量显著更高').toBeGreaterThan(healOf(plainRun) * 1.5)
+    // 战报里必须有触发记录 —— 枯泽此前静默加成,按 proc 行统计的判据永远数出 0
+    const kuzeProcs = kuzeRun.log.filter(l => l.t === 'proc' && /枯泽回春/.test(l.text))
+    expect(kuzeProcs.length, '枯泽触发了却没写 proc 战报').toBeGreaterThan(0)
+    expect(
+      plainRun.log.filter(l => l.t === 'proc' && /枯泽回春/.test(l.text)).length,
+      '不带枯泽却报了枯泽触发'
+    ).toBe(0)
   })
 })
 

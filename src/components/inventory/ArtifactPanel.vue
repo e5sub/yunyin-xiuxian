@@ -30,6 +30,9 @@
       }"
     >
       <QualityAura :quality="row.def.quality" />
+      <!-- 最上档质感:四角御纹 + 流光 -->
+      <span v-if="lusterOf(row.def.quality)" class="luster-cornice" aria-hidden="true" />
+      <span v-if="lusterOf(row.def.quality)" class="luster-sheen" aria-hidden="true" />
       <!-- 满重:与品阶光环分开的一套形状(顶边横杠),见 ui/masteryMark -->
       <span v-if="row.mastery" class="mastery-bar" :title="row.mastery.label" />
       <span v-if="row.rare" class="absolute right-2 top-2 leading-none">
@@ -41,7 +44,7 @@
         <span
           class="font-kai text-[14px]"
           :class="{ 'q-plaque': row.plaque }"
-          :style="{ color: qualityDef(row.def.quality).color }"
+          :style="{ color: qualityTextColor(row.def.quality) }"
           >{{ row.def.name }}</span
         >
         <QualityTag :quality="row.def.quality" />
@@ -59,12 +62,12 @@
       </div>
       <p class="mt-1.5 text-[11px] leading-relaxed text-ink-faint">{{ row.def.desc }}</p>
       <p class="mt-1 flex items-baseline gap-1.5 text-[11px]">
-        <span class="shrink-0 rounded bg-azure/10 px-1.5 py-0.5 text-[10px] leading-relaxed text-azure">被动</span>
+        <span class="shrink-0 rounded border border-azure/40 bg-azure/10 px-1.5 py-0.5 text-[10px] leading-relaxed text-ink">被动</span>
         <span class="text-azure">{{ passiveLines(row.def.id, row.owned.level).join(' · ') }}</span>
       </p>
       <!-- 神通说明按祭炼现算,与战斗同读 artifactActiveText -->
       <p class="mt-1 flex items-baseline gap-1.5 text-[11px]">
-        <span class="shrink-0 rounded bg-violet-ink/10 px-1.5 py-0.5 text-[10px] leading-relaxed text-violet-ink">神通</span>
+        <span class="shrink-0 rounded border border-violet-ink/40 bg-violet-ink/10 px-1.5 py-0.5 text-[10px] leading-relaxed text-ink">神通</span>
         <span class="text-violet-ink">「{{ row.def.active.name }}」:{{ artifactActiveText(row.def, row.owned.level) }}</span>
       </p>
       <p v-if="nextGainText(row.def.id, row.owned.level)" class="mt-1 text-[10px] leading-relaxed text-ink-faint tabular">
@@ -132,7 +135,7 @@ import { computed, ref } from 'vue'
 import { useInventoryStore } from '@/stores/inventory'
 import { usePlayerStore } from '@/stores/player'
 import { useUiStore } from '@/stores/ui'
-import { qualityDef } from '@/data/qualities'
+import { qualityDef, qualityTextColor } from '@/data/qualities'
 import { REALMS } from '@/data/realms'
 import {
   artifactActiveText,
@@ -160,6 +163,7 @@ import GameIcon from '@/components/common/GameIcon.vue'
 import QualityTag from '@/components/common/QualityTag.vue'
 import QualitySeal from '@/components/common/QualitySeal.vue'
 import QualityAura from '@/components/common/QualityAura.vue'
+import { lusterOf } from '@/ui/luster'
 
 const inventory = useInventoryStore()
 const player = usePlayerStore()

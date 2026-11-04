@@ -20,6 +20,7 @@ import { EVENTS, FORTUNE_EVENTS } from '@/data/events'
 import { ARTIFACTS } from '@/data/artifacts'
 import { artifactDef } from '@/data/artifacts'
 import { buffDef } from '@/data/buffs'
+import { CAVE_EVENT_POOL } from '@/data/earlyGame'
 import { petDef } from '@/data/pets'
 import { gongfaDef } from '@/data/gongfa'
 import { EQUIPMENT_TEMPLATES } from '@/data/equipment'
@@ -346,5 +347,35 @@ describe('内容可达性 · 全局报告', () => {
     console.log('  炼器图纸:blueprintLore 有字段无内容,studyBlueprint 尚无调用点\n')
 
     expect(reachableRecipes.size).toBe(CRAFTABLE.length)
+  })
+})
+
+/**
+ * 洞府事件惩罚按 `cave_penalty_${type}` 拼 buff id(见 earlyGameService)。
+ *
+ * 拼接出来的 id 一旦对不上,`addBuff` 里 `if (!def) return` 会静默跳过 ——
+ * 惩罚不生效,玩家白拿好处,而且不报错。判断它们对不对只能靠命名约定,
+ * 所以这里把约定本身钉住:每个声明过的 penalty.type 都得有同名 buff。
+ */
+describe('内容可达性 · 洞府惩罚 buff 的命名约定', () => {
+  it('每个 penalty.type 都能拼出一个真实存在的 buff', () => {
+    /*
+     * 原先靠 `JSON.stringify(...).includes('"penalty":{"type":"…"')` 认惩罚:
+     * 属性顺序一变(先写 value 再写 type)就匹配不上,循环直接 `continue`,
+     * 命名约定检查照样绿,而那条惩罚其实没有对应 buff。现在直接读对象。
+     */
+    const types = new Set<string>()
+    for (const pool of Object.values(CAVE_EVENT_POOL)) {
+      for (const ev of pool as { options: { penalty?: { type?: string } }[] }[]) {
+        for (const opt of ev.options ?? []) {
+          const t = opt.penalty?.type
+          if (typeof t === 'string' && t) types.add(t)
+        }
+      }
+    }
+    expect(types.size, '没扫到任何惩罚类型,守卫空转').toBeGreaterThan(0)
+    for (const t of types) {
+      expect(buffDef(`cave_penalty_${t}`), `惩罚类型 ${t} 拼出的 cave_penalty_${t} 在 BUFFS 里不存在 —— 惩罚会静默失效`).toBeDefined()
+    }
   })
 })

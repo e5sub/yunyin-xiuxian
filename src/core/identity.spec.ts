@@ -3,8 +3,11 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { DaoMark } from '@/types'
 import { gn } from '@/utils/gnum'
-import { cultivatorProfile, daoNarrative, MILESTONE_DEFS } from './identity'
+import { cultivatorProfile, daoNarrative, MILESTONE_DEFS, trackClearRecords } from './identity'
+import { recordDef } from '@/data/identity'
 import { useEndgameStore } from '@/stores/endgame'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 
 function mark(partial: Partial<DaoMark>): DaoMark {
   return {
@@ -93,5 +96,121 @@ describe('道途行为叙事', () => {
     expect(a).not.toBe(b)
     // 样本不足不语
     expect(daoNarrative('sword', [mark({ life: 7 })], 7)).toBeNull()
+  })
+})
+
+/**
+ * 破界纪录:三个 `updateRecord` 的取值方向必须与数据定义同向。
+ *
+ * `updateRecord` 里 `if (!def || def.better !== better) return false` ——
+ * 传错方向**不报错、不抛异常,只是永远记不上**。而这三条纪录正是玩家档案里
+ * 最有存在感的三行,静默失效很长时间都不会被发现。
+ */
+describe('破界纪录 · 三条的取值方向', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('最快破界记短的(更少回合才刷新)', () => {
+    const endgame = useEndgameStore()
+    trackClearRecords('赤炎天', 120, null, 0)
+    expect(endgame.records.fastest_world?.value, '第一次应当记上').toBe(120)
+    trackClearRecords('赤炎天', 90, null, 0)
+    expect(endgame.records.fastest_world?.value, '更少的回合应当刷新').toBe(90)
+    trackClearRecords('赤炎天', 200, null, 0)
+    expect(endgame.records.fastest_world?.value, '更多回合不该覆盖最快').toBe(90)
+  })
+
+  it('最高风险破界记大的', () => {
+    const endgame = useEndgameStore()
+    // 无契时不写这条
+    trackClearRecords('赤炎天', 100, null, 0)
+    expect(endgame.records.highest_pact, '没有逆旅契就不该写这条').toBeUndefined()
+  })
+
+  it('赏金记大的,且为零时不写', () => {
+    const endgame = useEndgameStore()
+    trackClearRecords('赤炎天', 100, null, 0)
+    expect(endgame.records.biggest_reward, '零赏不该占一条纪录').toBeUndefined()
+    trackClearRecords('赤炎天', 100, null, 500)
+    expect(endgame.records.biggest_reward?.value, '有赏就该记上').toBe(500)
+    trackClearRecords('赤炎天', 100, null, 300)
+    expect(endgame.records.biggest_reward?.value, '更小的赏不该覆盖').toBe(500)
+  })
+
+  it('三条纪录的 better 方向与实现同向(传反就会静默永不更新)', () => {
+    const rows = ['fastest_world', 'highest_pact', 'biggest_reward'] as const
+    for (const id of rows) {
+      const def = recordDef(id)
+      expect(def, `${id} 在数据里不存在`).toBeTruthy()
+    }
+    expect(recordDef('fastest_world')!.better, '最快应当是 min').toBe('min')
+    expect(recordDef('highest_pact')!.better, '最高应当是 max').toBe('max')
+    expect(recordDef('biggest_reward')!.better, '最厚应当是 max').toBe('max')
+  })
+})
+
+/**
+ * 全仓守卫:`updateRecord` 的取值方向必须与 `RECORD_DEFS` 同向。
+ *
+ * `updateRecord` 里 `if (!def || def.better !== better) return false` ——
+ * 方向传反**不报错、不抛异常,只是永远记不上**。这类静默失效是本仓库最隐蔽的一类:
+ * 运行时一切正常,只是玩家档案里那一行永远空着。
+ *
+ * 逐条补判据管不住新增的调用点;这里直接扫源码,新增一处传反就红。
+ */
+describe('破界纪录 · 全仓方向守卫', () => {
+  /**
+   * 扫全仓生产源码,而不是写死两个文件名。
+   *
+   * 原先只读 `identity.ts` 与 `challenge.ts`,且逐行匹配「整条调用在同一行」:
+   * 新增一处调用放到别的文件、或把参数换行写,它既不会被扫到、也没人会发现 ——
+   * 而现有调用已经让「扫到 0 处」这条兜底保持绿色。
+   *
+   * 这里按整份文件做跨行匹配,并把 id 与方向一起取出来。
+   */
+  const sourceFiles = (dir: string, out: string[] = []): string[] => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name)
+      if (e.isDirectory()) sourceFiles(p, out)
+      else if (/\.(ts|vue)$/.test(e.name) && !e.name.endsWith('.spec.ts')) out.push(p)
+    }
+    return out
+  }
+
+  const scanCalls = (): { file: string; line: number; id: string; better: string }[] => {
+    const root = resolve(process.cwd(), 'src')
+    const calls: { file: string; line: number; id: string; better: string }[] = []
+    for (const file of sourceFiles(root)) {
+      const src = readFileSync(file, 'utf-8')
+      // 只认真正的写法:`updateRecord('id', …, 'min'|'max')`,参数可跨行
+      for (const m of src.matchAll(/updateRecord\(\s*'([a-z_]+)'[\s\S]{0,400}?'(min|max)'\s*\)/g)) {
+        const line = src.slice(0, m.index).split('\n').length
+        calls.push({ file: file.slice(root.length + 1), line, id: m[1]!, better: m[2]! })
+      }
+    }
+    return calls
+  }
+
+  it('每处 updateRecord 调用的方向都与数据定义一致', () => {
+    const calls = scanCalls()
+    expect(calls.length, '一处调用都没扫到,守卫没在起作用').toBeGreaterThan(0)
+
+    for (const c of calls) {
+      const def = recordDef(c.id)
+      expect(def, `src/${c.file}:${c.line} 写了一条数据里不存在的纪录 ${c.id}`).toBeTruthy()
+      expect(
+        c.better,
+        `src/${c.file}:${c.line} 的 ${c.id} 方向是 '${c.better}',而数据定义是 '${def!.better}' —— 传反会静默永不更新`
+      ).toBe(def!.better)
+    }
+  })
+
+  it('扫到的调用点覆盖了所有会写纪录的地方(防止新增文件绕过)', () => {
+    const known = new Set(['best_custom', 'fastest_world', 'highest_pact', 'biggest_reward'])
+    const ids = new Set(scanCalls().map(c => c.id))
+    for (const id of ids) {
+      expect(known.has(id), `发现未纳入守卫的纪录 ${id}`).toBe(true)
+    }
   })
 })

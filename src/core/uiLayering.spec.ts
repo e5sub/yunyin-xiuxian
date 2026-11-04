@@ -428,6 +428,62 @@ describe('可访问性 · 状态播报', () => {
     expect(host, 'toast 按钮不该进 Tab 序:键盘焦点会落到一条即将消失的元素上').toMatch(/tabindex="-1"/)
   })
 
+  /**
+   * PWA 更新横幅的触控尺子。
+   *
+   * 它只在 Service Worker 装上新版本后出现 —— `layout-check` 的巡页摸不到,
+   * `ui-smoke` 也不会触发,是唯一一块「没人量过」的界面。
+   * 实测修前「重新加载」盒高 24.5px、关闭钮 21.4×32px,都低于 28px 触控线。
+   * 判据取静态类名(py / h-w),不依赖运行时。
+   */
+  /**
+   * 横幅不能变成遮罩。
+   *
+   * 外层是 `inset-0` 的 flex,`align-items` 缺省为 `stretch` —— 内层卡片会被拉满整屏。
+   * 实测修前 390×844 下卡片 788px 高、`pointer-events-auto`,整页点不动;
+   * 它却只在 SW 更新后出现,巡页与 layout-check 都永远看不到。
+   * 判据:外层必须写 `items-start`,且内层不得再写 `h-full` 之类的拉伸。
+   */
+  it('PWA 更新横幅只占一行,不铺满整屏吞掉点击', () => {
+    const src = readFileSync(resolve(SRC, 'components/common/UpdatePrompt.vue'), 'utf-8')
+    const outer = /<div v-if="ui\.pwaUpdatePending"[^>]*class="([^"]*)"/.exec(src)?.[1] ?? ''
+    expect(outer, '找不到横幅外层').not.toBe('')
+    expect(
+      outer,
+      '外层没写 items-start / items-end —— align-items 缺省 stretch 会把卡片拉满整屏'
+    ).toMatch(/items-(start|end)/)
+    // class 写在 role 之前(多行标签),两段分别取再合看
+    const cardTag = /<div\s+class="[^"]*"\s+role="status"/.exec(src)?.[0] ?? ''
+    expect(cardTag, '找不到横幅卡片').not.toBe('')
+    expect(cardTag, '卡片不该自己再撑高').not.toContain('h-full')
+  })
+
+  /**
+   * 横幅不能跟 toast 抢位置。
+   * toast 从 top-12(48px)起、最多叠五条(实测最深到 260px)、层级 z-70 高于横幅的 z-50 ——
+   * 横幅原先也在顶部 56px,一条提示就把它整个盖住,「重新加载」点不到。
+   * 修法是贴底。故障注入:把 items-end 改回 items-start,本条红。
+   */
+  it('PWA 更新横幅避开 toast 的占地(贴底,不在顶部)', () => {
+    const src = readFileSync(resolve(SRC, 'components/common/UpdatePrompt.vue'), 'utf-8')
+    const outer = /<div v-if="ui\.pwaUpdatePending"[^>]*class="([^"]*)"/.exec(src)?.[1] ?? ''
+    expect(outer, '横幅须贴底(items-end),别跟 toast 抢顶部').toContain('items-end')
+    expect(outer, '横幅须留出与底栏的距离(pb-*)').toMatch(/\bpb-\d/)
+    expect(outer, '横幅不该再用 pt- 贴顶').not.toMatch(/\bpt-/)
+  })
+
+  it('PWA 更新横幅的两颗钮都过 28px 触控线', () => {
+    const src = readFileSync(resolve(SRC, 'components/common/UpdatePrompt.vue'), 'utf-8')
+    // 只看按钮标签本身:注释里写着「不可降回 !py-1」,整文件正则会把那句也算进来
+    const reload = /<button\b[^>]*>\s*重新加载/.exec(src)?.[0] ?? ''
+    expect(reload, '找不到「重新加载」那颗钮').not.toBe('')
+    // 11px 字 + !py-1 只有 24.5px;!py-1.5 是 28.5px
+    expect(reload, '「重新加载」的竖向 padding 低于 28px 触控线').toContain('!py-1.5')
+    const close = /<button\b[^>]*aria-label="关闭"[^>]*>/.exec(src)?.[0] ?? ''
+    expect(close, '找不到关闭钮').not.toBe('')
+    expect(close, '关闭钮须给 28px 见方的触面').toContain('h-7 w-7')
+  })
+
   it('其它动态区已有播报的不许回退', () => {
     const anchors: Array<[string, RegExp]> = [
       ['src/components/common/SpiritRootReveal.vue', /role="status"/],
@@ -466,6 +522,77 @@ describe('可访问性 · 表单控件有名字', () => {
       }
     }
     expect(nameless, '这些表单控件没有可访问名:读屏只念得出控件类型').toEqual([])
+  })
+})
+
+/**
+ * 可访问名不能挂在 generic 元素上。
+ *
+ * ARIA 规定 `generic`(无 role 的 span / div)不接受可访问名 —— 裸 <span aria-label="x"> 的
+ * 名字在严格实现里会被丢掉。Chrome 的 AX 树会给它一个 generic 节点,看着像念出来了,
+ * 但这正是「用宽松实现验证宽松写法」。实测三处:
+ *   QualitySeal 的品阶角章(天/仙/神 只有一个字,读屏要念的是「天品档」)
+ *   TopStatusBar 的寿元与灵石(补的正是「读屏只会念两个数字」)
+ * 三处都补了 role="img"。同时修掉寿元那句话里的重字:formatYears 本身带「载」,
+ * 原写法末尾又加一个,读屏念成「寿元 3000/1000亿载 载」。
+ *
+ * 故障注入:摘掉任一处的 role="img",本条红。
+ */
+describe('可访问性 · 名字要有 role 才接得住', () => {
+  /**
+   * 取一个开标签的完整文本。
+   *
+   * 不能用 `/<(span|div)\b[^>]*>/` —— 属性值里常有 `>`(如 `v-if="props.item.level > 0"`),
+   * 那样会在引号中间截断,后面的 `:aria-label` 整个落空。实测 EquipmentCard 的「+N」
+   * 就这么漏了两轮。这里按引号配对往后走,遇到不在引号里的 `>` 才收尾。
+   */
+  function openTagAt(src: string, start: number): string {
+    let i = start
+    let quote: string | null = null
+    while (i < src.length) {
+      const ch = src[i]!
+      if (quote) {
+        if (ch === quote) quote = null
+      } else if (ch === '"' || ch === "'") {
+        quote = ch
+      } else if (ch === '>') {
+        return src.slice(start, i + 1)
+      }
+      i += 1
+    }
+    return src.slice(start)
+  }
+
+  it('裸 span/div 上的 aria-label 必须配 role', () => {
+    const offenders: string[] = []
+    for (const f of FILES) {
+      for (const m of f.src.matchAll(/<(span|div)\b/gs)) {
+        const tag = openTagAt(f.src, m.index!)
+        // 动态绑定写的是 `:aria-label=` —— 只认静态写法会整片漏掉
+        if (!/:?aria-label(?:ledby)?=/.test(tag)) continue
+        if (/\brole=/.test(tag)) continue
+        const line = f.src.slice(0, m.index).split('\n').length
+        offenders.push(`${f.path}:${line} ${tag.replace(/\s+/g, ' ').slice(0, 80)}`)
+      }
+    }
+    expect(
+      offenders,
+      `这些可访问名挂在 generic 元素上,严格实现会丢掉:\n${offenders.join('\n')}`
+    ).toEqual([])
+  })
+
+  it('三处已修的落点仍带 role="img"', () => {
+    const seal = readFileSync(resolve(SRC, 'components/common/QualitySeal.vue'), 'utf-8')
+    expect(seal, '品阶角章缺 role="img"').toContain('role="img"')
+    const bar = readFileSync(resolve(SRC, 'components/common/TopStatusBar.vue'), 'utf-8')
+    const imgs = (bar.match(/role="img"/g) ?? []).length
+    expect(imgs, '寿元与灵石两格都要 role="img"').toBeGreaterThanOrEqual(2)
+  })
+
+  it('寿元的可访问名不重复「载」字(formatYears 自带单位)', () => {
+    const bar = readFileSync(resolve(SRC, 'components/common/TopStatusBar.vue'), 'utf-8')
+    // 原写法 `...formatYears(...)} 载` 会念成「...亿载 载」
+    expect(bar, '寿元 aria-label 末尾又加了一个「载」').not.toMatch(/formatYears\([^)]*\)\s*载/)
   })
 })
 

@@ -11,14 +11,14 @@
       <div class="grid grid-cols-2 rounded-lg border border-ink/15 p-1">
         <button
           class="rounded-md border py-1.5 text-[13px] tracking-[0.2em]"
-          :class="mode === 'login' ? 'border-cinnabar bg-cinnabar text-paper' : 'border-ink/15 text-ink-faint'"
+          :class="mode === 'login' ? 'seal-face border-cinnabar bg-cinnabar' : 'border-ink/15 text-ink-faint'"
           @click="mode = 'login'"
         >
           登 录
         </button>
         <button
           class="rounded-md border py-1.5 text-[13px] tracking-[0.2em]"
-          :class="mode === 'register' ? 'border-cinnabar bg-cinnabar text-paper' : 'border-ink/15 text-ink-faint'"
+          :class="mode === 'register' ? 'seal-face border-cinnabar bg-cinnabar' : 'border-ink/15 text-ink-faint'"
           @click="mode = 'register'"
         >
           注 册

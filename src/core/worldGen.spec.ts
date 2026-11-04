@@ -37,6 +37,16 @@ describe('虚界生成器', () => {
     expect(ok, '生成成功率过低').toBeGreaterThanOrEqual(4)
   })
 
+  /**
+   * 手工世界也要过同一把尺子。
+   *
+   * 门槛回到 3。上一轮曾降到 2,那是被 `runs=10` 的采样噪声带偏了:
+   * 同样配置在 runs=200 下量出 3 个流派达标(沐泽 52% / 罡盾 51% / 连击 49%),
+   * 而 10 次采样只给 2 个。`auditVoidWorld` 的默认已改为 200。
+   *
+   * **反震流的数值补偿仍未做** —— 它现在 30%,低于修复前的 60%。
+   * 若要回调应在 `buildSim.ts` 调 `atkMult`,不要放宽这条门槛。
+   */
   it('审计函数对已上线的手工世界同样给出合格判定(裁判无双标)', () => {
     const audit = auditVoidWorld(CELESTIAL_WORLDS[0]!)
     expect(audit.viable).toBeGreaterThanOrEqual(3)

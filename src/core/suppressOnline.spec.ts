@@ -1,10 +1,13 @@
 /* eslint-disable no-console */
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { setActivePinia, createPinia } from 'pinia'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useDongfuStore } from '@/stores/dongfu'
 import { settleSuppressedRegions } from './suppress'
+import { mulberry32, RandomService } from '@/utils/random'
 
 describe('玩家反馈: 镇压后在线产出(真实场景)', () => {
   beforeEach(() => {
@@ -44,18 +47,72 @@ describe('玩家反馈: 镇压后在线产出(真实场景)', () => {
     expect(gained).toBeGreaterThan(0)
   })
 
-  it('验证: 灵脉投资是否影响镇压产出', () => {
-    const player = usePlayerStore()
-    const resources = useResourcesStore()
-    const dongfu = useDongfuStore()
-    player.suppressedRegions = ['qingyun']
+  /**
+   * 原先这条只有 console.log、没有 expect —— 名字叫「验证」却是空跑:
+   * 灵脉真把产出改了或者压根没接,它都绿。
+   *
+   * 实测结论是**不影响**:`settleSuppressedRegions` 不读 veinPoints,
+   * 灵脉只进洞府产出(`veinService`)。这里把这个事实钉住 ——
+   * 哪天镇压产出接上了灵脉,这条会红,提醒去补对应的数值判据。
+   */
+  it('灵脉投资不影响镇压产出(它只进洞府产出,不进镇压) —— 源码守卫', () => {
+    /*
+     * 这条原本是「两次 measure 比数值」,但它会红一阵绿一阵:
+     * `settleSuppressedRegions` 里 prosperity 的 `now` 走的是真实 `Date.now()`
+     * (与 `worldAt` 有意分开,见 offline.ts 的调用注释),两次测量跨了繁荣档就不同。
+     *
+     * 改成查源码:镇压结算里不该出现任何灵脉读数。这比数值对比更直接 ——
+     * 它盯的就是「灵脉有没有被接进来」这件事本身。
+     */
+    const src = readFileSync(resolve(process.cwd(), 'src/core/suppress.ts'), 'utf-8')
+    expect(src, '镇压结算读到了灵脉 —— 它只该进洞府产出').not.toMatch(/veinPoints|veinMods|veinMain/)
+  })
 
-    dongfu.veinPoints = { gather: 30, craft: 0, alchemy: 0, insight: 0 }
+  it('灵脉投资不影响镇压产出(它只进洞府产出,不进镇压)', async () => {
+    /*
+     * 两次测量必须同世界时刻:产出受繁荣度影响,而 prosperity 由
+     * `now - suppressedAt` 与累计胜场推出(deriveProsperity) ——
+     * 用默认的 Date.now() 两次会落在不同繁荣档,产出跟着变。
+     * 那是产品行为,不是灵脉生效;这里把 `worldAt` 钉死排除掉。
+     */
+    const WORLD_AT = 1_700_000_000_000
+    /*
+     * 随机源每次**同种子新建**:结算里装备掉落要掷骰,若共用模块级 `rng`,
+     * 第一次与第二次调用的点数本就不同 —— 实测同一配置连测两次是 225.6 与 180。
+     * 那点差异与灵脉无关,却会让「相等」这条判据红(=误报),也会让「都 > 0」那条绿(=没用)。
+     */
+    /*
+     * 本仓的结算入口是 async(1.58.0 掉落签发化):装备走 mintDrops,
+     * 且带重入闸 —— 不 await 的话,第二次测量会撞上第一次尚未落定的签发被闸成 null,
+     * 读数就成了 0(那是闸门在工作,不是灵脉在生效)。量之前先等整段结算落定。
+     */
+    const measure = async (veinGather: number): Promise<number> => {
+      setActivePinia(createPinia())
+      const player = usePlayerStore()
+      const resources = useResourcesStore()
+      player.suppressedRegions = ['qingyun']
+      if (veinGather > 0) {
+        useDongfuStore().veinPoints = { gather: veinGather, craft: 0, alchemy: 0, insight: 0 }
+      }
+      const before = resources.spiritStone.m * Math.pow(10, resources.spiritStone.e)
+      await settleSuppressedRegions(3600, new RandomService(mulberry32(424242)), WORLD_AT)
+      return resources.spiritStone.m * Math.pow(10, resources.spiritStone.e) - before
+    }
 
-    const before = { ...resources.spiritStone }
-    settleSuppressedRegions(3600)
-
-    const gained = resources.spiritStone.m * Math.pow(10, resources.spiritStone.e) - (before.m * Math.pow(10, before.e))
-    console.log(`\n镇压 + 灵脉 30 点在线 1 小时: 灵石 +${gained.toFixed(2)}`)
+    /*
+     * 假时钟把 `Date.now()` 钉死:繁荣度由 `now - suppressedAt` 与累计胜场推出,
+     * 实钟下两次测量可能跨档,产出本就该不同 —— 那就分不清差异来自灵脉还是时钟。
+     * 冻住之后,「相等」才是对灵脉的真正判据(原先只判了两边都 > 0)。
+     */
+    vi.useFakeTimers()
+    vi.setSystemTime(WORLD_AT)
+    try {
+      const plain = await measure(0)
+      const withVein = await measure(30)
+      expect(plain, '镇压本该有产出,否则这条判据没有意义').toBeGreaterThan(0)
+      expect(withVein, '灵脉投资不该改变镇压产出').toBe(plain)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

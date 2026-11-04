@@ -409,3 +409,178 @@ describe('首领阶段', () => {
     expect(phaseCasts, '20 场里狂化之后一次新招都没出,判据失去对象').toBeGreaterThan(0)
   })
 })
+
+/**
+ * 倒下的人不再出手。
+ *
+ * 反击是「对方打完那一下顺带还手」,它可能当场把出手方打死。
+ * 而追击 / 震摄这些后续节拍仍挂在出手方身上 —— 少一道自身归零的检查,
+ * 就会出现「气血已经归零的人继续追击,吸血再把血拉回来,从而判胜」。
+ *
+ * 实测(攻击 100 / 吸血 5% / 连击 100%,对手攻击 200 / 反击 100%):
+ * 第 3 拍玩家被反击打到 php=0,第 4 拍照样追击并吸血回到 0.003,最终判胜。
+ */
+describe('战斗 · 气血归零后不再出手', () => {
+  it('被反击打死之后,不再发出追击', () => {
+    const player: CombatantSnap = {
+      name: '我',
+      icon: 'user',
+      isPlayer: true,
+      attack: gn(100),
+      defense: gn(0),
+      maxHp: gn(1000),
+      speed: 1,
+      mods: { lifesteal: 0.05, comboRate: 1 },
+      skills: []
+    }
+    const foe: CombatantSnap = {
+      name: '敌',
+      icon: 'skull',
+      isPlayer: false,
+      attack: gn(200),
+      defense: gn(0),
+      maxHp: gn(150),
+      speed: 1,
+      mods: { counterRate: 1 },
+      skills: []
+    }
+    // flat(0.5) 让「有概率的触发」全部命中:连击必出、反击必出
+    const res = resolveCombat(player, foe, new RandomService(() => 0.5), { playerStartHpPct: 0.05 })
+
+    expect(res.win, '气血归零后靠追击吸血翻盘判胜了').toBe(false)
+    expect(res.playerHpPct, '败北时气血应为 0').toBe(0)
+    // 归零之后不该再出现任何由玩家发出的攻击
+    const zeroAt = res.log.findIndex(l => l.php === 0)
+    expect(zeroAt, '这局里玩家没被打到归零,用例前提变了').toBeGreaterThan(-1)
+    const afterDeath = res.log.slice(zeroAt + 1).filter(l => l.side === 'p' && l.t === 'atk')
+    expect(afterDeath, '归零之后玩家还在出手').toEqual([])
+  })
+})
+
+/**
+ * 技能命中后挨反击死了,附加效果不该再结算。
+ *
+ * 技能命中与反击是同一次 `strike` 里连着发生的:先算伤害,对方顺势还手。
+ * 还手可能把出手方当场打死 —— 而 `effect` 那一整段(流血/吸血/护盾/震慑)挂在后面,
+ * 只查了「敌人还活着没有」。
+ *
+ * 实测(裂伤诀 + 对手反击 100%):玩家归零之后,敌方血量仍在往下掉,
+ * 说明流血还在清。下面 `multi` 的循环本来就有 `!isZero(self.hp)`,其余分支漏了。
+ */
+describe('战斗 · 技能附加效果须在自身存活时结算', () => {
+  it('被反击打死后不再施加流血', () => {
+    const flat = (v: number): RandomService => new RandomService(() => v)
+    const player: CombatantSnap = {
+      name: '我',
+      icon: 'user',
+      isPlayer: true,
+      attack: gn(100),
+      defense: gn(0),
+      maxHp: gn(1000),
+      speed: 1,
+      mods: {},
+      skills: [{ name: '裂伤诀', rate: 1, mult: 1, effect: 'bleed' }]
+    }
+    const foe: CombatantSnap = {
+      name: '敌',
+      icon: 'skull',
+      isPlayer: false,
+      attack: gn(2000),
+      defense: gn(0),
+      maxHp: gn(99999),
+      speed: 1,
+      mods: { counterRate: 1 },
+      skills: []
+    }
+    const res = resolveCombat(player, foe, flat(0.5), { playerStartHpPct: 0.05 })
+
+    const deathAt = res.log.findIndex(l => l.php === 0)
+    expect(deathAt, '这局里玩家没被打到归零,用例前提变了').toBeGreaterThan(-1)
+    // 死亡之后,敌方血量不应再变化
+    const before = res.log[deathAt]!.ehp
+    const after = res.log.slice(deathAt).map(l => l.ehp)
+    expect(after.every(v => v === before), `归零之后敌方血量还在变:${after.join(' → ')}`).toBe(true)
+  })
+})
+
+/**
+ * 玄罡反震也能当场把人打死。
+ *
+ * 组合技反震是「护盾崩碎时反击」,伤害按对方攻击的 0.9 倍缩放 —— 拉到高攻敌人身上
+ * 就是一击必杀。它之后那条 `if (isZero(attacker.hp)) return` 若被删掉,
+ * 尸体会接着走吸血与追击(实测变异后能多出一条 `你使出追击`)。
+ *
+ * 这条之前没有判据:同文件里另一处(追击前)有,但那是第 283 轮补的,只管那一段。
+ */
+describe('战斗 · 玄罡反震打死出手方后不再结算', () => {
+  it('反震归零之后,日志里不再出现玩家发出的攻击', () => {
+    const flat = (v: number): RandomService => new RandomService(() => v)
+    const player: CombatantSnap = {
+      name: '我',
+      icon: 'user',
+      isPlayer: true,
+      attack: gn(100),
+      defense: gn(0),
+      maxHp: gn(1000),
+      speed: 1,
+      mods: { lifesteal: 0.3, comboRate: 1 },
+      skills: []
+    }
+    // 攻击拉到反震能一击必杀;护盾极薄,保证第一击就崩
+    const foe = {
+      name: '敌',
+      icon: 'skull',
+      isPlayer: false,
+      attack: gn(3000),
+      defense: gn(0),
+      maxHp: gn(5000),
+      speed: 1,
+      mods: { shieldOnStart: 0.005, counterRate: 0.2, counterDamage: 5 },
+      skills: [],
+      comboArt: 'xuangang'
+    } as unknown as CombatantSnap
+
+    const res = resolveCombat(player, foe, flat(0.5), { playerStartHpPct: 0.05 })
+
+    const zeroAt = res.log.findIndex(l => l.php === 0)
+    expect(zeroAt, '这局里玩家没被打到归零,用例前提变了').toBeGreaterThan(-1)
+    const after = res.log.slice(zeroAt + 1).filter(l => l.side === 'p' && l.t === 'atk')
+    expect(after, '反震归零之后玩家还在出手').toEqual([])
+    expect(res.win).toBe(false)
+  })
+})
+
+/**
+ * 规则附加的负百分比不能把三维折成负数。
+ *
+ * `foldExtraMods` 对 attackPct / defensePct / maxHpPct 都乘 `Math.max(0.1, 1 + v)`,
+ * 与 `statsCalc` 里那三处是同一层兜底。当前数据里没有负的 `attackPct`
+ * (`endgame` 里只有 `damageReduction: -0.1`),但规则可来自世界生成与逆旅契,
+ * 二者都由数据拼装 —— 一处写错就能把攻击折成负数,而战斗里的伤害符号会跟着反。
+ *
+ * 这条之前没有判据:把三处 `Math.max(0.1, …)` 删掉,combat.spec 仍全绿。
+ */
+describe('战斗 · 规则附加的负百分比有下限', () => {
+  const wolfDef = enemyDef('e_wolf')!
+  it('attackPct 到 -500% 时三维仍为正', () => {
+    const enemy = makeEnemySnap(wolfDef, 1, 1)
+    const base = playerSnap(10)
+    const eff = applyCombatRuleSnap(base, enemy, {
+      playerExtraMods: { attackPct: -5, defensePct: -5, maxHpPct: -5 }
+    }).pEff
+    for (const key of ['attack', 'defense', 'maxHp'] as const) {
+      const v = toNum(eff[key])
+      expect(v, `${key} 被负百分比折成了 ${v}`).toBeGreaterThan(0)
+      expect(Number.isFinite(v), `${key} 不是有限数`).toBe(true)
+    }
+  })
+
+  it('超过 -100% 之后触底,不再随幅度变化', () => {
+    const enemy = makeEnemySnap(wolfDef, 1, 1)
+    const base = playerSnap(10)
+    const deep = applyCombatRuleSnap(base, enemy, { playerExtraMods: { attackPct: -5 } }).pEff
+    const deeper = applyCombatRuleSnap(base, enemy, { playerExtraMods: { attackPct: -50 } }).pEff
+    expect(toNum(deep.attack)).toBeCloseTo(toNum(deeper.attack), 6)
+    expect(toNum(deep.attack)).toBeGreaterThan(0)
+  })
+})

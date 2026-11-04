@@ -22,6 +22,16 @@ const INDEX = `file://${join(ROOT, 'dist/index.html')}`
 const SHOTS_DIR = '/tmp/layout-shots'
 const SHOTS = process.argv.includes('--shots')
 
+/*
+ * 存档格式:与 src/utils/storage.ts + src/utils/crypto.ts 同源。
+ * 这两个值此前在本文件里各抄了 23 遍,密钥一改就得改 23 处 ——
+ * 漏一处那段判据就静默跑在干净档上(fixtureParity.spec 钉的是 saveFixture 那一份)。
+ */
+const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
+const SAVE_PREFIX = 'yunyin.'
+/** 把一个 store 切片加密成 localStorage 里那种密文 */
+const encryptSlice = (o) => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
+
 const VIEWPORTS = [
   // 390 = iPhone 12/13/14/15 标称宽度;375/320 为旧机型与极窄档。dpr 只影响截图,不影响布局与判据
   { width: 390, height: 844, tag: '390', dpr: 3 },
@@ -391,7 +401,14 @@ async function measurePage(page) {
         .map(el => `${Math.round(el.getBoundingClientRect().width)}px 宽 «${(el.textContent || '').trim().slice(0, 10)}»`),
       // 通用挤压判据二:数字与量词被换行拆开
       unitBreaks: (() => {
-        const UNITS = '石铁尘株张载年次件层场阶枚缕时日'
+        /*
+         * 量词表。原先只有 13 个,而实际用到的远不止:倍/成(丹方与倍率)、
+         * 席(辅修槽)、页(残页)、部(功法)、条(词条)、味(丹药)、处(镇压)、
+         * 世(轮回)、点(灵脉投点)、星(命星)、门(八门)、座(虚界)、片(镇压区)、重(祭炼)。
+         * 漏一档,那一处断行就没人管了 —— 表宁全勿缺,多出来的字不会造成误报
+         * (判据是「数字后紧跟该字且被折到下一行」,不是所有该字都算)。
+         */
+        const UNITS = '石铁尘株张载年次件层场阶枚缕时日倍成席页部条味处世点星门座片重'
         const rectAt = (node, i) => {
           const r = document.createRange()
           r.setStart(node, i)
@@ -1052,8 +1069,6 @@ for (const vp of VIEWPORTS) {
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now() - 86400000 * 30, lastActiveAt: Date.now() - 9 * 3600000, totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -1158,7 +1173,7 @@ for (const vp of VIEWPORTS) {
     }
   }
   // payload 只做一次,320 那一遍复用;播种加闸(见第十四件事)
-  const latePayload = Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+  const latePayload = Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   await ctx.addInitScript(decisivePayload => {
     if (localStorage.getItem('__layoutSeeded')) return
     for (const [k, v] of Object.entries(decisivePayload)) localStorage.setItem(k, v)
@@ -1295,7 +1310,7 @@ for (const vp of VIEWPORTS) {
       player: { ...slices.player, secretRealm: null },
       endgame: { ...slices.endgame, worldRun: null }
     }
-    const idlePayload = Object.fromEntries(Object.entries(idleSlices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    const idlePayload = Object.fromEntries(Object.entries(idleSlices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
     const trialCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
     await trialCtx.addInitScript(decisivePayload => {
       if (localStorage.getItem('__layoutSeeded')) return
@@ -1408,8 +1423,6 @@ for (const vp of VIEWPORTS) {
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -1424,7 +1437,7 @@ for (const vp of VIEWPORTS) {
     data => {
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -1484,8 +1497,6 @@ for (const vp of VIEWPORTS) {
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now() - 86400000 * 60, lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -1508,7 +1519,7 @@ for (const vp of VIEWPORTS) {
     data => {
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -1589,8 +1600,6 @@ for (const vp of VIEWPORTS) {
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -1613,7 +1622,7 @@ for (const vp of VIEWPORTS) {
     data => {
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -1651,8 +1660,6 @@ for (const vp of VIEWPORTS) {
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, acceptDownloads: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -1668,7 +1675,7 @@ for (const vp of VIEWPORTS) {
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
       localStorage.setItem('__layoutSeeded', '1')
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -1764,8 +1771,6 @@ for (const vp of VIEWPORTS) {
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -1795,7 +1800,7 @@ for (const vp of VIEWPORTS) {
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
       localStorage.setItem('__layoutSeeded', '1')
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -1865,8 +1870,6 @@ for (const vp of VIEWPORTS) {
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -1891,7 +1894,7 @@ for (const vp of VIEWPORTS) {
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
       localStorage.setItem('__layoutSeeded', '1')
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -1975,8 +1978,6 @@ for (const vp of VIEWPORTS) {
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -1992,7 +1993,7 @@ for (const vp of VIEWPORTS) {
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
       localStorage.setItem('__layoutSeeded', '1')
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -2055,8 +2056,6 @@ for (const vp of VIEWPORTS) {
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -2072,7 +2071,7 @@ for (const vp of VIEWPORTS) {
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
       localStorage.setItem('__layoutSeeded', '1')
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -2127,8 +2126,6 @@ for (const vp of VIEWPORTS) {
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -2144,7 +2141,7 @@ for (const vp of VIEWPORTS) {
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
       localStorage.setItem('__layoutSeeded', '1')
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -2195,8 +2192,6 @@ for (const vp of VIEWPORTS) {
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -2212,7 +2207,7 @@ for (const vp of VIEWPORTS) {
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
       localStorage.setItem('__layoutSeeded', '1')
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -2264,8 +2259,6 @@ for (const vp of VIEWPORTS) {
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -2290,7 +2283,7 @@ for (const vp of VIEWPORTS) {
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
       localStorage.setItem('__layoutSeeded', '1')
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -2355,8 +2348,6 @@ for (const vp of VIEWPORTS) {
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -2373,7 +2364,7 @@ for (const vp of VIEWPORTS) {
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
       localStorage.setItem('__layoutSeeded', '1')
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -2455,8 +2446,6 @@ for (const vp of VIEWPORTS) {
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 320, height: 568 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const now = Date.now()
   const slices = {
@@ -2526,7 +2515,7 @@ for (const vp of VIEWPORTS) {
     data => {
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -2583,8 +2572,6 @@ for (const vp of [
 ]) {
   const tag = `[${vp.tag}-craft]`
   const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.dpr, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const now = Date.now()
   const slices = {
@@ -2619,7 +2606,7 @@ for (const vp of [
     data => {
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -2733,8 +2720,6 @@ for (const vp of [
 ]) {
   const tag = `[${vp.tag}-transfer]`
   const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.dpr, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const now = Date.now()
   const roll9 = ids => ids.map(id => ({ id, roll: 0.9 }))
@@ -2795,7 +2780,7 @@ for (const vp of [
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
       localStorage.setItem('__transferSeeded', '1')
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -2931,8 +2916,6 @@ for (const vp of [
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -2948,7 +2931,7 @@ for (const vp of [
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
       localStorage.setItem('__layoutSeeded', '1')
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -3025,8 +3008,6 @@ for (const vp of [
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, acceptDownloads: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -3042,7 +3023,7 @@ for (const vp of [
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
       localStorage.setItem('__layoutSeeded', '1')
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -3075,8 +3056,6 @@ for (const vp of [
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -3095,7 +3074,7 @@ for (const vp of [
       }
       localStorage.setItem('__layoutSeeded', '1')
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   // 启动提示只活 2.6 秒:页面脚本运行前装好观察器,提示一进 DOM 就抄下
   await ctx.addInitScript(() => {
@@ -3167,8 +3146,6 @@ for (const vp of [
     'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1'
   const UA_DESKTOP =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const save = Object.fromEntries(
     Object.entries({
@@ -3178,7 +3155,7 @@ for (const vp of [
       inventory: { items: [], equipped: {}, pills: {}, artifacts: [], equippedArtifacts: [] },
       endgame: { daoPath: null, daoSource: 0, souls: [], equippedSouls: [] },
       settings: { privacyAccepted: true, sfxOn: false, musicOn: false, musicVol: 0, sfxVol: 0, reduceMotion: true, battleSpeed: 4, decomposeRanks: [], smartKeep: { enabled: true, minQuality: 3, keepCoreAffix: true, keepComboPiece: true }, theme: 'light' }
-    }).map(([k, v]) => [`yunyin.${k}`, enc(v)])
+    }).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)])
   )
   const openWith = async (userAgent, standalone = false) => {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent })
@@ -3276,8 +3253,6 @@ for (const vp of [
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const slices = {
     game: { started: true, saveVersion: 2, createdAt: Date.now(), lastActiveAt: Date.now(), totalPlaySec: 0, createRerolls: 8, createProfile: null },
@@ -3302,7 +3277,7 @@ for (const vp of [
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
       localStorage.setItem('__patrolSeeded', '1')
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -3375,8 +3350,6 @@ for (const vp of [
  */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const now = Date.now()
   // 货架 15 格,目标草在最末一行(390 宽两列):真实 6 格在 844 高视口里本就看得见,量不出滚没滚
@@ -3426,7 +3399,7 @@ for (const vp of [
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
       localStorage.setItem('__layoutSeeded', '1')
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []
@@ -3516,8 +3489,6 @@ for (const vp of [
 /* 六格随机,架上可能没有该品草:须有明确提示 */
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
-  const SAVE_SECRET = 'yunyin-xiuxian::dao-in-the-clouds::v1'
-  const enc = o => CryptoJS.AES.encrypt(JSON.stringify(o), SAVE_SECRET).toString()
   const gn = (m, e) => ({ m, e })
   const now = Date.now()
   const slices = {
@@ -3552,7 +3523,7 @@ for (const vp of [
       for (const [k, v] of Object.entries(data)) localStorage.setItem(k, v)
       localStorage.setItem('__layoutSeeded', '1')
     },
-    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`yunyin.${k}`, enc(v)]))
+    Object.fromEntries(Object.entries(slices).map(([k, v]) => [`${SAVE_PREFIX}${k}`, encryptSlice(v)]))
   )
   const page = await ctx.newPage()
   const pageErrors = []

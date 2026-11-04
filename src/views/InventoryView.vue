@@ -37,7 +37,7 @@
             v-if="row.upgradeable"
             role="img"
             aria-label="可换"
-            class="absolute right-1 top-1 rounded-sm bg-gold-ink/20 px-1 font-kai text-[8px] leading-[12px] text-gold-ink"
+            class="absolute right-1 top-1 rounded-sm border border-gold-ink/50 bg-gold-ink/20 px-1 font-kai text-[8px] leading-[12px] text-ink"
           >可换</span>
           <span class="text-[9px] text-ink-faint">
             {{ row.name }}
@@ -45,7 +45,7 @@
           </span>
           <template v-if="row.item && row.template">
             <GameIcon :name="row.template.icon" :size="16" :style="{ color: qualityDef(row.item.quality).color }" />
-            <span class="w-full truncate text-center font-kai text-[10px]" :style="{ color: qualityDef(row.item.quality).color }">
+            <span class="w-full truncate text-center font-kai text-[10px]" :style="{ color: qualityTextColor(row.item.quality) }">
               {{ row.template.name }}
               <template v-if="row.item.level > 0">+{{ row.item.level }}</template>
               <template v-if="row.item.note">·{{ row.item.note }}</template>
@@ -100,7 +100,7 @@
         class="card-ink mt-3 flex w-full items-center justify-between gap-3 px-4 py-3 text-left active:scale-98"
         @click="craftOpen = true"
       >
-        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-cinnabar/85 font-kai text-[19px] seal-face">炉</span>
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-cinnabar font-kai text-[19px] seal-face">炉</span>
         <span class="min-w-0 flex-1">
           <span class="block font-kai text-[14px] tracking-widest text-ink">开炉炼丹</span>
           <span class="block truncate text-[10px] leading-relaxed text-ink-faint">
@@ -123,8 +123,13 @@
             :tone="pillQualityColor(row.def!)"
             compact
           />
+          <!-- 最上档质感:四角御纹 + 流光(丹药走 rank 入口,道品 rank 9 同样享有) -->
+          <span v-if="lusterByRank(pillRank(row.def!))" class="luster-cornice" aria-hidden="true" />
+          <span v-if="lusterByRank(pillRank(row.def!))" class="luster-sheen" aria-hidden="true" />
+          <!-- role="img":角章只有一个字,读屏要念的是「天品档」;裸 span 属 generic,不接可访问名 -->
           <span
             v-if="isRareRank(pillRank(row.def!))"
+            role="img"
             class="absolute right-0.5 top-0.5 rounded-[3px] border px-[3px] py-px font-kai text-[9px] leading-none text-ink"
             :style="{ borderColor: tint(pillQualityColor(row.def!), 0.45), background: tint(pillQualityColor(row.def!), 0.12) }"
             :aria-label="`${pillQualityName(row.def!)}档`"
@@ -165,7 +170,15 @@
       <ArtifactPanel />
     </template>
 
-    <BaseModal :open="currentPill !== null" :title="currentPill?.def?.name ?? ''" @close="pillDetail = null">
+    <BaseModal
+      :open="currentPill !== null"
+      :title="currentPill?.def?.name ?? ''"
+      :panel-class="pillLuster ? 'luster-frame' : undefined"
+      :title-class="pillLuster ? 'luster-title' : undefined"
+      @close="pillDetail = null"
+    >
+      <!-- 最上档头饰:骑缝印(与装备详情同一套,见 ui/luster) -->
+      <span v-if="pillLuster" class="luster-crown" aria-hidden="true">{{ pillLuster.label }}</span>
       <template v-if="currentPill?.def">
         <div class="flex items-center gap-3">
           <span
@@ -249,7 +262,8 @@
   import { useUiStore } from '@/stores/ui'
   import { useSettingsStore } from '@/stores/settings'
   import { useCultivationStore } from '@/stores/cultivation'
-  import { qualityDef } from '@/data/qualities'
+  import { qualityDef, qualityTextColor } from '@/data/qualities'
+  import { lusterByRank } from '@/ui/luster'
   import { pillDef, pillQualityColor, pillQualityName, pillRank } from '@/data/pills'
   import { HERB_GRADE_SHORT } from '@/data/herbGrades'
   import { herbStashText } from '@/ui/herbText'
@@ -409,6 +423,8 @@
 
   const pillDetail = ref<string | null>(null)
   const currentPill = computed(() => (pillDetail.value ? (pillRows.value.find(r => r.def?.id === pillDetail.value) ?? null) : null))
+  /** 当前查看的丹药的质感层(最上档才有);道品 rank 9 走同一入口 */
+  const pillLuster = computed(() => (currentPill.value?.def ? lusterByRank(pillRank(currentPill.value.def)) : null))
 
   /**
    * 增益丹服前判定,与 usePill 同口径 buffOverflowOf:full = 顶满再服白费(usePill 照扣库存),partial = 只续到顶。

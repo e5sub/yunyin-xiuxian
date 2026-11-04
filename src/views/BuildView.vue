@@ -4,7 +4,7 @@
     <div class="card-ink px-4 py-3">
       <template v-if="build">
         <div class="flex items-center gap-3">
-          <span class="grid h-11 w-11 shrink-0 place-items-center rounded-md bg-cinnabar/90 font-kai text-[22px] seal-face shadow">
+          <span class="grid h-11 w-11 shrink-0 place-items-center rounded-md bg-cinnabar font-kai text-[22px] seal-face shadow">
             {{ build.style.seal }}
           </span>
           <div class="min-w-0 grow">
@@ -102,7 +102,7 @@
           <div class="mt-1.5 space-y-1">
             <div v-for="row in matchupSorted" :key="row.id" class="flex items-center gap-2">
               <span class="w-9 shrink-0 truncate text-[11px] text-ink-soft">{{ row.name }}</span>
-              <span v-if="row.wall" class="shrink-0 rounded bg-cinnabar/10 px-1 py-0.5 text-[9px] leading-none text-cinnabar">墙</span>
+              <span v-if="row.wall" class="shrink-0 rounded border border-cinnabar/40 bg-cinnabar/10 px-1 py-0.5 text-[9px] leading-none text-ink">墙</span>
               <span class="track-ink h-1.25 min-w-0 flex-1 overflow-hidden rounded-full">
                 <span class="bar-fill h-full rounded-full" :class="winBarCls(row.winRate)" :style="{ width: `${row.winRate * 100}%` }" />
               </span>
@@ -130,7 +130,7 @@
       </p>
       <div v-if="loadouts.list.length" class="space-y-1.5">
         <div v-for="lo in loadouts.list" :key="lo.id" class="flex items-center gap-2 rounded-md bg-paper-deep/70 px-2.5 py-1.5">
-          <span class="grid h-6 w-6 shrink-0 place-items-center rounded bg-cinnabar/85 font-kai text-[12px] seal-face">
+          <span class="grid h-6 w-6 shrink-0 place-items-center rounded bg-cinnabar font-kai text-[12px] seal-face">
             {{ lo.seal }}
           </span>
           <span class="min-w-0 grow truncate font-kai text-[12px] text-ink">{{ lo.name }}</span>
@@ -177,9 +177,12 @@
 
     <!-- 保存 / 改名同一弹窗;存的那套功/宝/装原样不动 -->
     <BaseModal :open="saveOpen" :title="renameId ? '为构筑改名' : '存为构筑'" @close="closeSave">
+      <!--
+        不写 maxlength:它按 UTF-16 码元计数,emoji 占两个 —— 输入阶段就会劈开,
+        后面再怎么按码点截也救不回来。收敛交给 captureLoadout / renameLoadout 的 truncateCodePoints。
+      -->
       <input
         v-model="saveName"
-        maxlength="8"
         class="w-full rounded-md border border-ink/20 bg-paper-deep/60 px-3 py-2 font-kai text-[14px] tracking-widest text-ink outline-none focus:border-cinnabar/50"
         placeholder="构筑名号"
       />

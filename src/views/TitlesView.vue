@@ -39,16 +39,18 @@
           :class="{ 'ring-1 ring-jade/40': row.active }"
         >
           <QualityAura :quality="row.def.quality" />
+          <span v-if="row.luster" class="luster-cornice" aria-hidden="true" />
+          <span v-if="row.luster" class="luster-sheen" aria-hidden="true" />
           <div class="min-w-0 grow">
             <p class="flex flex-wrap items-center gap-1.5">
               <span
                 class="truncate font-kai text-[13px]"
                 :class="{ 'q-plaque': row.plaque }"
-                :style="{ color: qualityDef(row.def.quality).color }"
+                :style="{ color: qualityTextColor(row.def.quality) }"
                 >{{ row.def.name }}</span
               >
-              <span class="shrink-0 rounded bg-ink/6 px-1.5 py-0.5 text-[10px]" :style="{ color: qualityDef(row.def.quality).color }">{{ qualityDef(row.def.quality).name }}</span>
-              <span v-if="row.active" class="shrink-0 rounded bg-jade/15 px-1.5 py-0.5 text-[10px] text-jade">相伴</span>
+              <span class="shrink-0 rounded bg-ink/6 px-1.5 py-0.5 text-[10px]" :style="{ color: qualityTextColor(row.def.quality) }">{{ qualityDef(row.def.quality).name }}</span>
+              <span v-if="row.active" class="shrink-0 rounded border border-jade/40 bg-jade/15 px-1.5 py-0.5 text-[10px] text-ink">相伴</span>
             </p>
             <p class="truncate text-[10px] text-ink-faint">{{ row.def.desc }}</p>
             <p v-if="row.modText" class="text-[10px] text-azure tabular">{{ row.modText }}</p>
@@ -81,8 +83,9 @@
   import { petDef, PETS } from '@/data/pets'
   import { PERSONALITY_NAMES, personalityDesc } from '@/core/petPersonality'
   import { petTraitText } from '@/ui/itemText'
-  import { qualityDef } from '@/data/qualities'
+  import { qualityDef, qualityTextColor } from '@/data/qualities'
   import { qualityAura } from '@/ui/qualityAura'
+  import { lusterOf } from '@/ui/luster'
   import { modsText } from '@/data/statNames'
   import SectionTitle from '@/components/common/SectionTitle.vue'
   import InkTabs from '@/components/common/InkTabs.vue'
@@ -139,7 +142,8 @@
         personalityDesc: personalityDesc(def!.personality),
         traitText: petTraitText(def!),
         /** 稀有档的名字加描边与字距,与法宝/装备同一套(见 ui/qualityAura) */
-        plaque: qualityAura(def!.quality).plaque
+        plaque: qualityAura(def!.quality).plaque,
+        luster: lusterOf(def!.quality)
       }))
       .sort((a, b) => Number(b.active) - Number(a.active))
   )

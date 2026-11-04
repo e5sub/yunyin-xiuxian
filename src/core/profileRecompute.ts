@@ -12,6 +12,7 @@
  * (services/cloud 的 import.meta.env、DOM 组件等);store 本身在无窗环境安全。
  */
 import { createPinia, setActivePinia } from 'pinia'
+import { truncateCodePoints } from '@/utils/saveShape'
 import { usePlayerStore } from '@/stores/player'
 import { useInventoryStore } from '@/stores/inventory'
 import { useCultivationStore } from '@/stores/cultivation'
@@ -73,7 +74,8 @@ export function snapshotFromActiveStores(): ProfileSnapshot | null {
   if (!nums.every(finite)) return null
   if (!finite(player.major) || !finite(player.sub)) return null
   return {
-    name: typeof player.name === 'string' ? player.name.slice(0, 24) : '',
+    // 按码点截,不按码元:带符号(emoji)的道号在 slice 下会被劈成半个字
+    name: typeof player.name === 'string' ? truncateCodePoints(player.name, 24) : '',
     realmLabel: realmLabel(Math.max(0, Math.trunc(player.major)), Math.max(0, Math.trunc(player.sub))),
     realmIndex: Math.trunc(player.major) * 100 + Math.trunc(player.sub),
     powerM: power.m,

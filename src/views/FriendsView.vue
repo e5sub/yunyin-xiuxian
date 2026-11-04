@@ -8,7 +8,7 @@
         :key="t.id"
         class="rounded-md py-1.5 text-[13px] tracking-[0.2em]"
         :aria-pressed="tab === t.id"
-        :class="tab === t.id ? 'bg-cinnabar text-paper' : 'text-ink-faint'"
+        :class="tab === t.id ? 'seal-face bg-cinnabar' : 'text-ink-faint'"
         @click="tab = t.id"
       >
         {{ t.label }}

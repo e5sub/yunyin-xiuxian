@@ -28,6 +28,15 @@
   --color-azure-rgb: 65 103 139;
   --color-violet-ink-rgb: 114 85 158;
   --color-amber-ink-rgb: 135 93 25;
+  /*
+   * 品阶文字色:三档在日主题上过不了 4.5:1 的品阶,单独给一套「当文字用」的暗版。
+   * 装饰那一层(光环/边框/角章)仍用 data/qualities.ts 里的原色 —— 它只需 ΔE 分得开。
+   * 原色与实测:玄 #A85C3F 4.28、天 #C9A227 2.11、仙 #3E8E8B 3.36,都低于正文线。
+   */
+  --color-quality-profound-text-rgb: 138 74 51;
+  --color-quality-heaven-text-rgb: 122 95 14;
+  --color-quality-immortal-text-rgb: 46 107 105;
+  --color-quality-dao-text-rgb: 132 89 10;
 
   --color-paper: rgb(var(--color-paper-rgb));
   --color-paper-deep: rgb(var(--color-paper-deep-rgb));
@@ -43,6 +52,10 @@
   --color-azure: rgb(var(--color-azure-rgb));
   --color-violet-ink: rgb(var(--color-violet-ink-rgb));
   --color-amber-ink: rgb(var(--color-amber-ink-rgb));
+  --color-quality-profound-text: rgb(var(--color-quality-profound-text-rgb));
+  --color-quality-heaven-text: rgb(var(--color-quality-heaven-text-rgb));
+  --color-quality-immortal-text: rgb(var(--color-quality-immortal-text-rgb));
+  --color-quality-dao-text: rgb(var(--color-quality-dao-text-rgb));
 
   /*
    * 楷体栈唯一事实源(tailwind.config 里的 kai/song 只是把它接成 utility)。
@@ -368,7 +381,11 @@ html[data-theme='dark'] {
   --color-ink-rgb: 232 226 210;
   --color-ink-soft-rgb: 198 191 169;
   --color-ink-faint-rgb: 168 161 140;
-  --color-cinnabar-rgb: 201 85 78;
+  /* 朱砂(夜):提亮到四张底上都过 4.5:1 —— 它承担 41 处 9~17px 正文(拒因/待办标记/可点装饰),
+     原 201 85 78 对纸只有 3.83。印面另有 --color-cinnabar-deep 兜底,不吃这一档。 */
+  /* 2026-11-03:再提一档。228 122 112 在 paper 上是 5.73,但境界名那类压在
+     card-ink 叠了半透明层的底上只有 4.03。改到 238 136 126:最亮的实测底 4.64、对纸 6.62。 */
+  --color-cinnabar-rgb: 238 136 126;
   --color-cinnabar-deep-rgb: 163 70 64;
   --color-indigo-ink-rgb: 147 179 185;
   --color-gold-ink-rgb: 200 163 90;
@@ -376,6 +393,11 @@ html[data-theme='dark'] {
   --color-azure-rgb: 124 159 195;
   --color-violet-ink-rgb: 169 143 211;
   --color-amber-ink-rgb: 207 154 69;
+  /* 品阶文字色 · 夜主题:此处的纸是近黑,压暗只会更看不见,故反过来提亮 */
+  --color-quality-profound-text-rgb: 232 140 102;
+  --color-quality-heaven-text-rgb: 201 162 39;
+  --color-quality-immortal-text-rgb: 81 185 181;
+  --color-quality-dao-text-rgb: 233 185 73;
   --shadow-ink: rgb(8 7 5);
   --shadow-ink-rgb: 8 7 5;
   /* 暗色 paper 92% + white 8% 预计算 */
@@ -813,6 +835,156 @@ html[data-theme='light'] .q-aura-halo {
   }
 }
 
+/* ================= 高级物质感层(luster) =================
+ * 与品阶三级的关系见 src/ui/luster.ts:前两级答「有多稀有」,这一层答「拿到手的那一喜」。
+ * 三条铁律:
+ *   1. 只在最上档出现 —— 每档都加一层,等于每档都没有。
+ *   2. 不抢内容 —— 特效层一律 pointer-events:none,不压图标与数字的可读性。
+ *   3. 尊重减少动效 —— 静态形制自己站得住,动效只是加成(见文件末尾的兜底)。
+ * 色由 --luster-tone 承载,模块不写死色值;两块主题各一套。
+ */
+
+/* 主色沿用朱砂:全站的「贵重」已有语义(印面、稀有掉落),不为高级物另造第六种色 */
+:root {
+  --luster-tone: 168 63 57;
+  --luster-glow: 0 0 0 1px rgb(var(--luster-tone) / 0.24), 0 0 20px rgb(var(--luster-tone) / 0.18);
+}
+html[data-theme='dark'] {
+  --luster-tone: 238 136 126;
+  --luster-glow: 0 0 0 1px rgb(var(--luster-tone) / 0.34), 0 0 26px rgb(var(--luster-tone) / 0.24);
+}
+
+/* ---------- 一、卡面:四角御纹 ----------
+ * 与品阶角饰同角但更长:品阶角饰 9~11px,御纹 18px。
+ * 两者同时出现时读作「双层框」,靠长度差区分,不靠位移差 —— 位移差在小格子上看不出来。
+ */
+.luster-cornice {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  overflow: hidden;
+}
+.luster-cornice::before,
+.luster-cornice::after {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-color: rgb(var(--luster-tone) / 0.7);
+  border-style: solid;
+  border-width: 0;
+}
+.luster-cornice::before {
+  left: 2px;
+  top: 2px;
+  border-left-width: 1px;
+  border-top-width: 1px;
+  border-top-left-radius: 5px;
+}
+.luster-cornice::after {
+  right: 2px;
+  bottom: 2px;
+  border-right-width: 1px;
+  border-bottom-width: 1px;
+  border-bottom-right-radius: 5px;
+}
+
+/* ---------- 二、卡面:流光 ----------
+ * 比品阶 sheen 更慢更宽,只作底噪。
+ */
+.luster-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+.luster-sheen::after {
+  content: '';
+  position: absolute;
+  top: -60%;
+  bottom: -60%;
+  left: -50%;
+  width: 34%;
+  background: linear-gradient(90deg, transparent, rgb(var(--luster-tone) / 0.4), transparent);
+  transform: skewX(-18deg);
+  animation: luster-sheen 7.4s ease-in-out infinite;
+  animation-delay: 2.6s;
+}
+@keyframes luster-sheen {
+  0%,
+  64% {
+    transform: translateX(-50%) skewX(-18deg);
+    opacity: 0;
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(400%) skewX(-18deg);
+    opacity: 0;
+  }
+}
+
+/* ---------- 三、详情:整幅框 ----------
+ * 四段断续嵌边(四角留空),不与面板的圆角边框撞成同一套语言。
+ */
+.luster-frame {
+  box-shadow: var(--luster-glow);
+}
+.luster-frame::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 20;
+  background:
+    linear-gradient(90deg, transparent 0 8%, rgb(var(--luster-tone) / 0.6) 18%, rgb(var(--luster-tone) / 0.6) 82%, transparent 92%) top / 100% 1px no-repeat,
+    linear-gradient(90deg, transparent 0 8%, rgb(var(--luster-tone) / 0.6) 18%, rgb(var(--luster-tone) / 0.6) 82%, transparent 92%) bottom / 100% 1px no-repeat,
+    linear-gradient(180deg, transparent 0 8%, rgb(var(--luster-tone) / 0.6) 18%, rgb(var(--luster-tone) / 0.6) 82%, transparent 92%) left / 1px 100% no-repeat,
+    linear-gradient(180deg, transparent 0 8%, rgb(var(--luster-tone) / 0.6) 18%, rgb(var(--luster-tone) / 0.6) 82%, transparent 92%) right / 1px 100% no-repeat;
+}
+
+/* 印:取「骑缝印」形制 —— 竖排于左侧内沿,落进正文的 px-5 留白里,不压字。
+ * 居中会与标题行的内容(品阶、阶位、+N)打架,而这一层不许抢内容(铁律二)。
+ */
+.luster-frame .luster-crown {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  z-index: 21;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  padding: 5px 0;
+  border-radius: 4px;
+  font-family: var(--font-kai);
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  color: #f6f1e5;
+  background: rgb(var(--luster-tone) / 0.92);
+  box-shadow:
+    0 0 0 1px rgb(var(--luster-tone) / 0.45),
+    0 0 12px rgb(var(--luster-tone) / 0.4);
+  pointer-events: none;
+}
+
+/* ---------- 四、字面:标题 ----------
+ * 字距张开 + 暖色描边。用 text-shadow 做描边,不动字色 —— 字色归可读性判据管。
+ */
+.luster-title {
+  letter-spacing: 0.28em;
+  text-shadow:
+    0 0 12px rgb(var(--luster-tone) / 0.5),
+    0 1px 0 rgb(var(--luster-tone) / 0.35);
+}
+
 /* ================= 满级标记 =================
  * 与品阶光环是两套语言(见 src/ui/masteryMark.ts):
  *   品阶 = 掉落时就定下的属性 → 角饰 + 外发光,越稀有越亮;
@@ -1225,6 +1397,23 @@ html[data-theme='light'] .mastery-bar {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+  /*
+   * 高级物的流光 keyframes 终态是 opacity:0(那一帧已经掠过去了),
+   * 而上面把时长归零后就停在终态 —— 形制会整个消失,只剩一张素卡。
+   * 这里显式给一段静态高光:形制仍在,只是不动。
+   * 不改 animation 简写:上面刻意用 0.01ms 保留「跑过一次」的前提,
+   * BuildingCard 靠 animationend 复位高亮(见 src/ui/reducedMotion.spec.ts)。
+   */
+  .luster-sheen::after {
+    transform: none;
+    top: 0;
+    bottom: auto;
+    left: 0;
+    width: 100%;
+    height: 42%;
+    background: linear-gradient(180deg, rgb(var(--luster-tone) / 0.16), transparent);
+    opacity: 1;
+  }
 }
 
 /* 设置项:减少动效 */
@@ -1237,8 +1426,21 @@ html[data-theme='light'] .mastery-bar {
   transition-duration: 0.01ms !important;
 }
 
+
 /* 原生下拉展开列表跟随主题(option 不继承 select 的自定义背景) */
 select option {
   background-color: rgb(var(--color-paper-rgb));
   color: rgb(var(--color-ink-rgb));
+}
+
+/* 与系统偏好那处同一理由:流光停在终态会整层看不见,改给静态高光 */
+.reduce-motion .luster-sheen::after {
+  transform: none;
+  top: 0;
+  bottom: auto;
+  left: 0;
+  width: 100%;
+  height: 42%;
+  background: linear-gradient(180deg, rgb(var(--luster-tone) / 0.16), transparent);
+  opacity: 1;
 }

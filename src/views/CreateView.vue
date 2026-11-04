@@ -17,11 +17,20 @@
     <div class="card-ink mt-8 px-4 py-3">
       <p class="mb-2 font-kai text-[13px] tracking-[0.3em] text-ink-faint">道 号</p>
       <div class="flex items-center gap-2">
+        <!--
+          不写 maxlength:它按 UTF-16 码元计数,emoji 占两个 —— 玩家粘「一二三四五六七」加一个星月符号
+          会在输入阶段就被切成孤立代理项,后面再怎么按码点截也救不回来。
+          改由 @input 按码点钳制,与提交时的 truncateCodePoints 同一把尺。
+          组合输入(拼音/日文候选)期间不钳也不回写:此时改 :value 会把候选缓冲区整个替换掉,
+          未上屏的字直接输不进来。等 compositionend 再钳。
+        -->
         <input
-          v-model="name"
-          maxlength="8"
+          :value="name"
           class="w-full rounded-md border border-ink/20 bg-paper-deep/60 px-3 py-2 font-kai text-[15px] tracking-widest text-ink outline-none focus:border-cinnabar/50"
           placeholder="道号"
+          @compositionstart="composing = true"
+          @compositionend="onNameCompositionEnd"
+          @input="onNameInput"
         />
         <button class="btn-ghost shrink-0 !px-3" aria-label="随机道号" @click="randomName">
           <GameIcon name="refresh" :size="15" />
@@ -73,6 +82,7 @@
   import { computed, ref, watch } from 'vue'
   import { useRouter } from 'vue-router'
   import { rng } from '@/utils/random'
+  import { truncateCodePoints } from '@/utils/saveShape'
   import { rollLinggen } from '@/core/linggenGen'
   import { rootElements, tendencyLines } from '@/core/linggenAffinity'
   import { randomDaoName } from '@/data/names'
@@ -148,8 +158,22 @@
     }
   }
 
+  /** 输入法组合输入进行中:此间不钳也不回写,否则候选缓冲区会被替换 */
+  const composing = ref(false)
+
+  function onNameInput(e: Event): void {
+    if (composing.value) return
+    name.value = truncateCodePoints((e.target as HTMLInputElement).value, 8)
+  }
+
+  function onNameCompositionEnd(e: Event): void {
+    composing.value = false
+    name.value = truncateCodePoints((e.target as HTMLInputElement).value, 8)
+  }
+
   async function doBegin(): Promise<void> {
-    const finalName = name.value.trim().slice(0, 8) || '无名散修'
+    // 按码点截,不按码元:emoji 占两个码元,slice(0,8) 会把末尾那个符号切成半个字
+    const finalName = truncateCodePoints(name.value.trim(), 8) || '无名散修'
     player.initCharacter(finalName, profile.value)
     // 开局馈赠:入门功法 + 一柄竹剑 + 三枚聚气散(竹剑由签发侧生成,登录走服务端,未登录本地同一份核心)
     cultivation.learn('m_taixuan')

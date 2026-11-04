@@ -4,6 +4,8 @@ import { QUALITIES, qualityDef } from '@/data/qualities'
 import { AFFIX_RARITY_RANK, AFFIXES, affixDef, affixFitBlock } from '@/data/affixes'
 import { equipmentTemplate } from '@/data/equipment'
 import { EQUIPMENT_TEMPLATES } from '@/data/equipment'
+import { maxTierForMajor } from '@/data/regions'
+import { MAX_MAJOR } from '@/data/realms'
 import { isZero, toNum } from '@/utils/gnum'
 import { generateEquipment, resolveEquipStats, rollQuality, qualityWeightAt, sortAffixLines } from './equipGen'
 import { budgetOfMods } from './ruleBudget'
@@ -218,5 +220,46 @@ describe('饰品专属战斗词缀(B-1)', () => {
       }
     }
     expect(hit.size, '高阶梯多次 J 槽掷取应碰上专属战斗词缀').toBeGreaterThan(0)
+  })
+})
+
+/**
+ * 每阶的每个装备槽都要有模板,否则那一阶该槽位永远刷不出装备。
+ *
+ * 这是数据表的完整性,不是逻辑:少一个模板不会报错,只会让玩家在某个境界
+ * 卡着某个槽位空着。`artifact` 槽不在此列 —— 法宝走 `ARTIFACTS` 独立表。
+ */
+describe('装备模板 · 每阶槽位齐全', () => {
+  it('40 阶 × 九个可掉落槽位,一个不缺', () => {
+    const SLOTS = ['weapon', 'head', 'body', 'wrist', 'belt', 'boots', 'necklace', 'ring', 'talisman'] as const
+    const byTier = new Map<number, Set<string>>()
+    for (const t of EQUIPMENT_TEMPLATES) {
+      if (!byTier.has(t.tier)) byTier.set(t.tier, new Set())
+      byTier.get(t.tier)!.add(t.slot)
+    }
+    /*
+     * 期望阶梯写死为 1..真实区域上限,不拿 `byTier.keys()` 现推:
+     * 只数「有 32 个不同 tier」的话,删掉 1 阶又补个 33 阶照样过关,
+     * 而 1 阶那一整列装备此后永远刷不出来。
+     */
+    const TIER_TOP = maxTierForMajor(MAX_MAJOR)
+    expect(TIER_TOP, '区域阶梯的上限变了,下面的期望范围要跟着改(本仓内容 40 阶)').toBe(40)
+    const tiers = [...byTier.keys()].sort((a, b) => a - b)
+    const outOfRange = tiers.filter(t => t < 1 || t > TIER_TOP)
+    expect(outOfRange, `模板里出现了 1..${TIER_TOP} 之外的阶:${outOfRange.join(',')}`).toEqual([])
+    const missing: string[] = []
+    for (let tier = 1; tier <= TIER_TOP; tier += 1) {
+      if (!byTier.has(tier)) {
+        missing.push(`${tier} 阶整阶没有模板`)
+        continue
+      }
+      for (const s of SLOTS) if (!byTier.get(tier)!.has(s)) missing.push(`${tier} 阶缺 ${s}`)
+    }
+    expect(missing, `有阶缺槽位,那一阶该槽位永远刷不出装备:\n${missing.join('\n')}`).toEqual([])
+  })
+
+  it('artifact 槽不混进模板表(法宝有独立数据源)', () => {
+    const artifacts = EQUIPMENT_TEMPLATES.filter(t => t.slot === 'artifact')
+    expect(artifacts, `模板表里出现了法宝槽:${artifacts.map(a => a.id).join(',')}`).toEqual([])
   })
 })

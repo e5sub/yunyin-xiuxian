@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-**云隐修仙录** — 一款 Vue 3 驱动的文字修仙放置（idle）游戏，进度存云端（`server/`），本地只作缓存。版本 1.58.1，`type: module`。支持 Web/PWA 与 Android（Capacitor）两端；桌面直接用浏览器开网页，不另发行客户端（`bun run build:electron` 仍可本地出包）。许可证 CC BY-NC 4.0（禁止商用）；打包的楷体字型为 LXGW WenKai，SIL OFL 1.1（许可证文本在 `public/fonts/OFL.txt`，再分发时须保留）。
+**云隐修仙录** — 一款 Vue 3 驱动的文字修仙放置（idle）游戏，进度存云端（`server/`），本地只作缓存。版本 1.58.5，`type: module`。支持 Web/PWA 与 Android（Capacitor）两端；桌面直接用浏览器开网页，不另发行客户端（`bun run build:electron` 仍可本地出包）。许可证 CC BY-NC 4.0（禁止商用）；打包的楷体字型为 LXGW WenKai，SIL OFL 1.1（许可证文本在 `public/fonts/OFL.txt`，再分发时须保留）。
 
 ## Architecture & Data Flow
 
@@ -20,7 +20,7 @@ src/stores/ Pinia 状态（持久化 <-> 内存）
 src/ui/    展示层字符串/图标注册（非逻辑）
 ```
 
-- **src/data/** — 纯静态声明式数据，无副作用、单一事实源。58 个模块：realms、regions、enemies（132）、equipment（288 模板）、affixes（119）、statNames（属性键→中文名，唯一命名表）、gongfa、gongfaBranches、pills、artifacts、souls、xiangxiu、ziwei、yijing、qimen、daolu、endgame、mutators、constants（556 行，含 `TICK_MS`、`OFFLINE_MIN_SECONDS`、`AGE_YEARS_PER_HOUR`、`ACTIVE_STAMP_MS` 等）。**这里的数字就是真实游戏数值，改动会影响全流程。**
+- **src/data/** — 纯静态声明式数据，无副作用、单一事实源。59 个模块：realms、regions、enemies（180）、equipment（360 模板）、affixes（119）、statNames（属性键→中文名，唯一命名表）、gongfa、gongfaBranches、pills、artifacts、souls、xiangxiu、ziwei、yijing、qimen、daolu、endgame、mutators、constants（453 行，含 `TICK_MS`、`OFFLINE_MIN_SECONDS`、`AGE_YEARS_PER_HOUR`、`ACTIVE_STAMP_MS` 等）。**这里的数字就是真实游戏数值，改动会影响全流程。**
 - **src/core/** — 游戏逻辑。关键模块：`engine.ts`（在线心跳 1000ms 单例，含 start/stop 与防重复 interval 守卫）、`combat.ts`（后台完整预演后回放）、`statsCalc.ts`（词缀递减 + 软上限）、`equipGen.ts`、`exploration.ts`、`offline.ts`、`progress.ts`（任务/成就横向总线）、`theme.ts`、`worldGen.ts`（终局世界生成，三重审计门）；另有 19 个 `*Service.ts` 与 6 个 `*Sim.ts` 平衡模拟器。
 - **src/stores/** — 18 个 Pinia store（另有非 store 的 `sanitizeAll.ts` 逐仓自愈入口）；除 `ui.ts` 外 17 个经 `persistConfig('<id>')`（`utils/storage.ts`）持久化。**任何持久化 store 必须暴露 `sanitize()`** 修复损坏存档——`storeResilience.spec.ts` 会从源码正则 `/persistConfig\('([a-zA-Z]+)'\)/` 抓取列表并逐一跑恶意损坏用例，缺 `sanitize` 即测试红。
 - **src/ui/** — 展示层数据（icons 注册、codex、enemyLore、releaseNotes、powerText、`*Text.ts`）。注意 "palette" 不是模块，是 `src/ui/palette.spec.ts` 治理测试。
@@ -32,7 +32,7 @@ src/ui/    展示层字符串/图标注册（非逻辑）
 | 路径 | 用途 |
 | --- | --- |
 | `src/data/` | 静态声明式游戏内容（唯一事实源） |
-| `src/core/` | 游戏逻辑 + 237 个同目录 `*.spec.ts` |
+| `src/core/` | 游戏逻辑 + 247 个同目录 `*.spec.ts` |
 | `src/stores/` | Pinia 状态（17 持久化 + ui 临时） |
 | `src/ui/` | 展示层字符串 / 图标 |
 | `src/utils/` | 大数、格式化、随机、存储、存档守卫 |
@@ -200,7 +200,7 @@ tsconfig paths `@/* → ./src/*`，开启 `strict` + `noUncheckedIndexedAccess` 
 
 ## Testing & QA
 
-- **框架**：Vitest 5；测试与实现同目录共存 `*.spec.ts`（共 395 个 spec：core 247、ui 58、stores 27、utils 14、data 34、composables 13、router 2）。用例条数不写进文档(`bun run test:report` 每次自己打)。
+- **框架**：Vitest 5；测试与实现同目录共存 `*.spec.ts`（共 406 个 spec：core 247、ui 62、stores 27、utils 21、data 34、composables 13、router 2）。用例条数不写进文档(`bun run test:report` 每次自己打)。
 - **运行**：全量 `bun run test`；分桶报告 `bun run test:report`。
 - **红线测试（改了相关逻辑必须保住）**：
   - `storeResilience.spec.ts` — 持久化 store 必须带 `sanitize`，且经恶意损坏用例。

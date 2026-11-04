@@ -70,7 +70,7 @@
       </button>
       <div v-else class="mt-2 grid grid-cols-2 gap-2">
         <button class="btn-ghost !py-2 !text-[11px] !text-ink-soft" @click="abandonConfirm = false">再想想</button>
-        <button class="btn-seal !py-2 !text-[11px] !bg-cinnabar/15 !text-cinnabar" @click="abandonRun">
+        <button class="btn-seal !py-2 !text-[11px]" @click="abandonRun">
           确认返还(不可逆)
         </button>
       </div>
@@ -83,7 +83,7 @@
     <div class="mt-2 space-y-2.5">
       <div v-for="world in CELESTIAL_WORLDS" :key="world.id" class="card-ink px-4 py-3">
         <p class="flex items-center gap-2">
-          <span class="grid h-8 w-8 place-items-center rounded-md bg-indigo-ink/85 font-kai text-[15px] seal-face">
+          <span class="grid h-8 w-8 place-items-center rounded-md bg-indigo-ink font-kai text-[15px] seal-face">
             {{ world.seal }}
           </span>
           <span class="font-kai text-[15px] tracking-widest text-ink">{{ world.name }}</span>
@@ -114,7 +114,7 @@
       <!-- 虚界之门:程序化生成 + 裁判过审 -->
       <div class="card-ink border border-violet-ink/25 px-4 py-3">
         <p class="flex items-center gap-2">
-          <span class="grid h-8 w-8 place-items-center rounded-md bg-violet-ink/85 font-kai text-[15px] seal-face">
+          <span class="grid h-8 w-8 place-items-center rounded-md bg-violet-ink font-kai text-[15px] seal-face">
             {{ endgame.voidWorld?.seal ?? '虚' }}
           </span>
           <span class="font-kai text-[15px] tracking-widest text-ink">

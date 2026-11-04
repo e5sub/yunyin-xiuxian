@@ -1,5 +1,13 @@
 <template>
-  <BaseModal :open="def !== undefined" :title="def?.name ?? ''" @close="close">
+  <BaseModal
+    :open="def !== undefined"
+    :title="def?.name ?? ''"
+    :panel-class="luster ? 'luster-frame' : undefined"
+    :title-class="luster ? 'luster-title' : undefined"
+    @close="close"
+  >
+    <!-- 最上档头饰:骑缝印(与装备/丹药详情同一套,见 ui/luster) -->
+    <span v-if="luster" class="luster-crown" aria-hidden="true">{{ luster.label }}</span>
     <div v-if="def">
       <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
         <QualityTag :quality="def.quality" />
@@ -106,8 +114,17 @@
         >
           {{ subFull ? `${seatKind === 'secret' ? '秘术' : '辅修'}已满 ${seatUsed}/${seatCap}` : subActionText }}
         </button>
-        <button v-if="upCost" class="btn-ghost flex-1" :disabled="upShort !== null" @click="def && upgradeGongfa(def.id)">
-          {{ upShort ? '进 修(缺料)' : '进 修' }}
+        <!--
+          满级不再让按钮消失:它与「设为主修 / 辅修」并排各占一半,一消失整行宽度就重置。
+          代价算不出来(gongfaUpgradeCost 满级返 null)时改成禁用并写状态词,与装备强化、法宝炼化同规。
+        -->
+        <button
+          class="btn-ghost flex-1"
+          :disabled="!upCost || upShort !== null"
+          :title="!upCost ? gongfaPeakLabel() : undefined"
+          @click="def && upgradeGongfa(def.id)"
+        >
+          {{ !upCost ? gongfaPeakLabel() : upShort ? '进 修(缺料)' : '进 修' }}
         </button>
       </div>
     </template>
@@ -131,10 +148,11 @@
   import { gongfaModsAt } from '@/stores/cultivation'
   import { STAT_NAMES, modsText, statValueText } from '@/data/statNames'
   import { gongfaSkillLine } from '@/ui/itemText'
-  import { gongfaMainToast, gongfaSubFullToast, gongfaSubToast, gongfaUpShortToast } from '@/ui/gongfaText'
+  import { gongfaMainToast, gongfaPeakLabel, gongfaSubFullToast, gongfaSubToast, gongfaUpShortToast } from '@/ui/gongfaText'
   import type { AnyStatKey, StatMods } from '@/types'
   import BaseModal from '@/components/common/BaseModal.vue'
   import QualityTag from '@/components/common/QualityTag.vue'
+  import { lusterOf } from '@/ui/luster'
 
   const ui = useUiStore()
   const cultivation = useCultivationStore()
@@ -142,6 +160,8 @@
   const player = usePlayerStore()
 
   const def = computed(() => (ui.gongfaDetailId ? gongfaDef(ui.gongfaDetailId) : undefined))
+  /** 最上档功法的质感层;非最上档为 null,弹窗保持原样 */
+  const luster = computed(() => (def.value ? lusterOf(def.value.quality) : null))
   const level = computed(() => (def.value ? (cultivation.learned[def.value.id] ?? 0) : 0))
   const learned = computed(() => level.value > 0)
   const upCost = computed(() => (def.value ? gongfaUpgradeCost(def.value.id) : null))

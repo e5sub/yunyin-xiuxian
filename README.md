@@ -65,7 +65,7 @@ bun run build
 # 预览构建结果
 bun preview
 
-# 全量测试（数值/战斗/流派/曲线/经济/回归/终局/决策，全量 395 个 spec）
+# 全量测试（数值/战斗/流派/曲线/经济/回归/终局/决策，全量 406 个 spec）
 # 注意用 bun run test,不能用 bun test —— 后者会调 Bun 自带的测试器而非 Vitest
 bun run test
 
@@ -114,7 +114,7 @@ bun run test -- src/ui/kaiFontCoverage.spec.ts
 > 楷体(霞鹜文楷 GB 屏幕阅读版,随包分发)按用法频次切成二十来片 woff2,每片一段
 > `unicode-range` 按需下载 —— 首屏只取最热的几片(~30KB 起步,而不是整份 1.8MB)。
 > 重新切分:**`uv run scripts/fonts/build-kai-font.py --source scripts/fonts/lxgw-wenkai-gb-screen-subset.woff2`**
-> (离线,从已入库的全量字库再切;能联网时去掉 `--source` 会自动下载母体)。母体 24.4MB 不入库,
+> (离线,从已入库的全量字库再切;能联网时去掉 `--source` 会自动下载母体)。母体 24.8MB 不入库,
 > 协议全文在 `public/fonts/OFL.txt`(再分发须保留)。
 
 ### 多端构建
@@ -207,7 +207,7 @@ docker run -d -p 8787:8787 -e PORT=8787 yunyin-xiuxian
 | Tone.js         | 15    | FluidR3 乐器采样播放（BGM + SFX）           |
 | CryptoJS        | 4     | 存档 AES 加密                               |
 | lucide-vue-next | 0.577 | 图标库                                      |
-| Vitest          | 5     | 单元测试与平衡审计（全量 395 个 spec）        |
+| Vitest          | 5     | 单元测试与平衡审计（全量 406 个 spec）        |
 | Capacitor       | 8     | Android 客户端打包                          |
 | Node + Express  | 4     | 后端：账号 / 云存档 / 拍卖行 / GM 后台（REST + WebSocket 同端口） |
 | better-sqlite3 / mysql2 | 12 / 3 | 云端数据存储（`DB_DRIVER` 切换，单文件库或外部 MySQL） |
@@ -242,7 +242,7 @@ src/
 │   ├── endgame.ts            # 道途 / 天界 / 试炼
 │   ├── mutators.ts           # 8 变数
 │   └── constants.ts          # 全局平衡参数
-├── core/                 # 逻辑层（134 个模块 + 242 个同目录 spec）
+├── core/                 # 逻辑层（137 个模块 + 247 个同目录 spec）
 │   ├── engine.ts             # 在线心跳驱动（1000ms）
 │   ├── offline.ts            # 离线收益结算
 │   ├── combat.ts             # 回合制战斗预解算
@@ -257,7 +257,7 @@ src/
 │   └── *Service.ts           # 各系统服务（另有 *Sim.ts 平衡模拟器）
 ├── stores/               # Pinia 状态（20 个，绝大部分自动持久化）
 ├── views/                # 25 个页面
-├── components/           # 组件（8 组）
+├── components/           # 组件（12 组）
 ├── ui/                   # 图标、词条名、图鉴与提示等展示层数据
 ├── utils/                # GNum 大数（m×10^e）/ 格式化 / 随机 / 存档底层
 ├── composables/          # useNow / useWallClock 等

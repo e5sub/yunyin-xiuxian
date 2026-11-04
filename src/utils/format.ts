@@ -11,7 +11,21 @@ export function formatGN(v: GNum | number): string {
   if (g.m === 0) return '0'
   if (g.m < 0) return '-' + formatGN({ m: -g.m, e: g.e })
   if (g.e < 4) {
-    const n = toNum(g)
+    /*
+     * 千位档直接取原值,不经 toNum 回算。
+     *
+     * gn(999.5) 存成 { m: 9.995, e: 2 },toNum 走 9.995 乘 100 得到 999.4999999999999,
+     * Math.round 于是给 999 —— 而同一个函数对 999.6 给 1000、对 1000.5 给 1,001。
+     * 同一档里半值进位时灵时不灵,玩家看到的是「999.5 显示成 999,1000.5 显示成 1,001」。
+     *
+     * 传进来就是 number 的,原值有完整精度,直接用它;传 GNum 的(来自存档)没有原值,
+     * 只能按 m·10^e 回算,那是数据本来的精度,不算这里的问题。
+     */
+    const n = typeof v === 'number' ? Math.abs(v) : toNum(g)
+    /*
+     * 档位仍按取整**前**的值判:999.9 落在 <1000 档,写出「1000」不带千分位,
+     * 这是既有口径(format.spec 明确钉着),本轮不改。
+     */
     if (n < 1000) {
       if (n < 100 && !Number.isInteger(n)) {
         // 正数不显示成 0:位数随数量级抬升(0.04→2 位,0.004→3 位),封顶 6 位
@@ -91,7 +105,9 @@ function trimZero(s: string): string {
 }
 
 export function formatNum(n: number): string {
-  return formatGN(gn(n))
+  // 不先 gn(n):那会把原值压成 { m, e },千位档的半值进位随之丢失(999.5 → 999)。
+  // formatGN 自己会分辨 number 与 GNum。
+  return formatGN(n)
 }
 
 /** 速率:xx/秒 */
@@ -178,10 +194,16 @@ export function formatClock(ts: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-/** 寿元年数展示 */
+/**
+ * 寿元年数展示。
+ *
+ * 数字与「载」之间留一个空格,与全站其他单位一致:模板里 `{{ formatGN(x) }} 石`、
+ * `{{ n }} 场`、`{{ n }} 层` 无一例外都是分开的(中英混排本来就该留),
+ * 唯独这一个把单位拼进了函数返回值,印出来是「150载」。
+ */
 export function formatYears(y: number): string {
-  if (y >= 10000) return formatNum(Math.floor(y)) + '载'
-  return `${Math.floor(y)}载`
+  if (y >= 10000) return `${formatNum(Math.floor(y))} 载`
+  return `${Math.floor(y)} 载`
 }
 
 /**

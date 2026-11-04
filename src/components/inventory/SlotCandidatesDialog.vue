@@ -11,9 +11,10 @@
         class="flex items-center gap-2.5 rounded-md px-2.5 py-2 ring-1 ring-inset ring-ink/10"
         :class="row.equipped ? 'bg-jade/10' : 'bg-paper-deep/70'"
       >
+        <!-- 图标是装饰:用品质的原色(与装备卡同一档),文字专用色只留给名字 -->
         <GameIcon :name="row.template.icon" :size="16" :style="{ color: qualityDef(row.item.quality).color }" />
         <button class="min-w-0 grow text-left active:opacity-60" @click="openDetail(row.item.uid)">
-          <span class="block truncate font-kai text-[13px]" :style="{ color: qualityDef(row.item.quality).color }">
+          <span class="block truncate font-kai text-[13px]" :style="{ color: qualityTextColor(row.item.quality) }">
             {{ row.template.name }}
             <template v-if="row.item.level > 0">+{{ row.item.level }}</template>
           </span>
@@ -35,7 +36,7 @@
 
 <script setup lang="ts">
   import { computed } from 'vue'
-  import { qualityDef } from '@/data/qualities'
+  import { qualityDef, qualityTextColor } from '@/data/qualities'
   import { EQUIP_SLOT_NAMES, equipmentTemplate } from '@/data/equipment'
   import { useInventoryStore } from '@/stores/inventory'
   import { useUiStore } from '@/stores/ui'

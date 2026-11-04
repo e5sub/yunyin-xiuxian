@@ -14,6 +14,7 @@ import {
   currentBond,
   destinedCandidate,
   fall,
+  gainBondOpportunities,
   highestReachable,
   meet,
   nextGateHint,
@@ -302,5 +303,98 @@ describe('道侣 · 共命之险的生死判据', () => {
     const res = chooseBondEvent('be_jie', 'share')
     expect(res?.perished, '事前 trust50<55 应殒落,而非靠这次挺身的事后加成救活').toBe(true)
     expect(player.bond?.fallen).toBe(true)
+  })
+})
+
+/**
+ * `candidatesFor` 必须永不返回空。
+ *
+ * `exploration.maybeEncounter` 依赖这一点:`pool.length === 0` 那道守卫之下是
+ * `rng.int(0, pool.length - 1)` 再取 `pool[...]` —— 池子空了会先算成
+ * `rng.int(0, -1)` 得到 0,接着 `undefined.id` 直接抛 TypeError。
+ * 守卫在,所以现在不炸;但守卫能成立,靠的是**这里永不返回空**。
+ *
+ * 这条锚的是那个前提,而不是守卫本身:哪天有人给 DAOLU 加筛选、或把通配项删了,
+ * 这里立刻红,提示「守卫下面那段会崩」。
+ */
+describe('道侣候选 · 永不为空(exploration 的空池守卫依赖此前提)', () => {
+  it('任意地貌组合(含空与未知地貌)都至少给一个候选', () => {
+    const cases: string[][] = [[], ['不存在的地貌'], ['林泽'], ['幽冥'], ['a', 'b', 'c', 'd', 'e']]
+    for (const t of cases) {
+      expect(candidatesFor(t as never).length, `地貌 ${JSON.stringify(t)} 时池子空了`).toBeGreaterThan(0)
+    }
+  })
+
+  it('靠的是至少有一个「通配」道侣(terrains 为空即不论地貌都收)', () => {
+    const all = candidatesFor([] as never)
+    expect(all.length, '通配项没了:空地貌也筛不出人,池子会空').toBeGreaterThan(0)
+    const wildcard = DAOLU.filter(d => d.terrains.length === 0)
+    expect(wildcard.length, 'DAOLU 里没有通配项,任意地貌都可能筛空').toBeGreaterThan(0)
+  })
+})
+
+/**
+ * 离线结算每场历练都会调 `gainBondOpportunities`,但四个提前返回分支都没判据。
+ *
+ * 它在 `offline.ts` 的结算里给道侣累加机会点 —— 无道侣、道侣已逝/已离、
+ * 或传入非正数时应当什么都不做。删掉任一道守卫,分数会加到不该加的人身上,
+ * 或者把已逝道侣的机会点继续往上堆。
+ */
+describe('道侣机会点 · 四个不该加的情形', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  const makeBond = (over: Record<string, unknown> = {}) =>
+    ({
+      daoluId: 'dl_muyan',
+      stage: 'met',
+      fate: 10,
+      trust: 10,
+      accord: 10,
+      shared: 0,
+      metAt: 0,
+      fallen: false,
+      doneEvents: [],
+      opportunities: 3,
+      nextEventAt: 0,
+      ...over
+    }) as never
+
+  it('有道侣时按场次累加(向下取整)', () => {
+    const player = usePlayerStore()
+    player.setBond(makeBond())
+    gainBondOpportunities(2.9)
+    expect(player.bond?.opportunities, '小数场次应向下取整').toBe(5)
+  })
+
+  it('没有道侣时什么都不做(不崩、不建空壳)', () => {
+    const player = usePlayerStore()
+    player.setBond(null)
+    expect(() => gainBondOpportunities(3)).not.toThrow()
+    expect(player.bond).toBeNull()
+  })
+
+  it('道侣已逝:不再累加', () => {
+    const player = usePlayerStore()
+    player.setBond(makeBond({ fallen: true }))
+    gainBondOpportunities(5)
+    expect(player.bond?.opportunities, '已逝道侣不该再攒机会点').toBe(3)
+  })
+
+  it('道侣已离开:不再累加', () => {
+    const player = usePlayerStore()
+    player.setBond(makeBond({ departed: true }))
+    gainBondOpportunities(5)
+    expect(player.bond?.opportunities, '已离道侣不该再攒机会点').toBe(3)
+  })
+
+  it('非正场次不累加(含 0 与负数)', () => {
+    const player = usePlayerStore()
+    player.setBond(makeBond())
+    gainBondOpportunities(0)
+    expect(player.bond?.opportunities).toBe(3)
+    gainBondOpportunities(-4)
+    expect(player.bond?.opportunities, '负数不该把机会点减回去').toBe(3)
   })
 })

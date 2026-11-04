@@ -2,7 +2,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useCultivationStore } from '@/stores/cultivation'
-import { branchesFor, canEnlighten, gongfaBranchDef, GONGFA_BRANCHES } from '@/data/gongfaBranches'
+import { branchEffective, branchesFor, canEnlighten, gongfaBranchDef, GONGFA_BRANCHES } from '@/data/gongfaBranches'
+import { carryGongfa } from './reincarnation'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { GONGFA, gongfaDef, gongfaMaxLevel } from '@/data/gongfa'
 import { AFFIXES } from '@/data/affixes'
 import { qualityDef } from '@/data/qualities'
@@ -177,5 +180,88 @@ describe('悟道分支平衡审计', () => {
       if (!br.mods.tribulationResist) expect(br.name, br.id).not.toBe('应劫')
       if (br.mods.explorationSpeed) expect(br.desc, br.id).not.toContain('福地自现')
     }
+  })
+})
+
+/**
+ * 「转世不失」的分支,转世后其实不生效。
+ *
+ * 两处条件不一致:
+ * - `sanitize` 里保留分支只要求「已习得、层数 ≥ 1」(注释:`不要求满级`)
+ * - `gongfaMods` 里并进词条却要求 `lv >= gongfaMaxLevel`(9 层)
+ *
+ * 而转世只留一门功法的等级、其余落回 1 层(`carryGongfa`)。于是那条分支
+ * 会留在界面上 —— 界面上还写着「不可更改 · 转世不失」—— 却一点属性都不加。
+ *
+ * 这份判据钉住两件事:分支词条确实要求满级;UI 侧对未满级的分支要给出提示
+ * (由 `GongfaSection` 的 `branchActive` 负责,下面是源码守卫)。
+ */
+describe('悟道分支 · 转世后未满级则不生效', () => {
+  /**
+   * 这条原先在用例里**自己**按「非最高落 1 层」造了一遍结果,再断言自己造的 `after` ——
+   * carryGongfa 改成保留全部等级也照样绿,等于没测。现在走真实转世路径。
+   */
+  it('转世只保留一门功法的等级,其余落到 1 层', () => {
+    const learned = { m_taixuan: 9, m_qingmu: 5, m_lihuo: 3 }
+    // keepOne:只有修为最深的那门按原等级带走,其余门类留下但落回 1 层
+    expect(carryGongfa(learned, true), '只留最高那门').toEqual({ m_taixuan: 9, m_qingmu: 1, m_lihuo: 1 })
+    // keepOne=false:全部落回 1 层
+    expect(carryGongfa(learned, false), '不保留时全部落回 1 层').toEqual({
+      m_taixuan: 1,
+      m_qingmu: 1,
+      m_lihuo: 1
+    })
+    // 大乘道统:全部按原等级带走
+    expect(carryGongfa(learned, false, true), '持传承者全部带走').toEqual(learned)
+  })
+
+  it('每条分支的宿主功法都存在,且满级线不是 1(否则转世也算满级)', () => {
+    for (const b of GONGFA_BRANCHES) {
+      const def = gongfaDef(b.gongfaId)
+      expect(def, `分支 ${b.name} 的宿主功法 ${b.gongfaId} 不存在`).toBeTruthy()
+      // 满级线因功法而异(秘典只有 3 层、主流 9 层),只要 > 1 就有「转世后不满级」的情形
+      expect(gongfaMaxLevel(def!), `${b.name} 的宿主满级线异常`).toBeGreaterThan(1)
+    }
+  })
+
+  it('满级线不止一种 —— 说明不能把它当成常量来判', () => {
+    const levels = new Set(GONGFA_BRANCHES.map(b => gongfaMaxLevel(gongfaDef(b.gongfaId)!)))
+    expect(levels.size, '所有分支的满级线都一样,那这条判据可以简化').toBeGreaterThan(1)
+  })
+
+  /**
+   * 原先只查源码里有没有 `branchActive` / `gongfaMaxLevel(` / `未满级` 这几个字面量 ——
+   * 把满级比较由 `>=` 改成 `>` 也照样绿,而刚好满级的分支会被显示成不生效。
+   * 现在直接调 `branchEffective` 做行为断言,界面与 store 都读它。
+   */
+  it('分支生效判据:满级 + 装配缺一不可,边界不含糊', () => {
+    const max = gongfaMaxLevel(gongfaDef('m_taixuan')!)
+    const base = { hasBranch: true, isMain: true, isEffectiveSub: false }
+    expect(branchEffective('m_taixuan', { ...base, level: max }), '刚好满级 + 主修,应生效').toBe(true)
+    expect(branchEffective('m_taixuan', { ...base, level: max - 1 }), '差一层就不该生效').toBe(false)
+    expect(
+      branchEffective('m_taixuan', { level: max, hasBranch: true, isMain: false, isEffectiveSub: true }),
+      '满级 + 有效辅修席,应生效'
+    ).toBe(true)
+    expect(
+      branchEffective('m_taixuan', { level: max, hasBranch: true, isMain: false, isEffectiveSub: false }),
+      '满级但两个装配席都让出去了,不该生效'
+    ).toBe(false)
+    expect(
+      branchEffective('m_taixuan', { level: max, hasBranch: false, isMain: true, isEffectiveSub: false }),
+      '没择分支就谈不上生效'
+    ).toBe(false)
+    expect(branchEffective('m_not_a_gongfa', { ...base, level: 9 }), '认不出的功法不该生效').toBe(false)
+  })
+
+  it('界面与 store 读的是同一条生效判据,不是各写一遍', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/components/cultivation/GongfaSection.vue'), 'utf-8')
+    expect(src, 'GongfaSection 应读 branchEffective').toMatch(/branchEffective\(/)
+    // 只看 branchActive 自己的函数体:别的地方(满级线文案、canEnlighten)用 gongfaMaxLevel 是正当的
+    const body = src.slice(src.indexOf('function branchActive'), src.indexOf('function branchInactiveReason'))
+    expect(body.length, 'branchActive 没找到,守卫空转').toBeGreaterThan(0)
+    expect(body, 'branchActive 自己又判了一次满级线 —— 会和 store 的 gongfaMods 分叉').not.toMatch(
+      /gongfaMaxLevel\(/
+    )
   })
 })

@@ -43,7 +43,7 @@
             :r="p.r"
             :class="cleared(p.nodeId) ? 'text-jade' : unlocked(p) ? 'text-azure' : 'text-ink-faint'"
             fill="currentColor"
-            :fill-opacity="cleared(p.nodeId) ? 1 : unlocked(p) ? 0.85 : 0.35"
+            :fill-opacity="cleared(p.nodeId) ? 1 : unlocked(p) ? 0.85 : 0.75"
           />
           <circle
             v-if="focusNode"
@@ -58,7 +58,7 @@
         </svg>
         <p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-ink-faint">
           <span class="inline-flex items-center gap-1">
-            <span class="h-1.5 w-1.5 rounded-full bg-ink-faint/40" /> 未至
+            <span class="h-1.5 w-1.5 rounded-full bg-ink-faint/75" /> 未至
           </span>
           <span class="inline-flex items-center gap-1">
             <span class="h-1.5 w-1.5 rounded-full bg-azure/80" /> 可往
@@ -99,7 +99,7 @@
             <p class="mt-0.5 flex items-center gap-2 text-[10px] text-ink-faint">
               <span class="truncate">镇守 {{ p.bossName }}</span>
               <span class="flex shrink-0 gap-0.5">
-                <span v-for="n in p.eventLevel" :key="n" class="h-1 w-1 rounded-full bg-gold-ink/60" />
+                <span v-for="n in p.eventLevel" :key="n" class="h-1 w-1 rounded-full bg-gold-ink/80" />
               </span>
             </p>
             <p v-if="!unlocked(p)" class="mt-0.5 text-[10px] leading-relaxed text-cinnabar">

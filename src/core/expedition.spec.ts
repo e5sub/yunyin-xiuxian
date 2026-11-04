@@ -13,7 +13,8 @@ import { useEndgameStore } from '@/stores/endgame'
 import { useAdventureStore } from '@/stores/adventure'
 import { useUiStore } from '@/stores/ui'
 import { CELESTIAL_WORLDS, EXPEDITION_ROUTE_LAYERS } from '@/data/endgame'
-import { forecastExpedition, startWorldExpedition, chooseRouteNode, challengeGuardian, expeditionFoeShapes, challengeMutation } from './expedition'
+import { forecastExpedition, startWorldExpedition, chooseRouteNode, challengeGuardian, expeditionFoeShapes, challengeMutation, rollMutators, abandonExpedition } from './expedition'
+import { MUTATORS } from '@/data/mutators'
 import { celestialJudgementLines } from './gauntlet'
 import { daoSourceShortfall } from './daoSource'
 import { gn } from '@/utils/gnum'
@@ -225,5 +226,98 @@ describe('远征预估对阵与实打同源(入界 + 每层节点 + 界主,共 5
       }
       expect(foes[foes.length - 1], `${w.id} 末战应为界主`).toBe(w.guardian)
     }
+  })
+})
+
+/**
+ * `rollMutators` 承诺「三条不重复」,但之前一条判据都没有。
+ *
+ * 它由试炼页的「窥探变数 / 再探」直接调用,结果直接决定这场挑战的难度构成。
+ * 若去重那步写坏,同一条变数能被抽中两次 —— 玩家看到「三条」实则只有两条生效。
+ */
+describe('变数抽取 · 三条不重复', () => {
+  it('每次都给三条,且互不相同、都来自池子', () => {
+    const ids = new Set(MUTATORS.map(m => m.id))
+    for (let i = 0; i < 60; i += 1) {
+      const picked = rollMutators()
+      expect(picked.length, `第 ${i} 次只抽到 ${picked.length} 条`).toBe(Math.min(3, MUTATORS.length))
+      expect(new Set(picked).size, `第 ${i} 次出现重复:${picked.join(',')}`).toBe(3)
+      for (const id of picked) expect(ids.has(id), `抽到了池外的 ${id}`).toBe(true)
+    }
+  })
+
+  it('多次抽取能覆盖到池里全部变数(不是总抽同三条)', () => {
+    const seen = new Set<string>()
+    for (let i = 0; i < 200; i += 1) for (const id of rollMutators()) seen.add(id)
+    expect(seen.size, `200 次只覆盖了 ${seen.size}/${MUTATORS.length} 条`).toBe(MUTATORS.length)
+  })
+
+  it('池子不足三条时给几条算几条,不硬凑空 id', () => {
+    /*
+     * 原先只对**全量池**调一次、再查 `typeof id === 'string'` —— 那是最弱的断言,
+     * 「不足三条」这个标题写的事情一次都没发生过。改成注入短池。
+     */
+    expect(rollMutators([{ id: 'a' }]), '单条池只该给一条').toEqual(['a'])
+    const two = rollMutators([{ id: 'a' }, { id: 'b' }])
+    expect(two.length, '两条池只该给两条').toBe(2)
+    expect(new Set(two).size, '两条池不该抽出重复').toBe(2)
+    expect(rollMutators([]), '空池给空数组,不该塞 undefined').toEqual([])
+  })
+})
+
+/**
+ * 放弃远征:不可逆操作,之前一条判据都没有。
+ *
+ * 它由远征面板的「退出」直接调用:记一条未通关的道痕、弹一句回执、清空 worldRun。
+ * 少了任一步都会留下坏状态 —— 不记录则这一趟白打且不会出现在道痕里;
+ * 不清空则玩家被卡在「已在远征中」,再也开不了新的。
+ */
+describe('远征 · 放弃这一趟', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  const runStub = (worldId: string) =>
+    ({
+      worldId,
+      pactId: null,
+      layer: 1,
+      bonus: 0,
+      rows: [],
+      carriedHpPct: 1,
+      totalRounds: 12,
+      winStacks: 0
+    }) as never
+
+  it('没有进行中的远征时什么都不做(不崩、不弹回执)', () => {
+    const endgame = useEndgameStore()
+    const ui = useUiStore()
+    endgame.worldRun = null
+    expect(() => abandonExpedition()).not.toThrow()
+    expect(endgame.worldRun).toBeNull()
+    expect(ui.toasts.length, '没有远征却弹了回执').toBe(0)
+  })
+
+  it('有远征时:清空 worldRun 并记一条未通关的道痕', () => {
+    const endgame = useEndgameStore()
+    const world = CELESTIAL_WORLDS[0]!
+    endgame.worldRun = runStub(world.id)
+    const before = endgame.marks.length
+    abandonExpedition()
+    expect(endgame.worldRun, '不清空会让玩家卡在「已在远征中」').toBeNull()
+    expect(endgame.marks.length, '放弃这一趟应当留下道痕').toBe(before + 1)
+    const mark = endgame.marks[endgame.marks.length - 1]!
+    expect(mark.targetId).toBe(world.id)
+    expect(mark.cleared, '放弃不是通关,不该记为已清').toBe(false)
+    expect(mark.rounds, '应当带上这趟打过的回合数').toBe(12)
+  })
+
+  it('放弃之后还能再开一趟(状态没被卡死)', () => {
+    const endgame = useEndgameStore()
+    endgame.daoPath = 'sword' as never
+    const world = CELESTIAL_WORLDS[0]!
+    endgame.worldRun = runStub(world.id)
+    abandonExpedition()
+    expect(endgame.worldRun).toBeNull()
   })
 })

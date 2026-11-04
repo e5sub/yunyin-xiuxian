@@ -518,15 +518,23 @@ describe('文案数值对账 · 视图不手抄数量', () => {
   /**
    * 在途拒因不许在界面重抄一遍:endgameBusy 已经给出 reason,
    * 手写 `busy.kind === 'expedition' ? '远征在途' : …` 抄了三处九份,改词就会漏改。
+   *
+   * 判据里的 `.value` 必须先抹掉:面板里的 busy 是 `computed`,写出来是 `busy.value.kind`,
+   * 而原先的正则只认 `busy.kind` —— TrialPanel 的「立 约」按 kind 三元映射重抄了一份,
+   * 这条守卫从头到尾都是绿的。抹掉后两种写法同一把尺,漏抄才会被抓。
+   *
    * 故障注入:把任一面板改回三元映射,本条红。
    */
   it('终局面板的在途拒因一律取 busy.reason,不再按 kind 手抄', () => {
-    const panels = ['ExpeditionPanel', 'TrialPanel', 'MarksPanel'].map(n => src(`../components/celestial/${n}.vue`))
+    // 抹掉 computed 的 .value:否则 `busy.value.kind` 绕过下面所有按 `busy.` 写的判据
+    const panels = ['ExpeditionPanel', 'TrialPanel', 'MarksPanel'].map(n =>
+      src(`../components/celestial/${n}.vue`).replace(/\.value\b/g, '')
+    )
     let hits = 0
     for (const [i, body] of panels.entries()) {
       const name = ['远征', '天劫', '道痕'][i]!
       expect(panels[i], `${name}面板该读 busy.reason`).toContain('busy.reason')
-      expect(panels[i], `${name}面板又手抄了在途拒因`).not.toMatch(/busy\.kind\s*===\s*'expedition'/)
+      expect(panels[i], `${name}面板又按 kind 手抄了在途拒因`).not.toMatch(/busy\.kind\s*===/)
       hits += (body.match(/busy\.reason/g) ?? []).length
     }
     expect(hits, '一处 busy.reason 都没读到,断言形同虚设').toBeGreaterThanOrEqual(5)
@@ -826,7 +834,8 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
   it('功法进修按缺口置灰,行内写清悟道点与残页各差多少', () => {
     const view = src('../components/cultivation/GongfaDialog.vue')
     expect(view, '禁用态读同一份缺口判定').toContain('gongfaUpgradeShort(upCost.value)')
-    expect(view, '付得起才不置灰').toContain(':disabled="upShort !== null"')
+    // 满级时 upCost 为 null:那颗钮改为禁用并写状态词,不再消失(见 masteryMark.spec 的同族判据)
+    expect(view, '付得起才不置灰,且满级时不放行').toContain(':disabled="!upCost || upShort !== null"')
     expect(view, '行内复用 core 的短差').toContain('gongfaUpgradeShortfall(c)')
     expect(view, '短差交给同一份拒因文案').toContain('gongfaUpShortToast(s, gongfaUpgradeShortfall(c))')
     expect(view, '不许再用笼统的「悟道点或残页不足」').not.toContain('悟道点或残页不足')
@@ -985,7 +994,8 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(card, '备药钮写实际石差').toContain('prepPillDisabledLabel(formatGap(prepPillShort))')
     expect(card, '备药 toast 写实际石差').toContain('prepPillShortToast(formatGap(prepPillShort.value))')
     expect(service, '突破准备缺口单源').toContain('breakthroughPrepShortfall')
-    expect(view, '疗伤钮写实际气差').toContain('formatNum(repair.shortfall)')
+    // 差额走 formatGap:灵气按 dt 累积是小数,formatNum 四舍五入会少报(见 format-gn 计划档)
+    expect(view, '疗伤钮写实际气差').toContain('formatGap(repair.shortfall)')
   })
 
   /**

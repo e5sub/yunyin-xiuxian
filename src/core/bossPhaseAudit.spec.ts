@@ -51,10 +51,18 @@ describe('Phase 30.8: Boss 阶段与机制有效性审计', () => {
       for (const p of boss.phases ?? []) {
         if (!p.modChanges) continue
         for (const [k, v] of Object.entries(p.modChanges)) {
-          const base = boss.mods?.[k as keyof typeof boss.mods] ?? 0
-          const delta = (v as number) - (base as number)
-          if (Math.abs(delta) < 0.1) {
-            weakChanges.push(`${boss.name}: ${k} 变化仅 ${delta.toFixed(2)}`)
+          const base = (boss.mods?.[k as keyof typeof boss.mods] ?? 0) as number
+          const delta = (v as number) - base
+          /*
+           * 标题说「增量为原始值的 50%+」是**相对**判定,而旧实现判的是绝对差 < 0.1。
+           * 两者会得出相反的结论:万妖林主的 regenPerRound 从 0.015 到 0.04,
+           * 绝对差 0.025(旧实现判为弱),相对变化 +167%(其实是强变化)。
+           * 基数很小时相对判定才有意义;基数近零时退回绝对差,否则任何增量都是无穷倍。
+           */
+          const rel = base > 1e-6 ? Math.abs(delta) / base : Number.POSITIVE_INFINITY
+          const strong = base > 1e-6 ? rel >= 0.5 : Math.abs(delta) >= 0.1
+          if (!strong) {
+            weakChanges.push(`${boss.name}: ${k} 由 ${base} 变为 ${v}(相对 ${base > 1e-6 ? (rel * 100).toFixed(0) + '%' : '—'})`)
           }
         }
       }
@@ -67,7 +75,7 @@ describe('Phase 30.8: Boss 阶段与机制有效性审计', () => {
       console.log('    ✅ 所有阶段变化均 ≥0.1')
     }
 
-    expect(weakChanges.length, '不应有显著的弱变化').toBeLessThanOrEqual(3)
+    expect(weakChanges, '标题说「每个阶段都显著」,那就不该有任何一处不达标' + (weakChanges.length ? '：' + weakChanges.join(';') : '')).toEqual([])
   })
 
   it('④ Boss 生态一致性: archetype 应与技能/mod 机制匹配', () => {
@@ -138,6 +146,12 @@ describe('Phase 30.8: Boss 阶段与机制有效性审计', () => {
       const eco = regionEcology(regionDef(region.id)!)
       const bossTraits = enemyTraits(boss)
 
+      /*
+       * 生态全 0 是「这一区没有特征敌人」(低阶敌人属性温和,enemyTraits 给不出特质),
+       * 不是「Boss 与生态不匹配」—— 两者混在一起判,会把数据稀疏当成设计错误。
+       */
+      const ecoEmpty = Object.values(eco).every(v => v === 0)
+      if (ecoEmpty) continue
       const hasOverlap = bossTraits.some(t => (eco[t as keyof typeof eco] ?? 0) > 0)
       if (!hasOverlap) {
         inconsistencies.push(`${boss.name}(区域 ${region.id} 生态 ${JSON.stringify(eco)})的机制 ${bossTraits.join(',') || '无'} 与生态无重叠`)
@@ -151,6 +165,19 @@ describe('Phase 30.8: Boss 阶段与机制有效性审计', () => {
       console.log('\n  所有 Boss 机制与区域生态一致 ✅')
     }
 
-    expect(inconsistencies.length, 'Boss 机制应与区域生态相关').toBeLessThanOrEqual(5)
+    /*
+     * 阈值原为 ≤5,正好把上面那条「万妖林主」盖住。宽阈值让判据长期绿着,
+     * 却没人直到这一处不匹配 —— 显式列为例外比放宽阈值诚实:
+     * 万妖林主是 attrition 消耗型(靠 regenPerRound 拖),而 wanyao 的生态是闪避,
+     * 两种打法放一起是有意的(消耗克制闪避),不是笔误。
+     * 新增例外必须写在这里并说明理由,否则判据会红。
+     */
+    const KNOWN_EXCEPTIONS = new Set(['万妖林主'])
+
+    const unexpected = inconsistencies.filter(line => !KNOWN_EXCEPTIONS.has(line.split('(')[0]!))
+    expect(
+      unexpected,
+      'Boss 机制应与区域生态相关(新增例外请写进 KNOWN_EXCEPTIONS 并说明理由)'
+    ).toEqual([])
   })
 })

@@ -1,5 +1,15 @@
 <template>
-  <BaseModal ref="modalRef" :open="inst !== undefined" :title="template?.name ?? ''" top @close="close">
+  <BaseModal
+    ref="modalRef"
+    :open="inst !== undefined"
+    :title="template?.name ?? ''"
+    :panel-class="luster ? 'luster-frame' : undefined"
+    :title-class="luster ? 'luster-title' : undefined"
+    top
+    @close="close"
+  >
+    <!-- 最上档头饰:面板是圆角 + overflow-hidden,印须整体落在面板内 -->
+    <span v-if="luster" class="luster-crown" aria-hidden="true">神品</span>
     <!-- 词条转移在同一弹窗内切换正文与页脚,不另叠一层 -->
     <AffixTransferPanel v-if="transferOpen && inst" :flow="transfer" @view="viewTarget" />
     <div v-else-if="inst && template && resolved">
@@ -13,7 +23,7 @@
         <!-- 境界门槛:仙品之上的顶级件,未到境穿不上 -->
         <span v-if="realmReqText" class="text-[11px] text-cinnabar">{{ realmReqText }}</span>
         <!-- 满级时补一句,别让玩家自己去猜还能不能升 -->
-        <span v-if="mastery" class="rounded bg-gold-ink/10 px-1.5 py-0.5 text-[10px] leading-none text-gold-ink">{{ mastery.label }}</span>
+        <span v-if="mastery" class="rounded border border-gold-ink/40 bg-gold-ink/10 px-1.5 py-0.5 text-[10px] leading-none text-ink">{{ mastery.label }}</span>
         <button
           class="-m-1.5 flex min-h-[28px] min-w-[28px] items-center justify-center rounded p-1.5 text-ink-faint ring-1 ring-inset ring-ink/15 active:scale-90"
           :aria-label="inst.locked ? '解锁' : '锁定'"
@@ -193,6 +203,7 @@
   import { useAutoReforge } from '@/composables/useAutoReforge'
   import BaseModal from '@/components/common/BaseModal.vue'
   import QualityTag from '@/components/common/QualityTag.vue'
+  import { lusterOf } from '@/ui/luster'
   import AutoReforgePanel from './AutoReforgePanel.vue'
   import UpgradePanel from './UpgradePanel.vue'
   import EquipNotePanel from './EquipNotePanel.vue'
@@ -223,6 +234,9 @@
     return '分解'
   })
   const mastery = computed(() => (inst.value ? equipMastery(inst.value.level, equipLevelCap()) : null))
+  /** 质感层:详情弹窗的整幅框、头饰与标题字面(见 ui/luster) */
+  const luster = computed(() => (inst.value ? lusterOf(inst.value.quality) : null))
+
   const upQuote = computed(() => (inst.value ? equipUpgradeQuote(inst.value.uid) : null))
   const upShort = computed(() => (upQuote.value ? upgradeShort(upQuote.value) : null))
   const upGap = computed(() => (upQuote.value ? upgradeShortfall(upQuote.value) : null))

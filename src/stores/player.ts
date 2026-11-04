@@ -24,11 +24,12 @@ import { sanitizeLinggen } from '@/core/linggenGen'
 import { randomDaoName } from '@/data/names'
 import { rng } from '@/utils/random'
 import { baseCultPerSec, baseQiRegen, expRequirement, gameDay, qiCap } from '@/core/formulas'
+import { todayLocalNum } from '@/utils/time'
 import { computeFinalStats, mergeMods, modOf } from '@/core/statsCalc'
 import { todayWeather } from '@/core/weather'
 import { divinationActiveAt, readingFromState, readingMods } from '@/core/divination'
 import { gameNow } from '@/core/enginePause'
-import { asArray, asBoundedGNum, asCarriedHpPct, asFiniteNumber, asNumberRecord, asRecord, asStringArray } from '@/utils/saveShape'
+import { asArray, asBoundedGNum, asCarriedHpPct, asFiniteNumber, asNumberRecord, asRecord, asStringArray, truncateCodePoints } from '@/utils/saveShape'
 import { SECRET_LAYERS, SECRET_MAX_LOSSES, SECRET_REALMS, secretRuleByText } from '@/data/secretRealms'
 import { DAOLU, ENDING_NAMES, STAGE_NAMES, STAGE_ORDER, type BondEnding, type BondStage } from '@/data/daolu'
 import { lifeThemeDef } from '@/data/lifeThemes'
@@ -683,9 +684,10 @@ export const usePlayerStore = defineStore(
       // 道号进字符串方法(.trim / 拼接);坏档写成数字会在渲染或建号处抛错。
       // 空串也算坏档:顶栏是 {{ player.name }} 裸渲染,空串会显示成一片空白(建号与导入检视都有「无名散修」兜底,唯独这里没有)
       // 长度也要截:输入侧截到 NAME_MAX_LENGTH,读档侧不截就能被手改存档塞进几十万字符
+      // 按码点截,不按码元:`.slice(0, 8)` 会把 emoji 切成落单的代理项(见 truncateCodePoints)
       name.value =
         typeof name.value === 'string' && name.value.trim() !== ''
-          ? name.value.trim().slice(0, NAME_MAX_LENGTH)
+          ? truncateCodePoints(name.value.trim(), NAME_MAX_LENGTH)
           : '无名散修'
       // 角色页/建号页裸用 `ELEMENTS[root.element].color` 与 `linggen.growthMult.toFixed(2)`:坏档在渲染期抛错
       linggen.value = sanitizeLinggen(linggen.value)
@@ -747,8 +749,10 @@ export const usePlayerStore = defineStore(
       if (!we || !Number.isFinite(we.gameDay) || !Number.isFinite(we.count)) {
         wudaoExchange.value = { gameDay: 0, count: 0 }
       } else {
+        // 同理:gameDay 落在今天之后会让「今日已兑」的等号恒不成立,每日兑换停摆
+        const day = Math.max(0, Math.floor(we.gameDay))
         wudaoExchange.value = {
-          gameDay: Math.max(0, Math.floor(we.gameDay)),
+          gameDay: day > gameDay(useGameStore().totalPlaySec) ? 0 : day,
           count: Math.min(WUDAO_EXCHANGE_PER_DAY, Math.max(0, Math.floor(we.count)))
         }
       }
@@ -883,7 +887,13 @@ export const usePlayerStore = defineStore(
       regionStats.value = fixedRegionStats
       // 巡游日期为 NaN 时「今日已抽」恒假,每 30 秒重掷一次
       winStreak.value = Math.floor(asFiniteNumber(winStreak.value, 0, 0))
+      /*
+       * 日记号不许落在今天之后:闸门写的是 `lastCaveEventDay === today`,
+       * 时钟调快过留下的未来日会让等号永不成立,每日巡游就此停摆(实测一年后的日期能一路通过)。
+       * 归零等于「今日未做」,与坏档该有的行为一致。
+       */
       lastCaveEventDay.value = Math.floor(asFiniteNumber(lastCaveEventDay.value, 0, 0))
+      if (lastCaveEventDay.value > todayLocalNum()) lastCaveEventDay.value = 0
       regionWins.value = Object.fromEntries(
         Object.entries(asNumberRecord(regionWins.value, 0)).map(([id, n]) => [id, Math.floor(n)])
       )

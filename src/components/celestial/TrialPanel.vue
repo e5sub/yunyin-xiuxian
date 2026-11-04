@@ -66,7 +66,7 @@
     <div class="mt-2 space-y-2.5">
       <div v-for="trial in TRIALS" :key="trial.id" class="card-ink px-4 py-3">
         <p class="flex items-center gap-2">
-          <span class="grid h-8 w-8 place-items-center rounded-md bg-gold-ink/85 font-kai text-[15px] seal-face">
+          <span class="grid h-8 w-8 place-items-center rounded-md bg-gold-ink font-kai text-[15px] seal-face">
             {{ trial.seal }}
           </span>
           <span class="font-kai text-[15px] tracking-widest text-ink">{{ trial.name }}</span>
@@ -308,13 +308,8 @@
     return undefined
   })
   const challengeButtonText = computed(() => {
-    if (busy.value) {
-      return busy.value.kind === 'expedition'
-        ? '立 约(远征在途)'
-        : busy.value.kind === 'exploration'
-          ? '立 约(历练在途)'
-          : '立 约(身在秘境)'
-    }
+    // 拒因取 endgameBusy 的 reason,不按 kind 另写一份 —— 改词只需改 core 一处
+    if (busy.value) return `立 约(${busy.value.reason})`
     if (!challengeVerdict.value?.ok) return '立 约(未受约)'
     if (endgame.daoSource < CHALLENGE_ENTRY_COST) {
       return `立 约(道源尚差 ${daoSourceShortText(CHALLENGE_ENTRY_COST, endgame.daoSource)} · 需 ${CHALLENGE_ENTRY_COST} · 余 ${formatNum(endgame.daoSource)})`

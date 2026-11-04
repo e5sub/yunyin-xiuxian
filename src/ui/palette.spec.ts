@@ -22,6 +22,7 @@ const TAILWIND = readFileSync(resolve(ROOT, 'tailwind.config.js'), 'utf-8')
 const THEME_TS = readFileSync(resolve(ROOT, 'src/core/theme.ts'), 'utf-8')
 const PRIVACY = readFileSync(resolve(ROOT, 'public/privacy.html'), 'utf-8')
 const INDEX_HTML = readFileSync(resolve(ROOT, 'index.html'), 'utf-8')
+const STORE_UTILS = readFileSync(resolve(ROOT, 'src/utils/storage.ts'), 'utf-8')
 
 type Rgb = readonly [number, number, number]
 
@@ -63,10 +64,24 @@ function surfacesOf(theme: 'light' | 'dark'): Rgb[] {
   return [p.get('paper')!, p.get('paper-deep')!, [Number(m[1]), Number(m[2]), Number(m[3])] as const]
 }
 
-/** 正文承载档:浅/夜两套、三张底全 ≥4.5 */
-const STRONG = ['ink', 'ink-soft', 'ink-faint', 'violet-ink', 'azure', 'gold-ink', 'amber-ink', 'jade', 'indigo-ink']
-/** 强调档(标题/大字):≥3 大字 AA;提过 4.5 后挪进 STRONG */
-const WEAK = ['cinnabar']
+/**
+ * 正文承载档:浅/夜两套、三张底全 ≥4.5。
+ *
+ * `cinnabar` 在本轮之前不在这一档 —— 它走的是强调档的 3.0 宽线,却承担了
+ * 夜主题下 41 处 9~17px 的正文(拒因、待办标记、可点装饰)。实测那批字的
+ * 底色只有 3.83:1。现已把夜间 cinnabar 提亮到 `228 122 112`(四张底最差 4.52),
+ * 印面另有 `cinnabar-deep` 兜底,所以提亮不影响奶油字。
+ */
+const STRONG = ['ink', 'ink-soft', 'ink-faint', 'violet-ink', 'azure', 'gold-ink', 'amber-ink', 'jade', 'indigo-ink', 'cinnabar']
+
+/**
+ * 强调档(标题/大字):≥3 大字 AA。
+ *
+ * 这一档现在是空的。留着这条判据是为了**堵住口子**:新加的颜色一旦进 WEAK,
+ * 就只按 3:1 考核,而它能被用在任何字号上 —— cinnabar 就是这么漏了 41 处。
+ * 真要往里加,得同时说明「这个色只出现在 18px 以上的大字里」。
+ */
+const WEAK: readonly string[] = []
 
 function channel(c: number): number {
   const v = c / 255
@@ -258,6 +273,21 @@ describe('调色板 · 承载文字的色都过线', () => {
     expect(bad, '强调档也承载文字,跌破 3:1 就真的看不见了').toEqual([])
   })
 
+  /**
+   * 强调档是个口子,不许拿它当「小字也能用」的后门。
+   *
+   * cinnabar 曾在 WEAK 里,于是在夜主题以 3.83:1 承担了 41 处 9~17px 的正文。
+   * 现已提亮并挪进 STRONG。这条判据守住两件事:
+   *   一 它没被偷偷放回强调档;
+   *   二 STRONG 与 WEAK 没有交集(一个 token 只能按一套线考核)。
+   */
+  it('cinnabar 按正文档考核,不再借强调档的宽线', () => {
+    expect(WEAK as readonly string[], 'cinnabar 又回强调档了 —— 它承担的是正文字号').not.toContain('cinnabar')
+    expect(STRONG as readonly string[], 'cinnabar 该在正文档里').toContain('cinnabar')
+    const overlap = STRONG.filter(t => (WEAK as readonly string[]).includes(t))
+    expect(overlap, '同一个 token 不能同时按两套线考核').toEqual([])
+  })
+
   it('纸上的墨只有三档:ink-ghost 已撤档,四处都不得请它回来', () => {
     expect(LIGHT.has('ink-ghost'), 'ghost 档已撤,不许作为 token 复活').toBe(false)
     expect(TAILWIND).not.toContain('ink-ghost')
@@ -331,6 +361,80 @@ describe('调色板 · 印面', () => {
   })
 })
 
+/**
+ * 印面(.seal-face)两条硬约束 —— 都是实测出来的,不是风格偏好。
+ *
+ * 一 **不许配 text-paper**:它依纸色路由,日主题的 paper 就是奶油,看着对;
+ *   夜主题把 paper 翻成近黑(33 31 28),印底却仍是亮朱/亮金 —— 现出「黑字顶红方」,
+ *   朱印实测 3.83:1,比同一屏 .btn-seal 的奶油字(5.31:1)低一整档。AGENTS.md 明令用 .seal-face。
+ *
+ * 二 **底不许带透明度**:夜主题有 `html[data-theme='dark'] .seal-face` 兜底换深朱,
+ *   半透明只影响日主题 —— 按纸色混淡后,朱 /85 只剩 4.17:1、金 /85 3.93:1、紫 /85 3.95:1。
+ *   这一档最隐蔽:夜主题全绿,只有日主题跌破,而且降幅不到 1 档,肉眼很难指认。
+ */
+describe('调色板 · 印面两条硬约束', () => {
+  const CREAM: Rgb = [246, 241, 229]
+  /** 日主题印面底:实际用到的几个 token,逐个托奶油字 */
+  const SEAL_TOKENS = ['cinnabar', 'gold-ink', 'indigo-ink', 'violet-ink', 'jade']
+
+  it('日主题每个印面底色都托得住奶油字 ≥4.5:1', () => {
+    for (const name of SEAL_TOKENS) {
+      const color = LIGHT.get(name)
+      expect(color, `色板里没有 ${name}`).toBeTruthy()
+      expect(contrast(color!, CREAM), `${name} 印面上的奶油字读不清`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it('夜主题印面统一压成深朱,同样托得住奶油字', () => {
+    const deep = DARK.get('cinnabar-deep')
+    expect(deep, '夜主题缺 cinnabar-deep').toBeTruthy()
+    expect(contrast(deep!, CREAM)).toBeGreaterThanOrEqual(4.5)
+    expect(CSS, '夜主题须把印面压成深朱').toMatch(/html\[data-theme='dark'\] \.seal-face \{[^}]*background: var\(--color-cinnabar-deep\)/)
+  })
+
+  /**
+   * 扫组件与视图,两条分别判:
+   *   一 彩色底 + text-paper → 该用 seal-face。判据不能以「这一行有 seal-face」为前提,
+   *     否则把 seal-face 换回 text-paper 之后那一行根本不进扫描 —— 故障注入实测过,是绿的。
+   *   二 seal-face + 半透明底 → 日主题混纸后跌破 4.5:1。
+   * `bg-ink` 不在此列:墨块上 text-paper 两主题分别 12.99 / 12.71,本来就是对的。
+   */
+  const COLORED_BG = /\bbg-(cinnabar|gold-ink|indigo-ink|violet-ink|jade|azure|amber-ink)(?![-\w])/
+
+  it('彩色印面上不用 text-paper,一律 seal-face', () => {
+    const bad: string[] = []
+    for (const dir of ['src/components', 'src/views']) {
+      for (const file of filesMatching(resolve(ROOT, dir), /text-paper/, /\.vue$/)) {
+        const text = readFileSync(resolve(ROOT, file), 'utf-8')
+        text.split('\n').forEach((line, i) => {
+          if (/^\s*(\*|\/\/|<!--)/.test(line)) return
+          if (!/\btext-paper\b/.test(line)) return
+          if (!COLORED_BG.test(line)) return
+          if (/\bseal-face\b/.test(line)) return
+          bad.push(`${file}:${i + 1} 彩色印面用了 text-paper(夜主题会翻成黑字)`)
+        })
+      }
+    }
+    expect(bad, `这些印面该改用 .seal-face:\n${bad.join('\n')}`).toEqual([])
+  })
+
+  it('印面底色不带透明度', () => {
+    const bad: string[] = []
+    for (const dir of ['src/components', 'src/views']) {
+      for (const file of filesMatching(resolve(ROOT, dir), /seal-face/, /\.vue$/)) {
+        const text = readFileSync(resolve(ROOT, file), 'utf-8')
+        text.split('\n').forEach((line, i) => {
+          if (/^\s*(\*|\/\/|<!--)/.test(line)) return
+          if (!/\bseal-face\b/.test(line)) return
+          const translucent = /bg-[a-z-]+\/(\d+|\[[\d.]+\])/.exec(line)
+          if (translucent) bad.push(`${file}:${i + 1} 印面底色 ${translucent[0]} 带透明度(日主题混纸后跌破 4.5:1)`)
+        })
+      }
+    }
+    expect(bad, `这些印面底色该去掉透明度:\n${bad.join('\n')}`).toEqual([])
+  })
+})
+
 describe('调色板 · 两处手抄关系', () => {
   it('浏览器 chrome 色跟的是纸色(theme.ts 与 index.html 首帧 meta 互为一致)', () => {
     const m = /const THEME_CHROME = \{ light: '(#[0-9A-Fa-f]{6})', dark: '(#[0-9A-Fa-f]{6})' \}/.exec(THEME_TS)
@@ -340,6 +444,50 @@ describe('调色板 · 两处手抄关系', () => {
     const meta = /name="theme-color" content="(#[0-9A-Fa-f]{6})"/.exec(INDEX_HTML)
     expect(meta, 'index.html 首帧的 theme-color 变了形状,判据要跟着改').toBeTruthy()
     expect(meta![1]!.toUpperCase()).toBe(hexOf(LIGHT.get('paper')!))
+  })
+
+  /**
+   * 首帧主题必须在模块脚本之前定下来。
+   *
+   * 修复前:`initTheme` 在 App.vue 挂载时才跑,而那时 JS bundle 已下载执行完。
+   * 实测暗色用户前 198ms 里 `data-theme` 还没挂上、状态栏是亮色的 `#F3EFE4` ——
+   * 一屏白底 + 一条亮状态栏,慢设备上更明显。
+   *
+   * 存档是加密的,内联脚本解不开,故 `__theme` 另存一个明文小键(只写 light/dark)。
+   *
+   * 故障注入:删掉 index.html 里的这段内联脚本,本条红。
+   */
+  it('暗色用户的首帧不闪白底:内联脚本在模块脚本之前挂上 data-theme', () => {
+    const scriptAt = INDEX_HTML.indexOf('yunyin.__theme')
+    const moduleAt = INDEX_HTML.indexOf('type="module"')
+    expect(scriptAt, 'index.html 里没有读主题标记的内联脚本 —— 暗色用户会先看到一屏亮底').toBeGreaterThan(0)
+    expect(moduleAt, 'index.html 里找不到模块脚本入口').toBeGreaterThan(0)
+    expect(scriptAt, '内联脚本排在了模块脚本之后,首帧就来不及了').toBeLessThan(moduleAt)
+    // 两个颜色都要在,且与 THEME_CHROME 同源
+    const m = /const THEME_CHROME = \{ light: '(#[0-9A-Fa-f]{6})', dark: '(#[0-9A-Fa-f]{6})' \}/.exec(THEME_TS)!
+    expect(INDEX_HTML, '内联脚本里的亮色与 theme.ts 不同步').toContain(m[1]!)
+    expect(INDEX_HTML, '内联脚本里的暗色与 theme.ts 不同步').toContain(m[2]!)
+    // 明文标记的键名须与 theme.ts 一致
+    expect(THEME_TS, 'theme.ts 里的键名与 index.html 对不上').toContain('yunyin.__theme')
+  })
+
+  /**
+   * 清档时首帧主题标记也要清掉。
+   *
+   * 实测:选过暗色 → 清档 → 重进,系统是亮色、新档也回到默认 auto,
+   * 首帧却仍按残留的 dark 渲染,直到 App 挂载才翻回来 —— 新角色顶着上一位的主题闪一下。
+   * `clearAllSave` 只清 PERSISTED_STORES,这个键不在清单里,于是漏了。
+   *
+   * utils 不许引 core(分层判据),故两处各写一遍字面量,这里钉住它们一致。
+   * 故障注入:删掉 storage.ts 里那行 removeItem,本条红。
+   */
+  it('清档连带清掉首帧主题标记,两处键名一致', () => {
+    expect(STORE_UTILS, 'utils/storage.ts 里找不到主题标记的键名').toContain("'yunyin.__theme'")
+    expect(STORE_UTILS, 'clearAllSave 没有清掉主题标记 —— 新角色会沿用上一位的主题闪一下').toMatch(
+      /removeItem\('yunyin\.__theme'\)/
+    )
+    expect(THEME_TS).toContain("THEME_HINT_KEY = 'yunyin.__theme'")
+    expect(INDEX_HTML).toContain('yunyin.__theme')
   })
 
   it('public/privacy.html 手抄的那几个颜色与色板一致,且死 token(古代 qinghua)不回魂', () => {
@@ -546,5 +694,209 @@ describe('调色板 · 组件类不空转', () => {
     // 墨线钮比虚框重:描边更实、字更黑
     expect(CSS).toMatch(/\.btn-ink \{[^}]*border: 1px solid rgb\(var\(--color-ink-rgb\) \/ 0\.42\)/)
     expect(CSS).toMatch(/\.btn-ghost \{[^}]*border: 1px solid rgb\(var\(--color-ink-rgb\) \/ 0\.30\)/)
+  })
+})
+
+/**
+ * 同色淡底 + 同色文字,是一套注定过不了 AA 的写法。
+ *
+ * 底色与文字色同源,叠上去只会把两者拉近:淡底越明显,字越糊。
+ * 实测全仓 19 组(`bg-cinnabar/10 text-cinnabar` 等),其中 18 组跌破 4.5:1,
+ * 最差的是 `bg-cinnabar/10 text-cinnabar`(日 4.22 / 夜 3.91)。
+ *
+ * 数学上**没有可用的 alpha**:把 alpha 压到让对比度过线,那层淡底也就不存在了;
+ * 唯一能同时保住「有色块」与「读得清」的做法是让文字走主题墨色(ink/ink-soft),
+ * 色块只做底,不作字色。品阶角章走的就是这条路(深墨字 + 品阶淡底,见上文那条)。
+ *
+ * 本条是**棘轮**:登记当前的存量,不要求本轮清零;新写一行同色淡底就会红,
+ * 逼你用「墨字 + 色块」或「裸色字、不要底」。存量清理单独立项(见 plans 第二十六节)。
+ */
+describe('调色板 · 同色淡底不该承载同色文字', () => {
+  /** 已登记的组合 → 允许出现的次数(只许减,不许增) */
+  const KNOWN: Record<string, number> = {
+    'cinnabar/10 text-cinnabar': 6,
+    'cinnabar/15 text-cinnabar': 2,
+    'cinnabar/5 text-cinnabar': 3,
+    'jade/15 text-jade': 2,
+    'jade/10 text-jade': 2,
+    'jade/8 text-jade': 1,
+    'violet-ink/10 text-violet-ink': 2,
+    'gold-ink/20 text-gold-ink': 1,
+    'gold-ink/15 text-gold-ink': 1,
+    'gold-ink/10 text-gold-ink': 3,
+    'gold-ink/8 text-gold-ink': 1,
+    'azure/15 text-azure': 4,
+    'azure/10 text-azure': 1,
+    'azure/5 text-azure': 2,
+    'amber-ink/10 text-amber-ink': 1,
+    // ↓ 三条为 1.58.5 并入上游时登记的本仓存量(登录页/好友页/图标块等既有写法),只许减
+    'cinnabar/8 text-cinnabar': 1,
+    'amber-ink/15 text-amber-ink': 2,
+    'indigo-ink/10 text-indigo-ink': 1
+  }
+
+  /**
+   * 墨系与纸系不受此约束:ink 本就是主题墨(它叠自己的淡底只是「更深一点的墨」,
+   * 文字仍是同一枚墨,对比度反而更高);paper 叠 paper 是「更实一点的纸」,同理。
+   * 真正把字糊掉的是**彩色**同色淡底 —— 那才是这条要拦的。
+   */
+  const NEUTRAL = new Set(['ink', 'ink-soft', 'ink-faint', 'paper', 'paper-deep', 'paper-dark'])
+
+  it('同色淡底的使用次数不得超过已登记量', () => {
+    const found: Record<string, number> = {}
+    const walk = (d: string): void => {
+      for (const entry of readdirSync(d, { withFileTypes: true })) {
+        const path = resolve(d, entry.name)
+        if (entry.isDirectory()) {
+          walk(path)
+          continue
+        }
+        if (!/\.(vue|ts)$/.test(entry.name) || entry.name.endsWith('.spec.ts')) continue
+        const src = readFileSync(path, 'utf-8')
+        for (const m of src.matchAll(/\bbg-([a-z-]+)\/(\d+)\b[^"'`]*\btext-([a-z-]+)\b/g)) {
+          if (m[1] !== m[3] || NEUTRAL.has(m[1]!)) continue
+          const key = `${m[1]}/${m[2]} text-${m[3]}`
+          found[key] = (found[key] ?? 0) + 1
+        }
+        for (const m of src.matchAll(/\btext-([a-z-]+)\b[^"'`]*\bbg-([a-z-]+)\/(\d+)\b/g)) {
+          if (m[1] !== m[2] || NEUTRAL.has(m[1]!)) continue
+          const key = `${m[2]}/${m[3]} text-${m[1]}`
+          found[key] = (found[key] ?? 0) + 1
+        }
+      }
+    }
+    walk(resolve(ROOT, 'src'))
+    const grew = Object.entries(found)
+      .filter(([k, n]) => n > (KNOWN[k] ?? 0))
+      .map(([k, n]) => `${k} 现 ${n} 处,已登记 ${KNOWN[k] ?? 0}`)
+    expect(grew, `同色淡底的字过不了 4.5:1,别再新增(改用墨色字 + 色块):\n${grew.join('\n')}`).toEqual([])
+  })
+
+  /**
+   * 承载**文字**的同色淡底已全部转成墨色字(第 264 轮)。
+   *
+   * 这一条钉住那次清理的落点:这些位置的字必须是 `text-ink`,不能再回到彩色字。
+   * 色块与描边保留,视觉上的品类区分由颜色块本身承担。
+   *
+   * 故障注入:把任一处改回 `text-cinnabar` / `text-jade` 等,本条红。
+   */
+  /**
+   * 承载文字的徽章已改墨色字(第 264~265 轮),但**源码层判不了这一条**。
+   *
+   * 试过三种写法:按行找、按词回溯、按 ±6 行窗口。都不稳 ——
+   *   一 模板里 class 与文字常分处相邻行;
+   *   二 同一个词(「可换」「待悟道」)在别处还会出现(按钮文案、注释、aria-label);
+   *   三 同一个文件里**图标块**也用同色淡底(那是对的,图标只需 3:1),按文本扫必然误伤。
+   *
+   * 逐处点名最后会变成「判据自己维护一张行号表」,比不写更脆。
+   *
+   * 真正的保证是:
+   *   本文件的**棘轮**(新增同色淡底就红)+ 真实 DOM 实测
+   *   (9 路由 × 两套主题,彩色淡底上的文字最差日 4.80 / 夜 4.66,零跌破)。
+   *
+   * 这一条只记下结论,不断言源码。
+   */
+  it('历史结论:源码层判不了「彩色字压同色淡底」,靠棘轮与 DOM 实测兜', () => {
+    // 保留一条可执行的最小事实:棘轮表仍在收紧方向上
+    const total = Object.values(KNOWN).reduce((a, b) => a + b, 0)
+    expect(total, '棘轮总量应比第 264 轮(66)明显下降(1.58.5 并入时按本仓实况登记为 36)').toBeLessThanOrEqual(36)
+  })
+
+  /**
+   * 非文本图形也须 3:1(WCAG 1.4.11)。
+   *
+   * 界域志那三个状态点是 6×6 的圆点,只靠颜色区分「未至 / 可往 / 已通」。
+   * 「未至」原先写 `bg-ink-faint/40` —— 叠到卡片上实测日 1.74 / 夜 2.01,
+   * 连 3:1 都不到,图例那一行的灰点基本看不见。
+   *
+   * 修法:墨色 alpha 提到 75(日 3.18 / 夜 3.53),SVG 里的同款点同步 0.35 → 0.75。
+   * 三色 ΔE 仍在 50 以上,区分度不受影响。
+   */
+  it('状态点这类非文本图形守 3:1', () => {
+    const view = readFileSync(resolve(ROOT, 'src/views/MortalWorldView.vue'), 'utf-8')
+    expect(view, '图例的「未至」点又淡回去了').toContain('bg-ink-faint/75')
+    expect(view).not.toContain('bg-ink-faint/40')
+    // SVG 里的同款点用 fill-opacity,须同步
+    expect(view, 'SVG 的「未至」点还停在 0.35').toContain('unlocked(p) ? 0.85 : 0.75')
+    // 三色仍可区分:不能为了对比度把它们都改成同一个墨色
+    for (const cls of ['bg-azure/80', 'bg-jade']) {
+      expect(view, `图例少了「${cls}」那一档,三态就分不出了`).toContain(cls)
+    }
+    /*
+     * 「处事多少」的金点:4×4 的圆点同样属非文本图形。
+     * 60% 叠在卡片上日 2.46 / 夜 2.93,两头都够不着 3:1;80% 是日 3.54 / 夜 4.06。
+     */
+    expect(view, '金点又淡回去了').toContain('bg-gold-ink/80')
+    expect(view).not.toContain('bg-gold-ink/60')
+  })
+
+  it('这类组合确实过不了 AA —— 判据不是在守一个假问题', () => {
+    const bad: string[] = []
+    for (const theme of ['light', 'dark'] as const) {
+      const palette = theme === 'light' ? LIGHT : DARK
+      for (const m of Object.keys(KNOWN)) {
+        const parsed = /^([a-z-]+)\/(\d+) text-[a-z-]+$/.exec(m)
+        if (!parsed) continue
+        const tone = palette.get(parsed[1]!)
+        if (!tone) continue
+        for (const bg of surfacesOf(theme)) {
+          // 淡底叠在底上,再用同色作字
+          const tile = mix(tone, bg, Number(parsed[2]) / 100)
+          const ratio = contrast(tone, tile)
+          if (ratio < 4.5) bad.push(`${m}@${theme} ${ratio.toFixed(2)}:1`)
+        }
+      }
+    }
+    expect(bad.length, '若这条空了,说明同色淡底其实没问题,可以把棘轮撤掉').toBeGreaterThan(10)
+  })
+
+  /**
+   * 「把透明度降下来就安全了」是错觉 —— 这里逐档验一遍。
+   *
+   * 一度以为低档(5%/8%)达标、只有 10% 以上跌破,据此可以去降透明度。
+   * 按三张真实底(纸 / 纸深 / 卡片 lifted)重算,结论相反:
+   * 除 indigo-ink 外,六种彩色**在 5% 就已经有一边跌破**。
+   * 原因是这些色对纸本来就只贴着 4.5 过线,再叠一层自己的淡底必然拉近。
+   *
+   * 所以清理只能走「文字换墨色」,不能靠降透明度。这条判据把这个结论钉住,
+   * 免得下次又有人(包括我)先想到去减 alpha。
+   */
+  it('降透明度救不了这类组合 —— 5% 就已经跌破', () => {
+    const paperLifted = (theme: 'light' | 'dark'): Rgb => {
+      const body = theme === 'light' ? bodyOf(/:root \{([\s\S]*?)\n\}/) : bodyOf(/html\[data-theme='dark'\] \{([\s\S]*?)\n\}/)
+      const m = /--color-paper-lifted-rgb:\s*(\d+)\s+(\d+)\s+(\d+);/.exec(body)!
+      return [Number(m[1]), Number(m[2]), Number(m[3])] as Rgb
+    }
+    const stillBad = (token: string, alpha: number): boolean => {
+      for (const theme of ['light', 'dark'] as const) {
+        const palette = theme === 'light' ? LIGHT : DARK
+        const tone = palette.get(token)!
+        const surfaces: Rgb[] = [palette.get('paper')!, palette.get('paper-deep')!, paperLifted(theme)]
+        for (const bg of surfaces) {
+          if (contrast(tone, mix(tone, bg, alpha)) < 4.5) return true
+        }
+      }
+      return false
+    }
+    /*
+     * 五种彩色在最低档 5% 就仍然跌破。
+     *
+     * `cinnabar` 已从名单里去掉:2026-11-03 把夜主题那一档由 228 122 112 提到
+     * 238 136 126(它在 card-ink 叠半透明层的底上只有 4.03),提亮之后
+     * 日 4.51~5.00、夜 4.84~6.14,**5% 淡底反而安全了** ——
+     * 底色越接近文字色,对比度越差;文字色自身越亮,这个坑越浅。
+     *
+     * 也就是说:这一节的结论仍然成立(同色淡底是坏写法),但 cinnabar 已经不是
+     * 例子之一。哪天它再被压暗,这条会红,提醒把它加回去。
+     */
+    for (const token of ['jade', 'violet-ink', 'gold-ink', 'azure', 'amber-ink']) {
+      expect(stillBad(token, 0.05), `${token} 在 5% 竟然达标了 —— 请重算本节的结论`).toBe(true)
+    }
+    expect(
+      stillBad('cinnabar', 0.05),
+      'cinnabar 在 5% 又不安全了 —— 它大概被压暗了,请复核夜主题那一档'
+    ).toBe(false)
+    // indigo-ink 是唯一在低档安全的,留作反例
+    expect(stillBad('indigo-ink', 0.05), 'indigo-ink 低档应安全').toBe(false)
   })
 })
