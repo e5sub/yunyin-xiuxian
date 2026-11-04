@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- 品阶预算区间打印给人复核 */
 /**
  * 主修功法的品阶阶梯。
  *
