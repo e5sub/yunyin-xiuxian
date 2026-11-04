@@ -381,9 +381,12 @@ export class CloudError extends Error {
 // 两类 401 都要下线:
 //   kicked  = 被新设备挤下线(宽限期内旧 token 仍可写存档 → 先最后一推再登出)
 //   session = token 彻底失效(密钥变更/改密作废/自然过期;服务端再也不会放行,直接登出)
-// 服务端给这两类 401 打了 code;业务类 401(如改口令时「当前口令不对」)没有 code,不会触发。
+// 另有一类 403 也下线:
+//   banned  = 账号被封禁(服务端 users.status != 'active',登录与一切鉴权接口都不放行)。
+//             绝不做最后一推 —— 封禁后服务端本来就不再收档,客户端也别再试。
+// 服务端给这几类都打了 code;业务类 401(如改口令时「当前口令不对」)没有 code,不会触发。
 
-type SessionEndReason = 'kicked' | 'expired'
+type SessionEndReason = 'kicked' | 'expired' | 'banned'
 type SessionEndHandler = (reason: SessionEndReason) => void | Promise<void>
 let sessionEndHandler: SessionEndHandler | null = null
 /** 统一下线出口;防重入(最后一推也可能再收到 401) */
@@ -451,6 +454,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     // 会话级 401:被挤下线 / token 失效,统一走下线流程(kicked 先推最后一版存档,expired 直接下线)
     if (res.status === 401 && (code === 'kicked' || code === 'session')) {
       handleSessionEnd(code === 'kicked' ? 'kicked' : 'expired')
+    }
+    // 封禁 403:只在带 token 的请求上触发 —— 登录接口试封禁号也会拿到 banned,
+    // 那时本机并没有会话,不该走下线流程(登录页自己会把错误亮出来)。
+    if (res.status === 403 && code === 'banned' && auth.token !== '') {
+      handleSessionEnd('banned')
     }
     throw new CloudError(msg, res.status, code)
   }

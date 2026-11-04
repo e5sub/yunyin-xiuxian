@@ -117,7 +117,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
         }
       }
       if (row.status !== 'active') {
-        res.status(403).json({ error: '账号已被封禁' })
+        // code:'banned' 给客户端机器可读的判据,收到即下线并停止云上传(见 services/cloud.ts)
+        res.status(403).json({ error: '账号已被封禁', code: 'banned' })
         return
       }
       req.user = { id: row.id, username: row.username }
@@ -428,7 +429,7 @@ authRouter.post('/login', loginIpLimit, loginUserLimit, (req, res) => {
       return
     }
     if (row.status !== 'active') {
-      res.status(403).json({ error: '账号已被封禁' })
+      res.status(403).json({ error: '账号已被封禁', code: 'banned' })
       return
     }
     // 单设备登录:先通知旧设备收尾(最后一推存档),等它落库后再签发新会话

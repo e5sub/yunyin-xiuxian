@@ -131,7 +131,8 @@
     if (notice !== null) ui.toast(notice.text, 'warn')
   })
 
-  // 会话失效统一出口:kicked=被新设备挤下线(宽限期内最后一推存档),expired=token 彻底失效(密钥变更/改密/过期)
+  // 会话失效统一出口:kicked=被新设备挤下线(宽限期内最后一推存档),expired=token 彻底失效(密钥变更/改密/过期),
+  // banned=账号被封禁(服务端不再收任何请求,绝不做最后一推 —— 也不该再试)
   onSessionEnd(async reason => {
     if (reason === 'kicked') {
       try {
@@ -143,7 +144,14 @@
     stopCloudSync()
     disconnectCloudWs()
     useAuthStore().logout()
-    ui.toast(reason === 'kicked' ? '账号已在其他设备登录,本机已下线' : '登录已失效,请重新登录', 'warn')
+    ui.toast(
+      reason === 'kicked'
+        ? '账号已在其他设备登录,本机已下线'
+        : reason === 'banned'
+          ? '账号已被封禁,云同步已停止'
+          : '登录已失效,请重新登录',
+      'warn'
+    )
     void router.push('/login')
   })
 
