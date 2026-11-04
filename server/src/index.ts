@@ -21,7 +21,7 @@ import { eventRouter } from './routes/event.js'
 import { leisureRouter } from './routes/leisure.js'
 import { initDb, run } from './db.js'
 import { gmPath, gmRouter } from './admin.js'
-import { initWsServer, isOnline, KICK_WAIT_MS, kickUserSockets, notifyUser, registerChatPersist } from './ws.js'
+import { initWsServer, isOnline, KICK_WAIT_MS, kickUserSockets, notifyUser, registerChatPersist, WS_MAX_PAYLOAD, wsProtocolHandler } from './ws.js'
 import { getConfigNumber } from './config.js'
 import { ensureAdminUser } from './adminBootstrap.js'
 
@@ -200,7 +200,13 @@ async function main(): Promise<void> {
   })
 
   const server = createServer(app)
-  const wss = new WebSocketServer({ server, path: '/ws' })
+  // maxPayload:收帧封顶(见 ws.ts);handleProtocols:客户端用子协议带令牌,服务端只回显协议名
+  const wss = new WebSocketServer({
+    server,
+    path: '/ws',
+    maxPayload: WS_MAX_PAYLOAD,
+    handleProtocols: wsProtocolHandler
+  })
   initWsServer(wss)
 
   registerPresence({ isOnline, notify: (uid, msg) => notifyUser(uid, msg) })

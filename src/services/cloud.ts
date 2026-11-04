@@ -703,6 +703,16 @@ export function onCloudWs(handler: (msg: CloudWsMsg) => void): () => void {
   }
 }
 
+/**
+ * WS 子协议名,须与服务端 ws.ts 的 WS_PROTOCOL 一致。
+ * 令牌作为第二个子协议值随握手头发送:标准 WebSocket 客户端不能自定义请求头,
+ * 子协议是浏览器里唯一能带凭证的通道,且不会像 ?token= 那样被反代 access log 抄进 URL。
+ */
+const WS_PROTOCOL = 'yunyin.v1'
+
+/** 老服务端不认识子协议时置 true:退回 ?token= 查询串,只退一次,不来回抖 */
+let wsUseQueryToken = false
+
 export function connectCloudWs(): void {
   if (typeof window === 'undefined' || ws !== null) return
   const auth = useAuthStore()
@@ -711,13 +721,18 @@ export function connectCloudWs(): void {
   startPresencePoll()
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
   const base = API_BASE === '' ? `${proto}://${location.host}` : API_BASE.replace(/^http/, 'ws')
+  // 本次连接是否真的建立过 —— 用来区分「握手被老服务端拒掉」与「连上后又被断开」
+  let opened = false
   try {
-    ws = new WebSocket(`${base}/ws?token=${encodeURIComponent(auth.token)}`)
+    ws = wsUseQueryToken
+      ? new WebSocket(`${base}/ws?token=${encodeURIComponent(auth.token)}`)
+      : new WebSocket(`${base}/ws`, [WS_PROTOCOL, auth.token])
   } catch {
     scheduleReconnect()
     return
   }
   ws.onopen = () => {
+    opened = true
     reconnectDelay = 3000
   }
   ws.onmessage = ev => {
@@ -735,6 +750,9 @@ export function connectCloudWs(): void {
     for (const h of handlers) h(msg)
   }
   ws.onclose = () => {
+    // 从未 open 就被关:多半是老服务端不认子协议(浏览器会以「未回选协议」直接判握手失败)。
+    // 退回一次 ?token= 方式,让前后端版本不同步的部署仍能连上;退过一次就不再反复试。
+    if (!opened && !wsUseQueryToken) wsUseQueryToken = true
     ws = null
     scheduleReconnect()
   }

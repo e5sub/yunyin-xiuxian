@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [1.61.0] - 2026-11-04
+
+### 调整与优化
+
+- **依赖体检与升级** —— 服务端 243 个包与根目录生产依赖均为 0 条公告;根目录 `devDependencies` 里的公告集中在两处,**Electron 40 以下的桌面运行时**与**构建工具链**。本轮把 Electron 从 39.8.10 升到 42.11.18(39 线已过官方支持期,当前只维护最近三个大版本),连带消掉 `extract-zip` 的两条解压符号链接穿越 —— Electron 42 已换成自家的 `@electron-internal/extract-zip`。另升 vite 8.3.5(8.2.0~8.2.3 有 `server.fs.allow` 绕过与 launch-editor 命令注入)、vitest 5.1.0、`source-map-js` 1.2.2(经 `overrides` 抬底,它是 vue/postcss 的生产链传递依赖)。**这一版桌面端须用完整包覆盖安装**,旧的 39 运行时不会被增量包替换。
+- **WebSocket 三道收口** —— ① 收帧封顶 64 KiB:ws 库默认给 100 MiB,登录后一条消息就能让进程按最大长度分配缓冲再 `JSON.parse`;② 加 30 秒心跳,连续两轮没有 pong 即 `terminate`,反代悄悄掐断 TCP 时连接不再只增不减;③ 单账号最多 4 条连接 —— 同一会话序号可重复握手,此前一个令牌就能开成百上千条。三条都只影响恶意/异常用法,正常客户端无感。
+- **补上 WS 的 `error` 监听** —— 收帧封顶之后,超限帧会以 `RangeError` 走 `error` 事件;`ws` 的实例错误没有监听器时 Node 一律按未捕获异常处理,进程直接退出。也就是说只加 `maxPayload` 而不接这个事件,等于给了一条「发一帧 65 KB 就能让服务下线」的路。现在连接级与服务端级各接一个,异常只断这条连接并留一行日志(冒烟已验证:5 MB 帧 → 服务端 `terminate`、进程存活、客户端收 4001)。
+- **握手令牌改走子协议** —— 原先 `wss://host/ws?token=<jwt>`,反代 access log 默认记整条 URL,凭证就跟着留痕。现客户端以 `Sec-WebSocket-Protocol: yunyin.v1, <jwt>` 送出,服务端只回显协议名、令牌不进响应头也不进日志。**兼容旧客户端**:服务端仍接受 `?token=`;新前端遇到不认子协议的老服务端会退回查询串一次,不会来回抖。
+- **桌面外壳收紧** —— 站内链接(关于页的仓库地址、隐私政策)一律交给系统浏览器,`setWindowOpenHandler` 拒绝在应用内开窗;`will-navigate` 只放行 `dist` 目录下的本地页面,`will-attach-webview` 直接拒绝;权限按白名单授予(只放行写剪贴板的 `clipboard-sanitized-write`,摄像头/麦克风/定位/通知/剪贴板读取/HID/USB 全拒)。此前外链会在应用内开新窗口,外部页面同样拿到 preload 的 `electronAPI`,能改 `settings.json`、退出应用。
+- **口令散列改异步** —— `bcrypt.hashSync/compareSync` 单次要几十毫秒 CPU,同步调用会把整个事件循环钉住;登录/注册/重置/改密/GM 登录与管理员引导全部换成 `await bcrypt.hash/compare`。时序抹平(账号不存在也跑一次比对)保留。
+
+### 修复
+
+- **Dockerfile 漏打两个 vendor 模块** —— `Dockerfile` 里那份内联 esbuild 入口清单只列了 5 个,而 `package.json` 的 `build:vendor` 已经是 7 个,少了 `forgeResolve` 与 `levelResolve`。CI 走的是 `bun run build:vendor` 所以没露馅,但**用根 Dockerfile 自建镜像时,炼器与升级结算会在容器里加载不到 bundle**:`/api/forge/op`、`/api/progress/op` 直接失败。现把入口清单收进 `scripts/build-vendor.mjs` 一处,`package.json`、`Dockerfile`、`Dockerfile.ci`(经 CI 预生成)与 CI 的产物校验全部对齐 —— 这是 1.58.3 与 1.59.0 两次「加模块忘改清单」的根因。
+
 ## [1.60.0] - 2026-11-04
 
 ### 调整与优化

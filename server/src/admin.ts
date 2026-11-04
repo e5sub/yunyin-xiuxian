@@ -45,7 +45,7 @@ gmRouter.post('/login', gmLoginIpLimit, gmLoginUserLimit, (req: Request, res: Re
       'SELECT id, username, pass_hash, role, status FROM users WHERE username_lower = ?',
       [username.toLowerCase()]
     )
-    if (row === undefined || !verifyPassword(row.pass_hash, password)) {
+    if (row === undefined || !(await verifyPassword(row.pass_hash, password))) {
       res.status(401).json({ error: '道号或口令不对' })
       return
     }
@@ -256,7 +256,7 @@ gmRouter.post('/users/:id/reset-password', requireAdmin, (req: Request, res: Res
       return
     }
     const result = await run('UPDATE users SET pass_hash = ?, pass_changed_at = ? WHERE id = ?', [
-      bcrypt.hashSync(password, 10),
+      await bcrypt.hash(password, 10),
       Date.now(),
       id
     ])

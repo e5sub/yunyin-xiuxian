@@ -252,13 +252,17 @@ const resetTargetLimit = rateLimit({
 /** 账号不存在时也跑一次 bcrypt,抹平时序差异(避免探测道号是否存在) */
 const DUMMY_HASH = bcrypt.hashSync('yunyin-dummy-password', 10)
 
-/** 口令校验;hash 缺失也照跑一次 bcrypt,响应时间不泄露账号是否存在 */
-export function verifyPassword(hash: string | undefined, password: string): boolean {
+/**
+ * 口令校验;hash 缺失也照跑一次 bcrypt,响应时间不泄露账号是否存在。
+ * 用异步版:bcrypt 单次 cost=10 要几十毫秒 CPU,同步调用会把整个事件循环钉住,
+ * 登录/重置这类按 IP 限速的接口在分布式重试下仍可能被用来放大成「全员卡顿」。
+ */
+export async function verifyPassword(hash: string | undefined, password: string): Promise<boolean> {
   if (hash === undefined) {
-    bcrypt.compareSync(password, DUMMY_HASH)
+    await bcrypt.compare(password, DUMMY_HASH)
     return false
   }
-  return bcrypt.compareSync(password, hash)
+  return bcrypt.compare(password, hash)
 }
 
 /** 前端探测:邮箱验证码是否强制(预留开关)、邮箱服务是否启用、云存档上传间隔 */
@@ -392,7 +396,7 @@ authRouter.post('/register', registerLimit, (req, res) => {
         return
       }
     }
-    const hash = bcrypt.hashSync(password, 10)
+    const hash = await bcrypt.hash(password, 10)
     const now = Date.now()
     const info = await run(
       'INSERT INTO users (username, username_lower, email, email_lower, pass_hash, role, status, created_at, pass_changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -420,11 +424,11 @@ authRouter.post('/login', loginIpLimit, loginUserLimit, (req, res) => {
     )
     if (row === undefined) {
       // 账号不存在也走一次比对:响应时间不泄露道号是否注册
-      bcrypt.compareSync(password, DUMMY_HASH)
+      await bcrypt.compare(password, DUMMY_HASH)
       res.status(401).json({ error: '道号或口令不对' })
       return
     }
-    if (!bcrypt.compareSync(password, row.pass_hash)) {
+    if (!(await bcrypt.compare(password, row.pass_hash))) {
       res.status(401).json({ error: '道号或口令不对' })
       return
     }
@@ -505,7 +509,7 @@ authRouter.post('/reset', resetIpLimit, resetTargetLimit, (req, res) => {
       res.status(400).json({ error: '验证码不对或已过期' })
       return
     }
-    const hash = bcrypt.hashSync(password, 10)
+    const hash = await bcrypt.hash(password, 10)
     // 重置口令同时作废已签发的 token(pass_changed_at 参与 requireAuth 校验)
     const result = await run('UPDATE users SET pass_hash = ?, pass_changed_at = ? WHERE email_lower = ?', [
       hash,
@@ -556,13 +560,13 @@ authRouter.post('/change-password', requireAuth, selfLimit, (req, res) => {
       'SELECT pass_hash, login_seq FROM users WHERE id = ?',
       [req.user!.id]
     )
-    if (row === undefined || !verifyPassword(row.pass_hash, oldPassword)) {
+    if (row === undefined || !(await verifyPassword(row.pass_hash, oldPassword))) {
       res.status(401).json({ error: '当前口令不对' })
       return
     }
     const now = Date.now()
     await run('UPDATE users SET pass_hash = ?, pass_changed_at = ? WHERE id = ?', [
-      bcrypt.hashSync(newPassword, 10),
+      await bcrypt.hash(newPassword, 10),
       now,
       req.user!.id
     ])
@@ -589,7 +593,7 @@ authRouter.post('/change-email', requireAuth, selfLimit, (req, res) => {
       'SELECT pass_hash, email FROM users WHERE id = ?',
       [req.user!.id]
     )
-    if (row === undefined || !verifyPassword(row.pass_hash, password)) {
+    if (row === undefined || !(await verifyPassword(row.pass_hash, password))) {
       res.status(401).json({ error: '当前口令不对' })
       return
     }

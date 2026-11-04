@@ -1,6 +1,7 @@
-import { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, session } from 'electron'
+import { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, session, shell } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
+import { pathToFileURL } from 'node:url'
 import pkg from '../package.json'
 
 // package.json 没有 title 字段,取 electron-builder 的 productName
@@ -145,6 +146,20 @@ const createAppMenu = () => {
   Menu.setApplicationMenu(menu)
 }
 
+/** 只在 http(s) 下交给系统浏览器;其它协议(javascript:/file:/自注册协议)一律丢弃 */
+const openExternally = url => {
+  try {
+    const u = new URL(url)
+    if (u.protocol === 'https:' || u.protocol === 'http:') void shell.openExternal(u.toString())
+  } catch {
+    // 非法 URL:当作没点
+  }
+}
+
+/** 页面内导航是否允许:只认 dist 目录下的构建产物(index.html 及其 hash 路由) */
+const distUrlPrefix = pathToFileURL(distPath).href + '/'
+const isLocalAppUrl = url => url.startsWith(distUrlPrefix)
+
 const createWindow = () => {
   win = new BrowserWindow({
     title: APP_TITLE,
@@ -154,6 +169,10 @@ const createWindow = () => {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      // 显式声明:渲染进程跑在沙箱里,即使页面被注入脚本也拿不到 Node 能力
+      sandbox: true,
+      // 游戏不需要任何 <webview>
+      webviewTag: false,
       preload: preloadPath
     }
   })
@@ -161,7 +180,37 @@ const createWindow = () => {
   createAppMenu()
   win.loadFile(path.join(distPath, 'index.html'))
 
-  // WebDAV CORS 绕过:注入 CORS 响应头
+  // 站内链接(关于页的 GitHub、隐私政策)一律丢给系统浏览器:在应用内开新窗口等于
+  // 让外部页面拿到 preload 注入的 electronAPI(能写 settings.json、退出应用)。
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    openExternally(url)
+    return { action: 'deny' }
+  })
+
+  // 顶层导航只允许留在本地页面:否则外部站点会在同一窗口接管应用外壳。
+  win.webContents.on('will-navigate', (event, url) => {
+    if (isLocalAppUrl(url)) return
+    event.preventDefault()
+    openExternally(url)
+  })
+
+  // 防御性:本项目不嵌入任何 webview,被附加即拒绝
+  win.webContents.on('will-attach-webview', event => {
+    event.preventDefault()
+  })
+
+  // 权限按白名单授予:只放行「写剪贴板」(设置页的诊断信息复制要用 navigator.clipboard.writeText),
+  // 摄像头/麦克风/定位/通知/剪贴板读取/HID/USB 全拒。全拒之后,Chromium 侧那类
+  // 「权限请求归属到错误来源」的漏洞也没有可触发的入口。
+  const allowedPermission = permission => permission === 'clipboard-sanitized-write'
+  win.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(allowedPermission(permission))
+  })
+  win.webContents.session.setPermissionCheckHandler((_wc, permission) => allowedPermission(permission))
+
+  // WebDAV CORS 绕过:注入 CORS 响应头。
+  // 作用域仍是整个 session(配置在渲染进程里,主进程拿不到用户填的 WebDAV 地址),
+  // 所以外部页面一旦能进应用就会共享这份豁免 —— 上面两道导航闸门是这个前提的保证。
   win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
     const headers = { ...details.responseHeaders }
     headers['access-control-allow-origin'] = ['*']

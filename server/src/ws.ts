@@ -13,6 +13,55 @@ interface Client {
 
 const clients = new Map<number, Set<Client>>()
 
+/**
+ * 单账号最多同时保有的连接数。同一会话(seq 相同)可重复握手,不给上限就能靠一个令牌
+ * 开成百上千条连接,每条的会话状态与内存开销都算在服务端。
+ */
+const MAX_CONNS_PER_UID = 4
+
+/**
+ * 心跳:每 30 秒 ping 一次,连续两轮收不到 pong 视为死连接并 terminate。
+ * 浏览器/标准客户端会在协议层自动回 pong,不需要前端配合。
+ * 反代悄悄掐断 TCP 而不发 FIN 时(移动网络切换最常见),没有这一层连接只增不减。
+ */
+const HEARTBEAT_MS = 30_000
+const HEARTBEAT_MAX_MISS = 2
+
+/**
+ * 子协议名。token 作为第二个子协议值随握手头送出(Sec-WebSocket-Protocol),
+ * 服务端只回显这一个名字,令牌不会出现在回显里 —— 见 tokenFromHandshake。
+ */
+export const WS_PROTOCOL = 'yunyin.v1'
+
+/**
+ * 客户端单帧上限 64 KiB。本协议的消息只有 ping/chat 两种,聊天正文另有 120 字上限;
+ * ws 库默认给 100 MiB,一条消息就能让进程先按最大长度准备缓冲再 JSON.parse。
+ * 只限制接收方向,服务端下发的在线名单/公告不受影响。
+ */
+export const WS_MAX_PAYLOAD = 64 * 1024
+
+/**
+ * 从 Sec-WebSocket-Protocol 里取令牌:标准 WebSocket 客户端无法自定义请求头,
+ * 子协议是浏览器里唯一能带凭证的通道,且不会被反代 access log 记进 URL。
+ * 兼容旧客户端:仍接受 ?token= 查询串,但新客户端优先走子协议。
+ */
+function tokenFromHandshake(req: IncomingMessage): string {
+  const raw = req.headers['sec-websocket-protocol']
+  const values = (Array.isArray(raw) ? raw.join(',') : (raw ?? '')).split(',').map(s => s.trim())
+  const fromProtocol = values.find(v => v !== '' && v !== WS_PROTOCOL)
+  if (fromProtocol !== undefined) return fromProtocol
+  const url = new URL(req.url ?? '/', 'http://localhost')
+  return url.searchParams.get('token') ?? ''
+}
+
+/**
+ * 握手子协议选择:只回显自己的协议名。不从候选里挑令牌当协议回显 —— 那样等于把凭证
+ * 抄在响应头里。没有候选协议时返回 false(ws 会自动处理成不带子协议)。
+ */
+export function wsProtocolHandler(protocols: Set<string>): string | false {
+  return protocols.has(WS_PROTOCOL) ? WS_PROTOCOL : false
+}
+
 /** 按账号限速:多开连接不能绕过(连接级计数在 ws 层会被并发连接放大) */
 const lastChatByUid = new Map<number, number>()
 
@@ -20,10 +69,18 @@ const lastChatByUid = new Map<number, number>()
 export const KICK_WAIT_MS = 2500
 
 export function initWsServer(wss: WebSocketServer): void {
+  wss.on('error', err => {
+    console.error('[ws] 服务端错误:', err.message)
+  })
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+    // 必须接住 error:超限帧(1009)、协议错、半开连接上的写失败都以 'error' 事件出现,
+    // 没有监听器时 Node 会当作未捕获异常直接退出进程 —— 一个玩家发一帧超限数据就能让服务下线。
+    ws.on('error', err => {
+      console.warn('[ws] 连接异常:', err.message)
+      ws.terminate()
+    })
     void (async () => {
-      const url = new URL(req.url ?? '/', 'http://localhost')
-      const token = url.searchParams.get('token') ?? ''
+      const token = tokenFromHandshake(req)
       const session = verifyToken(token)
       if (session === null) {
         ws.close(4001, '未登录')
@@ -46,6 +103,11 @@ export function initWsServer(wss: WebSocketServer): void {
       }
       const client: Client = { uid, name: row.username, ws }
       let existing = clients.get(uid)
+      // 同一会话可重复握手(多标签页/断线重连),但总连接数要封顶
+      if (existing !== undefined && existing.size >= MAX_CONNS_PER_UID) {
+        ws.close(4003, '连接数过多')
+        return
+      }
       if (existing === undefined) {
         existing = new Set()
         clients.set(uid, existing)
@@ -53,6 +115,23 @@ export function initWsServer(wss: WebSocketServer): void {
       const set = existing
       set.add(client)
       broadcastPresence()
+
+      // 心跳:连续 HEARTBEAT_MAX_MISS 轮没有 pong 就判定对端已死
+      let missedPongs = 0
+      const heartbeat = setInterval(() => {
+        if (ws.readyState !== WebSocket.OPEN) return
+        if (missedPongs >= HEARTBEAT_MAX_MISS) {
+          ws.terminate()
+          return
+        }
+        missedPongs += 1
+        ws.ping()
+      }, HEARTBEAT_MS)
+      // 不要让心跳计时器单独吊住进程退出
+      heartbeat.unref?.()
+      ws.on('pong', () => {
+        missedPongs = 0
+      })
 
       ws.on('message', raw => {
         let msg: Record<string, unknown>
@@ -71,6 +150,7 @@ export function initWsServer(wss: WebSocketServer): void {
       })
 
       ws.on('close', () => {
+        clearInterval(heartbeat)
         set.delete(client)
         if (set.size === 0) clients.delete(uid)
         broadcastPresence()

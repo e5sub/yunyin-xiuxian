@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-**云隐修仙录** — 一款 Vue 3 驱动的文字修仙放置（idle）游戏，进度存云端（`server/`），本地只作缓存。版本 1.60.0，`type: module`。支持 Web/PWA、Android（Capacitor）与 Windows 桌面（Electron）三端。许可证 CC BY-NC 4.0（禁止商用）；打包的楷体字型为 LXGW WenKai，SIL OFL 1.1（许可证文本在 `public/fonts/OFL.txt`，再分发时须保留）。
+**云隐修仙录** — 一款 Vue 3 驱动的文字修仙放置（idle）游戏，进度存云端（`server/`），本地只作缓存。版本 1.61.0，`type: module`。支持 Web/PWA、Android（Capacitor）与 Windows 桌面（Electron）三端。许可证 CC BY-NC 4.0（禁止商用）；打包的楷体字型为 LXGW WenKai，SIL OFL 1.1（许可证文本在 `public/fonts/OFL.txt`，再分发时须保留）。
 
 ## Architecture & Data Flow
 
@@ -82,6 +82,7 @@ tsconfig paths `@/* → ./src/*`，开启 `strict` + `noUncheckedIndexedAccess` 
 - **多人副本**：万妖围城（`/api/boss`，页面 `/boss`）。全服共享血池的世界妖王，血池 = 全服最高攻 × `boss_hp_atk_mult`；出剑 = 服务端 10 回合模拟（玩家倒下后余回合伤害减半），伤害按剩余血截断。**每日出剑次数走 `dungeon_daily` 表（`boss_daily_attempts`，默认 1）**，新副本直接复用该表限次。奖励即时返回数量单位，客户端按 `stoneByTier` 折算入账；击杀 ws 全服广播 `boss_killed`，`boss_respawn_sec` 后懒重生（伤害榜清零）。参数均可 GM 后台调
 - **四人副本 + 房间码**：`server/src/routes/dungeon.ts`（路由 `/api/dungeon`）+ `server/src/dungeonCore.ts`（限次/房间）+ `server/src/gnum.ts`（服务器侧 GNum 算术，boss/pvp/dungeon 共用），页面 `/dungeon`。副本：心魔镜像（合体心魔，12 轮轰破）/ 秘境共探（随机节点机缘 + 妖兽伏击）/ 洞天守卫（波次守御，撑过波数计功）/ 共修大阵（共鸣 roll，人数与境界层次加成）。**房间 = 6 位房间码**（`dungeon_teams` / `dungeon_team_members` 表，2 小时 TTL，5 人上限；房间只为一起下多人副本存在）：建房得码、输入相同码自动进房（已在别的房间自动退出并 ws 通知），开拔校验全员 `<key>_daily_attempts`（默认 1）并全员扣次，结算即解散房间，在线成员收 `dungeon_result` ws。各副本次数/强度/奖励参数全部 GM 后台可调
 - **Docker 镜像**：`Dockerfile`（本地）/ `Dockerfile.ci`（CI，dist 预构建）= **纯 Node 后端容器（无 nginx）**：`node:22-bookworm-slim`（glibc，better-sqlite3 有 arm64 预编译）；REST + WS + GM 后台 + 前端静态站（`STATIC_DIR=/app/server/public`，`index.ts` 里 express.static + SPA 兜底）同听 `$PORT`；数据卷 `/app/server/data`；实体机 nginx 反代整站（示例在 README.Docker.md）。详见 README.Docker.md
+- **服务端 vendor bundle**：运行时镜像只复制 `server/`，服务端能拿到的共享核心就只有 `server/vendor/*.mjs`（`saveSanitize` / `saveAuthority` / `profileRecompute` / `breakthroughResolve` / `lootGrant` / `forgeResolve` / `levelResolve`），装载走 `server/src/clientVendor.ts`。**入口清单只在 `scripts/build-vendor.mjs` 一处**：`package.json` 的 `build:vendor`、`Dockerfile` 与 CI 的产物校验全部指向它。新增一个要被 `loadClientModule` 加载的 core 模块时只改那一处 —— 1.58.3 与 1.59.0 各因为 Dockerfile 里手抄的清单没跟上，让炼器 / 升级在自建镜像里静默失效。
 - **APK 构建**：`build.yml` 打 `v*.*.*` tag 或手动触发；APK 内后端地址默认 `https://yy.071717.xyz`（src/services/cloud.ts 生产构建兜底），仓库 Variable `VITE_API_BASE` 可覆盖；tag 触发时发 GitHub Release（版本须与 package.json 一致），手动触发只出 artifact
 
 ## Code Conventions & Common Patterns

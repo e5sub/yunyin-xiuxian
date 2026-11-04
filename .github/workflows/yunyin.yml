@@ -72,8 +72,8 @@ jobs:
             echo "构建失败：dist/index.html 不存在"
             exit 1
           fi
-          if [ ! -f "server/vendor/saveSanitize.mjs" ] || [ ! -f "server/vendor/saveAuthority.mjs" ] || [ ! -f "server/vendor/profileRecompute.mjs" ] || [ ! -f "server/vendor/breakthroughResolve.mjs" ] || [ ! -f "server/vendor/lootGrant.mjs" ]; then
-            echo "构建失败：server/vendor 缺少共享模块 bundle"
+          if [ ! -f "server/vendor/saveSanitize.mjs" ] || [ ! -f "server/vendor/saveAuthority.mjs" ] || [ ! -f "server/vendor/profileRecompute.mjs" ] || [ ! -f "server/vendor/breakthroughResolve.mjs" ] || [ ! -f "server/vendor/lootGrant.mjs" ] || [ ! -f "server/vendor/forgeResolve.mjs" ] || [ ! -f "server/vendor/levelResolve.mjs" ]; then
+            echo "构建失败：server/vendor 缺少共享模块 bundle（入口清单见 scripts/build-vendor.mjs）"
             exit 1
           fi
           grep -q 'id="app"' dist/index.html || { echo "构建失败：index.html 缺少 #app 挂载点"; exit 1; }

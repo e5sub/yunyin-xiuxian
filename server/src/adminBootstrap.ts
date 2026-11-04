@@ -20,11 +20,11 @@ export async function ensureAdminUser(username: string, password = ''): Promise<
     if (password !== '') {
       if (password.length < 6 || password.length > 64) throw new Error('GM 口令须 6~64 字')
       // 口令没变就不重写哈希:否则每次重启都会把已签发的 GM token 作废
-      if (!bcrypt.compareSync(password, existing.pass_hash)) {
+      if (!(await bcrypt.compare(password, existing.pass_hash))) {
         await run('UPDATE users SET role = ?, status = ?, pass_hash = ?, pass_changed_at = ? WHERE id = ?', [
           'admin',
           'active',
-          bcrypt.hashSync(password, 10),
+          await bcrypt.hash(password, 10),
           Date.now(),
           existing.id
         ])
@@ -38,7 +38,7 @@ export async function ensureAdminUser(username: string, password = ''): Promise<
   if (password.length < 6 || password.length > 64) throw new Error('GM 口令须 6~64 字')
   const info = await run(
     'INSERT INTO users (username, username_lower, email, email_lower, pass_hash, role, status, created_at, pass_changed_at) VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, ?)',
-    [name, lower, bcrypt.hashSync(password, 10), 'admin', 'active', Date.now(), Date.now()]
+    [name, lower, await bcrypt.hash(password, 10), 'admin', 'active', Date.now(), Date.now()]
   )
   return `管理员「${name}」已创建 (id=${info.insertId})`
 }
