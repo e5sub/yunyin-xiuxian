@@ -9,6 +9,10 @@
           <span class="font-kai text-[19px] tracking-widest" :class="boss?.alive === false ? 'text-ink-faint' : 'text-cinnabar'">
             {{ boss?.name ?? '……' }}
           </span>
+          <!-- 生死状态直说,不必从血条长短里估 -->
+          <span v-if="boss !== null" class="text-[10px]" :class="alive ? 'text-cinnabar' : 'text-ink-faint'">
+            {{ alive ? '在世' : '已陨落' }}
+          </span>
           <span class="text-[11px] text-ink-faint">{{ realmText }}</span>
         </div>
         <span class="text-[11px] text-ink-faint">{{ attemptsText }}</span>
@@ -19,7 +23,10 @@
         <div class="h-full rounded-full transition-all duration-500" :class="alive ? 'bg-cinnabar/80' : 'bg-ink/20'" :style="{ width: hpPct + '%' }" />
       </div>
       <div class="mt-1.5 flex items-baseline justify-between text-[11px] text-ink-faint">
-        <span>气血 {{ hpText }} / {{ maxHpText }}</span>
+        <!-- 只报「气血 X / Y」量不出还剩几成,百分比补上 -->
+        <span class="tabular">
+          气血 {{ hpText }} / {{ maxHpText }}<template v-if="boss !== null"> · 余 {{ hpPct }}%</template>
+        </span>
         <span v-if="!alive">再临:{{ respawnText }}</span>
         <span v-else-if="growthText !== ''">{{ growthText }}</span>
       </div>
@@ -67,6 +74,10 @@
         <p>
           十回合连斩,共伤 {{ lastResult.damageText }}
           <template v-if="lastResult.fell"> · 身陨犹战,余刃减半</template>
+        </p>
+        <!-- 战后战况:这一剑之后妖王还剩几成,不必回头去血条上量 -->
+        <p v-if="strikeView !== null" class="text-[11px] tabular" :class="lastResult.killed ? 'text-jade' : 'text-cinnabar'">
+          战后 · {{ bossAfterText(strikeView) }}
         </p>
         <p class="text-ink-faint">
           <template v-if="!lastResult.killed">未竟全功 · 无资粮;妖王被推倒时,凡出过剑者按功均分。</template>
@@ -119,6 +130,7 @@
   import { BOSS_DIFFICULTY_OPTIONS, type BossDifficulty } from '@/data/bossDifficulty'
   import { gn } from '@/utils/gnum'
   import { formatGN } from '@/utils/format'
+  import { bossAfterText, bossStrikeView, hpSharePct } from '@/ui/bossStatus'
   import { realmLabel } from '@/data/realms'
   import { claimBossLoot } from '@/core/bossLoot'
 
@@ -198,20 +210,13 @@
     void reload()
   }
 
-  function pctOf(part: { m: number; e: number }, full: { m: number; e: number }): number {
-    const a = gn(part)
-    const b = gn(full)
-    if (b.m <= 0) return 0
-    const diff = a.e - b.e
-    if (diff > 3) return 100
-    if (diff < -3) return 0
-    const pct = (a.m / b.m) * Math.pow(10, diff) * 100
-    return Math.max(0, Math.min(100, pct))
-  }
-
+  /** 剩余百分比:口径在 ui/bossStatus,与副本首领战况同一套算法,别两处各算一份 */
   const hpPct = computed(() =>
-    boss.value === null ? 0 : alive.value ? pctOf(boss.value.hp, boss.value.maxHp) : 0
+    boss.value === null ? 0 : alive.value ? hpSharePct(boss.value.hp, boss.value.maxHp) : 0
   )
+
+  /** 战后战况:这一剑之后的妖王余血(出剑那一刻的快照,别人再出剑也不改它) */
+  const strikeView = computed(() => (lastResult.value === null ? null : bossStrikeView(lastResult.value)))
   const hpText = computed(() => (boss.value === null ? '' : formatGN(gn(boss.value.hp))))
   const maxHpText = computed(() => (boss.value === null ? '' : formatGN(gn(boss.value.maxHp))))
   const respawnText = computed(() => {

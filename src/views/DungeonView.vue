@@ -106,15 +106,15 @@
       </button>
 
       <!-- 战报 -->
-      <div
-        v-if="results[d.key]"
-        class="mt-3 max-h-56 overflow-y-auto rounded-md border border-ink/15 bg-paper-deep/60 px-3 py-2 text-[12px] leading-relaxed text-ink-soft"
-      >
-        <p class="mb-1" :class="results[d.key]!.win ? 'text-jade' : 'text-cinnabar'">
+      <div v-if="results[d.key]" class="mt-3 rounded-md border border-ink/15 bg-paper-deep/60 px-3 py-2">
+        <p class="text-[12px] leading-relaxed" :class="results[d.key]!.win ? 'text-jade' : 'text-cinnabar'">
           {{ results[d.key]!.name }} · {{ results[d.key]!.difficultyName }} ·
           {{ results[d.key]!.win ? '大有所获' : '止步于此' }}(房间 {{ results[d.key]!.roomSize }} 人)
         </p>
-        <p v-for="(line, i) in results[d.key]!.log" :key="i">{{ line }}</p>
+        <BossHpStatus v-if="results[d.key]!.boss" :status="dungeonBossView(results[d.key]!.boss!)" />
+        <div class="mt-1.5 max-h-44 overflow-y-auto text-[12px] leading-relaxed text-ink-soft">
+          <p v-for="(line, i) in results[d.key]!.log" :key="i">{{ line }}</p>
+        </div>
       </div>
     </div>
   </div>
@@ -123,12 +123,14 @@
 <script setup lang="ts">
   import { computed, onMounted, onUnmounted, ref } from 'vue'
   import SectionTitle from '@/components/common/SectionTitle.vue'
+  import BossHpStatus from '@/components/common/BossHpStatus.vue'
   import { useUiStore } from '@/stores/ui'
   import { usePlayerStore } from '@/stores/player'
   import { useResourcesStore } from '@/stores/resources'
   import { useAuthStore } from '@/stores/auth'
   import { cloudApi, onCloudWs, type DungeonBrief, type DungeonDifficulty, type DungeonDifficultyBrief, type DungeonGrowthBrief, type DungeonKey, type DungeonRunResult, type DungeonRoom } from '@/services/cloud'
   import { copyText } from '@/utils/clipboard'
+  import { dungeonBossView, dungeonShareTail } from '@/ui/bossStatus'
   import { stoneByTier } from '@/core/formulas'
   import { tierOfMajor } from '@/core/secretRealm'
   import { acquireEquipment } from '@/core/loot'
@@ -185,8 +187,10 @@
       ui.toast(`${msg.name} 已退出房间`, 'info')
       void reload()
     } else if (msg.type === 'dungeon_result') {
-      // 道友代开:奖励不重复入账(只由开拔者结算),刷新次数即可
-      ui.toast(`${msg.name} · ${msg.win ? '告捷' : '止步'},道友共享战获`, msg.win ? 'success' : 'info')
+      // 道友代开:奖励不重复入账(只由开拔者结算),刷新次数即可。
+      // 队友看不到完整战报,所以把「首领死没死」压进这一行提示里(老服务端无 boss 字段,尾巴为空)
+      const tail = dungeonShareTail(msg.boss)
+      ui.toast(`${msg.name} · ${msg.win ? '告捷' : '止步'}${tail},道友共享战获`, msg.win ? 'success' : 'info')
       void reload()
     }
   })

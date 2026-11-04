@@ -90,11 +90,51 @@ function maxOf(list: GE[]): GE {
   return list.reduce((acc, v) => (v.e > acc.e || (v.e === acc.e && v.m > acc.m) ? v : acc), { m: 0, e: 0 })
 }
 
+/** 轮次口径:斗法按轮,守卫按波 */
+type BossUnit = 'round' | 'wave'
+
+/**
+ * 首领战况:这一场究竟把首领打成什么样。
+ * 原先只有逐行战报,心魔战报还把后六轮折成「……」,玩家读完仍不知道有没有斩杀、
+ * 更看不到首领剩多少气血。这里把结果单独结出来,前端直接画条读账。
+ */
+interface BossReport {
+  /** 首领名(心魔 / 守到的那一波妖物 / 最凶的那只伏击妖兽) */
+  name: string
+  /** 起始气血(文本,已折成万/亿) */
+  hpStart: string
+  /** 剩余气血(文本;击破时为 0) */
+  hpLeft: string
+  /** 剩余百分比 0~100(服务端算好,前端只画条) */
+  leftPct: number
+  /** 是否击破 */
+  killed: boolean
+  /** 已战轮次 / 总轮次(守卫则是波次) */
+  rounds: number
+  roundsTotal: number
+  unit: BossUnit
+}
+
 interface SimResult {
   win: boolean
   log: string[]
   stone: number
   herb: number
+  /** 无首领的副本(共修大阵)为 null */
+  boss: BossReport | null
+}
+
+/** 剩余气血占比(%);GB 相差过大时按 0 计,不外抛出 NaN */
+function gePct(left: GE, start: GE): number {
+  if (start.m <= 0 || left.m <= 0) return 0
+  const ratio = (left.m / start.m) * Math.pow(10, left.e - start.e)
+  if (!Number.isFinite(ratio)) return 0
+  return Math.max(0, Math.min(100, Math.round(ratio * 100)))
+}
+
+/** GE 比大小(e 大者大;同 e 比 m) */
+function geGt(a: GE, b: GE): boolean {
+  return a.e > b.e || (a.e === b.e && a.m > b.m)
 }
 
 /**
@@ -182,7 +222,10 @@ function runDemon(room: MemberFighter[], cfg: DemonCfg, mod: DifficultyMod): Sim
   let poolLeft = poolHp
   let win = false
   let quipDone = false
+  /** 实际打了多少轮(中途破阵即止,不是恒等于 12) */
+  let fought = 0
   for (let i = 1; i <= rounds; i++) {
+    fought = i
     const fallen = poolLeft.m <= 0
     const strike = geMulN(sumAtk, randRange(0.85, 1.15) * (fallen ? 0.5 : 1))
     demonLeft = geSub(demonLeft, strike)
@@ -202,11 +245,26 @@ function runDemon(room: MemberFighter[], cfg: DemonCfg, mod: DifficultyMod): Sim
       break
     }
   }
-  if (!win) log.push(DEMON_LINES[randomIntRange(0, DEMON_LINES.length)]!)
+  const demonLeftClamped = geMax0(demonLeft)
+  const boss: BossReport = {
+    name: '合体心魔',
+    hpStart: geText(demonHp),
+    hpLeft: geText(demonLeftClamped),
+    leftPct: gePct(demonLeftClamped, demonHp),
+    killed: win,
+    rounds: fought,
+    roundsTotal: rounds,
+    unit: 'round'
+  }
+  if (!win) {
+    log.push(DEMON_LINES[randomIntRange(0, DEMON_LINES.length)]!)
+    // 十二轮打完还没破阵:把余血说清楚,别让人从「……」里猜输赢
+    log.push(`十二轮已尽,合体心魔仍余气血 ${boss.hpLeft}(${boss.leftPct}%)——未能击破。`)
+  }
   const stone = Math.max(1, Math.round(cfg.demon_reward_stone * mod.reward * (1 + 0.25 * (n - 1)) * (win ? 1 : 1 / 3)))
   const herb = Math.max(1, Math.round(cfg.demon_reward_herb * mod.reward * (1 + 0.25 * (n - 1)) * (win ? 1 : 1 / 3)))
   log.push(win ? `道心通明!每人得灵石 ${stone} · 灵草 ${herb}。` : `不敌而退,仅拾得残念:灵石 ${stone} · 灵草 ${herb}。`)
-  return { win, log, stone, herb }
+  return { win, log, stone, herb, boss }
 }
 
 function geMax0(a: GE): GE {
@@ -236,6 +294,9 @@ function runExplore(room: MemberFighter[], cfg: ExploreCfg, mod: DifficultyMod):
   let stone = 0
   let herb = 0
   let poolLeft = poolHp
+  /** 本场最凶的那只伏击妖兽(秘境无固定首领,以它代「首领战况」) */
+  let boss: BossReport | null = null
+  let bossStart: GE = { m: 0, e: 0 }
   const log: string[] = [modLine(mod), `一行${n}人踏入秘境,雾气扑面。`]
   for (let i = 1; i <= nodes; i++) {
     const spot = EXPLORE_SPOTS[randomIntRange(0, EXPLORE_SPOTS.length)]!
@@ -258,7 +319,9 @@ function runExplore(room: MemberFighter[], cfg: ExploreCfg, mod: DifficultyMod):
       const beastAtk = geMulN(maxAtk, randRange(0.25, 0.45) * mod.power)
       let left = beastHp
       let broke = false
+      let fought = 0
       for (let r = 1; r <= 3; r++) {
+        fought = r
         left = geSub(left, geMulN(sumAtk, randRange(0.85, 1.15)))
         poolLeft = geSub(poolLeft, geMulN(beastAtk, randRange(0.85, 1.15)))
         if (left.m <= 0) {
@@ -266,12 +329,27 @@ function runExplore(room: MemberFighter[], cfg: ExploreCfg, mod: DifficultyMod):
           break
         }
       }
+      const leftClamped = geMax0(left)
+      // 记下最凶的一只:玩家问「boss 死没死」,秘境里指的就是它
+      if (boss === null || geGt(beastHp, bossStart)) {
+        bossStart = beastHp
+        boss = {
+          name: `「${spot}」伏击妖兽`,
+          hpStart: geText(beastHp),
+          hpLeft: geText(leftClamped),
+          leftPct: gePct(leftClamped, beastHp),
+          killed: broke,
+          rounds: fought,
+          roundsTotal: 3,
+          unit: 'round'
+        }
+      }
       if (broke) {
         const got = Math.max(1, Math.round(cfg.explore_reward_stone * randRange(1.2, 1.8)))
         stone += got
-        log.push(`「${spot}」妖兽伏击!众剑齐出斩之,夺回灵石 ${got}。`)
+        log.push(`「${spot}」妖兽伏击(气血 ${geText(beastHp)})!众剑齐出斩之,余血尽消,夺回灵石 ${got}。`)
       } else {
-        log.push(`「${spot}」妖兽伏击!缠斗不克,妖兽遁走。`)
+        log.push(`「${spot}」妖兽伏击(气血 ${geText(beastHp)},余 ${gePct(leftClamped, beastHp)}%)!缠斗不克,妖兽遁走。`)
       }
       if (poolLeft.m <= 0) {
         log.push('众人伤重,提前退出秘境。')
@@ -287,7 +365,7 @@ function runExplore(room: MemberFighter[], cfg: ExploreCfg, mod: DifficultyMod):
   stone = Math.max(1, Math.round(stone * mod.reward * (1 + 0.1 * (n - 1))))
   herb = Math.round(herb * mod.reward)
   log.push(`走出秘境:每人分得灵石 ${stone} · 灵草 ${herb}。`)
-  return { win: true, log, stone, herb }
+  return { win: true, log, stone, herb, boss }
 }
 
 /* ---------------- 洞天守卫 ---------------- */
@@ -315,6 +393,10 @@ function runGuard(room: MemberFighter[], cfg: GuardCfg, mod: DifficultyMod): Sim
   const totalWaves = Math.min(cap, 3 + Math.floor(maxRealm / 2))
   let poolLeft = poolHp
   let cleared = 0
+  /** 守到的最后一波(= 本场「首领」):守住则已破,破防则余血满格 */
+  let lastWaveName = ''
+  let lastWaveHp: GE = { m: 0, e: 0 }
+  let lastWaveCleared = false
   const log: string[] = [modLine(mod), `${room.length}人登陴守御,妖潮共 ${totalWaves} 波,大阵全开。`]
   for (let w = 1; w <= totalWaves; w++) {
     const label = GUARD_NAMES[Math.min(w - 1, GUARD_NAMES.length - 1)]!
@@ -323,26 +405,40 @@ function runGuard(room: MemberFighter[], cfg: GuardCfg, mod: DifficultyMod): Sim
     const waveAtk = geMulN(maxAtk, (0.2 + 0.12 * w) * Math.pow(n, 0.6) * randRange(0.9, 1.1) * mod.power)
     const fallen = poolLeft.m <= 0
     const blow = geMulN(sumAtk, randRange(0.85, 1.15) * (fallen ? 0.5 : 1))
+    lastWaveName = label
+    lastWaveHp = waveHp
     log.push(`第${w}波「${label}」(气血 ${geText(waveHp)},攻势 ${geText(waveAtk)}) · 合击 ${geText(blow)}`)
     if (blow.e > waveHp.e || (blow.e === waveHp.e && blow.m >= waveHp.m)) {
       cleared = w
+      lastWaveCleared = true
       poolLeft = geSub(poolLeft, waveAtk)
       log.push(`守住!大阵余量 ${geText(geMax0(poolLeft))}。`)
     } else {
-      log.push('妖势太盛,这一波破防而入!')
+      lastWaveCleared = false
+      log.push(`妖势太盛,这一波破防而入!(还差 ${geText(geSub(waveHp, blow))} 气血未能击破)`)
       break
     }
     if (poolLeft.m <= 0 && w < totalWaves) log.push('大阵摇摇欲坠,守军凭意志死撑(战力减半)。')
   }
   const fullClear = cleared >= totalWaves
+  const boss: BossReport = {
+    name: lastWaveName,
+    hpStart: geText(lastWaveHp),
+    hpLeft: lastWaveCleared ? geText({ m: 0, e: 0 }) : geText(lastWaveHp),
+    leftPct: lastWaveCleared ? 0 : 100,
+    killed: lastWaveCleared,
+    rounds: cleared,
+    roundsTotal: totalWaves,
+    unit: 'wave'
+  }
   const stone = Math.max(0, Math.round(cfg.guard_reward_stone * mod.reward * cleared * (fullClear ? 1.5 : 1)))
   const herb = Math.max(0, Math.round(cfg.guard_reward_herb * mod.reward * cleared * (fullClear ? 1.5 : 1)))
   log.push(
     fullClear
       ? `妖潮尽退!守满 ${cleared} 波,功劳倍计:每人灵石 ${stone} · 灵草 ${herb}。`
-      : `守至第 ${cleared} 波,拾得战获:每人灵石 ${stone} · 灵草 ${herb}。`
+      : `守至第 ${cleared} 波,妖潮未尽:每人灵石 ${stone} · 灵草 ${herb}。`
   )
-  return { win: fullClear, log, stone, herb }
+  return { win: fullClear, log, stone, herb, boss }
 }
 
 /* ---------------- 共修大阵 ---------------- */
@@ -383,7 +479,8 @@ function runArray(room: MemberFighter[], cfg: ArrayCfg, mod: DifficultyMod): Sim
     log.push('阵光明灭,终究差了一分默契,稳收分润。')
   }
   log.push(`散阵分润:每人灵石 ${stone} · 灵草 ${herb}。`)
-  return { win: resonant, log, stone, herb }
+  // 共修大阵不斗法,没有首领可斩
+  return { win: resonant, log, stone, herb, boss: null }
 }
 
 /* ---------------- 路由 ---------------- */
@@ -593,6 +690,7 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
           stone: sim.stone,
           herb: sim.herb,
           equipDrop,
+          boss: sim.boss,
           at: Date.now()
         })
       }
@@ -608,6 +706,7 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
       growth: { kills: growth.kills, mult: growth.mult, resetAt: growth.resetAt },
       roomSize: fighters.length,
       win: sim.win,
+      boss: sim.boss,
       log: sim.log,
       equipDrop,
       reward: { stone: sim.stone, herb: sim.herb }

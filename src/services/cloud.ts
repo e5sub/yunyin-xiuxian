@@ -136,6 +136,8 @@ export type CloudWsMsg =
       win: boolean
       stone: number
       herb: number
+      /** 首领战况(1.59.2);老服务端不带此字段 */
+      boss?: DungeonBossReport | null
       at: number
     }
   | { type: 'kick'; graceMs: number }
@@ -242,6 +244,29 @@ export interface DungeonOverview {
   myGrowth: Partial<Record<DungeonKey, DungeonGrowthBrief>>
 }
 
+/**
+ * 首领战况(1.59.2):这一场把首领打成什么样。
+ * 战报是逐行文字,心魔战还会把后六轮折成「……」,只看日志判不出有没有斩杀;
+ * 服务端把结果单独结出来,前端直接画条读账。
+ */
+export interface DungeonBossReport {
+  /** 首领名(合体心魔 / 守到的那一波妖物 / 最凶的那只伏击妖兽) */
+  name: string
+  /** 起始气血(文本,已折成万/亿) */
+  hpStart: string
+  /** 剩余气血(文本;击破时为 0) */
+  hpLeft: string
+  /** 剩余百分比 0~100 */
+  leftPct: number
+  /** 是否击破 */
+  killed: boolean
+  /** 已战轮次 / 总轮次(守卫则是波次) */
+  rounds: number
+  roundsTotal: number
+  /** 轮次口径:斗法「轮」,守卫「波」 */
+  unit: 'round' | 'wave'
+}
+
 export interface DungeonRunResult {
   dungeon: DungeonKey
   name: string
@@ -253,6 +278,8 @@ export interface DungeonRunResult {
   growth: { kills: number; mult: number; resetAt: number }
   roomSize: number
   win: boolean
+  /** 首领战况;共修大阵等无首领的副本为 null */
+  boss: DungeonBossReport | null
   log: string[]
   /** 高难(绝境/炼狱)获胜后服务端掷中的装备掉落:领取时按自身境界生成 */
   equipDrop: boolean
