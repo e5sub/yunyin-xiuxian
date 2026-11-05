@@ -9,7 +9,7 @@
  * 3. 云端存档应用失败时不进空档流程(否则开局 20 秒后空档会把云端原档推平)。
  */
 import { ref } from 'vue'
-import { buildExportPayload, SAVE_VERSION, storageKey } from '@/utils/storage'
+import { accountStorageKey, buildExportPayload, SAVE_VERSION, storageKey } from '@/utils/storage'
 import { readSaveText } from '@/utils/crypto'
 import { applySavePayload, reloadGame } from '@/core/save'
 import { snapshotFromActiveStores, type ProfileSnapshot } from '@/core/profileRecompute'
@@ -39,7 +39,7 @@ let failStreak = 0
 
 function readBase(): number {
   try {
-    const raw = localStorage.getItem(SYNC_META_KEY)
+    const raw = localStorage.getItem(accountStorageKey(SYNC_META_KEY))
     if (raw === null) return 0
     const meta = JSON.parse(raw) as { baseUpdatedAt?: unknown }
     return typeof meta.baseUpdatedAt === 'number' && Number.isFinite(meta.baseUpdatedAt) ? meta.baseUpdatedAt : 0
@@ -50,7 +50,7 @@ function readBase(): number {
 
 function writeBase(value: number): void {
   try {
-    localStorage.setItem(SYNC_META_KEY, JSON.stringify({ baseUpdatedAt: value }))
+    localStorage.setItem(accountStorageKey(SYNC_META_KEY), JSON.stringify({ baseUpdatedAt: value }))
   } catch {
     // 存储不可用:下次启动按 base=0 处理,会重新拉云端(方向是安全的)
   }
@@ -82,21 +82,52 @@ const CORRECTION_NOTICE_GAP_MS = 5 * 60_000
 let lastCorrectionNoticeAt = 0
 
 /**
- * 应用服务端压回的字段(境界 / 修为 / 资源 / 装备)。
+ * 应用服务端压回的字段(境界 / 修为 / 资源 / 装备 / 转世)。
  *
  * 服务端裁决后把 corrections 回传,客户端必须当场覆盖本地 store ——
  * 否则本地仍按作弊值渲染,下个 20 秒又被压一次,玩家看到的是数值来回跳。
- * 路径只到分片顶层字段,故 $patch 单字段即可(嵌套 map 由服务端整块给)。
+ * 两段路径(`player.exp`)直接 $patch;三段路径(`player.reincarnation.count`)以
+ * 当前对象为底合并后再 patch —— 直接把标量/数组 patch 上去会把整个对象顶掉,
+ * 引擎每秒抛错,刷新后转世进度(世号/道果/天赋)全清(1.62.0 修复)。
+ * 导出仅供 cloudSave.spec 作回归判据。
  */
-function applyAuthorityCorrections(corrections: readonly { path: string; after: unknown }[]): void {
+export function applyAuthorityCorrections(corrections: readonly { path: string; after: unknown }[]): void {
   for (const c of corrections) {
-    const [slice, field] = c.path.split('.')
-    if (!slice || !field) continue
-    const step = SAVE_SANITIZE_STEPS.find(s => s.slice === slice)
+    const segs = c.path.split('.')
+    if (segs.length < 2 || segs.some(s => s === '')) continue
+    const step = SAVE_SANITIZE_STEPS.find(s => s.slice === segs[0])
     if (step === undefined) continue
-    const store = step.use() as unknown as { $patch: (partial: Record<string, unknown>) => void }
-    store.$patch({ [field]: c.after })
+    const store = step.use() as unknown as {
+      $patch: (partial: Record<string, unknown>) => void
+      $state: Record<string, unknown>
+    }
+    let value: unknown = c.after
+    // 自内向外逐层以现值为底包对象;底座不是普通对象(已被旧版毁成标量)就先 sanitize 自愈再跳过
+    let ok = true
+    for (let i = segs.length - 2; i >= 1; i--) {
+      const cur = store.$state[segs[1]!]
+      const base = walkBase(cur, segs.slice(2, i + 1))
+      if (base === null || typeof base !== 'object' || Array.isArray(base)) {
+        const healing = store as unknown as { sanitize?: () => void }
+        if (typeof healing.sanitize === 'function') healing.sanitize()
+        ok = false
+        break
+      }
+      value = { ...(base as Record<string, unknown>), [segs[i + 1]!]: value }
+    }
+    if (!ok) continue
+    store.$patch({ [segs[1]!]: value })
   }
+}
+
+/** 沿路径取嵌套对象;任何一段缺失或不是对象返回 undefined,由调用方判型 */
+function walkBase(root: unknown, segs: readonly string[]): unknown {
+  let cur: unknown = root
+  for (const s of segs) {
+    if (cur === null || typeof cur !== 'object' || Array.isArray(cur)) return undefined
+    cur = (cur as Record<string, unknown>)[s]
+  }
+  return cur
 }
 
 let pushing = false

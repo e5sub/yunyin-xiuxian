@@ -60,6 +60,9 @@ function validEvents(raw: unknown): InteractionEvent[] {
   return Array.isArray(raw) ? raw.map(validEvent).filter((e): e is InteractionEvent => e !== null) : []
 }
 
+/** 滚动窗口条数:record 与 sanitize 共用一份,别一处 120 一处 119 */
+const EVENT_CAP = 120
+
 /** 峰值前 30 分钟滚动窗口的遥测 */
 export const usePacingTelemetry = defineStore(
   'pacingTelemetry',
@@ -74,7 +77,7 @@ export const usePacingTelemetry = defineStore(
       const event = validEvent({ type, kind, label, at: Date.now() })
       if (!event) return
       // 读档修形未跑时 events 也可能是 null / 非数组:高频路径,不许抛;同时剔掉坏条目
-      events.value = [...validEvents(events.value).slice(-119), event]
+      events.value = [...validEvents(events.value).slice(-(EVENT_CAP - 1)), event]
     }
 
     /** 生成密度报告(基于最近 30 分钟) */
@@ -132,9 +135,11 @@ export const usePacingTelemetry = defineStore(
       events.value = []
     }
 
-    /** 读档修形(遥测分片也落盘):只留形状完整的事件 */
+    /** 读档修形(遥测分片也落盘):只留形状完整的事件,并截回 record() 的滚动窗口 ——
+     *  否则坏档塞进十万条「形状合法」的事件会原样上传,超服务端体积上限后每次上传都失败 */
     function sanitize(): void {
-      events.value = asArray<InteractionEvent>(events.value, [], e => validEvent(e) !== null)
+      const kept = asArray<InteractionEvent>(events.value, [], e => validEvent(e) !== null)
+      events.value = kept.length > EVENT_CAP ? kept.slice(-EVENT_CAP) : kept
       if (typeof enabled.value !== 'boolean') enabled.value = true
     }
 

@@ -1,7 +1,7 @@
 /** 网游账号:注册 / 登录 / 会话。token 持久化,断线重连不丢登录 */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { persistImmediateConfig } from '@/utils/storage'
+import { persistImmediateConfig, currentAccountScope, setAccountScope, flushSaveWrites, dropPendingWrites } from '@/utils/storage'
 import { asFiniteNumber } from '@/utils/saveShape'
 import { cloudApi } from '@/services/cloud'
 
@@ -57,6 +57,16 @@ export const useAuthStore = defineStore(
       token.value = t
       userId.value = id
       username.value = name
+      // 账号命名空间切换:本地进度分片按账号隔离,换账号登录(含注册)必须整页重载,
+      // 让全部 store 从新账号的键下水合 —— 内存里旧账号的状态绝不能落进新账号的键。
+      // token 走 IMMEDIATE_STORAGE 已即时落盘,重载后 auth 还在,启动链会拉云端档。
+      // 同账号重登不重载。登出不切作用域(内存态仍是本账号的,落盘不串)。
+      if (currentAccountScope() !== id) {
+        flushSaveWrites()
+        dropPendingWrites()
+        setAccountScope(id)
+        location.reload()
+      }
     }
 
     function sanitize(): void {

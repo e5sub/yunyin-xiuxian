@@ -67,27 +67,52 @@ autoOpsRouter.get('/', requireAuth, (req: Request, res: Response) => {
   })().catch(() => res.status(500).json({ error: '服务器异常' }))
 })
 
-/** 同步托管设置(客户端在开关变更时调用;布尔必须显式传) */
+/** 同步托管设置(客户端在开关变更时调用;布尔必须显式传)。
+ *  台账列绝不能出现在这份写入里:离线代打的所得走 ledger_* 累加(creditLedger 是
+ *  `ledger_herb = ledger_herb + ?` 风格),整行 REPLACE 会把玩家还没领的奖励清零 ——
+ *  所以行存在时只 UPDATE 设置列,不存在才插入带零台账的完整行(1.62.0 修复)。 */
 autoOpsRouter.put('/', requireAuth, (req: Request, res: Response) => {
   void (async () => {
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
     const b = (v: unknown): boolean => v === true
     const s = (v: unknown, max: number): string => (typeof v === 'string' ? v.slice(0, max) : '')
-    await upsertByPk('autoops_state', {
-      user_id: req.user!.id,
+    const settings = {
       auto_boss: b(body.autoBoss) ? 1 : 0,
       auto_retreat: b(body.autoRetreat) ? 1 : 0,
       auto_adventure: b(body.autoAdventure) ? 1 : 0,
       region_id: s(body.regionId, 64),
       mode: s(body.mode, 16),
       boss_difficulty: bossDifficultyOf(body.bossDifficulty),
-      ledger_stone_m: 0,
-      ledger_stone_e: 0,
-      ledger_herb: 0,
-      ledger_strikes: 0,
-      ledger_tier: 0,
       updated_at: Date.now()
-    })
+    }
+    const existing = await rowOf(req.user!.id)
+    if (existing === undefined) {
+      await upsertByPk('autoops_state', {
+        user_id: req.user!.id,
+        ...settings,
+        ledger_stone_m: 0,
+        ledger_stone_e: 0,
+        ledger_herb: 0,
+        ledger_strikes: 0,
+        ledger_tier: 0
+      })
+    } else {
+      await run(
+        `UPDATE autoops_state
+         SET auto_boss = ?, auto_retreat = ?, auto_adventure = ?, region_id = ?, mode = ?, boss_difficulty = ?, updated_at = ?
+         WHERE user_id = ?`,
+        [
+          settings.auto_boss,
+          settings.auto_retreat,
+          settings.auto_adventure,
+          settings.region_id,
+          settings.mode,
+          settings.boss_difficulty,
+          settings.updated_at,
+          req.user!.id
+        ]
+      )
+    }
     res.json({ ok: true })
   })().catch(() => res.status(500).json({ error: '服务器异常' }))
 })

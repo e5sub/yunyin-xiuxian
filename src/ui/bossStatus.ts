@@ -25,13 +25,15 @@ export interface BossStatusView {
 
 /** 状态徽章:已击破 / 未破(余 N%) */
 export function bossBadgeText(v: BossStatusView): string {
-  return v.killed ? '已击破' : `未破 · 余 ${v.leftPct}%`
+  return v.killed ? '已击破' : `未破 · 余 ${bossBarWidth(v)}%`
 }
 
-/** 血条填充宽度(%):击破后留空条,未破按剩余占比;脏值夹回 0~100 */
+/** 血条填充宽度(%):击破后留空条,未破按剩余占比;脏值(含 NaN/Infinity)夹回 0~100 */
 export function bossBarWidth(v: BossStatusView): number {
   if (v.killed) return 0
-  return Math.max(0, Math.min(100, v.leftPct))
+  const pct = v.leftPct
+  if (typeof pct !== 'number' || !Number.isFinite(pct)) return 0
+  return Math.max(0, Math.min(100, pct))
 }
 
 /** 气血一行:「余 1.2万 / 起初 3.6万」 */

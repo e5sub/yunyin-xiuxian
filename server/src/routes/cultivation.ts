@@ -42,7 +42,11 @@ type ResolveFn = (
 let cached: Promise<{ resolveBreakthroughFromSlices: ResolveFn }> | null = null
 
 function clientResolve(): Promise<{ resolveBreakthroughFromSlices: ResolveFn }> {
+  // 加载失败不缓存 rejected promise:vendor 缺失/损坏是部署事故,修好后不该重启进程才恢复(1.62.0)
   cached ??= loadClientModule<{ resolveBreakthroughFromSlices: ResolveFn }>(SOURCE_MODULE, VENDOR_FILE)
+  cached.catch(() => {
+    cached = null
+  })
   return cached
 }
 

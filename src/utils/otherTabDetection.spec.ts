@@ -22,8 +22,12 @@ describe('另一页在写档 · 判定范围', () => {
     expect(SRC, '判定用了前缀,会把 __theme / __live 之外的辅助键也算进来').not.toMatch(
       /e\.key\.startsWith\(SAVE_PREFIX\)\s*&&/
     )
-    expect(SRC, '缺分片键集合').toContain('const SAVE_SLICE_KEYS = new Set(PERSISTED_STORES.map(id => SAVE_PREFIX + id))')
-    expect(SRC, '判重没有走分片键集合').toContain('if (SAVE_SLICE_KEYS.has(e.key)) setOtherTab(true)')
+    expect(SRC, '缺分片键判别函数').toContain('function isSaveSliceKey(key: string): boolean')
+    expect(SRC, '判重没有走分片键判别').toContain('if (isSaveSliceKey(e.key)) setOtherTab(true)')
+  })
+
+  it('带账号段的分片键也算在写档(账号隔离后键形 yunyin.u<id>.<分片>)', () => {
+    expect(SRC, '判别要剥掉账号段再认分片名').toContain('/^u\\d+\\./')
   })
 
   it('心跳键仍单独处理(按时间戳判新鲜度)', () => {
@@ -31,7 +35,7 @@ describe('另一页在写档 · 判定范围', () => {
     expect(SRC).toContain('Date.now() - at < LIVE_STALE_MS')
     // 心跳必须在分片判定之前 return,否则会落到分片分支
     const liveIdx = SRC.indexOf('if (e.key === LIVE_KEY)')
-    const sliceIdx = SRC.indexOf('if (SAVE_SLICE_KEYS.has(e.key))')
+    const sliceIdx = SRC.indexOf('if (isSaveSliceKey(e.key))')
     expect(liveIdx, '心跳判定应排在分片判定之前').toBeLessThan(sliceIdx)
   })
 

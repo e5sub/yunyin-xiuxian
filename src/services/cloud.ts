@@ -469,8 +469,11 @@ export interface EmailCodeResp {
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const auth = useAuthStore()
+  // 记下本次请求实际带的 token:改密/重登会换 token,在途旧请求回来时 401 只代表
+  // 「这枚旧 token 失效了」,不该把已经换上新凭证的会话整条踢下线(1.62.0)
+  const sentToken = auth.token
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (auth.token !== '') headers.Authorization = `Bearer ${auth.token}`
+  if (sentToken !== '') headers.Authorization = `Bearer ${sentToken}`
   let res: Response
   try {
     res = await fetch(`${API_BASE}/api${path}`, {
@@ -491,13 +494,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const obj = typeof json === 'object' && json !== null ? (json as { error?: unknown; code?: unknown }) : {}
     const msg = typeof obj.error === 'string' ? obj.error : '请求失败'
     const code = typeof obj.code === 'string' ? obj.code : ''
-    // 会话级 401:被挤下线 / token 失效,统一走下线流程(kicked 先推最后一版存档,expired 直接下线)
-    if (res.status === 401 && (code === 'kicked' || code === 'session')) {
+    // 会话级 401:被挤下线 / token 失效,统一走下线流程(kicked 先推最后一版存档,expired 直接下线)。
+    // 只认「当前会话仍是发请求那枚 token」的 401:token 已换(改密返回新 token、重登)说明
+    // 失效的是旧凭证,调用方自己会按错误处理,不该触发统一下线。
+    const tokenUnchanged = useAuthStore().token === sentToken
+    if (res.status === 401 && (code === 'kicked' || code === 'session') && tokenUnchanged) {
       handleSessionEnd(code === 'kicked' ? 'kicked' : 'expired')
     }
     // 封禁 403:只在带 token 的请求上触发 —— 登录接口试封禁号也会拿到 banned,
     // 那时本机并没有会话,不该走下线流程(登录页自己会把错误亮出来)。
-    if (res.status === 403 && code === 'banned' && auth.token !== '') {
+    if (res.status === 403 && code === 'banned' && sentToken !== '' && tokenUnchanged) {
       handleSessionEnd('banned')
     }
     throw new CloudError(msg, res.status, code)
@@ -710,7 +716,12 @@ export function onCloudWs(handler: (msg: CloudWsMsg) => void): () => void {
  */
 const WS_PROTOCOL = 'yunyin.v1'
 
-/** 老服务端不认识子协议时置 true:退回 ?token= 查询串,只退一次,不来回抖 */
+/** 老服务端不认识子协议时退回 ?token=。判定要保守:连续 WS_FALLBACK_AFTER 次都在
+ *  open 之前被关才降级 —— 网络未就绪/反代 502/服务器重启也表现为「没 open 就被关」,
+ *  一次失败就降级会让 token 从此长期出现在 URL 与反代 access log 里(1.62.0 收紧)。
+ *  连上后即复位计数;连接成功后仍允许下次会话重新尝试子协议。 */
+const WS_FALLBACK_AFTER = 2
+let wsProtocolFailStreak = 0
 let wsUseQueryToken = false
 
 export function connectCloudWs(): void {
@@ -721,16 +732,20 @@ export function connectCloudWs(): void {
   startPresencePoll()
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
   const base = API_BASE === '' ? `${proto}://${location.host}` : API_BASE.replace(/^http/, 'ws')
-  // 本次连接是否真的建立过 —— 用来区分「握手被老服务端拒掉」与「连上后又被断开」
-  let opened = false
+  // 本条连接自己的引用:onclose 是异步派发的,登出→快速重登时旧连接的收尾
+  // 不能把新连接的全局引用清掉(否则两条连接并存且有一条不受管理)
+  let sock: WebSocket
   try {
-    ws = wsUseQueryToken
+    sock = wsUseQueryToken
       ? new WebSocket(`${base}/ws?token=${encodeURIComponent(auth.token)}`)
       : new WebSocket(`${base}/ws`, [WS_PROTOCOL, auth.token])
   } catch {
     scheduleReconnect()
     return
   }
+  ws = sock
+  // 本次连接是否真的建立过 —— 用来区分「握手被老服务端拒掉」与「连上后又被断开」
+  let opened = false
   ws.onopen = () => {
     opened = true
     reconnectDelay = 3000
@@ -750,10 +765,17 @@ export function connectCloudWs(): void {
     for (const h of handlers) h(msg)
   }
   ws.onclose = () => {
-    // 从未 open 就被关:多半是老服务端不认子协议(浏览器会以「未回选协议」直接判握手失败)。
-    // 退回一次 ?token= 方式,让前后端版本不同步的部署仍能连上;退过一次就不再反复试。
-    if (!opened && !wsUseQueryToken) wsUseQueryToken = true
-    ws = null
+    // 只清自己这条连接的全局引用,别误伤重登后的新连接
+    if (ws === sock) ws = null
+    if (!opened) {
+      wsProtocolFailStreak += 1
+      // 连续多次都没 open 就被关:多半是老服务端不认子协议(浏览器会以「未回选协议」
+      // 直接判握手失败)。退回 ?token= 方式让前后端版本不同步的部署仍能连上;
+      // 服务端新版本(1.62.0+)认 ?token= 兜底,不认子协议的只是更老的部署。
+      if (wsProtocolFailStreak >= WS_FALLBACK_AFTER && !wsUseQueryToken) wsUseQueryToken = true
+    } else {
+      wsProtocolFailStreak = 0
+    }
     scheduleReconnect()
   }
   ws.onerror = () => {
@@ -777,6 +799,8 @@ export function disconnectCloudWs(): void {
   }
   ws?.close()
   ws = null
+  // 连续失败计数随会话作废:下次登录从头数,避免旧会话的偶发网络失败累积到新会话头上
+  wsProtocolFailStreak = 0
   stopPresencePoll()
 }
 

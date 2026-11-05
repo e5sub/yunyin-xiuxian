@@ -51,6 +51,17 @@ describe('会话失效统一下线(banned / kicked)', () => {
     expect(reasons).toEqual(['kicked'])
   })
 
+  it('401 回来时 token 已换(改密/重登):只抛错,不把新会话踢下线', async () => {
+    useAuthStore().$patch({ token: 'old-token', userId: 1, username: '道号' })
+    // 请求在途时换了凭证(改密接口返回新 token 后本地替换)
+    fetchMock.mockImplementationOnce(async () => {
+      useAuthStore().$patch({ token: 'new-token' })
+      return jsonRes(401, { error: '登录已失效', code: 'session' })
+    })
+    await expect(cloudApi.me()).rejects.toMatchObject({ code: 'session' })
+    expect(reasons, '失效的是旧 token,新会话不该被统一下线').toEqual([])
+  })
+
   it('未登录时收到 banned(如登录接口试封禁号):不走下线流程', async () => {
     expect(useAuthStore().token).toBe('')
     fetchMock.mockResolvedValueOnce(jsonRes(403, { error: '账号已被封禁', code: 'banned' }))

@@ -4,14 +4,16 @@ import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
 import { Capacitor } from '@capacitor/core'
 import App from './App.vue'
 import { router } from './router'
-import { migrateLocalSchema, preflightScan } from './utils/storage'
+import { initAccountScope, migrateLocalSchema, preflightScan } from './utils/storage'
 import { sanitizeAllStores } from './stores/sanitizeAll'
 import { useUiStore } from './stores/ui'
 import { summarizeError, useDiagStore } from './stores/diag'
 import { useServiceWorkerUpdate } from './composables/useServiceWorkerUpdate'
 import './style.css'
 
-// 启动前扫描损坏存档 + 结构升级,避免白屏
+// 先按登录账号定存储命名空间(含旧全局档的一次性迁移),再扫描损坏存档:
+// 两步都必须早于任何 store 水合,否则读错账号的档
+initAccountScope()
 const corrupted = preflightScan()
 migrateLocalSchema()
 

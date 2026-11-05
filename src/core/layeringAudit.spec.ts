@@ -99,8 +99,10 @@ const CORE_STORE_SITES = 246;
  * 上游 121 + 本仓 autoOpsDaily/gongfaSeats 等新增,合并后以实跑数为准,见本文件底部对账。
  * 1.58.3 的 forgeResolve.spec 也是 +1:无头水合必须真开一个 pinia(与 breakthroughResolve 同构)。
  * 1.59.0 的 levelResolve.spec 同理 +1(升级裁决的同一份水合)。
+ * 1.62.0 的 cloudSave.spec 再 +1:corrections 回传的回归判据必须真 $patch store
+ * (三段路径毁档修复,合并逻辑以现对象为底,不动真 store 测不出来)。
  */
-const CORE_PINIA_SPECS = 127;
+const CORE_PINIA_SPECS = 128;
 
 function sources(dir: string): { name: string; text: string }[] {
   return readdirSync(dir)

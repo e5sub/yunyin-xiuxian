@@ -62,8 +62,105 @@ export const STORE_NAMES: Record<string, string> = {
   diag: '异常留档'
 }
 
+/**
+ * 分片键:经 translateKey 补账号段。两条调用路径口径不同、结果一致:
+ * - 运行时的直读直写(preflight/导出/导入/清档/syncMeta):此刻作用域已定,拿到带账号段的键;
+ * - persistConfig 在模块加载期调用:作用域还是 0,拿到 `yunyin.<分片>`,
+ *   落盘时由存储适配器按当时作用域再翻译(persist 插件的 key 不支持运行期求值)。
+ */
 export function storageKey(storeId: string): string {
-  return SAVE_PREFIX + storeId
+  return translateKey(SAVE_PREFIX + storeId)
+}
+
+/* ---------------- 账号隔离 ----------------
+ * 本地档按登录账号分命名空间:进度分片与同步锚点落在 `yunyin.u<userId>.<分片>`,
+ * 设备级键(settings / 主题 / 心跳)不带账号段。同一浏览器换账号登录不再把
+ * A 的角色进度推进 B 的云档(1.62.0)。
+ *
+ * 作用域只在两处变化:
+ * - 启动时 initAccountScope() 按 auth 分片里的 userId 定(早于任何 store 水合);
+ * - 登录成功且账号变化时 auth store 切换 + 整页重载(内存里的旧账号状态绝不能
+ *   落进新账号的键下)。登出不切作用域:内存态仍是本账号的,落盘不串。
+ */
+
+/** 参与账号隔离的分片:除 settings(设备级偏好,含登录前的隐私确认)外全部进度分片 */
+const ACCOUNT_SCOPED_STORES: ReadonlySet<string> = new Set(
+  PERSISTED_STORES.filter(id => id !== 'settings')
+)
+
+/** 账号段:键形 `yunyin.u<id>.<分片>`;0 = 无作用域(未登录,走设备级键) */
+let accountScope = 0
+
+export function currentAccountScope(): number {
+  return accountScope
+}
+
+/** 设置当前账号作用域;只应在启动初始化与登录切换(随后重载)时调用 */
+export function setAccountScope(userId: number): void {
+  accountScope = Math.max(0, Math.floor(userId))
+}
+
+/**
+ * 运行时键名翻译:适配层(pinia 持久化)传进来的键是模块加载时固化的
+ * `yunyin.<分片>`,落盘前在这里补账号段 —— 插件的 key 选项不支持运行期求值,
+ * 逐层包一层存储适配器比改插件靠谱。
+ */
+function translateKey(key: string): string {
+  if (accountScope <= 0 || !key.startsWith(SAVE_PREFIX)) return key
+  const id = key.slice(SAVE_PREFIX.length)
+  if (!ACCOUNT_SCOPED_STORES.has(id)) return key
+  return `${SAVE_PREFIX}u${accountScope}.${id}`
+}
+
+/** 给绕过 pinia、直接读写 localStorage 的调用方用(syncMeta 等):按当前作用域翻译 */
+export function accountStorageKey(key: string): string {
+  return translateKey(key)
+}
+
+/**
+ * 启动初始化:从 auth 分片(设备级键)读出登录账号,定作用域;
+ * 已登录而账号命名空间还是空的,把旧的全局档一次性搬进去(升级迁移,搬完删源)。
+ * 必须在 preflightScan / 任何 store 水合之前调用。
+ */
+export function initAccountScope(): void {
+  try {
+    const raw = localStorage.getItem(SAVE_PREFIX + 'auth')
+    if (raw !== null) {
+      const state = JSON.parse(readSaveText(raw)) as { userId?: unknown }
+      const id = typeof state.userId === 'number' && Number.isFinite(state.userId) ? Math.floor(state.userId) : 0
+      if (id > 0) setAccountScope(id)
+    }
+  } catch {
+    // auth 读不出按未登录处理:走设备级键,交由路由守卫进登录页
+  }
+  if (accountScope <= 0) return
+  for (const id of ACCOUNT_SCOPED_STORES) {
+    const scoped = translateKey(SAVE_PREFIX + id)
+    if (scoped === SAVE_PREFIX + id) continue
+    try {
+      if (localStorage.getItem(scoped) !== null) continue // 新命名空间已有档:不动
+      const legacy = localStorage.getItem(SAVE_PREFIX + id)
+      if (legacy === null) continue
+      localStorage.setItem(scoped, legacy)
+      localStorage.removeItem(SAVE_PREFIX + id)
+    } catch {
+      // 迁移失败不阻断启动:旧键还在,读不到时按新档走(云端还有权威副本)
+    }
+  }
+  // 同步锚点一起搬:锚点错账号会让上传全走 409
+  try {
+    const metaKey = SAVE_PREFIX + 'syncMeta'
+    const scopedMeta = translateKey(metaKey)
+    if (scopedMeta !== metaKey && localStorage.getItem(scopedMeta) === null) {
+      const legacy = localStorage.getItem(metaKey)
+      if (legacy !== null) {
+        localStorage.setItem(scopedMeta, legacy)
+        localStorage.removeItem(metaKey)
+      }
+    }
+  } catch {
+    // 锚点搬不动就按 base=0 走,方向安全(重新拉云端)
+  }
 }
 
 /**
@@ -142,25 +239,28 @@ export function dropPendingWrites(): void {
   pending.clear()
 }
 
-/** 节流存储层:变更先入队,到点批量加密落盘;getItem 须先读队列,否则刚写又读拿到磁盘旧值 */
+/** 节流存储层:变更先入队,到点批量加密落盘;getItem 须先读队列,否则刚写又读拿到磁盘旧值。
+ *  入队/读出都先经 translateKey:pinia 插件持有的键是模块加载期固化的设备级键名,
+ *  账号段在这里按当时作用域补上(pending 与 localStorage 因此都持翻译后的键) */
 const THROTTLED_STORAGE = {
   getItem: (key: string): string | null => {
-    const queued = pending.get(key)
+    const k = translateKey(key)
+    const queued = pending.get(k)
     if (queued !== undefined) return queued
     try {
-      return localStorage.getItem(key)
+      return localStorage.getItem(k)
     } catch {
       return null
     }
   },
   setItem: (key: string, value: string): void => {
-    pending.set(key, value)
+    pending.set(translateKey(key), value)
     if (flushTimer === undefined) flushTimer = setTimeout(flushSaveWrites, SAVE_FLUSH_MS)
   },
   removeItem: (key: string): void => {
-    pending.delete(key)
+    pending.delete(translateKey(key))
     try {
-      localStorage.removeItem(key)
+      localStorage.removeItem(translateKey(key))
     } catch {
       // 存储不可用时忽略
     }
@@ -216,8 +316,16 @@ function setOtherTab(active: boolean): void {
   for (const handler of otherTabHandlers) handler(active)
 }
 
-/** 真存档分片的键集合:判重只认这些,其余 yunyin.* 都不是进度 */
-const SAVE_SLICE_KEYS = new Set(PERSISTED_STORES.map(id => SAVE_PREFIX + id))
+/** 真存档分片的键判别:判重只认这些(带不带账号段都算),其余 yunyin.* 都不是进度 */
+const SAVE_SLICE_IDS = new Set<string>(PERSISTED_STORES)
+
+function isSaveSliceKey(key: string): boolean {
+  if (!key.startsWith(SAVE_PREFIX)) return false
+  let rest = key.slice(SAVE_PREFIX.length)
+  const scoped = /^u\d+\./.exec(rest)
+  if (scoped !== null) rest = rest.slice(scoped[0].length)
+  return SAVE_SLICE_IDS.has(rest)
+}
 
 /**
  * storage 事件只在「别的标签页」写入时触发,本页自己的写入不会回调 —— 正合用来判重。
@@ -235,7 +343,7 @@ if (typeof window !== 'undefined') {
       setOtherTab(Number.isFinite(at) && Date.now() - at < LIVE_STALE_MS)
       return
     }
-    if (SAVE_SLICE_KEYS.has(e.key)) setOtherTab(true)
+    if (isSaveSliceKey(e.key)) setOtherTab(true)
   })
 }
 
@@ -305,7 +413,7 @@ export function persistConfig(storeId: string): {
 export const IMMEDIATE_STORAGE = {
   getItem: (key: string): string | null => {
     try {
-      const raw = localStorage.getItem(key)
+      const raw = localStorage.getItem(translateKey(key))
       return raw === null ? null : readSaveText(raw)
     } catch {
       return null
@@ -313,14 +421,14 @@ export const IMMEDIATE_STORAGE = {
   },
   setItem: (key: string, value: string): void => {
     try {
-      localStorage.setItem(key, encryptSave(value))
+      localStorage.setItem(translateKey(key), encryptSave(value))
     } catch {
       // 存储不可用:会话只在本次内存里有效
     }
   },
   removeItem: (key: string): void => {
     try {
-      localStorage.removeItem(key)
+      localStorage.removeItem(translateKey(key))
     } catch {
       // 忽略
     }
