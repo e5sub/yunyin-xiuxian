@@ -552,6 +552,509 @@ describe('调色板 · 数据层颜色', () => {
   })
 })
 
+describe('调色板 · 条槽底只走一支 token', () => {
+  /*
+   * 进度条、刻度轴、分布条这些「空槽」是同一种几何:3~6px 高的圆角条。
+   * 原先十一条槽各写各的墨深(0.06 / 0.08 / 0.10 / 0.12)。
+   * 深浅差已低于可辨阈值(最悬殊那对只差 1.08:1),画面上看不出问题;
+   * 问题在「新加一条槽该取哪个值」没有答案,只能照抄邻近那段 —— 于是继续分叉。
+   *
+   * 故障注入:把任一条改回手写的小数,本条红。
+   */
+  const TRACKS = [
+    'track-ink', 'trial-tier', 'realm-axis', 'furnace-rate', 'vein-axis',
+    'bond-meter', 'fight-bar', 'trib-forecast', 'growth-gauge', 'tier-bar', 'rating-gauge'
+  ]
+
+  function blockOf(sel: string): string {
+    const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`(?:^|\\n)\\.${esc}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(CSS)?.[1] ?? ''
+  }
+
+  it('十一条槽的底都引用 --track-ink-alpha', () => {
+    for (const cls of TRACKS) {
+      const body = blockOf(cls)
+      expect(body, `${cls} 找不到`).not.toBe('')
+      expect(body, `${cls} 的槽底没走 token`).toContain('var(--track-ink-alpha)')
+    }
+  })
+
+  it('没有任何一条还手写小数', () => {
+    const offenders: string[] = []
+    for (const cls of TRACKS) {
+      const body = blockOf(cls)
+      if (/background:\s*rgb\(var\(--color-ink-rgb\) \/ 0?\.[0-9]+\)/.test(body)) offenders.push(cls)
+    }
+    expect(offenders, '这些槽底又写回了手写小数').toEqual([])
+  })
+
+  it('token 只定 alpha,色仍走 --color-ink-rgb —— 夜主题才好自动跟', () => {
+    expect(CSS, '缺 --track-ink-alpha').toContain('--track-ink-alpha:')
+    // 若有 --track-ink-rgb,夜主题就得另写一行,容易漏
+    expect(CSS, '不该另开一个 rgb 变量').not.toContain('--track-ink-rgb:')
+  })
+})
+
+describe('调色板 · 禁用钮要看得见', () => {
+  /*
+   * 夜主题的禁用印钮原用 paper-dark 当惰性底 —— 白字对底 11.37:1,读得出拒因,
+   * 但 paper-dark 与纸只差 1.25:1:按钮整块融进纸里,
+   * 玩家看不出「这里本该有个按钮,只是现在按不了」。
+   * 禁用态本就该「看得见、按不动」,不是「看不见」。
+   *
+   * 现补回一道描边:轮廓对纸 2.58:1、白字对底仍 11.37:1,两样都保住。
+   */
+  function rule(sel: string): string {
+    const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`(?:^|\\n)${esc}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(CSS)?.[1] ?? ''
+  }
+
+  it('夜主题禁用印钮留一道描边,不把 box-shadow 一并抹掉', () => {
+    const body = rule("html[data-theme='dark'] .btn-seal:disabled")
+    expect(body, '找不到夜主题禁用态那条规则').not.toBe('')
+    expect(body, '禁用态连描边都抹了,按钮会融进纸里').not.toMatch(/box-shadow:\s*none/)
+    expect(body, '该留一道能看见的描边').toContain('inset 0 0 0 1px')
+  })
+
+  it('轮廓与纸的对比够看出形状(≥2.5:1)', () => {
+    const lin = (c: number): number => {
+      const s = c / 255
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+    }
+    const L = (rgb: [number, number, number]): number => 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2])
+    const ratio = (a: [number, number, number], b: [number, number, number]): number => {
+      const la = L(a)
+      const lb = L(b)
+      const hi = Math.max(la, lb)
+      const lo = Math.min(la, lb)
+      return (hi + 0.05) / (lo + 0.05)
+    }
+    // 描边 ink-soft(198,191,169) × 0.4 叠在夜纸上(33,31,28)
+    const paper: [number, number, number] = [33, 31, 28]
+    const soft: [number, number, number] = [198, 191, 169]
+    const border: [number, number, number] = [
+      soft[0] * 0.4 + paper[0] * 0.6,
+      soft[1] * 0.4 + paper[1] * 0.6,
+      soft[2] * 0.4 + paper[2] * 0.6
+    ]
+    expect(ratio(border, paper), '描边太淡,看不出按钮形状').toBeGreaterThanOrEqual(2.5)
+  })
+})
+
+describe('调色板 · 小胶囊当按钮也要有禁用态', () => {
+  /*
+   * chip-ink 五十处在用,其中一处(突破卡的第二枚准备钮)是带 :disabled 的按钮。
+   * 原先 chip-ink 没有 :disabled 规则 —— 胶囊边框与字色分毫不动,
+   * 只有内部一行小字变淡,看着还能按。突破准备是个要紧操作,按不动却没提示最伤人。
+   *
+   * 边框取 currentColor,故压字色即连带压轮廓:一条规则两样都管。
+   */
+  function rule(sel: string): string {
+    const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`(?:^|\\n)${esc}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(CSS)?.[1] ?? ''
+  }
+
+  it('chip-ink 有 :disabled 规则,且压字色', () => {
+    const body = rule('.chip-ink:disabled')
+    expect(body, 'chip-ink 没有 :disabled 规则').not.toBe('')
+    // 整色 token(--color-ink-faint)与通道形式(--color-ink-faint-rgb)都合法
+    expect(body, '该压到 ink-faint').toMatch(/var\(--color-ink-faint(?:-rgb)?\)/)
+  })
+
+  it('边框跟着字色走 —— 所以压字色即压轮廓', () => {
+    const base = rule('.chip-ink')
+    expect(base, '边框不再取 currentColor,压字色就管不到轮廓了').toContain('border: 1px solid currentColor')
+  })
+
+  it('全部带 :disabled 的 chip-ink 按钮都真的有禁用态', () => {
+    // 判据用意:日后有人新加一处 chip-ink 按钮,上面那条规则自动管到
+    const views = readFileSync(resolve(ROOT, 'src/components/cultivation/BreakthroughCard.vue'), 'utf-8')
+    expect(views, '突破卡的准备钮该仍带 :disabled').toContain(':disabled="!prepCanPill"')
+  })
+})
+
+describe('调色板 · 品类的色块要真能区分', () => {
+  /*
+   * 坊市货架的单字角标(丹/材/器)按品类着色。字色必须走墨色 ——
+   * 彩色字压同色淡底过不了 4.5,故品类区分交给色块与描边。
+   *
+   * 但原先把这件事交给 0.10/0.15 的底与 0.40 的边:实测底与纸只差 1.16~1.23:1、
+   * 描边 1.78~1.89:1 —— 三色之别在画面上根本读不出来,那句「由色块与描边承担」形同虚设。
+   * 浅色底再往上堆也救不了(alpha 0.28 才 1.54:1):能担事的是描边。
+   *
+   * 现描边 0.70 得 3.0~3.3:1(图形元素可辨下限),底色 0.20 补一层色感,墨字仍有 10.77:1。
+   */
+  const MARKET = readFileSync(resolve(ROOT, 'src/components/market/MarketShelfSection.vue'), 'utf-8')
+
+  function lin(c: number): number {
+    const s = c / 255
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+  }
+  function ratio(a: [number, number, number], b: [number, number, number]): number {
+    const la = 0.2126 * lin(a[0]) + 0.7152 * lin(a[1]) + 0.0722 * lin(a[2])
+    const lb = 0.2126 * lin(b[0]) + 0.7152 * lin(b[1]) + 0.0722 * lin(b[2])
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+  }
+  function over(fg: [number, number, number], a: number): [number, number, number] {
+    const paper: [number, number, number] = [255, 252, 245]
+    return [fg[0] * a + paper[0] * (1 - a), fg[1] * a + paper[1] * (1 - a), fg[2] * a + paper[2] * (1 - a)]
+  }
+
+  it('三色角标的描边都够可辨(≥3:1)', () => {
+    /*
+     * alpha 必须从源码里读,不能在这里写死 ——
+     * 写死的话把源码改回 /40 判据照样绿(实测过:第一版就是这么失效的)。
+     */
+    const paper: [number, number, number] = [255, 252, 245]
+    const tones: [string, string, [number, number, number]][] = [
+      ['丹', 'cinnabar', [168, 63, 57]],
+      ['材', 'jade', [80, 109, 88]],
+      ['器', 'violet-ink', [114, 85, 158]]
+    ]
+    for (const [label, token, rgb] of tones) {
+      const m = new RegExp(`border-${token}/(\\d+)`).exec(MARKET)
+      expect(m, `${label} 的描边类没找到`).not.toBeNull()
+      const alpha = Number(m![1]) / 100
+      expect(ratio(over(rgb, alpha), paper), `${label} 的描边 alpha=${alpha} 太淡,看不出品类`).toBeGreaterThanOrEqual(2.95)
+    }
+  })
+
+  it('角标字色仍是墨色 —— 彩色字过不了 AA', () => {
+    expect(MARKET, '字色改回彩色会破 AA').toContain('text-ink')
+    expect(MARKET, '品类色该只在边与底上').toMatch(/border border-(cinnabar|jade|violet-ink)\/70/)
+  })
+
+  it('斜杠透明度只用 config 里的步进', () => {
+    // tailwind v3.4 默认步长 5;config 另补 4/6/7/8。手写 /22 这类会直接失效成透明
+    for (const m of MARKET.matchAll(/\b(?:bg|border|text)-[\w-]+\/(\d+)/g)) {
+      const step = Number(m[1])
+      expect([4, 6, 7, 8, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90], `/${step} 不是合法步进`).toContain(step)
+    }
+  })
+})
+
+describe('调色板 · 九宫的数字要对齐', () => {
+  /*
+   * 宫号是 absolute 定位,基准是 padding box —— 边框越宽,它离外框越远。
+   * 而九宫靠三种边框宽度区分吉凶(dashed 1px / solid 1.5px / double 3px),
+   * 于是凶门的「2/3/7」比其余六格往里 2px,整张盘看着是歪的。
+   *
+   * 现给 double 那三格补回偏移,九个宫号同在外框内 3px。
+   * 判据不仅看有没有补偿,还算一遍:补偿后三者对外框的偏移必须相等。
+   */
+  function rule(sel: string): string {
+    const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`(?:^|\\n)${esc}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(CSS)?.[1] ?? ''
+  }
+  function px(body: string, prop: string): number {
+    // 两种写法都要认:`border-width: 3px` 与简写 `border: 1px solid …`
+    const explicit = new RegExp(`(?:^|\\n)\\s*${prop}:\\s*(-?[\\d.]+)px`).exec(body)
+    if (explicit) return Number(explicit[1])
+    const short = new RegExp(`(?:^|\\n)\\s*border:\\s*(-?[\\d.]+)px`).exec(body)
+    expect(short, `${prop} 没找到(试过简写)`).not.toBeNull()
+    return Number(short![1])
+  }
+
+  it('三种边框宽度的宫号,离外框的偏移一致', () => {
+    const no = rule('.gate-palace__no')
+    expect(no, '缺 .gate-palace__no').not.toBe('')
+    const baseLeft = px(no, 'left')
+    const baseTop = px(no, 'top')
+
+    const widths: [string, number][] = [
+      ['.gate-kind-solid', px(rule('.gate-kind-solid'), 'border-width')],
+      ['.gate-kind-double', px(rule('.gate-kind-double'), 'border-width')],
+      // dashed 只换 style,宽度走 .gate-palace 的 1px
+      ['.gate-kind-dashed', px(rule('.gate-palace'), 'border-width')]
+    ]
+
+    const fix = rule('.gate-kind-double > .gate-palace__no')
+    expect(fix, 'double 那几格没补偏移').not.toBe('')
+    const fixLeft = px(fix, 'left')
+    const fixTop = px(fix, 'top')
+
+    const offsets = widths.map(([sel, w]) => ({
+      sel,
+      // 补偿只对 double 生效,其余仍走基准值
+      left: baseLeft + w,
+      top: baseTop + w,
+      fixedLeft: sel === '.gate-kind-double' ? fixLeft + w : baseLeft + w,
+      fixedTop: sel === '.gate-kind-double' ? fixTop + w : baseTop + w
+    }))
+    /*
+     * solid 的 1.5px 边框会带来 0.5px 的半格差 —— 浏览器把它与 1px 都取整到同一个像素,
+     * 实测九个宫号渲染出来的 x 全等(4)。判据按精确值比会误报,故给 1px 容差。
+     */
+    const lefts = offsets.map(o => o.fixedLeft)
+    const tops = offsets.map(o => o.fixedTop)
+    const spread = (xs: number[]): number => Math.max(...xs) - Math.min(...xs)
+    expect(spread(lefts), `横向差 ${spread(lefts)}px,超过一个像素`).toBeLessThan(1)
+    expect(spread(tops), `纵向差 ${spread(tops)}px,超过一个像素`).toBeLessThan(1)
+  })
+
+  it('补偿前的偏移确实不一致 —— 否则这条判据没必要存在', () => {
+    const no = rule('.gate-palace__no')
+    const baseLeft = px(no, 'left')
+    const dashed = px(rule('.gate-palace'), 'border-width')
+    const double = px(rule('.gate-kind-double'), 'border-width')
+    expect(double, 'double 宽度没变,补偿可以删').toBeGreaterThan(dashed)
+    expect(baseLeft + double, '不加补偿时 double 的宫号并不更靠里').not.toBe(baseLeft + dashed)
+  })
+})
+
+describe('调色板 · 刻度圆点不许探出轴外', () => {
+  /*
+   * 秘境卡的险利双轴:圆点 6px、`translate(-50%, -50%)` 居中于 --axis-pos。
+   * --axis-pos 取到 0% 或 100% 时,圆心正落在轴端,半个圆(3px)探到轴外 ——
+   * 一张卡两头都贴边时看着像跑出去了。
+   *
+   * 现用 clamp 把圆心夹在 [3px, 100%-3px](3px 即半径):中间段照旧按位置走。
+   */
+  function rule(sel: string): string {
+    const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`(?:^|\\n)${esc}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(CSS)?.[1] ?? ''
+  }
+
+  it('圆点的 left 夹在轴内', () => {
+    const body = rule('.realm-axis::before')
+    expect(body, '缺 .realm-axis::before').not.toBe('')
+    expect(body, '该用 clamp 夹住圆心').toContain('clamp(')
+    // 日历:半径 3px 与圆宽 6px 必须对得上
+    expect(body, '圆宽该是 6px').toMatch(/width:\s*6px/)
+    expect(body, '下限该等于半径 3px').toMatch(/clamp\(\s*3px\s*,/)
+    expect(body, '上限该让出半径').toContain('calc(100% - 3px)')
+  })
+
+  it('夹具:轴仍读 --axis-pos,位置没被夹成常量', () => {
+    const body = rule('.realm-axis::before')
+    expect(body, '位置该仍由 --axis-pos 决定').toContain('var(--axis-pos')
+  })
+})
+
+describe('调色板 · 轨道上的圆点一律夹在轴内', () => {
+  /*
+   * 三处同形制的刻度先后踩过同一个坑:圆点用 translate(-50%, -50%) 居中于
+   * 一个 0~1 的位置值,而那个值被各自的上游严格夹到两端 —— 端点必然出现。
+   *   秘境双轴 .realm-axis   :heal/gain 由五处秘境的最小最大归一,最左最右各有一处
+   *   修行倍率 .growth-gauge :growthPosition 夹到 0~1,倍率 0.6 / 4.0 各在端点
+   *   试炼层阶 .trial-tier   :tierPosition 夹到 0~1,三场里最低与最高各在端点
+   * 半个圆(3~3.5px)探出轴外,而这些轴的两侧都紧挨着数字或标签。
+   *
+   * 这条判据把三处一起钉住:谁把 clamp 去掉都会红在这里。
+   */
+  function rule(sel: string): string {
+    const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`(?:^|\\n)${esc}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(CSS)?.[1] ?? ''
+  }
+
+  const TRACKS: { sel: string; width: number }[] = [
+    { sel: '.realm-axis::before', width: 6 },
+    { sel: '.growth-gauge i', width: 7 },
+    { sel: '.trial-tier::before', width: 7 }
+  ]
+
+  it('三处都用 clamp,上下限各让出一个半径', () => {
+    for (const { sel, width } of TRACKS) {
+      const body = rule(sel)
+      expect(body, `缺 ${sel}`).not.toBe('')
+      expect(body, `${sel} 该用 clamp`).toContain('clamp(')
+      expect(body, `${sel} 的圆宽该是 ${width}px`).toMatch(new RegExp(`width:\\s*${width}px`))
+      const r = width / 2
+      expect(body, `${sel} 的下限该等于半径 ${r}px`).toContain(`clamp(${r}px,`)
+      expect(body, `${sel} 的上限该让出半径`).toContain(`calc(100% - ${r}px)`)
+    }
+  })
+
+  it('三处的位置仍由各自的变量决定,没被夹成常量', () => {
+    const vars = [
+      ['.realm-axis::before', '--axis-pos'],
+      ['.growth-gauge i', '--gauge-pos'],
+      ['.trial-tier::before', '--tier-pos']
+    ] as const
+    for (const [sel, v] of vars) {
+      expect(rule(sel), `${sel} 该仍读 ${v}`).toContain(`var(${v}`)
+    }
+  })
+
+  it('轴本体的 height 与圆点的居中基准一致 —— 都靠 translate 居中', () => {
+    for (const { sel } of TRACKS) {
+      expect(rule(sel), `${sel} 少了居中变换`).toContain('translate(-50%, -50%)')
+    }
+  })
+})
+
+describe('调色板 · 每个品阶都得有一套过线的文字色', () => {
+  /*
+   * data/qualities 里每档品阶有一个装饰色(color),但那几个色当正文用大多过不了 4.5:
+   * 实测玄 #A85C3F 4.28、天 #C9A227 2.11、仙 #3E8E8B 3.36、神 #A83F39 4.42。
+   * 于是 style.css 另给一套「当文字用」的暗版,--color-quality-*-text-rgb。
+   *
+   * 前三档都补了,神品漏了 —— 它一路回落到装饰色朱,压在神品卡自己的朱色淡底上只有 4.42:1。
+   * 本条把「每个品阶都要有文字色」和「都要过线」一起钉住,免得再漏下一档。
+   */
+  const QUALITY_IDS = ['mortal', 'fine', 'excellent', 'spirit', 'profound', 'earth', 'heaven', 'immortal', 'divine'] as const
+  /** 装饰色太浅、必须另给文字色的那几档(其余档的装饰色本身已过线) */
+  const NEEDS_OWN = ['profound', 'heaven', 'immortal', 'divine'] as const
+
+  function rgbOf(token: string): [number, number, number] {
+    const m = new RegExp(`${token}:\\s*(\\d+)\\s+(\\d+)\\s+(\\d+)`).exec(CSS)
+    expect(m, `style.css 里找不到 ${token}`).not.toBeNull()
+    return [Number(m![1]), Number(m![2]), Number(m![3])]
+  }
+
+  it('四档浅色品阶各有自己的文字色 token', () => {
+    for (const id of NEEDS_OWN) {
+      expect(CSS, `缺 --color-quality-${id}-text-rgb(日主题)`).toContain(`--color-quality-${id}-text-rgb`)
+    }
+  })
+
+  it('文字色到 data 层接上了,不是只写在 CSS 里', () => {
+    const src = readFileSync(resolve(ROOT, 'src/data/qualities.ts'), 'utf-8')
+    for (const id of NEEDS_OWN) {
+      expect(src, `TEXT_COLOR 缺 ${id}`).toContain(`${id}: 'var(--color-quality-${id}-text)'`)
+    }
+  })
+
+  it('每档文字色压在自己的淡底上都过 4.5:1', () => {
+    const lin = (c: number): number => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4) }
+    const L = (c: [number, number, number]): number => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2])
+    const ratio = (a: [number, number, number], b: [number, number, number]): number => {
+      const la = L(a), lb = L(b)
+      return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+    }
+    const paper: [number, number, number] = [243, 239, 228]
+    // 各品阶卡的淡底浓淡(fromTier 越高越浓,这里取最浓的 13%)
+    const TINT = 0.13
+    const DECOR: Record<string, [number, number, number]> = {
+      profound: [168, 92, 63],
+      heaven: [201, 162, 39],
+      immortal: [62, 142, 139],
+      divine: [168, 63, 57]
+    }
+    for (const id of NEEDS_OWN) {
+      const fg = rgbOf(`--color-quality-${id}-text-rgb`)
+      const d = DECOR[id]!
+      const bg: [number, number, number] = [d[0] * TINT + paper[0] * (1 - TINT), d[1] * TINT + paper[1] * (1 - TINT), d[2] * TINT + paper[2] * (1 - TINT)]
+      expect(ratio(fg, bg), `${id} 的文字色压在同色淡底上只有 ${ratio(fg, bg).toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
+      expect(ratio(fg, paper), `${id} 的文字色压在纸上只有 ${ratio(fg, paper).toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it('九个品阶 id 一个不少 —— 新增档位时这里会先红', () => {
+    const src = readFileSync(resolve(ROOT, 'src/data/qualities.ts'), 'utf-8')
+    for (const id of QUALITY_IDS) {
+      expect(src, `qualities.ts 里没有 ${id}`).toMatch(new RegExp(`id: '${id}'`))
+    }
+  })
+})
+
+describe('调色板 · 货架副标题在品阶淡底上也要过线', () => {
+  /*
+   * 市场货架卡的副标题原用 ink-faint。它在纯纸上是 5.20:1,单独看没问题 ——
+   * 但灵草/装备卡会按品阶铺 6%~13% 的淡底,神品那档的朱色最深,
+   * ink-faint 压上去只剩 4.32:1(全站扫描 15 个路由,这是唯一跌破的一处)。
+   *
+   * 换 ink-soft:纸 8.18、6% 底 7.52、13% 底 6.80,各种卡上都留得住余量。
+   * 判据把三种底浓 × 最深的那几档装饰色都算一遍。
+   */
+  function lin(c: number): number {
+    const s = c / 255
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+  }
+  function ratio(a: [number, number, number], b: [number, number, number]): number {
+    const la = 0.2126 * lin(a[0]) + 0.7152 * lin(a[1]) + 0.0722 * lin(a[2])
+    const lb = 0.2126 * lin(b[0]) + 0.7152 * lin(b[1]) + 0.0722 * lin(b[2])
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+  }
+  const SHOP = readFileSync(resolve(ROOT, 'src/components/market/MarketShelfSection.vue'), 'utf-8')
+
+  it('副标题不再用 ink-faint', () => {
+    // 按「含 c.sub 的那一行」定位,不依赖具体空白
+    const line = SHOP.split('\n').find(l => l.includes('c.sub'))
+    expect(line, '找不到货架副标题那一行').toBeDefined()
+    expect(line!, '副标题又用回 ink-faint 了').not.toContain('text-ink-faint')
+    expect(line!, '副标题该用 ink-soft').toContain('text-ink-soft')
+  })
+
+  it('ink-soft 压在最深的品阶底上仍过 4.5:1', () => {
+    const paper: [number, number, number] = [243, 239, 228]
+    const soft: [number, number, number] = [74, 70, 61]
+    // 各品阶装饰色里最深的几档:珠(玄)/朱(神)/青(仙灵)/金(天)
+    const tones: [string, [number, number, number]][] = [
+      ['玄', [168, 92, 63]],
+      ['神', [168, 63, 57]],
+      ['仙/灵', [62, 142, 139]],
+      ['天', [201, 162, 39]]
+    ]
+    for (const alpha of [0.06, 0.1, 0.13]) {
+      for (const [name, c] of tones) {
+        const bg: [number, number, number] = [c[0] * alpha + paper[0] * (1 - alpha), c[1] * alpha + paper[1] * (1 - alpha), c[2] * alpha + paper[2] * (1 - alpha)]
+        expect(ratio(soft, bg), `${name} 阶 ${alpha * 100}% 底上只有 ${ratio(soft, bg).toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+
+  it('对照组:ink-faint 在神品底上确实过不了 —— 所以这条判据必要', () => {
+    const paper: [number, number, number] = [243, 239, 228]
+    const faint: [number, number, number] = [104, 99, 88]
+    const c: [number, number, number] = [168, 63, 57]
+    const bg: [number, number, number] = [c[0] * 0.13 + paper[0] * 0.87, c[1] * 0.13 + paper[1] * 0.87, c[2] * 0.13 + paper[2] * 0.87]
+    expect(ratio(faint, bg), 'ink-faint 在神品底上居然过线了,判据可以撤').toBeLessThan(4.5)
+  })
+})
+
+describe('调色板 · 暗色当前境界卡的灰字也过线', () => {
+  /*
+   * 境界志的逐境卡:当前那一张铺 bg-cinnabar/8,其余铺 bg-paper-deep/50。
+   * 夜主题卡底是 paper-lifted(51,49,46),叠上那层朱后是 (66,56,52) ——
+   * ink-faint(168,161,140) 压上去只剩 4.41:1(全站暗色扫描的唯一真实命中);
+   * 其余卡的底(paper-deep/50)上它是 6.11,没问题。
+   *
+   * 故只在当前卡把 lore 与「所据」两行换成 ink-soft(该底上 6.19),其余卡不动。
+   */
+  const VIEW = readFileSync(resolve(ROOT, 'src/views/RealmCodexView.vue'), 'utf-8')
+
+  function lin(c: number): number {
+    const s = c / 255
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+  }
+  function ratio(a: [number, number, number], b: [number, number, number]): number {
+    const la = 0.2126 * lin(a[0]) + 0.7152 * lin(a[1]) + 0.0722 * lin(a[2])
+    const lb = 0.2126 * lin(b[0]) + 0.7152 * lin(b[1]) + 0.0722 * lin(b[2])
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+  }
+  function over(fg: [number, number, number], bg: [number, number, number], a: number): [number, number, number] {
+    return [fg[0] * a + bg[0] * (1 - a), fg[1] * a + bg[1] * (1 - a), fg[2] * a + bg[2] * (1 - a)]
+  }
+
+  it('当前卡的 lore 与「所据」两行按是不是当前卡分色', () => {
+    // 两行都该带 cell.index === player.major 的三元判断
+    const tiered = VIEW.match(/cell\.index === player\.major \? 'text-ink-soft' : 'text-ink-faint'/g) ?? []
+    expect(tiered.length, '当前卡以外仍该是 ink-faint,当前卡换 ink-soft').toBeGreaterThanOrEqual(2)
+  })
+
+  it('ink-soft 压在夜主题「卡底 + 朱8%」上过 4.5:1', () => {
+    const lifted: [number, number, number] = [51, 49, 46]
+    const cinnabar: [number, number, number] = [238, 136, 126]
+    const bg = over(cinnabar, lifted, 0.08)
+    expect(ratio([198, 191, 169], bg), 'ink-soft 在这个底上也过不了').toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('对照组:ink-faint 在该底上确实过不了 —— 所以这条判据必要', () => {
+    const lifted: [number, number, number] = [51, 49, 46]
+    const cinnabar: [number, number, number] = [238, 136, 126]
+    const bg = over(cinnabar, lifted, 0.08)
+    expect(ratio([168, 161, 140], bg), 'ink-faint 居然过线了,判据可以撤').toBeLessThan(4.5)
+  })
+
+  it('其余卡的底仍是 paper-deep,ink-faint 在上面够用', () => {
+    expect(VIEW, '非当前卡的底该仍是 paper-deep/50').toContain('bg-paper-deep/50')
+    const lifted: [number, number, number] = [51, 49, 46]
+    const deep: [number, number, number] = [41, 38, 34]
+    expect(ratio([168, 161, 140], over(deep, lifted, 0.5))).toBeGreaterThanOrEqual(4.5)
+  })
+})
+
 describe('调色板 · 投影墨不外泄', () => {
   it('--shadow-ink 只进 box-shadow(或它自己的定义),不当可见底色/线/槽/波 —— 夜主题深纸近黑墨会隐形', () => {
     // 纸上可见的线/槽/波用 --color-ink(夜主题翻转成亮墨)

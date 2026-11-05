@@ -48,17 +48,55 @@
         <div v-for="root in profile.roots" :key="root.element" class="flex flex-col items-center gap-1.5">
           <span
             class="grid h-12 w-12 place-items-center rounded-full border-2 font-kai text-lg animate-breathe"
-            :style="{ borderColor: ELEMENTS[root.element].color, color: ELEMENTS[root.element].color }"
+            :class="{ 'root-special': ELEMENTS[root.element].special }"
+            :style="{ borderColor: ELEMENTS[root.element].color, color: ELEMENTS[root.element].color, '--root-tone': ELEMENTS[root.element].color }"
           >
             {{ ELEMENTS[root.element].char }}
           </span>
           <span class="tabular text-[11px] text-ink-soft">资质 {{ root.aptitude }}</span>
+          <!-- 资质刻度与角色页同一套(见 ui/rootMark):掷了十几次时哪根是主根,一眼看得出 -->
+          <span
+            class="root-pips"
+            :class="{ 'root-pips--top': rootMarkList.find(m => m.element === root.element)?.top }"
+            :style="{ '--root-tone': ELEMENTS[root.element].color }"
+            role="img"
+            :aria-label="`资质 ${root.aptitude}`"
+          >
+            <i
+              v-for="(on, i) in rootPips(rootMarkList.find(m => m.element === root.element)?.pips ?? 0)"
+              :key="i"
+              :class="{ on }"
+            />
+          </span>
         </div>
       </div>
-      <p class="mt-4 text-center text-[12px] text-ink-faint">
-        修行倍率
-        <span :key="rollSeq" class="tabular text-[14px] text-ink animate-ink-pop">×{{ profile.growthMult.toFixed(2) }}</span>
-      </p>
+      <!--
+        倍率原只给一个数:「修行倍率 ×1.11」。1.11 算好还是不好,玩家无从判断 ——
+        同屏有五个资质数、一个「杂灵根」标签,唯独没有「这一手在你可能拿到的牌里排哪一段」。
+        倍率是三个因子相乘出来的,因子有上下界,故区间可以算出来(见 ui/growthGauge)。
+      -->
+      <div class="mt-4">
+        <p class="flex items-baseline justify-center gap-2 text-[12px] text-ink-faint">
+          <span>修行倍率</span>
+          <span :key="rollSeq" class="tabular text-[14px] text-ink animate-ink-pop">×{{ profile.growthMult.toFixed(2) }}</span>
+          <span class="rounded border border-ink/15 px-1.5 py-0.5 text-[10px] leading-none" :class="GROWTH_TONE[growthTier.tier]">
+            {{ growthTier.label }}
+          </span>
+        </p>
+        <!-- 轴两端标数:没有参照的刻度等于没有 -->
+        <div class="mt-1.5 flex items-center gap-1.5">
+          <span class="shrink-0 tabular text-[9px] leading-none text-ink-faint">×{{ growthTier.floor.toFixed(1) }}</span>
+          <span
+            class="growth-gauge min-w-0 flex-1"
+            :class="`growth-gauge--${growthTier.tier}`"
+            role="img"
+            :aria-label="`修行倍率 ×${growthTier.mult.toFixed(2)},区间 ${growthTier.floor.toFixed(1)} 至 ${growthTier.ceil.toFixed(1)},属${growthTier.label}`"
+          >
+            <i :style="{ '--gauge-pos': `${growthTier.position * 100}%` }" />
+          </span>
+          <span class="shrink-0 tabular text-[9px] leading-none text-ink-faint">×{{ growthTier.ceil.toFixed(1) }}</span>
+        </div>
+      </div>
       <div v-if="tendencies.length" :key="`tend-${rollSeq}`" class="stagger-in mt-3 space-y-1.5 border-t border-ink/10 pt-3">
         <p v-for="t in tendencies" :key="t.element" class="flex gap-2 text-[11px] leading-relaxed text-ink-soft">
           <span class="shrink-0 font-kai" :style="{ color: ELEMENTS[t.element].color }">{{ ELEMENTS[t.element].char }}</span>
@@ -87,6 +125,9 @@
   import { rootElements, tendencyLines } from '@/core/linggenAffinity'
   import { randomDaoName } from '@/data/names'
   import { ELEMENTS } from '@/data/linggen'
+  import { rootMarks, rootPips } from '@/ui/rootMark'
+  import { growthGauge } from '@/ui/growthGauge'
+  // 初始装备走 loot 的签发链(服务端权威),不在此直接掷点
   import { acquireEquipment } from '@/core/loot'
   import { mintDrops } from '@/core/lootClaim'
   import { trackRealm } from '@/core/progress'
@@ -114,6 +155,8 @@
   // 灵根草稿持久化:刷新不白拿一次重掷,也不洗掉已花掉的次数
   if (!game.createProfile) game.setCreateProfile(rollLinggen(rng))
   const profile = computed(() => game.createProfile!)
+  /** 灵根资质刻度:每根按资质点数,最高者为主根(见 ui/rootMark) */
+  const rootMarkList = computed(() => rootMarks(profile.value?.roots ?? []))
   const rerollsLeft = computed(() => game.createRerolls)
   /** 不限次建号:按钮不显示余量 */
   const unlimitedReroll = computed(() => rerollsLeft.value === null)
@@ -125,6 +168,15 @@
   const revealRef = ref<InstanceType<typeof SpiritRootReveal> | null>(null)
   /** 鉴定动画进行中(约 2.6s):防连点重复建号、重复发新手馈赠 */
   const starting = ref(false)
+
+  /** 倍率在可能区间里的位置与档次(见 ui/growthGauge) */
+  const growthTier = computed(() => growthGauge(profile.value.growthMult))
+  const GROWTH_TONE: Record<string, string> = {
+    low: 'text-ink-faint',
+    mid: 'text-ink-soft',
+    high: 'text-azure',
+    peak: 'text-cinnabar'
+  }
 
   /** 这一世的天然牌面(倾向文案,不含任何数值) */
   const tendencies = computed(() => tendencyLines(rootElements(profile.value.roots)))

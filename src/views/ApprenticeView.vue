@@ -41,6 +41,35 @@
               <p class="truncate text-[10px] text-ink-faint">{{ a.def.desc }}</p>
             </div>
           </div>
+          <!--
+            层数刻度与羁绊阶点:第 7 层离满还有多远、道徒与记名弟子哪个近,
+            本来是拿文字去比数(见 ui/apprenticeMark)。门槛全取自 data/apprentices。
+          -->
+          <div class="mt-1.5 flex items-center gap-2">
+            <span
+              class="appr-pips shrink-0"
+              :class="{ 'appr-pips--max': a.mark.maxed }"
+              role="img"
+              :aria-label="`第 ${a.mark.level.have} 层,共 ${a.mark.level.total} 层`"
+            >
+              <i v-for="(on, i) in levelPips(a.mark.level.have)" :key="i" :class="{ on }" />
+            </span>
+            <span class="shrink-0 text-[9px] tabular text-ink-faint">{{ a.mark.level.have }}/{{ a.mark.level.total }}</span>
+            <span class="ml-auto flex shrink-0 items-center gap-1">
+              <span class="bond-pips" :style="{ '--bond-tone': a.mark.bondRank >= 3 ? 'var(--color-gold-ink)' : undefined }" aria-hidden="true">
+                <i v-for="p in a.mark.bondPips" :key="p" />
+              </span>
+              <!--
+                这一行左边是「层数 1/20」,右边原写「还差 10 趟」——
+                两个数挨在一行,读者会把它读成「还差 19 趟升满 20 层」。
+                可右边数的是**羁绊位阶**(10/30/60/100 趟),与层数各算各的。
+                补上主语,免得两把尺混成一把。
+              -->
+              <span class="text-[9px] text-ink-faint tabular">
+                {{ a.mark.toNextBond === null ? '羁绊已至真传' : `羁绊还差 ${a.mark.toNextBond} 趟` }}
+              </span>
+            </span>
+          </div>
 
           <div v-if="a.busy" class="mt-2 flex items-center justify-between rounded bg-ink/4 px-2.5 py-2">
             <span class="flex items-center gap-1.5 text-[12px] text-ink-soft">
@@ -95,6 +124,7 @@
   } from '@/data/apprentices'
   import { apprenticeRecruitCost, apprenticeRecruitShortfall } from '@/core/apprenticeService'
   import { apprenticeHerbName, apprenticeReturnText } from '@/ui/apprenticeText'
+  import { apprenticeMark, levelPips } from '@/ui/apprenticeMark'
   import { lusterOf } from '@/ui/luster'
   import SectionTitle from '@/components/common/SectionTitle.vue'
   import GameIcon from '@/components/common/GameIcon.vue'
@@ -126,6 +156,8 @@
         uid: a.uid,
         level: a.level,
         bondTitle: bondTitle(a.bond),
+        /** 层数刻度与羁绊阶点(见 ui/apprenticeMark) */
+        mark: apprenticeMark(a.level, a.bond),
         def,
         luster: lusterOf(def.quality),
         busy,

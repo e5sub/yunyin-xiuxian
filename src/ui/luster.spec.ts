@@ -86,6 +86,31 @@ describe('高级物质感 · 二、不抢内容', () => {
     expect(pos, '御纹应贴角').toContain('left: 2px')
   })
 
+  it('方形小格只画左上那一枚 —— 右下是内容读数(数量 / 强化)的地方', () => {
+    /*
+     * 实测:材料格的「10」离格边只剩 5px×3px,而御纹的右下直角是 18px ——
+     * 渲染出来是数量压在一枚朱砂直角上。形制与内容争同一处时,让位的是形制。
+     */
+    expect(block('.luster-cornice--tile::after'), '格子档要收掉右下那枚').toContain('content: none')
+
+    // 窄卡都得挂格子档:它们右下都放着读数或按钮
+    expect(EQUIPMENT_CARD, '装备格右下有强化 +N').toContain("props.item.level > 0")
+    expect(EQUIPMENT_CARD, '装备格应走格子档').toContain('luster-cornice--tile')
+    expect(PILL_VIEW, '丹药格应走格子档').toContain('luster-cornice luster-cornice--tile')
+    expect(PILL_VIEW, '材料格应走格子档').toMatch(/m\.luster.*luster-cornice--tile|class="luster-cornice luster-cornice--tile"/)
+    // 坊市两列窄卡(168×99):实测御纹 (148,79)–(166,97) 与右下「买下」按钮 (110,54)–(156,89) 相交
+    expect(MARKET, '坊市货格右下是「买下」按钮').toContain('买下')
+    expect(MARKET, '坊市货格应走格子档').toContain('luster-cornice luster-cornice--tile')
+
+    // 宽卡右下不摆读数也不摆按钮,保持两枚形制
+    for (const [src, name] of [
+      [ARTIFACT_PANEL, '法宝卡'],
+      [TITLES, '灵兽卡']
+    ] as const) {
+      expect(src, `${name}是宽卡,不必收角`).toContain('class="luster-cornice"')
+    }
+  })
+
   it('骑缝印落在面板留白里,不压正文', () => {
     const crown = block('.luster-frame .luster-crown')
     expect(crown, '缺骑缝印').not.toBe('')

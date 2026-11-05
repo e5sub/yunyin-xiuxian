@@ -43,13 +43,14 @@
             <p class="relative mt-2 text-[11px] leading-relaxed text-ink-faint">{{ currentDao.desc }}</p>
             <p v-for="(r, i) in currentDao.ruleText" :key="i" class="relative mt-0.5 text-[11px] text-azure">· {{ r }}</p>
             <p v-for="(r, i) in currentDao.deepText" :key="`d${i}`" class="relative mt-0.5 text-[11px] text-gold-ink">◈ {{ r }}</p>
+            <!--
+              括号原列的是**已达成**的四条,与上方 deepText 那行几乎逐字重复(还各用一套措辞:
+              一处写「主流派成形」,一处写「契合 ≥60%」)。已达成的不必再念一遍 ——
+              玩家要看的是「还差哪条」。改成只列未达成的;全达成时不出括号。
+            -->
             <p v-if="swordInfo" class="relative mt-1.5 text-[11px] text-violet-ink tabular">
-              剑意 {{ swordInfo.layers }}/{{ SWORD_PURITY_MAX_LAYERS }} 层<template v-if="swordInfo.layers > 0">({{
-                swordInfo.checks
-                  .filter(c => c.ok)
-                  .map(c => c.name)
-                  .join('、')
-              }})</template>
+              剑意 {{ swordInfo.layers }}/{{ SWORD_PURITY_MAX_LAYERS }} 层<template v-if="swordInfo.checks.some(c => !c.ok)">
+                <span class="text-ink-faint">· 未合:{{ swordInfo.checks.filter(c => !c.ok).map(c => c.name).join('、') }}</span></template>
             </p>
             <p v-if="daoStory" class="relative mt-1.5 font-kai text-[11px] leading-relaxed text-ink-soft">「{{ daoStory }}」</p>
           </div>
@@ -158,8 +159,19 @@
           <p class="font-kai text-[12px] tracking-wider text-ink">获取</p>
           <p class="text-ink-faint">{{ daoSourceDialog().gains.join(' · ') }}</p>
         </div>
-        <p class="border-l-2 border-cinnabar/60 pl-2 text-[11px] text-cinnabar">
-          {{ daoSourceDialog().lifecycle }}
+        <!--
+          生命周期:原先只是一行左边框色各写各的。roleTone 早已在数据里表达「本世 / 跨世」,
+          却没人读 —— 这里按它挂形制(见 ui/resourceTone),与道果那扇同一套。
+        -->
+        <p
+          class="flex items-start gap-2 border-l-2 pl-2 text-[11px]"
+          :class="`res-tone res-tone--${toneOf(daoSourceDialog().roleTone).tone}`"
+        >
+          <span class="res-tone__seal shrink-0 font-kai" aria-hidden="true">{{ toneOf(daoSourceDialog().roleTone).seal }}</span>
+          <span class="min-w-0">
+            <span class="block text-ink">{{ daoSourceDialog().lifecycle }}</span>
+            <span class="block text-[10px] text-ink-faint">{{ toneOf(daoSourceDialog().roleTone).note }}</span>
+          </span>
         </p>
       </div>
       <template #footer>
@@ -201,6 +213,7 @@
     markEndgameTutorialSeen,
     markResourceDialogSeen
   } from '@/core/resourceGuidance'
+  import { resourceTone as toneOf } from '@/ui/resourceTone'
 
   const player = usePlayerStore()
   const inventory = useInventoryStore()

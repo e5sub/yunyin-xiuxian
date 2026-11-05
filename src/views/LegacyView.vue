@@ -8,11 +8,27 @@
     <div v-if="profile" class="card-ink px-4 py-3">
       <p class="mb-1.5 font-kai text-[12px] tracking-[0.3em] text-ink-faint">修行画像</p>
       <p class="font-kai text-[13px] leading-relaxed text-ink">「{{ profile.verdict }}」</p>
+      <!--
+        道途占比:每行带上该道的符纹与道色(见 ui/daoMark),四根不再是一模一样的朱砂条。
+        条长以本组最大的那根为满格 —— 四条占比之和本就不到一百(还有无道途的道痕),
+        按 100% 画会让四根都短得像没走过路(见 ui/daoShare)。
+      -->
       <div class="mt-2 space-y-1">
-        <p v-for="d in profile.daoShares" :key="d.name" class="flex items-center gap-2 text-[11px]">
-          <span class="w-14 shrink-0 text-ink-faint">{{ d.name }}</span>
+        <p v-for="d in daoRows" :key="d.name" class="flex items-center gap-2 text-[11px]">
+          <span
+            v-if="d.mark"
+            class="dao-tag shrink-0"
+            :class="`dao-tag--${d.mark.crest}`"
+            :style="{ color: d.mark.tone }"
+            role="img"
+            :aria-label="d.mark.label"
+          />
+          <span class="w-12 shrink-0" :class="d.top ? 'text-ink-soft' : 'text-ink-faint'">{{ d.name }}</span>
           <span class="track-ink h-1.25 grow">
-            <span class="bar-fill block h-full" :style="{ width: `${d.pct}%`, background: 'var(--color-cinnabar)' }" />
+            <span
+              class="bar-fill block h-full"
+              :style="{ width: `${d.barPct}%`, background: d.mark?.tone ?? 'var(--color-cinnabar)' }"
+            />
           </span>
           <span class="w-8 shrink-0 text-right tabular text-ink-soft">{{ d.pct }}%</span>
         </p>
@@ -123,7 +139,8 @@
       </div>
       <p v-else class="py-5 text-center">
         <span class="empty-seal" aria-hidden="true">白</span>
-        <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">暂无记录</span>
+        <!-- 区块标题是「修行节点」:空态按「暂无 + 具体名词」写「节点」,不写泛指的「记录」 -->
+        <span class="mt-2.5 block font-kai text-[12px] tracking-[0.2em] text-ink-soft">暂无节点</span>
       </p>
     </div>
 
@@ -208,6 +225,7 @@
   import { regionDef } from '@/data/regions'
   import { eventDef } from '@/data/events'
   import { isNemesis } from '@/core/worldMemory'
+  import { daoShareRows } from '@/ui/daoShare'
   import { chainProgressRows } from '@/core/eventEngine'
   import { formatDate } from '@/utils/time'
   import SectionTitle from '@/components/common/SectionTitle.vue'
@@ -284,6 +302,8 @@
   )
 
   const profile = computed(() => cultivatorProfile(endgame.marks))
+  /** 道途占比条:带道纹与道色,条长以本组最大者为满格(见 ui/daoShare) */
+  const daoRows = computed(() => daoShareRows(profile.value?.daoShares ?? []))
 
   const chainRows = computed(() => chainProgressRows())
   const unfinishedChains = computed(() => chainRows.value.filter(c => !c.finished).length)

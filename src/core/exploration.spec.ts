@@ -3,6 +3,8 @@
  * 含灵兽性格「败北保护」:lossReduction 须接入 runBattle,败北时低概率护住(不重伤、不计败绩、历练继续)。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -729,6 +731,36 @@ describe('战斗页敌方半卡 · 特性与星级读开打快照', () => {
     for (const name of traitNames) expect(known, `眼熟后该见「${name}」`).toContain(name)
     expect(await renderPanel(true), '眼熟后该见星级').toMatch(STARS)
   })
+
+describe('战斗页血条读数 · 条与数字同源', () => {
+  it('敌我血条旁各有一个百分数 —— 条只画比例,读不出还剩几成', async () => {
+    const player = usePlayerStore()
+    player.initCharacter('读数', { roots: [] } as never)
+    useAdventureStore().lastBattle = {
+      enemyName: '赤目野狼',
+      enemyIcon: 'paw',
+      enemyId: FOE,
+      isBoss: false,
+      result: { win: true, log: [], rounds: 2, playerHpPct: 1 },
+      at: Date.now()
+    }
+    const html = await renderPanel()
+    // 首帧回放尚未开始,两侧都是满血;要的是「两侧各有一处读数」这件事成立
+    const shown = [...html.matchAll(/>([0-9]{1,3}%)</g)].map(m => m[1])
+    expect(shown.length, '两侧血条各该有一个百分数').toBeGreaterThanOrEqual(2)
+    for (const v of shown) expect(Number((v ?? '').replace('%', ''))).toBeLessThanOrEqual(100)
+  })
+
+  // 读数本身的端点与取整归 ui/hpReadout.spec 管;这里只钉住「界面真的接上了」
+  it('两处读数都走同一份实现,不各写一份 —— 口径分叉就会一处 0% 一处 1%', () => {
+    const src = readFileSync(resolve(__dirname, '../components/adventure/CombatPanel.vue'), 'utf8')
+    expect(src, '敌方读数该走 hpPercent(ehp)').toContain('hpPercent(ehp)')
+    expect(src, '我方读数该走 hpPercent(php)').toContain('hpPercent(php)')
+    // 实现只该在 ui/hpReadout 一处;组件里再写一份就是两份口径
+    expect(src, '组件里不许再自写一份').not.toMatch(/function hpPercent\s*\(/)
+    expect(src, '要 import 共享实现').toContain("from '@/ui/hpReadout'")
+  })
+})
 
 /**
  * 际遇率必须封顶 1。

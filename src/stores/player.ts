@@ -45,7 +45,11 @@ import { STARS } from '@/data/ziwei'
 import { fateChart, fateFocusMods, fateSeed } from '@/core/fate'
 import type { MansionRedirect } from '@/core/astronomy'
 import { mansionRedirectCheck } from '@/core/mansionRedirect'
-import { wudaoExchangeState as evaluateWudaoExchange, type WudaoExchangeState } from '@/core/wudaoExchange'
+import {
+  wudaoExchangeAffordable as evaluateWudaoExchangeAffordable,
+  wudaoExchangeState as evaluateWudaoExchange,
+  type WudaoExchangeState
+} from '@/core/wudaoExchange'
 import type { FortuneChoice } from '@/core/fortuneChain'
 import { useInventoryStore } from './inventory'
 import { useCultivationStore } from './cultivation'
@@ -238,10 +242,17 @@ export const usePlayerStore = defineStore(
       ...talentMods.value
     ])
 
+    /**
+     * 安抚那一路的灵兽加成(0.3 即 +30%),供来源拆解用。
+     * 与 petModsFor 同一口径:都从 ownedModSources 取 beastPct,不另算一份 ——
+     * 两处若各读一处来源,卡片上的拆解就会与到账数值对不上。
+     */
+    const beastSoothePct = computed(() => modOf(mergeMods(ownedModSources.value), 'beastPct'))
+
     // 灵兽出战实际加成:基础词缀 × 灵兽园等级(beastMult) × 安抚灵兽增益(beastPct)
     // 图鉴/兽苑卡片须按它渲染,给 base 会与角色面板来源明细对不上
     function petModsFor(def: PetDef): StatMods {
-      const beastPct = 1 + modOf(mergeMods(ownedModSources.value), 'beastPct')
+      const beastPct = 1 + beastSoothePct.value
       const scaled: StatMods = {}
       for (const k in def.mods) {
         const key = k as keyof StatMods
@@ -1242,6 +1253,21 @@ export const usePlayerStore = defineStore(
       wudaoExchange.value = { gameDay: day, count: today.count + 1 }
       return true
     }
+
+    /**
+     * 一次连兑 n 次(默认把手上的额度用尽)。
+     * 每日限 10 次,而灵石常够几十次 —— 一枚一枚点十次没有意义。
+     * 逐次走同一个 exchangeStoneForWudao:判据与扣费不分叉;中途不足即停,不做半途回滚(已兑的是已得的)。
+     */
+    function exchangeStoneForWudaoBatch(n?: number): number {
+      const want = n === undefined ? wudaoExchangeAffordable.value : Math.max(0, Math.floor(n))
+      let done = 0
+      for (let i = 0; i < want; i += 1) {
+        if (!exchangeStoneForWudao()) break
+        done += 1
+      }
+      return done
+    }
     /** 当天已兑次数(次日归零,界面展示用) */
     const wudaoExchangeToday = computed(() => {
       const day = gameDay(useGameStore().totalPlaySec)
@@ -1253,6 +1279,10 @@ export const usePlayerStore = defineStore(
       evaluateWudaoExchange(major.value, wudaoExchangeToday.value, resources.spiritStone)
     )
     const canExchangeWudao = computed(() => wudaoExchangeState.value.canExchange)
+    /** 这一档能一次连兑几次:当日剩余额度与灵石余额取小(见 core/wudaoExchange) */
+    const wudaoExchangeAffordable = computed(() =>
+      evaluateWudaoExchangeAffordable(major.value, wudaoExchangeToday.value, resources.spiritStone)
+    )
 
     // ---------- 机缘链 ----------
     function setFortuneChoices(choices: Record<string, FortuneChoice>): void {
@@ -1303,6 +1333,7 @@ export const usePlayerStore = defineStore(
       titleId,
       petId,
       petModsFor,
+      beastSoothePct,
       dead,
       reincarnation,
       eventChains,
@@ -1352,6 +1383,8 @@ export const usePlayerStore = defineStore(
       wudaoExchangeToday,
       wudaoExchangeState,
       canExchangeWudao,
+      wudaoExchangeAffordable,
+      exchangeStoneForWudaoBatch,
       exchangeStoneForWudao,
       cultPerSec,
       qiRegenPerSec,

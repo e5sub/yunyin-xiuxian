@@ -31,11 +31,12 @@
   /*
    * 品阶文字色:三档在日主题上过不了 4.5:1 的品阶,单独给一套「当文字用」的暗版。
    * 装饰那一层(光环/边框/角章)仍用 data/qualities.ts 里的原色 —— 它只需 ΔE 分得开。
-   * 原色与实测:玄 #A85C3F 4.28、天 #C9A227 2.11、仙 #3E8E8B 3.36,都低于正文线。
+   * 原色与实测:玄 #A85C3F 4.28、天 #C9A227 2.11、仙 #3E8E8B 3.36、神 #A83F39 4.42,都低于正文线。
    */
   --color-quality-profound-text-rgb: 138 74 51;
   --color-quality-heaven-text-rgb: 122 95 14;
   --color-quality-immortal-text-rgb: 46 107 105;
+  --color-quality-divine-text-rgb: 150 52 47;
   --color-quality-dao-text-rgb: 132 89 10;
 
   --color-paper: rgb(var(--color-paper-rgb));
@@ -55,6 +56,7 @@
   --color-quality-profound-text: rgb(var(--color-quality-profound-text-rgb));
   --color-quality-heaven-text: rgb(var(--color-quality-heaven-text-rgb));
   --color-quality-immortal-text: rgb(var(--color-quality-immortal-text-rgb));
+  --color-quality-divine-text: rgb(var(--color-quality-divine-text-rgb));
   --color-quality-dao-text: rgb(var(--color-quality-dao-text-rgb));
 
   /*
@@ -71,6 +73,16 @@
      --color-paper-lifted-rgb 预计算 paper 92% + white 8% */
   --shadow-ink-rgb: 41 39 34;
   --color-paper-lifted-rgb: 244 240 230;
+
+  /*
+   * 条槽底:进度条、刻度轴、分布条这些「空槽」的共用底色。
+   * 原先十一条槽各写各的墨深(0.06 / 0.08 / 0.10 / 0.12),几何却是同一类 ——
+   * 3~6px 高的圆角条。深浅差已低于可辨阈值(最悬殊那对只差 1.08:1),
+   * 但「新加一条槽该取哪个值」没有答案,只能照抄邻近那段。
+   * 收成一支 alpha token,色仍走 --color-ink-rgb —— 夜间主题翻转墨色时槽底自动跟着走,
+   * 不必再为夜主题另写一行。
+   */
+  --track-ink-alpha: 0.1;
 }
 
 @keyframes rise-in {
@@ -397,6 +409,9 @@ html[data-theme='dark'] {
   --color-quality-profound-text-rgb: 232 140 102;
   --color-quality-heaven-text-rgb: 201 162 39;
   --color-quality-immortal-text-rgb: 81 185 181;
+  /* 夜主题纸是近黑,压暗只会更看不见,故反过来提亮。比 cinnabar 再亮一档:
+     两者同值会被「无同值异名」那条判据拦下,而文字色本就该与装饰色分开一格 */
+  --color-quality-divine-text-rgb: 244 150 140;
   --color-quality-dao-text-rgb: 233 185 73;
   --shadow-ink: rgb(8 7 5);
   --shadow-ink-rgb: 8 7 5;
@@ -510,11 +525,17 @@ html[data-theme='dark'] .seal-face {
   box-shadow: none;
 }
 
-/* 夜主题禁用态:夜里 ink-faint 是亮暖灰,白字只有 ~2:1;换 paper-dark 惰性底,92% 白字 >11:1 */
+/*
+ * 夜主题禁用态:夜里 ink-faint 是亮暖灰,白字只有 ~2:1;换 paper-dark 惰性底,92% 白字 >11:1。
+ * 但原写法连 box-shadow 一起抹掉,而 paper-dark 与纸只差 1.25:1 ——
+ * 按钮整块融进纸里,玩家看不出「这里本该有个按钮,只是现在按不了」。
+ * 现补回一道描边:轮廓对纸 2.58:1(看得出形状),92% 白字对底仍 11.37:1(读得出拒因)。
+ * 禁用态本就该「看得见、按不动」,不是「看不见」。
+ */
 html[data-theme='dark'] .btn-seal:disabled {
   background: rgb(var(--color-paper-dark-rgb));
   color: rgb(255 255 255 / 0.92);
-  box-shadow: none;
+  box-shadow: inset 0 0 0 1px rgb(var(--color-ink-soft-rgb) / 0.4);
 }
 
 /*
@@ -596,6 +617,16 @@ html[data-theme='dark'] .btn-seal:disabled {
   white-space: nowrap;
 }
 
+/*
+ * chip-ink 当按钮用时(突破卡的两枚准备钮)也要有禁用态。
+ * 边框取 currentColor,故只需压字色,轮廓自动跟着变淡 —— 一条规则两样都管。
+ * 原先把 `disabled` 只写在内部那行小字上,胶囊本身分毫不动,看着还能按。
+ */
+.chip-ink:disabled {
+  color: var(--color-ink-faint);
+  cursor: not-allowed;
+}
+
 /* chip-ink 的显式换行覆写,长文案占行时用(如闭关按钮);「数+量词」各自 nowrap,换行只发生在分隔符处 */
 .chip-ink-wrap {
   white-space: normal;
@@ -635,12 +666,15 @@ html[data-theme='dark'] .btn-seal:disabled {
 }
 
 .track-ink {
-  background: rgb(var(--color-ink-rgb) / 0.10);
+  background: rgb(var(--color-ink-rgb) / var(--track-ink-alpha));
   border-radius: 999px;
   overflow: hidden;
 }
 
 .bar-fill {
+  /* 必须自证是块级:曾写成 <span> 而漏了 block,行内元素不吃宽高百分比,
+     整条塌成 0×0 —— 底槽在、填充不在,看着像「胜率条只有一根空槽」。 */
+  display: block;
   position: relative;
   height: 100%;
   border-radius: 999px;
@@ -956,6 +990,20 @@ html[data-theme='dark'] {
   border-right-width: 1px;
   border-bottom-width: 1px;
   border-bottom-right-radius: 5px;
+}
+
+/*
+ * 格子档:只画左上那一枚。
+ *
+ * 方形小格(装备卡/材料格/丹药格)把**内容读数**放在右下 —— 数量「10」、强化「+7」。
+ * 御纹的右下直角 18px 恰好铺在同一处,实测量到角标离格边只剩 5px×3px,
+ * 渲染出来是「10」压在一枚朱砂直角上(见 luster.spec 的格子档判据)。
+ *
+ * 形制与内容争位置时,让位的是形制:格子档只留左上,与品阶角饰(compact 也只画左上)
+ * 连成一道双层框 —— 那一处的长度差本来就是这个形制要表达的东西。
+ */
+.luster-cornice--tile::after {
+  content: none;
 }
 
 /* ---------- 二、卡面:流光 ----------
@@ -1452,6 +1500,16 @@ html[data-theme='dark'] .bond-halo {
   border-style: double;
   border-width: 3px;
 }
+/*
+ * 宫号是 absolute 定位,基准是 padding box —— 边框越宽,它离外框越远。
+ * 三种边框宽度不同(dashed 1px / solid 1.5px / double 3px),
+ * 于是凶门的「2/3/7」比其余六格往里 2px,九宫看着是歪的。
+ * 这里把 double 那两格补回去,让九个宫号同在外框内 3px。
+ */
+.gate-kind-double > .gate-palace__no {
+  left: 1px;
+  top: 0px;
+}
 
 /* 择门态:在盘上直接标出「这一趟走哪一门」 */
 .gate-palace--picked {
@@ -1706,14 +1764,19 @@ html[data-theme='dark'] .fruit-curve polyline {
   display: block;
   height: 3px;
   border-radius: 999px;
-  background: rgb(var(--color-ink-rgb) / 0.12);
+  background: rgb(var(--color-ink-rgb) / var(--track-ink-alpha));
   pointer-events: none;
 }
 .trial-tier::before {
   content: '';
   position: absolute;
   top: 50%;
-  left: var(--tier-pos, 0%);
+  /*
+   * 圆心夹在轴内,同 .realm-axis / .growth-gauge:
+   * tierPosition 严格夹到 0~1,而三场试炼里最低与最高那两场必然落在两端。
+   * 圆 7px 居中,端点处半个圆(3.5px)探出轴外,紧挨着两端的 lo / hi 两个数。
+   */
+  left: clamp(3.5px, var(--tier-pos, 0%), calc(100% - 3.5px));
   width: 7px;
   height: 7px;
   border-radius: 999px;
@@ -1741,13 +1804,18 @@ html[data-theme='dark'] .fruit-curve polyline {
   display: block;
   height: 3px;
   border-radius: 999px;
-  background: rgb(var(--color-ink-rgb) / 0.12);
+  background: rgb(var(--color-ink-rgb) / var(--track-ink-alpha));
 }
 .realm-axis::before {
   content: '';
   position: absolute;
   top: 50%;
-  left: var(--axis-pos, 0%);
+  /*
+   * 圆心夹在轴内:圆点 6px、translate(-50%) 而以,pos 取到 0% / 100% 时
+   * 会有半个圆(3px)探出轴外 —— 一张卡两头都贴边时看着像跑出去了。
+   * 3px 是圆的半径,故下限/上限各让出 3px;中间段仍按 --axis-pos 走。
+   */
+  left: clamp(3px, var(--axis-pos, 0%), calc(100% - 3px));
   width: 6px;
   height: 6px;
   border-radius: 999px;
@@ -1777,7 +1845,7 @@ html[data-theme='dark'] .fruit-curve polyline {
   display: block;
   height: 3px;
   border-radius: 999px;
-  background: rgb(var(--color-ink-rgb) / 0.1);
+  background: rgb(var(--color-ink-rgb) / var(--track-ink-alpha));
   pointer-events: none;
   overflow: hidden;
 }
@@ -1891,7 +1959,7 @@ html[data-theme='dark'] .fruit-curve polyline {
   position: relative;
   height: 4px;
   border-radius: 999px;
-  background: rgb(var(--color-ink-rgb) / 0.06);
+  background: rgb(var(--color-ink-rgb) / var(--track-ink-alpha));
   pointer-events: none;
 }
 .vein-axis-fill {
@@ -1907,6 +1975,895 @@ html[data-theme='dark'] .fruit-curve polyline {
   width: 1px;
   background: rgb(var(--color-ink-faint-rgb) / 0.5);
   pointer-events: none;
+}
+
+/* ================= 天劫波次(tribWave) =================
+ * 渡劫弹窗原先把「第 N 道天雷,气血余 X%」写成二十行同形灰字,
+ * 哪一道最险、从第几道开始吃紧,只能逐行读百分数自己比(见 src/ui/tribWave.ts)。
+ * 现每道雷落定后的余血落成一根柱,柱高以本场最高者为满格 ——
+ * 以 100% 为顶会让开头几道挤成一排等高柱,落差读不出来。
+ * 色取既有语义 token;形制层不吃指针事件。
+ */
+.trib-waves {
+  height: 44px;
+  /* 柱有宽度上限,整组居中;间距定死,不随道数摊开 —— 四道雷散成四个孤点就失去「一连串」的意思 */
+  justify-content: center;
+  gap: 4px;
+  pointer-events: none;
+}
+.trib-wave {
+  display: block;
+  flex: 1 1 0;
+  /* 柱宽夹在 3~14px:四道雷时不会摊成四条板,二十道时也不至于细到看不见 */
+  min-width: 3px;
+  max-width: 14px;
+  min-height: 3px;
+  border-radius: 1px 1px 0 0;
+  background: rgb(var(--color-ink-rgb) / 0.35);
+  /* 每根柱从底部长起,不是从上往下掉 */
+  align-self: flex-end;
+}
+.trib-wave--danger {
+  background: rgb(var(--color-cinnabar-rgb) / 0.75);
+}
+/* 坠地那一格:不是「余血很少」,是「到此为止」—— 用空心与其余区分 */
+.trib-wave--fallen {
+  min-height: 2px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgb(var(--color-cinnabar-rgb) / 0.5);
+}
+/* ================= 名号梯与界域刻度(titleMark) =================
+ * 名号页原先 29 顶名号长得一模一样,只换「佩/藏/未」一个字。
+ * 其中 21 顶是境界名号,构成从炼气到道祖的一条梯子,分属四个界域 ——
+ * 可玩家真正想知道的是「我在第几级」,不是「我有这一枚」(见 src/ui/titleMark.ts)。
+ * 段长即该界域的境界数,全从 data 现算;色取既有语义 token。
+ */
+.title-ladder {
+  display: flex;
+  gap: 3px;
+  height: 4px;
+  margin-top: 2px;
+  pointer-events: none;
+}
+.title-ladder-seg {
+  display: block;
+  /* flex-basis 0 + flex-grow 由行内按 span 给,段长即该界域的境界数(8 / 5 / 4 / 4) */
+  flex-basis: 0;
+  min-width: 6px;
+  border-radius: 999px;
+  background: rgb(var(--color-ink-rgb) / 0.12);
+}
+/* 已佩名号所在的那一段:不是「这一段属于你」,是「你正站在这一段里」 */
+.title-ladder-seg.is-here {
+  background: rgb(var(--color-cinnabar-rgb) / 0.7);
+}
+.title-seal {
+  /* 印面数字与事功的「事」:界域色由行内类给,不在此写死 */
+  font-variant-numeric: tabular-nums;
+}
+
+/* ================= 道侣三条关系值(bondMeter) =================
+ * 弹窗里缘分 / 信任 / 契合是三根一模一样的蓝条,各填到 0~100。
+ * 可推进缘阶要三条各自过线,而三条的线并不相同(下一阶可能要缘分 50、
+ * 信任 45、契合 0)—— 界面一根门槛都没画(见 src/ui/bondMeter.ts)。
+ * 现每根条上标出下一阶的门槛:过线的那根转青,没过线的转朱,刻度即门槛。
+ * 色取既有语义 token;形制层不吃指针事件。
+ */
+.bond-meter {
+  position: relative;
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(var(--color-ink-rgb) / var(--track-ink-alpha));
+  pointer-events: none;
+}
+.bond-meter-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(var(--color-cinnabar-rgb) / 0.55);
+}
+/* 过线的那根转青 —— 这一根不再是卡着推进的那根 */
+.bond-meter--met .bond-meter-fill {
+  background: rgb(var(--color-jade-rgb) / 0.6);
+}
+/* 门槛刻度:一道竖线,左沿对齐条上的位置 */
+.bond-meter-gate {
+  position: absolute;
+  top: -2px;
+  width: 1px;
+  height: 8px;
+  border-radius: 1px;
+  background: rgb(var(--color-ink-rgb) / 0.45);
+}
+
+/* ================= 画像里的道途签(daoShare) =================
+ * 修行画像把这一世的道痕按四道分账,原先画成四根一模一样的朱砂条 ——
+ * 哪根是剑道、哪根是杀伐道,只能读左边的名字(见 src/ui/daoShare.ts)。
+ * 道纹本身上一轮已有(dao-crest),但那是卡角水印(0.22 不透明度),
+ * 在行首当记号太弱,故这里另给一个小尺寸的实色道签。
+ */
+.dao-tag {
+  width: 10px;
+  height: 10px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  pointer-events: none;
+}
+.dao-tag--blade {
+  background-image: linear-gradient(135deg, transparent 0 40%, currentColor 40% 54%, transparent 54% 100%);
+}
+.dao-tag--ring {
+  background-image: radial-gradient(circle, transparent 0 40%, currentColor 40% 60%, transparent 60%);
+}
+.dao-tag--bars {
+  background-image:
+    linear-gradient(0deg, transparent 0 18%, currentColor 18% 32%, transparent 32% 100%),
+    linear-gradient(0deg, transparent 0 43%, currentColor 43% 57%, transparent 57% 100%),
+    linear-gradient(0deg, transparent 0 68%, currentColor 68% 82%, transparent 82% 100%);
+}
+.dao-tag--cross {
+  background-image:
+    linear-gradient(45deg, transparent 0 41%, currentColor 41% 55%, transparent 55% 100%),
+    linear-gradient(-45deg, transparent 0 41%, currentColor 41% 55%, transparent 55% 100%);
+}
+
+/* ================= 连战逐场余血柱(fightStreak) =================
+ * 远征与天道试炼都是「一场接一场」,而逐场摘要此前只有文字:
+ * 「第 3 战 · 妖将 · 胜」「12回合 · 余血 42%」(见 src/ui/fightStreak.ts)。
+ * 一段里真正决定「还能不能走下一重」的是余血走势,
+ * 而文字把它写成了十来个互不相干的百分数。
+ * 柱高以满血为顶 —— 与天劫不同:连战记的是「还剩多少」,绝对值本身有意义。
+ * 色取既有语义 token;形制层不吃指针事件。
+ */
+.fight-bar {
+  position: relative;
+  display: block;
+  width: 28px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(var(--color-ink-rgb) / var(--track-ink-alpha));
+  pointer-events: none;
+}
+.fight-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(var(--color-jade-rgb) / 0.65);
+}
+/* 败下来的那一场:整根转朱 —— 它是这一串里要回头看的那一行 */
+.fight-bar--worst .fight-bar-fill {
+  background: rgb(var(--color-cinnabar-rgb) / 0.8);
+}
+
+/* ================= 道童层数与羁绊阶点(apprenticeMark) =================
+ * 道童卡上此前只有两串文字:「第 7 层」(上限 20)与「道徒」(羁绊五阶)。
+ * 第 7 层离满还有多远,得自己拿 7 去比 20;「道徒」与「记名弟子」哪个近,
+ * 得先记住五阶的次序(见 src/ui/apprenticeMark.ts)。
+ * 层数用二十格刻度(每层一格),羁绊复用道侣那套 bond-pips。
+ * 色取既有语义 token;形制层不吃指针事件。
+ */
+.appr-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.5px;
+  pointer-events: none;
+}
+.appr-pips i {
+  display: block;
+  /*
+   * 二十格。原 2.5px:一格只占屏宽千分之七,1/20 与未点几乎分不出。
+   * 行内还有「N/20」与右侧羁绊阶点,320 宽下余约 185px —— 加宽到 4px 放得下。
+   */
+  width: 4px;
+  height: 6px;
+  border-radius: 1px;
+  /* 未到的格:空心中性,不抢已到的。原 0.25 与金色实心只差 2.15:1,排开分不出哪几格亮 */
+  box-shadow: inset 0 0 0 1px rgb(var(--color-ink-rgb) / 0.2);
+}
+.appr-pips i.on {
+  background: rgb(var(--color-gold-ink-rgb));
+  box-shadow: none;
+}
+/* 满层:整排转实金,与「还在升」的那几名分开 */
+.appr-pips--max i.on {
+  background: rgb(var(--color-gold-ink-rgb));
+}
+
+/* ================= 灵根资质刻度(rootMark) =================
+ * 灵根只画成一行圆圈、资质写在圈下(「88」):三根并排时哪一根是主根、
+ * 它高多少,得逐个读数字再比(见 src/ui/rootMark.ts)。
+ * 一格十点、十格为满;主根那根的刻度另给一道实心。
+ * 色取元素本色(行内 --root-tone),刻度自身不引入新颜色名。
+ */
+/* 特殊灵根(风雷冰光暗混沌)的外环。
+ * 原先特殊与五行在界面上长得一样:都是一枚彩色圆章 + 一个字,
+ * 「这根是稀有的」只能靠读颜色分辨 —— 而颜色是连续量,读不出稀有。
+ * 与 qualityAura 的角饰、talentMark 的阶点同一条思路:加**可数的形制**,不靠颜色。
+ * 内白环把字与外环隔开,细线上再压一层同色淡晕,不抢字。 */
+.root-special {
+  position: relative;
+}
+.root-special::after {
+  content: '';
+  position: absolute;
+  /* 环宽随圆章尺寸走:人物页 24px、转世 40px、建号 48px,用 em 各处自成比例 */
+  inset: -0.22em;
+  border-radius: 9999px;
+  border: 1px solid var(--root-tone, currentColor);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.root-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  pointer-events: none;
+}
+.root-pips i {
+  display: block;
+  width: 2px;
+  height: 4px;
+  border-radius: 0.5px;
+  /* 未到的格:空心中性 */
+  box-shadow: inset 0 0 0 1px var(--root-tone, currentColor);
+  opacity: 0.35;
+}
+.root-pips i.on {
+  background: var(--root-tone, currentColor);
+  box-shadow: none;
+  opacity: 0.85;
+}
+/* 主根:整排提亮一档 —— 与「还有几根差得不多」的那几名分开 */
+.root-pips--top i.on {
+  opacity: 1;
+}
+
+/* ================= 天赋品阶阶点(talentMark) =================
+ * 天赋四档(凡赋 / 灵赋 / 天赋 / 道赋):轮回择姿那边写着品阶名,
+ * 转世弹窗里只有一枚彩色标签 —— 同一个东西两处长得不一样,
+ * 而四档里靛与紫放在一起谁高一档读不出来(见 src/ui/talentMark.ts)。
+ * 现一档一点、四档四点;色取 data/talents 的既有常量(行内 color 给)。
+ */
+.talent-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.5px;
+  pointer-events: none;
+}
+.talent-pips i {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  /* 未到的点:空心中性,不抢已到的 */
+  box-shadow: inset 0 0 0 1px currentColor;
+  opacity: 0.35;
+}
+.talent-pips i.on {
+  background: currentColor;
+  box-shadow: none;
+  opacity: 0.9;
+}
+/* 最上档(道赋):整排转实,另加一点外扩 —— 四档里只有它值得多给一层 */
+.talent-pips--top i.on {
+  opacity: 1;
+  box-shadow: 0 0 3px currentColor;
+}
+
+/* ================= 功法层数刻度(gongfaMark) =================
+ * 功法行末尾只写「第 5 层」,而各功法上限不同(密法 3 层、主辅 9 层):
+ * 「第 5 层」在一门里是过半,在另一门里是练满(见 src/ui/gongfaMark.ts)。
+ * 上限几层就几格 —— 格数随功法变,不是写死的九格。
+ * 色取既有语义 token;形制层不吃指针事件。
+ */
+.gongfa-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  pointer-events: none;
+}
+.gongfa-pips i {
+  display: block;
+  width: 3px;
+  height: 6px;
+  border-radius: 0.5px;
+  /* 未到的格:空心中性,不抢已到的。原 0.3 与靛色实心只差 1.74:1 */
+  box-shadow: inset 0 0 0 1px rgb(var(--color-ink-rgb) / 0.2);
+}
+.gongfa-pips i.on {
+  background: rgb(var(--color-azure-rgb) / 0.75);
+  box-shadow: none;
+}
+/* 满级:整排转实金,与「还在练」的那几门分开 */
+.gongfa-pips--max i.on {
+  background: rgb(var(--color-gold-ink-rgb) / 0.9);
+}
+
+/* ================= 秘境进度(realmProgress) =================
+ * 秘境是「出则散」的一次性内容:三层、败两次即被逐出。
+ * 而界面上这两样都只是数字(见 src/ui/realmProgress.ts)。
+ * 层数是**已得**(实心越多越好),败场是**剩余**(实心越少越危险)——两套形状刻意相反,
+ * 免得把「还能败一次」读成「已经败了一次」。
+ */
+.realm-layer-pips,
+.realm-life-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+.realm-layer-pips i {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px currentColor;
+  opacity: 0.35;
+}
+.realm-layer-pips i.on {
+  background: currentColor;
+  box-shadow: none;
+  opacity: 1;
+}
+/* 已至最深层:整排转实朱,与「还差一层」分开 */
+.realm-layer-pips--deepest i.on {
+  background: rgb(var(--color-cinnabar-rgb));
+}
+.realm-life-pips i {
+  display: block;
+  width: 5px;
+  height: 5px;
+  /* 剩余用方块,与层数的圆点形状不同 —— 两套读数不该长得一样 */
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 1px currentColor;
+  opacity: 0.35;
+}
+.realm-life-pips i.on {
+  background: currentColor;
+  box-shadow: none;
+  opacity: 0.9;
+}
+/* 还剩最后一次:转朱并留一道外框,是最该被看见的一档 */
+.realm-life-pips--none i {
+  box-shadow: inset 0 0 0 1px rgb(var(--color-cinnabar-rgb) / 0.6);
+}
+
+/* ================= 界域进度刻度(worldProgress) =================
+ * 境界谱按四个界域平铺 21 境,而界域标题只写「第 1–9 境」:
+ * 身在人间界第 4 境时,本界域还剩几境得自己拿 4 去比 1 与 9(见 src/ui/worldProgress.ts)。
+ * 界域含几境就几格 —— 四个界域各含 9/5/4/3 境,不按同一个尺画。
+ */
+.world-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+.world-pips i {
+  display: block;
+  width: 3px;
+  height: 5px;
+  border-radius: 0.5px;
+  /* 未到的格:空心中性,不抢已到的 */
+  box-shadow: inset 0 0 0 1px rgb(var(--color-ink-rgb) / 0.2);
+}
+/* 已到的格要压得住未到的:实测 0.45 与 0.25 只差 1.6:1,小格上分不出哪几格亮 */
+.world-pips i.on {
+  background: rgb(var(--color-ink-rgb) / 0.7);
+  box-shadow: none;
+}
+/* 当前所在界域:整排提亮一档,与已过 / 未到的界域分开 */
+.world-pips--here i.on {
+  background: rgb(var(--color-cinnabar-rgb) / 0.8);
+}
+
+/* ================= 装备强化等级(upgradeMark) =================
+ * 强化行只写「+7 / 上限 10」:上限随炼器台等级变(基础 10 再加 forgeCapBonus),
+ * 「+7」在一件上限 10 的器上差三级,在另一件上限 12 的器上差五级(见 src/ui/masteryMark.ts)。
+ * 格数随上限变,不按同一个尺画。
+ */
+.upgrade-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+.upgrade-pips i {
+  display: block;
+  width: 4px;
+  height: 5px;
+  border-radius: 0.5px;
+  /* 未到的格:空心中性,不抢已到的 */
+  box-shadow: inset 0 0 0 1px rgb(var(--color-ink-rgb) / 0.2);
+}
+/*
+ * 已到的格要压得住未到的。
+ * 实测原 0.5 与 0.25 只差 1.81:1 —— 十格排开是一条带缺口的粗线,
+ * 「十格里哪一格亮着」在小屏上读不出来。改到 0.7 / 0.2(亮暗 3.55:1、亮纸 5.22:1)。
+ */
+.upgrade-pips i.on {
+  background: rgb(var(--color-ink-rgb) / 0.7);
+  box-shadow: none;
+}
+/* 至顶:整排转金,与「还在升」的那几件分开 */
+.upgrade-pips--max i.on {
+  background: rgb(var(--color-gold-ink-rgb) / 0.9);
+}
+
+/* ================= 装备词条位(affixSlots) =================
+ * 装备详情只写「词条 3 / 5 条」:还差几个位得自己拿 3 去比 5,
+ * 而 5 是品阶给的上限(九档从 1 到 9),不是一律五格(见 src/ui/affixSlots.ts)。
+ * 色取既有语义 token;形制层不吃指针事件。
+ */
+.affix-slots {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.5px;
+  pointer-events: none;
+}
+.affix-slots i {
+  display: block;
+  width: 3px;
+  height: 6px;
+  border-radius: 0.5px;
+  /*
+   * 空位:虚框,与已占的实心分开 —— 这几个位还能洗出来。
+   * 原 0.45 与实心 0.85 之间只差 2.03:1,六格排开分不出哪几格已占;
+   * 现空位 0.25、实心满色:亮暗 3.71:1(浅)/ 3.85:1(暗),空位对纸 1.4:1 仍看得见。
+   */
+  box-shadow: inset 0 0 0 1px rgb(var(--color-violet-ink-rgb) / 0.25);
+}
+.affix-slots i.on {
+  background: rgb(var(--color-violet-ink-rgb));
+  box-shadow: none;
+}
+/* 满位:整排转实金,与还有空位的分开 */
+.affix-slots--full i.on {
+  background: rgb(var(--color-gold-ink-rgb) / 0.9);
+}
+
+/* ================= 灵兽加成来源(beastSource) =================
+ * 灵兽卡上只写它现在加多少,而那是两步放大出来的:
+ * 灵兽园等级 × 安抚 buff(见 src/ui/beastSource.ts)。
+ * 两段并排、各铺十格、按较大值归一 —— 谁占比大一目了然。
+ * 两段给两种颜色(园子=jade、安抚=gold),色都取既有语义 token。
+ */
+.beast-src {
+  line-height: 1.2;
+  pointer-events: none;
+}
+.beast-src-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+.beast-src-pips i {
+  display: block;
+  width: 2.5px;
+  height: 4px;
+  border-radius: 0.5px;
+  /* 空槽原 0.22 与彩色实心只差 2.4:1;收到 0.15 后亮暗回到 3.4:1 上下 */
+  box-shadow: inset 0 0 0 1px rgb(var(--color-ink-rgb) / 0.15);
+}
+.beast-src-pips--garden i.on {
+  background: rgb(var(--color-jade-rgb));
+  box-shadow: none;
+}
+.beast-src-pips--soothe i.on {
+  background: rgb(var(--color-gold-ink-rgb));
+  box-shadow: none;
+}
+
+/* ================= 紫微盘(fate-board) =================
+ * 十二宫原先铺成十二行文字:哪一宫是命宫、哪一宫有星,得逐行读。
+ * 它本来是四正三合的一张盘 —— 四列三行,命宫朱框,有星的宫点亮。
+ * 色取既有语义 token;盘面不吃指针事件(逐星另有 title)。
+ */
+.fate-board {
+  pointer-events: none;
+}
+.fate-cell {
+  min-width: 0;
+  border-radius: 4px;
+  border: 1px solid rgb(var(--color-ink-rgb) / 0.12);
+  background: rgb(var(--color-ink-rgb) / 0.02);
+  padding: 5px 6px;
+}
+/* 有星的宫:边框实一档 —— 空宫与有星宫一眼分得开 */
+.fate-cell--starred {
+  border-color: rgb(var(--color-ink-rgb) / 0.28);
+  background: rgb(var(--color-ink-rgb) / 0.05);
+}
+/* 命宫:朱框,一身之根本 */
+.fate-cell--ming {
+  border-color: rgb(var(--color-cinnabar-rgb) / 0.55);
+  background: rgb(var(--color-cinnabar-rgb) / 0.06);
+}
+.fate-star {
+  color: rgb(var(--color-cinnabar-rgb) / 0.9);
+}
+
+/* ================= 卦画(hexagramFigure) =================
+ * 卦画原先是六行文字条,且照着自下而上的 lines 数组正序铺 —— 整幅倒竖。
+ * 这里把爻画成一条实线(阳)或两段(阴):形状本身分得开,不只靠颜色。
+ * 次序由 ui/hexagramFigure 排好(上爻在上),样式只管画。
+ *
+ * 本卦与之卦**同形**:易里两幅卦象地位相当,主次只在额题与动爻记号上,
+ * 不在把哪一幅压淡。字色一律整色 token —— 半透明墨的小字在纸上只有 2:1。
+ */
+.hex-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  pointer-events: none;
+}
+/* 「本卦 / 之某」的额题,压在爻画上方 */
+.hex-figure__cap {
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  color: rgb(var(--color-ink-faint-rgb));
+}
+.hex-line {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+/* 谱表里的爻画:窄一档、不带爻题 —— 六十四行都要放得下,不抢文字。
+ * 阴阳仍须一眼可分:断口留得比爻高宽(阴爻中间那块空白要看得见),
+ * 爻线之间也留足缝 —— 2px 的线挨成一片就成了一条粗横杠,六爻读不出六爻。 */
+.hex-figure--inline {
+  gap: 2px;
+}
+.hex-figure--inline .hex-line__bar {
+  width: 16px;
+  height: 2px;
+}
+.hex-figure--inline .hex-line__bar i {
+  height: 2px;
+}
+.hex-figure--inline .hex-line__bar--yin {
+  gap: 5px;
+}
+/* 一爻:宽 30px、高 3px;阳爻整条,阴爻两段之间留断口 */
+.hex-line__bar {
+  display: flex;
+  align-items: center;
+  width: 30px;
+  height: 3px;
+  color: rgb(var(--color-ink-rgb));
+}
+.hex-line__bar i {
+  display: block;
+  flex: 1;
+  height: 3px;
+  border-radius: 0.5px;
+  background: currentColor;
+}
+/* 阴爻的断口本身就是形制 —— 不靠颜色也分得开阴阳 */
+.hex-line__bar--yin {
+  gap: 6px;
+}
+/* 爻题:初九、六二…… 只作认位 */
+.hex-line__label {
+  font-size: 9px;
+  line-height: 1;
+  color: rgb(var(--color-ink-faint-rgb));
+}
+/* 动爻:整爻转朱 —— 一列六爻里唯一带色的一爻 */
+.hex-line--moving .hex-line__bar {
+  color: rgb(var(--color-cinnabar-rgb));
+}
+.hex-line--moving .hex-line__label {
+  color: rgb(var(--color-cinnabar-rgb));
+}
+/* 动爻古记号:阳动 ○、阴动 × */
+.hex-line__mark {
+  font-size: 10px;
+  line-height: 1;
+  color: rgb(var(--color-cinnabar-rgb));
+}
+
+/* ================= 渡劫推演水位(tribForecast) =================
+ * 决意前最该知道「最险会掉到哪」,而原界面只有一句「劫势:可渡」。
+ * 一根水位条:开到哪就是推演的最低点。三档色与推演读数同源,不另判。
+ * 战后那排波次柱(ui/tribWave)画的是已发生的事,这根画的是将要发生的事。
+ */
+.trib-forecast {
+  position: relative;
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(var(--color-ink-rgb) / var(--track-ink-alpha));
+}
+.trib-forecast i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+/* 稳过 · 险过 · 不支:色由档位给,文字与条同色同源 */
+.trib-forecast--safe i {
+  background: rgb(var(--color-jade-rgb) / 0.9);
+}
+.trib-forecast--graze i {
+  background: rgb(var(--color-amber-ink-rgb) / 0.9);
+}
+.trib-forecast--danger i {
+  background: rgb(var(--color-cinnabar-rgb) / 0.9);
+}
+
+/* ================= 修行倍率刻度(growthGauge) =================
+ * 建号页掷完灵根只给一个数「修行倍率 ×1.11」:1.11 算好还是不好无从判断。
+ * 倍率是三个因子相乘出来的,因子有上下界,故区间 [0.6, 4.0] 可以算出来(见 ui/growthGauge)。
+ * 一根刻度上一个点:点在哪儿,这一手就在牌山的哪一段。两端标数,刻度才有参照。
+ */
+.growth-gauge {
+  position: relative;
+  display: block;
+  height: 3px;
+  border-radius: 999px;
+  background: rgb(var(--color-ink-rgb) / var(--track-ink-alpha));
+  pointer-events: none;
+}
+.growth-gauge i {
+  position: absolute;
+  top: 50%;
+  /*
+   * 圆心夹在轴内:position 由 growthPosition 严格夹到 0~1,
+   * 而端点必然出现(倍率 0.6 → 0%,4.0 → 100%)。圆 7px、translate(-50%) 居中,
+   * 端点处半个圆(3.5px)探到轴外,距两侧的 ×0.6 / ×4.0 只剩 2.5px ——
+   * 不再是「贴边」而是「几乎压上标签」。3.5px 即半径。
+   */
+  left: clamp(3.5px, var(--gauge-pos, 0%), calc(100% - 3.5px));
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  /* 色由档位给:低/中/上/绝各有自己的档色,点在轴上即可看出这一手属哪档 */
+  background: rgb(var(--color-ink-faint-rgb));
+  border: 1px solid rgb(var(--color-paper-rgb));
+}
+.growth-gauge--mid i {
+  background: rgb(var(--color-ink-soft-rgb));
+}
+.growth-gauge--high i {
+  background: rgb(var(--color-azure-rgb));
+}
+.growth-gauge--peak i {
+  background: rgb(var(--color-cinnabar-rgb));
+  box-shadow: 0 0 6px rgb(var(--color-cinnabar-rgb) / 0.45);
+}
+
+/* ================= 历练三档分布条(eventTierBar) =================
+ * 历练页顶部原写三句独立的话(「约每 2 程 / 约每 240 程 / 约每 40 程」),
+ * 想比出哪档更常见,得先把三个数在脑子里排一下(见 src/ui/eventTierBar.ts)。
+ * 一根分段条:一段有多长,就是这档占多少。三段相加恒满条 —— 按三档之和归一,
+ * 不按绝对概率(那样九成是空的,三档全挤在左边一小截)。
+ * 色由数据层给(档位自己的 token),条只负责摆位置。
+ */
+.tier-bar {
+  position: relative;
+  display: block;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(var(--color-ink-rgb) / var(--track-ink-alpha));
+}
+.tier-bar__seg {
+  position: absolute;
+  top: 0;
+  height: 100%;
+}
+/* 相邻两段之间留一道纸色细缝:同明度的两档挨着时,没有缝就看不出边界在哪 */
+.tier-bar__seg + .tier-bar__seg {
+  box-shadow: inset 1px 0 0 rgb(var(--color-paper-rgb) / 0.9);
+}
+/* 图例里的小色点:与条上那一段同一个色 */
+.tier-bar__dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+}
+
+/* ================= 宿慧所得的能力(samsaraPowers) =================
+ * 转世弹窗原只写宿慧数与阶名,从不说什么能力是这些宿慧换来的。
+ * core 的 INSIGHT_CONSUMERS 早有一张表:每项能力的名、内生还是常驻、从第几阶起(见 ui/samsaraPowers)。
+ * 已得的用实色签,将至的用虚框淡签 —— 一眼分得出哪些已经在身上、哪些还要再转一世。
+ */
+.samara-power {
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1.35;
+}
+/* 常驻:整世都在,实色 */
+.samara-power--standing {
+  background: rgb(var(--color-jade-rgb) / 0.14);
+  color: rgb(var(--color-ink-rgb));
+}
+/* 内生:只在转世那一刻生效一次,换一档色与常驻分开 */
+.samara-power--opening {
+  background: rgb(var(--color-azure-rgb) / 0.14);
+  color: rgb(var(--color-ink-rgb));
+}
+/* 将至:还没到手,只描一道虚边 */
+.samara-power--locked {
+  border: 1px dashed rgb(var(--color-ink-rgb) / 0.22);
+  color: rgb(var(--color-ink-faint-rgb));
+}
+
+/* ================= 紫微十二宫的属性路数(fate-channel) =================
+ * 「此宫给哪一路属性」:data/ziwei 的 channel(修行/同道/因缘/灵兽…)。
+ * 原先界面只写「所主 · 管什么」,说不到它落在哪一路 —— 而十二宫各管一路正是这张盘的骨架。
+ * 一枚两字签:与宫名同排,命宫那枚转朱,与盘上朱框呼应。
+ * 不取底色,只描一道细边 —— 十二宫铺下来,十二块色补丁会盖过盘面。
+ */
+.fate-channel {
+  padding: 1px 4px;
+  border: 1px solid rgb(var(--color-ink-rgb) / 0.2);
+  border-radius: 3px;
+  line-height: 1.35;
+  color: rgb(var(--color-ink-soft-rgb));
+}
+.fate-channel--ming {
+  border-color: rgb(var(--color-cinnabar-rgb) / 0.45);
+  color: rgb(var(--color-cinnabar-rgb));
+}
+
+/* ================= 典籍所指境界的位置(classicRealm) =================
+ * 典籍卡原写「相涉:筑基、金丹、元婴」—— 一串纯文字,看不出哪几个是自己走过的。
+ * 而这正是翻典籍时最先想知道的事:这本书讲的是来路,还是去路(见 ui/classicRealm)。
+ * 三态各取既有语义色,与境界页签那套「已过给青印、当前转朱」同一口径:
+ *   已过 → ink-soft(走过的路,退一档)
+ *   当前 → cinnabar(身处其中)
+ *   未至 → ink-faint(还没到)
+ */
+.classic-realm--past {
+  /* 走过的路:退一档。原取 ink-soft(比未至还深),读起来反成「已过的最抢眼」 */
+  color: rgb(var(--color-ink-faint-rgb));
+}
+.classic-realm--here {
+  color: rgb(var(--color-cinnabar-rgb));
+  font-weight: 600;
+}
+.classic-realm--ahead {
+  /* 去路:比已过清楚一档 —— 那才是翻典籍时想知道的 */
+  color: rgb(var(--color-ink-soft-rgb));
+}
+
+/* ================= 五维刻度(ratingGauge) =================
+ * 五维评级原只给一排星(★★★☆☆):星级是离散的,「3 星」与「3 星」之间差多少读不出来。
+ * core 早已算好连续得分与那道阈值表,这里把它落成一根条:
+ *   星说在哪一档,条说这一档走完了多少。
+ * 每维按**自己那四道线**归一(身法 4 星要 0.7,进攻要 1.6),不共尺 ——
+ * 共尺会把 1.0 的进攻画成刚过一半、0.7 的身法画成已近满。
+ */
+.rating-gauge {
+  /* 细条:与星同一行,不能比星更抢 */
+  position: relative;
+  display: block;
+  width: 2.5rem;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(var(--color-ink-rgb) / var(--track-ink-alpha));
+}
+.rating-gauge i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: rgb(var(--color-gold-ink-rgb) / 0.8);
+  transition: width 0.3s ease;
+}
+/* 条长 = (已过档数 + 本档进度) / 5,与星数同向;详见 ui/ratingGauge.gaugeFill */
+.rating-gauge--weak i {
+  background: rgb(var(--color-cinnabar-rgb) / 0.9);
+}
+
+/* ================= 资源生命周期形制(resourceTone) =================
+ * 道源与道果的说明弹窗都有同一句「生命周期」—— 这是玩家最容易记错的一条:
+ * 转世时哪一个会清零。数据里早有 roleTone('action' | 'permanent')表达这件事,
+ * 但两扇弹窗只是各写一个硬编码的左边框色,与 roleTone 是两套说法。
+ * 这里按 roleTone 给形制:一枚两字签 + 说法 + 色。色只取既有语义 token。
+ */
+.res-tone {
+  /* 色由调用方按 roleTone 挂 --res-tone-rgb,此处不写死 */
+  border-color: rgb(var(--res-tone-rgb) / 0.6);
+}
+.res-tone--cinnabar {
+  --res-tone-rgb: var(--color-cinnabar-rgb);
+}
+.res-tone--violet-ink {
+  --res-tone-rgb: var(--color-violet-ink-rgb);
+}
+/* 签:一字方印,与弹窗里其余小签同体例 */
+.res-tone__seal {
+  display: inline-grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 2px;
+  font-size: 10px;
+  line-height: 1;
+  color: rgb(var(--color-paper-rgb));
+  background: rgb(var(--res-tone-rgb));
+}
+
+/* ================= 典籍谱(classicBoard) =================
+ * 典籍册原先把 11 部书平铺成 11 张同形的卡:哪几部同出一脉,要靠读小签自己数。
+ * 这里给每脉一枚脉签:五种来路靠**字与形**分开(签上的字本就是来路名),色只作辅助。
+ * 色一律取既有语义 token,不新增。
+ */
+.classic-school-tag {
+  display: inline-block;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  padding: 0 4px;
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+}
+/* 丹道 · 朱:炉火药物,与印章同色 */
+.classic-school-tag--dan {
+  color: rgb(var(--color-cinnabar-rgb));
+}
+/* 道家 · 金:老庄之道,与「贵重」同色 */
+.classic-school-tag--dao {
+  color: rgb(var(--color-gold-ink-rgb));
+}
+/* 道教 · 靛:科仪斋醮,与「东方」同色 */
+.classic-school-tag--jiao {
+  color: rgb(var(--color-indigo-ink-rgb));
+}
+/* 佛道 · 紫:释氏修证 */
+.classic-school-tag--fo {
+  color: rgb(var(--color-violet-ink-rgb));
+}
+/* 网文 · 墨:无原典可引,不抢前面四脉 */
+.classic-school-tag--web {
+  color: rgb(var(--color-ink-soft-rgb));
+}
+.classic-school-tag--other {
+  color: rgb(var(--color-ink-faint-rgb));
+}
+
+/* ================= 四象二十八宿盘(mansionBoard) =================
+ * 星象页原先只写一句「今日值某宿」,加一句「四象配四界」——
+ * 二十八宿按象成组(东苍龙七宿、南朱雀七宿…),本来就能摆成四排
+ * (见 src/ui/mansionBoard.ts)。今值之宿另标,哪一象今值一眼看得见。
+ */
+.mansion-board {
+  pointer-events: none;
+}
+.mansion-row {
+  border-radius: 4px;
+  border: 1px solid rgb(var(--color-ink-rgb) / 0.1);
+  background: rgb(var(--color-ink-rgb) / 0.02);
+  padding: 5px 7px;
+}
+/* 今值所在之象:朱框,与另外三象分开 */
+.mansion-row--here {
+  border-color: rgb(var(--color-cinnabar-rgb) / 0.45);
+  background: rgb(var(--color-cinnabar-rgb) / 0.05);
+}
+/* 廿八宿名是 11px 正文:半透明墨在浅纸上只有 3.4:1,读不清 —— 走整色 token。
+   四象的轻重由外面的框分(今值那象朱框),不靠把字压淡。 */
+.mansion-star {
+  color: rgb(var(--color-ink-soft-rgb));
+}
+/* 今值那一宿:转朱并加描边,在一排七宿里一眼认得出 */
+.mansion-star--today {
+  color: rgb(var(--color-cinnabar-rgb));
+  text-shadow: 0 0 3px rgb(var(--color-cinnabar-rgb) / 0.4);
 }
 
 /* ================= 满级标记 =================

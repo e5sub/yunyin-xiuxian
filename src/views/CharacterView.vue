@@ -23,15 +23,30 @@
             class="flex flex-col items-center"
             :title="`资质 ${root.aptitude}`"
           >
+            <!-- 特殊灵根(风雷冰光暗混沌)另加一道外环:与五行的圆章同尺寸,只多一层可数的形制 -->
             <span
               class="grid h-6 w-6 place-items-center rounded-full border text-[11px] font-kai"
-              :style="{ borderColor: ELEMENTS[root.element].color, color: ELEMENTS[root.element].color }"
+              :class="{ 'root-special': ELEMENTS[root.element].special }"
+              :style="{ borderColor: ELEMENTS[root.element].color, color: ELEMENTS[root.element].color, '--root-tone': ELEMENTS[root.element].color }"
             >
               {{ ELEMENTS[root.element].char }}
             </span>
             <!-- 资质亮在圆环下,不只藏 hover:手机上要看得到 -->
             <span class="mt-0.5 text-[9px] leading-none tabular" :style="{ color: ELEMENTS[root.element].color }">
               {{ root.aptitude }}
+            </span>
+            <!--
+              资质刻度:三根并排时哪一根是主根,原先得逐个读数字再比(见 ui/rootMark)。
+              资质决定主根与同源偏向,但不直接加修速,故只画刻度、不排序、不改色。
+            -->
+            <span
+              class="root-pips mt-0.5"
+              :class="{ 'root-pips--top': markOf(root.element)?.top }"
+              :style="{ '--root-tone': ELEMENTS[root.element].color }"
+              role="img"
+              :aria-label="`资质 ${root.aptitude}`"
+            >
+              <i v-for="(on, i) in rootPips(markOf(root.element)?.pips ?? 0)" :key="i" :class="{ on }" />
             </span>
           </span>
         </div>
@@ -312,6 +327,7 @@
   import { mentorVerdict } from '@/core/mentorService'
   import { buildIdentity } from '@/core/identityService'
   import { rootElements, tendencyLines } from '@/core/linggenAffinity'
+  import { rootMarks, rootPips } from '@/ui/rootMark'
   import { cnNumber, formatGN } from '@/utils/format'
   import type { AnyStatKey } from '@/types'
   import { STAT_KEYS, STAT_NAMES, signedPercent, statCaveat } from '@/data/statNames'
@@ -349,6 +365,12 @@
 
   /** 灵根的天然牌面(倾向文案,不含任何数值) */
   const tendencies = computed(() => tendencyLines(rootElements(player.linggen?.roots)))
+
+  /** 灵根资质刻度:每根按资质点数,最高者为「主根」(见 ui/rootMark) */
+  const rootMarkList = computed(() => rootMarks(player.linggen?.roots ?? []))
+  function markOf(element: string) {
+    return rootMarkList.value.find(m => m.element === element)
+  }
 
   /** 只提示当前真有的词条边界 */
   const panelCaveats = computed(() =>

@@ -85,7 +85,14 @@
                 {{ TRAIT_NAMES[t] }}
               </span>
             </p>
-            <ProgressBar :value="ehp" color="var(--color-cinnabar)" :height="6" class="mt-1" />
+            <!--
+              血条只画比例,读不出「还剩几成」—— 战报逐回合报伤害,而这条最该报的读数反而没有。
+              条右补一个百分数:与条同读 ehp,不另算一份。
+            -->
+            <div class="mt-1 flex items-center gap-2">
+              <ProgressBar :value="ehp" color="var(--color-cinnabar)" :height="6" class="min-w-0 flex-1" />
+              <span class="w-8 shrink-0 text-right tabular text-[10px] text-cinnabar">{{ hpPercent(ehp) }}</span>
+            </div>
             <!--
               敌我战力取开打那一刻的冻结快照(combat.snapPower + applyCombatRuleSnap,含规则改动);
               老战报缺 playerPower 时退回当前面板
@@ -138,7 +145,11 @@
           </span>
           <div class="grow">
             <p class="font-kai text-[14px] text-ink">{{ player.name }}</p>
-            <ProgressBar :value="php" color="var(--color-jade)" :height="6" class="mt-1" />
+            <!-- 与我方血条同一把尺:条右补百分数,见上 -->
+            <div class="mt-1 flex items-center gap-2">
+              <ProgressBar :value="php" color="var(--color-jade)" :height="6" class="min-w-0 flex-1" />
+              <span class="w-8 shrink-0 text-right tabular text-[10px] text-jade">{{ hpPercent(php) }}</span>
+            </div>
           </div>
         </div>
         <span
@@ -167,6 +178,7 @@
   import { COMBAT_PLAYBACK_BASE_MS, COMBAT_PLAYBACK_MIN_MS, EXPLORE_MODES } from '@/data/constants'
   import { WIN_STREAK_REWARDS } from '@/data/earlyGame'
   import { formatClock, formatCountdown, formatGN } from '@/utils/format'
+  import { hpPercent } from '@/ui/hpReadout'
   import { useNow } from '@/composables/useNow'
   import { gameClock } from '@/composables/useGameClock'
   import { detectBuild } from '@/core/buildDetect'

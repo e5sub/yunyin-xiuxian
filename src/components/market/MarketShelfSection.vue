@@ -18,11 +18,16 @@
         :class="[c.sold ? 'opacity-50' : '', i === focusCard ? 'ring-2 ring-jade/70' : '']"
         :style="c.tierStyle"
       >
-        <QualityAura v-if="c.quality" :quality="c.quality" />
+        <!-- 两列窄卡(168×99),角上已给到三枚形制,不适用宽卡那套;compact 只画左上 -->
+        <QualityAura v-if="c.quality" :quality="c.quality" compact />
         <!-- 灵草格按品阶上形制;玄铁等无品阶材料不挂 -->
-        <QualityAura v-else-if="c.herbGrade" :rank="herbQualityRank(c.herbGrade)" :tone="herbQualityTone(c.herbGrade)" />
-        <!-- 最上档质感 -->
-        <span v-if="c.luster" class="luster-cornice" aria-hidden="true" />
+        <QualityAura v-else-if="c.herbGrade" :rank="herbQualityRank(c.herbGrade)" :tone="herbQualityTone(c.herbGrade)" compact />
+        <!--
+          最上档质感:窄卡的右下角是「买下」按钮,御纹的右下直角会直接压在按钮上 ——
+          实测御纹 (148,79)–(166,97) 与按钮 (110,54)–(156,89) 相交。
+          故走格子档,只留左上。
+        -->
+        <span v-if="c.luster" class="luster-cornice luster-cornice--tile" aria-hidden="true" />
         <span v-if="c.luster" class="luster-sheen" aria-hidden="true" />
         <span v-if="c.rare" class="absolute right-1.5 top-1.5 leading-none">
           <QualitySeal :quality="c.quality!" :size="14" />
@@ -36,7 +41,13 @@
           </span>
           <div class="min-w-0">
             <p class="truncate font-kai text-[13px]" :class="{ 'q-plaque': c.plaque }" :style="c.nameCls">{{ c.name }}</p>
-            <p class="truncate text-[10px] text-ink-faint">{{ c.sub }}</p>
+            <!--
+              副标题原用 ink-faint,它在纯纸上是 5.20:1,可分。但货架卡有品阶淡底:
+              灵草/装备卡按品阶铺 6%~13%,神品那档的朱色最深,ink-faint 压上去只剩 4.32:1。
+              换 ink-soft:纸 8.18、6% 底 7.52、13% 底 6.80,各种卡上都留得住余量;
+              与标题(墨 / 品阶色)仍拉开一档,层级不变。
+            -->
+            <p class="truncate text-[10px] text-ink-soft">{{ c.sub }}</p>
           </div>
         </div>
         <div class="mt-auto flex items-center justify-between pt-2">
@@ -120,11 +131,17 @@
   /**
    * 角标底色。单字(丹/材/器)是**文字**,不是图标 —— 彩色字压同色淡底过不了 4.5,
    * 故字色走墨色,品类区分由色块与描边承担。
+   *
+   * 但原先把这件事交给了 0.10/0.15 的底与 0.40 的边:实测底与纸只差 1.16~1.23:1,
+   * 描边 1.78~1.89:1 —— 玩家看不出三色之别,品类区分形同虚设。
+   * 浅色底再往上堆也救不了(alpha 0.28 才 1.54:1),能担事的是描边:
+   * 提到 0.70 得 3.0~3.3:1(图形元素可辨下限),底色同步提到 0.20 补一层色感。
+   * 墨字压在新底上仍有 10.44:1,原来的 AA 不变。
    */
   const TAG_CLS: Record<string, string> = {
-    pill: 'border border-cinnabar/40 bg-cinnabar/10 text-ink',
-    material: 'border border-jade/40 bg-jade/15 text-ink',
-    equipment: 'border border-violet-ink/40 bg-violet-ink/15 text-ink'
+    pill: 'border border-cinnabar/70 bg-cinnabar/20 text-ink',
+    material: 'border border-jade/70 bg-jade/20 text-ink',
+    equipment: 'border border-violet-ink/70 bg-violet-ink/20 text-ink'
   }
 
   const market = useMarketStore()

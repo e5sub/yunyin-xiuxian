@@ -15,7 +15,8 @@
             {{ statusText }}
           </p>
           <div class="mt-3 flex items-center gap-1.5">
-            <GameIcon name="sparkles" :size="13" class="shrink-0 text-gold-ink" />
+            <!-- 图标随天时走(见 core/weather 的 icon):十几种天时各有其形,不再共用一枚 -->
+            <GameIcon :name="weather.icon" :size="13" class="shrink-0 text-gold-ink" />
             <span class="font-kai text-[12px] tracking-widest text-ink">{{ weather.name }}</span>
           </div>
           <p class="mt-0.5 text-[10px] leading-relaxed text-ink-faint">{{ weather.desc }}</p>
@@ -55,6 +56,9 @@
       <RouterLink v-if="player.major >= WORLD_BREAK_MAJOR" to="/celestial" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
         <span class="seal-face grid h-10 w-10 shrink-0 place-items-center rounded-md bg-cinnabar font-kai text-[17px] animate-breathe">天</span>
         <span class="font-kai text-[13px] tracking-widest text-ink">天界</span>
+        <span class="text-[9px] leading-snug" :class="dailyTrialLeft ? 'text-cinnabar' : 'text-jade'">
+          {{ dailyTrialLeft ? '今日天道未应' : '今日天道已应' }}
+        </span>
       </RouterLink>
 
       <RouterLink to="/world" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
@@ -67,6 +71,14 @@
       <RouterLink to="/market" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
         <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-gold-ink/10 text-gold-ink"><GameIcon name="store" :size="18" /></span>
         <span class="font-kai text-[13px] tracking-widest text-ink">坊市</span>
+        <!--
+          刷新倒计时:与坊市页同一条口径(marketRemainingSec),墙钟驱动。
+          未同步过(stockedAt 为 0)时不报 —— 那时 remainingSec 也是 0,
+          会显示成「刷新中」,而其实只是这一格还没读过货架。
+        -->
+        <span v-if="marketLeft !== null" class="text-[9px] leading-snug tabular" :class="marketLeft <= 0 ? 'text-cinnabar' : 'text-ink-faint'">
+          {{ marketLeft <= 0 ? '刷新中' : formatCountdown(marketLeft) }}
+        </span>
       </RouterLink>
 
       <RouterLink to="/friends" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
@@ -101,11 +113,21 @@
       <RouterLink to="/apprentice" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
         <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-jade/15 text-jade"><GameIcon name="users" :size="18" /></span>
         <span class="font-kai text-[13px] tracking-widest text-ink">道童</span>
+        <span class="text-[9px] leading-snug" :class="apprIdle > 0 ? 'text-amber-ink' : 'text-ink-faint'">
+          {{ apprTotal > 0 ? (apprIdle > 0 ? `闲置 ${apprIdle}` : '在工') : '无道童' }}
+        </span>
       </RouterLink>
 
       <button type="button" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98" aria-haspopup="dialog" @click="questsOpen = true">
         <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-amber-ink/10 text-amber-ink"><GameIcon name="book" :size="18" /></span>
         <span class="font-kai text-[13px] tracking-widest text-ink">修行志</span>
+        <!--
+          六个入口里只有两个带副信息,这一格空着而它恰恰有可数的状态:
+          今日几项日课还没做。打开弹窗才看得到,不如摆在格上。
+        -->
+        <span class="text-[9px] leading-snug tabular" :class="dailyLeft > 0 ? 'text-amber-ink' : 'text-jade'">
+          {{ dailyLeft > 0 ? `日课余 ${dailyLeft}` : '日课已尽' }}
+        </span>
       </button>
 
       <RouterLink to="/dongfu" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
@@ -188,6 +210,10 @@
   import { useAdventureStore } from '@/stores/adventure'
   import { useCultivationStore } from '@/stores/cultivation'
   import { useEndgameStore } from '@/stores/endgame'
+  import { useMarketStore } from '@/stores/market'
+  import { useApprenticeStore } from '@/stores/apprentice'
+  import { marketRemainingSec } from '@/core/marketService'
+  import { localDayNum } from '@/utils/time'
   import { useQuestsStore } from '@/stores/quests'
   import { BUILDINGS } from '@/data/buildings'
   import { DAILY_TASKS, MAIN_QUESTS } from '@/data/quests'
@@ -216,6 +242,8 @@
   const adventure = useAdventureStore()
   const cultivation = useCultivationStore()
   const endgame = useEndgameStore()
+  const market = useMarketStore()
+  const apprentice = useApprenticeStore()
   const quests = useQuestsStore()
 
   // 法球尺寸须与模板容器 max-[380px] 断点一致(以下 108px)。
@@ -280,7 +308,34 @@
     }))
   )
 
+  /** 今日未成的日课数:与弹窗里的 dailyRows 同一份数据,不另算一遍 */
+  const dailyLeft = computed(() => dailyRows.value.filter(t => !t.done).length)
+
   // 距重置倒计时属墙钟域:暂停时也须照常走向真实重置时刻
   const now = useWallNow()
+
+  /**
+   * 三个入口格的实况。六个格里原先只有两个带副信息,
+   * 而这三格各自都有可数的状态 —— 打开对应页面才看得到。
+   */
+  /** 今日天道是否已应:判据与 endgame store 的闸门同一份(完成日 vs 今日日号) */
+  /*
+   * 今日天道这一格按墙钟日判,故须读 now.value —— 与同文件的 marketLeft / tilRollover 一样。
+   * 写成 Date.now() 时 computed 没有响应式依赖:玩家开着首页跨过午夜,
+   * 上面那行「距换日 N」会归零重计,这一格却还停在昨天的「已应」。
+   */
+  const dailyTrialLeft = computed(() => endgame.dailyDoneDay !== localDayNum(now.value))
+  /**
+   * 坊市还有多久换新:与坊市页同一条口径。
+   * 货架还没同步过(stockedAt 为 0)时给 null —— 那时 remainingSec 也是 0,
+   * 直接渲染会写成「刷新中」,与真实状态不符。
+   */
+  const marketLeft = computed<number | null>(() =>
+    market.stockedAt > 0 ? marketRemainingSec(market.stockedAt, now.value) : null
+  )
+  /** 道童:几个闲着、共几个 */
+  const apprTotal = computed(() => apprentice.apprentices.length)
+  const apprIdle = computed(() => apprentice.apprentices.filter(a => !a.task).length)
+
   const tilRollover = computed(() => formatCountdown(secsUntilNextMidnight(now.value)))
 </script>

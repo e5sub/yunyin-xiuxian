@@ -24,12 +24,18 @@
           · {{ endgame.daoPath === 'sword' ? '剑意' : '杀意' }} {{ run.winStacks }} 层
         </template>
       </p>
+      <!-- 逐场余血柱:与战报弹窗同一套形制(见 ui/fightStreak),不必先看战报才知道血还剩多少 -->
       <div class="mt-1.5 space-y-1">
-        <p v-for="(row, i) in run.rows" :key="i" class="flex justify-between text-[11px]">
-          <span :class="row.win ? 'text-ink-soft' : 'text-cinnabar'">
+        <p v-for="(row, i) in run.rows" :key="i" class="flex items-center justify-between gap-2 text-[11px]">
+          <span class="min-w-0 shrink" :class="row.win ? 'text-ink-soft' : 'text-cinnabar'">
             第{{ i + 1 }}战 {{ row.foeName }} · {{ row.win ? '胜' : '负' }}
           </span>
-          <span class="tabular text-ink-faint">{{ row.rounds }}回合 · 余血{{ Math.round(row.hpLeftPct * 100) }}%</span>
+          <span class="flex shrink-0 items-center gap-1.5">
+            <span class="fight-bar" :class="{ 'fight-bar--worst': runMarks[i]?.worst }" aria-hidden="true">
+              <span class="fight-bar-fill" :style="{ width: `${runMarks[i]?.barPct ?? 0}%` }" />
+            </span>
+            <span class="tabular text-ink-faint">{{ row.rounds }}回合 · 余血{{ Math.round(row.hpLeftPct * 100) }}%</span>
+          </span>
         </p>
       </div>
       <div class="ink-divider my-2.5" />
@@ -113,13 +119,17 @@
         <p class="mt-1 flex flex-wrap gap-x-3 text-[10px] text-violet-ink">
           <span v-for="(r, i) in world.ruleText" :key="i">{{ r }}</span>
         </p>
+        <!-- 收益归卡面:按钮只写代价与余量,不再把「破界底赏」塞进主词后面把自己撑成两行 -->
+        <p class="mt-1.5 text-[10px] text-ink-faint tabular">
+          入界 {{ world.entryCost }} 道源 · 破界底赏 {{ world.rewardDaoSource }}
+        </p>
         <button
-          class="btn-seal mt-2.5 w-full !py-2 !text-[13px]"
+          class="btn-seal mt-2 w-full !py-2 !text-[13px]"
           :disabled="busy !== null || endgame.daoSource < world.entryCost"
           :title="busy?.reason ?? (endgame.daoSource < world.entryCost ? `道源尚差 ${daoSourceShortText(world.entryCost, endgame.daoSource)}` : undefined)"
           @click="openPrep(world.id)"
         >
-          {{ busy ? busy.reason : endgame.daoSource < world.entryCost ? `启 程(道源尚差 ${daoSourceShortText(world.entryCost, endgame.daoSource)} · 需 ${world.entryCost} · 余 ${formatNum(endgame.daoSource)})` : `启 程(道源 ${world.entryCost} · 余 ${formatNum(endgame.daoSource)} · 破界底赏 ${world.rewardDaoSource})` }}
+          {{ busy ? busy.reason : endgame.daoSource < world.entryCost ? `启 程(道源尚差 ${daoSourceShortText(world.entryCost, endgame.daoSource)} · 余 ${formatNum(endgame.daoSource)})` : `启 程(道源 ${world.entryCost} · 余 ${formatNum(endgame.daoSource)})` }}
         </button>
       </div>
 
@@ -143,16 +153,17 @@
             <span v-for="(r, i) in endgame.voidWorld.ruleText" :key="i">{{ r }}</span>
           </p>
           <p class="mt-1 text-[10px] text-ink-faint">
-            盘踞:{{ endgame.voidWorld.foes.map(f => f.name).join('、') }} · 界主「{{ endgame.voidWorld.guardian.name }}」
+            盘踞:{{ endgame.voidWorld.foes.map(f => f.name).join('、') }} · 界主「{{ endgame.voidWorld.guardian.name }}」 ·
+            入界 {{ endgame.voidWorld.entryCost }} 道源 · 破界底赏 {{ endgame.voidWorld.rewardDaoSource }}
           </p>
-          <div class="mt-2.5 flex gap-2">
+          <div class="mt-2 flex gap-2">
             <button
               class="btn-seal flex-1 !py-2 !text-[13px]"
               :disabled="busy !== null || endgame.daoSource < endgame.voidWorld.entryCost"
               :title="busy?.reason ?? (endgame.daoSource < endgame.voidWorld.entryCost ? `道源尚差 ${daoSourceShortText(endgame.voidWorld.entryCost, endgame.daoSource)}` : undefined)"
               @click="openPrep('void')"
             >
-              {{ busy ? busy.reason : endgame.daoSource < endgame.voidWorld.entryCost ? `启 程(道源尚差 ${daoSourceShortText(endgame.voidWorld.entryCost, endgame.daoSource)} · 需 ${endgame.voidWorld.entryCost} · 余 ${formatNum(endgame.daoSource)})` : `启 程(道源 ${endgame.voidWorld.entryCost} · 余 ${formatNum(endgame.daoSource)} · 破界底赏 ${endgame.voidWorld.rewardDaoSource})` }}
+              {{ busy ? busy.reason : endgame.daoSource < endgame.voidWorld.entryCost ? `启 程(道源尚差 ${daoSourceShortText(endgame.voidWorld.entryCost, endgame.daoSource)} · 余 ${formatNum(endgame.daoSource)})` : `启 程(道源 ${endgame.voidWorld.entryCost} · 余 ${formatNum(endgame.daoSource)})` }}
             </button>
             <button
               class="btn-ghost !px-3 !text-[12px]"
@@ -312,6 +323,7 @@
   import { gateDef } from '@/data/qimen'
   import { gateKindMark, palaceBoard } from '@/ui/gateBoard'
   import { perilGlyph, routeMark } from '@/ui/routeMark'
+  import { fightMarks } from '@/ui/fightStreak'
   import { gateRuleSummary } from '@/core/gateRuleText'
   import {
     abandonExpedition,
@@ -383,6 +395,8 @@
 
   // ---- 进行中远征 ----
   const run = computed(() => endgame.worldRun)
+  /** 逐场余血柱:与战报弹窗同一套判据(见 ui/fightStreak) */
+  const runMarks = computed(() => fightMarks(run.value?.rows ?? []))
   const runWorld = computed(() => (run.value ? (resolveWorld(run.value.worldId) ?? null) : null))
   const runPact = computed(() => (run.value?.pactId ? pactDef(run.value.pactId) : undefined))
   const currentNodes = computed(() => {

@@ -64,6 +64,39 @@
         <p v-if="view.toNextStage !== null" class="mt-1 text-[11px] text-ink-faint tabular">
           下一境地 · 宿慧尚差 {{ view.toNextStage }}
         </p>
+        <!--
+          这段原只写「宿慧 +40 / 共计 400 / 第四境地 / 尚差 120」——
+          数都摆着,却从不说什么能力是这些宿慧换来的(见 ui/samsaraPowers)。
+        -->
+        <div class="mt-2 border-t border-ink/10 pt-2">
+          <p class="flex items-baseline justify-between text-[10px]">
+            <span class="text-ink-faint">宿慧所得</span>
+            <span class="tabular text-ink-faint">{{ powerTally(stageIndexOf(view.stageId)).owned }} / {{ powerTally(stageIndexOf(view.stageId)).total }}</span>
+          </p>
+          <!-- 最快将至的那项单独点名:下面虚框列三行,哪一项最先到手仍要自己比阶数 -->
+          <p v-if="nextPower(stageIndexOf(view.stageId))" class="mt-0.5 text-[10px] text-ink-faint">
+            再转一世可得 <span class="text-ink-soft">{{ nextPower(stageIndexOf(view.stageId))!.name }}</span>
+          </p>
+          <ul class="mt-1 space-y-0.5">
+            <li
+              v-for="pw in samaraPowers(stageIndexOf(view.stageId)).owned"
+              :key="pw.id"
+              class="flex items-baseline gap-1.5 text-[11px] leading-relaxed"
+            >
+              <span class="samara-power shrink-0 font-kai text-[10px]" :class="`samara-power--${pw.kind}`">{{ POWER_KIND_LABEL[pw.kind] }}</span>
+              <span class="min-w-0 text-ink-soft">{{ pw.name }}</span>
+            </li>
+            <li
+              v-for="pw in upcomingPowers(stageIndexOf(view.stageId), 3)"
+              :key="pw.id"
+              class="flex items-baseline gap-1.5 text-[11px] leading-relaxed text-ink-faint"
+            >
+              <span class="samara-power samara-power--locked shrink-0 font-kai text-[10px]">{{ POWER_KIND_LABEL[pw.kind] }}</span>
+              <span class="min-w-0">{{ pw.name }}</span>
+              <span class="shrink-0 text-[10px] tabular">· {{ pw.fromStage }} 阶</span>
+            </li>
+          </ul>
+        </div>
       </div>
 
       <p class="mt-3 text-[11px] leading-relaxed text-ink-faint">
@@ -122,16 +155,56 @@
           <div v-for="root in view.nextLinggen.roots" :key="root.element" class="flex flex-col items-center gap-1.5">
             <span
               class="grid h-10 w-10 place-items-center rounded-full border-2 font-kai text-lg"
-              :style="{ borderColor: ELEMENTS[root.element].color, color: ELEMENTS[root.element].color }"
+              :class="{ 'root-special': ELEMENTS[root.element].special }"
+              :style="{ borderColor: ELEMENTS[root.element].color, color: ELEMENTS[root.element].color, '--root-tone': ELEMENTS[root.element].color }"
             >
               {{ ELEMENTS[root.element].char }}
             </span>
             <span class="tabular text-[11px] text-ink-soft">资质 {{ root.aptitude }}</span>
+            <!--
+              资质刻度:多根时哪一根是主根,原先得逐个读数字再比。
+              建号页与人物页都有这根,唯独这里没有 —— 而这正是玩家决定要不要「逆天改命」的地方
+              (见 ui/rootMark)。
+            -->
+            <span
+              class="root-pips"
+              :class="{ 'root-pips--top': nextRootMark(root.element)?.top }"
+              :style="{ '--root-tone': ELEMENTS[root.element].color }"
+              role="img"
+              :aria-label="`资质 ${root.aptitude}`"
+            >
+              <i v-for="(on, i) in rootPips(nextRootMark(root.element)?.pips ?? 0)" :key="i" :class="{ on }" />
+            </span>
           </div>
         </div>
-        <p class="mt-3 text-center text-[12px] text-ink-faint">
-          修行倍率 <span class="tabular text-ink">×{{ view.nextLinggen.growthMult.toFixed(2) }}</span>
-        </p>
+        <!--
+          倍率原只给一个数。这一手算好还是不好,与建号页是同一件事、同一个数、同一个区间 ——
+          两处该用同一份刻度(见 ui/growthGauge),不在这里另写一套判断。
+        -->
+        <div class="mt-3">
+          <p class="flex items-baseline justify-center gap-2 text-[12px] text-ink-faint">
+            <span>修行倍率</span>
+            <span class="tabular text-[14px] text-ink">×{{ nextGrowth.mult.toFixed(2) }}</span>
+            <span
+              class="rounded border border-ink/15 px-1.5 py-0.5 text-[10px] leading-none"
+              :class="GROWTH_TONE[nextGrowth.tier]"
+            >
+              {{ nextGrowth.label }}
+            </span>
+          </p>
+          <div class="mt-1.5 flex items-center gap-1.5">
+            <span class="shrink-0 tabular text-[9px] leading-none text-ink-faint">×{{ nextGrowth.floor.toFixed(1) }}</span>
+            <span
+              class="growth-gauge min-w-0 flex-1"
+              :class="`growth-gauge--${nextGrowth.tier}`"
+              role="img"
+              :aria-label="`修行倍率 ×${nextGrowth.mult.toFixed(2)},区间 ${nextGrowth.floor.toFixed(1)} 至 ${nextGrowth.ceil.toFixed(1)},属${nextGrowth.label}`"
+            >
+              <i :style="{ '--gauge-pos': `${nextGrowth.position * 100}%` }" />
+            </span>
+            <span class="shrink-0 tabular text-[9px] leading-none text-ink-faint">×{{ nextGrowth.ceil.toFixed(1) }}</span>
+          </div>
+        </div>
         <button class="btn-ghost mt-3 w-full" @click="rerollReincarnationLinggen">逆天改命</button>
         <p class="mt-2 text-center text-[11px] text-ink-faint">不限次数</p>
       </div>
@@ -151,6 +224,15 @@
               {{ talentDef(id)?.name }}
             </span>
             <span class="text-[10px] text-ink-faint">{{ TALENT_GRADE_NAMES[talentDef(id)?.grade ?? 1] }}</span>
+            <!-- 阶点与转世弹窗同一套(见 ui/talentMark):四档里谁高一档,数点便知 -->
+            <span
+              class="talent-pips"
+              :class="{ 'talent-pips--top': talentMark(talentDef(id)?.grade ?? 1).top }"
+              :style="{ color: TALENT_GRADE_COLORS[talentDef(id)?.grade ?? 1] }"
+              aria-hidden="true"
+            >
+              <i v-for="(on, i) in talentPips(talentDef(id)?.grade ?? 1)" :key="i" :class="{ on }" />
+            </span>
           </p>
           <p class="mt-0.5 text-[11px] text-ink-faint">{{ talentDef(id)?.desc }}</p>
           <p v-if="talentDef(id) && modsText(talentDef(id)!.mods)" class="mt-0.5 text-[11px] tabular text-azure">
@@ -213,6 +295,11 @@
   import { prepareReincarnation, confirmReincarnation, rerollReincarnationLinggen } from '@/core/reincarnation'
   import { ELEMENTS } from '@/data/linggen'
   import { talentDef, TALENT_GRADE_COLORS, TALENT_GRADE_NAMES } from '@/data/talents'
+  import { talentMark, talentPips } from '@/ui/talentMark'
+  import { growthGauge } from '@/ui/growthGauge'
+  import { rootMarks, rootPips } from '@/ui/rootMark'
+  import { POWER_KIND_LABEL, nextPower, powerTally, samaraPowers, upcomingPowers } from '@/ui/samsaraPowers'
+  import { SAMSARA_STAGES } from '@/data/samsara'
   import { modsText } from '@/data/statNames'
   import { lifeThemeDef, TABOO_NAMES } from '@/data/lifeThemes'
   import { heritageGroups } from '@/core/samsaraAudit'
@@ -249,6 +336,23 @@
   })
 
   const view = computed(() => ui.reincarnation)
+
+  /** 来世灵根的倍率刻度:与建号页同一份(见 ui/growthGauge) */
+  const nextGrowth = computed(() => growthGauge(view.value?.nextLinggen.growthMult ?? 1))
+  /** 阶序:view 只带 stageId(如 st_first),按 data 的阶序表反查 */
+  function stageIndexOf(stageId: string): number {
+    return SAMSARA_STAGES.find(s => s.id === stageId)?.index ?? 0
+  }
+
+  /** 来世灵根的资质刻度:与建号页、人物页同一份(见 ui/rootMark) */
+  const nextRootMarks = computed(() => rootMarks(view.value?.nextLinggen.roots ?? []))
+  const nextRootMark = (el: string) => nextRootMarks.value.find(m => m.element === el)
+  const GROWTH_TONE: Record<string, string> = {
+    low: 'text-ink-faint',
+    mid: 'text-ink-soft',
+    high: 'text-azure',
+    peak: 'text-cinnabar'
+  }
   const reviewTheme = computed(() => (view.value?.review.themeId ? lifeThemeDef(view.value.review.themeId) : undefined))
   const themeDefs = computed(() => (view.value?.themeChoices ?? []).flatMap(id => lifeThemeDef(id) ?? []))
 

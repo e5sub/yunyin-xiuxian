@@ -14,6 +14,21 @@
       <div class="flex items-baseline gap-2">
         <span class="font-kai text-[15px] tracking-[0.25em] text-ink">{{ row.world.name }}</span>
         <span class="text-[10px] text-ink-faint">第 {{ row.world.start + 1 }}–{{ row.world.end + 1 }} 境</span>
+        <!--
+          界域刻度:本界域含几境就几格,已过几格(见 ui/worldProgress)。
+          四个界域各含 9/5/4/3 境,不按同一个尺画。
+        -->
+        <span class="ml-auto flex shrink-0 items-center gap-1.5">
+          <span
+            class="world-pips"
+            :class="{ 'world-pips--here': row.prog.here }"
+            role="img"
+            :aria-label="`${row.prog.name} 已过 ${row.prog.passed}/${row.prog.total} 境`"
+          >
+            <i v-for="(on, i) in worldPips(row.prog)" :key="i" :class="{ on }" />
+          </span>
+          <span class="text-[9px] tabular text-ink-faint">{{ row.prog.passed }}/{{ row.prog.total }}</span>
+        </span>
       </div>
       <p class="mt-0.5 text-[11px] leading-relaxed text-ink-faint">{{ row.world.desc }}</p>
       <div class="mt-2 space-y-2">
@@ -31,11 +46,34 @@
               {{ cell.def.name }}
             </span>
             <span class="chip-ink !text-[9px]">{{ cell.def.basis }}</span>
+            <!--
+              当前用朱字,已过与未到原先只靠字色深浅(text-ink-soft / text-ink-faint)——
+              两色差得很小,21 境铺下来读不出哪几境已过。已过的另给一道方印。
+            -->
+            <span
+              v-if="cell.index < player.major"
+              class="realm-passed grid h-3.5 w-3.5 shrink-0 place-items-center rounded-sm border border-jade/50 font-kai text-[8px] leading-none text-jade"
+              role="img"
+              aria-label="已过"
+            >过</span>
             <span v-if="cell.index === player.major" class="text-[9px] text-cinnabar">当前</span>
           </p>
           <p class="mt-0.5 text-[11px] leading-relaxed text-ink-soft">{{ cell.def.desc }}</p>
-          <p class="mt-1 text-[11px] leading-relaxed text-ink-faint">{{ cell.def.lore }}</p>
-          <p v-if="classicsOf(cell.def.id).length" class="mt-1 text-[10px] text-ink-faint">
+          <!--
+            当前境界那张卡有一层 bg-cinnabar/8。夜主题下卡底是 paper-lifted(51,49,46),
+            叠上这层朱之后 ink-faint 只剩 4.41:1(实测,全站暗色扫描的唯一真实命中);
+            其余卡是 bg-paper-deep/50,ink-faint 有 6.11,没问题。
+            故只在当前卡改用 ink-soft(该底上 6.19),其它卡不动。
+          -->
+          <p
+            class="mt-1 text-[11px] leading-relaxed"
+            :class="cell.index === player.major ? 'text-ink-soft' : 'text-ink-faint'"
+          >{{ cell.def.lore }}</p>
+          <p
+            v-if="classicsOf(cell.def.id).length"
+            class="mt-1 text-[10px]"
+            :class="cell.index === player.major ? 'text-ink-soft' : 'text-ink-faint'"
+          >
             所据:{{ classicsOf(cell.def.id).map(c => `《${c.title}》`).join(' ') }}
           </p>
         </div>
@@ -44,18 +82,46 @@
     </template>
 
     <template v-if="codexTab === 'classics'">
-    <SectionTitle title="典籍" />
+    <SectionTitle title="典籍" :hint="`${cnNumber(classicRows.length)}脉`" />
+    <!--
+      典籍册原先把 11 部书平铺成 11 张同形的卡:哪几部同出一脉、这一脉占几部、
+      管着几个境界,全要靠读「丹道 / 道家 / 道教 / 网文」那枚小签自己数。
+      现按来路分谱:一脉一处,脉下逐部列书名与相涉境界(见 ui/classicBoard)。
+    -->
     <section class="space-y-2">
-      <article v-for="c in CLASSICS" :key="c.id" class="card-ink px-4 py-3">
-        <p class="flex flex-wrap items-center gap-2">
-          <span class="font-kai text-[14px] text-ink">《{{ c.title }}》</span>
-          <span class="chip-ink !text-[9px]">{{ c.school }}</span>
-          <span class="text-[10px] text-ink-faint">{{ c.source }}</span>
+      <article v-for="row in classicRows" :key="row.school" class="card-ink px-4 py-3">
+        <p class="flex flex-wrap items-baseline gap-2">
+          <span class="classic-school-tag shrink-0 font-kai text-[13px]" :class="`classic-school-tag--${schoolKey(row.school)}`">
+            {{ row.school }}
+          </span>
+          <span class="text-[10px] text-ink-faint">{{ schoolNote(row.school) }}</span>
+          <span class="ml-auto shrink-0 tabular text-[10px] text-ink-faint">
+            {{ row.count }} 部 · 涉 {{ schoolSpan(row.school).total }} 境<template v-if="schoolSpan(row.school).past > 0"> · 已过 {{ schoolSpan(row.school).past }}</template>
+          </span>
         </p>
-        <p class="mt-1 text-[11px] leading-relaxed text-ink-soft">{{ c.gist }}</p>
-        <p v-if="c.realms.length" class="mt-1 text-[10px] text-ink-faint">
-          相涉:{{ c.realms.map(id => realmName(id)).join('、') }}
-        </p>
+        <div class="mt-1.5 divide-y divide-ink/6">
+          <div v-for="c in row.books" :key="c.id" class="py-1.5">
+            <p class="flex flex-wrap items-baseline gap-x-2">
+              <span class="font-kai text-[13px] text-ink">《{{ c.title }}》</span>
+              <span class="text-[10px] text-ink-faint">{{ c.source }}</span>
+            </p>
+            <p class="mt-0.5 text-[11px] leading-relaxed text-ink-soft">{{ c.gist }}</p>
+            <!--
+              「相涉」原是一串纯文字,看不出哪几个是自己走过的。
+              同一页的境界页签早已把「已过 / 当前 / 未至」讲清楚了,
+              两处读同一份境界表,没理由一处讲、一处不讲(见 ui/classicRealm)。
+            -->
+            <p v-if="c.realms.length" class="mt-0.5 flex flex-wrap items-baseline gap-x-1 text-[10px] text-ink-faint">
+              <span>相涉:</span>
+              <span
+                v-for="m in classicRealmMarks(c, player.major)"
+                :key="m.id"
+                class="classic-realm tabular"
+                :class="`classic-realm--${m.phase}`"
+              >{{ m.name }}</span>
+            </p>
+          </div>
+        </div>
       </article>
     </section>
     </template>
@@ -72,13 +138,42 @@
             上{{ currentReading.upper.name }}{{ currentReading.upper.symbol }} · 下{{ currentReading.lower.name
             }}{{ currentReading.lower.symbol }}
           </span>
-          <span v-if="currentReading.changed" class="chip-ink !text-[9px]">之{{ currentReading.changed.name }}</span>
           <span class="ml-auto text-[10px] tabular text-ink-faint">
             尚余 <span class="countdown-slot">{{ remainCountdown }}</span>
           </span>
         </p>
-        <div class="mt-1.5 space-y-0.5 font-kai text-[12px] tracking-[0.2em] text-ink-soft">
-          <p v-for="(bar, i) in drawnLines" :key="i">{{ bar }}</p>
+        <!--
+          卦画原先照着 lines 数组正序铺,而 lines 自下而上 —— 整幅是倒的:
+          「下卦为身、上卦为境」在图上正好读反。之卦更只剩一个名字,卦象没画。
+          今按 ui/hexagramFigure 排:上爻在上,爻题另标,动爻记 ○ ×,之卦并排画出。
+        -->
+        <div v-if="figure" class="mt-2 flex items-start gap-3" role="img" :aria-label="figureAria">
+          <div class="hex-figure">
+            <span class="hex-figure__cap font-kai">本卦</span>
+            <div
+              v-for="line in figure.lines"
+              :key="line.position"
+              class="hex-line"
+              :class="{ 'hex-line--moving': line.changing }"
+            >
+              <span class="hex-line__bar" :class="line.yang ? 'hex-line__bar--yang' : 'hex-line__bar--yin'">
+                <template v-if="line.yang"><i /></template>
+                <template v-else><i /><i /></template>
+              </span>
+              <span class="hex-line__label font-kai">{{ line.label }}</span>
+              <span v-if="line.mark" class="hex-line__mark font-kai">{{ line.mark }}</span>
+            </div>
+          </div>
+          <div v-if="figure.changed" class="hex-figure">
+            <span class="hex-figure__cap font-kai">之{{ figure.changedName }}</span>
+            <div v-for="line in figure.changed" :key="line.position" class="hex-line hex-line--changed">
+              <span class="hex-line__bar" :class="line.yang ? 'hex-line__bar--yang' : 'hex-line__bar--yin'">
+                <template v-if="line.yang"><i /></template>
+                <template v-else><i /><i /></template>
+              </span>
+              <span class="hex-line__label font-kai">{{ line.label }}</span>
+            </div>
+          </div>
         </div>
         <p class="mt-1.5 text-[11px] leading-relaxed text-ink-soft">{{ currentReading.hexagram.gist }}</p>
         <p v-for="(line, i) in counsel" :key="`c${i}`" class="mt-0.5 text-[11px] leading-relaxed text-ink-faint">{{ line }}</p>
@@ -113,13 +208,26 @@
         <span class="text-[10px] text-azure">{{ showAllHex ? '收起' : '展开' }}</span>
       </button>
       <div v-if="showAllHex" class="mt-2 max-h-72 divide-y divide-ink/6 overflow-y-auto">
-        <div v-for="x in HEXAGRAMS" :key="x.order" class="flex items-baseline gap-2 py-2">
-          <span class="w-6 shrink-0 tabular text-[10px] text-ink-faint">{{ x.order }}</span>
-          <span class="w-14 shrink-0 font-kai text-[13px] text-ink">{{ x.name }}</span>
-          <span class="w-16 shrink-0 text-[10px] text-ink-faint tabular">
-            {{ trigramDef(x.upper)?.symbol }}{{ trigramDef(x.lower)?.symbol }}
+        <div v-for="row in hexRows" :key="row.order" class="flex items-baseline gap-2 py-2">
+          <span class="w-6 shrink-0 tabular text-[10px] text-ink-faint">{{ row.order }}</span>
+          <span class="w-14 shrink-0 font-kai text-[13px] text-ink">{{ row.name }}</span>
+          <!--
+            原先是两个单卦符号并排(☰☱):要认出一卦,得先在脑中把两组三爻叠起来。
+            重卦本来就是「上三爻 + 下三爻」,这里直接画成六爻。
+          -->
+          <span class="hex-figure hex-figure--inline shrink-0" role="img" :aria-label="row.aria">
+            <span
+              v-for="line in row.lines"
+              :key="line.position"
+              class="hex-line"
+            >
+              <span class="hex-line__bar" :class="line.yang ? 'hex-line__bar--yang' : 'hex-line__bar--yin'">
+                <template v-if="line.yang"><i /></template>
+                <template v-else><i /><i /></template>
+              </span>
+            </span>
           </span>
-          <span class="min-w-0 text-[11px] leading-relaxed text-ink-soft">{{ x.gist }}</span>
+          <span class="min-w-0 text-[11px] leading-relaxed text-ink-soft">{{ row.gist }}</span>
         </div>
       </div>
     </section>
@@ -132,11 +240,51 @@
       <p class="text-[11px] leading-relaxed text-ink-faint">按灵根与轮回安星 · 常驻 · 转世重算</p>
       <p class="mt-2 font-kai text-[13px] leading-relaxed text-ink">{{ fateLordLineText }}</p>
       <p class="mt-1 text-[11px] text-azure">命格之力:{{ fateModsText }}</p>
+      <!--
+        十二宫原先铺成十二行文字:哪一宫是命宫、哪一宫有星,得逐行读。
+        它本来是四正三合的一张盘 —— 改排四列三行,命宫朱框,有星的宫点亮。
+        宫名与星名仍取 data/ziwei,盘只是换了个摆法。
+      -->
+      <div class="fate-board mt-2.5 grid grid-cols-3 gap-1.5">
+        <div
+          v-for="row in fateRows"
+          :key="row.palace.id"
+          class="fate-cell"
+          :class="{ 'fate-cell--ming': row.isMing, 'fate-cell--starred': row.hasStar }"
+        >
+          <p class="flex items-baseline gap-1">
+            <span class="truncate font-kai text-[11px] leading-none" :class="row.isMing ? 'text-cinnabar' : 'text-ink-soft'">
+              {{ row.palace.name }}
+            </span>
+            <span v-if="row.isMing" class="shrink-0 text-[8px] leading-none text-cinnabar">命</span>
+          </p>
+          <p class="mt-1 flex flex-wrap gap-x-1 gap-y-0.5">
+            <span
+              v-for="st in row.starList"
+              :key="st.id"
+              class="fate-star font-kai text-[10px] leading-none"
+              :title="`${st.name} · ${st.nature}`"
+            >{{ st.name }}</span>
+          </p>
+        </div>
+      </div>
+      <p class="mt-1.5 text-[9px] leading-relaxed text-ink-faint">
+        命宫朱框 · 有星诸宫点亮 · 宫位说明见下
+      </p>
       <div class="mt-2.5 divide-y divide-ink/6">
-        <div v-for="row in fateRows" :key="row.palace.id" class="flex items-baseline gap-2 py-1.5">
+        <!--
+          flex-wrap 不可去:320 宽下宫名 + 属性签 + 星名 + 说明挤不下,
+          说明会被压成每行两三个字的竖条。宽屏仍是一行,窄屏说明落到下一行。
+        -->
+        <div v-for="row in fateRows" :key="row.palace.id" class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-1.5">
           <span class="w-14 shrink-0 font-kai text-[12px] text-ink-soft">{{ row.palace.name }}</span>
+          <!--
+            此宫给哪一路属性。data 里 channel 就为此而存(修行/同道/因缘/灵兽…),
+            却一直没进界面 —— 十二宫只写「所主 · 管什么」,说不到它落在哪一路。
+          -->
+          <span class="fate-channel shrink-0 font-kai text-[10px]" :class="{ 'fate-channel--ming': row.isMing }">{{ row.palace.channel }}</span>
           <span class="w-24 shrink-0 text-[11px] text-cinnabar">{{ row.starNames }}</span>
-          <span class="min-w-0 text-[11px] leading-relaxed text-ink-faint">{{ row.palace.domain }} · {{ row.palace.use }}</span>
+          <span class="min-w-[9rem] flex-1 text-[11px] leading-relaxed text-ink-faint">{{ row.palace.domain }} · {{ row.palace.use }}</span>
         </div>
       </div>
       <div class="mt-2 border-t border-ink/10 pt-2">
@@ -182,6 +330,32 @@
       <p class="mt-1.5 text-[11px] text-azure">
         今日利 <span class="text-gold-ink">{{ favoredWorldName }}</span>
       </p>
+      <!--
+        二十八宿按象成组(东苍龙七宿、南朱雀七宿…),原先只有文字一句。
+        四象各一排,今值之宿另标 —— 哪一象的宿今值、排在第七位(见 ui/mansionBoard)。
+      -->
+      <div class="mansion-board mt-2.5 space-y-1.5">
+        <div v-for="g in mansionGroupsList" :key="g.id" class="mansion-row" :class="{ 'mansion-row--here': g.here }">
+          <p class="flex items-baseline gap-1.5">
+            <span class="shrink-0 font-kai text-[10px]" :class="g.here ? 'text-cinnabar' : 'text-ink-soft'">
+              {{ g.direction }}{{ g.name }}
+            </span>
+            <span class="shrink-0 text-[9px] text-ink-faint">{{ worldName(g.world) }}</span>
+            <span v-if="g.here" class="ml-auto shrink-0 text-[9px] tabular text-cinnabar">
+              今值 {{ mansionOrdinal(g, todayMansionName) }}/{{ g.mansions.length }}
+            </span>
+          </p>
+          <p class="mt-0.5 flex flex-wrap gap-x-1 gap-y-0.5">
+            <span
+              v-for="m in g.mansions"
+              :key="m.name"
+              class="mansion-star font-kai text-[11px] leading-none"
+              :class="{ 'mansion-star--today': m.name === todayMansionName }"
+              :title="`${m.fullName} · ${m.domain} · ${m.good}`"
+            >{{ m.name }}</span>
+          </p>
+        </div>
+      </div>
       <button class="-my-1 mt-2 w-full py-2 text-left text-[10px] text-azure" @click="showAllMansions = true">
         {{ cnNumber(MANSIONS.length) }}宿 →
       </button>
@@ -262,13 +436,16 @@
   import { usePlayerStore } from '@/stores/player'
   import { useUiStore } from '@/stores/ui'
   import { useResourcesStore } from '@/stores/resources'
-  import { REALMS, WORLDS, realmDef } from '@/data/realms'
-  import { CLASSICS, PLANNED_SCHOOLS, classicsForRealm } from '@/data/classics'
+  import { REALMS, WORLDS } from '@/data/realms'
+  import { worldPips, worldProgress } from '@/ui/worldProgress'
+  import { mansionGroups, mansionOrdinal } from '@/ui/mansionBoard'
+  import { CLASSICS, PLANNED_SCHOOLS, classicsForRealm, type ClassicSchool } from '@/data/classics'
+  import { classicRealmMarks, schoolRealmSpan } from '@/ui/classicRealm'
+  import { classicsBySchool, schoolNote } from '@/ui/classicBoard'
   import { HEXAGRAMS, TRIGRAMS, trigramDef } from '@/data/yijing'
   import {
     DIVINATION_COST,
     divinationActiveAt,
-    drawLines,
     readingCounsel,
     readingFromState,
     readingMods
@@ -279,11 +456,12 @@
   import { IMAGES, MANSIONS, type ImageId } from '@/data/xiangxiu'
   import { GATES } from '@/data/qimen'
   import { gateKindMark, palaceBoard } from '@/ui/gateBoard'
+  import { hexFigure, hexagramLines, movingCount } from '@/ui/hexagramFigure'
   import { gateRuleSummary } from '@/core/gateRuleText'
   import { cnNumber, formatCountdown, formatGN, formatGap } from '@/utils/format'
   import { gn, gnZero, subClamp } from '@/utils/gnum'
   import { STAR_FOCUS_COST_BASE } from '@/data/constants'
-  import { mansionLuckPercent, effectiveFavoredWorld, todayMansionLine } from '@/core/astronomy'
+  import { mansionLuckPercent, effectiveFavoredWorld, todayMansion, todayMansionLine } from '@/core/astronomy'
   import { worldDef } from '@/data/realms'
   import type { WorldId } from '@/types'
   import { modsText } from '@/data/statNames'
@@ -308,7 +486,35 @@
   ]
   const codexTab = ref<CodexTab>('realm')
 
+  /** 典籍谱:按来路分组,一脉一处(见 ui/classicBoard) */
+  const classicRows = computed(() => classicsBySchool(CLASSICS))
+
+  /** 来路的中文名作类名:固定五脉各一枚,认不出的落 default 一档 */
+  const SCHOOL_KEYS: Record<ClassicSchool, string> = { 丹道: 'dan', 道家: 'dao', 道教: 'jiao', 佛道: 'fo', 网文: 'web' }
+  function schoolKey(school: string): string {
+    return SCHOOL_KEYS[school as ClassicSchool] ?? 'other'
+  }
+
   const showAllHex = ref(false)
+
+  /**
+   * 六十四卦谱:每卦画成六爻(上卦三爻在上、下卦三爻在下),与在身之卦同一套爻画。
+   * 认不出的卦(坏数据)给空爻,不编一幅假的 —— 谱表宁可留白。
+   */
+  const hexRows = computed(() =>
+    HEXAGRAMS.map(x => {
+      const upper = trigramDef(x.upper)
+      const lower = trigramDef(x.lower)
+      const lines = upper && lower ? hexagramLines(upper.lines, lower.lines) : []
+      return {
+        order: x.order,
+        name: x.name,
+        gist: x.gist,
+        lines,
+        aria: `${x.name}卦:上${upper?.name ?? ''}下${lower?.name ?? ''}`
+      }
+    })
+  )
 
   /** 在身之卦:读 1 秒游戏钟,与服务端同一判据 divinationActiveAt */
   const currentState = computed(() => divinationActiveAt(player.divination, now.value))
@@ -316,7 +522,18 @@
     const state = currentState.value
     return state ? readingFromState(state) : null
   })
-  const drawnLines = computed(() => (currentReading.value ? drawLines(currentReading.value) : []))
+  /** 卦画:六爻自上而下排好,之卦由动爻反向得出(见 ui/hexagramFigure) */
+  const figure = computed(() => (currentReading.value ? hexFigure(currentReading.value) : null))
+  const figureAria = computed(() => {
+    const fig = figure.value
+    const reading = currentReading.value
+    if (!fig || !reading) return ''
+    const moving = movingCount(fig.lines)
+    return (
+      `本卦${reading.hexagram.name},六爻自上而下:${fig.lines.map(l => l.label).join('、')};` +
+      (moving > 0 ? `动爻${moving}爻,之${reading.changed?.name ?? ''}。` : '六爻不动。')
+    )
+  })
   const counsel = computed(() => (currentReading.value ? readingCounsel(currentReading.value) : []))
   const powerText = computed(() => (currentReading.value ? modsText(readingMods(currentReading.value)) : ''))
   const remainCountdown = computed(() => {
@@ -369,13 +586,21 @@
   const fateRows = computed(() =>
     player.fateChart.palaces.map(p => ({
       palace: p.palace,
-      starNames: p.stars.map(s => `${s.name}(${s.nature})`).join('、')
+      starNames: p.stars.map(s => `${s.name}(${s.nature})`).join('、'),
+      // 盘中要逐星排开,不能只留一串拼接文本
+      starList: p.stars,
+      hasStar: p.stars.length > 0,
+      isMing: p.palace.id === 'ming'
     }))
   )
 
   // 值日之宿与所利界域由游戏日派生,随心跳刷新
   const showAllMansions = ref(false)
   const mansionLine = computed(() => todayMansionLine())
+  /** 今值之宿的宿名,供四象盘标位(与 todayMansion 同一处取) */
+  const todayMansionName = computed(() => todayMansion().name)
+  /** 四象二十八宿分组(见 ui/mansionBoard) */
+  const mansionGroupsList = computed(() => mansionGroups(todayMansionName.value))
   const favoredWorldName = computed(() => worldDef(effectiveFavoredWorld()).name)
   function worldName(id: WorldId): string {
     return worldDef(id).name
@@ -398,19 +623,22 @@
 
   const imageWorldMap = computed(() => IMAGES.map(i => `${i.direction}配${worldName(i.world)}`).join('、'))
 
-  const worldRows = computed(() =>
-    WORLDS.map(w => ({
+  const worldRows = computed(() => {
+    // 界域进度算一次:模板里按 row.prog 取(见 ui/worldProgress)
+    const prog = worldProgress(player.major)
+    return WORLDS.map((w, i) => ({
       world: w,
+      prog: prog[i]!,
       realms: REALMS.map((def, index) => ({ def, index })).filter(c => c.index >= w.start && c.index <= w.end)
     }))
-  )
-
-  function realmName(id: string): string {
-    const idx = REALMS.findIndex(r => r.id === id)
-    return idx >= 0 ? realmDef(idx).name : id
-  }
+  })
 
   function classicsOf(realmId: string) {
     return classicsForRealm(realmId)
+  }
+
+  /** 一脉的境界并集与其中已过几境(见 ui/classicRealm) */
+  function schoolSpan(school: ClassicSchool) {
+    return schoolRealmSpan(CLASSICS.filter(c => c.school === school), player.major)
   }
 </script>

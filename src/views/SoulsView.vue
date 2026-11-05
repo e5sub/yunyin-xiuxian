@@ -61,6 +61,26 @@
           </div>
         </div>
         <p v-if="activeModText" class="mt-2 px-1 text-[10px] leading-relaxed text-gold-ink">合计:{{ activeModText }}</p>
+        <!--
+          槽只有三格,散置常有七八缕:要挑最强的三枚,得逐枚读词条、心算
+          「暴击率 +5% 与伤害减免 +4.5% 哪个更值」—— 而这两样本无可比口径。
+          故按既有的战力权重给每枚算分量,取前几枚(见 ui/soulPick)。
+          择优只是建议:装上哪几枚、各值多少,都摆在明处。
+        -->
+        <div
+          v-if="pickReady.length > 0"
+          class="mt-2 rounded-md border border-jade/25 bg-jade/5 px-3 py-2"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <span class="min-w-0 text-[10px] leading-relaxed text-jade">
+              建议装上 {{ pickReady.length }} 缕 · {{ pickNames }}
+            </span>
+            <button class="btn-ghost shrink-0 !px-3 !py-2 !text-[11px]" @click="doPickBest">择优装配</button>
+          </div>
+          <p class="mt-1 text-[9px] leading-relaxed text-ink-faint">
+            优先看阶位;同阶再看词条总量。装上后可逐格核对阶点。
+          </p>
+        </div>
       </section>
 
       <section class="space-y-2">
@@ -128,6 +148,25 @@
         </div>
       </div>
       <p v-else class="px-4 py-6 text-center text-[11px] leading-relaxed text-ink-faint">暂无闲置器魂</p>
+      <!--
+        散置的几枚要一枚枚点确认,而后期闲置器魂常有一堆。
+        与其他复述动作族同一套写法:主词「清理散置」、两步确认、「再想想」。
+        后果文案读 dissolveNote(),不在模板里手打 —— 同一件事两处写会分叉。
+      -->
+      <div v-if="idleSouls.length > 1" class="mt-2 flex items-center justify-between gap-2 rounded-md bg-cinnabar/5 px-3 py-2">
+        <span class="min-w-0 text-[10px] leading-relaxed text-cinnabar tabular">
+          散置 {{ idleSouls.length }} 枚 · {{ dissolveNote() }}
+        </span>
+        <template v-if="clearIdleArm">
+          <span class="flex shrink-0 items-center gap-1.5">
+            <button class="btn-ghost !px-2.5 !py-2 !text-[11px]" @click="clearIdleArm = false">再想想</button>
+            <button class="btn-seal !px-2.5 !py-2 !text-[11px]" @click="doClearIdle">清理散置</button>
+          </span>
+        </template>
+        <button v-else class="btn-ghost shrink-0 !px-3 !py-2 !text-[11px]" @click="clearIdleArm = true">
+          清理散置
+        </button>
+      </div>
       <template #footer>
         <button class="btn-seal w-full" @click="idleOpen = false">收 起</button>
       </template>
@@ -193,6 +232,7 @@
   import { modsText } from '@/data/statNames'
   import { dissolveNote, refineCostLine } from '@/ui/soulText'
   import { soulMark } from '@/ui/soulMark'
+  import { soulPickSummary, soulPicks } from '@/ui/soulPick'
   import { equipmentTemplate } from '@/data/equipment'
   import { SOUL_SLOTS, soulGradeDef, soulMods, soulName, soulTypeDef, type SoulInstance } from '@/data/souls'
   import { canRefine, dissolveSoul, previewSoul, refineEquipment, removeSoul, SOUL_REFINE_COST, wearSoul } from '@/core/soulService'
@@ -215,6 +255,8 @@
   const pendingRefineUid = ref<string | null>(null)
   /** 散去同样二步确认(不可逆) */
   const pendingDissolveUid = ref<string | null>(null)
+  /** 清理散置的二次确认态;弹窗关闭即复位 */
+  const clearIdleArm = ref(false)
 
   function doRefine(uid: string): void {
     // 签发是异步的(1.58.1 器魂要过台账),不阻塞界面:失败会自己退款并提示
@@ -225,6 +267,29 @@
   function doDissolve(uid: string): void {
     dissolveSoul(uid)
     pendingDissolveUid.value = null
+  }
+
+  /** 还能装几格:槽位按已装配数计,不按散置数 */
+  const freeSlots = computed(() => Math.max(0, SOUL_SLOTS - endgame.activeSouls.length))
+  /** 建议装配的几枚:只在有空槽时给;分量按既有战力权重算(见 ui/soulPick) */
+  const pickReady = computed(() =>
+    freeSlots.value > 0 ? soulPicks(idleSouls.value, freeSlots.value).filter(p => p.picked) : []
+  )
+  const pickNames = computed(() => soulPickSummary(pickReady.value) ?? '')
+
+  /** 择优装配:逐枚走同一个 equipSoul,判据不分叉;槽满即停 */
+  function doPickBest(): void {
+    for (const p of pickReady.value) {
+      if (!wearSoul(p.soul.uid)) break
+    }
+  }
+
+  /** 清理散置:逐枚走同一个 dissolveSoul,判据不分叉;只动未装配的那些 */
+  function doClearIdle(): void {
+    clearIdleArm.value = false
+    const uids = idleSouls.value.map(s => s.uid)
+    for (const uid of uids) dissolveSoul(uid)
+
   }
 
   const idleSouls = computed(() => endgame.soulList.filter(s => !endgame.activeSouls.some(a => a.uid === s.uid)))

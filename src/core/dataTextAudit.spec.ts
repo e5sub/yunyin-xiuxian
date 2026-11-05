@@ -313,6 +313,50 @@ describe('文案数值对账 · 视图不手抄数字', () => {
     expect(host, '圆点不得另起一套可交判据').not.toMatch(/bounty\.orders\.some\(/)
   })
 
+  /**
+   * 首页六个入口格里只有两个带副信息,修行志那格空着 —— 而它恰恰有可数的状态:
+   * 今日几项日课还没做。要打开弹窗才看得到,不如摆在格上。
+   *
+   * 故障注入:把 dailyLeft 改回写死的数,本条红。
+   */
+  /**
+   * 首页六个入口格:原只有两个带副信息(本世之界、洞府营造),
+   * 其余四格各自都有可数的状态,却要打开对应页面才看得到。
+   * 现六格都报出实况,且每一条都取既有的同源算法 —— 不另算一遍。
+   *
+   * 故障注入:把任一条改成写死的字面量,本条红。
+   */
+  it('首页六格都报实况,且各取同源算法', () => {
+    const home = src('../views/HomeView.vue')
+    const WANT: Array<[string, string]> = [
+      ['天界', '今日天道未应'],
+      ['坊市', '刷新中'],
+      ['道童', '无道童'],
+      ['修行志', '日课余'],
+      ['洞府', '已启']
+    ]
+    for (const [tile, word] of WANT) {
+      expect(home, `${tile}格没有实况`).toContain(word)
+    }
+    // 每条实况都从既有算法来,不自己判断
+    expect(home, '天劫闸门须与 store 同一份').toContain('dailyDoneDay')
+    expect(home, '坊市倒计时须走 marketService').toContain('marketRemainingSec(')
+    expect(home, '道童闲置须查 task').toContain("apprentices.filter(a => !a.task)")
+    expect(home, '日课余数须由 dailyRows 现算').toContain('dailyRows.value.filter(t => !t.done)')
+    // 货架未同步过时不报倒计时:那时 remainingSec 也是 0,会写成「刷新中」
+    expect(home, '未同步时不报').toContain('market.stockedAt > 0 ?')
+  })
+
+  it('首页修行志格报出未成的日课数,且与弹窗同源', () => {
+    const home = src('../views/HomeView.vue')
+    expect(home, '格上该报余数').toContain('日课余')
+    expect(home, '余数须由 dailyRows 现算').toContain('dailyRows.value.filter(t => !t.done)')
+    // 弹窗与格上读同一份 dailyRows,不各算一遍(模板里不带 .value,computed 里带)
+    expect(home, '弹窗该读 dailyRows').toContain('v-for="t in dailyRows"')
+    // 模板里那一行必须真的插值 dailyLeft,不是写死的数
+    expect(home, '格上该插值 dailyLeft').toMatch(/\{\{\s*dailyLeft\s*>\s*0\s*\?/)
+  })
+
   it('墙钟域的倒计时不随引擎暂停冻结', () => {
     const sell = src('../components/market/MarketSellSection.vue')
     const rows = src('../composables/useBountyRows.ts')
@@ -480,10 +524,71 @@ describe('文案数值对账 · 视图不手抄数量', () => {
   })
 
   /**
+   * 四个在途状态词以 endgameActivity 的 BUSY_REASON 为准(AGENTS.md 明文)。
+   *
+   * 有四处拒绝路径并不经过 endgameBusy(闭关与历练互斥的另一半、秘境入口自己那道门、
+   * 首页状态行),从前各自手抄一份字面量 —— 改词就得全仓搜,漏一处就出现两套说法。
+   *
+   * 故障注入:把任一处改回字面量,本条红。
+   */
+  it('四个在途状态词只有一份出处,各处取 BUSY_REASON', () => {
+    const SITES = [
+      ['../core/exploration.ts', 'startExploration'],
+      ['../core/secretRealm.ts', '秘境入口'],
+      ['../ui/homeStatus.ts', '首页状态行'],
+      ['../core/endgameActivity.ts', '判据本体']
+    ] as const
+    const WORDS = ['闭关中', '远征在途', '身在秘境', '历练在途']
+    for (const [path, name] of SITES) {
+      const body = src(path)
+      for (const w of WORDS) {
+        // 判据本体是唯一允许写字面量的地方
+        if (name === '判据本体') continue
+        expect(body, `${name}又手抄了「${w}」`).not.toContain(`'${w}'`)
+      }
+    }
+    // 判据本体确实定义了四个词
+    const hub = src('../core/endgameActivity.ts')
+    for (const w of ['闭关中', '远征在途', '身在秘境', '历练在途']) {
+      expect(hub, `BUSY_REASON 缺「${w}」`).toContain(`'${w}'`)
+    }
+    expect(hub, '该导出成常量').toContain('export const BUSY_REASON')
+  })
+
+  /**
    * 词条名是玩家在行囊卡、转移面板、战报里认词条的唯一凭据:
    * 曾有两个都叫「破妄」(增伤 dmg1 与 命中 ac2),同屏两个「破妄」加不同效果,分不清谁是谁。
    * 故障注入:把任一词条名改成与另一条相同,本条红。
    */
+  /**
+   * 紫微十二宫各有「所给之路」:data/ziwei 的 channel(修行/同道/因缘/灵兽…)。
+   * 原先界面只写「所主 · 管什么」,说不到它落在哪一路 —— 而十二宫各管一路正是这张盘的骨架。
+   *
+   * 故障注入:把模板里那枚签删掉,本条红。
+   */
+  it('紫微逐宫标出所给之路,且取 data 的 channel', () => {
+    const view = src('../views/RealmCodexView.vue')
+    expect(view, '逐宫说明该带 channel').toContain('row.palace.channel')
+    expect(view, '该挂一枚签').toContain('fate-channel')
+    // 十二宫的 channel 两两不同(各管一路),数据侧也要对
+    const channels = PALACES.map(p => p.channel)
+    expect(new Set(channels).size, '十二宫的 channel 有重复').toBe(channels.length)
+    for (const c of channels) expect(c.length, `channel「${c}」过长`).toBeLessThanOrEqual(3)
+  })
+
+  it('窄屏下宫名与说明不挤成竖条(flex-wrap 不可去)', () => {
+    const view = src('../views/RealmCodexView.vue')
+    // 320 宽下宫名 + 签 + 星名 + 说明挤不下,说明会被压成每行两三个字
+    const at = view.indexOf('row.palace.channel')
+    // 取那一段:往前到上一处 v-for,往后到这一段结束
+    const start = view.lastIndexOf('v-for="row in fateRows"', at)
+    const seg = view.slice(start, at)
+    expect(seg, '那一行该允许换行').toContain('flex-wrap')
+    // 说明列的下界在签之后
+    const tail = view.slice(at, at + 800)
+    expect(tail, '说明列该有下界').toContain('min-w-')
+  })
+
   it('词条名唯一', () => {
     const byName = new Map<string, string[]>()
     for (const a of AFFIXES) {
@@ -538,6 +643,21 @@ describe('文案数值对账 · 视图不手抄数量', () => {
       hits += (body.match(/busy\.reason/g) ?? []).length
     }
     expect(hits, '一处 busy.reason 都没读到,断言形同虚设').toBeGreaterThanOrEqual(5)
+  })
+
+  it('启程按钮只写代价与余量 —— 收益归卡面,不塞进主词后面把自己撑成两行', () => {
+    /*
+     * 实测:390 宽下「启 程(道源 20 · 余 1,200 · 破界底赏 60)」折成两行,
+     * 括号里断在「破界底赏 / 60」处。三样里面「破界底赏」是**收益**,
+     * 按本站文案纪律(按钮写代价或拒因,收益归卡面)不该在按钮里。
+     */
+    const expedition = src('../components/celestial/ExpeditionPanel.vue')
+    expect(expedition, '卡面要摊出入界代价与破界底赏').toMatch(/入界 \{\{ world\.entryCost \}\} 道源 · 破界底赏/)
+    expect(expedition, '虚界之门同样摊在卡面').toMatch(/入界 \{\{ endgame\.voidWorld\.entryCost \}\} 道源 · 破界底赏/)
+    // 按钮里的文案不许再出现收益:它只报代价与余量
+    for (const m of expedition.matchAll(/启 程\(([^`]*?)`/g)) {
+      expect(m[1] ?? '', `启程按钮里不该夹收益:${(m[1] ?? '').slice(0, 60)}`).not.toContain('破界底赏')
+    }
   })
 
   it('远征行程与变数连战数取自 EXPEDITION_* / MUTATION_FIGHTS', () => {
@@ -652,6 +772,52 @@ describe('文案数值对账 · 手写的门槛与容量', () => {
  *   奇缘 = 阶段性连锁(奇缘录)
  *   vein 系统一律叫"灵脉",不叫"地脉"
  */
+describe('视图 · 跨天读数须挂响应式时间源', () => {
+  /*
+   * localDayNum(Date.now()) 写在 computed 里没有响应式依赖:时间推进不会触发重算。
+   * 玩家开着首页跨过午夜,同屏的「距换日 N」会归零重计,而「今日天道已应」还停在昨天。
+   *
+   * 实测(playwright clock,23:59 → 00:01):
+   *   Date.now() 版:已应 → 已应(不变,错)
+   *   now.value 版:已应 → 未应(对)
+   *
+   * 同一文件里 marketLeft / tilRollover 读的都是 now.value,只有这一处漏了。
+   * 本条把「凡按墙钟日判的 computed,时间参数不得是 Date.now()」钉住。
+   */
+  const WALL_DAY_FILES = ['views/HomeView.vue', 'components/celestial/TrialPanel.vue']
+
+  it('HomeView 的今日天道读 now.value,不读 Date.now()', () => {
+    const src = readFileSync(resolve(__dirname, '../views/HomeView.vue'), 'utf-8')
+    // 跳过 import 那一行,取真正的调用处
+    const line = src.split('\n').find(l => l.includes('localDayNum(') && !l.trimStart().startsWith('import'))
+    expect(line, '找不到 localDayNum 调用').toBeDefined()
+    expect(line!, '时间参数须是响应式的 now.value').not.toContain('Date.now()')
+    expect(line!, '应读 now.value').toContain('now.value')
+  })
+
+  it('TrialPanel 的今日试炼同样读响应式墙钟', () => {
+    const src = readFileSync(resolve(__dirname, '../components/celestial/TrialPanel.vue'), 'utf-8')
+    const line = src.split('\n').find(l => l.includes('localDayNum(') && !l.trimStart().startsWith('import'))
+    expect(line, '找不到 localDayNum 调用').toBeDefined()
+    expect(line!, '时间参数须是响应式的 wallNow.value').not.toContain('Date.now()')
+    expect(line!, '应读 wallNow.value').toContain('wallNow.value')
+  })
+
+  it('两处都用了墙钟组合式,不是游戏时钟', () => {
+    // 今日闸门按墙钟日(本地日)判,游戏暂停时不该冻住 —— 故用 useWallNow 而非 useNow
+    const home = readFileSync(resolve(__dirname, '../views/HomeView.vue'), 'utf-8')
+    const trial = readFileSync(resolve(__dirname, '../components/celestial/TrialPanel.vue'), 'utf-8')
+    expect(home, 'HomeView 该用 useWallNow').toContain('useWallNow')
+    expect(trial, 'TrialPanel 该用 useWallNow').toContain('useWallNow')
+  })
+
+  it('这两份文件确实在 walls 清单里 —— 新增同类页面时记得补进来', () => {
+    for (const f of WALL_DAY_FILES) {
+      expect(readFileSync(resolve(__dirname, '..', f.replace(/^src\//, '')), 'utf-8'), `${f} 不在清单内`).toContain('localDayNum')
+    }
+  })
+})
+
 describe('术语一致性 · 用户可见文本', () => {
   /** 用户可见文本:数据里的字符串字面量 + 视图模板 */
   const userText = (): { file: string; text: string }[] => {
@@ -684,6 +850,52 @@ describe('术语一致性 · 用户可见文本', () => {
 
   /** 例外:此处「地脉」指村子的风水脉,不是洞府灵脉系统 */
   const ALLOWED = ['须惊动山下一整座村子的地脉']
+
+  /**
+   * 数字与单位之间的空格,两个方向都踩过:
+   *   阿拉伯数字紧贴单位(「3分钟」「949.6万灵石」) —— 全站规约是留一个空格
+   *   汉字数字也加了空格(「至多 六 重」) —— 中文里「六重」不该断开,而同句的「祭炼一重」正是无空格
+   *
+   * 判据按两种数字分开查:formatGN / Math.round 一类出阿拉伯数字,`cnNumber` 出汉字数字。
+   * 故障注入:任一处改回去,本条红。
+   */
+  it('数字与单位之间的空格:阿拉伯数字留、汉字数字不留', () => {
+    const ARABIC_UNITS = ['分钟', '小时', '灵石', '修为', '灵草', '玄铁', '器灵尘']
+    const CN_UNITS = ['重', '层', '阶', '场', '次', '部', '卦', '档', '主星', '连战', '位']
+
+    for (const { file, text } of userText()) {
+      // 阿拉伯数字紧贴单位。只认「数字类插值」——「{{ 品阶 }}灵草」是构词(上品灵草),不是数字接单位
+      for (const u of ARABIC_UNITS) {
+        const hits = [...text.matchAll(new RegExp(`\\{\\{([^}]*)\\}\\}(?!\\s)${u}`, 'g'))]
+        const glued = hits
+          .filter(m => /formatGN|formatNum|formatGap|Math\.round|Math\.floor|\.toFixed|Cost|Short|price|Price/.test(m[1]!))
+          .map((): string => `}}${u}`)
+        expect(glued, `${file}:「}}${u}」缺空格`).toEqual([])
+      }
+      // 汉字数字后面又加空格
+      for (const u of CN_UNITS) {
+        // 中间隔着模板的 }} —— 汉字数字经 cnNumber 出来后先落到模板,再到单位
+        const spaced = text.match(new RegExp(`cnNumber\\([^)]*\\)\\s*\\}\\}\\s{2,}${u}`, 'g')) ?? []
+        expect(spaced, `${file}:cnNumber 之后「${u}」前多了空格`).toEqual([])
+      }
+    }
+  })
+
+  /**
+   * 冒号:中文文本里全站用半角,403 处如此;全角只有 3 处,且都是「名字 + 说明」这一种结构 ——
+   * 同类结构在 ArtifactPanel 里写的是半角(「}}」:{{ … }})。同一种结构两种标点,读者会以为有别。
+   *
+   * 故障注入:把任一处改回全角,本条红。
+   */
+  it('冒号一律半角,与全站同一', () => {
+    const hits: string[] = []
+    for (const { file, text } of userText()) {
+      for (const m of text.matchAll(/[\u4e00-\u9fa5》」]\s*：/g)) {
+        hits.push(`${file} 「${m[0]}」`)
+      }
+    }
+    expect(hits, `这些地方用了全角冒号:\n${hits.join('\n')}`).toEqual([])
+  })
 
   it('随机事件一律叫「际遇」:用户可见文本里不再出现「奇遇」', () => {
     const hits: string[] = []
@@ -961,6 +1173,91 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     )
   })
 
+  /**
+   * 道童卡那一行左边是「层数 1/20」,右边原写「还差 10 趟」——
+   * 两个数挨在一行,读者会把它读成「还差 19 趟升满 20 层」。
+   * 可右边数的是羁绊位阶(10/30/60/100 趟),与层数各算各的。
+   *
+   * 故障注入:把「羁绊还差」改回「还差」,本条红。
+   */
+  it('道童的羁绊差额带主语,不与层数混成一把尺', () => {
+    const view = src('../views/ApprenticeView.vue')
+    expect(view, '羁绊差额该写全「羁绊还差」').toContain('羁绊还差 ${a.mark.toNextBond} 趟')
+    expect(view, '已至真传也该带主语').toContain('羁绊已至真传')
+    // 层数与羁绊是两套数,各自的说法都要在
+    expect(view, '层数刻度该仍在').toContain('a.mark.level.have')
+    expect(view, '层数上限说明该仍在').toContain('APPRENTICE_MAX_LEVEL')
+  })
+
+  /**
+   * 洞府 0 级时顶部那行原写「洞府 1 级 · 离线可攒 12 时」。
+   * 这一行只在 mansionLv === 0 时显示,读者会当成现状陈述,
+   * 而下方建筑卡又写着「未启用」—— 同屏两句互相顶。
+   * 它报的其实是起造后的下一档,故须带「起造后」。
+   *
+   * 故障注入:把「起造后」去掉,本条红。
+   */
+  it('洞府未启用时那行报的是起造后的下一档,不是现状', () => {
+    const view = src('../views/DongfuView.vue')
+    expect(view, '该写「起造后」').toContain('起造后:洞府 1 级')
+    // 这一行只在未启用时出现,判据钉住那个条件
+    expect(view, '该只在 mansionLv === 0 时显示').toContain('v-if="mansionLv === 0"')
+    // 时数仍取常数,不手抄
+    expect(view, '时数该取 OFFLINE_CAP_HOURS').toContain('OFFLINE_CAP_HOURS[1]')
+  })
+
+  /**
+   * 洞府的离线时长:数值面板写「N 时」,而 buildings.ts 的效果文案写「N 小时」。
+   * 「时」会被读成「时辰」(一个时辰 = 2 小时,见 data/timeUnits 的口径),
+   * 两处指着同一个数却用两个单位,读者得先猜它们是不是同一件事。
+   *
+   * 数值面板统一现代单位(小时),古语时制留给丹药/剧情那类内容文案。
+   * 故障注入:把「小时」改回「时」,本条红。
+   */
+  it('洞府的离线时长用「小时」,与建筑效果文案同一个单位', () => {
+    const view = src('../views/DongfuView.vue')
+    const data = src('../data/buildings.ts')
+    // 建筑效果文案的基准单位
+    expect(data, '建筑效果文案该仍写「小时」').toContain('离线收益上限 ${OFFLINE_CAP_HOURS')
+    expect(data, '建筑效果文案该仍带「小时」').toContain('小时')
+    // 视图三处都跟同一单位
+    const bare = view.match(/\$\{[^}]*\}\s*时(?![辰长])(?!间)/g) ?? []
+    expect(bare, `这些地方仍写裸「时」:${bare.join('、')}`).toEqual([])
+    expect(view, '摘要行该写「小时」').toMatch(/\}\}\s*小时/)
+    expect(view, '段条 title 该写「小时」').toContain('离线可攒 ${hr} 小时')
+    expect(view, '起造后那行该写「小时」').toContain('离线可攒 ${OFFLINE_CAP_HOURS[1]} 小时')
+  })
+
+  /**
+   * 装备详情里几处花费的写法:
+   *   · 「灵石」与数字之间要留一个空格(全站规约,见 utils/format.formatYears 的注)
+   *   · 灵石那个数不能裸着 —— 同屏的「强化」「连升」都写全了单位
+   *   · 同一个弹窗里「器灵尘」不许一处全称一处简称
+   *
+   * 故障注入:去掉「灵石 」前缀、或把「灵石」与数字黏在一起,本条红。
+   */
+  it('装备花费的单位写全,且与数字之间留空格', () => {
+    const files = [
+      '../components/equipment/EquipReforgeFooter.vue',
+      '../components/equipment/AutoReforgePanel.vue'
+    ]
+    for (const f of files) {
+      const text = src(f)
+      // 黏在一起的写法
+      expect(text, `${f}:「灵石」与数字之间缺空格`).not.toMatch(/灵石\{\{/)
+      // 裸数后直接接「· 尘」或「尘×」:说明灵石那一项没写单位
+      const bare = text.match(/(?<!灵石 )\{\{\s*formatGN\([^)]*\)\s*\}\}\s*·\s*(?:器灵)?尘×/g) ?? []
+      expect(bare, `${f}:灵石那个数裸着没单位`).toEqual([])
+    }
+    // 同一弹窗里的尘统一用全称
+    const reforge = src('../components/equipment/EquipReforgeFooter.vue')
+    const auto = src('../components/equipment/AutoReforgePanel.vue')
+    for (const [name, s] of [['EquipReforgeFooter', reforge], ['AutoReforgePanel', auto]] as const) {
+      const short = s.match(/[^器灵]尘×\{\{/g) ?? []
+      expect(short, `${name} 里还有简称「尘×」与「器灵尘×」并存`).toEqual([])
+    }
+  })
+
   it('器魂与道童付不起时置灰并写出实际差额', () => {
     const souls = src('../views/SoulsView.vue')
     expect(souls, '凝炼入口读同一份道源缺口').toContain('daoSourceShortfall(SOUL_REFINE_COST, endgame.daoSource)')
@@ -1153,8 +1450,8 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
   /** 故障注入:doCondense 开窗时调 markFruitTutorialSeen(),本用例红 */
   it('凝道果按未见标志开说明,开窗不置已见 —— 开窗即置,说明显示中刷新或按返回就永久丢失', () => {
     const view = src('../components/celestial/FurnaceDialog.vue')
-    const body = /function doCondense\(\)[^{]*\{([\s\S]*?)\n\}/.exec(view)?.[1] ?? ''
-    expect(body, '没读到 doCondense —— 判据会假绿').toContain('condenseDaoFruit()')
+    const body = /function doCondense\([^)]*\)[^{]*\{([\s\S]*?)\n\}/.exec(view)?.[1] ?? ''
+    expect(body, '没读到 doCondense —— 判据会假绿').toMatch(/condenseDaoFruit\([^)]*\)/)
     expect(body, '开窗前须问 shouldShowFruitTutorial(),否则每次凝果都弹').toContain('shouldShowFruitTutorial()')
     expect(body, '已见只在关掉说明时置').not.toMatch(/markFruitTutorialSeen|dismissFruitTutorial|daoFruitTutorialSeen/)
   })
@@ -1177,7 +1474,7 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(close, '没读到道果说明的 @close —— 判据会假绿').not.toBe('')
     expect(modal, '「知道了」与 @close 同一个关闭').toMatch(new RegExp(`@click="${close}\\(\\)"[^>]*>\\s*知道了`))
     const fnBody = (name: string): string =>
-      new RegExp(`function ${name}\\(\\)[^{]*\\{([\\s\\S]*?)\\n\\}`).exec(view)?.[1] ?? ''
+      new RegExp(`function ${name}\\([^)]*\\)[^{]*\\{([\\s\\S]*?)\\n\\}`).exec(view)?.[1] ?? ''
     const closeBody = fnBody(close)
     // dismissFruitTutorial:保护期内不作数,作数才置已见(resourceGuidance.spec 验行为)
     const openedAt = /dismissFruitTutorial\((\w+)/.exec(closeBody)?.[1] ?? ''

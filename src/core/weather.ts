@@ -43,11 +43,18 @@ export interface WeatherDef {
   mods: StatMods
   /** 渡劫难度倍率(>1 更险) */
   tribulationMult: number
+  /**
+   * 天时图标。此前十四种天时共用首页那枚固定的 sparkles ——
+   * 名字与效果都不同,图形却一样,「今天是哪种天时」只能逐字读。
+   * 取 ui/icons 里语义最贴的一枚(雨/日/月/雷/风…),不另造图形。
+   */
+  icon: string
 }
 
 export const WEATHERS: WeatherDef[] = [
   {
     id: 'lingyu',
+    icon: 'droplets',
     name: '灵雨',
     desc: '灵雨润泽,灵气恢复与修炼皆有裨益。',
     mods: { qiRegen: 0.2, cultivationSpeed: 0.1 },
@@ -55,6 +62,7 @@ export const WEATHERS: WeatherDef[] = [
   },
   {
     id: 'chiyang',
+    icon: 'sun',
     name: '赤阳',
     desc: '赤阳高悬,出手更烈。',
     mods: { attackPct: 0.05, damageBonus: 0.05 },
@@ -62,6 +70,7 @@ export const WEATHERS: WeatherDef[] = [
   },
   {
     id: 'yueshi',
+    icon: 'moon',
     name: '月蚀',
     desc: '月蚀之夜,气运更盛,法器更易现世。',
     mods: { luck: 0.05, dropRate: 0.05 },
@@ -69,6 +78,7 @@ export const WEATHERS: WeatherDef[] = [
   },
   {
     id: 'leiming',
+    icon: 'zap',
     name: '雷鸣',
     desc: '雷鸣阵阵,锋芒更利,渡劫却更险。',
     mods: { attackPct: 0.05, tribulationResist: -0.05 },
@@ -76,6 +86,7 @@ export const WEATHERS: WeatherDef[] = [
   },
   {
     id: 'qinghe',
+    icon: 'wind',
     name: '清和',
     desc: '风和日丽。',
     mods: {},
@@ -88,6 +99,7 @@ export const WORLD_WEATHERS: Record<Exclude<WorldId, 'mortal'>, WeatherDef[]> = 
   immortal: [
     {
       id: 'xianyu',
+      icon: 'umbrella',
       name: '仙雨',
       desc: '仙灵之气化雨而落,吐纳之间灵气自生。',
       mods: { qiRegen: 0.25, cultivationSpeed: 0.12 },
@@ -95,6 +107,7 @@ export const WORLD_WEATHERS: Record<Exclude<WorldId, 'mortal'>, WeatherDef[]> = 
     },
     {
       id: 'ziqi',
+      icon: 'star',
       name: '紫气东来',
       desc: '紫气自东而来,气运更盛,法器更易现世。',
       mods: { luck: 0.08, dropRate: 0.08 },
@@ -102,6 +115,7 @@ export const WORLD_WEATHERS: Record<Exclude<WorldId, 'mortal'>, WeatherDef[]> = 
     },
     {
       id: 'xianjie',
+      icon: 'swords',
       name: '仙劫日',
       desc: '天门震动,仙劫将至。渡劫更险,锋芒却更利。',
       mods: { attackPct: 0.08, tribulationResist: -0.08 },
@@ -111,6 +125,7 @@ export const WORLD_WEATHERS: Record<Exclude<WorldId, 'mortal'>, WeatherDef[]> = 
   god: [
     {
       id: 'shenhui',
+      icon: 'flame',
       name: '神辉',
       desc: '神光普照,出手之间自有威势。',
       mods: { attackPct: 0.08, damageBonus: 0.08 },
@@ -118,6 +133,7 @@ export const WORLD_WEATHERS: Record<Exclude<WorldId, 'mortal'>, WeatherDef[]> = 
     },
     {
       id: 'faze',
+      icon: 'waves',
       name: '法则潮',
       desc: '法则如潮涌动,周身受其护持。',
       mods: { defensePct: 0.08, damageReduction: 0.06 },
@@ -125,6 +141,7 @@ export const WORLD_WEATHERS: Record<Exclude<WorldId, 'mortal'>, WeatherDef[]> = 
     },
     {
       id: 'shenwei',
+      icon: 'shield',
       name: '神威日',
       desc: '众神之威压下,神劫更烈,神躯亦更固。',
       mods: { maxHpPct: 0.1, tribulationResist: -0.1 },
@@ -134,6 +151,7 @@ export const WORLD_WEATHERS: Record<Exclude<WorldId, 'mortal'>, WeatherDef[]> = 
   chaos: [
     {
       id: 'hundunchao',
+      icon: 'orbit',
       name: '混沌潮',
       desc: '混沌之气起落如潮,吞纳之间修为奔涌。',
       mods: { cultivationSpeed: 0.2, qiRegen: 0.3 },
@@ -141,6 +159,7 @@ export const WORLD_WEATHERS: Record<Exclude<WorldId, 'mortal'>, WeatherDef[]> = 
     },
     {
       id: 'benyuan',
+      icon: 'mountain',
       name: '本源涌动',
       desc: '本源翻涌,举手投足皆合大道。',
       mods: { attackPct: 0.1, damageBonus: 0.08 },
@@ -148,6 +167,7 @@ export const WORLD_WEATHERS: Record<Exclude<WorldId, 'mortal'>, WeatherDef[]> = 
     },
     {
       id: 'daoyin',
+      icon: 'music',
       name: '道音',
       desc: '虚空之中道音不绝,福至心灵。',
       mods: { luck: 0.1, dropRate: 0.1, breakthroughRate: 0.03 },
@@ -157,6 +177,7 @@ export const WORLD_WEATHERS: Record<Exclude<WorldId, 'mortal'>, WeatherDef[]> = 
   primordial: [
     {
       id: 'yiyuan',
+      icon: 'refresh',
       name: '一元复始',
       desc: '一气周流,复归其始。吐纳之间修为自增。',
       mods: { cultivationSpeed: 0.25, qiRegen: 0.32 },
@@ -164,6 +185,7 @@ export const WORLD_WEATHERS: Record<Exclude<WorldId, 'mortal'>, WeatherDef[]> = 
     },
     {
       id: 'taixu',
+      icon: 'lamp',
       name: '太虚清光',
       desc: '太虚无云,清光遍照,万法皆明。',
       mods: { attackPct: 0.12, damageBonus: 0.1 },
@@ -171,6 +193,7 @@ export const WORLD_WEATHERS: Record<Exclude<WorldId, 'mortal'>, WeatherDef[]> = 
     },
     {
       id: 'wuji',
+      icon: 'disc',
       name: '无极之境',
       desc: '内外俱寂,唯余一线道心;渡劫更险,所得亦厚。',
       mods: { defensePct: 0.12, maxHpPct: 0.12, tribulationResist: -0.12 },
