@@ -118,7 +118,12 @@ class GameEngine {
       return
     }
     const dt = (now - this.lastTickAt) / 1000
-    if (dt <= 0) return
+    // 墙钟回拨/校时会让 now < lastTickAt:重锚到当下,否则 dt 恒为负、advance 永不再跑
+    // (修炼/灵气/寿元/历练一起冻结,直到墙钟自己追回旧锚点)。同 offline.ts 的重锚口径。
+    if (dt <= 0) {
+      this.lastTickAt = now
+      return
+    }
 
     // 这一段是「后台冻结」而非在线游玩:走离线结算时不能把这整段计入游戏日,
     // 否则切后台挂机会比正常游玩更快刷过每日配额(游戏日由 totalPlaySec 推),

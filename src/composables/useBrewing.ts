@@ -110,5 +110,6 @@ export function useBrewing() {
     craftPillBatch(id, rounds)
   }
 
-  return { resources, herbGrade, recipes, craftGuarantee, skillRows, studyLine, rateClass, pillFullId, runCraftFull }
+  // 时钟一并交出去:页面若另调一次 useNow() 会多开一个每秒 interval,同一份账读两个钟
+  return { resources, now, herbGrade, recipes, craftGuarantee, skillRows, studyLine, rateClass, pillFullId, runCraftFull }
 }

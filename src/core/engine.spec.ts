@@ -106,6 +106,17 @@ describe('引擎心跳 · start/stop/dt 路由直测', () => {
     expect(settle, 'dt=0 不应离线结算').not.toHaveBeenCalled()
   })
 
+  it('墙钟回拨:回拨期间不推进,但每拍都重锚,墙钟走回正常区间即刻恢复(1.66.1)', () => {
+    const { t0, gainExpSpy } = startStarted()
+    vi.setSystemTime(t0 - 5_000) // 校时/改钟,now 落后于上拍锚点
+    capturedTick!()
+    expect(gainExpSpy, '回拨那一拍的 dt 为负,不推进').not.toHaveBeenCalled()
+    // 关键:锚点没跟着退,下一拍仍是负 dt —— 旧实现会一直冻到墙钟追回 t0
+    vi.setSystemTime(t0 - 4_000)
+    capturedTick!()
+    expect(gainExpSpy, '重锚后 dt=1s,应恢复推进').toHaveBeenCalled()
+  })
+
   it('小 dt → 走 advance(在线推进:玩家修为增长)', () => {
     const { t0, gainExpSpy } = startStarted()
     vi.setSystemTime(t0 + TICK_MS) // TICK_MS 已是毫秒,远小于离线阈值

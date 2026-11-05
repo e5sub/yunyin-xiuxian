@@ -530,6 +530,16 @@ describe('历练 · 待决事件超时自动结算', () => {
     expect(s.nextBattleAt).toBeGreaterThan(beforeBattle)
   })
 
+  it('超时结清须真的按默认选项结算,不能只把待决指针清空(1.66.1)', async () => {
+    const now = Date.now()
+    forgeSession(now)
+    const adv = useAdventureStore()
+    adv.setPendingEvent('ft_sword_remnant', now - EVENT_AUTO_RESOLVE_SECONDS * 1000 - 1000)
+    tickExploration(now)
+    // 结算走异步签发,等一拍;默认选项「绕道而行」不发物,可观测的只有世界记忆
+    await vi.waitFor(() => expect(adv.eventMemories.ft_sword_remnant?.times, '事件应被结算一次').toBe(1))
+  })
+
   it('结清后再 tick:不重复结算(事件数不再 +1)', () => {
     const now = Date.now()
     forgeSession(now)

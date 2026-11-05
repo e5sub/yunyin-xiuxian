@@ -2,6 +2,7 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import { useGameStore } from '@/stores/game'
 import { useSettingsStore } from '@/stores/settings'
 import { useAuthStore } from '@/stores/auth'
+import { safeRedirect } from './redirect'
 
 export const router = createRouter({
   history: createWebHashHistory(),
@@ -39,12 +40,17 @@ router.beforeEach(to => {
   // 未登录一律先到登录页(网游版:进度存云端,不再有游客模式)
   const auth = useAuthStore()
   if (!auth.loggedIn) {
-    return to.name === 'login' ? true : { name: 'login' }
+    // 记下原目标:分享链接/书签往往是深链,登录后要能回到原处(只认站内路径,见 LoginView)
+    return to.name === 'login' ? true : { name: 'login', query: { redirect: to.fullPath } }
   }
   const game = useGameStore()
   if (game.started) {
-    // 已开局还停在 welcome/create/login 都是异常态:云端档应用后会 reload,URL 可能仍是登录页
-    if (to.name === 'welcome' || to.name === 'create' || to.name === 'login') return { name: 'home' }
+    // 已开局仍停在 welcome/create/login 是异常态(reload 后 URL 可能还在登录页);
+    // 若登录页带着 redirect 就按原目标走,别把深链丢了
+    if (to.name === 'welcome' || to.name === 'create' || to.name === 'login') {
+      const back = safeRedirect(to.query.redirect)
+      return back !== '' ? back : { name: 'home' }
+    }
     return true
   }
   const settings = useSettingsStore()

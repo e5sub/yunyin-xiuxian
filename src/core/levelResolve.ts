@@ -23,12 +23,15 @@
  */
 import { createPinia, setActivePinia } from 'pinia'
 import type { BuildingId, GNum } from '@/types'
-import { add, gnZero, toNum } from '@/utils/gnum'
+import { add, gn, gnZero, gt } from '@/utils/gnum'
+import { MAX_MAJOR } from '@/data/realms'
 import { gongfaDef, gongfaMaxLevel } from '@/data/gongfa'
 import { qualityDef } from '@/data/qualities'
 import { buildingDef } from '@/data/buildings'
 import { INSIGHT_DISCOUNT_CAP } from '@/data/veins'
 import { buildingCost, gongfaUpCost } from './formulas'
+// 采信余额的天花板沿用上传裁决那把尺(1.66.1):持有上限只有一份定义,不在这里另设常数
+import { holdCapOf } from './saveAuthority'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useCultivationStore } from '@/stores/cultivation'
@@ -322,7 +325,10 @@ export function resolveLevelOnStores(op: LevelOp): LevelResult {
 
 /* ---------------- 服务端入口:从存档分片无头结算 ---------------- */
 
-/** 客户端上报的余额;服务端取「云档值」与「上报值」的较大者,不多报就不采信 */
+/**
+ * 客户端上报的余额;服务端取「云档值」与「上报值」的较大者,但上报值先按本境界的持有上限截断。
+ * 允许高于云档是为了不误报「缺料」(本地刚拿到的东西还没上传),上限则拦住「填个天文数字当钱花」。
+ */
 export interface LevelClaims {
   wudao?: unknown
   page?: unknown
@@ -364,24 +370,38 @@ export function resolveLevelFromSlices(data: unknown, rawOp: unknown, claims: Le
 
     /*
      * 余额只采「不低于云档」的上报值(与炼器同规):
-     * 客户端本地往往比云档新,不采信就会误报「缺料」;多报也没有收益 ——
-     * 花多少由服务端算,上传时按 progress_spend 从资源增量里扣回去。
+     * 客户端本地往往比云档新,不采信就会误报「缺料」。
+     * 但采信必须有天花板(1.66.1):此前只验「是有限数」,改包填个天文数字就能拿不存在的
+     * 悟道点/残页/玄铁/灵石升级 —— 花费只记进 progress_spend,到下次上传才从资源增量里扣,
+     * 扣不满等于部分免费。天花板取上传裁决那把尺(core/saveAuthority 的持有上限):
+     * 正常玩家的余额本来就压在这条线以下,不误伤;「未来资源」最多预支一档持有上限。
+     * 只压上报值,不回压云档 —— 云档超限是上传裁决的活,这里再改一次会让两条链互相拆台。
      */
+    const player = usePlayerStore()
     const resources = useResourcesStore()
-    if (typeof claims.wudao === 'number' && Number.isFinite(claims.wudao) && claims.wudao > resources.wudao) {
-      resources.wudao = Math.max(0, Math.trunc(claims.wudao))
+    const major = Math.trunc(Math.min(Math.max(numOr(player.major, 0), 0), MAX_MAJOR))
+    /** 小资源(整数)的采信值:先截到本境界上限,再交给调用方与云档取大 */
+    const claimSmall = (raw: unknown, field: string): number | null => {
+      if (typeof raw !== 'number' || !Number.isFinite(raw)) return null
+      const cap = holdCapOf(major, field)
+      const claim = Math.max(0, Math.trunc(raw))
+      // cap 为 0 表示「模型给不出产出」:不设限(与上传裁决同一处理,不拿 0 把余额清零)
+      return cap > 0 ? Math.min(claim, Math.floor(cap)) : claim
     }
-    if (typeof claims.page === 'number' && Number.isFinite(claims.page) && claims.page > resources.page) {
-      resources.page = Math.max(0, Math.trunc(claims.page))
-    }
-    if (typeof claims.ore === 'number' && Number.isFinite(claims.ore) && claims.ore > resources.ore) {
-      resources.ore = Math.max(0, Math.trunc(claims.ore))
-    }
+    const wudaoClaim = claimSmall(claims.wudao, 'wudao')
+    if (wudaoClaim !== null && wudaoClaim > resources.wudao) resources.wudao = wudaoClaim
+    const pageClaim = claimSmall(claims.page, 'page')
+    if (pageClaim !== null && pageClaim > resources.page) resources.page = pageClaim
+    const oreClaim = claimSmall(claims.ore, 'ore')
+    if (oreClaim !== null && oreClaim > resources.ore) resources.ore = oreClaim
+    const stoneCeil = holdCapOf(major, 'stone')
     const stoneClaim = isPlainObject(claims.stone) ? claims.stone : null
     const claimM = stoneClaim !== null ? numOr(stoneClaim.m, Number.NaN) : Number.NaN
     const claimE = stoneClaim !== null ? numOr(stoneClaim.e, Number.NaN) : Number.NaN
-    if (Number.isFinite(claimM) && Number.isFinite(claimE) && toNum({ m: claimM, e: claimE }) > toNum(resources.spiritStone)) {
-      resources.spiritStone = { m: claimM, e: claimE }
+    if (Number.isFinite(claimM) && Number.isFinite(claimE)) {
+      const claim = { m: claimM, e: claimE }
+      const capped = stoneCeil > 0 && gt(claim, gn(stoneCeil)) ? gn(stoneCeil) : claim
+      if (gt(capped, resources.spiritStone)) resources.spiritStone = { ...capped }
     }
 
     return resolveLevelOnStores(op)

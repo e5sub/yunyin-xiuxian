@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs'
 import { createPinia, setActivePinia } from 'pinia'
 import { useGameStore } from '@/stores/game'
 import { useSettingsStore } from '@/stores/settings'
+import { safeRedirect } from './redirect'
 
 /** 与 router/index.ts 的 beforeEach 同一份判据(改那边要同步改这里) */
 function guard(toName: string): string {
@@ -98,9 +99,9 @@ describe('首启路由守卫 · 与源码同步', () => {
 
   it('已建号回主页、未建号回欢迎页这两句判据没被写反', () => {
     const src = readFileSync(new URL('./index.ts', import.meta.url), 'utf-8')
-    // 已建号分支:进入 welcome/create 时返回 home
+    // 已建号分支:进入 welcome/create(/login 带 redirect 时回原页,故上限留些余量)时返回 home
     expect(src, '已建号回主页的判据变了').toMatch(
-      /if \(game\.started\)[\s\S]{0,200}to\.name === 'welcome'[\s\S]{0,120}name: 'home'/
+      /if \(game\.started\)[\s\S]{0,300}to\.name === 'welcome'[\s\S]{0,200}name: 'home'/
     )
     // 兜底:未匹配到任何放行条件时回 welcome
     const tail = src.slice(src.lastIndexOf('return {'))
@@ -185,6 +186,24 @@ describe('启动顺序 · 修形先于首次守卫', () => {
     expect(usePlugin, '找不到 pinia.use(piniaPluginPersistedstate)').toBeGreaterThan(-1)
     expect(usePinia).toBeGreaterThan(-1)
     expect(usePlugin, '插件须先于 app.use(pinia)').toBeLessThan(usePinia)
+  })
+})
+
+describe('登录回跳目标白名单(深链登录后回到原页)', () => {
+  it('放行站内绝对路径(含查询串)', () => {
+    expect(safeRedirect('/boss')).toBe('/boss')
+    expect(safeRedirect('/dungeon?room=123456')).toBe('/dungeon?room=123456')
+    expect(safeRedirect('/world?x=1#frag')).toBe('/world?x=1#frag')
+  })
+
+  it('挡掉站外、协议相对、自指与非法类型', () => {
+    expect(safeRedirect('https://evil.com'), '外链不得回跳').toBe('')
+    expect(safeRedirect('//evil.com'), '协议相对写法会被浏览器当外站').toBe('')
+    expect(safeRedirect('/login'), '回跳自己会成环').toBe('')
+    expect(safeRedirect('/login?redirect=/boss')).toBe('')
+    expect(safeRedirect('boss'), '相对路径不作数').toBe('')
+    expect(safeRedirect(undefined)).toBe('')
+    expect(safeRedirect(['/boss']), '数组不认').toBe('')
   })
 })
 })

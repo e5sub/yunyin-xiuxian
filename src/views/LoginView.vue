@@ -155,8 +155,9 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, nextTick, onMounted, ref, watch } from 'vue'
-  import { useRouter } from 'vue-router'
+  import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+  import { useRoute, useRouter } from 'vue-router'
+  import { safeRedirect } from '@/router/redirect'
   import { useAuthStore } from '@/stores/auth'
   import { useGameStore } from '@/stores/game'
   import { useUiStore } from '@/stores/ui'
@@ -174,6 +175,7 @@
   import type { TurnstileFail } from '@/utils/turnstile'
 
   const router = useRouter()
+  const route = useRoute()
   const auth = useAuthStore()
   const game = useGameStore()
   const ui = useUiStore()
@@ -306,6 +308,18 @@
     if (!tsOn.value) void loadAuthConfig()
   })
 
+  /**
+   * 卸载清理:冷却 interval 与重置成功的收尾 timeout 都会继续改已销毁组件的 ref。
+   * 登录成功即跳走,这两种定时器最容易落在「组件已卸载」之后。
+   */
+  const cooldownTimers: ReturnType<typeof setInterval>[] = []
+  let forgotCloseTimer: ReturnType<typeof setTimeout> | null = null
+  onUnmounted(() => {
+    cooldownTimers.forEach(iv => clearInterval(iv))
+    cooldownTimers.length = 0
+    if (forgotCloseTimer !== null) clearTimeout(forgotCloseTimer)
+  })
+
   /** 冷却只从「发送成功」起算:失败还锁 60 秒会让填错邮箱的人干等 */
   function startCodeCooldown(target: { value: number }): void {
     target.value = 60
@@ -313,6 +327,7 @@
       target.value -= 1
       if (target.value <= 0) clearInterval(iv)
     }, 1000)
+    cooldownTimers.push(iv)
   }
 
   function sendRegisterCode(): void {
@@ -399,7 +414,7 @@
       fpEmail.value = ''
       fpCode.value = ''
       fpPassword.value = ''
-      setTimeout(() => {
+      forgotCloseTimer = setTimeout(() => {
         forgotOpen.value = false
         mode.value = 'login'
         forgotMsg.value = ''
@@ -471,6 +486,8 @@
     // 否则整局都不会上传(换设备即丢档)
     startCloudSync()
     busy.value = false
-    void router.push(game.started ? '/' : '/welcome')
+    // 深链回跳:守卫把原目标放在 redirect 里(白名单化见 router.safeRedirect)
+    const back = safeRedirect(route.query.redirect)
+    void router.push(!game.started ? '/welcome' : back !== '' ? back : '/')
   }
 </script>

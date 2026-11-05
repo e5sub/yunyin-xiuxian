@@ -22,11 +22,15 @@
  */
 import { createPinia, setActivePinia } from 'pinia'
 import type { EquipmentInstance, GNum } from '@/types'
-import { add, gnZero, toNum } from '@/utils/gnum'
+import { add, gn, gnZero, gt } from '@/utils/gnum'
+import { MAX_MAJOR } from '@/data/realms'
+import { SUB_LEVELS } from '@/data/constants'
 import { affixDef } from '@/data/affixes'
 import { upgradeOnce, upgradeShort, equipUpgradeQuote, equipSweepPlan, type UpgradeOutcome } from './forge'
 import { autoReforge, autoReforgeBudget, reforgeOnce, type AutoReforgeOutcome, type ReforgeTarget } from './reforge'
 import { transferOnce, type TransferRequest } from './affixTransfer'
+// 采信余额的天花板沿用上传裁决那把尺(1.66.1):持有上限只有一份定义,不在这里另设常数
+import { expHoldCap, holdCapOf } from './saveAuthority'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useInventoryStore } from '@/stores/inventory'
@@ -354,7 +358,10 @@ export function resolveForgeOnStores(op: ForgeOp): ForgeResult {
 
 /* ---------------- 服务端入口:从存档分片无头结算 ---------------- */
 
-/** 客户端上报的余额;服务端取「云档值」与「上报值」的较大者,不多报就不采信 */
+/**
+ * 客户端上报的余额;服务端取「云档值」与「上报值」的较大者,但上报值先按本境界的持有上限截断。
+ * 允许高于云档是为了不误报「缺料」(本地刚拾到的东西还没上传),上限则拦住「填个天文数字当钱花」。
+ */
 export interface ForgeClaims {
   exp?: unknown
   dust?: unknown
@@ -396,18 +403,36 @@ export function resolveForgeFromSlices(data: unknown, rawOp: unknown, claims: Fo
 
     /*
      * 余额只采「不低于云档」的上报值:
-     * 客户端本地往往比云档新(刚拾到的器灵尘还没上传),不采信就会误报「缺料」;
-     * 多报也没有收益 —— 花了多少由服务端算,上传时按 pendingSpend 从资源增量里扣回去。
+     * 客户端本地往往比云档新(刚拾到的器灵尘还没上传),不采信就会误报「缺料」。
+     * 但采信必须有天花板(1.66.1):此前只验「是有限数」,改包填个 1e30 就能拿根本不存在的
+     * 资源炼器 —— 花费只记进 pendingSpend,到下次上传才从资源增量里扣,扣不满等于部分免费。
+     * 天花板取上传裁决那把尺(core/saveAuthority 的持有上限):正常玩家的余额本来就压在这条线以下,
+     * 不误伤;而「未来资源」最多也就预支一档持有上限,与存档裁决同口径。
+     * 只压上报值,不回压云档 —— 云档超限是上传裁决的活,这里再改一次会让两条链互相拆台。
      */
     const player = usePlayerStore()
     const resources = useResourcesStore()
+    const major = Math.trunc(Math.min(Math.max(numOr(player.major, 0), 0), MAX_MAJOR))
+    const sub = Math.trunc(Math.min(Math.max(numOr(player.sub, 0), 0), SUB_LEVELS - 1))
+    const expCeil = expHoldCap(major, sub)
     const claimExp = gnumOf(claims.exp)
-    if (claimExp !== null && toNum(claimExp) > toNum(player.exp)) player.exp = claimExp
-    if (typeof claims.dust === 'number' && Number.isFinite(claims.dust) && claims.dust > resources.dust) {
-      resources.dust = Math.max(0, Math.trunc(claims.dust))
+    if (claimExp !== null) {
+      const claim = gt(claimExp, expCeil) ? expCeil : claimExp
+      if (gt(claim, player.exp)) player.exp = { ...claim }
     }
+    const dustCeil = holdCapOf(major, 'dust')
+    if (typeof claims.dust === 'number' && Number.isFinite(claims.dust)) {
+      const raw = Math.max(0, Math.trunc(claims.dust))
+      // 上限为 0 表示「模型给不出产出」:此时不设限(与上传裁决同一处理,不拿 0 把余额清零)
+      const claim = dustCeil > 0 ? Math.min(raw, Math.floor(dustCeil)) : raw
+      if (claim > resources.dust) resources.dust = claim
+    }
+    const stoneCeil = holdCapOf(major, 'stone')
     const claimStone = gnumOf(claims.stone)
-    if (claimStone !== null && toNum(claimStone) > toNum(resources.spiritStone)) resources.spiritStone = claimStone
+    if (claimStone !== null) {
+      const claim = stoneCeil > 0 && gt(claimStone, gn(stoneCeil)) ? gn(stoneCeil) : claimStone
+      if (gt(claim, resources.spiritStone)) resources.spiritStone = { ...claim }
+    }
 
     return resolveForgeOnStores(op)
   } catch {

@@ -101,7 +101,8 @@ describe('界面分层 · 浮层只有一个出处', () => {
       ':disabled="currentPillOverflow === \'full\'"'
     )
     expect(inv!.src, '丹药顶满拦因要就地摊').toContain("text: '药力已顶满'")
-    expect(inv!.src, '顶满判据要随游戏时钟刷新').toContain('const now = useNow()')
+    // 只认「游戏钟」这一件事:自己 useNow 或由 useBrewing 交出同一个钟都算(后者省掉第二个 interval)
+    expect(inv!.src, '顶满判据要随游戏时钟刷新').toMatch(/const now = useNow\(\)|now \} = useBrewing\(\)/)
     expect(inv!.src, '顶满判据不得读暂停仍走的墙钟').not.toContain('useWallNow')
     expect(inv!.src, '顶满判据读 now.value,不读一次性 Date.now()').toContain(
       'buffOverflowOf(cultivation.buffs, def.buffId, now.value)'

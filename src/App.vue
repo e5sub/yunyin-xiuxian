@@ -3,7 +3,7 @@
   <div
     class="app-shell mx-auto flex max-w-107.5 flex-col overflow-hidden bg-paper shadow-[0_0_60px_rgba(0,0,0,0.45)] relative paper-grain"
   >
-    <TopStatusBar v-if="game.started && route.name !== 'create'" />
+    <TopStatusBar v-if="auth.loggedIn && game.started && route.name !== 'create'" />
 
     <main ref="scrollHost" tabindex="-1" class="relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden outline-none">
       <RouterView v-slot="{ Component }">
@@ -13,7 +13,7 @@
       </RouterView>
     </main>
 
-    <BottomNavigation v-if="game.started && route.name !== 'create'" />
+    <BottomNavigation v-if="auth.loggedIn && game.started && route.name !== 'create'" />
 
     <!-- 全局浮层 -->
     <ToastHost />
@@ -59,6 +59,9 @@
   import CaveEventModal from '@/components/dongfu/CaveEventModal.vue'
 
   const game = useGameStore()
+  // 登出不重置 game.started(内存态仍属本账号,落盘不串),顶栏/底栏须另看登录态,
+  // 否则退出后登录页仍顶着上一位道友的道号与资源,底栏点了还会被守卫弹回
+  const auth = useAuthStore()
   const ui = useUiStore()
   const settings = useSettingsStore()
   const route = useRoute()
@@ -93,7 +96,6 @@
 
   /** 网游会话:已登录则连 ws + 拉云端档 + 启动定时推送 */
   async function bootstrapCloud(): Promise<void> {
-    const auth = useAuthStore()
     if (!auth.loggedIn) return
     connectCloudWs()
     // VIP 状态随会话刷新(GM 发放/续期后,玩家刷新页面即生效)
@@ -143,7 +145,7 @@
     }
     stopCloudSync()
     disconnectCloudWs()
-    useAuthStore().logout()
+    auth.logout()
     ui.toast(
       reason === 'kicked'
         ? '账号已在其他设备登录,本机已下线'

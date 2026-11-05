@@ -123,8 +123,21 @@ describe('sanitize:重复条目不再把计数撑破', () => {
       daily: { date: '2026-11-04', base: { kills: 5e9 }, done: ['d_kill', 'd_ghost', 'd_ghost'] }
     } as never)
     quests.sanitize()
-    expect(quests.daily.base.kills).toBe(1000)
+    // 上界与计数同尺(1e7):基线是计数快照,若钳得比计数小,「今日增量」会凭空变大
+    expect(quests.daily.base.kills).toBe(10_000_000)
     expect(quests.daily.done).toEqual(['d_kill'])
+  })
+
+  it('基线是计数器快照:计数过了 1000 再加载,日课不会凭空全成(1.66.1)', () => {
+    const quests = useQuestsStore()
+    // 昨日翻日时 kills 已累计 5000,基线也就写成 5000;重新加载触发 sanitize
+    quests.$patch({
+      counters: { kills: 5000 },
+      daily: { date: '2026-11-04', base: { kills: 5000 }, done: [] }
+    } as never)
+    quests.sanitize()
+    expect(quests.daily.base.kills, '基线不得被钳到 1000').toBe(5000)
+    expect(quests.dailyDelta('kills'), '今天一场没打,增量应为 0').toBe(0)
   })
 
   it('图鉴只留认得的 def id,收录时刻表跟着集合瘦身(1.59.1)', () => {

@@ -11,7 +11,12 @@ function normalize(m: number, e: number): GNum {
   const sign = m < 0 ? -1 : 1
   const abs = Math.abs(m)
   const shift = Math.floor(LOG10(abs))
-  const nm = abs / Math.pow(10, shift)
+  // 次正规数(shift ≤ -324)时 10^shift 下溢为 0,abs/0 会得到 Infinity,破坏「m ∈ [1,10)」。
+  // 这种量级远低于任何可显示/可判定的刻度,直接按 0 收口,别让 Infinity 流进 mul/add/formatGN。
+  const scale = Math.pow(10, shift)
+  if (!(scale > 0)) return { m: 0, e: 0 }
+  const nm = abs / scale
+  if (!Number.isFinite(nm)) return { m: 0, e: 0 }
   // 处理浮点边界(如 9.9999999 → 10)
   if (nm >= 10) return { m: sign * (nm / 10), e: e + shift + 1 }
   return { m: sign * nm, e: e + shift }

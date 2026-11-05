@@ -310,7 +310,6 @@
   import { upgradeShortToast } from '@/ui/forgeText'
   import { useLoreStore } from '@/stores/lore'
   import { useBrewing } from '@/composables/useBrewing'
-  import { useNow } from '@/composables/useNow'
 
   import { formatGN, formatNum } from '@/utils/format'
   import { tint } from '@/utils/colorToken'
@@ -329,14 +328,14 @@
 
   const inventory = useInventoryStore()
   const resources = useResourcesStore()
-  // 与开炉弹窗(BrewingDialog)同读一份丹方账
-  const { herbGrade, recipes } = useBrewing()
+  // 与开炉弹窗(BrewingDialog)同读一份丹方账;游戏时钟也从这里取,
+  // 「顶满」判据读游戏钟(暂停时药效冻住、恢复时顺延 endsAt),不读墙钟。
+  // 别再调一次 useNow():那是第二个每秒 interval,整页依赖会被双份唤醒
+  const { herbGrade, recipes, now } = useBrewing()
   const ui = useUiStore()
   const settings = useSettingsStore()
   const lore = useLoreStore()
   const cultivation = useCultivationStore()
-  // 「顶满」判据读游戏时钟(暂停时药效冻住、恢复时顺延 endsAt),不读墙钟
-  const now = useNow()
 
   type Tab = 'equip' | 'pill' | 'material' | 'artifact'
   const tab = ref<Tab>('equip')

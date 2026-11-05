@@ -9,6 +9,14 @@ describe('GameNumber 大数运算', () => {
     expect(gn(0.5).e).toBe(-1)
   })
 
+  it('次正规数不产出 Infinity 尾数(10^shift 下溢时按 0 收口)', () => {
+    // 5e-324 是 number 能表示的最小正值;10^-324 下溢为 0,abs/0 会得到 Infinity
+    const tiny = gn(Number.MIN_VALUE)
+    expect(Number.isFinite(tiny.m), 'm 必须是有限数').toBe(true)
+    expect(tiny).toEqual({ m: 0, e: 0 })
+    expect(Number.isFinite(gn(1e-323).m)).toBe(true)
+  })
+
   it('损坏数据回退为零', () => {
     expect(gn({ m: Number.NaN, e: 2 })).toEqual({ m: 0, e: 0 })
     // 指数也须是有限数

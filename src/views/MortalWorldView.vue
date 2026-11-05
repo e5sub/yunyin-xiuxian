@@ -127,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-  import { computed } from 'vue'
+  import { computed, onMounted } from 'vue'
   import { useRouter } from 'vue-router'
   import SectionTitle from '@/components/common/SectionTitle.vue'
   import GameIcon from '@/components/common/GameIcon.vue'
@@ -139,11 +139,19 @@
   const adventure = useAdventureStore()
   const router = useRouter()
 
-  /** 本世之界;首次进入本页时凝成 */
+  /** 本世之界;首次进入本页时凝成(在 onMounted 里凝,computed 只读不写) */
   const view = computed(() => {
-    const w = adventure.mortalWorld ?? ensureMortalWorld()
+    const w = adventure.mortalWorld
     if (!w) return null
     return worldView(w, id => enemyDef(id)?.name ?? id)
+  })
+
+  /*
+   * 凝界是写操作(生成 + 写存档),不能在 computed 里做:渲染期副作用会随依赖求值重复触发,
+   * 也会写进自己刚读的依赖。挂载后再凝,首次渲染走 v-if 的空态。
+   */
+  onMounted(() => {
+    ensureMortalWorld()
   })
 
   const focusNode = computed(() => view.value?.places.find(p => unlocked(p) && !cleared(p.nodeId)) ?? null)

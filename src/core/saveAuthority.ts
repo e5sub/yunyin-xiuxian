@@ -168,10 +168,21 @@ function incomeOf(major: number): Record<string, number> {
   return flows
 }
 
-/** 该境界「满产出 HOLD_HOURS 小时」的量;没有模型返回 0(调用方据此跳过) */
-function holdCapOf(major: number, resource: string): number {
+/**
+ * 该境界「满产出 HOLD_HOURS 小时」的量;没有模型返回 0(调用方据此跳过)。
+ * 导出给炼器采信余额用(1.66.1):同一把尺,不出现第二套持有上限口径。
+ */
+export function holdCapOf(major: number, resource: string): number {
   const perHour = incomeOf(major)[resource] ?? 0
   return perHour > 0 ? perHour * HOLD_HOURS : 0
+}
+
+/**
+ * 修为持有上限:本境界突破需求的 EXP_HOARD_LIMIT 倍。
+ * 与资源持有上限并列导出 —— 炼器采信上报修为时用同一把尺(1.66.1)。
+ */
+export function expHoldCap(major: number, sub: number): GNum {
+  return mulN(expRequirement(major, sub), EXP_HOARD_LIMIT)
 }
 
 /** 下一层;已到顶返回 null */
@@ -297,7 +308,7 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
     }
 
     // ---------- 修为:上限跟着「裁决后的境界」走 ----------
-    const expCeil = mulN(expRequirement(nextMajor, nextSub), EXP_HOARD_LIMIT)
+    const expCeil = expHoldCap(nextMajor, nextSub)
     const curExp = gnumOf(nextPlayer.exp)
     if (curExp !== null && gt(curExp, expCeil)) {
       corrections.push({ path: 'player.exp', before: nextPlayer.exp, after: expCeil })

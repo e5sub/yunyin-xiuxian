@@ -22,8 +22,12 @@ export type CollectionCategory = 'equip' | 'gongfa' | 'pill' | 'artifact' | 'pet
  * 与其「无界」,不如给个宽到不影响任何判定的硬顶:钳掉的只可能是注入值。
  */
 const COUNTER_CAP = 10_000_000
-/** 每日基线只服务于「今日增量 = 今日计数 - 基线」的小减法,门槛 ≤ 15,给 1000 已是百倍冗余 */
-const DAILY_BASE_CAP = 1000
+/**
+ * 每日基线的上界必须与计数同尺:基线是 `rolloverDaily` 时的计数快照,计数能到 1e7,
+ * 基线若只给 1000,跨过 1000 的档第二次加载就会被 sanitize 钳低,
+ * 「今日增量」凭空多出几千,日课一 tick 全成(1.66.1)。
+ */
+const DAILY_BASE_CAP = COUNTER_CAP
 
 export const useQuestsStore = defineStore(
   'quests',

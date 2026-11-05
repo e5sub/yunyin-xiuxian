@@ -115,4 +115,29 @@ describe('玩家反馈: 镇压后在线产出(真实场景)', () => {
       vi.useRealTimers()
     }
   })
+
+  /*
+   * 重入闸(`settlingSuppress`)挡下的那一段时长必须攒到下一次结算:
+   * 引擎每秒一 tick,签发一旦慢于 1 秒就连挡多拍,早先的实现直接 return,每挡一次丢一秒。
+   */
+  it('重入闸挡下的时长并入下一段,总收益与一次结清相同(1.66.1)', async () => {
+    const expDelta = async (chunks: number[], blockedChunks: number[]): Promise<number> => {
+      setActivePinia(createPinia())
+      const player = usePlayerStore()
+      player.suppressedRegions = ['qingyun']
+      const before = player.exp.m * Math.pow(10, player.exp.e)
+      const first = settleSuppressedRegions(chunks[0]!)
+      // 在途期间进来的段:应被闸掉并记账,而不是消失
+      for (const sec of blockedChunks) await settleSuppressedRegions(sec)
+      await first
+      // 空段把攒下的时长一并结掉
+      if (blockedChunks.length > 0) await settleSuppressedRegions(0)
+      return player.exp.m * Math.pow(10, player.exp.e) - before
+    }
+
+    const whole = await expDelta([11], [])
+    const split = await expDelta([10], [1])
+    expect(whole, '镇压本该有修为产出,否则这条判据没有意义').toBeGreaterThan(0)
+    expect(split).toBeCloseTo(whole, 6)
+  })
 })

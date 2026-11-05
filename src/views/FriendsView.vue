@@ -286,9 +286,6 @@
     }
   }
 
-  // 进入页面默认拉聊天历史
-  void loadChat()
-
   onUnmounted(unsubWs)
 
 </script>

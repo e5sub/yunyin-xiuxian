@@ -12,6 +12,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import type { EquipmentInstance } from '@/types'
 import { toNum } from '@/utils/gnum'
 import { parseForgeOp, resolveForgeFromSlices, FORGE_TIMES_MAX } from './forgeResolve'
+import { expHoldCap, holdCapOf } from './saveAuthority'
 
 /** 天品武器:词条池最宽,重铸与转移都能跑 */
 const W = 'w_hanfeng'
@@ -163,6 +164,37 @@ describe('炼器裁决 · 强化', () => {
       { dust: 1_000_000, stone: { m: 1, e: 9 }, exp: { m: 1, e: 9 } }
     )!
     expect(rich.ok).toBe(true)
+  })
+
+  it('上报余额有天花板:填天数字当钱花,最多只能预支本境界的持有上限(1.66.1)', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const data = saveWith([mk('e1')])
+    // 压到练气:持有上限最小,「未来资源」与真实成本差得最开
+    ;(data.player as Record<string, unknown>).major = 0
+    ;(data.player as Record<string, unknown>).sub = 0
+    data.resources = { spiritStone: { m: 0, e: 0 }, dust: 0, qi: 0 }
+    const res = resolveForgeFromSlices(data, { op: 'upgrade', uid: 'e1', times: 200 }, {
+      dust: 1e12,
+      stone: { m: 1, e: 30 },
+      exp: { m: 1, e: 30 }
+    })!
+    // 采信被钳在本境界上限内:扣掉的三样都不可能超过上限
+    expect(res.spend.dust).toBeLessThanOrEqual(Math.floor(holdCapOf(0, 'dust')))
+    expect(toNum(res.spend.stone)).toBeLessThanOrEqual(holdCapOf(0, 'stone'))
+    expect(toNum(res.spend.exp)).toBeLessThanOrEqual(toNum(expHoldCap(0, 0)))
+    // 也就掷不到 200 次:余额按钳后的量算,材料一到头就停
+    expect(res.detail.kind === 'upgrade' && res.detail.tries).toBeLessThan(200)
+  })
+
+  it('云档余额本身就高于上限时,不因采信上限被回压(压不压是上传裁决的活)', () => {
+    const data = saveWith([mk('e1')])
+    data.resources = { spiritStone: { m: 1, e: 40 }, dust: 1e12, qi: 0 }
+    const res = resolveForgeFromSlices(
+      data,
+      { op: 'upgrade', uid: 'e1' },
+      { dust: 0, stone: { m: 0, e: 0 }, exp: { m: 0, e: 0 } }
+    )!
+    expect(res.ok).toBe(true)
   })
 })
 

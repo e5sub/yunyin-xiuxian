@@ -231,17 +231,34 @@ export async function settleSuppressedRegions(
   service: RandomService = rng,
   worldAt: number = Date.now()
 ): Promise<SuppressedYield | null> {
-  // 重入闸:engine 每 tick 都会调,签发在途时跳过本次(时长记在下一段,不丢收益)
-  if (settlingSuppress) return null
+  const sec = Number.isFinite(dt) && dt > 0 ? dt : 0
+  /*
+   * 重入闸:engine 每 tick 都会调,签发在途时跳过本次。**跳过的时长要攒着**,不能只 return:
+   * 签一次要等一次网络往返,慢的时候连挡好几 tick,每秒丢一秒;离线那次被挡更是整段归零。
+   * 攒到下一次成功结算时并进去;上限取离线最长档(72h),防止签发长期卡死把 dt 堆成天文数。
+   */
+  if (settlingSuppress) {
+    pendingSuppressSec = Math.min(MAX_PENDING_SUPPRESS_SEC, pendingSuppressSec + sec)
+    return null
+  }
+  const total = Math.min(MAX_PENDING_SUPPRESS_SEC, pendingSuppressSec + sec)
+  pendingSuppressSec = 0
   settlingSuppress = true
   try {
-    return await settleSuppressedRegionsInner(dt, service, worldAt)
+    return await settleSuppressedRegionsInner(total, service, worldAt)
+  } catch (err) {
+    // 结算抛错时这段时长还没兑现,退回去等下一次;engine 的 tickSafe 会兜住异常
+    pendingSuppressSec = Math.min(MAX_PENDING_SUPPRESS_SEC, pendingSuppressSec + total)
+    throw err
   } finally {
     settlingSuppress = false
   }
 }
 
 let settlingSuppress = false
+/** 重入闸挡下的累计秒数(见上) */
+let pendingSuppressSec = 0
+const MAX_PENDING_SUPPRESS_SEC = 72 * 3600
 
 async function settleSuppressedRegionsInner(
   dt: number,

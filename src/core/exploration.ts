@@ -473,11 +473,14 @@ export function tickExploration(now: number): void | Promise<void> {
   if (adventure.pendingEventId) {
     if (now - adventure.pendingEventSince > EVENT_AUTO_RESOLVE_SECONDS * 1000) {
       const region = regionDef(s.regionId)
+      // 事件 id 必须先取:setPendingEvent(null) 会把它清掉,清完再读就是 null,
+      // autoResolveEvent 拿到 null 直接返回,超时事件等于被无声吞掉(与离线路径同序:先结算后清)
+      const eventId = adventure.pendingEventId
       // 先摘事件、推进战斗节拍再异步结算:签发是异步的,不先摘掉 tick 会趁隙重入
       adventure.setPendingEvent(null, now)
       const cur = adventure.session
       if (cur) adventure.setSession({ ...cur, events: cur.events + 1, nextBattleAt: nextBattleTime(now) })
-      void autoResolveEvent(adventure.pendingEventId, region?.tier ?? 1).then(res => {
+      void autoResolveEvent(eventId, region?.tier ?? 1).then(res => {
         // 自动结算的所得须 toast,不得无声入账
         if (res && res.lines.length) useUiStore().toast(res.lines.join('、'), 'info')
         else if (res?.outcomeText) useUiStore().toast(res.outcomeText, 'info')
