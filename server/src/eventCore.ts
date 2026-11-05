@@ -9,6 +9,7 @@
  */
 import { get, run } from './db.js'
 import { getConfig } from './config.js'
+import { withKeyLock } from './mutex.js'
 
 export type EventKind = 'duel' | 'arena' | 'boss' | 'dungeon' | 'board'
 
@@ -228,8 +229,21 @@ async function writeProgress(userId: number, day: string, eventId: string, progr
   )
 }
 
+/**
+ * 七会进度按用户串行(进程内,见 mutex.ts)。
+ * 记账与领赏都是「读 → 整行 REPLACE」:并发时后写的会把先写的 covered 掉,
+ * 更糟的是 addEventProgress 会把刚领过的 claimed=1 写回 0,赏可以再领一次。
+ */
+function eventLock<T>(userId: number, fn: () => Promise<T>): Promise<T> {
+  return withKeyLock(`event:${userId}`, fn)
+}
+
 /** 记一笔进度;已领赏的不再累加(避免领完继续刷数字) */
-export async function addEventProgress(userId: number, day: string, eventId: string, n = 1): Promise<EventProgress> {
+export function addEventProgress(userId: number, day: string, eventId: string, n = 1): Promise<EventProgress> {
+  return eventLock(userId, () => addEventProgressInner(userId, day, eventId, n))
+}
+
+async function addEventProgressInner(userId: number, day: string, eventId: string, n: number): Promise<EventProgress> {
   const cur = await eventProgress(userId, day, eventId)
   if (cur.claimed || !Number.isFinite(n) || n === 0) return cur
   const next = { progress: cur.progress + Math.trunc(n), claimed: false }
@@ -238,7 +252,11 @@ export async function addEventProgress(userId: number, day: string, eventId: str
 }
 
 /** 擂台这类「取最好成绩」的写法:只升不降 */
-export async function raiseEventProgress(userId: number, day: string, eventId: string, value: number): Promise<EventProgress> {
+export function raiseEventProgress(userId: number, day: string, eventId: string, value: number): Promise<EventProgress> {
+  return eventLock(userId, () => raiseEventProgressInner(userId, day, eventId, value))
+}
+
+async function raiseEventProgressInner(userId: number, day: string, eventId: string, value: number): Promise<EventProgress> {
   const cur = await eventProgress(userId, day, eventId)
   if (cur.claimed) return cur
   if (value <= cur.progress) return cur
@@ -246,13 +264,23 @@ export async function raiseEventProgress(userId: number, day: string, eventId: s
   return { progress: Math.trunc(value), claimed: false }
 }
 
-/** 达标即可领一次;已领或未达标返回 null */
-export async function claimEvent(userId: number, day: string, eventId: string): Promise<EventReward | null> {
+/**
+ * 达标即可领一次;已领或未达标返回 null。
+ * 「查进度 → 写已领」必须一次条件更新完成:两个请求同时进来会各读到 claimed=0,
+ * 各返回一份赏,客户端按返回入账 → 双发。判据(达标)放在 UPDATE 里一起复查。
+ */
+export function claimEvent(userId: number, day: string, eventId: string): Promise<EventReward | null> {
+  return eventLock(userId, () => claimEventInner(userId, day, eventId))
+}
+
+async function claimEventInner(userId: number, day: string, eventId: string): Promise<EventReward | null> {
   const event = EVENTS.find(e => e.id === eventId)
-  const cur = await eventProgress(userId, day, eventId)
-  if (event === undefined || cur.claimed || cur.progress < event.target) return null
-  await writeProgress(userId, day, eventId, cur.progress, true)
-  return event.reward
+  if (event === undefined) return null
+  const claim = await run(
+    'UPDATE event_progress SET claimed = 1, updated_at = ? WHERE user_id = ? AND day = ? AND event_id = ? AND claimed = 0 AND progress >= ?',
+    [Date.now(), userId, day, eventId, event.target]
+  )
+  return claim.affectedRows > 0 ? event.reward : null
 }
 
 /** 天榜名次(1 起);档案未同步返回 null */

@@ -195,7 +195,20 @@ vipRouter.get('/order/:no/status', requireAuth, (req: Request, res: Response) =>
         res.json({ status: 'pending', note: '金额不符,待人工核验' })
         return
       }
-      await run("UPDATE vip_orders SET status = 'paid', paid_at = ? WHERE out_trade_no = ? AND status = 'pending'", [Date.now(), no])
+      /*
+       * 抢占订单再发放:pending → paid 的这一次 UPDATE 是唯一的「谁去发」判据。
+       * 前端轮询 + 用户手动重试会并发打到这个接口,两次都查到 paid 时若都往下走,
+       * VIP 时长会被叠加两次 —— 只有 affectedRows=1 的那次算数。
+       */
+      const claim = await run("UPDATE vip_orders SET status = 'paid', paid_at = ? WHERE out_trade_no = ? AND status = 'pending'", [
+        Date.now(),
+        no
+      ])
+      if (claim.affectedRows === 0) {
+        // 已被并发的那次发过了:回当前真实到期时间,不重复加时长
+        res.json({ status: 'paid', vipUntil: await currentVipUntil(req.user!.id) })
+        return
+      }
       const vipUntil = await grantVipDays(req.user!.id, order.days)
       res.json({ status: 'paid', vipUntil })
       return

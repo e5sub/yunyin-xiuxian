@@ -19,8 +19,8 @@ import {
   ROOM_MAX_SIZE,
   attemptsLimit,
   attemptsUsed,
-  bumpDaily,
   bumpGrowth,
+  consumeDaily,
   createRoom,
   currentRoomOf,
   dayKey,
@@ -32,6 +32,7 @@ import {
   leaveRoom,
   resolveRunRoster,
   roomSnapshot,
+  refundDaily,
   type DungeonDifficulty,
   type DungeonGrowth,
   type DungeonKey
@@ -623,15 +624,18 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
     const { members: roster, difficulty, ownerId } = await resolveRunRoster(req.user!.id, code, soloDifficulty)
     const fighters = await loadFighters(roster)
 
-    // 全员次数校验:任何一个不足都不开拔(名单点名);VIP 按各自身份 +1
+    // 全员次数占位:每人一条条件更新(不是「先查后扣」),否则并发开拔会把同一人的次数扣两次。
+    // 任一成员不足即点名;已经占到的那几位当场退还,不留半场账。
     const day = dayKey()
     const lacking: string[] = []
+    const claimed: number[] = []
     for (const f of fighters) {
       const fLimit = await attemptsLimit(dungeon, f.userId)
-      const used = await attemptsUsed(f.userId, dungeon, day)
-      if (used >= fLimit) lacking.push(f.name)
+      if (await consumeDaily(f.userId, dungeon, day, fLimit)) claimed.push(f.userId)
+      else lacking.push(f.name)
     }
     if (lacking.length > 0) {
+      for (const uid of claimed) await refundDaily(uid, dungeon, day)
       res.status(429).json({ error: `今日次数已用尽:${lacking.join('、')}` })
       return
     }
@@ -641,12 +645,12 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
     if (code !== '') {
       const claim = await run("UPDATE dungeon_teams SET status = 'running' WHERE code = ? AND status = 'open'", [code])
       if (claim.affectedRows === 0) {
+        for (const uid of claimed) await refundDaily(uid, dungeon, day)
         res.status(409).json({ error: '这一队已经开拔' })
         return
       }
     }
 
-    for (const m of roster) await bumpDaily(m.userId, dungeon, day)
     const cfg = await dungeonConfig(dungeon)
     // 境界基准按「大境界 + 小层」算,与页面显示的境界名同口径
     const avgRealm = fighters.reduce((acc, f) => acc + f.realmMajor, 0) / Math.max(1, fighters.length)

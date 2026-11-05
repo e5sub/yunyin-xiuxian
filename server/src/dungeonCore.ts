@@ -19,21 +19,40 @@ export async function attemptsUsed(userId: number, dungeon: string, day: string)
   return row?.count ?? 0
 }
 
-/** 计数 upsert:双方言(仅加计数,REPLACE 语义不适用) */
-export async function bumpDaily(userId: number, dungeon: string, day: string): Promise<void> {
+/**
+ * 占一次次数 —— 「查次数 → 扣次数」必须是一条**条件更新**,否则并发两个请求
+ * 都读到 used<limit,各自通过校验、各自加一次,一天能打两剑/两场。
+ *
+ * 做法:先保证当日行存在(count=0),再 `UPDATE ... SET count = count + 1 WHERE count < 上限`,
+ * 影响行数 = 1 才算占到。单条 UPDATE 在两种方言里都是原子的,不需要事务。
+ * @returns true = 已占位(调用方可以继续),false = 次数已用尽
+ */
+export async function consumeDaily(userId: number, dungeon: string, day: string, limit: number): Promise<boolean> {
+  if (!Number.isFinite(limit) || limit <= 0) return false
   if (IS_MYSQL) {
+    await run('INSERT IGNORE INTO dungeon_daily (user_id, dungeon, day, count) VALUES (?, ?, ?, 0)', [userId, dungeon, day])
+  } else {
     await run(
-      `INSERT INTO dungeon_daily (user_id, dungeon, day, count) VALUES (?, ?, ?, 1)
-       ON DUPLICATE KEY UPDATE count = count + 1`,
+      'INSERT INTO dungeon_daily (user_id, dungeon, day, count) VALUES (?, ?, ?, 0) ON CONFLICT DO NOTHING',
       [userId, dungeon, day]
     )
-    return
   }
-  await run(
-    `INSERT INTO dungeon_daily (user_id, dungeon, day, count) VALUES (?, ?, ?, 1)
-     ON CONFLICT(user_id, dungeon, day) DO UPDATE SET count = count + 1`,
-    [userId, dungeon, day]
-  )
+  const claim = await run('UPDATE dungeon_daily SET count = count + 1 WHERE user_id = ? AND dungeon = ? AND day = ? AND count < ?', [
+    userId,
+    dungeon,
+    day,
+    Math.trunc(limit)
+  ])
+  return claim.affectedRows > 0
+}
+
+/** 退还一次占位:占位后结算失败(妖王已被别人推倒等)时补回,别让玩家白掉一次 */
+export async function refundDaily(userId: number, dungeon: string, day: string): Promise<void> {
+  await run('UPDATE dungeon_daily SET count = count - 1 WHERE user_id = ? AND dungeon = ? AND day = ? AND count > 0', [
+    userId,
+    dungeon,
+    day
+  ])
 }
 
 /**

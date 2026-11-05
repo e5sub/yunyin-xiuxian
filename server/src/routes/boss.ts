@@ -5,9 +5,10 @@ import { all, get, run, upsertByPk } from '../db.js'
 import { getConfig, getConfigNumber } from '../config.js'
 import { requireAuth } from '../auth.js'
 import { broadcastAll } from '../ws.js'
-import { dayKey, attemptsUsed, bumpDaily, type DungeonDifficulty } from '../dungeonCore.js'
+import { dayKey, attemptsUsed, consumeDaily, refundDaily, type DungeonDifficulty } from '../dungeonCore.js'
 import { addEventProgress, bossAttemptBonus, todayEvent } from '../eventCore.js'
 import { geNorm, geAdd, geSub, geMulN, geMin, geText, randRange, type GE } from '../gnum.js'
+import { withKeyLock } from '../mutex.js'
 
 export const bossRouter = express.Router()
 
@@ -495,6 +496,14 @@ export class BossGoneError extends Error {
   }
 }
 
+/** 当日出剑次数已用尽:占位失败时抛,路由据此回 429,托管任务静默跳过 */
+export class DailyExhaustedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'DailyExhaustedError'
+  }
+}
+
 /**
  * 出剑一次:服务端模拟、按剩余血截断、即时记榜;击杀则分发击杀赏并记入成长周期。
  * 出剑本身无资粮——妖王被推倒,凡出过剑者按功均分(见 distributeKillLoot)。
@@ -507,89 +516,103 @@ export class BossGoneError extends Error {
  * 后写的非致死伤害还会把已死妖王写成「dead_at≠0 但 hp>0」的僵尸态。
  */
 export async function performStrike(userId: number, difficulty: BossDifficulty = 'normal'): Promise<StrikeOutcome> {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const s = await combatSides(userId, undefined, difficulty)
-    const boss = s.boss
-    // 路由前置校验之外再查一次:combatSides 内部经 ensureBoss 重新取行,
-    // 两次读之间可能已被别人打死(离线托管与在线出剑并行时尤其常见)
-    if (boss.dead_at !== 0 || (boss.hp_e === 0 && boss.hp_m === 0)) throw new BossGoneError()
-    const playerName = s.playerName
-    const grown = s.grown
-    const sim = simulateStrike(s.player, s.bossSide, s.rounds)
+  /*
+   * 次数占位前置(1.64.0):「查次数 → 出剑 → 记次数」之间的窗口会让连点两下多打一剑,
+   * 因此扣次改成单条条件更新(见 dungeonCore.consumeDaily),抢不到直接拒。
+   * 占位后若这一剑没打出去(被别人抢先改血、链路抛错),finally 里退还。
+   */
+  const day = dayKey()
+  const limit = (await getConfigNumber('boss_daily_attempts', 1)) + (await bossAttemptBonus())
+  if (!(await consumeDaily(userId, 'boss', day, limit))) throw new DailyExhaustedError('今日已出手,明日再战')
+  let settled = false
+  try {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const s = await combatSides(userId, undefined, difficulty)
+      const boss = s.boss
+      // 路由前置校验之外再查一次:combatSides 内部经 ensureBoss 重新取行,
+      // 两次读之间可能已被别人打死(离线托管与在线出剑并行时尤其常见)
+      if (boss.dead_at !== 0 || (boss.hp_e === 0 && boss.hp_m === 0)) throw new BossGoneError()
+      const playerName = s.playerName
+      const grown = s.grown
+      const sim = simulateStrike(s.player, s.bossSide, s.rounds)
 
-    // 伤害按剩余血截断;出剑无资粮,击杀赏待分发
-    const hpLeft = s.bossSide.hp
-    const applied = geMin(sim.damage, hpLeft)
-    const killed = applied.e === hpLeft.e && applied.m >= hpLeft.m
-    const hpAfter = geSub(hpLeft, applied)
-    const noHpChange = !killed && hpAfter.e === hpLeft.e && hpAfter.m === hpLeft.m
+      // 伤害按剩余血截断;出剑无资粮,击杀赏待分发
+      const hpLeft = s.bossSide.hp
+      const applied = geMin(sim.damage, hpLeft)
+      const killed = applied.e === hpLeft.e && applied.m >= hpLeft.m
+      const hpAfter = geSub(hpLeft, applied)
+      const noHpChange = !killed && hpAfter.e === hpLeft.e && hpAfter.m === hpLeft.m
 
-    const claim = killed
-      ? await run(
-          'UPDATE boss_state SET hp_m = 0, hp_e = 0, dead_at = ?, kill_count = kill_count + 1 WHERE id = 1 AND dead_at = 0 AND hp_m = ? AND hp_e = ?',
-          [Date.now(), hpLeft.m, hpLeft.e]
+      const claim = killed
+        ? await run(
+            'UPDATE boss_state SET hp_m = 0, hp_e = 0, dead_at = ?, kill_count = kill_count + 1 WHERE id = 1 AND dead_at = 0 AND hp_m = ? AND hp_e = ?',
+            [Date.now(), hpLeft.m, hpLeft.e]
+          )
+        : noHpChange
+          ? { insertId: 0, affectedRows: 1 }
+          : await run('UPDATE boss_state SET hp_m = ?, hp_e = ? WHERE id = 1 AND dead_at = 0 AND hp_m = ? AND hp_e = ?', [
+              hpAfter.m,
+              hpAfter.e,
+              hpLeft.m,
+              hpLeft.e
+            ])
+      // 没抢到:血量已被别的出剑改掉,这一次的伤害不算数,重取重算(次数已在入口占好,不重复扣)
+      if (claim.affectedRows === 0) continue
+
+      await bumpDamage(userId, playerName || `道友${userId}`, applied, difficulty)
+      // 周天七会·妖潮夜:出剑即记一笔(托管代打同样算,不分手动自动)
+      const ev = await todayEvent()
+      if (ev.event.kind === 'boss') await addEventProgress(userId, ev.day, ev.event.id, 1)
+
+      let recipients = 0
+      let equipWinner: string | null = null
+      if (killed) {
+        // 已用条件更新占住「这一剑是击杀」,再分发;榜里已含这一剑
+        const dist = await distributeKillLoot(userId)
+        recipients = dist.recipients
+        equipWinner = dist.equipWinner
+        // CAS 已把 kill_count +1;读到的行是本次击杀前的值,故 +1 即当前周期数
+        const killCount = boss.kill_count + 1
+        const topRows = await all<DamageRow>(
+          'SELECT name, dmg_m, dmg_e FROM boss_damage ORDER BY dmg_e DESC, dmg_m DESC LIMIT 10'
         )
-      : noHpChange
-        ? { insertId: 0, affectedRows: 1 }
-        : await run('UPDATE boss_state SET hp_m = ?, hp_e = ? WHERE id = 1 AND dead_at = 0 AND hp_m = ? AND hp_e = ?', [
-            hpAfter.m,
-            hpAfter.e,
-            hpLeft.m,
-            hpLeft.e
-          ])
-    // 没抢到:血量已被别的出剑改掉,这一次的伤害不算数,重取重算(次数与榜单都还没记)
-    if (claim.affectedRows === 0) continue
+        broadcastAll({
+          type: 'boss_killed',
+          by: playerName || `道友${userId}`,
+          name: boss.name,
+          top: topRows.map(r => ({ name: r.name, dmgText: geText({ m: r.dmg_m, e: r.dmg_e }) })),
+          recipients,
+          equipWinner,
+          at: Date.now()
+        })
+        boss.kill_count = killCount
+      }
 
-    await bumpDaily(userId, 'boss', dayKey())
-    await bumpDamage(userId, playerName || `道友${userId}`, applied, difficulty)
-    // 周天七会·妖潮夜:出剑即记一笔(托管代打同样算,不分手动自动)
-    const ev = await todayEvent()
-    if (ev.event.kind === 'boss') await addEventProgress(userId, ev.day, ev.event.id, 1)
-
-    let recipients = 0
-    let equipWinner: string | null = null
-    if (killed) {
-      // 已用条件更新占住「这一剑是击杀」,再分发;榜里已含这一剑
-      const dist = await distributeKillLoot(userId)
-      recipients = dist.recipients
-      equipWinner = dist.equipWinner
-      // CAS 已把 kill_count +1;读到的行是本次击杀前的值,故 +1 即当前周期数
-      const killCount = boss.kill_count + 1
-      const topRows = await all<DamageRow>(
-        'SELECT name, dmg_m, dmg_e FROM boss_damage ORDER BY dmg_e DESC, dmg_m DESC LIMIT 10'
-      )
-      broadcastAll({
-        type: 'boss_killed',
-        by: playerName || `道友${userId}`,
-        name: boss.name,
-        top: topRows.map(r => ({ name: r.name, dmgText: geText({ m: r.dmg_m, e: r.dmg_e }) })),
+      settled = true
+      return {
+        applied,
+        rounds: s.rounds,
+        fell: sim.fell,
+        killed,
+        hp: killed ? { m: 0, e: 0 } : hpAfter,
+        maxHp: { m: boss.max_hp_m, e: boss.max_hp_e },
+        bossName: boss.name,
+        tier: boss.realm_index,
+        reward: { stone: 0, herb: 0 },
+        difficulty,
+        difficultyName: BOSS_DIFFICULTY_NAMES[difficulty],
         recipients,
         equipWinner,
-        at: Date.now()
-      })
-      boss.kill_count = killCount
+        growthMult: grown,
+        killCount: boss.kill_count
+      }
     }
-
-    return {
-      applied,
-      rounds: s.rounds,
-      fell: sim.fell,
-      killed,
-      hp: killed ? { m: 0, e: 0 } : hpAfter,
-      maxHp: { m: boss.max_hp_m, e: boss.max_hp_e },
-      bossName: boss.name,
-      tier: boss.realm_index,
-      reward: { stone: 0, herb: 0 },
-      difficulty,
-      difficultyName: BOSS_DIFFICULTY_NAMES[difficulty],
-      recipients,
-      equipWinner,
-      growthMult: grown,
-      killCount: boss.kill_count
-    }
+    // 连续两次都被抢先改血:说明这段时间里别人推得很凶,按妖王状态已变处理
+    throw new BossGoneError()
+  } finally {
+    // 这一剑没打出去(被抢先/查档失败):把占的次数还回去,别让玩家白掉一次
+    if (!settled) await refundDaily(userId, 'boss', day).catch(() => undefined)
   }
-  // 连续两次都被抢先改血:说明这段时间里别人推得很凶,按妖王状态已变处理
-  throw new BossGoneError()
 }
 
 /** 出剑:每日限次(默认 1),服务端模拟并记榜;击杀赏按功分发,领取见 /claim */
@@ -632,17 +655,28 @@ bossRouter.post('/strike', requireAuth, (req, res) => {
       res.status(409).json({ error: e.message })
       return
     }
+    // 并发连点:入口的条件更新没抢到次数(前面的预检只是友好提示,权威判据在这里)
+    if (e instanceof DailyExhaustedError) {
+      res.status(429).json({ error: e.message })
+      return
+    }
     res.status(500).json({ error: '出剑失败' })
   })
 })
 
-/** 领取击杀赏(围妖页加载/托管巡检时领):返回并清零 */
+/**
+ * 领取击杀赏(围妖页加载/托管巡检时领):返回并清零。
+ * 「读台账 → 删台账」之间必须串行:两个请求同时进来会各读到同一份赏,
+ * 客户端按返回入账 → 全服击杀赏双发。进程内按 uid 串行(见 mutex.ts)。
+ */
 bossRouter.post('/claim', requireAuth, (req, res) => {
-  void (async () => {
+  void withKeyLock(`boss_loot:${req.user!.id}`, async () => {
     const loot = await lootOf(req.user!.id)
     if (loot !== undefined) await run('DELETE FROM boss_loot WHERE user_id = ?', [req.user!.id])
-    res.json({
-      pending: { stone: loot?.stone_m ?? 0, herb: loot?.herb ?? 0, equip: (loot?.equip ?? 0) === 1 }
+    return { stone: loot?.stone_m ?? 0, herb: loot?.herb ?? 0, equip: (loot?.equip ?? 0) === 1 }
+  })
+    .then(pending => {
+      res.json({ pending })
     })
-  })().catch(() => res.status(500).json({ error: '服务器异常' }))
+    .catch(() => res.status(500).json({ error: '服务器异常' }))
 })

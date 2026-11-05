@@ -12,6 +12,7 @@ import { clearPurchases, pendingSpend, settlePurchases } from '../marketLedger.j
 import { clearForgeSpend, pendingForgeSpend, settleForgeSpend } from '../forgeLedger.js'
 import { clearProgressSpend, pendingProgressSpend, settleProgressSpend } from '../progressLedger.js'
 import { clearLevelStates, enforceLevelStates } from '../levelLedger.js'
+import { withKeyLock } from '../mutex.js'
 
 export interface ProfileSnapshot {
   name: string
@@ -284,7 +285,13 @@ saveRouter.get('/save', requireAuth, (req: Request, res: Response) => {
 })
 
 saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
-  void (async () => {
+  /*
+   * 同一账号的写档串行(进程内按 uid 排队,见 mutex.ts)。
+   * 整个处理体是「读旧档 → 裁数值 → 备份 → 覆盖 → 结账本」的一次读-改-写:
+   * 两个请求并发进来会各自读到同一份旧档、各自把同一批 pendingSpend 扣一遍,
+   * 资源被扣两次;备份与历史也会按同一个旧档写两份。串行后这些问题一并消失。
+   */
+  void withKeyLock(`save:${req.user!.id}`, async () => {
     // 写档限速:与上一写隔太近直接 429(无论成败都计时,防 409/校验失败风暴打库)
     const now0 = Date.now()
     const last = lastWriteAt.get(req.user!.id) ?? 0
@@ -522,13 +529,14 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
     }
     // corrections 回给客户端:被压回的字段要立刻以服务端值覆盖本地,否则玩家看到的是作弊值
     res.json({ ok: true, updatedAt: now, corrections: authority?.corrections ?? [] })
-  })().catch(() => {
+  }).catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })
 })
 
 saveRouter.delete('/save', requireAuth, (req: Request, res: Response) => {
-  void (async () => {
+  // 与写档同一把键:删档进行中不许并发上传把旧档写回来
+  void withKeyLock(`save:${req.user!.id}`, async () => {
     await run('DELETE FROM saves WHERE user_id = ?', [req.user!.id])
     // 境界基线一并归零:删档重修是合法路径,基线不归零,权威化会把新档的境界强行顶回旧值
     // 世号基线同归零:新档从第一世起算,否则「删档」会留下一个永远兑现不了的高世号
@@ -541,7 +549,7 @@ saveRouter.delete('/save', requireAuth, (req: Request, res: Response) => {
     await clearEquipStates(req.user!.id)
     await clearLevelStates(req.user!.id)
     res.json({ ok: true })
-  })().catch(() => {
+  }).catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })
 })
@@ -562,7 +570,8 @@ saveRouter.get('/save/history', requireAuth, (req: Request, res: Response) => {
 
 /** 回滚到某个历史版本:当前档先存进历史,再写回 */
 saveRouter.post('/save/restore', requireAuth, (req: Request, res: Response) => {
-  void (async () => {
+  // 回档也是「读当前档 → 备份 → 覆盖」,与上传同一把键,避免回档被同时进行的上传顶掉
+  void withKeyLock(`save:${req.user!.id}`, async () => {
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
     const historyId = finite(body.historyId) ? Math.trunc(body.historyId) : 0
     if (historyId <= 0) {
@@ -597,7 +606,7 @@ saveRouter.post('/save/restore', requireAuth, (req: Request, res: Response) => {
       // 快照复算失败时 profiles 不动:下一次上传仍会按存档内容重算
     }
     res.json({ ok: true, updatedAt: now })
-  })().catch(() => {
+  }).catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })
 })

@@ -10,6 +10,7 @@
  */
 import { get, run } from './db.js'
 import { getConfig } from './config.js'
+import { withKeyLock } from './mutex.js'
 import { dayKeyOf, secsToNextDay } from './eventCore.js'
 
 /** 赏格形状与七会一致:灵石给基础值,客户端按自身层级折算 */
@@ -336,8 +337,21 @@ export interface StarResult {
   already: boolean
 }
 
+/**
+ * 闲趣的读-改-写按用户串行(进程内,见 mutex.ts)。
+ * 三则都是「读今日行 → 改 → 整行覆盖」,并发点两下会各读到同一个旧行:
+ * 起竿丢钓获、收篓双发赏、猜谜答两次。串行后这些窗口一并消失。
+ */
+function leisureLock<T>(userId: number, fn: () => Promise<T>): Promise<T> {
+  return withKeyLock(`leisure:${userId}`, fn)
+}
+
 /** 抽签:一日一签,抽过再点只回看,不再发赏 */
-export async function drawStar(userId: number, now = Date.now()): Promise<StarResult> {
+export function drawStar(userId: number, now = Date.now()): Promise<StarResult> {
+  return leisureLock(userId, () => drawStarInner(userId, now))
+}
+
+async function drawStarInner(userId: number, now: number): Promise<StarResult> {
   const day = dayKeyOf(now)
   const row = await readRow(userId, day, 'star')
   const fortune = fortuneView(userId, day)
@@ -347,9 +361,22 @@ export async function drawStar(userId: number, now = Date.now()): Promise<StarRe
 }
 
 /** 掷一竿:按权重抽,入篓;次数用尽返回 null */
-export async function castLine(
+export function castLine(
   userId: number,
   now = Date.now()
+): Promise<{
+  catch: { id: string; label: string; reward: LeisureReward }
+  basket: LeisureReward
+  caught: string[]
+  casts: number
+  max: number
+} | null> {
+  return leisureLock(userId, () => castLineInner(userId, now))
+}
+
+async function castLineInner(
+  userId: number,
+  now: number
 ): Promise<{ catch: { id: string; label: string; reward: LeisureReward }; basket: LeisureReward; caught: string[]; casts: number; max: number } | null> {
   const day = dayKeyOf(now)
   const row = await readRow(userId, day, 'fish')
@@ -387,15 +414,33 @@ function rollCatch(): Catch {
 }
 
 /** 收篓:把今日累计收获一次交给客户端;已收或空篓返回 null */
-export async function claimBasket(userId: number, now = Date.now()): Promise<LeisureReward | null> {
+export function claimBasket(userId: number, now = Date.now()): Promise<LeisureReward | null> {
+  return leisureLock(userId, () => claimBasketInner(userId, now))
+}
+
+async function claimBasketInner(userId: number, now: number): Promise<LeisureReward | null> {
   const day = dayKeyOf(now)
   const row = await readRow(userId, day, 'fish')
   if (row.claimed === 1) return null
   const basket = parseBasket(row.payload)
   const empty =
     basket.reward.stone + basket.reward.herb + basket.reward.wudao + basket.reward.ore + basket.reward.dust + basket.reward.page === 0
-  // 空篓也允一次「收」:把次数与篓清掉,免得界面一直挂着,但无赏
-  await writeRow(userId, day, 'fish', { tries: row.tries, value: 0, payload: '', claimed: true })
+  /*
+   * 「读篓 → 标已收」必须一次条件更新完成:两个请求并发进来会各读到 claimed=0、
+   * 各返回一篓赏,客户端按返回入账 → 双发。SET 里用的是本次读到的 tries,
+   * 与原先的整行覆盖等价(收篓不该改动抛竿次数)。
+   */
+  const claim = await run(
+    "UPDATE leisure_log SET tries = ?, value = 0, payload = '', claimed = 1, updated_at = ? WHERE user_id = ? AND day = ? AND kind = 'fish' AND claimed = 0",
+    [row.tries, now, userId, day]
+  )
+  if (claim.affectedRows === 0) {
+    // 今天还没起过竿(表里没有行):补一条已收记录,保持「空篓也能点收」的原语义
+    const again = await readRow(userId, day, 'fish')
+    if (again.claimed === 1) return null
+    await writeRow(userId, day, 'fish', { tries: again.tries, value: 0, payload: '', claimed: true })
+    return ZERO()
+  }
   return empty ? ZERO() : basket.reward
 }
 
@@ -409,7 +454,11 @@ export interface RiddleAnswer {
 }
 
 /** 答谜:一问一次,答过不再改;答对给赏,答错给一句安慰 */
-export async function answerRiddle(userId: number, choice: number, now = Date.now()): Promise<RiddleAnswer | null> {
+export function answerRiddle(userId: number, choice: number, now = Date.now()): Promise<RiddleAnswer | null> {
+  return leisureLock(userId, () => answerRiddleInner(userId, choice, now))
+}
+
+async function answerRiddleInner(userId: number, choice: number, now: number): Promise<RiddleAnswer | null> {
   const day = dayKeyOf(now)
   const idx = riddleIndexOf(day)
   const r = RIDDLES[idx]!
