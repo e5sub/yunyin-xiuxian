@@ -142,8 +142,15 @@ async function settleOfflineInner(nowMs: number): Promise<OfflineSummary | null>
    * 否则 40 场际遇就是 40 次请求,撞限速;签发件数不受际遇文案影响,一次要齐。
    */
   const equipCtxs: LootClaimCtx[] = []
+  /**
+   * 际遇 defer 的件数(只算事件来源)。
+   * 不能拿最后签发总数去补会话账:equipCtxs 里还混着战斗掉落,那批已由 trip.items 记过,
+   * 再整体加一遍会让面板战利品虚高(1.63.0)。
+   */
+  let deferredEventItems = 0
   const deferEquipCtx = (ctx: LootClaimCtx): void => {
     equipCtxs.push(ctx)
+    deferredEventItems += ctx.count ?? 1
   }
   const equipmentGained: OfflineSummary['equipment'] = []
   /** 离线化尘所得(自动回收、满包化尘、腾位旧件) */
@@ -516,9 +523,9 @@ async function settleOfflineInner(nowMs: number): Promise<OfflineSummary | null>
   // 际遇装备一次签发入包;在途会话的件数账补上(际遇效果走 defer 时不逐笔 foldSession)
   const deferredEquips = await mintDrops(equipCtxs)
   for (const inst of deferredEquips) acquireEquipment(inst, { quiet: true })
-  if (deferredEquips.length > 0) {
+  if (deferredEventItems > 0) {
     const session = adventure.session
-    if (session) adventure.setSession({ ...session, itemGain: session.itemGain + deferredEquips.length })
+    if (session) adventure.setSession({ ...session, itemGain: session.itemGain + deferredEventItems })
   }
 
   stopLedger()

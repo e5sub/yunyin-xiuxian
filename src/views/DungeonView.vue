@@ -288,9 +288,11 @@
     running.value = key
     try {
       const r = await cloudApi.dungeonRun(key, code, difficulty.value)
-      // 高难(绝境/炼狱)获胜掉装备:实例由签发侧生成,品质下限按难度收进服务端合法区间
+      // 高难(绝境/炼狱)获胜掉装备:实例由签发侧生成,品质下限按**本场实际难度**收进服务端合法区间。
+      // 组队时难度由房主定,本页选择器只是「我要建/独行的难度」,拿它当判据会两向出错:
+      // 房主开炼狱而本地停在循境则少拿保底,反之则低难度白拿神品(1.63.0)
       if (r.win && r.equipDrop) {
-        const floor = difficulty.value === 'abyss' ? 3 : 1
+        const floor = r.difficulty === 'abyss' ? 3 : 1
         const insts = await mintDrops([{ src: 'dungeon', tier: tierOfMajor(Math.max(0, player.major)), minQualityRank: floor }])
         if (insts.length > 0) r.log = [...r.log, `妖物遗宝:${acquireEquipment(insts[0]!).line}`]
       }

@@ -20,8 +20,22 @@ export interface BossLootClaim {
   equipLine: string | null
 }
 
-/** 领取待领的击杀赏;无待领时返回 null(不发请求也行,但让服务端做唯一裁决更稳) */
-export async function claimBossLoot(): Promise<BossLootClaim | null> {
+/** 在途领取:进页自动领、托管巡检与手点走同一条路,并发两路会各自按同一份 pending 入账(1.63.0) */
+let claiming: Promise<BossLootClaim | null> | null = null
+
+/**
+ * 领取待领的击杀赏;无待领时返回 null(不发请求也行,但让服务端做唯一裁决更稳)。
+ * 同一时刻只允许一条在途请求:并发调用拿到的是同一个 Promise,资源只加一次。
+ */
+export function claimBossLoot(): Promise<BossLootClaim | null> {
+  if (claiming !== null) return claiming
+  claiming = claimBossLootOnce().finally(() => {
+    claiming = null
+  })
+  return claiming
+}
+
+async function claimBossLootOnce(): Promise<BossLootClaim | null> {
   const { pending } = await cloudApi.bossClaim()
   if (pending.stone <= 0 && pending.herb <= 0 && !pending.equip) return null
   const player = usePlayerStore()

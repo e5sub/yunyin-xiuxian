@@ -255,6 +255,16 @@ gmRouter.post('/users/:id/reset-password', requireAdmin, (req: Request, res: Res
       res.status(400).json({ error: '口令 6~64 字' })
       return
     }
+    // 管理员口令不开放后台重置:多管理员部署下,一个被盗的普通 GM 号能借此横向接管全部管理员
+    const target = await get<{ role: string }>('SELECT role FROM users WHERE id = ?', [id])
+    if (target === undefined) {
+      res.status(404).json({ error: '查无此用户' })
+      return
+    }
+    if (target.role === 'admin') {
+      res.status(400).json({ error: '管理员口令须在服务器上用造管理员命令重置' })
+      return
+    }
     const result = await run('UPDATE users SET pass_hash = ?, pass_changed_at = ? WHERE id = ?', [
       await bcrypt.hash(password, 10),
       Date.now(),
@@ -290,11 +300,38 @@ gmRouter.delete('/users/:id', requireAdmin, (req: Request, res: Response) => {
       res.status(400).json({ error: '管理员不可删除' })
       return
     }
-    // 双方言安全:先删从表再删主表(不依赖外键级联开关)
-    await run('DELETE FROM saves WHERE user_id = ?', [id])
-    await run('DELETE FROM profiles WHERE user_id = ?', [id])
+    // 双方言安全:先删从表再删主表(不依赖外键级联开关)。
+    // 台账类必须一起清:boss_damage 留着会让已删号继续出现在贡献榜、并参与击杀装备加权(1.63.0)
+    for (const table of [
+      'saves',
+      'save_history',
+      'save_flags',
+      'profiles',
+      'loot_ledger',
+      'loot_seed',
+      'equip_state',
+      'equip_seed',
+      'forge_spend',
+      'progress_spend',
+      'level_state',
+      'level_seed',
+      'market_purchases',
+      'boss_damage',
+      'boss_loot',
+      'dungeon_daily',
+      'dungeon_growth',
+      'event_progress',
+      'autoops_state',
+      'vip_orders',
+      'chat_messages'
+    ]) {
+      await run(`DELETE FROM ${table} WHERE user_id = ?`, [id])
+    }
+    await run('DELETE FROM dungeon_team_members WHERE user_id = ?', [id])
+    // 自己当房主的房间:成员行先清,再删房(不依赖外键级联)
+    await run('DELETE FROM dungeon_team_members WHERE code IN (SELECT code FROM dungeon_teams WHERE leader_id = ?)', [id])
+    await run('DELETE FROM dungeon_teams WHERE leader_id = ?', [id])
     await run('DELETE FROM friends WHERE user_id = ? OR friend_id = ?', [id, id])
-    await run('DELETE FROM chat_messages WHERE user_id = ?', [id])
     await run('DELETE FROM users WHERE id = ?', [id])
     res.json({ ok: true })
   })().catch(() => {

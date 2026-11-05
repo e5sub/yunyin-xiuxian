@@ -286,7 +286,7 @@ export async function probeCloudNewer(): Promise<number | null> {
 const CLOCK_SKEW_MS = 120_000
 
 /**
- * 模块加载时刻读磁盘里上一会话的关页盖章:引擎 start 会立刻在内存里重盖 lastActiveAt,
+ * 读磁盘里上一会话的关页盖章:引擎 start 会立刻在内存里重盖 lastActiveAt,
  * 但 5 秒刷盘窗口内磁盘仍是旧值;此刻读取(早于任何 store 水合写回)拿到的是关页时刻。
  */
 function readPersistedLastActive(): number {
@@ -301,7 +301,16 @@ function readPersistedLastActive(): number {
   }
 }
 
-const bootPersistedLastActive = readPersistedLastActive()
+let bootPersistedLastActive = 0
+
+/**
+ * 启动时读一次上一会话的关页盖章。
+ * 必须在 initAccountScope() 之后调用:键名带账号段,模块加载期作用域还是 0,
+ * 读到的是已迁移走的旧全局键,登录用户的护栏会恒失效(1.63.0)。
+ */
+export function captureBootLastActive(): void {
+  bootPersistedLastActive = readPersistedLastActive()
+}
 
 /**
  * 开局自动接管:本机已开局且对齐过,但云端档更新(别的设备/上一会话的最后一推)。

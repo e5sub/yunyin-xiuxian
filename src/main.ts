@@ -5,6 +5,7 @@ import { Capacitor } from '@capacitor/core'
 import App from './App.vue'
 import { router } from './router'
 import { initAccountScope, migrateLocalSchema, preflightScan } from './utils/storage'
+import { captureBootLastActive } from './core/cloudSave'
 import { sanitizeAllStores } from './stores/sanitizeAll'
 import { useUiStore } from './stores/ui'
 import { summarizeError, useDiagStore } from './stores/diag'
@@ -14,6 +15,8 @@ import './style.css'
 // 先按登录账号定存储命名空间(含旧全局档的一次性迁移),再扫描损坏存档:
 // 两步都必须早于任何 store 水合,否则读错账号的档
 initAccountScope()
+// 作用域定下后再读「上一会话关页盖章」:键名带账号段,顺序反了会读到已迁走的旧键
+captureBootLastActive()
 const corrupted = preflightScan()
 migrateLocalSchema()
 

@@ -88,6 +88,12 @@ const ACCOUNT_SCOPED_STORES: ReadonlySet<string> = new Set(
   PERSISTED_STORES.filter(id => id !== 'settings')
 )
 
+/**
+ * 不在 PERSISTED_STORES 里、但同样必须按账号隔离的键。
+ * 云同步锚点错账号会让上传锚点对不上服务端 updatedAt,该账号从此一直 409 停传(1.63.0)。
+ */
+const ACCOUNT_SCOPED_KEYS: ReadonlySet<string> = new Set(['syncMeta'])
+
 /** 账号段:键形 `yunyin.u<id>.<分片>`;0 = 无作用域(未登录,走设备级键) */
 let accountScope = 0
 
@@ -108,7 +114,7 @@ export function setAccountScope(userId: number): void {
 function translateKey(key: string): string {
   if (accountScope <= 0 || !key.startsWith(SAVE_PREFIX)) return key
   const id = key.slice(SAVE_PREFIX.length)
-  if (!ACCOUNT_SCOPED_STORES.has(id)) return key
+  if (!ACCOUNT_SCOPED_STORES.has(id) && !ACCOUNT_SCOPED_KEYS.has(id)) return key
   return `${SAVE_PREFIX}u${accountScope}.${id}`
 }
 
@@ -134,32 +140,20 @@ export function initAccountScope(): void {
     // auth 读不出按未登录处理:走设备级键,交由路由守卫进登录页
   }
   if (accountScope <= 0) return
-  for (const id of ACCOUNT_SCOPED_STORES) {
-    const scoped = translateKey(SAVE_PREFIX + id)
-    if (scoped === SAVE_PREFIX + id) continue
+  // 旧全局档(1.62.0 之前)一次性搬进本账号命名空间:进度分片与云同步锚点同一套搬法
+  for (const id of [...ACCOUNT_SCOPED_STORES, ...ACCOUNT_SCOPED_KEYS]) {
+    const legacyKey = SAVE_PREFIX + id
+    const scoped = translateKey(legacyKey)
+    if (scoped === legacyKey) continue
     try {
       if (localStorage.getItem(scoped) !== null) continue // 新命名空间已有档:不动
-      const legacy = localStorage.getItem(SAVE_PREFIX + id)
+      const legacy = localStorage.getItem(legacyKey)
       if (legacy === null) continue
       localStorage.setItem(scoped, legacy)
-      localStorage.removeItem(SAVE_PREFIX + id)
+      localStorage.removeItem(legacyKey)
     } catch {
       // 迁移失败不阻断启动:旧键还在,读不到时按新档走(云端还有权威副本)
     }
-  }
-  // 同步锚点一起搬:锚点错账号会让上传全走 409
-  try {
-    const metaKey = SAVE_PREFIX + 'syncMeta'
-    const scopedMeta = translateKey(metaKey)
-    if (scopedMeta !== metaKey && localStorage.getItem(scopedMeta) === null) {
-      const legacy = localStorage.getItem(metaKey)
-      if (legacy !== null) {
-        localStorage.setItem(scopedMeta, legacy)
-        localStorage.removeItem(metaKey)
-      }
-    }
-  } catch {
-    // 锚点搬不动就按 base=0 走,方向安全(重新拉云端)
   }
 }
 
@@ -658,6 +652,8 @@ export function clearAllSave(): void {
   for (const id of PERSISTED_STORES) {
     try {
       localStorage.removeItem(storageKey(id))
+      // 坏档备份是分片的附属物:不清会让下次导出继续携带陈旧坏档(1.63.0)
+      localStorage.removeItem(CORRUPT_PREFIX + storageKey(id))
     } catch {
       // 残留交由下面的兜底处理
     }
@@ -682,8 +678,26 @@ export function clearAllSave(): void {
     }
   })
   if (leftover) {
+    /*
+     * 整体清空的兜底:removeItem 在本实例上已失效,只能换 API。但 1.63.0 起本地档按账号隔离,
+     * 直接 localStorage.clear() 会连带抹掉本设备上其它账号的分片与未上传进度 ——
+     * 故先把「不属于本账号」的键读进内存,清空后再写回(登录态 auth、其它账号的 u<id>.*)。
+     */
     try {
+      const mine = `${SAVE_PREFIX}u${currentAccountScope()}.`
+      const keep: Array<[string, string]> = []
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const k = localStorage.key(i)
+        if (k === null) continue
+        // 只保登录态与其它账号的命名空间;主题/设置/心跳仍按「清档」语义清掉
+        const foreignSlice = k.startsWith(`${SAVE_PREFIX}u`) && !k.startsWith(mine)
+        if (k === `${SAVE_PREFIX}auth` || foreignSlice) {
+          const v = localStorage.getItem(k)
+          if (v !== null) keep.push([k, v])
+        }
+      }
       localStorage.clear()
+      for (const [k, v] of keep) localStorage.setItem(k, v)
     } catch {
       // 存储完全不可用,交由重载后的路由守卫兜底
     }

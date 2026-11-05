@@ -4,7 +4,7 @@
  * 房间:6 位房间码,输入相同码自动进房(已在别的房间会自动退出);开拔校验全员次数,结算即解散房间
  */
 import express, { type Request, type Response } from 'express'
-import { get } from '../db.js'
+import { get, run } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { getConfigNumber } from '../config.js'
 import { notifyUser } from '../ws.js'
@@ -634,6 +634,16 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
     if (lacking.length > 0) {
       res.status(429).json({ error: `今日次数已用尽:${lacking.join('、')}` })
       return
+    }
+
+    // 状态迁移占坑:同房间并发开拔/连点只能有一个请求过闸。
+    // 否则两个请求都通过上面的次数校验,全员次数被扣两次、战获与活动进度发两份(1.63.0)
+    if (code !== '') {
+      const claim = await run("UPDATE dungeon_teams SET status = 'running' WHERE code = ? AND status = 'open'", [code])
+      if (claim.affectedRows === 0) {
+        res.status(409).json({ error: '这一队已经开拔' })
+        return
+      }
     }
 
     for (const m of roster) await bumpDaily(m.userId, dungeon, day)

@@ -196,16 +196,19 @@ export const useMarketStore = defineStore(
       if (slot.sold) return 'sold'
       const inventory = useInventoryStore()
       if (slot.kind === 'equipment' && inventory.bagFull) return 'bagfull'
-      // 1.58.1:登录玩家先让服务端记这笔账(它按同一把货架锚复算价格);记不上就不成交
-      if (!(await quotePurchase(stockedAt.value, idx))) return 'expired'
       const resources = useResourcesStore()
+      // 先验灵石再让服务端记账:记账没有撤销接口,钱不够却记了账 = 上传时白扣一笔(1.63.0)
+      if (!resources.hasStone(slot.price)) return 'poor'
       // 装备由签发侧按同一把货架锚再生:预览与购得同一物,uid 换成服务端签发并入台账。
-      // 须在扣灵石前签发 —— 签发失败(网络/服务端)时不扣钱,玩家重试即可
+      // 签发放在记账之前:签发失败(网络/服务端)时不记账也不扣钱;记账失败至多丢这件签发物,
+      // 反过来「先记账再签发」失败会让玩家白扣灵石且无货可拿
       let inst: EquipmentInstance | undefined
       if (slot.kind === 'equipment') {
         ;[inst] = await mintDrops([{ src: 'market', tier: slot.tier, stockedAt: stockedAt.value, idx }])
         if (!inst) return 'expired'
       }
+      // 登录玩家先让服务端记这笔账(它按同一把货架锚复算价格);记不上就不成交
+      if (!(await quotePurchase(stockedAt.value, idx))) return 'expired'
       if (!resources.spendStone(slot.price)) return 'poor'
       if (slot.kind === 'pill') {
         inventory.addPill(slot.pillId, slot.count)
