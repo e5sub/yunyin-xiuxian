@@ -28,13 +28,18 @@ import { ensureAdminUser } from './adminBootstrap.js'
 const here = dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT ?? 8787)
 
-/** 清理过期数据:聊天留存期外的记录 + 失效的邮箱验证码 */
+/** 清理过期数据:聊天留存期外的记录 + 失效的邮箱验证码 + 跨天失效的每日行 */
 async function cleanupExpired(): Promise<void> {
   const days = Math.max(await getConfigNumber('chat_retention_days', 7), 1)
   const now = Date.now()
   const result = await run('DELETE FROM chat_messages WHERE created_at < ?', [now - days * 86_400_000])
   if (result.affectedRows > 0) console.log(`[chat-cleanup] 已清理 ${result.affectedRows} 条 ${days} 天前的聊天记录`)
   await run('DELETE FROM email_codes WHERE expires_at < ?', [now - 86_400_000])
+  // 每日行(次数/七会进度/闲趣日志)跨天即失效:按 UTC+8 日键往前推 8 天清理,老日期行不留
+  const staleDay = new Date(now + 8 * 3600_000 - 8 * 86_400_000).toISOString().slice(0, 10)
+  await run('DELETE FROM dungeon_daily WHERE day < ?', [staleDay])
+  await run('DELETE FROM event_progress WHERE day < ?', [staleDay])
+  await run('DELETE FROM leisure_log WHERE day < ?', [staleDay])
 }
 
 async function main(): Promise<void> {
@@ -225,10 +230,10 @@ async function main(): Promise<void> {
     })
   })
 
-  // 过期数据:启动即清一次,之后每 6 小时清一轮
-  void cleanupExpired()
+  // 过期数据:启动即清一次,之后每 6 小时清一轮(定时任务抛错不能带崩进程)
+  void cleanupExpired().catch(e => console.error('[cleanup] 启动清理失败:', e))
   const cleanupTimer = setInterval(() => {
-    void cleanupExpired()
+    void cleanupExpired().catch(e => console.error('[cleanup] 定时清理失败:', e))
   }, 6 * 3_600_000)
   cleanupTimer.unref()
 

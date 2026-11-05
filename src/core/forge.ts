@@ -463,7 +463,17 @@ export function upgradeArtifact(defId: string, opts: { quiet?: boolean } = {}): 
   }
   resources.spendSmall('wudao', cost.wudao)
   resources.spendStone(cost.stone)
-  inventory.levelUpArtifact(defId)
+  // levelUpArtifact 可能拒绝(满重,或 level 为 NaN 时「NaN >= 上限」恒假后写回 NaN+1):
+  // 拒绝而不退款就是白扣一重价。先把重数收成有限整数再计价,拒绝即原路退回。
+  if (!inventory.levelUpArtifact(defId)) {
+    resources.addSmall('wudao', cost.wudao)
+    resources.addStone(cost.stone)
+    if (!opts.quiet) {
+      playSfx('warn')
+      ui.toast(artifactCapToast(), 'warn')
+    }
+    return false
+  }
   if (!opts.quiet) {
     playSfx('success')
     ui.toast(artifactDoneToast(def.name), 'success')

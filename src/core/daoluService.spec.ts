@@ -287,7 +287,8 @@ describe('道侣 · 共命之险的生死判据', () => {
     const player = usePlayerStore()
     player.setBond({
       daoluId: 'dl_qingli',
-      stage: 'known',
+      // be_jie 门槛 stage ≥ confidant:chooseBondEvent 与 availableBondEvents 同一套判据
+      stage: 'confidant',
       fate: 50,
       trust: 50, // 低于安全线 55
       accord: 40, // 低于安全线 45
@@ -295,7 +296,7 @@ describe('道侣 · 共命之险的生死判据', () => {
       metAt: 1,
       fallen: false,
       doneEvents: [],
-      pendingEventId: null,
+      pendingEventId: 'be_jie',
       opportunities: 0,
       nextEventAt: 0
     } as BondState)

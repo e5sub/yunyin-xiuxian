@@ -101,11 +101,15 @@ export function mentorTierOf(share: number, topShare: number, domains: number): 
   return 'neutral'
 }
 
-/** 四门之中份额最大的那一门:拜师弹窗按它把四门排成一把可比的尺 */
+/** 四门之中份额最大的那一门(0~1 的**份额**,不是绝对加权分):拜师弹窗按它把四门排成一把可比的尺。
+ *  语义必须与 mentorVerdict 的 tier 判据同源 —— 弹窗曾把绝对分当份额传,
+ *  分一超 2 就恒判「未纯」,中正档整档不可达。 */
 export function mentorTopShare(): number {
   const quests = useQuestsStore()
   const counter = (key: never): number => quests.counter(key)
-  return Math.max(...MENTORS.map(m => domainStrength(m.id, counter)))
+  const strengths = MENTORS.map(m => domainStrength(m.id, counter))
+  const total = strengths.reduce((a, b) => a + b, 0)
+  return total > 0 ? Math.max(...strengths) / total : 0
 }
 
 /** 可选师承列表(人物页展示用) */

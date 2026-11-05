@@ -283,7 +283,8 @@ export function chooseRouteNode(choice: 0 | 1): StepOutcome | null {
 export function challengeGuardian(): StepOutcome | null {
   const endgame = useEndgameStore()
   const run = endgame.worldRun
-  if (!run || run.layer !== 3) return null
+  // 用同一常量判层:写死 3 的话层数一改,「择路拒进、界主拒打」两头闸同时卡死 run
+  if (!run || run.layer !== EXPEDITION_GUARDIAN_LAYER) return null
   const world = resolveWorld(run.worldId)
   if (!world) return null
   return fightStep(run, world, world.guardian)

@@ -17,6 +17,10 @@ RUN apt-get update && \
 
 COPY dist /app/server/public
 COPY server /app/server
+# vendor 不入库(gitignore),依赖 runner 先跑过 build:vendor。缺了不报错的话,
+# 归一化/复算/权威化/突破/炼器/升级/掉落七条链在容器里全部静默 fail-open。
+RUN test "$(ls /app/server/vendor/*.mjs 2>/dev/null | wc -l)" -ge 7 || \
+    (echo 'FATAL: server/vendor 缺产物 —— 先跑 bun run build:vendor 再构建镜像' && exit 1)
 WORKDIR /app/server
 RUN npm install --omit=dev --no-fund --no-audit && npm cache clean --force
 

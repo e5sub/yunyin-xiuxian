@@ -106,10 +106,11 @@ export function equipTemplatePool(tier: number, slot?: EquipSlot) {
   return DROP_SLOTS.flatMap(s => templatesForDrop(tier, s))
 }
 
-/** 品质随机:权重 = 基础权重 × 层级加成 × 气运加成 × 窗口系数 */
+/** 品质随机:权重 = 基础权重 × 层级加成 × 气运加成 × 窗口系数。
+ *  下限越界(>最高档)取最高档:越界应偏向高质,回退全池反而可能掉出凡品 */
 export function rollQuality(tier: number, rng: RandomService, opts: GenOptions = {}): QualityDef {
   const floor = opts.minQualityRank ?? 0
-  const pool = QUALITIES_BY_FLOOR[floor] ?? QUALITIES
+  const pool = QUALITIES_BY_FLOOR[Math.min(floor, QUALITIES_BY_FLOOR.length - 1)] ?? QUALITIES
   return rng.weighted(pool, q => qualityWeightAt(q, tier, opts))
 }
 

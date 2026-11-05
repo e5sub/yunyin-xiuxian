@@ -223,7 +223,11 @@ export function sanitizeSaveSlices(data: unknown): SanitizeReport | null {
     if (live.some(x => x.slice === 'player' || x.slice === 'resources')) tightenVitals()
     const out: Record<string, unknown> = {}
     const touched: string[] = []
-    for (const [key, value] of Object.entries(input)) {
+    // 差异要跟**迁移前**的原始分片比:input 已是 migrateSlice 之后的值,
+    // 拿它比会把「服务端替老档做了形状迁移」漏在 touched 外,审计看不见
+    const original = data as Record<string, unknown>
+    for (const key of Object.keys(original)) {
+      const value = input[key]
       const entry = live.find(x => x.slice === key)
       if (!entry) {
         out[key] = value
@@ -232,7 +236,7 @@ export function sanitizeSaveSlices(data: unknown): SanitizeReport | null {
       const fixed = readBack(entry.store, entry.keys)
       // 没改动就写回原值:合法档不该因「水合再序列化」发生任何字节变化
       // (键顺序、数字精度、对象原型都会跟着变,既平白放大存档 diff,也会让玩家看到无谓的档变更)
-      if (changed(value, fixed)) {
+      if (changed(original[key], fixed)) {
         out[key] = fixed
         touched.push(key)
       } else {
@@ -240,8 +244,10 @@ export function sanitizeSaveSlices(data: unknown): SanitizeReport | null {
       }
     }
     return { data: out, touched }
-  } catch {
-    // 链路抛错(极端畸形分片):调用方按「未归一化」处理,不阻断存档
+  } catch (err) {
+    // 链路抛错(极端畸形分片):调用方按「未归一化」处理,不阻断存档。
+    // 静默吞掉等于加固失效零留痕 —— 服务端 GM 后台将永远看不到『sanitized』缺席的原因
+    console.warn('[saveSanitize] 归一化链路抛错,按未归一化处理:', err instanceof Error ? err.message : err)
     return null
   } finally {
     setActivePinia(undefined)

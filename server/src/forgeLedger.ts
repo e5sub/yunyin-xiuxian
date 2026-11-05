@@ -50,9 +50,9 @@ export async function pendingForgeSpend(userId: number): Promise<ForgeCost> {
   return { dust: Math.trunc(dust), stone: { m, e } }
 }
 
-/** 存档已落库:这批支出算兑现了 */
+/** 存档已落库:这批支出算兑现了(兑现即删行,同 marketLedger —— settled=1 的行没人读) */
 export async function settleForgeSpend(userId: number): Promise<void> {
-  await run('UPDATE forge_spend SET settled = 1 WHERE user_id = ? AND settled = 0', [userId])
+  await run('DELETE FROM forge_spend WHERE user_id = ? AND settled = 0', [userId])
 }
 
 /** 清账(删档时用):旧账不该压在新档头上 */

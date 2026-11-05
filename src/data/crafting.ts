@@ -164,7 +164,9 @@ function deriveSkills(kind: PillDef['kind']): Partial<Record<SkillId, number>> {
     : { pairing: 0.3, nurture: 0.26, flame: 0.18, herbLore: 0.14, condense: 0.12 }
 }
 
-/** 取丹方工艺;alchemyLevel 读作丹方阶位,不是丹炉等级门槛 */
+/** 取丹方工艺;alchemyLevel 读作丹方阶位,不是丹炉等级门槛。
+ *  唯一按门槛读它的是 loreService 的可达性判定(reachable),那边是另一套语义 —— 两处口径勿混。
+ *  钳到 9 是因为灵草 rank 上限 8,阶位 9 与 10 推导出的材料相同 */
 export function recipeCraft(def: PillDef): RecipeCraft | null {
   if (!def.recipe) return null
   const rank = Math.max(1, Math.min(9, def.alchemyLevel ?? 1))

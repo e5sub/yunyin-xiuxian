@@ -64,10 +64,17 @@ async function mysqlPool(): Promise<MySqlDb> {
     database: process.env.DB_NAME ?? 'yunyin',
     waitForConnections: true,
     connectionLimit: 10,
-    // 返回 JSON 数值而不是 Buffer
+    // 返回 JSON 数值而不是 Buffer。BIGINT/NEWDECIMAL 在安全整数范围内转 Number:
+    // 一律 String() 会让 login_seq 之类的 BIGINT 变字符串,数字比较与 +1 全链路损坏
+    // (「"0"+1="01"」→ 写回 1 → 「"1"+1="11"」,seq 每次登录按 ×10+1 失控膨胀)。
     typeCast(field: { type: string; string(): string | null }, next: () => unknown) {
       const t = field.type
-      if (t === 'BIGINT' || t === 'NEWDECIMAL') return String(field.string())
+      if (t === 'BIGINT' || t === 'NEWDECIMAL') {
+        const s = field.string()
+        if (s === null) return null
+        const n = Number(s)
+        return Number.isSafeInteger(n) ? n : s
+      }
       return next()
     }
   }) as unknown as MySqlDb
@@ -445,6 +452,9 @@ CREATE INDEX IF NOT EXISTS idx_save_history_user ON save_history(user_id, id DES
 CREATE INDEX IF NOT EXISTS idx_save_flags_user ON save_flags(user_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_loot_ledger_seed ON loot_ledger(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_equip_state_user ON equip_state(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_market_purchases_user ON market_purchases(user_id, settled);
+CREATE INDEX IF NOT EXISTS idx_forge_spend_user ON forge_spend(user_id, settled);
+CREATE INDEX IF NOT EXISTS idx_progress_spend_user ON progress_spend(user_id, settled);
 `)
     // 老库迁移:补邮箱/角色/状态列(已存在则忽略)
     for (const stmt of [
@@ -827,6 +837,18 @@ CREATE TABLE IF NOT EXISTS autoops_state (
     await d.query('CREATE INDEX idx_users_email ON users(email_lower)')
   } catch {
     /* 索引已存在 */
+  }
+  // 三张支出台账按 (user_id, settled) 查/更:上传存档的热路径,没索引就是全表扫描
+  for (const stmt of [
+    'CREATE INDEX idx_market_purchases_user ON market_purchases(user_id, settled)',
+    'CREATE INDEX idx_forge_spend_user ON forge_spend(user_id, settled)',
+    'CREATE INDEX idx_progress_spend_user ON progress_spend(user_id, settled)'
+  ]) {
+    try {
+      await d.query(stmt)
+    } catch {
+      /* 索引已存在 */
+    }
   }
   // 老库 saves.started 回填(同 SQLite 判定)
   try {

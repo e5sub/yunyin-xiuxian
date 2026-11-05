@@ -342,6 +342,12 @@ const codeFailures = new Map<string, number[]>()
 async function consumeCode(email: string, code: string, purpose: string): Promise<'ok' | 'bad' | 'locked'> {
   const failKey = `${purpose}|${email}`
   const now = Date.now()
+  // 顺手把窗口外的旧键扫掉:条目只在成功时删除,换着邮箱试错会把 Map 慢慢撑大
+  if (codeFailures.size > 0) {
+    for (const [k, ts] of codeFailures) {
+      if (ts.every(t => now - t >= CODE_FAIL_WINDOW_MS)) codeFailures.delete(k)
+    }
+  }
   const fails = (codeFailures.get(failKey) ?? []).filter(t => now - t < CODE_FAIL_WINDOW_MS)
   if (fails.length >= CODE_MAX_FAILS) return 'locked'
   const row = await get<{ id: number }>(

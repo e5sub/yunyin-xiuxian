@@ -60,6 +60,11 @@ beforeEach(() => {
 })
 
 /** 把关系推到目标阶,返回实际到达的阶序 */
+/** 把某事件挂成待决:chooseBondEvent 只认 pendingEventId(与真实 UI 同流程) */
+function pend(eventId: string): void {
+  usePlayerStore().setBond({ ...currentBond()!, pendingEventId: eventId })
+}
+
 function bondTo(id: string, target: 'known' | 'together' | 'confidant'): number {
   meet(id)
   if (target === 'known') advanceBond({ fate: 15 })
@@ -139,6 +144,7 @@ describe('共同事件 · 二:同一道侣,不同选择不同结果', () => {
     for (const cid of ['take_recipe', 'take_artifact', 'take_both']) {
       setActivePinia(createPinia())
       bondTo('dl_qingli', 'together')
+      pend('be_relic')
       const r = chooseBondEvent('be_relic', cid)!
       results[cid] = r.reaction
     }
@@ -220,6 +226,7 @@ describe('共同事件 · 四:她有自己的意志', () => {
 
   it('她可以离开 —— 关系随之冻结,但履历仍记这一段', () => {
     bondTo('dl_qingli', 'confidant')
+    pend('be_depart')
     const r = chooseBondEvent('be_depart', 'part_ways')!
     expect(r.left).toBe(true)
     expect(currentBond()?.departed).toBe(true)
@@ -236,8 +243,11 @@ describe('共同事件 · 四:她有自己的意志', () => {
     const quests = useQuestsStore()
     quests.inc('kills', 400)
     bondTo('dl_baiwei', 'confidant')
+    pend('be_relic')
     chooseBondEvent('be_relic', 'take_artifact')
+    pend('be_spare')
     chooseBondEvent('be_spare', 'kill')
+    pend('be_price')
     const r = chooseBondEvent('be_price', 'take')
     const b = currentBond()!
     console.log(`\n连番违背之后:信任 ${b.trust} · 契合 ${b.accord} · 离开=${b.departed === true}`)
@@ -257,6 +267,7 @@ describe('共同事件 · 五:仍不进效率链', () => {
     const mods = JSON.stringify(player.finalStats.mods)
     const fruit = player.reincarnation.daoFruit
     const insight = player.reincarnation.insight
+    pend('be_relic')
     chooseBondEvent('be_relic', 'take_recipe')
     expect(JSON.stringify(player.finalStats.mods)).toBe(mods)
     expect(player.reincarnation.daoFruit).toBe(fruit)
@@ -272,6 +283,7 @@ describe('共同事件 · 五:仍不进效率链', () => {
 describe('共同事件 · 边界', () => {
   it('事件不重复触发', () => {
     bondTo('dl_qingli', 'together')
+    pend('be_relic')
     chooseBondEvent('be_relic', 'take_recipe')
     expect(currentBond()!.doneEvents).toContain('be_relic')
     expect(chooseBondEvent('be_relic', 'take_recipe')).toBeNull()

@@ -29,6 +29,10 @@ let cached: Promise<RecomputeModule> | null = null
 
 function clientRecompute(): Promise<RecomputeModule> {
   cached ??= loadClientModule<RecomputeModule>(SOURCE_MODULE, VENDOR_FILE)
+// 加载失败不缓存 rejected promise:vendor 缺失/损坏是部署事故,修好后不该重启进程才恢复
+  cached.catch(() => {
+    cached = null
+  })
   return cached
 }
 

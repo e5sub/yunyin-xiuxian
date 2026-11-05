@@ -346,11 +346,15 @@ export function chooseBondEvent(eventId: string, choiceId: string): ChoiceResult
   const player = usePlayerStore()
   const b = player.bond
   const def = currentDaolu()
-  if (!b || !def || b.fallen) return null
+  if (!b || !def || b.fallen || b.departed) return null
   const ev = bondEventDef(eventId)
   const ch = ev?.choices.find(x => x.id === choiceId)
   if (!ev || !ch) return null
   if (b.doneEvents.includes(ev.id)) return null
+  // 只能交「已抽到且当前阶位够格」的事件:与 availableBondEvents 同一套判据,
+  // 否则外部调用(或阶位被险情压回后)能跳过机会点与阶段门槛白拿三维
+  if (b.pendingEventId !== eventId) return null
+  if (stageIndex(b.stage) < ev.minStageIndex) return null
 
   // 共命之险按选择前的信任/契合判生死,不能被本次选择的 +trust/+accord 救回
   const beforeTrust = b.trust

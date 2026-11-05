@@ -18,11 +18,16 @@ export const SOUL_REFINE_COST = 20
  * 1.58.1 起器魂也要服务端签发(记台账,否则上传时被验源移除):先签发再生效 ——
  * 签发失败就把道源退回、原器留着,不让玩家白烧一件。
  */
+/** 凝炼在途:refineEquipment 里 await mintSoul(登录态是一次签发网络往返)期间,
+ *  原器还没被移除、守卫全都拦不住第二次调用 —— 不加闸,连点一件原器能凝出两枚器魂 */
+const refiningUids = new Set<string>()
+
 export async function refineEquipment(uid: string): Promise<boolean> {
   const inventory = useInventoryStore()
   const endgame = useEndgameStore()
   const ui = useUiStore()
 
+  if (refiningUids.has(uid)) return false
   const inst = inventory.findItem(uid)
   if (!inst) return false
   if (inst.locked) {
@@ -49,9 +54,21 @@ export async function refineEquipment(uid: string): Promise<boolean> {
     endgame.addDaoSource(SOUL_REFINE_COST)
     return false
   }
-  if (!(await mintSoul(soul))) {
+  refiningUids.add(uid)
+  try {
+    if (!(await mintSoul(soul))) {
+      endgame.addDaoSource(SOUL_REFINE_COST)
+      ui.toast('凝炼失败', 'warn')
+      return false
+    }
+  } finally {
+    refiningUids.delete(uid)
+  }
+  // 签发的网络往返期间原器可能被穿上/上锁/移走:以此刻状态为准,不满足就退款回收
+  const now = inventory.findItem(uid)
+  if (!now || now.locked || Object.values(inventory.equipped).includes(uid) || !canRefine(now)) {
     endgame.addDaoSource(SOUL_REFINE_COST)
-    ui.toast('凝炼失败', 'warn')
+    ui.toast('此器状态已变,凝炼中止', 'warn')
     return false
   }
   inventory.removeEquipment(uid)

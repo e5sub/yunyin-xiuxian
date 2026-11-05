@@ -206,11 +206,21 @@ jobs:
           mkdir -p ./final-release
 
           # 桌面端:完整包 + 增量包
-          find ./raw-assets/electron-win -type f -name "*.zip" -exec cp {} ./final-release/ \; || true
+          find ./raw-assets/electron-win -type f -name "*.zip" -exec cp {} ./final-release/ \;
 
-          find ./raw-assets/android-apk -type f -name "*.apk" -exec cp {} ./final-release/ \; || true
+          find ./raw-assets/android-apk -type f -name "*.apk" -exec cp {} ./final-release/ \;
 
-          find ./raw-assets/web-zip -type f -name "*.zip" -exec cp {} ./final-release/ \; || true
+          find ./raw-assets/web-zip -type f -name "*.zip" -exec cp {} ./final-release/ \;
+
+          # 产物缺失要红:cp 失败(磁盘/权限)或上游 artifact 是空的,Release 照发只会表现为「少个包」
+          for kind in zip apk; do
+            count=$(find ./final-release -type f -name "*.${kind}" | wc -l)
+            echo "${kind}: ${count}"
+            if [ "${count}" -eq 0 ]; then
+              echo "::error::final-release 里没有任何 .${kind} —— 上游构建产物缺失"
+              exit 1
+            fi
+          done
 
           echo "Final assets to upload:"
           ls -R ./final-release
@@ -229,7 +239,12 @@ jobs:
       # 小节标题形如 `## [1.41.0] …`
       - name: 生成 Release 说明(取 CHANGELOG 该版本小节)
         run: |
-          VER="${GITHUB_REF_NAME#v}"
+          # 与 get_version 同逻辑:手动触发时 GITHUB_REF_NAME 是分支名,取不到 tag 版本
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VER="${GITHUB_REF_NAME#v}"
+          else
+            VER=$(node -p "require('./package.json').version")
+          fi
           awk -v v="[$VER]" 'BEGIN{in_sec=0} /^## \[/{ if(in_sec) exit; if(index($0,v)==4) in_sec=1; next } in_sec{print}' CHANGELOG.md > "$GITHUB_WORKSPACE/.release-body.md"
           if [ ! -s "$GITHUB_WORKSPACE/.release-body.md" ]; then
             echo "::warning::CHANGELOG.md 里找不到 `## [$VER]` 小节,Release 备注将为空"

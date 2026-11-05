@@ -62,9 +62,9 @@ export async function pendingProgressSpend(userId: number): Promise<ProgressCost
   return { stone: { m, e }, ore: Math.trunc(ore), wudao: Math.trunc(wudao), page: Math.trunc(page) }
 }
 
-/** 存档已落库:这批支出算兑现了 */
+/** 存档已落库:这批支出算兑现了(兑现即删行,同 marketLedger —— settled=1 的行没人读) */
 export async function settleProgressSpend(userId: number): Promise<void> {
-  await run('UPDATE progress_spend SET settled = 1 WHERE user_id = ? AND settled = 0', [userId])
+  await run('DELETE FROM progress_spend WHERE user_id = ? AND settled = 0', [userId])
 }
 
 /** 清账(删档时用):旧账不该压在新档头上 */

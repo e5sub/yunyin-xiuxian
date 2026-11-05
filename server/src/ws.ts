@@ -145,7 +145,10 @@ export function initWsServer(wss: WebSocketServer): void {
           return
         }
         if (msg.type === 'chat' && typeof msg.content === 'string') {
-          void handleChat(client, msg.content)
+          // handleChat 内部要读限速配置,DB 抖动时没有 catch 就是 unhandledRejection = 进程退出
+          void handleChat(client, msg.content).catch(e => {
+            console.warn('[ws] chat error', e)
+          })
         }
       })
 
@@ -229,7 +232,9 @@ async function handleChat(client: Client, content: string): Promise<void> {
     getConfigNumber('chat_min_interval_ms', DEFAULT_CHAT_MIN_INTERVAL_MS),
     getConfigNumber('chat_max_len', DEFAULT_CHAT_MAX_LEN)
   ])
-  const text = content.trim().slice(0, maxLen)
+  // chat_messages.content 是 VARCHAR(255):GM 把上限调超 255 时 SQLite 照单全收,
+  // MySQL 严格模式会静默插入失败(能广播不留档)。落库前统一钳到列宽。
+  const text = content.trim().slice(0, Math.min(maxLen, 255))
   if (text === '') return
   const now = Date.now()
   // 按账号限速:同一账号多开连接共用一个配额
@@ -275,7 +280,7 @@ export function kickUserSockets(uid: number, waitMs: number, closeAfterMs: numbe
   if (set === undefined) return Promise.resolve()
   notifyUser(uid, { type: 'kick', graceMs: closeAfterMs })
   return new Promise(resolve => {
-    setTimeout(resolve, waitMs)
+    setTimeout(resolve, waitMs).unref?.()
     setTimeout(() => {
       const cur = clients.get(uid)
       if (cur !== undefined) {
@@ -285,6 +290,6 @@ export function kickUserSockets(uid: number, waitMs: number, closeAfterMs: numbe
           }
         }
       }
-    }, closeAfterMs)
+    }, closeAfterMs).unref?.()
   })
 }

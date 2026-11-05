@@ -51,9 +51,10 @@ export async function pendingSpend(userId: number): Promise<Cost> {
   return { m, e }
 }
 
-/** 存档已落库:这批支出算兑现了(下一笔重新记账) */
+/** 存档已落库:这批支出算兑现了(下一笔重新记账)。
+ * 兑现即删行 —— 台账只以 settled=0 为准读/写,留着只会让表无限膨胀、热路径查询越来越慢 */
 export async function settlePurchases(userId: number): Promise<void> {
-  await run('UPDATE market_purchases SET settled = 1 WHERE user_id = ? AND settled = 0', [userId])
+  await run('DELETE FROM market_purchases WHERE user_id = ? AND settled = 0', [userId])
 }
 
 /** 清账(删档时用):旧账不该压在新档头上 */

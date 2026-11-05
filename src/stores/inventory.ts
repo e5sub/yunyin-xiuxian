@@ -311,8 +311,11 @@ export const useInventoryStore = defineStore(
     /** 法宝升一重;野 id/未拥有/满重返回 false */
     function levelUpArtifact(defId: string): boolean {
       const owned = artifacts.value.find(a => a.defId === defId)
-      if (!owned || owned.level >= ARTIFACT_MAX_LEVEL) return false
-      artifacts.value = artifacts.value.map(a => (a.defId === defId ? { ...a, level: a.level + 1 } : a))
+      // level 先收成有限整数:NaN 档(内存直塞不经 sanitize)「NaN >= 上限」恒假,
+      // 写回 NaN+1 还是 NaN,重数永远停在原地而调用方却当升级成功
+      const lv = owned ? (Number.isFinite(owned.level) ? Math.floor(owned.level) : 0) : -1
+      if (!owned || lv >= ARTIFACT_MAX_LEVEL || lv < 0) return false
+      artifacts.value = artifacts.value.map(a => (a.defId === defId ? { ...a, level: lv + 1 } : a))
       return true
     }
 

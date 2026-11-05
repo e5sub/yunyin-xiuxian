@@ -51,8 +51,16 @@ const FLAG_MIN_GAP_MS = 10 * 60_000
 /** 单次上传内境界跳这么多(一个大境界)就留痕:合法玩家升级是渐进的,GM 据此复核 */
 const REALM_JUMP_FLAG = 100
 
-/** 上次留痕时刻(内存即可:重启清零只会多留一条) */
+/** 上次留痕时刻(内存即可:重启清零只会多留一条)。超量懒清,防长期运行缓慢累积 */
 const lastFlagAt = new Map<number, number>()
+const UID_MAP_SWEEP = 50_000
+
+function sweepUidMap(m: Map<number, number>, now: number): void {
+  if (m.size <= UID_MAP_SWEEP) return
+  for (const [uid, at] of m) {
+    if (now - at > 30 * 86_400_000) m.delete(uid)
+  }
+}
 
 /**
  * 存档审计留痕 —— 只记不改,不拦存档。
@@ -77,6 +85,7 @@ async function auditSave(
   if (flags.length === 0) return
   const now = Date.now()
   if (now - (lastFlagAt.get(userId) ?? 0) < FLAG_MIN_GAP_MS) return
+  sweepUidMap(lastFlagAt, now)
   lastFlagAt.set(userId, now)
   for (const f of flags) {
     await run(
@@ -99,6 +108,10 @@ const SNAP_EXP_MAX = 150
 const REALM_INDEX_MAX = 3_000
 /** 快照境界与存档境界允许的偏差:快照与存档同刻生成,差超过一个大境界即视为被改 */
 const REALM_SNAP_TOLERANCE = 200
+
+/** 客户端存档结构版本(src/utils/storage.ts 的 SAVE_VERSION):上传版本超过它即拒收。
+ *  两侧一致性由 saveVersionSync.spec 钉住 —— 改客户端版本必须同步改这里。 */
+const CLIENT_SAVE_VERSION = 2
 
 /** 每账号上次写档时刻(内存即可:重启清零只影响 2 秒窗口) */
 const lastWriteAt = new Map<number, number>()
@@ -299,11 +312,14 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
     return
   }
   lastWriteAt.set(req.user!.id, gateAt)
+  sweepUidMap(lastWriteAt, gateAt)
 
   void withKeyLock(`save:${req.user!.id}`, async () => {
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
     const version = finite(body.version) ? Math.trunc(body.version) : 0
-    if (version < 1 || version > 10_000) {
+    // 上限与客户端 SAVE_VERSION(src/utils/storage.ts)同步,saveVersionSync.spec 钉住两者一致。
+    // 放太宽的话,毒化客户端上传 version=9999 也能落库,任何存量客户端都拉不回这份档。
+    if (version < 1 || version > CLIENT_SAVE_VERSION) {
       res.status(400).json({ error: '存档版本无效' })
       return
     }

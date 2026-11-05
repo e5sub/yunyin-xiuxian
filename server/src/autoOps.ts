@@ -188,4 +188,5 @@ let jobTimer: ReturnType<typeof setInterval> | undefined
 export function startAutoOpsJob(): void {
   if (jobTimer !== undefined) return
   jobTimer = setInterval(() => void tickOfflineBoss().catch(() => undefined), JOB_TICK_MS)
+  jobTimer.unref?.()
 }
