@@ -81,8 +81,25 @@ function applyItems(items: readonly EquipmentInstance[] | undefined): void {
   for (const it of items) inventory.replaceItem(it)
 }
 
-/** 上报本地余额:服务端取「云档值」与「上报值」的较大者(本地往往比云档新) */
+/**
+ * 同一份炼器请求在途时复用同一个 Promise。
+ * 服务端只挡 80ms 间隔,一次网络 RTT 内的第二击必然放行 —— 连点「强化 / 重铸 / 连强」
+ * 会让同一次操作掷两遍:词条被第二次洗掉、器灵尘与灵石双扣。
+ * 键取「操作 + 目标 + 次数」,不同的件仍可并行(服务端另有存档锁保证不互相覆盖)。
+ */
+let inflightForge: { key: string; p: Promise<ForgeOpResponse | null> } | null = null
+
 async function ask(op: ForgeOp): Promise<ForgeOpResponse | null> {
+  const key = JSON.stringify(op)
+  if (inflightForge !== null && inflightForge.key === key) return inflightForge.p
+  const p = askInner(op).finally(() => {
+    if (inflightForge !== null && inflightForge.p === p) inflightForge = null
+  })
+  inflightForge = { key, p }
+  return p
+}
+
+async function askInner(op: ForgeOp): Promise<ForgeOpResponse | null> {
   const player = usePlayerStore()
   const resources = useResourcesStore()
   try {

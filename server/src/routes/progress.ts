@@ -19,6 +19,7 @@ import { metricsOf, backupBeforeOverwrite, syncProfileFromData } from './save.js
 import { loadClientModule } from '../clientVendor.js'
 import { recordProgressSpend } from '../progressLedger.js'
 import { recordLevelStates } from '../levelLedger.js'
+import { withKeyLock } from '../mutex.js'
 
 const SOURCE_MODULE = '../../../src/core/levelResolve'
 const VENDOR_FILE = 'levelResolve'
@@ -77,15 +78,21 @@ function patchSlices(data: Record<string, unknown>, slices: Record<string, Recor
 export const progressRouter = express.Router()
 
 progressRouter.post('/progress/op', requireAuth, (req: Request, res: Response) => {
-  void (async () => {
+  /*
+   * 与 PUT /save、突破、炼器共用 `save:<uid>` 锁:升级同样整档读改写,
+   * 与每几秒一次的上传并发时,旧快照会把升级结果与台账一起顶回去。
+   */
+  // 限速必须留在锁外:锁内判断时前一个请求已把时间桶更新过,
+  // 排队进来的第二击（连点的第二发）反而会被放行,等于把限速废掉
+  const gateAt = Date.now()
+  if (gateAt - (lastOpAt.get(req.user!.id) ?? 0) < OP_MIN_GAP_MS) {
+    res.status(429).json({ error: '操作太快,稍候再试' })
+    return
+  }
+  lastOpAt.set(req.user!.id, gateAt)
+  void withKeyLock(`save:${req.user!.id}`, async () => {
     const userId = req.user!.id
     const now = Date.now()
-    const last = lastOpAt.get(userId) ?? 0
-    if (now - last < OP_MIN_GAP_MS) {
-      res.status(429).json({ error: '操作太快,稍候再试' })
-      return
-    }
-    lastOpAt.set(userId, now)
 
     const body = (isPlainObject(req.body) ? req.body : {}) as Record<string, unknown>
     const row = await get<{ version: number; data: string; updated_at: number }>(
@@ -185,7 +192,7 @@ progressRouter.post('/progress/op', requireAuth, (req: Request, res: Response) =
       /* 留痕失败不影响结算 */
     }
     res.json({ ok: true, op: result.op, slices: result.slices, spend: result.spend, detail: result.detail })
-  })().catch(() => {
+  }).catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })
 })

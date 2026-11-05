@@ -21,7 +21,7 @@
         <span v-for="(s, i) in state.spoils" :key="i" class="block">· {{ s }}</span>
       </p>
       <div class="mt-2 flex gap-2">
-        <button class="btn-seal flex-1 !py-1.5 !text-[12px]" @click="fight">再 入 一 层</button>
+        <button class="btn-seal flex-1 !py-1.5 !text-[12px]" :disabled="fighting" :title="fighting ? '交手中' : undefined" @click="fight">再 入 一 层</button>
         <button class="btn-ghost flex-1 !py-1.5 !text-[12px]" @click="abandonRealm()">出 秘 境</button>
       </div>
     </template>
@@ -71,7 +71,7 @@
 </template>
 
 <script setup lang="ts">
-  import { computed } from 'vue'
+  import { computed, ref } from 'vue'
   import { usePlayerStore } from '@/stores/player'
   import { useEndgameStore } from '@/stores/endgame'
   import { useUiStore } from '@/stores/ui'
@@ -117,6 +117,8 @@
   const list = computed(() => availableRealms(props.gate))
   const def = computed<SecretRealmDef | undefined>(() => (state.value ? secretRealmDef(state.value.realmId) : undefined))
   const busy = computed(() => endgameBusy(endgame.worldRun, player.secretRealm, useAdventureStore().session))
+  /** 交手中:终层签发要一次网络往返,期间连点会重复结算 */
+  const fighting = ref(false)
 
   function canPay(r: SecretRealmDef): boolean {
     return !busy.value && entryShortfallOf(r, player.major) === null
@@ -141,10 +143,16 @@
   }
 
   async function fight(): Promise<void> {
-    const r = await fightSecretLayer()
-    if (!r) return
-    // 合并为单条多行 toast:逐条 push 会被 toast 上限 5 挤掉前面的行
-    // 胜归 success(与全库「有得有获」同级),败归 warn
-    if (r.lines.length) ui.toast(r.lines.join('\n'), r.win ? 'success' : 'warn')
+    if (fighting.value) return
+    fighting.value = true
+    try {
+      const r = await fightSecretLayer()
+      if (!r) return
+      // 合并为单条多行 toast:逐条 push 会被 toast 上限 5 挤掉前面的行
+      // 胜归 success(与全库「有得有获」同级),败归 warn
+      if (r.lines.length) ui.toast(r.lines.join('\n'), r.win ? 'success' : 'warn')
+    } finally {
+      fighting.value = false
+    }
   }
 </script>

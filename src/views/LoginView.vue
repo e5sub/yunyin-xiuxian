@@ -306,6 +306,15 @@
     if (!tsOn.value) void loadAuthConfig()
   })
 
+  /** 冷却只从「发送成功」起算:失败还锁 60 秒会让填错邮箱的人干等 */
+  function startCodeCooldown(target: { value: number }): void {
+    target.value = 60
+    const iv = setInterval(() => {
+      target.value -= 1
+      if (target.value <= 0) clearInterval(iv)
+    }, 1000)
+  }
+
   function sendRegisterCode(): void {
     if (!EMAIL_RE.test(email.value)) {
       error.value = '请填写有效邮箱'
@@ -322,16 +331,14 @@
       .then(r => {
         if (r.devCode !== undefined) ui.toast(`验证码 ${r.devCode}`, 'success')
         else ui.toast('验证码已发送', 'success')
+        startCodeCooldown(codeCooldown)
       })
       .catch(e => {
         error.value = e instanceof CloudError ? e.message : '发送失败'
+        // 失败不休冷却,允许改完邮箱立刻重发
+        codeCooldown.value = 0
       })
       .finally(() => tsReset(tsBox.value))
-    codeCooldown.value = 60
-    const iv = setInterval(() => {
-      codeCooldown.value -= 1
-      if (codeCooldown.value <= 0) clearInterval(iv)
-    }, 1000)
   }
 
   function sendForgotCode(): void {
@@ -351,17 +358,14 @@
       .then(r => {
         forgotMsg.value = r.devCode !== undefined ? `验证码 ${r.devCode}` : '验证码已发送'
         forgotOk.value = true
+        startCodeCooldown(fpCooldown)
       })
       .catch(e => {
         forgotMsg.value = e instanceof CloudError ? e.message : '发送失败'
         forgotOk.value = false
+        fpCooldown.value = 0
       })
       .finally(() => tsReset(fpTsBox.value))
-    fpCooldown.value = 60
-    const iv = setInterval(() => {
-      fpCooldown.value -= 1
-      if (fpCooldown.value <= 0) clearInterval(iv)
-    }, 1000)
   }
 
   async function doReset(): Promise<void> {

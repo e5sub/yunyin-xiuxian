@@ -26,6 +26,9 @@ import {
   OFFLINE_FLAT_DUST_PER_WIN,
   OFFLINE_MODAL_MIN_SECONDS
 } from '@/data/constants'
+
+/** 离线一次最多结算的际遇场数(每场一次事件结算);超出的槽位折回战斗 */
+const OFFLINE_EVENT_CAP = 40
 import { makeEnemySnap, resolveCombat, sampleWinRate } from './combat'
 import { buildPlayerSnap } from './playerSnap'
 import { onAcquire, acquireArtifactGain, acquireEquipment, afterWin, randomDropArtifact, randomDropPill } from './loot'
@@ -193,6 +196,8 @@ async function settleOfflineInner(nowMs: number): Promise<OfflineSummary | null>
   const herbBeforeByGrade = { ...resources.herbByGrade }
   const oreBefore = resources.ore
   const wudaoBefore = resources.wudao
+  // 灵石快照必须与其余资源同一批截:镇压结算也会发灵石,截在它之后会让卷轴的 stone 少报一截
+  const stoneBefore = { ...resources.spiritStone }
   dongfu.produce(effSec)
 
   // 藏经阁被动钻研:与在线同源
@@ -228,7 +233,6 @@ async function settleOfflineInner(nowMs: number): Promise<OfflineSummary | null>
   // 败场也须记:提前收手的 3 战门槛按胜+负判
   let sessionWins = 0
   let sessionLosses = 0
-  const stoneBefore = { ...resources.spiritStone }
   const session = adventure.session
   // 本段历练所得,折进会话总账(与实发同一份数,不另算)
   const trip = { stone: gnZero(), exp: gnZero(), items: 0 }
@@ -248,8 +252,10 @@ async function settleOfflineInner(nowMs: number): Promise<OfflineSummary | null>
       // 遇敌间隔与在线同源(exploreBattleGapSec),不内联间隔公式
       const battleGapSec = exploreBattleGapSec(modOf(mods, 'explorationSpeed'))
       const encounters = Math.floor(simSec / battleGapSec)
-      // 与在线同源:exploreEventChance(含星象之利)
-      events = Math.round(encounters * exploreEventChance(region.id, mods))
+      // 与在线同源:exploreEventChance(含星象之利)。
+      // 事件结算有 40 场上限(每场要跑一次事件结算,不能无限),但槽位必须守恒:
+      // 先把超额部分折回战斗位,再推导 battles —— 否则长离线里那几千个槽位既不打也不结算,产出凭空少一截。
+      events = Math.min(Math.round(encounters * exploreEventChance(region.id, mods)), OFFLINE_EVENT_CAP)
       battles = Math.max(0, encounters - events)
 
       if (battles > 0) {
@@ -415,7 +421,7 @@ async function settleOfflineInner(nowMs: number): Promise<OfflineSummary | null>
         }
       }
       // 事件按默认选项自动结算
-      const evCap = Math.min(events, 40)
+      const evCap = events
       // 与在线同源:事件取自本世路线节点(regionEventPoolFor);不走 pickEventFor 的机缘/奇缘分支,离线不替玩家拍板
       const worldEventTags = [...placeContent(region.id).eventTags]
       let offlineEventPool = regionEventPoolFor({ ...region, eventTags: worldEventTags })

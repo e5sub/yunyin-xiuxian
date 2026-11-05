@@ -9,6 +9,7 @@ import { get, run } from './db.js'
 import { requireAuth } from './auth.js'
 import { rateLimit } from './rateLimit.js'
 import { allConfig } from './config.js'
+import { withKeyLock } from './mutex.js'
 import { alipayConfig, tradePrecreate, tradeQuery } from './alipay.js'
 
 /** 永久 VIP 的落库到期时间:2100-01-01 00:00:00 UTC(远大于任何常规时长) */
@@ -44,6 +45,12 @@ export function generateCode(): string {
 
 /** 发放/续期 VIP:days>0 从 max(现在,现有到期) 起叠加;days=0 = 永久。返回新到期时间戳 */
 export async function grantVipDays(userId: number, days: number): Promise<number> {
+  // 读-算-写必须串行:两个并发发放(两张激活码 / 兑换撞上支付查单)会各自读到同一个旧到期时间,
+  // 后写的把前一次的天数覆盖掉 —— 钱付了、码废了,时长只加了一份
+  return withKeyLock(`vip:${userId}`, () => grantVipDaysInner(userId, days))
+}
+
+async function grantVipDaysInner(userId: number, days: number): Promise<number> {
   const row = await get<{ vip_until: number }>('SELECT vip_until FROM users WHERE id = ?', [userId])
   if (row === undefined) throw new Error('查无此用户')
   let vipUntil: number
@@ -209,7 +216,15 @@ vipRouter.get('/order/:no/status', requireAuth, (req: Request, res: Response) =>
         res.json({ status: 'paid', vipUntil: await currentVipUntil(req.user!.id) })
         return
       }
-      const vipUntil = await grantVipDays(req.user!.id, order.days)
+      let vipUntil: number
+      try {
+        vipUntil = await grantVipDays(req.user!.id, order.days)
+      } catch (e) {
+        // 已付钱但没发出:把订单退回 pending,下一次查单会重试发放。
+        // 若不回退,状态已是终态,轮询只会一路回 paid,vip_until 永远不会变
+        await run("UPDATE vip_orders SET status = 'pending', paid_at = 0 WHERE out_trade_no = ? AND status = 'paid'", [no])
+        throw e
+      }
       res.json({ status: 'paid', vipUntil })
       return
     }
@@ -266,7 +281,14 @@ vipRouter.post('/redeem', requireAuth, redeemLimit, (req: Request, res: Response
       res.status(400).json({ error: '激活码已被使用' })
       return
     }
-    const vipUntil = await grantVipDays(req.user!.id, row.days)
+    let vipUntil: number
+    try {
+      vipUntil = await grantVipDays(req.user!.id, row.days)
+    } catch (e) {
+      // 发放失败就把码退回去:否则码已占用、时长没到账,只能人工补偿
+      await run('UPDATE vip_codes SET used_by = 0, used_at = 0 WHERE code = ? AND used_by = ?', [code, req.user!.id])
+      throw e
+    }
     res.json({ ok: true, days: row.days, vipUntil })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })

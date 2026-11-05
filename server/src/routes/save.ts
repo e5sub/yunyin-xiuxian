@@ -7,11 +7,11 @@ import { recomputeProfile } from '../recompute.js'
 import { normalizeSaveSlices } from '../saveNormalize.js'
 import { enforceAuthority } from '../saveAuthority.js'
 import { enforceLootProvenance } from '../lootLedger.js'
-import { clearEquipStates, enforceEquipStates, pruneEquipStates } from '../equipLedger.js'
+import { clearEquipStates, enforceEquipStates, pruneEquipStates, resetEquipStatesFromData } from '../equipLedger.js'
 import { clearPurchases, pendingSpend, settlePurchases } from '../marketLedger.js'
 import { clearForgeSpend, pendingForgeSpend, settleForgeSpend } from '../forgeLedger.js'
 import { clearProgressSpend, pendingProgressSpend, settleProgressSpend } from '../progressLedger.js'
-import { clearLevelStates, enforceLevelStates } from '../levelLedger.js'
+import { clearLevelStates, enforceLevelStates, resetLevelStatesFromData } from '../levelLedger.js'
 import { withKeyLock } from '../mutex.js'
 
 export interface ProfileSnapshot {
@@ -291,16 +291,16 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
    * 两个请求并发进来会各自读到同一份旧档、各自把同一批 pendingSpend 扣一遍,
    * 资源被扣两次;备份与历史也会按同一个旧档写两份。串行后这些问题一并消失。
    */
-  void withKeyLock(`save:${req.user!.id}`, async () => {
-    // 写档限速:与上一写隔太近直接 429(无论成败都计时,防 409/校验失败风暴打库)
-    const now0 = Date.now()
-    const last = lastWriteAt.get(req.user!.id) ?? 0
-    if (now0 - last < WRITE_MIN_GAP_MS) {
-      res.status(429).json({ error: '存档保存太快,稍候再试' })
-      return
-    }
-    lastWriteAt.set(req.user!.id, now0)
+  // 写档限速放在锁外:与上一写隔太近直接 429(无论成败都计时,防 409/校验失败风暴打库)。
+  // 若放进锁内,排队等待的第二发会看到「已过去很久」而被放行 —— 连点仍会双写。
+  const gateAt = Date.now()
+  if (gateAt - (lastWriteAt.get(req.user!.id) ?? 0) < WRITE_MIN_GAP_MS) {
+    res.status(429).json({ error: '存档保存太快,稍候再试' })
+    return
+  }
+  lastWriteAt.set(req.user!.id, gateAt)
 
+  void withKeyLock(`save:${req.user!.id}`, async () => {
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
     const version = finite(body.version) ? Math.trunc(body.version) : 0
     if (version < 1 || version > 10_000) {
@@ -601,9 +601,14 @@ saveRouter.post('/save/restore', requireAuth, (req: Request, res: Response) => {
     })
     // 境界基线跟着回档走:不同步的话,权威化会把客户端境界压回回档前的旧值,回档等于没回
     try {
-      await syncProfileFromData(req.user!.id, JSON.parse(row.data), now)
+      const restored = JSON.parse(row.data) as unknown
+      await syncProfileFromData(req.user!.id, restored, now)
+      // 等级与装备台账同理:只同步 profiles 的话,下一次上传仍会按台账把功法/建筑等级与
+      // 强化词条顶回回档前(台账「只升不降」是防直注,回档是服务端自己换档,必须跟着降)
+      await resetLevelStatesFromData(req.user!.id, restored)
+      await resetEquipStatesFromData(req.user!.id, restored)
     } catch {
-      // 快照复算失败时 profiles 不动:下一次上传仍会按存档内容重算
+      // 快照复算失败时 profiles 与台账不动:下一次上传仍会按存档内容重算
     }
     res.json({ ok: true, updatedAt: now })
   }).catch(() => {

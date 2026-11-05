@@ -302,7 +302,20 @@ export const useAdventureStore = defineStore(
       }
       if (!regionDef(s.regionId)) return
       if (!Number.isFinite(s.endsAt) || !Number.isFinite(s.nextBattleAt)) return
-      session.value = s
+      // 计数与 GNum 在写入侧就按 sanitize 同一把尺子归一:
+      // 否则上游派生链一旦出 NaN(如速度词条被改成 Infinity → 遭遇数 NaN),
+      // 会话会带着 NaN 落盘,在下次启动修形之前「第 NaN 场」一路渲染、门槛判定恒假。
+      session.value = {
+        ...s,
+        mode: exploreModeOf(s.mode),
+        startedAt: asFiniteNumber(s.startedAt, 0, 0),
+        wins: Math.floor(asFiniteNumber(s.wins, 0, 0)),
+        losses: Math.floor(asFiniteNumber(s.losses, 0, 0)),
+        events: Math.floor(asFiniteNumber(s.events, 0, 0)),
+        itemGain: Math.floor(asFiniteNumber(s.itemGain, 0, 0)),
+        stoneGain: asBoundedGNum(s.stoneGain),
+        expGain: asBoundedGNum(s.expGain)
+      }
     }
 
     function unlock(regionId: string): boolean {

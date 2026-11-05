@@ -156,9 +156,15 @@ export async function pushCloudSave(manual = false): Promise<PushOutcome> {
     if (!manual && base === 0) {
       const cloud = await cloudApi.getSave()
       if (cloud.save !== null) {
-        if (!game.started) {
+        /*
+         * 本机锚点为 0 而云端已有档:两种可能 —— 本机是残留的新手档,或开机拉档失败后
+         * 一直在玩的长驻页。用「本机上次关页盖章」与「云端最后写入」比新旧:
+         * 本机盖章更早,说明云端那份是后来在别的设备上推进的,不能拿本机旧快照顶掉它。
+         * (这里原先写的是 `if (!game.started)`,而函数开头已因未开局提前返回,那段保护是死代码。)
+         */
+        if (bootPersistedLastActive > 0 && bootPersistedLastActive + CLOCK_SKEW_MS < cloud.save.updatedAt) {
           blocked = true
-          report('conflict', '云端已有存档,本机尚未同步')
+          report('conflict', '云端存档比本机新,已暂停自动上传')
           return 'conflict'
         }
         // 本机已开局但从未对齐(锚点机制上线前的老客户端 / 开机时拉档失败的长驻页):

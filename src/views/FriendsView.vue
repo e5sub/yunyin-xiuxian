@@ -55,8 +55,8 @@
         <p class="text-[11px] text-ink-faint">待回应</p>
         <div v-for="r in friends.incoming" :key="r.requestId" class="flex items-center gap-2">
           <span class="flex-1 font-kai text-[14px] text-ink">{{ r.user.name }}</span>
-          <button class="btn-ghost !px-3 !text-[12px]" @click="respond(r.requestId, true)">同意</button>
-          <button class="btn-ghost !px-3 !text-[12px]" @click="respond(r.requestId, false)">拒绝</button>
+          <button :disabled="friendBusy" :title="friendBusy ? '处理中' : undefined" class="btn-ghost !px-3 !text-[12px]" @click="respond(r.requestId, true)">同意</button>
+          <button :disabled="friendBusy" :title="friendBusy ? '处理中' : undefined" class="btn-ghost !px-3 !text-[12px]" @click="respond(r.requestId, false)">拒绝</button>
         </div>
       </div>
 
@@ -67,7 +67,7 @@
           <span class="font-kai text-[14px] text-ink">{{ f.name }}</span>
           <span class="flex-1 text-[11px] text-ink-faint">{{ f.profile?.realmLabel ?? '' }}</span>
           <button class="btn-ghost !px-3 !text-[12px]" :disabled="dueling === f.id" :title="dueling === f.id ? '切磋判定中' : undefined" @click="duel(f.id)">切磋</button>
-          <button class="btn-ghost !px-2 !text-[12px] !text-cinnabar" @click="removeFriend(f.id)">删</button>
+          <button :disabled="friendBusy" :title="friendBusy ? '处理中' : undefined" class="btn-ghost !px-2 !text-[12px] !text-cinnabar" @click="removeFriend(f.id)">删</button>
         </div>
       </div>
     </template>
@@ -136,6 +136,8 @@
   const draft = ref('')
   const friendName = ref('')
   const adding = ref(false)
+  /** 同意/拒绝/删好友共用:这些按钮没有等待态,连点会先成功再报「请求失败」 */
+  const friendBusy = ref(false)
   const dueling = ref<number | null>(null)
   const duelOpen = ref(false)
   const duelResult = ref<{ winner: 'me' | 'target'; rounds: number; log: string[] } | null>(null)
@@ -218,11 +220,12 @@
     }
   }
 
-  function send(): void {
+  async function send(): Promise<void> {
     const text = draft.value
     if (text === '') return
-    if (!sendChat(text)) {
-      ui.toast('未连接', 'warn')
+    if (!(await sendChat(text))) {
+      ui.toast('未能发送,请检查网络', 'warn')
+      // 输入框不清空:重连后可直接再发,不用凭记忆重打
       return
     }
     draft.value = ''
@@ -244,21 +247,30 @@
   }
 
   async function respond(requestId: number, accept: boolean): Promise<void> {
+    if (friendBusy.value) return
+    friendBusy.value = true
     try {
       await cloudApi.friendRespond(requestId, accept)
+      ui.toast(accept ? '已通过好友请求' : '已拒绝', 'success')
     } catch (e) {
       ui.toast(e instanceof Error ? e.message : '请求失败', 'warn')
+    } finally {
+      friendBusy.value = false
+      await loadFriends()
     }
-    await loadFriends()
   }
 
   async function removeFriend(id: number): Promise<void> {
+    if (friendBusy.value) return
+    friendBusy.value = true
     try {
       await cloudApi.friendRemove(id)
     } catch (e) {
       ui.toast(e instanceof Error ? e.message : '请求失败', 'warn')
+    } finally {
+      friendBusy.value = false
+      await loadFriends()
     }
-    await loadFriends()
   }
 
   async function duel(targetId: number): Promise<void> {

@@ -270,12 +270,14 @@ export async function fightSecretLayer(): Promise<SecretLayerResult | null> {
     lines.push(`胜 ${snap.name} · 灵石 +${formatGN(stone)} · ${HERB_GRADE_SHORT[herbGradeOfMajor(player.major)]}灵草 +${mat}`)
     const nextLayer = state.layer + 1
     if (nextLayer > SECRET_LAYERS) {
+      // 先清境再签发:签发是一次网络往返,期间 secretRealm 还在的话,连点「再入一层」
+      // 会把终层整套重跑一遍(灵石/灵草/悟道点双份,极端时宝藏也掷两次)
+      player.setSecretRealm(null)
       // 通关:最终宝藏(品质下限收进签发侧,服务端夹进合法区间)
       const insts = await mintDrops([{ src: 'secret', tier }])
       if (insts.length > 0) lines.push(`获得 ${acquireEquipment(insts[0]!).line}`)
       resources.addSmall('wudao', 3)
       lines.push('悟道点 +3')
-      player.setSecretRealm(null)
       ui.toast(`${def.name}已探尽`, 'rare')
       return { win: true, finished: true, cleared: true, lines }
     }

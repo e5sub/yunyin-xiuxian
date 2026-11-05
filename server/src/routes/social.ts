@@ -1,8 +1,9 @@
-/** 好友 / 排行榜 / 聊天历史 / 切磋 / 游戏参数下发 */
+/** 好友 / 排行榜 / 聊天历史 / 切磋 */
 import express, { type Request, type Response } from 'express'
 import { all, get, run } from '../db.js'
 import { getConfigNumber } from '../config.js'
 import { requireAuth } from '../auth.js'
+import { rateLimit } from '../rateLimit.js'
 import { simulateDuel } from '../pvp.js'
 import { addEventProgress, todayEvent } from '../eventCore.js'
 import { broadcastAll, onlineCount, onlineList, touchPresence } from '../ws.js'
@@ -268,17 +269,23 @@ socialRouter.post('/chat/send', requireAuth, (req: Request, res: Response) => {
   })
 })
 
-/** 游戏关键参数下发(公告等;改参走 GM 后台) */
-socialRouter.get('/config', requireAuth, (_req: Request, res: Response) => {
-  void (async () => {
-    const { allConfig } = await import('../config.js')
-    res.json({ config: await allConfig() })
-  })().catch(() => {
-    res.status(500).json({ error: '服务器异常' })
-  })
+/*
+ * 这里曾有一条 GET /config 下发整张 game_config。
+ * 那张表里同时存着 smtp_pass / alipay_merchant_private_key / turnstile_secret_key,
+ * 任何登录玩家都能取到,等于把邮件通道与支付私钥一起送出去;而前端从未调用过它(参数都由
+ * /auth/config 与存档本身携带)。故整条删除,而不是改成白名单 —— 没有消费方的接口不该留着。
+ * 需要给客户端下发新参数时,走 /auth/config 那种「只列明确字段」的写法。
+ */
+
+/** 切磋:只给好友用,按 uid 限速(原先没有任何间隔,脚本可无限刷七会切磋进度) */
+const PVP_LIMIT = rateLimit({
+  windowMs: 60_000,
+  max: 30,
+  key: req => (req.user === undefined ? '' : String(req.user.id)),
+  message: '切磋太频繁,稍候再试'
 })
 
-socialRouter.post('/pvp', requireAuth, (req: Request, res: Response) => {
+socialRouter.post('/pvp', requireAuth, PVP_LIMIT, (req: Request, res: Response) => {
   void (async () => {
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
     const targetId = typeof body.targetId === 'number' && Number.isFinite(body.targetId) ? Math.trunc(body.targetId) : 0

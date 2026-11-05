@@ -11,6 +11,7 @@ import { getConfig, getConfigNumber } from './config.js'
 import { jwtSecret } from './secret.js'
 import { bodyStr, rateLimit } from './rateLimit.js'
 import { verifyTurnstile, turnstileConfig } from './turnstile.js'
+import { withKeyLock } from './mutex.js'
 
 const TOKEN_TTL_SEC = 60 * 60 * 24 * 30
 const CODE_TTL_MS = 10 * 60 * 1000
@@ -289,6 +290,16 @@ authRouter.post('/email-code', mailIpLimit, mailTargetLimit, (req, res) => {
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
     const purpose = body.purpose === 'reset' ? 'reset' : body.purpose === 'bind' ? 'bind' : 'register'
+    // bind 是「换绑新邮箱」的前半步,只应发给已登录玩家。这条路由本身匿名可调,
+    // 不校验就会变成「给任意邮箱发验证码」的骚扰面(也顺带能探测某邮箱是否已注册)
+    if (purpose === 'bind') {
+      const header = req.headers.authorization
+      const token = header !== undefined && header.startsWith('Bearer ') ? header.slice(7) : null
+      if (token === null || verifyToken(token) === null) {
+        res.status(401).json({ error: '未登录', code: 'session' })
+        return
+      }
+    }
     if (!(await turnstileGuard(req, body))) {
       turnstileFailed(res)
       return
@@ -346,7 +357,10 @@ async function consumeCode(email: string, code: string, purpose: string): Promis
     }
     return 'bad'
   }
-  await run('UPDATE email_codes SET used = 1 WHERE id = ?', [row.id])
+  // 核销必须是条件更新:两个并发请求带着同一个码进来,都会在 SELECT 里看到 used=0,
+  // 「验证码只能用一次」就破了。以 affectedRows=1 作为唯一成功判据。
+  const used = await run('UPDATE email_codes SET used = 1 WHERE id = ? AND used = 0', [row.id])
+  if (used.affectedRows === 0) return 'bad'
   codeFailures.delete(failKey)
   return 'ok'
 }
@@ -436,12 +450,18 @@ authRouter.post('/login', loginIpLimit, loginUserLimit, (req, res) => {
       res.status(403).json({ error: '账号已被封禁', code: 'banned' })
       return
     }
-    // 单设备登录:先通知旧设备收尾(最后一推存档),等它落库后再签发新会话
-    if (sessionKick !== null) await sessionKick(row.id).catch(() => undefined)
-    const seq = row.login_seq + 1
-    await run('UPDATE users SET login_seq = ?, login_seq_at = ? WHERE id = ?', [seq, Date.now(), row.id])
+    // 单设备登录:先通知旧设备收尾(最后一推存档),等它落库后再签发新会话。
+    // 这一段必须按 uid 串行:两台设备同时登录会都读到同一个 login_seq,各自 +1 写回后
+    // 签出两枚 seq 相同的令牌,两枚都通过 requireAuth 校验 —— 「单设备」被并发击穿。
+    const token = await withKeyLock(`login:${row.id}`, async () => {
+      if (sessionKick !== null) await sessionKick(row.id).catch(() => undefined)
+      const cur = await get<{ login_seq: number }>('SELECT login_seq FROM users WHERE id = ?', [row.id])
+      const seq = (cur?.login_seq ?? row.login_seq) + 1
+      await run('UPDATE users SET login_seq = ?, login_seq_at = ? WHERE id = ?', [seq, Date.now(), row.id])
+      return signToken({ id: row.id, username: row.username }, seq)
+    })
     const user: AuthUser = { id: row.id, username: row.username }
-    res.json({ token: signToken(user, seq), user: { ...user, vipUntil: row.vip_until ?? 0 } })
+    res.json({ token, user: { ...user, vipUntil: row.vip_until ?? 0 } })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })

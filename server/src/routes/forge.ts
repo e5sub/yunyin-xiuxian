@@ -17,6 +17,7 @@ import { metricsOf, backupBeforeOverwrite, syncProfileFromData } from './save.js
 import { loadClientModule } from '../clientVendor.js'
 import { recordEquipStatesFromItems } from '../equipLedger.js'
 import { recordForgeSpend } from '../forgeLedger.js'
+import { withKeyLock } from '../mutex.js'
 
 const SOURCE_MODULE = '../../../src/core/forgeResolve'
 const VENDOR_FILE = 'forgeResolve'
@@ -85,15 +86,21 @@ function patchItems(data: Record<string, unknown>, changed: readonly Record<stri
 export const forgeRouter = express.Router()
 
 forgeRouter.post('/forge/op', requireAuth, (req: Request, res: Response) => {
-  void (async () => {
+  /*
+   * 与 PUT /save、突破、升级共用 `save:<uid>` 锁:一次炼器要读整档、水合重掷、再把整档写回,
+   * 与自动上传或另一种结算并发时,后写的旧快照会把前一次的结果抹掉(重铸白花料、强化掉级)。
+   */
+  // 限速必须留在锁外:锁内判断时前一个请求已把时间桶更新过,
+  // 排队进来的第二击（连点的第二发）反而会被放行,等于把限速废掉
+  const gateAt = Date.now()
+  if (gateAt - (lastOpAt.get(req.user!.id) ?? 0) < OP_MIN_GAP_MS) {
+    res.status(429).json({ error: '操作太快,稍候再试' })
+    return
+  }
+  lastOpAt.set(req.user!.id, gateAt)
+  void withKeyLock(`save:${req.user!.id}`, async () => {
     const userId = req.user!.id
     const now = Date.now()
-    const last = lastOpAt.get(userId) ?? 0
-    if (now - last < OP_MIN_GAP_MS) {
-      res.status(429).json({ error: '操作太快,稍候再试' })
-      return
-    }
-    lastOpAt.set(userId, now)
 
     const body = (isPlainObject(req.body) ? req.body : {}) as Record<string, unknown>
     const row = await get<{ version: number; data: string; updated_at: number }>(
@@ -185,7 +192,7 @@ forgeRouter.post('/forge/op', requireAuth, (req: Request, res: Response) => {
       /* 留痕失败不影响结算 */
     }
     res.json({ ok: true, op: result.op, items: result.items, spend: result.spend, detail: result.detail })
-  })().catch(() => {
+  }).catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })
 })

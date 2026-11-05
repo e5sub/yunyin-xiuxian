@@ -120,17 +120,22 @@ class GameEngine {
     const dt = (now - this.lastTickAt) / 1000
     if (dt <= 0) return
 
+    // 这一段是「后台冻结」而非在线游玩:走离线结算时不能把这整段计入游戏日,
+    // 否则切后台挂机会比正常游玩更快刷过每日配额(游戏日由 totalPlaySec 推),
+    // 与「关掉重开」路径(只盖章不补时长)也不一致。
+    let settledOffline = false
     if (dt > OFFLINE_MIN_SECONDS) {
       // 长时间停摆(休眠/后台冻结)走离线结算;先翻日再结算,同 start。死亡判定在其后串行
       rolloverDailyIfNeeded()
       void settleOffline(now).then(() => this.checkDeath())
+      settledOffline = true
     } else {
       this.advance(dt, now)
     }
     this.lastTickAt = now
 
     if (now - this.lastStampAt >= ACTIVE_STAMP_MS) {
-      game.addPlayTime((now - this.lastStampAt) / 1000)
+      if (!settledOffline) game.addPlayTime((now - this.lastStampAt) / 1000)
       game.stampActive(now)
       this.lastStampAt = now
     }

@@ -11,6 +11,9 @@ import { requireAdmin, verifyPassword } from './auth.js'
 import { onlineCount } from './ws.js'
 import { bodyStr, rateLimit } from './rateLimit.js'
 import { syncProfileFromData } from './routes/save.js'
+import { resetEquipStatesFromData } from './equipLedger.js'
+import { resetLevelStatesFromData } from './levelLedger.js'
+import { withKeyLock } from './mutex.js'
 import { CODE_TYPE_DAYS, generateCode, grantVipDays, isCodeType } from './vip.js'
 
 /** 后台挂载路径;必须是一个独立子路径(不允许根路径),非法值回落 /gm */
@@ -323,7 +326,8 @@ gmRouter.delete('/users/:id', requireAdmin, (req: Request, res: Response) => {
       'event_progress',
       'autoops_state',
       'vip_orders',
-      'chat_messages'
+      'chat_messages',
+      'leisure_log'
     ]) {
       await run(`DELETE FROM ${table} WHERE user_id = ?`, [id])
     }
@@ -655,7 +659,8 @@ gmRouter.get('/saves/:userId/history', requireAdmin, (req: Request, res: Respons
 
 /** 回滚某人的存档到指定历史版本(当前档先入历史,可再回滚回来) */
 gmRouter.post('/saves/:userId/restore', requireAdmin, (req: Request, res: Response) => {
-  void (async () => {
+  // 与玩家的写档 / 删档 / 回档共用同一把键:回档是整档覆盖,不能被同时进行的上传顶掉
+  void withKeyLock(`save:${Number(req.params.userId)}`, async () => {
     const userId = Number(req.params.userId)
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
     const historyId = typeof body.historyId === 'number' && Number.isFinite(body.historyId) ? Math.trunc(body.historyId) : 0
@@ -685,13 +690,17 @@ gmRouter.post('/saves/:userId/restore', requireAdmin, (req: Request, res: Respon
     const started = row.data.includes('"started":true') ? 1 : 0
     await upsertByPk('saves', { user_id: userId, version: row.version, data: row.data, started, updated_at: now })
     // 境界基线跟着回档走:不同步的话,权威化会把客户端境界压回回档前的旧值,回档等于没回
+    // 等级与装备台账同理 —— 不跟着降,下一次上传就按台账把强化与等级顶回回档前
     try {
-      await syncProfileFromData(userId, JSON.parse(row.data), now)
+      const restored = JSON.parse(row.data) as unknown
+      await syncProfileFromData(userId, restored, now)
+      await resetLevelStatesFromData(userId, restored)
+      await resetEquipStatesFromData(userId, restored)
     } catch {
-      // 快照复算失败时 profiles 不动:下一次上传仍会按存档内容重算
+      // 快照复算失败时 profiles 与台账不动:下一次上传仍会按存档内容重算
     }
     res.json({ ok: true, updatedAt: now, fromHistoryId: historyId })
-  })().catch(() => {
+  }).catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })
 })

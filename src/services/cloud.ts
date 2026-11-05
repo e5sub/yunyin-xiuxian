@@ -801,6 +801,9 @@ export function disconnectCloudWs(): void {
   ws = null
   // 连续失败计数随会话作废:下次登录从头数,避免旧会话的偶发网络失败累积到新会话头上
   wsProtocolFailStreak = 0
+  // 降级标记也要复位:否则一次网络抖动就把之后每个会话永久钉在 ?token=
+  // (令牌进 URL 与反代日志),与 1.62.0「令牌不进 URL」的收紧相悖
+  wsUseQueryToken = false
   stopPresencePoll()
 }
 
@@ -839,12 +842,21 @@ function stopPresencePoll(): void {
   }
 }
 
-export function sendChat(content: string): boolean {
+/**
+ * 发言:WS 通就走 WS,否则走 REST 兜底。
+ * 返回是否真的发出去了 —— 原先 REST 失败也被吞成 true,界面清空输入框却不报错,
+ * 玩家以为发出去了(而自己的发言靠服务端广播回显,横幅里其实什么都没有)。
+ */
+export async function sendChat(content: string): Promise<boolean> {
   if (ws !== null && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'chat', content }))
     return true
   }
   // WS 不通时走 REST 兜底:同样限速、落库并全服广播
-  void cloudApi.chatSend(content).catch(() => undefined)
-  return true
+  try {
+    await cloudApi.chatSend(content)
+    return true
+  } catch {
+    return false
+  }
 }

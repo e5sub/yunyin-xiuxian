@@ -87,6 +87,56 @@ export async function clearLevelStates(userId: number): Promise<void> {
 }
 
 /**
+ * 回档专用:按档内等级**原值**重写台账(允许下调),但保留播种标记。
+ *
+ * enforceLevelStates 的「只升不降」是防直注,可回档是服务端自己把档换回旧版本:
+ * 台账不跟着降,下一次上传就按台账把旧档的等级顶回回档前,回档等于没回。
+ * 这里也不删 seed 标记 —— 删了就会走「首传采信客户端」,反而给改档留窗口。
+ */
+export async function resetLevelStatesFromData(userId: number, data: unknown): Promise<void> {
+  const root = typeof data === 'object' && data !== null && !Array.isArray(data) ? (data as Record<string, unknown>) : null
+  if (root === null) return
+  const pickLevels = (sliceName: string): Record<string, unknown> => {
+    const slice = root[sliceName]
+    if (typeof slice !== 'object' || slice === null || Array.isArray(slice)) return {}
+    const raw = (slice as Record<string, unknown>).levels
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
+    return raw as Record<string, unknown>
+  }
+  const pickLearned = (): Record<string, unknown> => {
+    const slice = root.cultivation
+    if (typeof slice !== 'object' || slice === null || Array.isArray(slice)) return {}
+    const raw = (slice as Record<string, unknown>).learned
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
+    return raw as Record<string, unknown>
+  }
+  const now = Date.now()
+  await run('DELETE FROM level_state WHERE user_id = ?', [userId])
+  for (const [id, lv] of Object.entries(pickLearned())) {
+    if (!idOk(id)) continue
+    const level = Math.max(0, Math.trunc(numOr(lv, 0)))
+    if (level <= 0) continue
+    await run('REPLACE INTO level_state (user_id, kind, item_id, level, updated_at) VALUES (?, ?, ?, ?, ?)', [
+      userId,
+      'gongfa',
+      id,
+      level,
+      now
+    ])
+  }
+  for (const [id, lv] of Object.entries(pickLevels('dongfu'))) {
+    if (!idOk(id)) continue
+    await run('REPLACE INTO level_state (user_id, kind, item_id, level, updated_at) VALUES (?, ?, ?, ?, ?)', [
+      userId,
+      'building',
+      id,
+      Math.max(0, Math.trunc(numOr(lv, 0))),
+      now
+    ])
+  }
+}
+
+/**
  * 上传时按台账压回等级。
  * 已播种的档:台账有的条目超出台账的按台账压;台账没有的功法按「至多 1 级」补登(参悟是客户端动作),
  * 建筑缺行按 0 压(建筑 id 固定,首传已全量入账,缺行只可能是异常)。

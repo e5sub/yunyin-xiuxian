@@ -11,6 +11,7 @@ import { get, run, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { metricsOf, backupBeforeOverwrite, syncProfileFromData } from './save.js'
 import { loadClientModule } from '../clientVendor.js'
+import { withKeyLock } from '../mutex.js'
 
 const SOURCE_MODULE = '../../../src/core/breakthroughResolve'
 const VENDOR_FILE = 'breakthroughResolve'
@@ -62,15 +63,22 @@ function flagIndex(major: number, sub: number): number {
 export const cultivationRouter = express.Router()
 
 cultivationRouter.post('/cultivation/breakthrough', requireAuth, (req: Request, res: Response) => {
-  void (async () => {
+  /*
+   * 与 PUT /save 共用 `save:<uid>` 锁。这里同样是「读整档 → 打补丁 → 整档写回」:
+   * 客户端每 3~5 秒自动推一次档,若突破结算与上传交错在读与写之间,上传会用旧快照
+   * 把刚写进去的境界顶掉(丢档),反之亦然。updated_at 故意不动,所以冲突判定也发现不了。
+   */
+  // 限速必须留在锁外:锁内判断时前一个请求已把时间桶更新过,
+  // 排队进来的第二击（连点的第二发）反而会被放行,等于把限速废掉
+  const gateAt = Date.now()
+  if (gateAt - (lastAttemptAt.get(req.user!.id) ?? 0) < ATTEMPT_MIN_GAP_MS) {
+    res.status(429).json({ error: '操作太快,稍候再试' })
+    return
+  }
+  lastAttemptAt.set(req.user!.id, gateAt)
+  void withKeyLock(`save:${req.user!.id}`, async () => {
     const userId = req.user!.id
     const now = Date.now()
-    const last = lastAttemptAt.get(userId) ?? 0
-    if (now - last < ATTEMPT_MIN_GAP_MS) {
-      res.status(429).json({ error: '操作太快,稍候再试' })
-      return
-    }
-    lastAttemptAt.set(userId, now)
 
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
     const row = await get<{ version: number; data: string; updated_at: number }>(
@@ -155,7 +163,7 @@ cultivationRouter.post('/cultivation/breakthrough', requireAuth, (req: Request, 
       // 留痕失败不影响结算
     }
     res.json({ ok: true, outcome, slices: patches })
-  })().catch(() => {
+  }).catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })
 })

@@ -226,6 +226,8 @@
 
   async function buyOne(idx: number): Promise<void> {
     const result = await market.buy(idx)
+    // 在途时连点:第一次请求还没回来,这一次直接丢掉(再弹一条「处理中」只会刷屏)
+    if (result === 'busy') return
     const slot = market.stock.find(s => s.idx === idx)
     const name = slot ? renderSlot(slot).name : ''
     if (result === 'ok') ui.toast(`购得「${name}」`, 'success')

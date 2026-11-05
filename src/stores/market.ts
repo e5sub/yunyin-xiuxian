@@ -31,7 +31,7 @@ import { herbGradeOfMajor, isHerbGrade } from '@/data/herbGrades'
 import { asArray, asFiniteNumber, asPrice } from '@/utils/saveShape'
 
 /** `expired` = 点下去的这一瞬正好跨过换货窗口:货架已整架换新,`idx` 指的是另一格货;宁可不成交 */
-export type MarketBuyResult = 'ok' | 'sold' | 'poor' | 'bagfull' | 'missing' | 'expired'
+export type MarketBuyResult = 'ok' | 'sold' | 'poor' | 'bagfull' | 'missing' | 'expired' | 'busy'
 
 export const useMarketStore = defineStore(
   'market',
@@ -39,6 +39,11 @@ export const useMarketStore = defineStore(
     const stock = ref<MarketSlot[]>([])
     const stockedAt = ref(0)
     const consign = ref<ConsignPost[]>([])
+    /**
+     * 购买在途闸。买装备要跨两次网络(签发 + 记账),期间 slot.sold 还没置位,
+     * 按钮的 disabled 也还是 false —— 连点会两件都签发、两笔都记账、两份灵石都扣。
+     */
+    let buying = false
 
     /**
      * 存档修复:货架逐格修形,烂格与格号(idx)缺失的格子整格丢弃;时刻夹回非负。
@@ -186,6 +191,16 @@ export const useMarketStore = defineStore(
 
     /** 买下第 idx 格;装备先签发再扣灵石(签发失败不扣钱,反序会花钱不得货),行囊满否先验 */
     async function buy(idx: number): Promise<MarketBuyResult> {
+      if (buying) return 'busy'
+      buying = true
+      try {
+        return await buyInner(idx)
+      } finally {
+        buying = false
+      }
+    }
+
+    async function buyInner(idx: number): Promise<MarketBuyResult> {
       const now = Date.now()
       const before = stock.value
       sync(now)

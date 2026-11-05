@@ -122,6 +122,32 @@ export async function clearEquipStates(userId: number): Promise<void> {
   await run('DELETE FROM equip_seed WHERE user_id = ?', [userId])
 }
 
+/**
+ * 回档专用:按档内现存的件**原值**重写台账(允许降级、删件),保留播种标记。
+ * 理由同 levelLedger.resetLevelStatesFromData:台账不跟着回档,下一次上传就把
+ * 强化等级与词条顶回回档前;而删 seed 标记会退回「首传采信客户端」。
+ */
+export async function resetEquipStatesFromData(userId: number, data: unknown): Promise<void> {
+  const root = isPlainObject(data) ? data : null
+  const inventory = root !== null && isPlainObject(root.inventory) ? root.inventory : null
+  if (inventory === null) return
+  const items = Array.isArray(inventory.items) ? inventory.items.filter(isPlainObject) : []
+  const now = Date.now()
+  await run('DELETE FROM equip_state WHERE user_id = ?', [userId])
+  for (const item of items) {
+    const uid = typeof item.uid === 'string' ? item.uid : ''
+    if (uid === '' || uid.length > 64) continue
+    const state = stateOf(item)
+    await run('REPLACE INTO equip_state (user_id, uid, level, state, updated_at) VALUES (?, ?, ?, ?, ?)', [
+      userId,
+      uid,
+      numOr(state.level, 0),
+      JSON.stringify(state),
+      now
+    ])
+  }
+}
+
 /** 台账状态套回档案里的一件;返回是否真的改过(用于留痕) */
 function applyRow(item: Record<string, unknown>, row: { level: number; state: Record<string, unknown> }): boolean {
   // 台账行坏到没有 affixes(理论上不会:写入口只有 recordEquipStates)时整行跳过,
