@@ -12,9 +12,10 @@ import { artifactDef } from '@/data/artifacts'
 import { petDef } from '@/data/pets'
 import { eventDef } from '@/data/events'
 import { talentDef } from '@/data/talents'
+import { daoluDef } from '@/data/daolu'
 import { asFiniteNumber, asNumberRecord, asObjectOrNull, asRecord, asStringArray } from '@/utils/saveShape'
 
-export type CollectionCategory = 'equip' | 'gongfa' | 'pill' | 'artifact' | 'pet' | 'event' | 'talent'
+export type CollectionCategory = 'equip' | 'gongfa' | 'pill' | 'artifact' | 'pet' | 'event' | 'talent' | 'daolu'
 
 /**
  * 计数器上界(1.59.1)。计数是终身事件数,成就/主线的门槛都在千以内;
@@ -48,7 +49,9 @@ export const useQuestsStore = defineStore(
       artifact: [],
       pet: [],
       event: [],
-      talent: []
+      talent: [],
+      // 人缘:历世遇见过的道侣。道侣这一世只遇一位,跨世累积才看得出「我都遇过谁」
+      daolu: []
     })
     /** 图鉴收录时刻,键为 `${category}:${id}`(旧档已收录条目无记录) */
     const collectedAt = ref<Record<string, number>>({})
@@ -91,7 +94,8 @@ export const useQuestsStore = defineStore(
         artifact: (id: string) => artifactDef(id) !== undefined,
         pet: (id: string) => petDef(id) !== undefined,
         event: (id: string) => eventDef(id) !== undefined,
-        talent: (id: string) => talentDef(id) !== undefined
+        talent: (id: string) => talentDef(id) !== undefined,
+        daolu: (id: string) => daoluDef(id) !== undefined
       } satisfies Record<CollectionCategory, (id: string) => boolean>
       collections.value = {
         equip: [...new Set(asStringArray(cats.equip))].filter(knownFns.equip),
@@ -100,7 +104,9 @@ export const useQuestsStore = defineStore(
         artifact: [...new Set(asStringArray(cats.artifact))].filter(knownFns.artifact),
         pet: [...new Set(asStringArray(cats.pet))].filter(knownFns.pet),
         event: [...new Set(asStringArray(cats.event))].filter(knownFns.event),
-        talent: [...new Set(asStringArray(cats.talent))].filter(knownFns.talent)
+        talent: [...new Set(asStringArray(cats.talent))].filter(knownFns.talent),
+        // 旧档没有这一栏:asStringArray(undefined) 得空数组,自动补上
+        daolu: [...new Set(asStringArray(cats.daolu))].filter(knownFns.daolu)
       }
       // 时间戳表跟着集合瘦身:收录/达成已被洗掉的条目,时刻留着只会让页面渲染出幽灵条目
       const collectedKeys = new Set(
