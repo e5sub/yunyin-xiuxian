@@ -31,9 +31,15 @@
                 <p v-if="row.done && row.achievedAt" class="mt-0.5 text-[10px] text-ink-faint">
                   达成于 {{ collectedTimeText(row.achievedAt) }}
                 </p>
-                <p v-if="!row.done && row.progress" class="mt-0.5 text-[10px] tabular text-azure">
-                  已 {{ row.progress.current }} / {{ row.progress.target }}
-                </p>
+                <!--
+                  进度条:同页的成就分组与收藏类目都有条,唯独单条成就只写「已 3 / 目标 10」——
+                  而这两者是同一种东西(「走到哪了」),不该只有一处要自己算比例。
+                  条与读数同处一行:条说走到哪,数字说还差几次。
+                -->
+                <div v-if="!row.done && row.progress" class="mt-0.5 flex items-center gap-1.5">
+                  <ProgressBar class="w-16 shrink-0" :value="row.progress.current / row.progress.target" :height="2" />
+                  <span class="text-[10px] tabular text-azure">已 {{ row.progress.current }} / {{ row.progress.target }}</span>
+                </div>
                 <p v-if="row.reward" class="mt-0.5 text-[10px] tabular text-azure">{{ row.reward }}</p>
               </div>
             </div>
@@ -95,6 +101,21 @@
           </span>
           <span v-if="detail.entry.stageName" class="chip-ink border-ink/20 text-ink-faint">{{ detail.entry.stageName }}</span>
           <span v-if="detail.entry.meta" class="text-[11px] text-ink-faint">{{ detail.entry.meta }}</span>
+          <!--
+            神通性质:法宝谱此前只报品阶与层级,「这一件是攻、是护、还是削敌」看不出来 ——
+            而玩家正在弹窗里决定要不要祭炼(见 ui/artifactShape,与包里那枚印同源)。
+          -->
+          <span
+            v-if="detail.entry.shape"
+            class="artifact-shape"
+            :class="`artifact-shape--${detail.entry.shape.disposition}`"
+            :title="detail.entry.shape.label"
+            role="img"
+            :aria-label="detail.entry.shape.label"
+          >
+            <span class="artifact-shape__crest" :class="`artifact-shape__crest--${detail.entry.shape.crest}`" aria-hidden="true" />
+            <span class="artifact-shape__name">{{ detail.entry.shape.dispositionName }}</span>
+          </span>
         </p>
         <p v-if="detail.entry.desc" class="mt-3 whitespace-pre-line text-[13px] leading-relaxed text-ink-soft">
           {{ detail.entry.desc }}
@@ -119,6 +140,8 @@
   import { GONGFA } from '@/data/gongfa'
   import { PETS } from '@/data/pets'
   import { beastIcon } from '@/data/beastFamilies'
+  import { beastCrest } from '@/ui/beastCrest'
+  import { PERSONALITY_NAMES, personalityDesc } from '@/core/petPersonality'
   import { EVENTS } from '@/data/events'
   import { chainOfEvent } from '@/data/chains'
   import { TALENTS, TALENT_GRADE_COLORS } from '@/data/talents'
@@ -274,8 +297,24 @@
         PETS.map(p => ({
           id: p.id,
           name: p.name,
-          desc: [p.desc, modsText(player.petModsFor(p))].filter(Boolean).join('\n'),
-          meta: qualityDef(p.quality).name,
+          /**
+           * 性子在历练中真会改遭遇走向,而册里原先只有「贪宝」两个字 ——
+           * 名号页的灵兽卡早就有四项倾向印(见 ui/personalityMark),
+           * 图鉴是纯文本流,只能把同一件事写成一句:与那边同读 core/petPersonality。
+           */
+          desc: [p.desc, modsText(player.petModsFor(p)), personalityDesc(p.personality)].filter(Boolean).join('\n'),
+          /**
+           * 灵兽册的 meta 原只写品阶名,而族类与性子在名号页都有:
+           * 这头兽是走兽、羽禽还是龙属瑞兽,以及它历练时的行为倾向(贪宝/慢稳/好战/谨慎)。
+           * 两处同读一份数据(见 data/beastFamilies、core/petPersonality),不另立。
+           */
+          meta: `${beastCrest(p.family).name} · ${PERSONALITY_NAMES[p.personality]} · ${qualityDef(p.quality).name}`,
+          /**
+           * 性子在历练中真会改遭遇走向,而册里原先只有「贪宝」两个字 ——
+           * 名号页的灵兽卡早就有四项倾向印(见 ui/personalityMark),
+           * 图鉴是纯文本流,只能把同一件事写成一句:与那边同读 core/petPersonality。
+           */
+
           icon: beastIcon(p.family),
           color: qualityTextColor(p.quality),
           luster: lusterOf(p.quality)

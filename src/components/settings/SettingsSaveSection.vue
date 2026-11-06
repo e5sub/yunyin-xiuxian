@@ -1,7 +1,8 @@
 <template>
   <div class="card-ink space-y-2 px-4 py-3">
     <p class="text-[11px] text-ink-faint tabular">
-      存档版本 v{{ SAVE_VERSION }} · 修行时长 {{ formatDuration(game.totalPlaySec) }}
+      <!-- 版本报档内那一份(旧档导入后会被 migrate 升到当前),不印常量 -->
+      存档版本 v{{ game.saveVersion }} · 修行时长 {{ formatDuration(game.totalPlaySec) }}
     </p>
     <p class="text-[11px] text-ink-faint tabular">道号 {{ auth.username || '未登录' }} · 服务器 {{ serverText }}</p>
     <p class="text-[11px] tabular" :class="syncTone">云同步 {{ syncText }}</p>
@@ -36,6 +37,7 @@
         <div class="flex gap-2">
           <button class="btn-ghost flex-1" :disabled="busy" :title="busy ? '云端同步进行中' : undefined" @click="pullConfirm = false">取消</button>
           <button class="btn-seal flex-1" :disabled="busy" :title="busy ? '云端同步进行中' : undefined" @click="confirmPull">确认恢复</button>
+
         </div>
       </template>
     </BaseModal>
@@ -48,7 +50,8 @@
   import { useGameStore } from '@/stores/game'
   import { useUiStore } from '@/stores/ui'
   import { formatDuration } from '@/utils/format'
-  import { SAVE_VERSION, STORE_NAMES, saveWriteFailure, subscribeSaveWriteFailure } from '@/utils/storage'
+
+  import { STORE_NAMES, saveWriteFailure, subscribeSaveWriteFailure } from '@/utils/storage'
   import { lastSyncAt, pullCloudSave, pushCloudSave, syncErrorText, syncState } from '@/core/cloudSave'
   import { API_BASE } from '@/services/cloud'
   import BaseModal from '@/components/common/BaseModal.vue'
@@ -128,6 +131,7 @@
       )
     } catch {
       ui.toast('拉取失败，请检查网络', 'warn')
+
     }
     busy.value = false
   }

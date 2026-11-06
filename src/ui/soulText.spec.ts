@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { dissolveNote, refineCostLine } from './soulText'
+import { SOUL_TYPES } from '@/data/souls'
+import { dissolveNote, refineCostLine, soulFlavorText } from './soulText'
 
 /** 器魂页文案:后果(毁器/不返)与道源余额同屏;页面只许调用不许手打 */
 describe('器魂页文案', () => {
@@ -21,5 +22,42 @@ describe('器魂页文案', () => {
     expect(view).toContain('dissolveNote()')
     expect(view).not.toContain('入炉毁原器')
     expect(view).not.toContain('道源不返')
+  })
+})
+
+/**
+ * 六类器魂各有一句形意,而界面只印「阶名 · 类型名」:
+ * 锋魂与盾魂的区别,得先知道「锋」与「盾」在战斗里各管什么。
+ * 数据里那句写得很具体(「此器生来向前,不曾回头,形意里只剩那一分锐」),
+ * 原先只在 dataTextAudit 里被扫过文本,从不上界面。
+ * 故障注入:把 soulFlavorText 改回恒返回空串,第一条红;从页面删掉它,第二条红。
+ */
+describe('器魂形意', () => {
+  it('六类各取得到那句形意,且与 data/souls 同源', () => {
+    for (const def of SOUL_TYPES) {
+      const text = soulFlavorText({ type: def.id })
+      expect(text, `${def.name} 缺形意句`).toBe(def.desc)
+      expect(text.length, `${def.name} 的形意句太短,不像一句形意`).toBeGreaterThan(8)
+    }
+  })
+
+  it('认不出类型时给空串,调用点据此不印', () => {
+    expect(soulFlavorText({ type: 'not-a-type' })).toBe('')
+    expect(soulFlavorText({ type: '' })).toBe('')
+  })
+
+  /**
+   * 页面真的接上了 —— 定义了却从不使用的文案是死代码。
+   *
+   * 形意句原先在模板里被调两次(v-if 判一次、渲染一次),现改成在 `idleSouls` 里算一次。
+   * 判据跟着落点走:要么模板里调,要么预计算里调,但模板不许再调。
+   */
+  it('页面真的接上了 —— 定义了却从不使用的文案是死代码', () => {
+    const view = readFileSync(new URL('../views/SoulsView.vue', import.meta.url), 'utf8')
+    expect(view, '形意句应在 idleSouls 里算一次').toContain('flavor: soulFlavorText(s)')
+    // 阴性对照:模板里不许再重复调 —— 纯查表函数每帧算两遍,且读不出两处是同一件事
+    const tpl = view.slice(0, view.indexOf('<script'))
+    expect(tpl, '模板不该再调 soulFlavorText').not.toContain('soulFlavorText(')
+    expect(tpl, '模板读数取自预计算').toContain('row.flavor')
   })
 })

@@ -4,6 +4,8 @@
  * 只测纯函数(describeXxx / branchStage),不挂 Pinia:materialCodex 与 branchCodex 只是读 store 再转调的薄封装。
  */
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { LORE_MAX, LORE_STAGE_NAMES, MATERIALS, materialDef } from '@/data/materials'
 import { GONGFA_BRANCHES, gongfaBranchDef } from '@/data/gongfaBranches'
 import { gongfaDef, gongfaMaxLevel } from '@/data/gongfa'
@@ -39,7 +41,8 @@ import {
 } from '@/data/artifacts'
 import { EQUIPMENT_TEMPLATES, equipmentTemplate } from '@/data/equipment'
 import { PILLS } from '@/data/pills'
-import { QUALITIES, qualityDef } from '@/data/qualities'
+import { QUALITIES, qualityDef, qualityTextColor } from '@/data/qualities'
+import { ICONS } from '@/ui/icons'
 import type { QualityId } from '@/types'
 import { cnNumber, formatPercent } from '@/utils/format'
 
@@ -364,6 +367,91 @@ describe('图鉴 · 用具三类的收录深度', () => {
   })
 })
 
+/**
+ * 图鉴册的「形制一致」:同册里法宝谱与灵兽册都给图标与品阶色,装备册是全站最大的一册(288 件)
+ * 却两者皆无 —— 它本来最该有。数据早就备好了:`EquipmentTemplate.icon` 由 data/equipment
+ * 按名字字眼挑(见 data/equipmentIcon.spec),品阶色取「当文字用」那一组。
+ *
+ * 色必须走 qualityTextColor,不能用品阶原色:玄/天/仙/神四档原色在日/夜各有一档
+ * 过不了 4.5:1(见 data/qualities 的 TEXT_COLOR)。
+ * 故障注入:把 describeEquipment 的 icon / color 删掉,本条红。
+ */
+describe('图鉴形制 · 装备册也有图标与品阶色', () => {
+  it('每件装备都带图标,且图标键真的注册在 ui/icons', () => {
+    for (const t of EQUIPMENT_TEMPLATES) {
+      const e = describeEquipment(t, { q: 0, t: t.tier, u: 1 }, true)
+      expect(e.icon, `${t.name} 缺图标 —— 装备册是唯一没有图标的一册`).toBe(t.icon)
+      expect(t.icon in ICONS, `${t.name} 的图标键 ${t.icon} 未注册`).toBe(true)
+    }
+  })
+
+  it('品阶色走「当文字用」那一组,不拿原色顶文字', () => {
+    for (const t of EQUIPMENT_TEMPLATES) {
+      const e = describeEquipment(t, { q: 0, t: t.tier, u: 1 }, true)
+      expect(e.color, `${t.name} 缺品阶色`).toBeTruthy()
+      // 与 qualityTextColor 同源:四档有暗版/亮版的档位必须取暗版
+      const seen = qualityOfRankForTest(0)
+      expect(e.color, `${t.name} 用了品阶原色,夜/日主题会跌破 AA`).toBe(qualityTextColor(seen.id))
+    }
+  })
+
+  it('未收录也照给图标与色 —— 标签流里那枚「???」之外仍有可辨的形制', () => {
+    for (const t of EQUIPMENT_TEMPLATES.slice(0, 20)) {
+      const e = describeEquipment(t, undefined, false)
+      expect(e.icon).toBe(t.icon)
+      expect(e.color).toBeTruthy()
+    }
+  })
+})
+
+/** 与 describeEquipment 内部的 qualityOfRank 同口径:rank 0 = 凡品 */
+function qualityOfRankForTest(rank: number) {
+  return QUALITIES.find(q => q.rank === Math.max(0, Math.min(8, rank))) ?? QUALITIES[0]!
+}
+
+/**
+ * 图鉴册的品阶字色只有一套。
+ *
+ * 装备册与法宝谱同在收藏页,同一册里同一个品阶的字色不该有两种 ——
+ * 玩家会把「颜色深一档」误读成品阶差异。
+ * 而玄/天/仙/神四档的品阶**原色**当文字用时,在日/夜主题各有一档过不了 4.5:1
+ * (见 data/qualities 的 TEXT_COLOR 与 palette.spec 的角章判据)。
+ * 故三处(装备册 / 法宝谱 / 悟道录)一律走 qualityTextColor。
+ *
+ * 故障注入:把任一处改回 qualityDef(...).color,本条红。
+ */
+describe('图鉴形制 · 品阶字色只有一套', () => {
+  it('装备册、法宝谱、悟道录都走「当文字用」那一组', () => {
+    // 三处都必须与 qualityTextColor 同源
+    for (const t of EQUIPMENT_TEMPLATES) {
+      expect(describeEquipment(t, { q: 0, t: t.tier, u: 1 }, true).color).toBe(
+        qualityTextColor(qualityDef('mortal').id)
+      )
+    }
+    for (const a of ARTIFACTS) {
+      const e = describeArtifact(a, 0, true)
+      expect(e.color, `${a.name}(${a.quality}) 用了品阶原色,四档在日/夜会跌破 AA`).toBe(
+        qualityTextColor(a.quality)
+      )
+    }
+    for (const br of GONGFA_BRANCHES) {
+      const g = gongfaDef(br.gongfaId)
+      if (!g) continue
+      // 未择取所属功法的品阶文字色;已择另取金色(那是「已经选定了」,不是品阶)
+      const picked = describeBranch(br, BRANCH_STAGE_MAX).color
+      const open = describeBranch(br, 1).color
+      expect(open, `${br.name} 未择时的字色应与所属功法的品阶文字色一致`).toBe(qualityTextColor(g.quality))
+      expect(picked, `${br.name} 已择时应另取金,不跟着品阶走`).toBe('var(--color-gold-ink)')
+    }
+  })
+
+  it('四档有暗版/亮版的品阶,原色确实与文字色不同 —— 这条判据才不是空集', () => {
+    const differ = QUALITIES.filter(q => q.color !== qualityTextColor(q.id)).map(q => q.id)
+    expect(differ.length, '四档原色与文字色若都相同,本条判据形同虚设').toBe(4)
+    expect(differ.sort()).toEqual(['divine', 'heaven', 'immortal', 'profound'].sort())
+  })
+})
+
 describe('codexOwnedCount(「已收 N」统一口径)', () => {
   const defs = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
 
@@ -372,5 +460,36 @@ describe('codexOwnedCount(「已收 N」统一口径)', () => {
     expect(codexOwnedCount(['a', 'b', 'b', 'b', 'z'], defs)).toBe(2)
     expect(codexOwnedCount([], defs), '空集计 0').toBe(0)
     expect(codexOwnedCount(['a', 'b', 'c'], defs), '健康档全落进 defs,如数计入').toBe(3)
+  })
+})
+
+/**
+ * 装备册要报出词条位上限。
+ *
+ * 玩家在图鉴里挑模板,最关心的除了所主与固有,就是「满配能带几条词条」——
+ * 而这一项此前一个数都没有。词条位由品阶决定(1~9 条),同一模板在不同品阶下差别很大。
+ *
+ * 故障注入:把那行删掉,本条红。
+ */
+describe('图鉴形制 · 装备册报词条位上限', () => {
+  it('每条装备条目都写得出「词条位:至多 N 条」', () => {
+    for (const t of EQUIPMENT_TEMPLATES) {
+      const entry = describeEquipment(t, undefined, true)
+      expect(entry.desc, `${t.name} 没写词条位`).toMatch(/词条位:至多 \d+ 条/)
+    }
+  })
+
+  it('上限随阶升高 —— 低阶件不该报出高阶的上限', () => {
+    const low = describeEquipment(EQUIPMENT_TEMPLATES[0]!, undefined, true).desc
+    const high = describeEquipment(EQUIPMENT_TEMPLATES.at(-1)!, undefined, true).desc
+    const n = (s: string) => Number(/词条位:至多 (\d+) 条/.exec(s)![1])
+    expect(n(high), '顶阶的词条位应高于初阶').toBeGreaterThan(n(low))
+    expect(n(low), '初阶也该至少一位').toBeGreaterThanOrEqual(1)
+  })
+
+  it('上限取品阶表,不在图鉴层另立一张表', () => {
+    const src = readFileSync(resolve(__dirname, 'codex.ts'), 'utf-8')
+    expect(src, '应读品阶表的 affixes[1]').toContain('.affixes[1]')
+    expect(src, '应复用既有的阶上限函数').toContain('maxReachableRankAtTier(def.tier)')
   })
 })

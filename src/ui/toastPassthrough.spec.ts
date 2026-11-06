@@ -38,3 +38,83 @@ describe('提示条 · 穿透', () => {
     expect(SRC).toContain('aria-label="关闭提示"')
   })
 })
+
+/**
+ * 自检脚本采集 toast 的选择器必须跟着宿主结构走。
+ *
+ * `scripts/layout-check.mjs` 曾用 `.pointer-events-none.fixed button` 取提示文本,
+ * 那时条身还是可点的。11-03 把条身改成 `pointer-events-none`(只有关闭钮吃事件)之后,
+ * `button` 里只剩一个「×」—— 脚本从此永远读不到提示内容,
+ * 于是十来个场景全线报「没有交代」,而脚本不在 CI 里,一直没人发现。
+ *
+ * 这条判据把两边钉在一起:宿主用 `role=status` 作容器、提示条是它的直接 div,
+ * 脚本就必须按同一结构取。宿主改了结构而脚本没跟,这里直接红。
+ *
+ * 故障注入:把脚本里的选择器改回 `button`,本条红。
+ */
+describe('提示条 · 自检脚本的选择器与宿主结构一致', () => {
+  const SCRIPT = readFileSync(resolve(__dirname, '../../scripts/layout-check.mjs'), 'utf-8')
+
+  it('宿主确实是 role=status 作容器、提示条是直接 div 子元素', () => {
+    expect(SRC, '宿主容器应带 role=status').toContain('role="status"')
+    // 提示条本体:紧跟 TransitionGroup 之后的那个 div
+    expect(SRC, '提示条应是宿主下的 div,正文写在里面').toMatch(/v-for="t in ui\.toasts"[\s\S]{0,400}?\{\{\s*t\.text\s*\}\}/)
+  })
+
+  it('脚本按同一结构取正文,而不是取 button 的文字', () => {
+    expect(SCRIPT, '脚本应读 role=status 下的 div').toContain("[role=status] > div")
+    // 阴性对照:采集处不该再用「宿主的 button」当正文来源
+    expect(SCRIPT, '不该再拿 button 的文字当提示正文').not.toMatch(
+      /querySelectorAll\('\.pointer-events-none\.fixed button'\)\]\.map\(b => \(b\.textContent/,
+    )
+  })
+
+  /**
+   * 拼接后的选择器必须真的能命中。
+   *
+   * 上一版把正文选择器写成 `${hostSel} [role=status] > div` ——
+   * 而 `hostSel` 本身就是带 `role=status` 的那个容器,中间那个空格让它变成「后代」,
+   * 于是永远匹配不到,脚本在第一个场景就超时。
+   *
+   * 字符串存在 ≠ 选择器有效。这条判据只查能机械判定的部分:
+   * 正文选择器里 `hostSel` 与 `[role=status]` 之间不许有空格。
+   *
+   * 故障注入:把 `${hostSel}[role=status]` 改成 `${hostSel} [role=status]`,本条红。
+   */
+  it('正文选择器与 hostSel 之间不许有后代空格', () => {
+    const line = /const bodySel = `\$\{hostSel\}([^`]*)`/.exec(SCRIPT)
+    expect(line, '找不到正文选择器的拼接处').toBeTruthy()
+    expect(line![1]!.startsWith('[role=status]'), 'hostSel 后应直接跟 [role=status],中间不许有空格').toBe(true)
+  })
+
+  it('关闭钮仍按 button 找 —— 它确实是唯一吃事件的元素', () => {
+    // 这一处是对的,别被上一条误伤:点击关闭钮就该按 button 找
+    expect(SCRIPT, '点关闭钮仍按 button 找').toMatch(/querySelectorAll\('\.pointer-events-none\.fixed button'\)\) b\.click\(\)/)
+  })
+})
+
+/**
+ * 量触控尺寸要用布局高度,不用 getBoundingClientRect。
+ *
+ * 提示条离场时带着 `transform: translateY(-6px) scale(0.96)`,而自检注入的
+ * `transition:none` 让它立刻停在终态 —— 28px 的关闭钮于是量成 26.9px(28×0.96),
+ * 报「可点元素过小」。那不是触控缺陷,是量到了动画中的缩放。
+ *
+ * `offsetHeight` 是布局高度,不受 transform 影响,量的才是这颗钮真实的命中尺寸。
+ * 两处测量(巡页与弹窗巡逻)必须同尺,否则同一颗钮在两种场景下判得不一样。
+ *
+ * 故障注入:把任一处改回只读 getBoundingClientRect,本条红。
+ */
+describe('提示条 · 自检量的必须是布局尺寸', () => {
+  const SCRIPT = readFileSync(resolve(__dirname, '../../scripts/layout-check.mjs'), 'utf-8')
+
+  it('两处触控尺寸测量都取 offsetHeight', () => {
+    const hits = SCRIPT.match(/const h = el\.offsetHeight \|\| rect\.height/g) ?? []
+    expect(hits.length, '巡页与弹窗巡逻两处都要按布局高度量').toBe(2)
+  })
+
+  it('判据不再直接拿 getBoundingClientRect 的高度去比 28', () => {
+    // 阴性对照:不该出现「rect.height >= 28」这种直接比法
+    expect(SCRIPT, '不该再拿缩放后的 rect.height 直接比 28').not.toMatch(/rect?\.height >= 28/)
+  })
+})

@@ -97,13 +97,36 @@ describe('器魂形制 · 三、最上阶才给魂环', () => {
 
   it('魂环只挂在最上阶那一格 —— 每格都挂等于没挂', () => {
     // 槽位是同一个模板渲染三遍,条件必须落在「这一格的器魂是不是最上阶」上
-    expect(VIEW, '魂环条件应判 top').toContain('slotMark(i)?.top')
-    expect(VIEW, '魂环不该无条件渲染').not.toContain('v-if="slotMark(i)" class="soul-halo"')
+    expect(VIEW, '魂环条件应判 top').toContain('v-if="row.mark?.top" class="soul-halo"')
+    expect(VIEW, '魂环不该无条件渲染').not.toContain('v-if="row.mark" class="soul-halo"')
   })
 
   it('器魂页真的接上了 —— 定义了却从不使用的形制是死代码', () => {
-    expect(VIEW, '装配槽应读阶位形制').toContain('soulMark(')
+    // 三处形制都在 setup 里各算一次(TrialPanel / 丹匣 / 功法详情同法)
+    expect(VIEW, '装配槽应读阶位形制').toContain('mark: soulMark(soul.grade)')
     expect(VIEW, '闲置列表应显示阶点').toContain('soul-pips')
-    expect(VIEW, '凝炼台预览也应给出阶位形制').toContain('soulMark(row.gradeRank)')
+    expect(VIEW, '凝炼台预览也应给出阶位形制').toContain('mark: soulMark(preview.gradeRank)')
+    // 阳性:模板不许再逐行调查表函数
+    const tpl = VIEW.slice(0, VIEW.indexOf('<script'))
+    expect(tpl, '模板不该再调 soulMark').not.toContain('soulMark(')
+    expect(tpl, '模板不该再调 soulColor').not.toContain('soulColor(')
+  })
+
+  /**
+   * 魂型印两处都要有。
+   *
+   * 六类器魂在 data/souls 里各有一个单字(锋/盾/棘/连/泽/背),
+   * 出战槽用大字印显示它,散置列表却只有名字 —— 同一页两种读法:
+   * 同一个「锋魂」,装配着的那枚有个「锋」字,散着的那枚只写「锋魂」二字。
+   * 而阵里同时装配两三枚时,大字印才是玩家扫一眼就分得开的那个记号。
+   *
+   * 故障注入:删掉散置行的魂型印,本条红。
+   */
+  it('魂型印在出战槽与散置列表两处都有', () => {
+    expect(VIEW, '出战槽应有魂型印').toContain("seal: soulTypeDef(soul.type)?.seal ?? '魂'")
+    expect(VIEW, '散置列表也应有魂型印').toContain("seal: soulTypeDef(s.type)?.seal ?? '魂'")
+    // 阳性对照:两处都自 data/souls 的 seal 取字,不另抄一张表
+    const hits = VIEW.match(/soulTypeDef\(\w+\.type\)\?\.seal/g) ?? []
+    expect(hits.length, '出战槽与散置列表两处').toBeGreaterThanOrEqual(2)
   })
 })

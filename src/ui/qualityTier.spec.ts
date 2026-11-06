@@ -58,8 +58,14 @@ describe('品阶视觉 · 三档强度与稀有角章', () => {
   it('装备格与丹药格共享同一份强度;丹药的道品也盖章', () => {
     expect(EQUIPMENT_CARD, '装备格应读 qualityTierStyle').toContain('qualityTierStyle(props.item.quality)')
     expect(EQUIPMENT_CARD, '稀有装备应盖 QualitySeal').toContain('isRareQuality(props.item.quality)')
-    expect(INVENTORY_VIEW, '丹药格应按 pillRank 走同一份三档强度').toContain('qualityTierByRank(pillRank(row.def!))')
-    expect(INVENTORY_VIEW, '丹药稀有档应盖章').toContain('isRareRank(pillRank(row.def!))')
+    // 丹药格的形制在 pillRows 里算一次(原先同一个格子里 pillQualityColor 调 7 次)
+    expect(INVENTORY_VIEW, '丹药格应按 pillRank 走同一份三档强度').toContain('qualityTierByRank(rank)')
+    expect(INVENTORY_VIEW, '丹药稀有档应盖章').toContain('rare: isRareRank(rank)')
+    expect(INVENTORY_VIEW, '格子读行上的形制').toContain('v-if="row.rare"')
+    // 阳性:模板不许再逐格调查表函数 —— 同一个格子里原先调了 7 次
+    const tpl = INVENTORY_VIEW.slice(0, INVENTORY_VIEW.indexOf('<script'))
+    expect(tpl, '模板不该再调 pillQualityColor').not.toContain('pillQualityColor(')
+    expect(tpl, '模板不该再调 pillRank').not.toContain('pillRank(')
   })
 
   it('坊市货格也按同一套三档强度;稀有货盖角章,密卡底色不加深', () => {
@@ -79,10 +85,31 @@ describe('品阶视觉 · 三档强度与稀有角章', () => {
     expect(QUALITY_SEAL, '品阶色不得直接写进 9-11px 字形').not.toContain('color: tone')
   })
 
+  /**
+   * 丹匣要标出「生效中」。
+   *
+   * 增益丹服下后 buff 在身上,而丹匣此前看不出哪味正在生效 ——
+   * 玩家要翻到「状态」里挨个比对名字,而服丹时最该知道的就是「这一味还要不要再补」。
+   * 判定与详情弹窗的 buffOverflowOf 同一份 buffs 账,不另算。
+   *
+   * 故障注入:把 active 判定写成恒 false,本条红。
+   */
+  it('丹匣标出哪味增益丹正在生效', () => {
+    expect(INVENTORY_VIEW, '行上应带生效判定').toContain("def.kind === 'buff' && !!def.buffId && cultivation.buffs.some(")
+    expect(INVENTORY_VIEW, '判定要看结束时刻').toContain('b.endsAt > now.value')
+    // 模板挂点
+    expect(INVENTORY_VIEW, '模板应有生效标记').toContain('v-if="row.active"')
+    expect(INVENTORY_VIEW, '应有读屏说法').toContain('aria-label="生效中"')
+    // 阳性:与详情弹窗同一份 buffs 账,不另建一份
+    expect(INVENTORY_VIEW, '不该另建一份 buff 账').toContain('cultivation.buffs')
+  })
+
   it('丹匣专属角章也随主题用墨色', () => {
     expect(INVENTORY_VIEW, '丹药角章字形也应随主题用墨色').toContain('font-kai text-[9px] leading-none text-ink')
-    expect(INVENTORY_VIEW, '丹药角章不得把品阶色直接写进字形').not.toContain(
-      'background: tint(pillQualityColor(row.def!), 0.12), color: pillQualityColor(row.def!)'
+    expect(INVENTORY_VIEW, '丹药角章不得把品阶色直接写进字形').not.toMatch(
+      /background: tint\([^)]*\), color: tint\(/
     )
+    // 角章底色取行上算好的 tone,不在模板里再查一次
+    expect(INVENTORY_VIEW, '角章底色取行上的 tone').toContain('tint(row.tone, 0.12)')
   })
 })

@@ -150,6 +150,7 @@ describe('界面分层 · 浮层只有一个出处', () => {
     expect(codex!.src, '卦象倒计时不得再借修行时长刷新').not.toContain('game.totalPlaySec')
   })
 
+
   it('首页法球的断点监听随组件卸载 —— 重进首页不许累积闭包', () => {
     const f = FILES.find(x => x.path === 'views/HomeView.vue')
     expect(f, 'HomeView 不见了').toBeDefined()

@@ -9,7 +9,8 @@ import { ELEMENTS } from '@/data/linggen'
 import { LORE_MAX, LORE_STAGE_NAMES, MATERIALS, type MaterialDef } from '@/data/materials'
 import { GONGFA_BRANCHES, canEnlighten, type GongfaBranchDef } from '@/data/gongfaBranches'
 import { GONGFA_TYPE_NAMES, gongfaDef } from '@/data/gongfa'
-import { QUALITIES, qualityDef } from '@/data/qualities'
+import { QUALITIES, qualityDef, qualityTextColor } from '@/data/qualities'
+import { artifactShapeMark, type ArtifactShapeMark } from './artifactShape'
 import {
   ARTIFACTS,
   ARTIFACT_LEVEL_BONUS,
@@ -50,6 +51,11 @@ export interface CodexEntry {
    * 四角御纹在这里既挤又乱;改用一枚小字,与详情弹窗的整幅框同源。
    */
   luster?: { label: string } | null
+  /**
+   * 神通性质印(只有法宝谱有,见 ui/artifactShape)。
+   * 图鉴是标签流,标签上放不下;详情弹窗的标题行放得下,而那里正是玩家决定要不要祭炼的地方。
+   */
+  shape?: ArtifactShapeMark
   /** 下一层的条件(装备「曾上手」档为该阶成色目标,法宝谱为祭炼收益);到顶或无可补充为空,无方之丹到顶为 PILL_NO_RECIPE_HINT */
   hint: string
   /** 详情页脚注(各类口径不同,随条目给) */
@@ -185,7 +191,12 @@ export function describeBranch(def: GongfaBranchDef, stage: number): CodexEntry 
     name: def.name,
     desc: lv >= 1 ? `${def.desc}\n${modsText(def.mods)}` : '',
     meta: g ? `${g.name} · ${GONGFA_TYPE_NAMES[g.type]} · ${qualityDef(g.quality).name}` : '',
-    color: lv >= BRANCH_STAGE_MAX ? PICKED_COLOR : g ? qualityDef(g.quality).color : undefined,
+    /**
+     * 字色同样走「当文字用」那一组 —— 分支卡在功法阁里与装备册/法宝谱同处一页,
+     * 三处的品阶字色该是同一套(原色在玄/天/仙/神四档当字用时过不了 4.5:1)。
+     * 已择的分支另取金色:那是「已经选定了」,不是品阶。
+     */
+    color: lv >= BRANCH_STAGE_MAX ? PICKED_COLOR : g ? qualityTextColor(g.quality) : undefined,
     stage: lv,
     stageName: BRANCH_STAGE_NAMES[lv]!,
     badge: lv >= BRANCH_STAGE_MAX ? '择' : lv >= 1 ? '可择' : '',
@@ -276,11 +287,29 @@ export function describeEquipment(def: EquipmentTemplate, seen: EquipSeen | unde
     // q 与 t 各自独立取高(可能来自不同掉落),分开陈述
     lines.push(`见过最好成色:${qualityOfRank(seen.q).name} · 最高 ${seen.t} 阶`)
   }
+  /*
+   * 词条位:这一阶的模板在掉落窗口内最多能带几条词条。
+   *
+   * 而这一项此前在图鉴里一个数都没有 —— 玩家挑模板时看不到「满配能带几条」,
+   * 而词条位是装备之间的核心差异之一(同一模板在不同品阶下从 1 位到 9 位)。
+   * 上限取自品阶表与「该阶能见到的最高档」,与 equipStage2Hint 同一把尺,不另算。
+   */
+  const affixCeiling = qualityOfRank(maxReachableRankAtTier(def.tier)).affixes[1]
+  lines.push(`词条位:至多 ${affixCeiling} 条`)
+  /**
+   * 装备册是全站最大的一册(288 件),却也是唯一没有图标、没有品阶色的一册:
+   * 同册的法宝谱与灵兽册都有。图标与色都取数据表已有的 —— `EquipmentTemplate.icon`
+   * 由 `data/equipment` 按名字字眼挑好(见 data/equipmentIcon.spec),品阶色取「当文字用」那一组
+   * (品阶原色在日/夜各有一档过不了 4.5:1,见 data/qualities 的 TEXT_COLOR)。
+   */
+  const tone = seen ? qualityOfRank(seen.q) : QUALITIES[0]!
   return {
     id: def.id,
     name: def.name,
     desc: lines.join('\n'),
     meta: equipMetaText(def),
+    icon: def.icon,
+    color: qualityTextColor(tone.id),
     stage,
     stageName: EQUIP_STAGE_NAMES[stage]!,
     badge: stage >= EQUIP_STAGE_MAX ? '极' : '',
@@ -336,7 +365,15 @@ export function describeArtifact(def: ArtifactDef, level: number, collected: boo
     name: def.name,
     desc: [def.desc, artifactFuncText(def, level)].filter(Boolean).join('\n'),
     meta: artifactMetaText(def),
-    color: qualityDef(def.quality).color,
+    /**
+     * 字色走「当文字用」那一组,与同册的装备册一致。
+     * 原先这里取的是品阶**原色**:玄/天/仙/神四档的原色当字用时在日/夜主题各有一档
+     * 过不了 4.5:1(见 data/qualities 的 TEXT_COLOR 与 palette.spec 的角章判据)。
+     * 同一册图鉴里同一个品阶的字色不该有两种 —— 玩家会把「颜色深一档」误读成品阶差异。
+     */
+    color: qualityTextColor(def.quality),
+    // 神通性质:包里那枚性质印与这里同源,不复算
+    shape: artifactShapeMark(def),
     stage,
     stageName: ARTIFACT_STAGE_NAMES[stage]!,
     badge: stage >= ARTIFACT_STAGE_MAX ? '满' : '',

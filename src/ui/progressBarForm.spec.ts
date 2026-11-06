@@ -64,6 +64,52 @@ describe('进度条 · 二、$attrs 落到外壳', () => {
     const view = readFileSync(resolve(ROOT, 'src/views/CollectionView.vue'), 'utf-8')
     expect(view, '组内细条的外距仍在调用方给').toContain('class="pb-1.5"')
   })
+
+  /**
+   * 单条成就的进度也要有条。
+   *
+   * 同一页里,成就分组与收藏类目都有条,唯独单条成就只写「已 3 / 目标 10」——
+   * 而这三处回答的是同一个问题(「走到哪了」),不该只有一处要玩家自己算比例。
+   * 条与读数同处一行:条说走到哪,数字说还差几次。
+   * 故障注入:删掉那行 ProgressBar,本条红。
+   */
+  /**
+   * 修行志的两处进度也接上了条。
+   *
+   * 誓愿是本世的核心目标,修行节点是本世的里程碑 —— 两处此前都只有「(已 / 需)」的读数,
+   * 「走到哪了」要自己拿两个数相除。同一页的其他地方(成就分组/类目)早就有条了。
+   * 故障注入:删掉任一处的 ProgressBar,本条红。
+   */
+  it('修行志的誓愿与修行节点都有条', () => {
+    const view = readFileSync(resolve(ROOT, 'src/views/LegacyView.vue'), 'utf-8')
+    expect(view, '誓愿应有一条').toContain(':value="vowProg.cur / vowProg.need"')
+    expect(view, '修行节点应有一条').toContain('endgame.milestones.length / MILESTONE_DEFS.length')
+    expect(view, '两处都走同一个组件').toMatch(/import ProgressBar from '@\/components\/common\/ProgressBar\.vue'/)
+    // 阴性对照:誓愿那块不许自己拼一根 div 当条(道途占比条是另一回事,它是横比,不是进度)
+    const vowBlock = view.slice(view.indexOf('vowTheme'), view.indexOf('本世未立题'))
+    expect(vowBlock, '誓愿不该绕过 ProgressBar 自己画条').not.toContain('bar-fill')
+  })
+
+  /**
+   * 洞府的营造进度也接上了条。
+   *
+   * 洞府是全游戏唯一「从零建到八」的地方,而标题旁只给「已启 N/8」两个数。
+   * 这份长期目标此前在页面上没有任何位置感。
+   * 故障注入:删掉那条 ProgressBar,本条红。
+   */
+  it('洞府的营造进度有条', () => {
+    const view = readFileSync(resolve(ROOT, 'src/views/DongfuView.vue'), 'utf-8')
+    expect(view, '营造应有一条').toContain('builtCount / BUILDINGS.length')
+    expect(view, '走同一个组件').toMatch(/import ProgressBar from '@\/components\/common\/ProgressBar\.vue'/)
+  })
+
+  it('单条成就的进度接上了条,与分组/类目同一套组件', () => {
+    const view = readFileSync(resolve(ROOT, 'src/views/CollectionView.vue'), 'utf-8')
+    expect(view, '单条成就该有条').toContain(':value="row.progress.current / row.progress.target"')
+    expect(view, '读数仍要留着 —— 条只说走到哪,数字说还差几次').toContain('已 {{ row.progress.current }} / {{ row.progress.target }}')
+    // 阴性对照:不许在成就行里自己拼一根 div 当条
+    expect(view, '不该绕过 ProgressBar 自己画条').not.toMatch(/row\.progress[^\n]*<div[^>]*bar-fill/)
+  })
 })
 
 describe('进度条 · 三、样式与组件同源', () => {

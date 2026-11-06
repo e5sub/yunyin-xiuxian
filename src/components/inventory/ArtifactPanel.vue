@@ -68,7 +68,39 @@
       <!-- 神通说明按祭炼现算,与战斗同读 artifactActiveText -->
       <p class="mt-1 flex items-baseline gap-1.5 text-[11px]">
         <span class="shrink-0 rounded border border-violet-ink/40 bg-violet-ink/10 px-1.5 py-0.5 text-[10px] leading-relaxed text-ink">神通</span>
+        <!--
+          性质与纹:八种神通此前只写成一句文案,性质一律看不出来(见 ui/artifactShape)。
+          攻 / 护 / 削 / 净四类,纹样八种各一 —— 纹是主判据,色只作辅助。
+        -->
+        <span
+          v-if="row.shape"
+          class="artifact-shape shrink-0"
+          :class="`artifact-shape--${row.shape.disposition}`"
+          :title="row.shape.label"
+          role="img"
+          :aria-label="row.shape.label"
+        >
+          <span class="artifact-shape__crest" :class="`artifact-shape__crest--${row.shape.crest}`" aria-hidden="true" />
+          <span class="artifact-shape__name">{{ row.shape.dispositionName }}</span>
+        </span>
         <span class="text-violet-ink">「{{ row.def.active.name }}」:{{ artifactActiveText(row.def, row.owned.level) }}</span>
+      </p>
+      <!--
+        神通节奏:每隔几回合出手一次,是法宝之间最实质的差别之一
+        —— 同样一句「造成伤害」,三回合一次与五回合一次是两种分量(见 ui/artifactCadence)。
+      -->
+      <p class="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-faint">
+        <span class="shrink-0">节奏</span>
+        <span
+          v-if="row.cadence.cadence === 'everyN'"
+          class="artifact-cadence-pips shrink-0"
+          role="img"
+          :aria-label="row.cadence.label"
+          :title="row.cadence.label"
+        >
+          <i v-for="(on, i) in cadencePips(row.cadence)" :key="i" :class="{ on }" />
+        </span>
+        <span :class="row.cadence.cadence === 'always' ? 'text-gold-ink' : ''">{{ row.cadence.label }}</span>
       </p>
       <p v-if="nextGainText(row.def.id, row.owned.level)" class="mt-1 text-[10px] leading-relaxed text-ink-faint tabular">
         下一重:{{ nextGainText(row.def.id, row.owned.level) }}
@@ -164,6 +196,8 @@ import QualityTag from '@/components/common/QualityTag.vue'
 import QualitySeal from '@/components/common/QualitySeal.vue'
 import QualityAura from '@/components/common/QualityAura.vue'
 import { lusterOf } from '@/ui/luster'
+import { cadenceMark, cadencePips } from '@/ui/artifactCadence'
+import { artifactActiveNoun, artifactShapeMark } from '@/ui/artifactShape'
 
 const inventory = useInventoryStore()
 const player = usePlayerStore()
@@ -194,6 +228,10 @@ const artifactRows = computed(() =>
         plaque: qualityAura(def.quality).plaque,
         /** 满重标记:与品阶分开的一套形制 */
         mastery: artifactMastery(a.level),
+        /** 神通节奏形制:每隔几回合出手一次(见 ui/artifactCadence) */
+        cadence: cadenceMark(def),
+        /** 神通性质形制:攻/护/削/净(见 ui/artifactShape) */
+        shape: artifactShapeMark(def),
         /** 按下会替下哪几件;判据与槽位画法同源 */
         evicts: (() => {
           const ids = artifactEvictedBy(inventory.equippedArtifacts, artifactSlots.value)
@@ -247,17 +285,6 @@ function passiveLines(defId: string, level: number): string[] {
   return Object.entries(artifactValue(def, level).passive).map(([k, v]) => statModPhrase(k, v as number))
 }
 
-/** 神通主体数值的称谓 */
-const ACTIVE_NOUNS: Record<string, string> = {
-  damage: '威力',
-  drain: '威力',
-  heal: '回复',
-  shield: '护盾',
-  weaken: '削弱',
-  sunder: '破甲',
-  purge: '挣脱'
-}
-
 /** 下一重的账:被动逐项 + 神通主体 + 吸命回补;满重时为空 */
 function nextGainText(defId: string, level: number): string {
   const def = artifactDef(defId)
@@ -269,7 +296,7 @@ function nextGainText(defId: string, level: number): string {
     return caveat ? `${span}(${caveat})` : span
   })
   if (gain.active) {
-    const noun = ACTIVE_NOUNS[def!.active.effect.type] ?? '效果'
+    const noun = artifactActiveNoun(def)
     /** 零重即封顶的件直接报「已至上限」与封顶值 */
     const alreadyCapped = gain.active.capped && Math.abs(gain.active.to - gain.active.from) < 1e-9
     parts.push(

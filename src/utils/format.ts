@@ -188,11 +188,21 @@ export function formatCountdown(totalSec: number): string {
   return `${pad2(m)}分${pad2(s)}秒`
 }
 
-/** 时间戳 → 「HH:MM」(本地时) */
+/**
+ * 时间戳 → 「HH:MM」(本地时)。
+ *
+ * 坏值一律印占位符,不印 `NaN:NaN`:
+ * 这个函数有两处输入**不是本机产生的** —— 导入确认框里的 `exportedAt` 来自别人导出的文件,
+ * `diag` 留档的时间戳来自可能损坏的持久化分片。`new Date(8640000000000001)`
+ * (超出 Date 范围)与 `Infinity` 都让 `getHours()` 返回 NaN,印出来就是「NaN:NaN」。
+ * 判据见 format.spec「时钟时刻」。
+ */
 export function formatClock(ts: number): string {
   const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return '--:--'
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
+
 
 /**
  * 寿元年数展示。

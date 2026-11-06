@@ -13,10 +13,15 @@
     <!-- 词条转移在同一弹窗内切换正文与页脚,不另叠一层 -->
     <AffixTransferPanel v-if="transferOpen && inst" :flow="transfer" @view="viewTarget" />
     <div v-else-if="inst && template && resolved">
-      <div class="flex items-center gap-2">
+      <!--
+        flex-wrap 不可去:这一行原有品质签、阶位、+N、满级签、锁钮五样,
+        加了「全满」印后共六样 —— 320 宽下正文 px-5 只剩约 280,六样并排挤不下,
+        锁钮会被挤出面板。窄时整枚折行,不压文字。
+      -->
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
         <QualityTag :quality="inst.quality" />
         <!-- 阶位须带界域:同一阶在人间界与仙界不是一回事 -->
-        <span class="text-[11px] text-ink-faint">
+        <span class="min-w-0 text-[11px] text-ink-faint">
           {{ EQUIP_SLOT_NAMES[template.slot] }} · {{ worldNameOfTier(inst.tier) }} · {{ inst.tier }} 阶
         </span>
         <span v-if="inst.level > 0" class="text-[11px] text-gold-ink tabular">+{{ inst.level }}</span>
@@ -24,6 +29,17 @@
         <span v-if="realmReqText" class="text-[11px] text-cinnabar">{{ realmReqText }}</span>
         <!-- 满级时补一句,别让玩家自己去猜还能不能升 -->
         <span v-if="mastery" class="rounded border border-gold-ink/40 bg-gold-ink/10 px-1.5 py-0.5 text-[10px] leading-none text-ink">{{ mastery.label }}</span>
+        <!--
+          全满:每一条词条都达满档。这是「运气极点」,与满级、品阶各是各的一档 ——
+          见 ui/rollMark 的 allRollsApex,与智能收纳的保留线同一根。
+        -->
+        <span
+          v-if="allApex"
+          class="affix-full"
+          role="img"
+          aria-label="词条全满"
+          title="词条全满"
+        >满</span>
         <button
           class="-m-1.5 flex min-h-[28px] min-w-[28px] items-center justify-center rounded p-1.5 text-ink-faint ring-1 ring-inset ring-ink/15 active:scale-90"
           :aria-label="inst.locked ? '解锁' : '锁定'"
@@ -34,11 +50,30 @@
       </div>
       <p class="mt-2 text-[12px] leading-relaxed text-ink-faint">{{ template.desc }}</p>
       <EquipNotePanel />
-      <p v-if="setInfo" class="mt-1.5 text-[11px] leading-relaxed">
+      <p v-if="setInfo" class="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] leading-relaxed">
+        <!-- 套纹:六套各一枚,与格子那枚同源(见 ui/setMark) -->
+        <span
+          v-if="setMark"
+          class="set-crest shrink-0"
+          :class="`set-crest--${setMark.crest} set-crest--${setMark.mechanism}`"
+          aria-hidden="true"
+        />
         <span class="font-kai" :class="setInfo.active ? 'text-jade' : 'text-violet-ink'">
-          {{ setInfo.def.name }} {{ setInfo.count }}/{{ setInfo.def.required }}
+          {{ setInfo.def.name }}
         </span>
-        <span class="ml-1 text-ink-faint">{{ setInfo.def.effectDesc }}</span>
+        <!-- 件数刻度:凑齐要几件就几格,已戴几件 -->
+        <span
+          class="set-pips shrink-0"
+          :class="{ 'set-pips--active': setInfo.active }"
+          role="img"
+          :aria-label="`已戴 ${setInfo.count} 件,凑齐需 ${setInfo.def.required} 件`"
+        >
+          <i v-for="(on, i) in setPips(setMark!, setInfo.count)" :key="i" :class="{ on }" />
+        </span>
+        <span class="tabular" :class="setInfo.active ? 'text-jade' : 'text-ink-faint'">
+          {{ setInfo.count }}/{{ setInfo.def.required }}
+        </span>
+        <span class="text-ink-faint">{{ setInfo.def.effectDesc }}</span>
       </p>
       <div class="ink-divider my-3" />
       <p v-if="compareTarget" class="mb-1.5 text-[10px] text-ink-faint tabular">对比当前佩戴「{{ compareTarget.name }}」</p>
@@ -92,17 +127,25 @@
             :key="line.id"
             class="flex items-center gap-2 py-1.5 pl-2 pr-1.5"
             :class="i > 0 ? 'border-t border-violet-ink/10' : ''"
-            :style="{ borderLeft: `2px solid ${AFFIX_RARITY_META[line.rarity].color}` }"
+            :style="{ borderLeft: `2px solid ${line.meta.color}` }"
           >
-            <span class="shrink-0 font-kai text-[12px]" :style="{ color: AFFIX_RARITY_META[line.rarity].color }">
+            <span class="shrink-0 font-kai text-[12px]" :style="{ color: line.meta.color }">
               「{{ line.name }}」
             </span>
-            <span class="shrink-0 text-[9px] opacity-80" :style="{ color: AFFIX_RARITY_META[line.rarity].color }">
-              {{ AFFIX_RARITY_META[line.rarity].name }}
+            <span class="shrink-0 text-[9px] opacity-80" :style="{ color: line.meta.color }">
+              {{ line.meta.name }}
             </span>
             <span class="ml-auto min-w-0 text-right text-[11px] leading-snug text-ink-soft">
               {{ line.before }}<span class="tabular font-medium text-ink">{{ line.value }}</span>{{ line.after }}
-              <span class="text-[9px] text-ink-faint" :title="affixRollHint">{{ affixRollText(line.roll) }}</span>
+              <!--
+                掷值档:同一条词条,浮 95% 与浮 15% 是两种东西 ——
+                而此前只有一个读数,两档长得一模一样(见 ui/rollMark)。
+              -->
+              <span
+                class="affix-roll"
+                :class="`affix-roll--${line.rollGrade.grade}`"
+                :title="affixRollHint"
+              >{{ line.rollGrade.label }}</span>
             </span>
             <EquipSealPanel :affix-id="line.id" :name="line.name" />
           </li>
@@ -196,6 +239,7 @@
   import { useInventoryStore } from '@/stores/inventory'
   import { equipmentTemplate, EQUIP_SLOT_NAMES } from '@/data/equipment'
   import { equipSetDef, setCounts } from '@/core/equipSet'
+  import { setMark as setMarkOf, setPips } from '@/ui/setMark'
   import { worldNameOfTier } from '@/core/formulas'
   import { resolveEquipStats } from '@/core/equipGen'
   import { equippablePower } from '@/core/equipBest'
@@ -213,7 +257,8 @@
   import { isZero, sub } from '@/utils/gnum'
   import type { AnyStatKey, GNum } from '@/types'
   import { AFFIX_RARITY_META, STAT_NAMES, statValueText } from '@/data/statNames'
-  import { affixRollHint, affixRollText, powerCompareLabel } from '@/ui/equipText'
+  import { allRollsApex, rollMark } from '@/ui/rollMark'
+  import { affixRollHint, powerCompareLabel } from '@/ui/equipText'
   import { useAffixTransfer } from '@/composables/useAffixTransfer'
   import { useAutoReforge } from '@/composables/useAutoReforge'
   import BaseModal from '@/components/common/BaseModal.vue'
@@ -240,7 +285,20 @@
   const inst = computed(() => (ui.equipDetailUid ? inventory.findItem(ui.equipDetailUid) : undefined))
 
   const template = computed(() => (inst.value ? equipmentTemplate(inst.value.templateId) : undefined))
-  const resolved = computed(() => (inst.value ? resolveEquipStats(inst.value) : null))
+  /**
+   * 词条行:稀有度的名与色各算一次。
+   *
+   * 原先一行里 `AFFIX_RARITY_META[line.rarity]` 被调 4 次(左边框、字色 ×2、档次名),
+   * 而后一次就是前一次的同一次查表 —— 与前面几轮清掉的重复调用同一种毛病。
+   */
+  const resolved = computed(() => {
+    if (!inst.value) return null
+    const r = resolveEquipStats(inst.value)
+    return {
+      ...r,
+      affixLines: r.affixLines.map(line => ({ ...line, meta: AFFIX_RARITY_META[line.rarity], rollGrade: rollMark(line.roll) }))
+    }
+  })
   const isEquipped = computed(() => (inst.value && template.value ? inventory.equipped[template.value.slot] === inst.value.uid : false))
   /** 约定「禁用即给原因」 */
   const decomposeReason = computed(() => {
@@ -249,6 +307,14 @@
     return '分解'
   })
   const mastery = computed(() => (inst.value ? equipMastery(inst.value.level, equipLevelCap()) : null))
+  /**
+   * 整件「全满」:每一条词条都达满档。
+   *
+   * 这是智能收纳里「词条近满件永不自动处置」的那根线 —— 玩家在收纳设置里被保留的件,
+   * 在详情里也该说得出为什么。一件装备所有词条同时掷到 85% 以上是运气极点,
+   * 而此前界面上逐条看只能看出「每条都不错」,看不出「整件全满」这件事。
+   */
+  const allApex = computed(() => (resolved.value ? allRollsApex(resolved.value.affixLines.map(l => l.roll)) : false))
   /** 质感层:详情弹窗的整幅框、头饰与标题字面(见 ui/luster) */
   const luster = computed(() => (inst.value ? lusterOf(inst.value.quality) : null))
 
@@ -276,6 +342,8 @@
   const salvage = computed(() => (inst.value ? salvageOf(inst.value) : null))
 
   /** 共鸣件数只数已佩戴的(看挂载,不看行囊) */
+  /** 共鸣形制:六套各一枚线纹(见 ui/setMark);与格子那枚同源 */
+  const setMark = computed(() => setMarkOf(template.value?.set ?? ''))
   const setInfo = computed(() => {
     const setId = template.value?.set
     if (!setId) return null

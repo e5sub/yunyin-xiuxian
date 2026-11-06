@@ -149,8 +149,26 @@ describe('时钟时刻(倒计时那句「约几时归」的落点)', () => {
     expect(formatClock(new Date(2026, 9, 5, 9, 4).getTime())).toBe('09:04')
     expect(formatClock(new Date(2026, 9, 5, 0, 0).getTime())).toBe('00:00')
   })
+
+  /**
+   * 两处调用点的输入都不是本机产生的:导入确认框的 exportedAt 来自别人导出的文件,
+   * diag 留档的时间戳来自可能损坏的分片。`new Date(8640000000000001)` 已超出 Date
+   * 的合法范围,`getHours()` 返回 NaN —— 原先印出的是「NaN:NaN」。
+   */
+  it('坏时间戳印占位符,不印 NaN:NaN', () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 8640000000000001]) {
+      expect(formatClock(bad), `${String(bad)} 印出了 NaN`).toBe('--:--')
+    }
+    // 边界:Date 合法范围的最大值仍要照常印
+    expect(formatClock(8640000000000000)).not.toBe('--:--')
+  })
 })
 
+/**
+ * 导入确认框要回答的是「这份备份比我现在这份旧多少」——只印时刻答不了。
+ * 原先那行是 `导出 {{ formatClock(importInspect.exportedAt) }}`,
+ * 三天前的备份与一小时前的备份印出来只差一个数字。
+ */
 describe('明细取整对账(显示出来的各行相加等于合计)', () => {
   const UNIT = 0.001
   const units = (xs: number[]): number[] => xs.map(x => Math.round(x / UNIT))

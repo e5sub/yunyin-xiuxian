@@ -1,6 +1,7 @@
 /** 存档服务:云端档应用 / 重置 / 迁移 */
 import {
   applyImportPayload,
+
   migrateHerbSlice,
   migrateInventorySlice,
   SAVE_VERSION,
@@ -35,7 +36,9 @@ function migrate(payload: ExportPayload): ExportPayload {
     const now = Date.now()
     const gapSec = saved > 0 ? Math.max(0, (now - saved) / 1000) : 0
     const keptSec = Math.min(gapSec, RESTORE_OFFLINE_MAX_HOURS * 3600)
-    migrated.data.game = { ...game, lastActiveAt: now - keptSec * 1000 }
+    // 档内 saveVersion 也要盖成当前版:旧档(如 v1)迁完信封已是 2,档内还写 1,界面照报 v1
+    migrated.data.game = { ...game, lastActiveAt: now - keptSec * 1000, saveVersion: SAVE_VERSION }
+
   }
   migrated.version = SAVE_VERSION
   return migrated
@@ -46,6 +49,7 @@ function migrate(payload: ExportPayload): ExportPayload {
  * 成功返回 null;失败已回滚旧档,返回错误信息。
  */
 export function applySavePayload(parsed: unknown): string | null {
+
   const error = validateImportPayload(parsed)
   if (error) return error
   try {
@@ -55,6 +59,7 @@ export function applySavePayload(parsed: unknown): string | null {
   }
   return null
 }
+
 
 /**
  * 封存写盘:页面即将卸载时,丢弃一切后续 localStorage 写入。
@@ -80,6 +85,7 @@ export function sealStorageWrites(): void {
 }
 
 /**
+
  * 重载(导入存档后调用)。封存写盘,防排队刷盘在卸载前覆盖刚导入的分片。
  * 不碰 hash:内存 store 还是旧存档,SPA 导航引发的回写会覆盖刚导入的数据。
  */

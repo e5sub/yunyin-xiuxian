@@ -1213,6 +1213,8 @@ html[data-theme='dark'] .dao-crest {
   display: inline-block;
   flex-shrink: 0;
   color: currentColor;
+  /* 形制只负责画:点击交给外层按钮/整块,与 set-crest / branch-dir 同一条 */
+  pointer-events: none;
 }
 .pact-crest::before {
   content: '';
@@ -1286,6 +1288,8 @@ html[data-theme='dark'] .dao-crest {
   display: inline-block;
   flex-shrink: 0;
   color: currentColor;
+  /* 形制只负责画:点击交给外层按钮/整块,与 set-crest / branch-dir 同一条 */
+  pointer-events: none;
 }
 .branch-glyph::before {
   content: '';
@@ -1373,6 +1377,8 @@ html[data-theme='dark'] .dao-crest {
   display: inline-block;
   flex-shrink: 0;
   color: currentColor;
+  /* 形制只负责画:点击交给外层按钮/整块,与 set-crest / branch-dir 同一条 */
+  pointer-events: none;
 }
 .bond-crest::before {
   content: '';
@@ -1614,6 +1620,8 @@ html[data-theme='dark'] .bond-halo {
   display: inline-block;
   flex-shrink: 0;
   color: currentColor;
+  /* 形制只负责画:点击交给外层按钮/整块,与 set-crest / branch-dir 同一条 */
+  pointer-events: none;
 }
 .axis-glyph::before {
   content: '';
@@ -2335,6 +2343,433 @@ html[data-theme='dark'] .fruit-curve polyline {
   box-shadow: inset 0 0 0 1px rgb(var(--color-cinnabar-rgb) / 0.6);
 }
 
+/* ================= 小境界十档刻度(subLayerMark) =================
+ * 「一层 … 九层 · 圆满」是全作最核心的进度读数:修为攒满当前层即小进阶,
+ * 攒到「圆满」才够格冲大关。而它一直只是两个字 —— 同样是「三层」,
+ * 从一层走到三层与从七层退到三层不是一回事,「圆满」离大关只差一次突破。
+ * 十档就是十格,已满几格(见 src/ui/subLayerMark)。
+ *
+ * 与 .realm-layer-pips 同一套几何(4px 圆点、2px 间距),但这里是**已得**:
+ * 从一层起第一格就该是实心 —— 玩家已经站在这一档了,不是还没进去。
+ * 到「圆满」整排转实朱:那是「够格冲大关了」,与「还差几层」是两种状态。
+ */
+.sub-layer-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+.sub-layer-pips i {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px currentColor;
+  opacity: 0.35;
+}
+.sub-layer-pips i.on {
+  background: currentColor;
+  box-shadow: none;
+  opacity: 1;
+}
+.sub-layer-pips--complete i.on {
+  background: rgb(var(--color-cinnabar-rgb));
+}
+
+/* ================= 地界危险度(dangerMark) =================
+ * 每处地界带 danger 1~5,而界面上只写成两个字:「凶险」与「大凶」差多少,
+ * 得先记住五个词的次序(见 src/ui/dangerMark)。
+ * 沿用「本世地界」页事件密度那套点阵:五格,已满几格;最高两档转朱。
+ * 点是主判据,色只是辅助 —— 色弱玩家照样数得出。
+ */
+.danger-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+.danger-pips i {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px currentColor;
+  opacity: 0.3;
+}
+.danger-pips i.on {
+  background: currentColor;
+  box-shadow: none;
+  opacity: 0.9;
+}
+.danger-pips--severe i.on {
+  background: rgb(var(--color-cinnabar-rgb));
+  opacity: 1;
+}
+
+/* ================= 灵兽性格倾向(personalityMark) =================
+ * 四种性格(贪宝/慢稳/好战/谨慎)只影响历练时的四项倾向,而界面上此前只有名字与一句描述。
+ * 「贪宝」与「好战」都算「凶」,但它们动的是**不同的量** —— 要挑一只配当前打法,
+ * 得把描述那句话读两遍再在脑子里比对(见 src/ui/personalityMark)。
+ * 这里给每个在动的维度一枚小签:偏高的转朱、偏低的转青,平的(即不改的)不列。
+ * 色只作辅助,签上写着维度名 —— 色弱玩家照样读得出。
+ */
+.personality-tilt {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 2px;
+  padding: 0 3px;
+  font-size: 9px;
+  line-height: 1.4;
+  pointer-events: none;
+  background: rgb(var(--color-ink-rgb) / 0.06);
+  color: rgb(var(--color-ink-soft-rgb));
+}
+/* 偏高:转朱 —— 遇险更高、行程更久都是「更吃力」那一边 */
+.personality-tilt--up {
+  background: rgb(var(--color-cinnabar-rgb) / 0.12);
+  color: rgb(var(--color-cinnabar-rgb));
+}
+/* 偏低:转青 —— 更省力、更稳那一边 */
+.personality-tilt--down {
+  background: rgb(var(--color-jade-rgb) / 0.12);
+  color: rgb(var(--color-jade-rgb));
+}
+
+/* ================= 装备共鸣形制(setMark) =================
+ * 六套共鸣此前在格子上共用一枚「共」字:同一格里的「共」可能是铁壁、可能是妖庭,
+ * 得点开详情才知道;而共鸣只有凑齐才生效,看不出来就无从决定「下一件该先收哪个部位」
+ * (见 src/ui/setMark)。
+ *
+ * 两样形制:
+ *   套纹(crest):每套一枚线纹,六枚两两不同 —— 纹样才是主判据,色弱玩家照样分得开;
+ *   机制(mechanism):三钩子各一色(护命转朱 / 开战盾转靛 / 汲取转青),色只作辅助。
+ * 纹样一律吃 currentColor,故色由机制那一层给,纹样本身不写死颜色。
+ */
+.set-crest {
+  position: relative;
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+.set-crest::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+}
+/* 机制上色:三钩子各一色,只吃既有语义 token */
+.set-crest--guard {
+  color: rgb(var(--color-cinnabar-rgb));
+}
+.set-crest--shield {
+  color: rgb(var(--color-indigo-ink-rgb));
+}
+.set-crest--leech {
+  color: rgb(var(--color-jade-rgb));
+}
+/* 铁壁:一道实心竖墙 */
+.set-crest--wall::before {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 60% 100%;
+  background-position: center;
+}
+/* 星斗:一枚四角星(两条交叉的窄带) */
+.set-crest--star::before {
+  background-image:
+    linear-gradient(45deg, transparent 0 44%, currentColor 44% 56%, transparent 56% 100%),
+    linear-gradient(-45deg, transparent 0 44%, currentColor 44% 56%, transparent 56% 100%);
+}
+/* 仙甲:两片羽(左右各一道斜带) */
+.set-crest--feather::before {
+  background-image:
+    linear-gradient(60deg, transparent 0 40%, currentColor 40% 52%, transparent 52% 100%),
+    linear-gradient(-60deg, transparent 0 40%, currentColor 40% 52%, transparent 52% 100%);
+  background-size: 50% 100%, 50% 100%;
+  background-position: left center, right center;
+}
+/* 神铠:一枚闭合方框(甲片) */
+.set-crest--shell::before {
+  inset: 12%;
+  border: 1.5px solid currentColor;
+  border-radius: 1px;
+}
+/* 混沌:一枚回环(缺口圆) */
+.set-crest--chaos::before {
+  inset: 8%;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  border-top-color: transparent;
+}
+/* 妖庭:一枚尖角(兽牙) */
+.set-crest--fang::before {
+  background-image: linear-gradient(135deg, transparent 0 40%, currentColor 40% 62%, transparent 62% 100%);
+  background-size: 100% 100%;
+}
+
+/* 件数刻度:凑齐要几件就几格,已戴几件 */
+.set-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+.set-pips i {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px currentColor;
+  opacity: 0.3;
+}
+.set-pips i.on {
+  background: currentColor;
+  box-shadow: none;
+  opacity: 0.9;
+}
+/* 凑齐:整排转青,与「还差一件」分开 */
+.set-pips--active i.on {
+  background: rgb(var(--color-jade-rgb));
+  opacity: 1;
+}
+
+/* ================= 法宝神通节奏(artifactCadence) =================
+ * 每件法宝都带一个神通,而「每隔几回合触发一次」在界面上**一处未读** ——
+ * 法宝卡只写「神通「X」:某效果」,不写它多久出手一次(见 src/ui/artifactCadence)。
+ * 而节奏正是法宝之间最实质的差别:同样一句「造成伤害」,三回合一次与五回合一次是两种分量。
+ *
+ * 刻度表达的是「多久一次」,不是「走了多远」,故格数等于间隔、全部实心:
+ * 五格比三格长,读出来就是「更慢」。随身常在型不画回合刻度,只留一句说法。
+ */
+.artifact-cadence-pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+.artifact-cadence-pips i {
+  display: block;
+  width: 5px;
+  height: 2px;
+  border-radius: 1px;
+  background: rgb(var(--color-violet-ink-rgb));
+  opacity: 0.75;
+}
+
+/* ================= 法宝神通性质(artifactShape) =================
+ * 八种神通此前只写成一句文案,「这一击是打人、是护身、还是削敌」看不出来
+ * (见 src/ui/artifactShape)。神通行上补一枚性质印:
+ *   攻 / 护 / 削 / 净 四类各一色,八种 type 各一枚线纹。
+ * 纹是主判据(色弱玩家靠纹分得开),色只表达性质。
+ * 纹样一律吃 currentColor,故色由性质那一层给,纹样本身不写死颜色。
+ */
+.artifact-shape {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 2px;
+  padding: 0 4px 0 3px;
+  line-height: 1.5;
+  pointer-events: none;
+  background: rgb(var(--color-ink-rgb) / 0.05);
+}
+/* 四类性质各一色,只吃既有语义 token */
+.artifact-shape--attack {
+  color: rgb(var(--color-cinnabar-rgb));
+}
+.artifact-shape--guard {
+  color: rgb(var(--color-jade-rgb));
+}
+.artifact-shape--debuff {
+  color: rgb(var(--color-violet-ink-rgb));
+}
+.artifact-shape--cleanse {
+  color: rgb(var(--color-azure-rgb));
+}
+.artifact-shape__name {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+.artifact-shape__crest {
+  position: relative;
+  display: block;
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+}
+.artifact-shape__crest::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+/* 爆:中央一点 + 四向短芒 */
+.artifact-shape__crest--burst::before {
+  background-image:
+    linear-gradient(currentColor, currentColor),
+    linear-gradient(90deg, currentColor, currentColor),
+    linear-gradient(currentColor, currentColor);
+  background-size: 2px 2px, 100% 1px, 1px 100%;
+  background-position: center, center, center;
+  background-repeat: no-repeat;
+}
+/* 滴:竖向渐窄(收束) */
+.artifact-shape__crest--drop::before {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 1px 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+  clip-path: polygon(50% 0, 75% 60%, 50% 100%, 25% 60%);
+  background-size: 100% 100%;
+}
+/* 封:一圈闭合 */
+.artifact-shape__crest--seal::before {
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  inset: 10%;
+}
+/* 壁:一道实心竖墙 */
+.artifact-shape__crest--wall::before {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 3px 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+/* 缚:两道横缠 */
+.artifact-shape__crest--bind::before {
+  background-image:
+    linear-gradient(currentColor, currentColor),
+    linear-gradient(currentColor, currentColor);
+  background-size: 100% 1px, 100% 1px;
+  background-position: center 30%, center 70%;
+  background-repeat: no-repeat;
+}
+/* 裂:一道斜断 */
+.artifact-shape__crest--crack::before {
+  background-image: linear-gradient(70deg, transparent 0 44%, currentColor 44% 58%, transparent 58% 100%);
+}
+/* 解:开口方框(锁开) */
+.artifact-shape__crest--unlock::before {
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 1px;
+  inset: 12%;
+}
+/* 止:一道横杠压顶(震慑) */
+.artifact-shape__crest--halt::before {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 100% 2px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* ================= 悟道分支方向(branchDirection) =================
+ * 分支是不改不回的一次抉择,而分支卡上此前只有一行词条 ——
+ * 玩家得把三条词条逐字读完,再在心里折成同一个问题:这一条往哪个方向走
+ * (见 src/ui/branchDirection)。
+ *
+ * 四类方向各一色,跨两类以上报「合」转灰:
+ * 「两头都沾、样样不精」与「专精一处」是两种抉择,形制上要分得开。
+ * 方向印只吃既有语义 token,不新造颜色。
+ */
+.branch-dir {
+  display: inline-block;
+  border-radius: 2px;
+  padding: 0 3px;
+  font-size: 9px;
+  line-height: 1.5;
+  letter-spacing: 0.06em;
+  vertical-align: 1px;
+  pointer-events: none;
+  background: rgb(var(--color-ink-rgb) / 0.06);
+}
+.branch-dir--attack {
+  color: rgb(var(--color-cinnabar-rgb));
+  background: rgb(var(--color-cinnabar-rgb) / 0.12);
+}
+.branch-dir--guard {
+  color: rgb(var(--color-jade-rgb));
+  background: rgb(var(--color-jade-rgb) / 0.12);
+}
+.branch-dir--growth {
+  color: rgb(var(--color-violet-ink-rgb));
+  background: rgb(var(--color-violet-ink-rgb) / 0.12);
+}
+.branch-dir--fate {
+  color: rgb(var(--color-azure-rgb));
+  background: rgb(var(--color-azure-rgb) / 0.12);
+}
+/* 合:跨两类以上 —— 转灰,与专精一处分开读 */
+.branch-dir--blend {
+  color: rgb(var(--color-ink-soft-rgb));
+  background: rgb(var(--color-ink-rgb) / 0.05);
+}
+
+/* ================= 词条掷值档(rollMark) =================
+ * 同一条「攻击 +12」,掷到 0.95 与掷到 0.15 是两种东西 ——
+ * 而详情里此前只有一个「浮 95%」的读数,两档长得一模一样(见 src/ui/rollMark)。
+ *
+ * 只给满档重形制(与 luster 同一条:每档都加,等于每档都没有):
+ *   满 → 描边小印 + 金色;良 → 只转色不加框;常 → 与原读数一致,不动。
+ * 阈值取自 data/constants 的 SMART_KEEP_PERFECT_ROLL —— 与智能收纳的保留线同一根线。
+ */
+.affix-roll {
+  display: inline-block;
+  border-radius: 2px;
+  padding: 0 2px;
+  font-size: 9px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+/* 良:只转色,不加框 —— 与「满」拉开落差 */
+.affix-roll--good {
+  color: rgb(var(--color-azure-rgb));
+}
+/* 满:描边 + 金色。这一档是全详情里除品阶之外唯一的金 */
+.affix-roll--apex {
+  color: rgb(var(--color-gold-ink-rgb));
+  border: 1px solid rgb(var(--color-gold-ink-rgb) / 0.45);
+  background: rgb(var(--color-gold-ink-rgb) / 0.08);
+  letter-spacing: 0.02em;
+}
+
+/* ================= 词条全满(rollMark.allRollsApex) =================
+ * 一件装备所有词条同时掷到 85% 以上是运气极点 ——
+ * 那是智能收纳里「词条近满件永不自动处置」的同一根线(见 src/ui/rollMark)。
+ * 逐条看只能看出「每条都不错」,看不出「整件全满」这件事,故给一枚整体记号。
+ *
+ * 与满级签、品阶签各是各的一档:满级是练出来的,品阶是掉了什么,全满是掷运。
+ * 用实心金底 + 深字 —— 这一屏唯一一枚实心金,不与任何其他标记撞。
+ */
+.affix-full {
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  padding: 0 2px;
+  font-family: var(--font-kai);
+  font-size: 10px;
+  line-height: 1;
+  color: rgb(var(--color-ink-rgb));
+  background: rgb(var(--color-gold-ink-rgb));
+  pointer-events: none;
+}
+
+/* ================= 丹匣「生效中」(InventoryView 的 pillRows.active) =================
+ * 丹匣此前看不出哪味增益丹正在生效 —— 玩家要翻到「状态」里挨个比对名字,
+ * 而服丹时最该知道的就是「这一味还要不要再补」。
+ * 一枚实心青点:青 = 「在你身上正起作用」,与朱砂(警示)、金(稀缺)分开。
+ * 位置在左下一角,与右下的数量分开,不抢名字与图标。
+ */
+.pill-active-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgb(var(--color-jade-rgb));
+  pointer-events: none;
+}
+
 /* ================= 界域进度刻度(worldProgress) =================
  * 境界谱按四个界域平铺 21 境,而界域标题只写「第 1–9 境」:
  * 身在人间界第 4 境时,本界域还剩几境得自己拿 4 去比 1 与 9(见 src/ui/worldProgress.ts)。
@@ -2443,6 +2878,7 @@ html[data-theme='dark'] .fruit-curve polyline {
   display: inline-flex;
   align-items: center;
   gap: 1px;
+  pointer-events: none;
 }
 .beast-src-pips i {
   display: block;
@@ -2757,6 +3193,7 @@ html[data-theme='dark'] .fruit-curve polyline {
   overflow: hidden;
   border-radius: 999px;
   background: rgb(var(--color-ink-rgb) / var(--track-ink-alpha));
+  pointer-events: none;
 }
 .rating-gauge i {
   display: block;

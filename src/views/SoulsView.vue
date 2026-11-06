@@ -27,32 +27,31 @@
         <SectionTitle title="已凝形意" :hint="`${endgame.activeSouls.length} / ${SOUL_SLOTS} 缕`" />
         <div class="mt-2 grid grid-cols-3 gap-2">
           <div
-            v-for="i in SOUL_SLOTS"
-            :key="i"
+            v-for="row in slotRows"
+            :key="row.index"
             class="card-ink relative flex min-h-[86px] flex-col items-center justify-center px-2 py-2 text-center"
-            :class="endgame.activeSouls[i - 1] ? '' : 'opacity-50'"
+            :class="row.soul ? '' : 'opacity-50'"
           >
             <!-- 最上阶(化真)独有的一圈魂环;其余阶只有阶点(见 ui/soulMark) -->
-            <span v-if="slotMark(i)?.top" class="soul-halo" aria-hidden="true" />
-            <template v-if="endgame.activeSouls[i - 1]">
-              <span class="font-kai text-[22px] leading-none" :style="{ color: soulColor(endgame.activeSouls[i - 1]!) }">
-                {{ soulSeal(endgame.activeSouls[i - 1]!) }}
-              </span>
-              <span class="mt-1 text-[10px] leading-tight text-ink-soft">{{ soulLabel(endgame.activeSouls[i - 1]!) }}</span>
+            <span v-if="row.mark?.top" class="soul-halo" aria-hidden="true" />
+            <template v-if="row.soul">
+              <span class="font-kai text-[22px] leading-none" :style="{ color: row.color }">{{ row.seal }}</span>
+              <span class="mt-1 text-[10px] leading-tight text-ink-soft">{{ row.label }}</span>
               <!-- 阶点:几阶就几点,数得出来;最上阶的点为菱形 -->
               <span
                 class="soul-pips mt-1"
-                :class="{ 'soul-pips--top': slotMark(i)!.top }"
-                :style="{ '--soul-tone': slotMark(i)!.color }"
+                :class="{ 'soul-pips--top': row.mark!.top }"
+                :style="{ '--soul-tone': row.mark!.color }"
                 role="img"
-                :aria-label="`${slotMark(i)!.label}阶`"
+                :aria-label="`${row.mark!.label}阶`"
               >
-                <i v-for="p in slotMark(i)!.pips" :key="p" />
+                <i v-for="p in row.mark!.pips" :key="p" />
               </span>
               <!-- 纯文字只有 15px 高;内联块给拇指 30px 靶面 -->
               <button
-                class="mt-1 inline-block rounded px-2 py-2 text-[10px] text-ink-faint ring-1 ring-inset ring-ink/25"
-                @click="removeSoul(endgame.activeSouls[i - 1]!.uid)"
+                class="mt-1 inline-block px-2 py-2 text-[10px] text-ink-faint underline"
+                @click="removeSoul(row.soul.uid)"
+
               >
                 卸下
               </button>
@@ -118,30 +117,38 @@
       <!-- 散去的后果须在动手之前看见 -->
       <p class="mb-2 text-[10px] leading-relaxed text-ink-faint">{{ dissolveNote() }}</p>
       <div v-if="idleSouls.length > 0" class="card-ink max-h-64 divide-y divide-ink/6 overflow-y-auto px-4">
-        <div v-for="soul in idleSouls" :key="soul.uid" class="flex items-center justify-between gap-2 py-2.5">
+        <div v-for="row in idleSouls" :key="row.soul.uid" class="flex items-center justify-between gap-2 py-2.5">
           <div class="min-w-0">
             <p class="flex items-center gap-1.5 text-[12px]">
-              <span class="truncate" :style="{ color: soulColor(soul) }">{{ soulLabel(soul) }}</span>
+              <!-- 魂型印:与出战槽那枚同源(六类器魂各有单字,见 data/souls 的 seal) -->
+              <span
+                class="grid h-5 w-5 shrink-0 place-items-center rounded font-kai text-[11px] leading-none"
+                :style="{ color: row.color, background: `color-mix(in srgb, ${row.color} 12%, transparent)` }"
+                aria-hidden="true"
+              >{{ row.seal }}</span>
+              <span class="truncate" :style="{ color: row.color }">{{ row.label }}</span>
               <span
                 class="soul-pips shrink-0"
-                :class="{ 'soul-pips--top': soulMark(soul.grade).top }"
-                :style="{ '--soul-tone': soulColor(soul) }"
+                :class="{ 'soul-pips--top': row.mark.top }"
+                :style="{ '--soul-tone': row.color }"
                 role="img"
-                :aria-label="`${soulMark(soul.grade).label}阶`"
+                :aria-label="`${row.mark.label}阶`"
               >
-                <i v-for="p in soulMark(soul.grade).pips" :key="p" />
+                <i v-for="p in row.mark.pips" :key="p" />
               </span>
             </p>
-            <p class="text-[10px] text-ink-faint">凝自「{{ soul.fromName }}」 · {{ soulModText(soul) }}</p>
+            <p class="text-[10px] text-ink-faint">凝自「{{ row.soul.fromName }}」 · {{ soulModText(row.soul) }}</p>
+            <!-- 六类器魂各有一句形意,原先只在数据表里(见 ui/soulText 的 soulFlavorText) -->
+            <p v-if="row.flavor" class="text-[10px] leading-relaxed text-violet-ink">{{ row.flavor }}</p>
           </div>
           <!-- 巡页夹具无灵魂,28px 尺子碰不到这些钮;!py-2 盒高 35px,与同行确认态按钮同高 -->
           <div class="flex shrink-0 gap-1">
-            <button class="btn-ghost !px-2.5 !py-2 !text-[11px]" @click="wearSoul(soul.uid)">装配</button>
-            <template v-if="pendingDissolveUid !== soul.uid">
-              <button class="btn-ghost !px-2 !py-2 !text-[11px] !text-ink-faint" @click="pendingDissolveUid = soul.uid">散去</button>
+            <button class="btn-ghost !px-2.5 !py-2 !text-[11px]" @click="wearSoul(row.soul.uid)">装配</button>
+            <template v-if="pendingDissolveUid !== row.soul.uid">
+              <button class="btn-ghost !px-2 !py-2 !text-[11px] !text-ink-faint" @click="pendingDissolveUid = row.soul.uid">散去</button>
             </template>
             <template v-else>
-              <button class="btn-seal !px-2 !py-2 !text-[11px]" @click="doDissolve(soul.uid)">确认散去</button>
+              <button class="btn-seal !px-2 !py-2 !text-[11px]" @click="doDissolve(row.soul.uid)">确认散去</button>
               <button class="btn-ghost !px-2 !py-2 !text-[11px]" @click="pendingDissolveUid = null">再想想</button>
             </template>
           </div>
@@ -182,15 +189,15 @@
             <p class="flex items-center gap-1.5 truncate text-[10px] text-ink-faint">
               <span
                 class="soul-pips"
-                :class="{ 'soul-pips--top': soulMark(row.gradeRank).top }"
-                :style="{ '--soul-tone': soulGradeDef(row.gradeRank).color }"
+                :class="{ 'soul-pips--top': row.mark.top }"
+                :style="{ '--soul-tone': row.gradeColor }"
                 role="img"
-                :aria-label="`${soulMark(row.gradeRank).label}阶`"
+                :aria-label="`${row.mark.label}阶`"
               >
-                <i v-for="p in soulMark(row.gradeRank).pips" :key="p" />
+                <i v-for="p in row.mark.pips" :key="p" />
               </span>
               将凝出
-              <span :style="{ color: soulGradeDef(row.gradeRank).color }">{{ soulGradeDef(row.gradeRank).name }}·{{ row.typeName }}</span>
+              <span :style="{ color: row.gradeColor }">{{ row.gradeName }}·{{ row.typeName }}</span>
             </p>
           </div>
           <!-- 二步确认:毁的是原器 -->
@@ -230,7 +237,7 @@
   import { goBack } from '@/router/goBack'
   import { formatNum } from '@/utils/format'
   import { modsText } from '@/data/statNames'
-  import { dissolveNote, refineCostLine } from '@/ui/soulText'
+  import { dissolveNote, refineCostLine, soulFlavorText } from '@/ui/soulText'
   import { soulMark } from '@/ui/soulMark'
   import { soulPickSummary, soulPicks } from '@/ui/soulPick'
   import { equipmentTemplate } from '@/data/equipment'
@@ -273,7 +280,7 @@
   const freeSlots = computed(() => Math.max(0, SOUL_SLOTS - endgame.activeSouls.length))
   /** 建议装配的几枚:只在有空槽时给;分量按既有战力权重算(见 ui/soulPick) */
   const pickReady = computed(() =>
-    freeSlots.value > 0 ? soulPicks(idleSouls.value, freeSlots.value).filter(p => p.picked) : []
+    freeSlots.value > 0 ? soulPicks(idleSouls.value.map(r => r.soul), freeSlots.value).filter(p => p.picked) : []
   )
   const pickNames = computed(() => soulPickSummary(pickReady.value) ?? '')
 
@@ -287,12 +294,34 @@
   /** 清理散置:逐枚走同一个 dissolveSoul,判据不分叉;只动未装配的那些 */
   function doClearIdle(): void {
     clearIdleArm.value = false
-    const uids = idleSouls.value.map(s => s.uid)
+    const uids = idleSouls.value.map(r => r.soul.uid)
     for (const uid of uids) dissolveSoul(uid)
 
   }
 
-  const idleSouls = computed(() => endgame.soulList.filter(s => !endgame.activeSouls.some(a => a.uid === s.uid)))
+  /**
+   * 散置器魂:形制与形意在这里算一次。
+   *
+   * 形意句原先在模板里被调两次(v-if 判一次、渲染一次),而它是纯查表函数 ——
+   * 每帧算两遍,且模板里读不出「这两处说的是同一件事」。
+   * 魂型印同理:出战槽用大字印(见 soulSeal),散置列表却只有名字,同一页两种读法。
+   */
+  const idleSouls = computed(() =>
+    endgame.soulList
+      .filter(s => !endgame.activeSouls.some(a => a.uid === s.uid))
+      .map(s => {
+        const gradeDef = soulGradeDef(s.grade)
+        return {
+          soul: s,
+          flavor: soulFlavorText(s),
+          // 字色、阶位形制、魂型印各算一次:模板里原先 soulColor 调 4 次、soulMark 3 次
+          color: gradeDef.color,
+          mark: soulMark(s.grade),
+          seal: soulTypeDef(s.type)?.seal ?? '魂',
+          label: soulName(s)
+        }
+      })
+  )
 
   const refinable = computed(() => {
     const wearing = new Set(Object.values(inventory.equipped).filter((v): v is string => typeof v === 'string'))
@@ -300,29 +329,41 @@
       .filter(it => !it.locked && !wearing.has(it.uid) && canRefine(it))
       .map(inst => {
         const preview = previewSoul(inst)
+        // 形制与阶位名在此算一次:模板里原先各要查 3 遍
+        const gradeDef = soulGradeDef(preview.gradeRank)
         return {
           inst,
           name: equipmentTemplate(inst.templateId)?.name ?? '无名法器',
           typeName: preview.type?.name ?? '器魂',
-          gradeRank: preview.gradeRank
+          gradeRank: preview.gradeRank,
+          mark: soulMark(preview.gradeRank),
+          gradeName: gradeDef.name,
+          gradeColor: gradeDef.color
         }
       })
   })
 
-  function soulLabel(soul: SoulInstance): string {
-    return soulName(soul)
-  }
-  function soulSeal(soul: SoulInstance): string {
-    return soulTypeDef(soul.type)?.seal ?? '魂'
-  }
-  function soulColor(soul: SoulInstance): string {
-    return soulGradeDef(soul.grade).color
-  }
-  /** 装配槽位里那枚器魂的形制;空槽为 null(不挂魂环与阶点) */
-  function slotMark(i: number) {
-    const soul = endgame.activeSouls[i - 1]
-    return soul ? soulMark(soul.grade) : null
-  }
+  /**
+   * 装配槽位的行:器魂、字色、形制、印各算一次。
+   *
+   * 原先是 `slotMark(i)` 一个槽里调 5 次,而它内部还要再查一次 `soulMark(soul.grade)` ——
+   * 实际每槽算 10 次;`soulColor` 又调一次。与 TrialPanel / 丹匣那两处同一种毛病:
+   * 每帧算十遍,而且模板里读不出这几处说的是同一枚器魂。
+   */
+  const slotRows = computed(() =>
+    Array.from({ length: SOUL_SLOTS }, (_, idx) => {
+      const soul = endgame.activeSouls[idx]
+      if (!soul) return { index: idx + 1, soul: null, mark: null, color: '', seal: '', label: '' }
+      return {
+        index: idx + 1,
+        soul,
+        mark: soulMark(soul.grade),
+        color: soulGradeDef(soul.grade).color,
+        seal: soulTypeDef(soul.type)?.seal ?? '魂',
+        label: soulName(soul)
+      }
+    })
+  )
   function soulModText(soul: SoulInstance): string {
     return modsText(soulMods(soul))
   }

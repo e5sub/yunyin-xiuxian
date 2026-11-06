@@ -6,7 +6,19 @@
       <!-- 小标题不写件数(有三件套),件数只走逐行 N/所需 -->
       <div v-if="setRows.length" class="card-ink mt-3 px-4 py-2.5">
         <p class="text-[10px] text-ink-faint">装备共鸣</p>
-        <p v-for="s in setRows" :key="s.def.id" class="mt-1 flex items-center gap-2 text-[11px]">
+        <!--
+          flex-wrap 不可去:这一行有套纹、套名、N/M、说明、按钮五样,
+          200% 缩放下(视口约 195)**实测**右缘冲到 213,越界 18px。
+          窄时按钮折到下一行,不挤说明。
+        -->
+        <p v-for="s in setRows" :key="s.def.id" class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+          <!-- 套纹:与装备格那枚同源(见 ui/setMark);六套各一枚,机制另有其色 -->
+          <span
+            v-if="s.mark"
+            class="set-crest shrink-0"
+            :class="`set-crest--${s.mark.crest} set-crest--${s.mark.mechanism}`"
+            aria-hidden="true"
+          />
           <span class="font-kai shrink-0" :class="s.active ? 'text-jade' : 'text-ink-soft'">{{ s.def.name }}</span>
           <span class="tabular shrink-0" :class="s.active ? 'text-jade' : 'text-ink-faint'">{{ s.count }}/{{ s.def.required }}</span>
           <span class="min-w-0 grow text-[10px] leading-relaxed text-ink-faint">{{ s.def.effectDesc }}</span>
@@ -113,33 +125,37 @@
       <div v-if="pillRows.length" class="mt-3 grid grid-cols-4 gap-1.5">
         <button
           v-for="row in pillRows"
-          :key="row.def!.id"
+          :key="row.def.id"
           class="relative aspect-square rounded-md border transition-transform active:scale-98"
-          :style="{ borderColor: tint(pillQualityColor(row.def!), qualityTierByRank(pillRank(row.def!)).border), background: tint(pillQualityColor(row.def!), qualityTierByRank(pillRank(row.def!)).bg) }"
-          @click="pillDetail = row.def!.id"
+          :style="row.style"
+          @click="pillDetail = row.def.id"
         >
-          <QualityAura
-            :rank="pillRank(row.def!)"
-            :tone="pillQualityColor(row.def!)"
-            compact
-          />
+          <QualityAura :rank="row.rank" :tone="row.tone" compact />
           <!-- 最上档质感:四角御纹 + 流光(丹药走 rank 入口,道品 rank 9 同样享有) -->
-          <span v-if="lusterByRank(pillRank(row.def!))" class="luster-cornice luster-cornice--tile" aria-hidden="true" />
-          <span v-if="lusterByRank(pillRank(row.def!))" class="luster-sheen" aria-hidden="true" />
+          <span v-if="row.luster" class="luster-cornice luster-cornice--tile" aria-hidden="true" />
+          <span v-if="row.luster" class="luster-sheen" aria-hidden="true" />
           <!-- role="img":角章只有一个字,读屏要念的是「天品档」;裸 span 属 generic,不接可访问名 -->
           <span
-            v-if="isRareRank(pillRank(row.def!))"
+            v-if="row.rare"
             role="img"
             class="absolute right-0.5 top-0.5 rounded-[3px] border px-[3px] py-px font-kai text-[9px] leading-none text-ink"
-            :style="{ borderColor: tint(pillQualityColor(row.def!), 0.45), background: tint(pillQualityColor(row.def!), 0.12) }"
-            :aria-label="`${pillQualityName(row.def!)}档`"
-          >{{ pillQualityName(row.def!).charAt(0) }}</span>
+            :style="{ borderColor: tint(row.tone, 0.45), background: tint(row.tone, 0.12) }"
+            :aria-label="`${row.qualityName}档`"
+          >{{ row.qualityName.charAt(0) }}</span>
           <span class="flex h-full w-full flex-col items-center justify-center gap-0.5 px-1">
-            <GameIcon :name="row.def!.icon" :size="20" :style="{ color: pillQualityColor(row.def!) }" />
-            <span class="w-full truncate text-center text-[9px] leading-tight" :style="{ color: pillQualityColor(row.def!) }">
-              {{ row.def!.name }}
+            <GameIcon :name="row.def.icon" :size="20" :style="{ color: row.tone }" />
+            <span class="w-full truncate text-center text-[9px] leading-tight" :style="{ color: row.tone }">
+              {{ row.def.name }}
             </span>
           </span>
+          <!-- 生效中:左下一枚小点,与右下的数量分开,不抢名字与图标 -->
+          <span
+            v-if="row.active"
+            class="pill-active-dot absolute bottom-1 left-1"
+            role="img"
+            aria-label="生效中"
+            title="生效中"
+          />
           <span class="absolute bottom-0.5 right-1 text-[9px] leading-none text-ink-soft tabular">×{{ row.count }}</span>
         </button>
       </div>
@@ -189,14 +205,12 @@
         <div class="flex items-center gap-3">
           <span
             class="grid h-12 w-12 shrink-0 place-items-center rounded-md"
-            :style="{ color: pillQualityColor(currentPill.def), background: tint(pillQualityColor(currentPill.def), 0.08) }"
+            :style="{ color: currentPill.tone, background: tint(currentPill.tone, 0.08) }"
           >
             <GameIcon :name="currentPill.def.icon" :size="24" />
           </span>
           <div class="min-w-0">
-            <p class="text-[11px]" :style="{ color: pillQualityColor(currentPill.def) }">
-              {{ pillQualityName(currentPill.def) }}
-            </p>
+            <p class="text-[11px]" :style="{ color: currentPill.tone }">{{ currentPill.qualityName }}</p>
             <p class="text-[11px] text-ink-faint tabular">持有 ×{{ currentPill.count }}</p>
           </div>
         </div>
@@ -303,7 +317,8 @@
   import { usePill, usePillBatch } from '@/core/pillService'
   import { buffOverflowOf, type BuffOverflow } from '@/core/buffCap'
 
-  import { equipSetDef, setCounts, type EquipSetDef } from '@/core/equipSet'
+  import { allEquipSets, setCounts } from '@/core/equipSet'
+  import { setMark } from '@/ui/setMark'
   import { bestEquipFor, equipAllBest, equipSetCombo, equipSetPreview, unequipAllEquipped } from '@/core/equipBest'
   import { equipSweepPlan } from '@/core/forge'
   import { upgradeEquippedOnce } from '@/core/forgeService'
@@ -356,16 +371,21 @@
   const SLOTS = EQUIP_SLOTS
   const pickerSlot = ref<EquipSlot | null>(null)
 
-  /** 装备共鸣:已装备件的同组计数,未满也列 */
+  /**
+   * 装备共鸣:六套全表,已戴几件就报几件。
+   *
+   * 原只列**已戴**的那几套 —— 于是「还有哪些共鸣可凑」只在拿到第一件时才知道,
+   * 而共鸣是这套装备唯一的机制卖点(数值之外的另一条线)。
+   * 全表列出之后,0/2 那几行本身就是「还差什么」的地图。
+   * 次序:已激活的在前,再按件数;同分按登记次序(core 的 SET_DEFS 保序)。
+   */
   const setRows = computed(() => {
     const counts = setCounts(inventory.equippedItems)
-    return [...counts.entries()]
-      .map(([id, count]) => {
-        const def = equipSetDef(id)
-        if (!def) return null
-        return { def, count, active: count >= def.required, preview: equipSetPreview(id) }
+    return allEquipSets()
+      .map(def => {
+        const count = counts.get(def.id) ?? 0
+        return { def, count, active: count >= def.required, preview: equipSetPreview(def.id), mark: setMark(def.id) }
       })
-      .filter((row): row is { def: EquipSetDef; count: number; active: boolean; preview: number } => row !== null)
       .sort((a, b) => Number(b.active) - Number(a.active) || b.count - a.count)
   })
 
@@ -402,11 +422,44 @@
     ui.equipDetailUid = uid
   }
 
+  /**
+   * 丹匣的行:品阶、字色、浓淡、质感各算一次。
+   *
+   * 原先一个格子里 `pillQualityColor` 被调 7 次(边框、底色、光环、角章 ×2、图标、名字),
+   * `pillRank` 5 次、`tier` 与 `luster` 各 3 次 —— 全是同一次查表。
+   * 与 TrialPanel / 功法详情那两处同一种毛病:每帧算好几遍,
+   * 而且模板里读不出「这七处说的是同一枚丹药」。
+   */
   const pillRows = computed(() =>
     Object.entries(inventory.pills)
       .map(([id, count]) => ({ def: pillDef(id), count }))
       .filter(x => x.def !== undefined && x.count > 0)
-      .sort((a, b) => pillRank(b.def!) - pillRank(a.def!))
+      .map(x => {
+        const def = x.def!
+        const rank = pillRank(def)
+        const tone = pillQualityColor(def)
+        const tier = qualityTierByRank(rank)
+        return {
+          def,
+          count: x.count,
+          rank,
+          tone,
+          tier,
+          luster: lusterByRank(rank),
+          rare: isRareRank(rank),
+          qualityName: pillQualityName(def),
+          /**
+           * 生效中:这味增益丹的 buff 还在身上。
+           *
+           * 丹匣此前看不出哪味正在生效 —— 玩家要翻到「状态」里挨个比对名字,
+           * 而服丹时最该知道的就是「这一味还要不要再补」。
+           * 判定与详情弹窗的 buffOverflowOf 同一份 buffs 账,不另算。
+           */
+          active: def.kind === 'buff' && !!def.buffId && cultivation.buffs.some(b => b.defId === def.buffId && b.endsAt > now.value),
+          style: { borderColor: tint(tone, tier.border), background: tint(tone, tier.bg) }
+        }
+      })
+      .sort((a, b) => b.rank - a.rank)
   )
 
   // 丹药签圆点:有一味能开炉(与结算同源)
@@ -487,7 +540,8 @@
   const pillDetail = ref<string | null>(null)
   const currentPill = computed(() => (pillDetail.value ? (pillRows.value.find(r => r.def?.id === pillDetail.value) ?? null) : null))
   /** 当前查看的丹药的质感层(最上档才有);道品 rank 9 走同一入口 */
-  const pillLuster = computed(() => (currentPill.value?.def ? lusterByRank(pillRank(currentPill.value.def)) : null))
+  /** 当前查看的丹药的质感层(最上档才有);行上已算好,这里直接取 */
+  const pillLuster = computed(() => currentPill.value?.luster ?? null)
 
   /**
    * 增益丹服前判定,与 usePill 同口径 buffOverflowOf:full = 顶满再服白费(usePill 照扣库存),partial = 只续到顶。

@@ -17,7 +17,18 @@
         </span>
         <!-- 同源功法参悟时更易撞见(倾向,非独占) -->
         <span v-if="sameRoot" class="chip-ink border-gold-ink/40 text-gold-ink" title="灵根同源 · 参悟更易得">同源</span>
-        <span v-if="learned" class="ml-auto tabular text-[12px] text-gold-ink">第 {{ level }}/{{ def.maxLevel }} 层</span>
+        <!-- 层数刻度:与主修卡/已习列表同一份(见 ui/gongfaMark);上限几层就几格 -->
+        <span v-if="learned" class="ml-auto flex items-center gap-1.5">
+          <span
+            class="gongfa-pips"
+            :class="{ 'gongfa-pips--max': mark.maxed }"
+            role="img"
+            :aria-label="`第 ${mark.level} 层,共 ${mark.max} 层`"
+          >
+            <i v-for="(on, i) in gongfaPips(mark)" :key="i" :class="{ on }" />
+          </span>
+          <span class="tabular text-[12px] text-gold-ink">第 {{ mark.level }}/{{ mark.max }} 层</span>
+        </span>
       </div>
       <p class="mt-2 text-[12px] leading-relaxed text-ink-faint">{{ def.desc }}</p>
       <!-- 参悟门槛与藏经阁习得同源:minRealm ≤ major+1 即在池内(超前一层,spec 钉死),更高才提示 -->
@@ -50,10 +61,10 @@
           <div v-if="branchPicked" class="rounded-md bg-paper-deep/70 px-3 py-2">
             <p class="flex items-center gap-1.5">
               <span
-                v-if="branchMarkOf(branchPicked.id)"
+                v-if="pickedMark"
                 class="branch-glyph h-3.5 w-3.5 shrink-0"
-                :class="`branch-glyph--${branchMarkOf(branchPicked.id)!.glyph}`"
-                :style="{ color: branchMarkOf(branchPicked.id)!.tone }"
+                :class="`branch-glyph--${pickedMark.glyph}`"
+                :style="{ color: pickedMark.tone }"
                 aria-hidden="true"
               />
               <span class="font-kai text-[13px] text-gold-ink">{{ branchPicked.name }}</span>
@@ -63,26 +74,38 @@
           </div>
           <div v-else class="space-y-1.5">
             <button
-              v-for="b in branches"
-              :key="b.id"
+              v-for="row in branches"
+              :key="row.def.id"
               class="branch-card flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 pl-3.5 text-left active:scale-98"
-              :style="branchStyle(b.id)"
-              :aria-label="branchMarkOf(b.id)?.label ?? b.name"
-              @click="branchConfirm = b.id"
+              :style="row.style"
+              :aria-label="row.mark?.label ?? row.def.name"
+              @click="branchConfirm = row.def.id"
             >
               <span class="flex min-w-0 items-start gap-2">
                 <!-- 道纹:同一门功法的第几道分支,形状可数(见 ui/branchMark) -->
                 <span
-                  v-if="branchMarkOf(b.id)"
+                  v-if="row.mark"
                   class="branch-glyph mt-0.5 h-5 w-5 shrink-0"
-                  :class="`branch-glyph--${branchMarkOf(b.id)!.glyph}`"
-                  :style="{ color: branchMarkOf(b.id)!.tone }"
+                  :class="`branch-glyph--${row.mark.glyph}`"
+                  :style="{ color: row.mark.tone }"
                   aria-hidden="true"
                 />
                 <span class="min-w-0">
-                  <span class="font-kai text-[13px] text-ink">{{ b.name }}</span>
-                  <span class="ml-2 text-[11px] text-ink-faint">{{ b.desc }}</span>
-                  <span class="tabular mt-0.5 block text-[11px] text-azure">{{ modsText(b.mods) }}</span>
+                  <span class="font-kai text-[13px] text-ink">{{ row.def.name }}</span>
+                  <!--
+                    方向印:分支是不改不回的一次抉择,而卡上此前只有一行词条,
+                    玩家得把三条词条逐字读完才知道「这一条往哪个方向走」(见 ui/branchDirection)。
+                  -->
+                  <span
+                    v-if="row.direction.label"
+                    class="branch-dir ml-1.5"
+                    :class="`branch-dir--${row.direction.direction}`"
+                    role="img"
+                    :title="row.direction.label"
+                    :aria-label="row.direction.label"
+                  >{{ row.direction.name }}</span>
+                  <span class="ml-2 text-[11px] text-ink-faint">{{ row.def.desc }}</span>
+                  <span class="tabular mt-0.5 block text-[11px] text-azure">{{ modsText(row.def.mods) }}</span>
                 </span>
               </span>
               <span class="shrink-0 text-[10px] text-azure">择此道 →</span>
@@ -161,6 +184,8 @@
   import { ELEMENTS } from '@/data/linggen'
   import { branchesFor, gongfaBranchDef } from '@/data/gongfaBranches'
   import { branchMarkOf, branchTier } from '@/ui/branchMark'
+import { branchDirectionMark } from '@/ui/branchDirection'
+  import { gongfaMark, gongfaPips } from '@/ui/gongfaMark'
   import { tint } from '@/utils/colorToken'
   import { gongfaUpgradeCost, gongfaUpgradeShort, gongfaUpgradeShortfall, upgradeGongfa } from '@/core/gongfaService'
   import { seatedCount, seatCapOf } from '@/core/gongfaSeats'
@@ -185,6 +210,8 @@
   const luster = computed(() => (def.value ? lusterOf(def.value.quality) : null))
   const level = computed(() => (def.value ? (cultivation.learned[def.value.id] ?? 0) : 0))
   const learned = computed(() => level.value > 0)
+  /** 层数形制:与主修卡/已习列表同一份(见 ui/gongfaMark) */
+  const mark = computed(() => gongfaMark(def.value, level.value))
   const upCost = computed(() => (def.value ? gongfaUpgradeCost(def.value.id) : null))
   /** 缺料判定,与服务升级路径同一处 */
   const upShort = computed(() => (upCost.value ? gongfaUpgradeShort(upCost.value) : null))
@@ -237,25 +264,38 @@
 
   // 满级悟道分支
   const fullLevel = computed(() => (def.value ? level.value >= gongfaMaxLevel(def.value) : false))
-  const branches = computed(() => (def.value ? branchesFor(def.value.id) : []))
-
-  /** 分支卡的品阶淡底与左内沿色:取所属功法的品阶,不与六条分支各造一色 */
-  function branchStyle(branchId: string): Record<string, string> | undefined {
-    const mark = branchMarkOf(branchId)
+  /**
+   * 分支卡的行:道纹、淡底、左内沿色各算一次。
+   *
+   * `branchMarkOf` 在同一个按钮里被调 5 次(读屏说法、有无判断、道纹类名、色 ×2),
+   * `branchStyle` 里还要再调一次 —— 而分支表是静态数据、这两个都是纯函数。
+   * 与 TrialPanel 那次同一种毛病:每帧算好几遍,且模板里读不出这几处说的是同一个 mark。
+   */
+  const branches = computed(() => {
     const quality = def.value?.quality
-    if (!mark || !quality) return undefined
-    const tier = branchTier(quality)
-    return {
-      borderColor: tint(mark.tone, Math.min(0.6, tier.border)),
-      background: tint(mark.tone, Math.max(0.04, tier.bg * 0.6)),
-      '--branch-tone': mark.tone
-    }
-  }
+    const tier = quality ? branchTier(quality) : null
+    return (def.value ? branchesFor(def.value.id) : []).map(b => {
+      const mark = branchMarkOf(b.id)
+      // 品阶淡底与左内沿色:取所属功法的品阶,不与六条分支各造一色
+      const style =
+        mark && tier
+          ? {
+              borderColor: tint(mark.tone, Math.min(0.6, tier.border)),
+              background: tint(mark.tone, Math.max(0.04, tier.bg * 0.6)),
+              '--branch-tone': mark.tone
+            }
+          : undefined
+      return { def: b, mark, style, direction: branchDirectionMark(b.mods) }
+    })
+  })
   const branchPicked = computed(() => {
     if (!def.value) return undefined
     const id = cultivation.gongfaBranch[def.value.id]
     return id ? gongfaBranchDef(id) : undefined
   })
+
+  /** 已择分支的道纹:算一次,模板里那 4 处读同一份(见 ui/branchMark) */
+  const pickedMark = computed(() => (branchPicked.value ? branchMarkOf(branchPicked.value.id) : undefined))
 
   /** 悟道分岔确认态(按分支 id);换功法/关弹窗即复位 */
   const branchConfirm = ref<string | null>(null)

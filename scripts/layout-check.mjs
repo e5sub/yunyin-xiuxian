@@ -98,10 +98,13 @@ async function auditModalControls(page) {
     if (!panel) return null
     const rows = [...panel.querySelectorAll('button, a, [role=button]')]
       .map(el => {
-        const r = el.getBoundingClientRect()
+        const rect = el.getBoundingClientRect()
+        // 量布局高度:弹窗里也可能有带 transform 的元素,getBoundingClientRect 会量到缩放后的值
+        const h = el.offsetHeight || rect.height
+        const r = { ...rect, height: h }
         // 声明 min-height ≥28 的给半像素容差(27.5);报数带一位小数,免得 27.6 打印成「28」
         const declared = parseFloat(getComputedStyle(el).minHeight) || 0
-        const ok = r.height >= 28 || (declared >= 28 && r.height >= 27.5)
+        const ok = h >= 28 || (declared >= 28 && h >= 27.5)
         return {
           name: (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 14),
           h: r.height,
@@ -295,13 +298,22 @@ async function measurePage(page) {
        * 实测全站窄钮为 0;真要窄到点不准,先会撞上页面的横向溢出与孤字自检。
        * 宽度那一侧将来若要加,须一并给弹窗内那一组(auditModalControls)加,两处同尺。
        */
+      /*
+       * 量**布局高度**,不量 getBoundingClientRect。
+       *
+       * 提示条离场时带着 `transform: translateY(-6px) scale(0.96)`,
+       * 而注入的 `transition:none` 让它立刻停在终态 —— 28px 的关闭钮于是量成 26.9px(28×0.96),
+       * 报「可点元素过小」。那不是触控缺陷,是量到了动画中的缩放。
+       * offsetHeight 是布局高度,不受 transform 影响,量的才是这颗钮真实的命中尺寸。
+       */
       smallTargets: [...document.querySelectorAll('button, a, [role=button]')]
         .map(el => {
-          const r = el.getBoundingClientRect()
+          const rect = el.getBoundingClientRect()
+          const h = el.offsetHeight || rect.height
           // 与 auditModalControls 同一条尺子
           const declared = parseFloat(getComputedStyle(el).minHeight) || 0
-          const ok = r.height >= 28 || (declared >= 28 && r.height >= 27.5)
-          return { el, r, ok }
+          const ok = h >= 28 || (declared >= 28 && h >= 27.5)
+          return { el, r: { ...rect, height: h }, ok }
         })
         .filter(({ r, ok }) => r.width > 0 && r.height > 0 && !ok)
         .slice(0, 3)
@@ -939,16 +951,25 @@ for (const vp of VIEWPORTS) {
   if (before.count === 0) failures.push('[375] 浮层场景:一条提示都没浮出来,这条判据没跑到东西')
   if (before.blocked > 0) failures.push(`[375] 浮层场景:${before.blocked} 条提示条点了没反应(pointer-events 被外框的 none 继承)`)
   if (before.count > 0 && before.blocked === 0) {
-    const first = page.locator(`${hostSel} button`).first()
-    const text = ((await first.textContent()) ?? '').trim()
-    await first.click({ timeout: 3000 })
+    /*
+     * 判定「关掉一条就少一条」,不按按钮文字找。
+     *
+     * 关闭钮的文字恒为「×」,而开局那一下往往同时浮出好几条(成就 / 灵石 / 称号)——
+     * 按文字找的话,点了第一条之后别的条还挂着自己的「×」,永远匹配得到,
+     * 于是无论关没关掉都判失败。改成数条数。
+     */
+    // hostSel 本身就是带 role=status 的那个容器,正文是它的直接 div 子元素
+    const bodySel = `${hostSel}[role=status] > div`
+    const bodiesBefore = await page.locator(bodySel).count()
+    const firstText = ((await page.locator(bodySel).first().textContent()) ?? '').replace(/\s*×\s*$/, '').trim()
+    await page.locator(`${hostSel} button`).first().click({ timeout: 3000 })
     // 1 秒窗口:须短于最短提示寿命(2.6 秒);glow-pulse 无限动画会让过渡探测把离场拖成 2.4 秒
     let gone = false
     for (let i = 0; i < 20 && !gone; i += 1) {
       await page.waitForTimeout(50)
-      gone = (await page.locator(`${hostSel} button`, { hasText: text }).count()) === 0
+      gone = (await page.locator(bodySel).count()) < bodiesBefore
     }
-    if (!gone) failures.push(`[375] 浮层场景:点了「${text.slice(0, 12)}」1 秒内没消失(还挂在屏幕上)`)
+    if (!gone) failures.push(`[375] 浮层场景:点了「${firstText.slice(0, 12)}」1 秒内没消失(还挂在屏幕上)`)
   }
   if (pageErrors.length) failures.push(`[375] 浮层场景页面异常:${[...new Set(pageErrors)].join(' | ')}`)
   await page.close()
@@ -1250,7 +1271,7 @@ for (const vp of VIEWPORTS) {
     await page.waitForTimeout(900)
     const after = await page.evaluate(() => ({
       text: document.querySelector('main')?.innerText || '',
-      toasts: [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim())
+      toasts: [...document.querySelectorAll('[role=status] > div')].map(d => (d.textContent || '').replace(/\s*×\s*$/, '').trim())
     }))
     if (after.toasts.length === 0 && after.text === beforeText) {
       failures.push('[390-late] 历练页:点了「再入一层」既没战报也没变化(点了没反应)')
@@ -1281,7 +1302,7 @@ for (const vp of VIEWPORTS) {
     await page.waitForTimeout(900)
     const after = await page.evaluate(() => ({
       text: document.querySelector('main')?.innerText || '',
-      toasts: [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim()),
+      toasts: [...document.querySelectorAll('[role=status] > div')].map(d => (d.textContent || '').replace(/\s*×\s*$/, '').trim()),
       // 打输开战报弹窗;赢了只前移行程点列
       report: (document.querySelector('.modal-panel h3')?.textContent || '').trim()
     }))
@@ -1744,7 +1765,7 @@ for (const vp of VIEWPORTS) {
   // 导入先弹确认(与重置同纪律),点「确认导入」才落库
   await page.getByRole('button', { name: /确认导入/ }).click({ timeout: 3000 })
   await page.waitForTimeout(700)
-  const toast = await page.evaluate(() => [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim()).join('|'))
+  const toast = await page.evaluate(() => [...document.querySelectorAll('[role=status] > div')].map(d => (d.textContent || '').replace(/\s*×\s*$/, '').trim()).join('|'))
   await page.waitForTimeout(2600)
   const after = await readFormatted(page, '灵石')
   const reloaded = await page.evaluate(() => window.__beforeImport === undefined)
@@ -1844,7 +1865,7 @@ for (const vp of VIEWPORTS) {
     const after = await bagCount()
     const body = await page.evaluate(() => (document.querySelector('main')?.innerText || '').replace(/\n+/g, ' '))
     const toast = await page.evaluate(() =>
-      [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim()).join('|')
+      [...document.querySelectorAll('[role=status] > div')].map(d => (d.textContent || '').replace(/\s*×\s*$/, '').trim()).join('|')
     )
     if (after !== 3) failures.push(`[390] 收纳场景:清理后行囊剩 ${after} 件(应为 3 —— 那 3 件有投入的必须留下)`)
     if (!/已化尘 2 件/.test(toast)) failures.push(`[390] 收纳场景:清理后的交代不对(${toast || '无提示'})`)
@@ -1917,7 +1938,7 @@ for (const vp of VIEWPORTS) {
     })
   const toasts = () =>
     page.evaluate(() =>
-      [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim()).join('|')
+      [...document.querySelectorAll('[role=status] > div')].map(d => (d.textContent || '').replace(/\s*×\s*$/, '').trim()).join('|')
     )
   const opened = await page
     .locator('main button', { hasText: /^分解$/ })
@@ -2105,7 +2126,7 @@ for (const vp of VIEWPORTS) {
     await buildBtn.click({ timeout: 3000 }).catch(() => {})
     await page.waitForTimeout(800)
     const toast = await page.evaluate(() =>
-      [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim()).join('|')
+      [...document.querySelectorAll('[role=status] > div')].map(d => (d.textContent || '').replace(/\s*×\s*$/, '').trim()).join('|')
     )
     const oreAfter = await readOre()
     if (!Number.isFinite(oreCost)) failures.push(`[390] 营造场景:读不出卡片上的玄铁价(「${label}」)`)
@@ -2222,7 +2243,7 @@ for (const vp of VIEWPORTS) {
     await retreatBtn.click({ timeout: 3000 }).catch(() => {})
     await page.waitForTimeout(800)
     const started = await page.evaluate(() => ({
-      toast: [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim()).join('|'),
+      toast: [...document.querySelectorAll('[role=status] > div')].map(d => (d.textContent || '').replace(/\s*×\s*$/, '').trim()).join('|'),
       countdown: /闭关中 · /.test(document.querySelector('main')?.innerText || '')
     }))
     if (!started.countdown) failures.push('[390] 闭关场景:点了闭关,修行页没有出现「闭关中」的倒计时')
@@ -2232,7 +2253,7 @@ for (const vp of VIEWPORTS) {
     await page.locator('main button', { hasText: /出\s*发/ }).first().click({ timeout: 3000 }).catch(() => {})
     await page.waitForTimeout(600)
     const blocked = await page.evaluate(() => ({
-      toast: [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim()).join('|'),
+      toast: [...document.querySelectorAll('[role=status] > div')].map(d => (d.textContent || '').replace(/\s*×\s*$/, '').trim()).join('|'),
       modal: !!document.querySelector('.modal-panel'),
       running: /余 \d+分\d+秒/.test(document.querySelector('main')?.innerText || '')
     }))
@@ -2323,7 +2344,7 @@ for (const vp of VIEWPORTS) {
     await page.locator('.modal-panel button', { hasText: /确认分解/ }).first().click({ timeout: 3000 }).catch(() => {})
     await page.waitForTimeout(700)
     const toast = await page.evaluate(() =>
-      [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim()).join('|')
+      [...document.querySelectorAll('[role=status] > div')].map(d => (d.textContent || '').replace(/\s*×\s*$/, '').trim()).join('|')
     )
     const promised = Number((/已化尘 · 得器灵尘×(\d+)/.exec(toast) || [])[1] ?? NaN)
     const dustAfterSplit = await readDust()
@@ -3041,7 +3062,7 @@ for (const vp of [
   await page.getByRole('button', { name: /导出存档/ }).first().click()
   await page.waitForTimeout(1500)
   const said = await page.evaluate(() =>
-    [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim()).join('|')
+    [...document.querySelectorAll('[role=status] > div')].map(d => (d.textContent || '').replace(/\s*×\s*$/, '').trim()).join('|')
   )
   if (!/导出|下载/.test(said)) failures.push(`[390] 导出失败场景:下载能力不可用时点了「导出存档」,界面一声不响(${said || '无提示'})`)
   else console.log(`\n导出失败也说话:「${said.split('|')[0]}」`)
@@ -3080,7 +3101,7 @@ for (const vp of [
   await ctx.addInitScript(() => {
     window.__bootToastSaid = ''
     const pick = () => {
-      const t = [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim()).join('|')
+      const t = [...document.querySelectorAll('[role=status] > div')].map(d => (d.textContent || '').replace(/\s*×\s*$/, '').trim()).join('|')
       if (/损坏|异常|隔离/.test(t)) window.__bootToastSaid = t
     }
     // 须挂在 document 上:等 #app 再挂会错过(app.mount 与坏档提示同步执行);document_start 时 documentElement 还是 null
@@ -3102,7 +3123,7 @@ for (const vp of [
     const live = await page
     .waitForFunction(
       () => {
-        const t = [...document.querySelectorAll('.pointer-events-none.fixed button')].map(b => (b.textContent || '').trim()).join('|')
+        const t = [...document.querySelectorAll('[role=status] > div')].map(d => (d.textContent || '').replace(/\s*×\s*$/, '').trim()).join('|')
         return /损坏|异常|隔离/.test(t) ? t : false
       },
       { timeout: 8000 }
