@@ -9,9 +9,10 @@ import { CHAIN_STAGE_CHANCE, FORTUNE_CHANCE, INSTANT_EXP_LAYER_CAP } from '@/dat
 import { pillDef, PILLS, pillRank } from '@/data/pills'
 import { HERB_GRADE_SHORT, herbGradeOfMajor } from '@/data/herbGrades'
 import { buffDef } from '@/data/buffs'
+import { GONGFA } from '@/data/gongfa'
 import { petDef, genericPetPool } from '@/data/pets'
 import { expFromSecs, stoneByTier } from './formulas'
-import { acquireArtifact, acquireEquipment, randomDropArtifact } from './loot'
+import { acquireArtifact, acquireEquipment, celebrateTreasure, randomDropArtifact } from './loot'
 import { mintDrops } from './lootClaim'
 import { mintArtifacts } from './lootClaim'
 import type { LootClaimCtx } from './lootGrant'
@@ -138,10 +139,17 @@ export interface EventApplyOpts {
   /** 空祭炼位时自动祭上法宝;默认 true,玩家不在场的自动结算(离线 / 遇事勿扰 / 超时)传 false,同 offline.ts 的 autoEquip=false */
   autoEquipArtifact?: boolean
   /**
+  /**
    * 装备签发收集器:离线整段结算传它,把签发上下文攒起来一次请求要齐(40 场际遇 40 次请求必撞限速)。
    * 传了它时装备效果当场不入包、不报行,由收集方签发后统一 acquire。
    */
   deferEquip?: (ctx: LootClaimCtx) => void
+  /**
+   * 玩家不在场:不翻开得宝仪典。
+   * 与 autoEquipArtifact 同一批调用点 —— 那几处玩家没看着屏幕,
+   * 归来卷轴与 toast 已经交代了所得,再演一遍「那一刻」是假的。
+   */
+  silent?: boolean
 }
 
 /** 事件效果入账;装备走签发漏斗(服务端裁决),故整段异步 */
@@ -184,7 +192,8 @@ async function applyEffect(effect: EventEffect, tier: number, opts: EventApplyOp
       }
       const insts = await mintDrops([{ src: 'event', tier, minQualityRank: effect.minQualityRank }])
       if (insts.length === 0) return null
-      const line = `获得 ${acquireEquipment(insts[0]!).line}`
+      // 静默结算(离线)时入账照旧,只是不弹 toast、不翻开仪典
+      const line = `获得 ${acquireEquipment(insts[0]!, { quiet: opts.silent === true }).line}`
       foldSession(undefined, undefined, 1)
       return line
     }
@@ -196,11 +205,17 @@ async function applyEffect(effect: EventEffect, tier: number, opts: EventApplyOp
       inventory.addPill(id, effect.count)
       collect('pill', id)
       foldSession(undefined, undefined, effect.count)
+      // 际遇赠顶档丹药:与掉落/自炼同一份仪典
+      if (!opts.silent) celebrateTreasure({ kind: 'pill', pill: def })
       return `丹药「${def.name}」×${effect.count}`
     }
     case 'gongfa': {
       const learnt = learnRandomGongfa(effect.id)
-      if (learnt) return `习得功法《${learnt}》`
+      if (learnt) {
+        const def = GONGFA.find(g => g.name === learnt)
+        if (def && !opts.silent) celebrateTreasure({ kind: 'gongfa', gongfa: def })
+        return `习得功法《${learnt}》`
+      }
       resources.addSmall('page', 10)
       return '功法残页 +10'
     }
@@ -238,6 +253,8 @@ async function applyEffect(effect: EventEffect, tier: number, opts: EventApplyOp
       collect('pet', id)
       if (!player.petId) player.setPet(id)
       const def = petDef(id)
+      // 仙品/神品神兽只由指名事件发放 —— 正是最该有一瞬的那条路
+      if (def && !opts.silent) celebrateTreasure({ kind: 'pet', pet: def })
       return `获得灵兽「${def?.name ?? ''}」`
     }
     case 'nothing':

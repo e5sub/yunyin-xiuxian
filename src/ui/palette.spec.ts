@@ -1158,9 +1158,11 @@ describe('调色板 · 组件类不空转', () => {
    * 模板写了、style.css 里却没定义的类名(幽灵类)不报错、不告警,只是静悄悄地不生效 ——
    * 一个按钮写着 btn-ink 却仍是裸文字,查起来要翻整张样式表。
    * 只查本仓库自造的前缀:btn- / chip- / card- / seal- / tab-。Tailwind 自带的工具类不含这些前缀,
-   * 不会误伤;animate-* / data-* 也不会被 \b 边界吃到。
+   * 不会误伤;animate-* / data-* 也不会被边界吃到。
+   * 边界用「类名 token 起始」而非 \b:\b 把 world-seal-mark 在 world- 后截成 seal-mark,
+   * 复合前缀(形制基类 world-seal-mark 等)会被误报成幽灵类 —— 类名的分隔符是空白与引号,不是连字符。
    */
-  const PREFIX = /\b(btn|chip|card|seal|tab)-[a-z][a-z0-9-]*/g
+  const PREFIX = /(?<=^|[\s"'`])(btn|chip|card|seal|tab)-[a-z][a-z0-9-]*/g
 
   function walk(dir: string, out: string[] = []): string[] {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
