@@ -55,7 +55,7 @@
     <p v-if="studyStatusLine" class="mt-1 flex items-center gap-1 text-[10px] text-gold-ink">
       <GameIcon name="book" :size="11" />{{ studyStatusLine }}
     </p>
-    <button class="btn-ghost mt-2 w-full !py-1.5 !text-[12px]" :disabled="!info.canUpgrade" @click="upgradeBuilding(props.def.id)">
+    <button class="btn-ghost mt-2 w-full !py-1.5 !text-[12px]" :disabled="!info.canUpgrade" @click="void upgradeBuilding(props.def.id)">
       <!--
         每个「数 + 量词」各自 nowrap,只在分隔符处换行(窄屏会在数字与「石」之间断行)。
         外层 span 不可去:btn-ghost 是 flex 容器,散落的文本节点会各成 flex item 竖着堆。
@@ -149,7 +149,7 @@
   const batchArm = ref(false)
   function runBatch(): void {
     batchArm.value = false
-    upgradeBuildingBatch(props.def.id) // toast 由服务报
+    void upgradeBuildingBatch(props.def.id) // toast 由服务报
   }
   /** 未建且被境界闸门锁着(资源不足另走缺口句,不算锁) */
   const locked = computed(() => level.value === 0 && player.major < props.def.unlockRealm)

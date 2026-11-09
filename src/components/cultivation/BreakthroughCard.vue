@@ -50,7 +50,7 @@
     class="btn-seal mt-3 w-full !py-3"
     :class="{ 'animate-glow-pulse pulse-ready': btInfo.ready }"
     :disabled="!btInfo.ready"
-    @click="attemptBreakthrough()"
+    @click="void attemptBreakthrough()"
   >
     {{ btInfo.ready ? (btInfo.needTribulation ? '引 劫 突 破' : '尝 试 突 破') : btInfo.reason }}
   </button>

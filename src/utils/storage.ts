@@ -321,17 +321,63 @@ export function subscribeOtherTabSave(handler: OtherTabHandler): () => void {
   }
 }
 
-/** 本页活着的心跳键;别的标签页靠它知道对面还开着 */
-const LIVE_KEY = SAVE_PREFIX + '__live'
+/**
+ * 现在是否有另一页在同一份存档上。
+ *
+ * 状态翻转只在订阅里播一次 —— toast 五秒就散,错过那一下的玩家不会再被提醒,
+ * 而两页各写各的会静默丢进度。界面需要一个「随时能问」的入口:
+ * 退出确认框与设置页据此常驻显示,不必依赖玩家恰好看到那条 toast。
+ */
+export function isOtherTabSaving(): boolean {
+  return otherTabActive
+}
+
+/**
+ * 心跳键:**每页一个**,靠随机后缀区分。
+ *
+ * 原先两页共用一个 `yunyin.__live` 键,于是谁都读到「刚被自己刷新的时间戳」——
+ * 对面关掉之后,自己的 ping 每 4 秒把那个键写成新的,过期判据永远不成立,
+ * 警告一旦挂上就再也不消失(实测开两页再关一页,13 秒后仍在)。
+ * 每页写自己的键,扫全部键就能知道有几个活着的页面。
+ */
+const LIVE_PREFIX = SAVE_PREFIX + '__live.'
 const LIVE_PING_MS = 4000
 const LIVE_STALE_MS = LIVE_PING_MS * 3
+/**
+ * 本页专属的心跳键;模块级唯一。
+ *
+ * 用「时间戳 + 进程内递增」而不是 Math.random():模块顶层调 Math.random 会占掉
+ * 那些用 mockReturnValueOnce 精确控制随机序列的测试的一次配额,把整条序列往后挪
+ * —— 实测 earlyGameBuffs 的「灵机一动」用例因此崩掉。
+ * 时间戳保证跨刷新不撞,递增值保证同一毫秒内多次加载也不撞。
+ */
+let liveSeq = 0
+const MY_LIVE_KEY = LIVE_PREFIX + Date.now().toString(36) + '.' + (liveSeq += 1).toString(36)
 
 function markAlive(): void {
   try {
-    localStorage.setItem(LIVE_KEY, String(Date.now()))
+    localStorage.setItem(MY_LIVE_KEY, String(Date.now()))
   } catch {
     // 存储不可用时忽略
   }
+}
+
+/** 除本页之外还有几页活着 */
+function livePeerCount(): number {
+  const now = Date.now()
+  let peers = 0
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i)
+      if (key === null || !key.startsWith(LIVE_PREFIX) || key === MY_LIVE_KEY) continue
+      const at = Number(localStorage.getItem(key))
+      if (!Number.isFinite(at) || now - at > LIVE_STALE_MS) continue
+      peers += 1
+    }
+  } catch {
+    // 存储不可用时当作没有别人
+  }
+  return peers
 }
 
 function setOtherTab(active: boolean): void {
@@ -362,9 +408,8 @@ function isSaveSliceKey(key: string): boolean {
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', e => {
     if (e.key === null) return
-    if (e.key === LIVE_KEY) {
-      const at = Number(e.newValue)
-      setOtherTab(Number.isFinite(at) && Date.now() - at < LIVE_STALE_MS)
+    if (e.key.startsWith(LIVE_PREFIX)) {
+      setOtherTab(livePeerCount() > 0)
       return
     }
     if (isSaveSliceKey(e.key)) setOtherTab(true)
@@ -393,7 +438,7 @@ export function watchOtherTabSave(enabled: boolean): void {
       pingOnVisible = undefined
     }
     try {
-      localStorage.removeItem(LIVE_KEY)
+      localStorage.removeItem(MY_LIVE_KEY)
     } catch {
       // 存储不可用时忽略
     }
@@ -402,7 +447,16 @@ export function watchOtherTabSave(enabled: boolean): void {
   }
   if (pingTimer !== undefined) return
   const ping = (): void => {
-    if (document.visibilityState === 'visible') markAlive()
+    if (document.visibilityState !== 'visible') return
+    markAlive()
+    /*
+     * 顺带扫一遍别页的心跳。
+     *
+     * setOtherTab(false) 原先只在「收到对面心跳且已过期」时发生 —— 而对面**关掉之后
+     * 就不再发心跳**,本页收不到任何 storage 事件,otherTabActive 便永远挂着。
+     * 实测:开两页再关掉一页,13 秒后警告仍在。每 4 秒扫一次全部心跳键即可复位。
+     */
+    setOtherTab(livePeerCount() > 0)
   }
   pingOnVisible = ping
   // 切回前台立刻补一次,避免判定滞后
@@ -501,6 +555,19 @@ export function preflightScan(): string[] {
 }
 
 /**
+ * 分账是否已经是「干净的最终形态」:纯对象、键都是合法品阶、值都是非负整数。
+ * 只用来决定迁移能否提前返回;不合格的交给下面的规范化重写。
+ */
+function herbMapClean(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!isHerbGrade(Number(k))) return false
+    if (typeof v !== 'number' || !Number.isFinite(v) || !Number.isInteger(v) || v < 0) return false
+  }
+  return true
+}
+
+/**
  * 灵草五品迁移:旧档单标量 `herb` → 一律落凡品(品 1)分账(不丢草,幂等)。
  * 不按当前境界折算;凡品有出口(凡品方子、坊市按品出售),不会成死货。
  */
@@ -518,7 +585,15 @@ export function migrateHerbSlice(resources: Record<string, unknown>): Record<str
    * 下游 sanitize 会丢弃它,可迁移层的契约是「清掉旧字段」,
    * 留着它,下次迁移又会看见这个负标量。实测探针打到过这条。
    */
-  if (hasMap && scalar <= 0) {
+  /*
+   * 提前返回只对「分账本身已经干净」成立。
+   * 下面是脏档:数组 / null / 越界键 / 小数 / 负数。它们下游 sanitize 能兜住数值,
+   * 但迁移层的契约是「交进来就修好」—— 原样返回同一个引用意味着 migrateLocalSchema
+   * 判不出变化、不回写,脏数据会一直躺在 localStorage 里,每次启动重走一遍。
+   * 实测 `{ herbByGrade: [1,2,3] }`、`{ herbByGrade: { 1: 1.7 } }`、`{ herbByGrade: { 9: 3 } }`
+   * 都曾原样通过。
+   */
+  if (hasMap && scalar <= 0 && herbMapClean(resources.herbByGrade)) {
     if (!('herb' in resources)) return resources
     const trailing = { ...resources }
     delete trailing.herb
@@ -526,7 +601,8 @@ export function migrateHerbSlice(resources: Record<string, unknown>): Record<str
   }
   const next = { ...resources }
   const rawMap =
-    hasMap && resources.herbByGrade && typeof resources.herbByGrade === 'object'
+    // 数组不是合法分账:若按 Object.entries 读,下标 1/2/3 会被当成品阶,数据彻底变形
+    hasMap && resources.herbByGrade && typeof resources.herbByGrade === 'object' && !Array.isArray(resources.herbByGrade)
       ? (resources.herbByGrade as Record<string, unknown>)
       : {}
   const clean: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
@@ -546,14 +622,29 @@ export function migrateHerbSlice(resources: Record<string, unknown>): Record<str
 export function migrateInventorySlice(data: Record<string, unknown>): Record<string, unknown> {
   const hasNew = 'equippedArtifacts' in data
   const hasLegacy = 'equippedArtifact' in data
-  if (hasNew && !hasLegacy) return data
+  /*
+   * 新字段已在、且本身干净,才允许原样返回。
+   * 与灵草分账同一类问题:早先只看「有没有这个键」,于是 null / 字符串 / 含垃圾项的数组
+   * 都原样放行、返回同一引用 —— migrateLocalSchema 判不出变化就不回写,
+   * 脏数据永远躺在 localStorage 里。下游 sanitize 兜得住数值,但迁移层的契约是交进来就修好。
+   */
+  if (hasNew && !hasLegacy && artifactIdsClean(data.equippedArtifacts)) return data
   const next = { ...data }
-  if (!hasNew) {
-    const legacy = data.equippedArtifact
-    next.equippedArtifacts = typeof legacy === 'string' && legacy ? [legacy] : []
-  }
+  const raw = hasNew ? data.equippedArtifacts : data.equippedArtifact
+  next.equippedArtifacts = normalizeArtifactIds(raw)
   delete next.equippedArtifact
   return next
+}
+
+/** 法宝 id 列表是否已是干净形态:数组、且每一项都是非空字符串 */
+function artifactIdsClean(raw: unknown): boolean {
+  return Array.isArray(raw) && raw.every(x => typeof x === 'string' && x.length > 0)
+}
+
+/** 把任意形状的法宝 id 来源收成 string[]:旧档是单个字符串,新档是数组 */
+function normalizeArtifactIds(raw: unknown): string[] {
+  const list = Array.isArray(raw) ? raw : typeof raw === 'string' ? [raw] : []
+  return list.filter((x): x is string => typeof x === 'string' && x.length > 0)
 }
 
 /** 本地存档结构升级(在 Pinia 水合之前执行);只有真发生了迁移才回写 */

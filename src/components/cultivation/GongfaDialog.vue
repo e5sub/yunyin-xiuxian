@@ -164,7 +164,7 @@
           class="btn-ghost w-full"
           :disabled="!upCost || upShort !== null"
           :title="!upCost ? gongfaPeakLabel() : undefined"
-          @click="def && upgradeGongfa(def.id)"
+          @click="def && void upgradeGongfa(def.id)"
         >
           {{ !upCost ? gongfaPeakLabel() : upShort ? '进 修(缺料)' : '进 修' }}
         </button>

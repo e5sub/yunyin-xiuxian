@@ -20,6 +20,18 @@ import {
 } from './formulas'
 import { powerBreakdownRows, powerExplainText } from '@/ui/powerText'
 import { maxTierForMajor } from '@/data/regions'
+import {
+  COMBAT_MAJOR_GROWTH,
+  COMBAT_SUB_GROWTH,
+  CULT_MAJOR_SPEED_GROWTH,
+  CULT_SUB_SPEED_GROWTH,
+  EXP_MAJOR_GROWTH,
+  LATE_COMBAT_GROWTH,
+  LATE_CULT_SPEED_GROWTH,
+  LATE_EXP_GROWTH
+} from '@/data/constants'
+import { WORLD_BREAK_MAJOR, MAX_MAJOR } from '@/data/realms'
+
 
 describe('GameFormula 成长曲线', () => {
   it('战力：算式 = 攻×3 + 防×2 + 血×0.15，权重与释义同源，不许改一处漏一处', () => {
@@ -280,4 +292,98 @@ describe('游戏日换算 · gameDay', () => {
     expect(gameDay(86400) - gameDay(0)).toBe(1)
   })
 })
+})
+
+
+/**
+ * 战斗乘区的三个增长系数此前**零判据**:1.09 / 3.8 / 4.6 决定全游戏战力跨度,
+ * 却没有任何断言钉着 —— 改任一个,既有测试只是拿着新常量重算,照样全绿。
+ *
+ * 实测跨度:小层 1.09^9 ≈ 2.17×,人间九境 3.8^9 ≈ 1.65e5,界外十一境 4.6^11 ≈ 1.95e7,
+ * 0→20 境合计约 3.2e12。
+ *
+ * 分段点是 WORLD_BREAK_MAJOR(飞升门槛):人间界不外推,界外另起一套倍率。
+ */
+describe('GameFormula · 战斗乘区的增长系数', () => {
+  it('给定小层递进,当读 realmScale,则每小层恒乘 COMBAT_SUB_GROWTH', () => {
+    for (const sub of [1, 5, 9]) {
+      const cur = toNum(realmScale(0, sub))
+      const prev = toNum(realmScale(0, sub - 1))
+      expect(cur / prev, `第 ${sub} 小层该乘 ${COMBAT_SUB_GROWTH}`).toBeCloseTo(COMBAT_SUB_GROWTH, 6)
+    }
+  })
+
+  it('给定大境界递进,当读 majorCombatFactor,则飞升前乘 COMBAT_MAJOR_GROWTH、之后乘 LATE_COMBAT_GROWTH', () => {
+    for (let m = 1; m <= WORLD_BREAK_MAJOR; m += 1) {
+      const r = toNum(majorCombatFactor(m)) / toNum(majorCombatFactor(m - 1))
+      expect(r, `第 ${m} 境(人间界)该乘 ${COMBAT_MAJOR_GROWTH}`).toBeCloseTo(COMBAT_MAJOR_GROWTH, 4)
+    }
+    for (let m = WORLD_BREAK_MAJOR + 1; m <= MAX_MAJOR; m += 1) {
+      const r = toNum(majorCombatFactor(m)) / toNum(majorCombatFactor(m - 1))
+      expect(r, `第 ${m} 境(界外)该乘 ${LATE_COMBAT_GROWTH}`).toBeCloseTo(LATE_COMBAT_GROWTH, 4)
+    }
+  })
+
+  it('给定三个系数,当读常量,则仍是 1.09 / 3.8 / 4.6', () => {
+    // 改任一个都等于重定全部战斗数值(玩家与敌人共用这条曲线)
+    expect(COMBAT_SUB_GROWTH, '小层递进率').toBe(1.09)
+    expect(COMBAT_MAJOR_GROWTH, '人间界每境倍率').toBe(3.8)
+    expect(LATE_COMBAT_GROWTH, '界外每境倍率').toBe(4.6)
+  })
+
+  it('给定 0→最高境,当算战力跨度,则与境界表反推的量级一致 —— 与灵石阶梯同一个量级感', () => {
+    const span = toNum(majorCombatFactor(MAX_MAJOR))
+    // 本仓五界二十九境:人间 WORLD_BREAK_MAJOR 境 ×3.8,界外 (MAX_MAJOR-9) 境 ×4.6。
+    // 上界表(四界)是 3.8^9 × 4.6^11 ≈ 3.2e12,本仓多出的一界把跨度推到更高量级,
+    // 故上下界不写死,从本仓自己的境界表反推,只验数量级:钉死具体值会让「调倍率」变成解方程
+    const derived = COMBAT_MAJOR_GROWTH ** WORLD_BREAK_MAJOR * LATE_COMBAT_GROWTH ** (MAX_MAJOR - WORLD_BREAK_MAJOR)
+    const log10 = Math.log10(derived)
+    expect(span, '战力跨度比曲线反推值矮了两级以上').toBeGreaterThan(10 ** (log10 - 2))
+    expect(span, '战力跨度比曲线反推值高了两级以上').toBeLessThan(10 ** (log10 + 2))
+  })
+})
+
+
+/**
+ * 修为需求与修炼速度是**一对配套曲线**,单看任一条都没意义。
+ *
+ * constants.ts 的注释写着:每境净耗时 ≈ 需求倍率 / 基础速度倍率 = 19 / 5.2 ≈ ×3.65,
+ * 「只动一边会改曲线形状(前期秒过、后期陡崖)」。
+ * 而这四个常量此前零判据 —— 既有测试拿它们当工具算别的东西,改了照样绿。
+ */
+describe('GameFormula · 修为需求与修炼速度的配套', () => {
+  it('给定人间界每境,当算净耗时,则每境恒定乘 EXP_MAJOR_GROWTH / CULT_MAJOR_SPEED_GROWTH', () => {
+    const want = EXP_MAJOR_GROWTH / CULT_MAJOR_SPEED_GROWTH
+    for (let m = 1; m <= WORLD_BREAK_MAJOR; m += 1) {
+      const cur = toNum(expRequirement(m, 0)) / baseCultPerSec(m, 0)
+      const prev = toNum(expRequirement(m - 1, 0)) / baseCultPerSec(m - 1, 0)
+      expect(cur / prev, `第 ${m} 境的净耗时应乘 ${want.toFixed(2)}`).toBeCloseTo(want, 4)
+    }
+  })
+
+  it('给定界外每境,当算净耗时,则改用 LATE_EXP_GROWTH / LATE_CULT_SPEED_GROWTH', () => {
+    const want = LATE_EXP_GROWTH / LATE_CULT_SPEED_GROWTH
+    for (let m = WORLD_BREAK_MAJOR + 1; m <= MAX_MAJOR; m += 1) {
+      const cur = toNum(expRequirement(m, 0)) / baseCultPerSec(m, 0)
+      const prev = toNum(expRequirement(m - 1, 0)) / baseCultPerSec(m - 1, 0)
+      expect(cur / prev, `第 ${m} 境的净耗时应乘 ${want.toFixed(2)}`).toBeCloseTo(want, 4)
+    }
+  })
+
+  it('给定四个系数,当读常量,则仍是配套的 19/5.2 与 4.6/3.2', () => {
+    expect(EXP_MAJOR_GROWTH, '人间界需求倍率').toBe(19)
+    expect(CULT_MAJOR_SPEED_GROWTH, '人间界速度倍率 —— 与 19 配套,单改会改曲线形状').toBe(5.2)
+    expect(LATE_EXP_GROWTH, '界外需求倍率').toBe(4.6)
+    expect(LATE_CULT_SPEED_GROWTH, '界外速度倍率 —— 与 4.6 配套').toBe(3.2)
+    expect(CULT_SUB_SPEED_GROWTH, '小层速度递进').toBe(1.06)
+  })
+
+  it('给定 0→最高境,当算净耗时跨度,则落在「年」的量级而不是「世纪」', () => {
+    const span =
+      toNum(expRequirement(MAX_MAJOR, 0)) / baseCultPerSec(MAX_MAJOR, 0) /
+      (toNum(expRequirement(0, 0)) / baseCultPerSec(0, 0))
+    // 实测约 6.3e6 倍。只验数量级:钉死会让「调节奏」变成解方程
+    expect(span, '0→最高境的净耗时跨度该在百万级').toBeGreaterThan(1e5)
+    expect(span, '也不该到十亿级').toBeLessThan(1e9)
+  })
 })
