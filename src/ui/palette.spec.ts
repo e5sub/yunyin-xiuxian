@@ -262,6 +262,25 @@ describe('调色板 · 承载文字的色都过线', () => {
     expect(bad, '正文档承载 10-14px 小字,达不到 AA 就别留在 STRONG 档').toEqual([])
   })
 
+  /**
+   * 天赋 / 器魂品阶色当**正文**用时也要过 AA。
+   *
+   * 两端档原本直接拿 data 里的装饰原色当字色:凡赋 #857F70 日主题三底最差 3.50、
+   * 道赋 #C9A227 最差 2.13 —— 而它们正落在「天赋鉴」「转世择姿」「器魂列表」的正文里。
+   * 品质色早有同一套治法(另给一组 --color-quality-*-text),本条把那套做法钉给这两类品阶。
+   * 中间几档(azure / violet-ink / jade / amber-ink)本就达标,不另立 token。
+   */
+  it('天赋 / 器魂品阶的文字色 token:两套主题、三张底都 ≥4.5:1', () => {
+    const bad: string[] = []
+    for (const name of ['talent-mortal-text', 'talent-dao-text']) {
+      for (const theme of ['light', 'dark'] as const) {
+        const w = worst(name, theme)
+        if (w < 4.5) bad.push(`${name}@${theme} ${w.toFixed(2)}:1`)
+      }
+    }
+    expect(bad, '品阶色当正文,达不到 AA 就别直接拿装饰原色当字色').toEqual([])
+  })
+
   it('强调档:守 ≥3:1 大字 AA(标题/图标/大字的主场)', () => {
     const bad: string[] = []
     for (const name of WEAK) {
@@ -1217,7 +1236,12 @@ describe('调色板 · 组件类不空转', () => {
  * 逼你用「墨字 + 色块」或「裸色字、不要底」。存量清理单独立项(见 plans 第二十六节)。
  */
 describe('调色板 · 同色淡底不该承载同色文字', () => {
-  /** 已登记的组合 → 允许出现的次数(只许减,不许增) */
+  /**
+   * 已登记的组合 → 允许出现的次数(只许减,不许增)。
+   *
+   * 与 layeringAudit 那条「引用处数基线」不同:这是**上限**不是目标 ——
+   * 修掉一处就该把数字减下来,但停在原地并不算欠债,只是还没轮到那一处。
+   */
   const KNOWN: Record<string, number> = {
     'cinnabar/10 text-cinnabar': 6,
     'cinnabar/15 text-cinnabar': 2,
@@ -1321,8 +1345,9 @@ describe('调色板 · 同色淡底不该承载同色文字', () => {
     const view = readFileSync(resolve(ROOT, 'src/views/MortalWorldView.vue'), 'utf-8')
     expect(view, '图例的「未至」点又淡回去了').toContain('bg-ink-faint/75')
     expect(view).not.toContain('bg-ink-faint/40')
-    // SVG 里的同款点用 fill-opacity,须同步
-    expect(view, 'SVG 的「未至」点还停在 0.35').toContain('unlocked(p) ? 0.85 : 0.75')
+    // SVG 里的同款点用 fill-opacity,须同步;该值现由 places 一次算齐(模板不再逐处调用)
+    expect(view, 'SVG 的「未至」点还停在 0.35').toMatch(/dotOpacity: cleared \? 1 : unlocked \? 0\.85 : 0\.75/)
+    expect(view, '模板里的圆点须读算好的 dotOpacity,不许回来逐处 ternary').toContain(':fill-opacity="p.dotOpacity"')
     // 三色仍可区分:不能为了对比度把它们都改成同一个墨色
     for (const cls of ['bg-azure/80', 'bg-jade']) {
       expect(view, `图例少了「${cls}」那一档,三态就分不出了`).toContain(cls)

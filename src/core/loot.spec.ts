@@ -5,6 +5,7 @@ import { rng } from '@/utils/random'
 import {
   afterWin,
   acquireArtifact,
+  acquireArtifactGain,
   acquireEquipment,
   ARTIFACT_NEAR_BONUS,
   ARTIFACT_NEAR_WINDOW,
@@ -23,6 +24,7 @@ import { shouldAutoRecycle } from './smartKeep'
 import { useInventoryStore } from '@/stores/inventory'
 import { useResourcesStore } from '@/stores/resources'
 import { useSettingsStore } from '@/stores/settings'
+import { useQuestsStore } from '@/stores/quests'
 import { qualityDef } from '@/data/qualities'
 import { DECOMPOSE_DUST } from '@/data/constants'
 import { useLoreStore } from '@/stores/lore'
@@ -200,6 +202,28 @@ describe('法宝掉落 · 高界的池子该像高界', () => {
       for (const a of reachable) {
         expect(artifactDropWeight(a, tier), `${a.name} 在 ${tier} 阶被完全关掉了`).toBeGreaterThan(0)
       }
+    }
+  })
+
+  /**
+   * 层级低于法宝来源层级时,权重不该继续涨。
+   *
+   * `artifactDropWeight` 里 `Math.max(0, tier - def.fromTier)` 把层级差钳在 0 —— 没有它,
+   * tier 远低于 fromTier 时 distance 是负数,`ARTIFACT_NEAR_WINDOW - distance` 就超过窗口,
+   * 就近加成会**突破设计上限**:实测 tier=-100 时权重 41800,是正常最大值的二十倍。
+   * 现有用例都先按 `fromTier <= tier` 过滤,永远走不到这一支(变异扫描点名)。
+   *
+   * 钉法:tier 低于 fromTier 时,权重封顶在 tier == fromTier 那一档,不再增长。
+   */
+  it('层级不够时权重封顶,不因层级差为负而超过窗口上限', () => {
+    const def = ARTIFACTS.find(a => a.fromTier > 1)!
+    const atSource = artifactDropWeight(def, def.fromTier)
+    const ceiling = atSource
+    for (const tier of [def.fromTier - 1, 0, -50, -1000]) {
+      const w = artifactDropWeight(def, tier)
+      expect(w, `tier=${tier} 的权重 ${w} 超过了封顶 ${ceiling} —— 钳制没了`).toBeLessThanOrEqual(ceiling)
+      expect(w, `tier=${tier} 该与来源层级同权重`).toBeCloseTo(ceiling, 6)
+      expect(Number.isFinite(w), `tier=${tier} 的权重不是有限数`).toBe(true)
     }
   })
 
@@ -499,5 +523,34 @@ describe('得宝仪典 · 顶档之物入手才翻开那一刻', () => {
     expect(ui.treasure!.name).not.toBe(first)
     ui.clearTreasure()
     expect(ui.treasure).toBeNull()
+  })
+})
+
+describe('法宝入囊 · 野 id', () => {
+  // 单独 -t 跑时顶层 hook 不生效,须自己装(否则 useInventoryStore 直接抛)
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('给定法宝表里没有的 id,当收入,则得 null 且不写行囊、不记收集、不刷 toast', () => {
+    /*
+     * `if (!def) return null` 是真守卫:去掉后 collect('artifact', 野id) 会把这个 id
+     * 记进图鉴,而 addArtifact 也会拿到不存在的 defId —— 行囊里多出一件查无定义的器。
+     * 注释写明「null 表示野 id,调用方须停止后续抽取」,这条契约值得钉住。
+     */
+    const inv = useInventoryStore()
+    const quests = useQuestsStore()
+    const res = useResourcesStore()
+    const artifactsBefore = JSON.stringify(inv.artifacts)
+    const collectionsBefore = JSON.stringify(quests.collections)
+    const wudaoBefore = res.wudao
+    const toastsBefore = useUiStore().toasts.length
+
+    expect(() => acquireArtifactGain('no_such_artifact')).not.toThrow()
+    expect(acquireArtifactGain('no_such_artifact')).toBeNull()
+    expect(JSON.stringify(inv.artifacts), '野 id 不该进行囊').toBe(artifactsBefore)
+    // collect() 会把 id 写进图鉴收集表 —— 这条是审查指出漏掉的那一项
+    expect(JSON.stringify(quests.collections), '野 id 不该被记进图鉴').toBe(collectionsBefore)
+    // 重复法宝那一支会发悟道之尘;野 id 连 def 都没有,更不该走到那
+    expect(res.wudao, '野 id 不该发任何资源').toBe(wudaoBefore)
+    expect(useUiStore().toasts.length, '野 id 不该给玩家提示').toBe(toastsBefore)
   })
 })

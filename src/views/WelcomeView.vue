@@ -31,9 +31,9 @@
         </span>
       </label>
       <template #footer>
-        <div class="flex gap-2">
-          <button class="btn-ghost flex-1" @click="agreeOpen = false">再想想</button>
-          <button class="btn-seal flex-1" :disabled="!agreed" @click="confirmStart">同意并开始</button>
+        <div class="grid grid-cols-2 gap-2">
+          <button class="btn-ghost w-full" @click="agreeOpen = false">再想想</button>
+          <button class="btn-seal w-full" :disabled="!agreed" @click="confirmStart">同意并开始</button>
         </div>
       </template>
     </BaseModal>

@@ -2,9 +2,10 @@
 import type { ArtifactDef, CombatantSnap, CombatRules, DaoMark, DaoPathId } from '@/types'
 import { mulberry32, RandomService } from '@/utils/random'
 import { formatGN, formatGap } from '@/utils/format'
-import { subClamp } from '@/utils/gnum'
+import { gte, mulN, subClamp } from '@/utils/gnum'
 import { artifactDef } from '@/data/artifacts'
 import { pactDef } from '@/data/pacts'
+import { REALMS } from '@/data/realms'
 import { mutatorDef } from '@/data/mutators'
 import { gateDef } from '@/data/qimen'
 import { RULESET_VERSION, isStaleRuleset } from '@/data/ruleset'
@@ -25,7 +26,7 @@ import { buildPlayerSnap } from './playerSnap'
 import { detectBuild } from './buildDetect'
 import { SWORD_PER_WIN, SLAUGHTER_PER_WIN } from './daoDepth'
 import { recordMilestone, trackClearRecords } from './identity'
-import { celestialJudgement, mergeRules, runGauntlet, worldFoeSnap, type GauntletReport } from './gauntlet'
+import { celestialJudgement, mergeRules, runGauntlet, worldFoeLineup, worldFoeSnap, type GauntletReport } from './gauntlet'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useEndgameStore } from '@/stores/endgame'
@@ -36,6 +37,18 @@ import { endgameBusy } from './endgameActivity'
 /** 真仙(WORLD_BREAK_MAJOR)方可踏足天界;借 MAX_MAJOR 会让终局随加境漂移 */
 export function endgameUnlocked(): boolean {
   return usePlayerStore().major >= WORLD_BREAK_MAJOR
+}
+
+/**
+ * 天界/器魂门槛的境界名,给两个视图的「需 X 境」直接用。
+ *
+ * 原来天界页与器魂页各自硬编码「真仙境」,而解锁逻辑读的是 WORLD_BREAK_MAJOR ——
+ * 两处文案与一处常量靠人记着保持同步。将来若把门槛挪到别的境界,
+ * 逻辑会自动跟着变、文案不会,玩家就会看到「需真仙境」却进不去(或反之)。
+ * 由常量反查境界名,与 endgameUnlocked 同一事实源。
+ */
+export function endgameGateRealmName(): string {
+  return REALMS[WORLD_BREAK_MAJOR]?.name ?? ''
 }
 
 /** 当前道途的全局战斗规则(历练/离线同样生效) */
@@ -97,19 +110,48 @@ export function furnaceStoneCost(): ReturnType<typeof stoneByTier> {
   return stoneByTier(maxTierForMajor(player.major), FURNACE_STONE_TIER_AMOUNT)
 }
 
-export function furnaceConvertStone(): boolean {
+/**
+ * 灵石熔道源。
+ * @param n 熔几次(默认 1);整笔原子 —— 灵石不够全额就一次也不熔,免得留下半笔零头
+ */
+export function furnaceConvertStone(n = 1): boolean {
   const resources = useResourcesStore()
   const endgame = useEndgameStore()
   const ui = useUiStore()
-  const cost = furnaceStoneCost()
+  const want = Number.isFinite(n) && n > 0 ? Math.floor(n) : 1
+  const cost = mulN(furnaceStoneCost(), want)
   if (!resources.spendStone(cost)) {
     const short = subClamp(cost, resources.spiritStone)
     ui.toast(`灵石尚差 ${formatGap(short)}`, 'warn')
     return false
   }
-  endgame.addDaoSource(FURNACE_STONE_DAO_SOURCE)
-  ui.toast(`灵石 ${formatGN(cost)} 熔作道源 +${FURNACE_STONE_DAO_SOURCE}`, 'success')
+  const gained = FURNACE_STONE_DAO_SOURCE * want
+  endgame.addDaoSource(gained)
+  ui.toast(
+    want === 1 ? `灵石 ${formatGN(cost)} 熔作道源 +${gained}` : `灵石 ${formatGN(cost)} 熔作道源 +${gained}(${want} 次)`,
+    'success'
+  )
   return true
+}
+
+/**
+ * 手上灵石最多能熔几次 —— 一次熔铸的上限。
+ * 与 furnaceConvertStone 同一口径:整次计,不算零头。
+ */
+export function furnaceStoneAffordable(cap = 999): number {
+  const resources = useResourcesStore()
+  const cost = furnaceStoneCost()
+  if (cost.m === 0) return 0
+  const have = resources.spiritStone
+  /*
+   * 从上限往下试「够不够 k 次的整价」,而不是拿余额做除法 —— 与 wudaoExchange 同一思路:
+   * GNum 只有有限有效位,连续相减会在尾数上累积误差,先乘后比只做一次比较。
+   */
+  const top = Math.max(1, Math.min(Math.floor(cap), 999))
+  for (let k = top; k > 0; k -= 1) {
+    if (gte(have, mulN(cost, k))) return k
+  }
+  return 0
 }
 
 /**
@@ -336,8 +378,7 @@ export function rewriteMark(mark: DaoMark): ExpeditionResult | null {
   const judgement = celestialJudgement(stats.mods, player.major, (world ?? trial)!.anchorTier)
   const foes = []
   if (world) {
-    for (let i = 0; i < world.fights - 1; i += 1) foes.push(worldFoeSnap(world.foes[i % world.foes.length]!, ref, 1, judgement))
-    foes.push(worldFoeSnap(world.guardian, ref, 1, judgement))
+    foes.push(...worldFoeLineup(world, ref, judgement))
   } else if (trial) {
     for (let i = 0; i < trial.fights; i += 1)
       foes.push(worldFoeSnap(TRIAL_FOES[i % TRIAL_FOES.length]!, ref, Math.pow(trial.escalation, i), judgement))

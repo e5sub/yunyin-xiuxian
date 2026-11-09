@@ -195,36 +195,53 @@
           @transfer="openTransfer"
         />
         <!--
-          页脚三钮与上一排(自动重铸/转移词条)同档尺寸:!py-2 !text-[11px],高约 27px。
-          不带这两样就退回默认的 9×16 与 14px 字,比上面那排高出一大截,看着像两个页脚。
-          强化钮只写「强 化」,不写缺口差数:那一串会把窄格子挤成两行,行高反被撑开
-          (差额由正文 UpgradePanel 的缺口行照旧报出,就在这排上方)。
-          满级也不让按钮凭空消失 —— 换禁用态并直接写出原因(AGENTS.md「禁用即给原因」)。
+          分解二步确认整行换掉,与词条转移的页脚同一做法。
+
+          原先确认态把「确认分解」「再想想」塞进同一条 flex 里:320 宽下四个钮抢 238px,
+          「装 备」「强 化」被挤成一行一个字,行高由 44 涨到 68 —— 点一下垃圾桶,整条页脚跟着长高。
+          换行后两态都是两枚等宽钮、同高(min-h-11),页脚高度不动。
+          返还多少器灵尘在正文「分解返还」那一行,确认钮不重复。
         -->
-        <div class="flex gap-2 text-[11px]">
-          <button class="btn-seal flex-1 !px-2.5 !py-2 !text-[11px]" @click="toggleEquip">{{ isEquipped ? '卸 下' : '装 备' }}</button>
+        <!--
+          两枚 flex-1 并列须真等宽。原先「卸 下」是 .btn-seal(padding 18px)、
+          「强 化」是 .btn-ghost + !px-2(padding 8px),内容最小宽以 padding 为下界,
+          于是永远一宽一窄:实测 320 是 96/78、375 是 123/105、390 是 131/113,
+          三档都差 18px(CHANGELOG 里「十六处并列按钮组差 2px」的同族问题,这一处漏了)。
+          改 grid 两栏,与钮内文字长短、padding 差异都无关。
+        -->
+        <div v-if="decomposeArm !== inst?.uid" class="grid grid-cols-[1fr_1fr_auto] gap-2">
+          <button class="btn-seal min-h-11 w-full" @click="toggleEquip">{{ isEquipped ? '卸 下' : '装 备' }}</button>
+          <!--
+            满级不再让按钮凭空消失:消失的按钮不解释任何事,玩家只看到「强 化」不见了。
+            保留同一位置、换成禁用态并写出原因(AGENTS.md「禁用即给原因」)。
+
+            拒因走 aria-label / title,不写进按钮正文:
+            这个钮与「卸 下」「垃圾桶」并排,宽只 78~105px。正文挂「强 化(尘差 36)」
+            必然折成两行 —— 底行因此从 44px 涨到 57px,整条页脚跟着高 37px(实测 375 与 320 都如此)。
+            而同一份差额在正上方的强化面板里已经整句列出(「器灵尘尚差 36」),
+            按钮上再写一遍本是第二处。禁用态写「强 化」,读屏与 hover 拿得到差额。
+          -->
           <button
-            class="btn-ghost flex-1 !px-2.5 !py-2 !text-[11px]"
-            :disabled="!upQuote || upShort !== null"
-            :title="upTip"
+            class="btn-ghost min-h-11 w-full"
+            :disabled="upCost ? upShort !== null : true"
+            :aria-label="!upCost ? upgradeCapToast() : upShort === 'stone' ? `强 化,灵石尚差 ${formatGap(upGap?.stone ?? { m: 0, e: 0 })}` : upShort === 'dust' ? `强 化,器灵尘尚差 ${upGap?.dust ?? 0}` : upShort === 'exp' ? `强 化,修为尚差 ${formatGap(upGap?.exp ?? { m: 0, e: 0 })}` : '强 化'"
+            :title="upCost ? (upShort === 'stone' ? `灵石尚差 ${formatGap(upGap?.stone ?? { m: 0, e: 0 })}` : upShort === 'dust' ? `器灵尘尚差 ${upGap?.dust ?? 0}` : upShort === 'exp' ? `修为尚差 ${formatGap(upGap?.exp ?? { m: 0, e: 0 })}` : undefined) : upgradeCapToast()"
             @click="doUpgrade"
-          >{{ upQuote ? upLabel : '已至上限' }}</button>
+          >{{ !upCost ? '已至上限' : '强 化' }}</button>
           <!-- 分解须二步确认,防误触 -->
-          <template v-if="decomposeArm !== inst?.uid">
-            <button
-              class="btn-ghost shrink-0 !px-2.5 !py-2"
-              :disabled="isEquipped || inst?.locked"
-              :aria-label="decomposeReason"
-              :title="decomposeReason"
-              @click="decomposeArm = inst?.uid ?? null"
-            >
-              <GameIcon name="trash" :size="15" />
-            </button>
-          </template>
-          <template v-else>
-            <button class="btn-seal !px-2.5 !py-2 !text-[11px]" @click="doDecompose">确认分解</button>
-            <button class="btn-ghost !px-2.5 !py-2 !text-[11px] text-ink-faint" @click="decomposeArm = null">再想想</button>
-          </template>
+          <button
+            class="btn-ghost min-h-11 shrink-0"
+            :disabled="isEquipped || inst?.locked"
+            :aria-label="decomposeReason"
+            :title="decomposeReason"
+            @click="decomposeArm = inst?.uid ?? null"
+          >
+            <GameIcon name="trash" :size="15" />
+          </button>
+        </div>
+        <div v-else class="grid grid-cols-2 gap-2">
+          <button class="btn-ghost min-h-11 w-full" @click="decomposeArm = null">再想想</button>
+          <button class="btn-seal min-h-11 w-full" @click="doDecompose">确认分解</button>
         </div>
       </div>
     </template>
@@ -321,24 +338,8 @@
   const upQuote = computed(() => (inst.value ? equipUpgradeQuote(inst.value.uid) : null))
   const upShort = computed(() => (upQuote.value ? upgradeShort(upQuote.value) : null))
   const upGap = computed(() => (upQuote.value ? upgradeShortfall(upQuote.value) : null))
-  /**
-   * 强化键只写「强 化」四个字位,页脚那半格再窄也放得下。
-   * 成功率不写上按钮:正文第一行已有「成功率 54%」,页脚重复一遍只会把格子撑成两行。
-   * 缺料的差数同理不写(「强 化(尘差743)」在窄屏会把整排撑高一倍),
-   * 差额由正文 UpgradePanel 的缺口行报出 —— 器灵尘尚差 / 修为尚差 / 灵石尚差,那行就在这排上方;
-   * 置灰的原因仍由 title 给全(upTip)。
-   */
-  const upLabel = computed(() => '强 化')
-  /** 悬停补齐掷骰后果:成功率、失手落到哪、是否踩保级点 */
-  const upTip = computed(() => {
-    const q = upQuote.value
-    const gap = upGap.value
-    if (!q) return upgradeCapToast()
-    if (gap && upShort.value === 'dust') return `器灵尘尚差 ${gap.dust}`
-    if (gap && upShort.value === 'exp') return `修为尚差 ${formatGap(gap.exp)}`
-    if (gap && upShort.value === 'stone') return `灵石尚差 ${formatGap(gap.stone)}`
-    return q.safe ? '失手不掉级(保级点)' : `成功率 ${Math.round(q.rate * 100)}%,失手回落至 +${q.failLevel}`
-  })
+  /** 上游页脚口径:有报价即可按(满级时报价为空,钮转禁用并写「已至上限」) */
+  const upCost = computed(() => upQuote.value !== null)
   const salvage = computed(() => (inst.value ? salvageOf(inst.value) : null))
 
   /** 共鸣件数只数已佩戴的(看挂载,不看行囊) */

@@ -1,16 +1,63 @@
 /** 连战解算(纯函数):特殊世界与天道试炼共用,终局模拟器直接验证 */
-import type { CombatantSnap, CombatLogEntry, CombatRules, FoeOrigin, FoeOriginPart, GNum, StatMods, WorldFoeShape } from '@/types'
-import type { RandomService } from '@/utils/random'
-import { mulN } from '@/utils/gnum'
+import type {
+  CelestialWorldDef,
+  CombatantSnap,
+  CombatLogEntry,
+  CombatRules,
+  FoeOrigin,
+  FoeOriginPart,
+  GNum,
+  StatMods,
+  WorldFoeShape
+} from '@/types'
+import { mulberry32, RandomService } from '@/utils/random'
+import { gn, mulN } from '@/utils/gnum'
 import { modDepth } from './statsCalc'
 import { resolveCombat } from './combat'
 import { COMBAT_ATK_BASE, COMBAT_DEF_BASE, COMBAT_HP_BASE } from '@/data/constants'
 import { powerScale, tierMajor } from './formulas'
+import { MAX_MAJOR } from '@/data/realms'
 
 export interface ReferenceStats {
   attack: GNum
   defense: GNum
   maxHp: GNum
+}
+
+/**
+ * 模拟参照属性,须与 buildSim 基准一致。
+ *
+ * 放在这里而不是 celestialSim:后者是平衡模拟器,会连带 buildSearch/buildSim 一大串。
+ * 而 challenge / expedition / lab 这些**生产路径**只需要这三个数 —— 从模拟器里取,
+ * 等于把整个模拟器塞进首屏(实测多出 buildSearch 与 worldSim 两个 chunk 的请求)。
+ */
+export const SIM_REFERENCE: ReferenceStats = {
+  attack: gn(100),
+  defense: gn(55),
+  maxHp: gn(1400)
+}
+
+/**
+ * 终局世界的模拟敌群形状:参照取 SIM_REFERENCE(比的是构筑形状,不走天界锚点),
+ * 判定照实战口径算,否则厚构筑胜率被高估。传 MAX_MAJOR:模拟里没有境界,境界压制恒不触发。
+ *
+ * 放在 gauntlet 而不是 celestialSim:worldGen / metaSim 都要用它,
+ * 而 celestialSim 还牵着 buildSim 与 buildSearch —— 从那里取会把整条模拟链带进首屏。
+ */
+export function worldFoes(world: CelestialWorldDef, snap: CombatantSnap): CombatantSnap[] {
+  const judgement = celestialJudgement(snap.mods, MAX_MAJOR, world.anchorTier)
+  return worldFoeLineup(world, SIM_REFERENCE, judgement)
+}
+
+/** 该世界在给定参照下的通关率(跑 runs 次取频率) */
+export function worldClearRate(world: CelestialWorldDef, snap: CombatantSnap, runs: number, seed: number): number {
+  const rng = new RandomService(mulberry32(seed))
+  const foes = worldFoes(world, snap)
+  let clears = 0
+  for (let i = 0; i < runs; i += 1) {
+    if (runGauntlet(snap, foes, world.rules, world.healBetweenPct, rng, { buildLog: false }).cleared) clears += 1
+  }
+  return clears / runs
 }
 
 /**
@@ -128,6 +175,26 @@ export function celestialFoeCaliber(
     ref: celestialAnchor(anchorTier),
     judgement: celestialJudgement(playerMods, playerMajor, anchorTier)
   }
+}
+
+/**
+ * 一个天界世界的完整敌人阵容:前 `fights - 1` 场按 `foes` 循环取,末位固定守关者。
+ *
+ * 这段循环此前在 challenge / endgameService / lab 各抄了一份(逐字相同)。
+ * 抄三份的风险在于改一处漏两处:比如以后给普战加递进,某条路径忘了改,
+ * 它的通关率就会与另外两条静默分叉,而三条路径共用同一个 `runGauntlet`。
+ */
+export function worldFoeLineup(
+  world: CelestialWorldDef,
+  ref: ReferenceStats,
+  judgement: CelestialJudgement = NO_JUDGEMENT
+): CombatantSnap[] {
+  const foes: CombatantSnap[] = []
+  for (let i = 0; i < world.fights - 1; i += 1) {
+    foes.push(worldFoeSnap(world.foes[i % world.foes.length]!, ref, 1, judgement))
+  }
+  foes.push(worldFoeSnap(world.guardian, ref, 1, judgement))
+  return foes
 }
 
 /** 按参照属性生成天界敌人;`judgement` 的加厚乘到三维,增伤减伤并入敌人词条 */

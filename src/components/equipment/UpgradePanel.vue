@@ -33,25 +33,24 @@
       连升二步确认与分解/散去同款。
       flex-wrap + 文本保底宽不可去:否则窄屏 flex-1 文本被 shrink-0 钮压成 0 宽竖排。
     -->
-    <div v-if="batchPlan.attempts > 0" class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md border border-ink/10 bg-paper-deep/50 px-2.5 py-2">
-      <template v-if="batchConfirm !== inst.uid">
-        <div class="min-w-[5rem] flex-1">
-          <p class="text-[10px] text-ink-faint">
-            可连试 <span class="font-kai text-[12px] text-cinnabar">{{ batchPlan.attempts }}</span> 次(每次都可能失手)
-          </p>
-          <p class="mt-0.5 text-[9px] text-ink-faint tabular">
-            全成需 器灵尘×{{ batchPlan.dust }} · 修为 {{ formatGN(batchPlan.exp) }} · 灵石 {{ formatGN(batchPlan.stone) }}
-          </p>
-        </div>
-        <button class="btn-ghost shrink-0 !px-3 !py-2 !text-[11px]" @click="batchConfirm = inst.uid">连 强</button>
-      </template>
-      <template v-else>
-        <p class="min-w-[5rem] flex-1 text-[10px] leading-relaxed text-cinnabar">
-          连试 {{ batchPlan.attempts }} 次,失手即停 · 器灵尘×{{ batchPlan.dust }} · 修为 {{ formatGN(batchPlan.exp) }}
+    <!--
+      正文与钮组各占一行(钮组自带 w-full),两态段高因此相同(与洞府连升同一套做法)。
+      成本按本仓服务端口径报:连试次数 / 器灵尘 / 修为 / 灵石。
+    -->
+    <div v-if="batchPlan.attempts > 0" class="mt-2 rounded-md border border-ink/10 bg-paper-deep/50 px-2.5 py-2">
+      <div class="min-w-[5rem] flex-1">
+        <p class="text-[10px] text-ink-faint">
+          可连试 <span class="font-kai text-[12px] text-cinnabar">{{ batchPlan.attempts }}</span> 次(每次都可能失手,失手即停)
         </p>
-        <button class="btn-ghost shrink-0 !px-2.5 !py-2 !text-[11px]" @click="batchConfirm = null">再想想</button>
-        <button class="btn-seal shrink-0 !px-2.5 !py-2 !text-[11px]" @click="runBatchUpgrade">连 强</button>
-      </template>
+        <p class="mt-0.5 text-[9px] text-ink-faint tabular">
+          全成需 器灵尘×{{ batchPlan.dust }} · 修为 {{ formatGN(batchPlan.exp) }} · 灵石 {{ formatGN(batchPlan.stone) }}
+        </p>
+      </div>
+      <div class="flex w-full shrink-0 justify-end gap-1.5">
+        <button v-if="batchConfirm === inst.uid" class="btn-ghost shrink-0 !px-2.5 !py-2 !text-[11px]" @click="batchConfirm = null">再想想</button>
+        <button v-if="batchConfirm === inst.uid" class="btn-seal shrink-0 !px-2.5 !py-2 !text-[11px]" @click="runBatchUpgrade">连 强</button>
+        <button v-else class="btn-ghost shrink-0 !px-3 !py-2 !text-[11px]" @click="batchConfirm = inst.uid">连 强</button>
+      </div>
     </div>
   </template>
   <!--

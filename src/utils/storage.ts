@@ -231,7 +231,27 @@ export function dropPendingWrites(): void {
     flushTimer = undefined
   }
   pending.clear()
+  /*
+   * 一次性明文缓存与待落盘队列是同一类东西:都是「磁盘之外还留着的一份明文」。
+   * 清档 / 导入前不一起丢,新存档的水合就可能读到上一个存档解出来的明文 ——
+   * 那正是导入确认窗背后最不该发生的事。
+   */
+  preloadedPlain.clear()
 }
+
+/**
+ * 启动期一次性明文缓存(键 → 已解密的 JSON 文本)。
+ *
+ * `preflightScan` 为了判断坏档必须把每一片都解密一遍;而紧接着 Pinia 水合要用同一份东西,
+ * 会把每一片**再解密一遍**。满包档(108 件装备)单片解密约 3ms,17 片就是五十多毫秒,
+ * 且两份成本叠在同一个启动长任务里。
+ *
+ * 扫描时顺手把明文放进来,水合取过即删:
+ *  · 只影响「扫描之后、水合之前」这一小段,之后一切照旧走磁盘与待落盘队列;
+ *  · 用 pending 的同一把判据 —— 队列里已有更新态时以队列为准;
+ *  · 读过一次就从缓存里删掉,取不到就老老实实重解密。
+ */
+const preloadedPlain = new Map<string, string>()
 
 /** 节流存储层:变更先入队,到点批量加密落盘;getItem 须先读队列,否则刚写又读拿到磁盘旧值。
  *  入队/读出都先经 translateKey:pinia 插件持有的键是模块加载期固化的设备级键名,
@@ -241,11 +261,21 @@ const THROTTLED_STORAGE = {
     const k = translateKey(key)
     const queued = pending.get(k)
     if (queued !== undefined) return queued
+    const preloaded = preloadedPlain.get(key)
+    if (preloaded !== undefined) {
+      // 取过即删:水合只读一次,留着等于多一份可能过期的明文
+      preloadedPlain.delete(key)
+      return preloaded
+    }
     try {
       return localStorage.getItem(k)
     } catch {
       return null
     }
+  },
+  /** 扫描期专用:记下已解密的明文,供水合那一次读取复用 */
+  preload(key: string, plain: string): void {
+    preloadedPlain.set(key, plain)
   },
   setItem: (key: string, value: string): void => {
     pending.set(translateKey(key), value)
@@ -438,15 +468,24 @@ export function persistImmediateConfig(storeId: string): {
   return { key: storageKey(storeId), serializer: SAVE_SERIALIZER, storage: IMMEDIATE_STORAGE }
 }
 
-/** 启动前扫描:损坏的存档移到备份键,避免白屏;返回被隔离的 store id 列表 */
+/**
+ * 启动前扫描:损坏的存档移到备份键,避免白屏;返回被隔离的 store id 列表。
+ *
+ * 解出来的明文顺手交给一次性缓存:紧接着的 Pinia 水合要用同一份东西,
+ * 不留下就等于把每一片完整解密两遍(满包档单片约 3ms)。
+ * 只给**解析得通**的分片留明文 —— 坏档不进缓存,那条路径原样走备份与隔离。
+ */
 export function preflightScan(): string[] {
   const corrupted: string[] = []
+  preloadedPlain.clear()
   for (const id of PERSISTED_STORES) {
     const key = storageKey(id)
     try {
       const raw = localStorage.getItem(key)
       if (raw === null) continue
-      JSON.parse(readSaveText(raw))
+      const plain = readSaveText(raw)
+      JSON.parse(plain)
+      THROTTLED_STORAGE.preload(key, plain)
     } catch {
       corrupted.push(id)
       try {
@@ -471,7 +510,20 @@ export function migrateHerbSlice(resources: Record<string, unknown>): Record<str
     typeof resources.herb === 'number' && Number.isFinite(resources.herb as number)
       ? Math.floor(resources.herb as number)
       : 0
-  if (hasMap && scalar <= 0) return resources
+  /*
+   * 已有分账、且标量没有正贡献时提前返回(绝大多数新档都走这里)。
+   *
+   * 但**旧字段得先清掉**:标量为负或 NaN 时 scalar 落到 0,
+   * `{ herb: -100, herbByGrade: {...} }` 会带着 `herb: -100` 原样返回 ——
+   * 下游 sanitize 会丢弃它,可迁移层的契约是「清掉旧字段」,
+   * 留着它,下次迁移又会看见这个负标量。实测探针打到过这条。
+   */
+  if (hasMap && scalar <= 0) {
+    if (!('herb' in resources)) return resources
+    const trailing = { ...resources }
+    delete trailing.herb
+    return trailing
+  }
   const next = { ...resources }
   const rawMap =
     hasMap && resources.herbByGrade && typeof resources.herbByGrade === 'object'
@@ -512,14 +564,21 @@ export function migrateLocalSchema(): void {
     if (invRaw !== null) {
       const inv = JSON.parse(readSaveText(invRaw)) as Record<string, unknown>
       const migrated = migrateInventorySlice(inv)
-      if (migrated !== inv) localStorage.setItem(invKey, encryptSave(JSON.stringify(migrated)))
+      if (migrated !== inv) {
+        localStorage.setItem(invKey, encryptSave(JSON.stringify(migrated)))
+        // 迁移写回了新形态:扫描时缓存的那份旧明文必须作废,否则水合会把迁移原地撤销
+        preloadedPlain.delete(invKey)
+      }
     }
     const resKey = storageKey('resources')
     const resRaw = localStorage.getItem(resKey)
     if (resRaw !== null) {
       const res = JSON.parse(readSaveText(resRaw)) as Record<string, unknown>
       const migrated = migrateHerbSlice(res)
-      if (migrated !== res) localStorage.setItem(resKey, encryptSave(JSON.stringify(migrated)))
+      if (migrated !== res) {
+        localStorage.setItem(resKey, encryptSave(JSON.stringify(migrated)))
+        preloadedPlain.delete(resKey)
+      }
     }
   } catch {
     // 损坏数据交由 preflightScan 兜底

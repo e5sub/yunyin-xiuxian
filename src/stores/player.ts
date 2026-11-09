@@ -697,14 +697,17 @@ export const usePlayerStore = defineStore(
       // 道号进字符串方法(.trim / 拼接);坏档写成数字会在渲染或建号处抛错。
       // 空串也算坏档:顶栏是 {{ player.name }} 裸渲染,空串会显示成一片空白(建号与导入检视都有「无名散修」兜底,唯独这里没有)
       // 长度也要截:输入侧截到 NAME_MAX_LENGTH,读档侧不截就能被手改存档塞进几十万字符
-      // 按码点截,不按码元:`.slice(0, 8)` 会把 emoji 切成落单的代理项(见 truncateCodePoints)
+      // 按字素簇截,不按码元:`.slice(0, 8)` 会劈开代理对或 ZWJ 序列(见 truncateCodePoints)
       name.value =
         typeof name.value === 'string' && name.value.trim() !== ''
           ? truncateCodePoints(name.value.trim(), NAME_MAX_LENGTH)
           : '无名散修'
       // 角色页/建号页裸用 `ELEMENTS[root.element].color` 与 `linggen.growthMult.toFixed(2)`:坏档在渲染期抛错
       linggen.value = sanitizeLinggen(linggen.value)
-      if (!Number.isFinite(age.value)) age.value = START_AGE
+      // 负年龄与 NaN 一并修正:死亡判据是 age < lifespanMax,负年龄永远死不了,
+      // 而 TopStatusBar 直接印 Math.floor(age),坏档会显示「寿元 -100/120」;
+      // lifespanRatio 也会算出 >1 的值喂给血色档位判断
+      if (!Number.isFinite(age.value) || age.value < 0) age.value = START_AGE
       // 大阶是境界表下标、层数直接进公式
       major.value = Math.min(MAX_MAJOR, Math.max(0, Math.floor(asFiniteNumber(major.value, 0))))
       sub.value = Math.min(SUB_LEVELS - 1, Math.max(0, Math.floor(asFiniteNumber(sub.value, 0))))

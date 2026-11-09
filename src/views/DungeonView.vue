@@ -77,6 +77,7 @@
         <div class="mt-2.5 flex flex-wrap items-center gap-2">
           <input
             v-model="joinCode"
+            aria-label="房间码"
             placeholder="输入房间码"
             maxlength="6"
             class="w-36 rounded-md border border-ink/15 bg-paper-deep/60 px-2 py-1.5 font-mono text-[13px] uppercase tracking-widest text-ink placeholder:text-ink-faint"

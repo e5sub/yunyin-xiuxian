@@ -8,6 +8,10 @@ import {
   buildingCost,
   expRequirement,
   powerScale,
+  majorCombatFactor,
+  realmScale,
+  tierMajor,
+  upgradeCost,
   powerScore,
   stoneByTier,
   tribulationWaveDamage,
@@ -15,6 +19,7 @@ import {
   gameDay
 } from './formulas'
 import { powerBreakdownRows, powerExplainText } from '@/ui/powerText'
+import { maxTierForMajor } from '@/data/regions'
 
 describe('GameFormula 成长曲线', () => {
   it('战力：算式 = 攻×3 + 防×2 + 血×0.15，权重与释义同源，不许改一处漏一处', () => {
@@ -70,6 +75,111 @@ describe('GameFormula 成长曲线', () => {
     expect(ratio(high.maxHp, low.maxHp)).toBeGreaterThan(30)
   })
 
+  /**
+   * `majorCombatFactor` / `realmScale` 的负输入不该把战力打到 1 以下。
+   *
+   * `earlyLate` 里 `Math.min(Math.max(0, major), WORLD_BREAK_MAJOR)` 的内层 `Math.max(0, …)`
+   * 挡的是 major 为负 —— 而 `powN` **支持负指数**(实测 powN(3.8, -5) = 1.26e-3),
+   * 所以去掉它之后 majorCombatFactor(-5) 会算成 0.00126,而不是 1。
+   *
+   * 真实路径上 major 来自 tierMajor(已钳 0..20)),这层是深公式里的最后一道;
+   * 一旦有人把别处的 major 直接喂进来,战力会凭空缩到千分之一而不是退化成「最低境界」。
+   * 变异扫描点名这两处(71 / 72)。
+   */
+  it('大境界因子:负输入退化成 0 境,不掉到 1 以下', () => {
+    for (const m of [-1, -5, -100]) {
+      const f = majorCombatFactor(m)
+      expect(f.m, `majorCombatFactor(${m}) = ${f.m}e${f.e} 低于 0 境`).toBe(1)
+      expect(f.e, `majorCombatFactor(${m}) 的指数不该为负`).toBe(0)
+    }
+    // 0 境本身就是 1,负值该与它完全相同
+    expect(majorCombatFactor(-5)).toEqual(majorCombatFactor(0))
+    expect(majorCombatFactor(-1)).toEqual(majorCombatFactor(0))
+  })
+
+  it('大境界因子:随 major 单调递增,跨界后仍递增', () => {
+    let prev = majorCombatFactor(0)
+    for (let m = 1; m <= 20; m += 1) {
+      const cur = majorCombatFactor(m)
+      expect(toNum(cur), `major=${m} 的因子没有继续增长`).toBeGreaterThan(toNum(prev))
+      prev = cur
+    }
+  })
+
+  it('realmScale:负大境界同样退化成 0 境', () => {
+    // 大境界那一道钳在 majorCombatFactor 里故能照顾到 realmScale;
+    // 层数(sub)那道钳不在此处 —— 它的来源 player.sub 由 sanitize 钳在 0..SUB_LEVELS-1,
+    // 且 realmScale 的两处调用都传 sanitize 过的值,故不在此补负层数断言(那是不可达路径)。
+    for (const m of [-1, -5]) {
+      expect(realmScale(m, 0), `major=${m} 该与 0 境同尺`).toEqual(realmScale(0, 0))
+    }
+    // 正常层数照旧递增
+    expect(toNum(realmScale(0, 5)), '层数该让倍率增长').toBeGreaterThan(toNum(realmScale(0, 0)))
+  })
+
+  /**
+   * 区域层级越界不许把 undefined 漏进算式。
+   *
+   * `tierMajor` / `powerScale` 都拿 `tier - 1` 当下标,两头各钳一次
+   * (`Math.max(0, Math.min(LEN - 1, ...))`)。这两道钳不是防负数的语义修饰 ——
+   * 去掉之后越界取值是 `undefined`,`worldOf(undefined)` 当场崩。
+   *
+   * 真实路径上 tier 来自 `maxTierForMajor(major)`(最高层恰为层级表长,
+   * 上游 32、本仓五行谱扩到 40 —— 不写死,以 1e6 钳回来的表顶反推),
+   * 边界外到不了;这条钉的是「钳还在」:将来有人把 tier 从别处喂进来时不会崩。
+   */
+  it('层级越界:两头都钳在表内,不返回 undefined', () => {
+    const TOP = maxTierForMajor(tierMajor(1e6))
+    for (const t of [0, -1, -100]) {
+      expect(tierMajor(t), `tier=${t} 该钳到最低层`).toBe(tierMajor(1))
+    }
+    for (const t of [TOP + 1, 100, 1e6]) {
+      expect(tierMajor(t), `tier=${t} 该钳到最高层`).toBe(tierMajor(TOP))
+    }
+    // 钳出来的都必须是个真数,不是 undefined
+    for (const t of [-5, 0, 1, 16, TOP - 1, TOP, TOP + 1, 999]) {
+      const m = tierMajor(t)
+      expect(typeof m, `tierMajor(${t}) 返回了 ${String(m)}`).toBe('number')
+      expect(Number.isFinite(m), `tierMajor(${t}) 不是有限数`).toBe(true)
+    }
+  })
+
+  it('层级越界:powerScale 不崩、仍给出有限值', () => {
+    const TOP = maxTierForMajor(tierMajor(1e6))
+    for (const t of [-5, 0, TOP + 1, 999]) {
+      expect(() => powerScale(t), `powerScale(${t}) 崩了`).not.toThrow()
+      const p = powerScale(t)
+      expect(Number.isFinite(p.m), `powerScale(${t}) 的尾数不是有限数`).toBe(true)
+      expect(Number.isFinite(p.e), `powerScale(${t}) 的指数不是有限数`).toBe(true)
+    }
+    // 越界的两头与各自边界同结果
+    expect(powerScale(0), '低端越界该与 tier=1 同结果').toEqual(powerScale(1))
+    expect(powerScale(999), '高端越界该与表顶层同结果').toEqual(powerScale(TOP))
+  })
+
+  /**
+   * 强化成本的下限:`Math.max(0.4, 1 - discount)`。
+   *
+   * 折扣来自 forgeDiscount 词条(巧手 5~10、器道 10~20)。正常叠不满 100%,
+   * 但这条钳是**唯一**挡住「打折超过 100% 时成本变负」的东西 ——
+   * 不钳的话 discount=1.5 会让 dust 变成负数,玩家强化反而倒赚器灵尘。
+   * 变异扫描点名这条钳没有判据盯着(这个函数此前在 spec 里一次都没被调过)。
+   */
+  it('强化成本:折扣再大也不为负,且低于 60% 折扣下限后不再降', () => {
+    for (const d of [0, 0.3, 0.6, 0.99, 1, 1.5, 5, 100]) {
+      const c = upgradeCost(10, 20, 3, d)
+      expect(Number.isFinite(c.dust), `discount=${d} 的器灵尘不是有限数`).toBe(true)
+      expect(c.dust, `discount=${d} 的器灵尘是负的 —— 钳制没了`).toBeGreaterThan(0)
+      expect(Number.isFinite(c.stone.m), `discount=${d} 的灵石不是有限数`).toBe(true)
+      expect(c.stone.m, `discount=${d} 的灵石是负的`).toBeGreaterThan(0)
+    }
+    // 折扣超过 60% 后成本封底,不再继续下降
+    const floor = upgradeCost(10, 20, 3, 0.6)
+    for (const d of [0.8, 1, 2, 10]) {
+      expect(upgradeCost(10, 20, 3, d), `discount=${d} 该与 60% 同价(已触底)`).toEqual(floor)
+    }
+  })
+
   it('powerScale 与区域层级同向增长', () => {
     expect(ratio(powerScale(10), powerScale(1))).toBeGreaterThan(50)
     expect(ratio(powerScale(20), powerScale(10))).toBeGreaterThan(50)
@@ -94,6 +204,36 @@ describe('GameFormula 成长曲线', () => {
     expect(winChanceFromRatio(1)).toBeGreaterThan(0.5)
     expect(winChanceFromRatio(0.4)).toBeLessThan(0.2)
     expect(winChanceFromRatio(0)).toBe(0.05)
+  })
+
+  /**
+   * 胜率夹在 [0.05, 0.95] 内。
+   *
+   * 这两条钳**是可达的**:r=0.001 时原始式算出 1/(1+(850)^4) ≈ 1e-12,r=10 时算出 0.99998 ——
+   * 不钳的话离线估算会给出「必输」或「必胜」,而后续连乘直接变成 0 或 1,
+   * 离线收益随之整块归零或爆表。变异扫描点名这两条钳没有判据盯着。
+   *
+   * 判据钉两头:极弱不许低于下限、极强不许高于上限,并且不出现 NaN。
+   */
+  it('胜率两头都夹住:极弱不低于 5%,极强不高于 95%', () => {
+    for (const r of [0.001, 0.01, 0.05, 0.1]) {
+      expect(winChanceFromRatio(r), `战力比 ${r} 的胜率低于下限`).toBe(0.05)
+    }
+    for (const r of [10, 100, 1e6]) {
+      expect(winChanceFromRatio(r), `战力比 ${r} 的胜率高于上限`).toBe(0.95)
+    }
+    // 非正与无穷也算数:函数入口对 r<=0 单独早退,Infinity 走主式
+    expect(winChanceFromRatio(-5), '负战力比该给下限').toBe(0.05)
+    expect(winChanceFromRatio(Infinity), '无穷战力比该给上限').toBe(0.95)
+  })
+
+  it('单调:战力比越高,胜率不降低', () => {
+    const rs = [0.01, 0.1, 0.3, 0.5, 1, 2, 5, 10, 100]
+    for (let i = 1; i < rs.length; i += 1) {
+      expect(winChanceFromRatio(rs[i]!), `r=${rs[i]} 的胜率低于 r=${rs[i - 1]}`).toBeGreaterThanOrEqual(
+        winChanceFromRatio(rs[i - 1]!)
+      )
+    }
   })
 
   it('天劫伤害随波次与境界上升,御劫词条减伤', () => {

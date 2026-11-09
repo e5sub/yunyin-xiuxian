@@ -218,7 +218,7 @@ export const PILLS: PillDef[] = [
   }),
   /** 神王境与混沌两境的本境丹(见 contentDensity 的「每境一味」判据) */
   p('p_shenwu', '神悟丹', 'divine', 16, '一炉神悟,胜过经年面壁', {
-    instant: { wudao: 100 },
+    instant: { wudao: 106 },
     recipe: { herb: 420, stoneBase: 1200 },
     alchemyLevel: 10
   }),
@@ -255,8 +255,8 @@ export const PILLS: PillDef[] = [
     '仙泉玉液',
     'immortal',
     11,
-    '仙泉一盏,灵气涤尽复满',
-    { instant: { qiPct: 1 }, recipe: { herb: 90, stoneBase: 260 }, alchemyLevel: 10 },
+    '仙泉一盏,灵气涤尽,余者溢入经脉',
+    { instant: { qiPct: 1.6 }, recipe: { herb: 90, stoneBase: 260 }, alchemyLevel: 10 },
     'droplets'
   ),
   /** 增益线:每 buff 仅一味丹产出(法则 C);增益定义见 data/buffs.ts */
@@ -275,7 +275,7 @@ export const PILLS: PillDef[] = [
   p('p_benyuandan', '本源丹', 'divine', 18, '混沌本源入体,修行转疾', {
     kind: 'buff',
     buffId: 'buff_hundun',
-    recipe: { herb: 150, stoneBase: 560 },
+    recipe: { herb: 260, stoneBase: 560 },
     alchemyLevel: 10
   }),
 
@@ -335,8 +335,8 @@ export const PILLS: PillDef[] = [
     '道液',
     'dao',
     18,
-    '一滴道液,浩气复满;混沌海深处方凝得成',
-    { instant: { qiPct: 1 }, recipe: { herb: 120, stoneBase: 420 }, alchemyLevel: 9 },
+    '一滴道液,浩气盈溢,几近周天自转;混沌海深处方凝得成',
+    { instant: { qiPct: 2.4 }, recipe: { herb: 120, stoneBase: 420 }, alchemyLevel: 9 },
     'droplets'
   ),
   p('p_shenyuan', '神元丹', 'divine', 16, '神元入体,周天运转更疾', {
@@ -348,7 +348,7 @@ export const PILLS: PillDef[] = [
   p('p_huntian', '混天丹', 'dao', 20, '一气混元,吐纳之间日月无光', {
     kind: 'buff',
     buffId: 'buff_huntian',
-    recipe: { herb: 400, stoneBase: 1500 },
+    recipe: { herb: 340, stoneBase: 1500 },
     alchemyLevel: 9
   }),
   p('p_daluo', '大罗金丹', 'immortal', 13, '大罗金身不坏,仙力贯体', {

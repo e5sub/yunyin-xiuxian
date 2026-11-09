@@ -17,6 +17,7 @@ import { MAX_MAJOR, WORLD_BREAK_MAJOR } from '@/data/realms'
 import { BATTLE_EXP_SECS, INSTANT_EXP_LAYER_CAP, EXPLORE_BATTLE_INTERVAL } from '@/data/constants'
 import { herbGradeOfMajor } from '@/data/herbGrades'
 import {
+  auditCraftRate,
   DROP_CRAFT_RATIO,
   craftBattlesOf,
   craftPeerOf,
@@ -195,6 +196,45 @@ describe('定价法则', () => {
     }
   })
 
+  /**
+   * 【法则 B2】同族同线内,高规格丹的药力必须严格高于低规格丹。
+   *
+   * 法则 B 写的是 `<=`,所以「完全相等」也过 —— 实测三味回满灵气丹
+   * (灵乳 2 境草 16 / 仙泉玉液 11 境草 90 / 道液 18 境草 120)在任意境界下
+   * 药力分毫不差:qiPct 三处都是 1,而 1 是当时以为的上限。
+   * 玩家花 7.5 倍灵草换到一模一样的东西 —— 这是本条的由来。
+   *
+   * 实际灵气可积到标称容量的 QI_BANK_MULT(10)倍,qiPct 并不以 1 为顶;
+   * 修法是给高阶两味 1.6 / 2.4,同境界药力就此拉开梯度。
+   *
+   * 折算境界取「两味里较高的准入境界」而非全组最大值:
+   * expFixed 入门丹只服务 0 境(法则 D 已钉),用全组最大值会把它压成 0s 而误报。
+   * 掉落线不在此列 —— 法则 A 管它,它本就该比可炼对照低。
+   */
+  it('B2 —— 可炼线内,高规格丹的药力必须严格高于低规格丹', () => {
+    // 收集全部族再断言:逐族断言会在第一个族失败时断掉,后面的族根本没被查过
+    const bad: string[] = []
+    for (const fam of TIMED_FAMILIES) {
+      const group = PILLS.filter(p => pillFamily(p) === fam && pillLine(p) === 'craft')
+      if (group.length < 2) continue
+      for (const a of group) {
+        for (const b of group) {
+          if (pillRank(a) >= pillRank(b)) continue
+          const at = Math.max(a.minRealm, b.minRealm)
+          const ga = pillGainSecAt(a, at)
+          const gb = pillGainSecAt(b, at)
+          if (gb <= ga + 1e-9) {
+            bad.push(
+              `${FAMILY_NAME[fam]}族:${a.name}(${pillQualityName(a)} 草${a.recipe?.herb}) ` +
+                `与更高规格的 ${b.name}(${pillQualityName(b)} 草${b.recipe?.herb}) 药力同为 ${ga.toFixed(0)}s(在 ${at} 境)`
+            )
+          }
+        }
+      }
+    }
+    expect(bad, '高规格丹与低规格丹药力相同,炼贵的等于白花灵草').toEqual([])
+  })
+
   /** 【法则 C】一个 buff 只许一味丹产出 */
   it('C —— 没有两味丹指向同一个增益', () => {
     const owner = new Map<string, string>()
@@ -319,8 +359,55 @@ describe('定价法则', () => {
  * perKsec = 炼成一枚的期望战斗场次 × 每场 12 秒 ÷ 准入境界药力(等效秒),越高越不划算。
  * 相对容差 1e-3:道源丹与混元丹设计上贴身相持,差不足千分之一。
  */
-describe('带内 exp 线无每-成本倒挂', () => {
-  it('同品草带内,修为可炼丹的每-成本随境界单调不涨', () => {
+/*
+ * 各族「同品草带内每-成本不倒挂」。
+ *
+ * 原先只查 exp 族。其余四族同样有这条要求:同一条草带里,高一味如果反而更不划算,
+ * 它就是死内容。实测补查时抓到两处:
+ *   一 tempo 品5 带:本源丹(18 境草 150)pk=0.215,混天丹(20 境草 400)pk=0.347 —— 倒挂 61%
+ *   二 本源丹本身是同带异常点:带内其余丹草量都在 410~560,只有它 150
+ * 修法是把本源丹提到 260、混天丹降到 340(都在带内合理区间),倒挂消失。
+ *
+ * qi 族的品1带(回灵丹 0.742 → 灵乳 1.099)不纳入:灵乳的溢价由「灵乳的单位灵气成本
+ * 落在回灵丹的一到三倍之间」那条单独钉着,它是刻意的入门锚点。
+ */
+describe('带内各族无每-成本倒挂', () => {
+  /** 参与本条的族;qi 的品1带另有专属判据,故排除 */
+  const CHEKC_FAMILIES = ['exp', 'tempo', 'wudao', 'lifespan'] as const
+  for (const fam of CHEKC_FAMILIES) {
+    it(`同品草带内,${FAMILY_NAME[fam]}可炼丹的每-成本随境界单调不涨`, () => {
+      const TOL = 1e-3
+      const craft = PILLS.filter(p => pillFamily(p) === fam && p.recipe).sort((a, b) => a.minRealm - b.minRealm)
+      if (craft.length < 2) return
+      const bad: string[] = []
+      let prevGrade: number | null = null
+      let prevPk = 0
+      let prevName = ''
+      for (const p of craft) {
+        const grade = herbGradeOfMajor(p.minRealm)
+        const gain = pillGainSecAt(p, p.minRealm)
+        if (!(gain > 0)) continue
+        const pk = (craftBattlesOf(p) * EXPLORE_BATTLE_INTERVAL) / gain
+        if (prevGrade !== grade) {
+          prevGrade = grade
+          prevPk = pk
+          prevName = p.name
+          continue
+        }
+        if (pk > prevPk * (1 + TOL)) {
+          bad.push(
+            `品${grade}草带内:${p.name}(境界 ${p.minRealm} 草${p.recipe?.herb}) 每-成本 ${pk.toFixed(4)} ` +
+              `高于同带更低味 ${prevName} 的 ${prevPk.toFixed(4)} —— 高一味反而不如低一味划算`
+          )
+        }
+        prevPk = pk
+        prevName = p.name
+      }
+      expect(bad, '同带内出现了性价比倒挂').toEqual([])
+    })
+  }
+
+  it('exp 线仍逐条比对(原有口径保持不变)', () => {
     const TOL = 1e-3
     const expCraft = PILLS.filter(p => pillFamily(p) === 'exp' && p.recipe && p.instant?.expSecs).sort(
       (a, b) => a.minRealm - b.minRealm
@@ -528,5 +615,19 @@ describe('道品顶档的成员不变式', () => {
       }
     }
     expect(bad, `这些修速丹与同档修为丹不成比例:\n${bad.join('\n')}`).toEqual([])
+  })
+})
+
+describe('炼丹审计 · 没有配方的丹', () => {
+  it('给定一个别处没有配方记录的丹药定义,当算基准成功率,则得 1 且不抛错', () => {
+    /*
+     * `if (!craft) return 1` 是真守卫:去掉后 bearableRank(def.minRealm) 之前
+     * 会先读 craft.rank,对 undefined 抛 TypeError。
+     * 1 的语义是「按必成算」——审计口径不给没有配方的东西编造难度。
+     */
+    // recipeCraft 看的是 def.recipe 而非 id,故要造一个「没有配方记录」的定义
+    const orphan = { ...PILLS[0]!, recipe: undefined } as never
+    expect(() => auditCraftRate(orphan)).not.toThrow()
+    expect(auditCraftRate(orphan)).toBe(1)
   })
 })

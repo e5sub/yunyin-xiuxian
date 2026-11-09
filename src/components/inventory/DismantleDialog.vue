@@ -104,9 +104,13 @@
     <p class="mt-0.5 text-[10px] leading-relaxed text-ink-faint">与「一键分解」勾选无关</p>
     <template #footer>
       <template v-if="!cleanConfirm">
+        <!--
+          禁用态只由 :disabled 决定,不再叠 opacity-45:
+          .btn-ghost:disabled 刻意「压色不压字」(实测 5.55:1),叠一层 45% 透明后
+          跌到 1.84:1 —— 而那行字正是「为什么按不了」。
+        -->
         <button
           class="btn-ghost w-full !text-[12px]"
-          :class="cleanCount ? '' : 'opacity-45'"
           :disabled="cleanCount === 0"
           @click="cleanConfirm = true"
         >
@@ -133,9 +137,9 @@
           </p>
           <p v-if="!cleanPreview.length" class="py-0.5 text-[10px] text-jade">无可化尘</p>
         </div>
-        <div class="flex gap-2">
-          <button class="btn-ghost flex-1 !text-[12px]" @click="cleanConfirm = false">再想想</button>
-          <button class="btn-seal flex-1 !text-[12px]" @click="smartClean()">清理化尘</button>
+        <div class="grid grid-cols-2 gap-2">
+          <button class="btn-ghost !text-[12px] w-full" @click="cleanConfirm = false">再想想</button>
+          <button class="btn-seal !text-[12px] w-full" @click="smartClean()">清理化尘</button>
         </div>
       </template>
     </template>

@@ -19,6 +19,7 @@
         <p class="text-[12px] leading-relaxed text-ink-soft">改完口令后本设备自动换新会话,其他设备将被挤下线。</p>
         <input
           v-model.trim="pwOld"
+          aria-label="当前口令"
           type="password"
           maxlength="64"
           placeholder="当前口令"
@@ -27,6 +28,7 @@
         />
         <input
           v-model.trim="pwNew"
+          aria-label="新口令"
           type="password"
           maxlength="64"
           placeholder="新口令(6~64 字)"
@@ -35,6 +37,7 @@
         />
         <input
           v-model.trim="pwNew2"
+          aria-label="再输一遍新口令"
           type="password"
           maxlength="64"
           placeholder="再输一遍新口令"
@@ -60,6 +63,7 @@
         </p>
         <input
           v-model.trim="emPassword"
+          aria-label="当前口令"
           type="password"
           maxlength="64"
           placeholder="当前口令"
@@ -68,6 +72,7 @@
         />
         <input
           v-model.trim="emNew"
+          aria-label="新邮箱"
           maxlength="190"
           placeholder="新邮箱"
           autocomplete="email"
@@ -76,6 +81,7 @@
         <div v-if="emailEnabled" class="flex gap-2">
           <input
             v-model.trim="emCode"
+            aria-label="邮箱验证码"
             maxlength="8"
             placeholder="邮箱验证码"
             class="flex-1 rounded-lg border border-ink/15 bg-paper-deep/60 px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:border-cinnabar/60 focus:outline-none"

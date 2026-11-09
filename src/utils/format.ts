@@ -5,11 +5,31 @@ import { gn, toNum } from './gnum'
 /** 每 4 个数量级一个中文单位 */
 const UNITS = ['万', '亿', '兆', '京', '垓', '秭', '穰', '沟', '涧', '正', '载', '极'] as const
 
+/** 数值非法时的统一占位 */
+const NOT_AVAILABLE = '--'
+
 /** 格式化大数:1,234 → 12.35万 → 1.235亿 → 1.24e52 */
 export function formatGN(v: GNum | number): string {
   const g = typeof v === 'number' ? gn(v) : v
+  /*
+   * 坏值守卫。缺了它,几个坏输入会印出乱码而不是占位符:
+   *   gn(1, NaN)      → 「NaNundefined」
+   *   gn(1, Infinity) → 「1.00eInfinity」
+   *   gn(NaN, 0)      → 「∞」(m 为 NaN 时后续判断全落空,最后走科学计数兜底)
+   * formatPercent / formatDuration 等早已返回 `--`,只有这是漏的。
+   * 存档经 sanitize 应已修好,但界面在 sanitize 之前也可能读到(见 storeResilience)。
+   */
+  if (!Number.isFinite(g.m) || !Number.isFinite(g.e)) return NOT_AVAILABLE
   if (g.m === 0) return '0'
-  if (g.m < 0) return '-' + formatGN({ m: -g.m, e: g.e })
+  if (g.m < 0) {
+    /*
+     * 极小负数会被下面的定点格式化抹成 0(如 1e-10 → 「0」),
+     * 加负号就成了「-0」—— 玩家读到的不是「几乎没有」而是一个显眼的畸形值。
+     * 取正后若回到 0,就直接交 0,不保留负号。
+     */
+    const pos = formatGN({ m: -g.m, e: g.e })
+    return pos === '0' ? '0' : '-' + pos
+  }
   if (g.e < 4) {
     /*
      * 千位档直接取原值,不经 toNum 回算。
@@ -64,6 +84,8 @@ function fixedByMag(v: number): string {
  */
 export function formatGap(v: GNum | number): string {
   const g = typeof v === 'number' ? gn(v) : v
+  // 与 formatGN 同一道守卫:对象分支不经过 gn(),坏值会一路走到 toNum/ceilTo
+  if (!Number.isFinite(g.m) || !Number.isFinite(g.e)) return NOT_AVAILABLE
   if (g.m === 0) return '0'
   // 负数没有「尚差」语义,退回原格式化
   if (g.m < 0) return formatGN(g)
@@ -115,14 +137,21 @@ export function formatRate(v: GNum | number): string {
   return `${formatGN(v)}/秒`
 }
 
-/** 数值非法时的统一占位 */
-const NOT_AVAILABLE = '--'
-
 /**
  * 明细按显示精度取整并对账:先各自向下取整,差额按余数从大到小补齐,
  * 显示出来的各行相加正好等于原值合计的取整。unit 为最小显示单位(百分比一位小数即 0.001)。
  */
 export function roundToSum(values: readonly number[], unit: number): number[] {
+  /*
+   * 坏值守卫。缺了它有三个坑:
+   *   unit = 0 / NaN / Infinity → 每项都变 NaN(除以 0 或非有限数)
+   *   values 里某一项是 NaN / Infinity → 那一项变 NaN,还会把 target 的合计带偏
+   * 返回的 NaN 会原样进入调用方的展示与配色判断(见 cultivationText 的 breakthroughRateView)。
+   * 默认返回全 0:调用方按「没有可分配的份额」处理,比一串 NaN 安全。
+   */
+  if (!Number.isFinite(unit) || unit <= 0) return values.map(() => 0)
+  if (values.length === 0) return []
+  if (!values.every(v => Number.isFinite(v))) return values.map(() => 0)
   // 先抹浮点尾差:0.8599999999999999 / 0.001 不该落到 859
   const scaled = values.map(v => Math.round((v / unit) * 1e6) / 1e6)
   const target = Math.round(scaled.reduce((a, b) => a + b, 0))
@@ -205,6 +234,21 @@ export function formatClock(ts: number): string {
 
 
 /**
+ * 时刻戳(导入备份检视用):同一历年只印「月-日 时:分」,跨年补年份。
+ * 坏值同样印占位符:这个时间戳来自别人导出的文件,不是本机产生的。
+ */
+export function formatStamp(ts: number, now = Date.now()): string {
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return '--:--'
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  const clock = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  const monthDay = `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  // 同一历年只印月日;跨年(或年份坏掉)时补年份
+  if (d.getFullYear() === new Date(now).getFullYear()) return `${monthDay} ${clock}`
+  return `${d.getFullYear()}-${monthDay} ${clock}`
+}
+
+/**
  * 寿元年数展示。
  *
  * 数字与「载」之间留一个空格,与全站其他单位一致:模板里 `{{ formatGN(x) }} 石`、
@@ -212,6 +256,8 @@ export function formatClock(ts: number): string {
  * 唯独这一个把单位拼进了函数返回值,印出来是「150载」。
  */
 export function formatYears(y: number): string {
+  // 坏值守卫:缺了它 Math.floor(NaN) 会印出「NaN 载」,Math.floor(-Infinity) 印「-Infinity 载」
+  if (!Number.isFinite(y)) return NOT_AVAILABLE
   if (y >= 10000) return `${formatNum(Math.floor(y))} 载`
   return `${Math.floor(y)} 载`
 }
@@ -221,6 +267,8 @@ export function formatYears(y: number): string {
  * 只做到 9999,范围外原样返回阿拉伯数字。
  */
 export function cnNumber(n: number): string {
+  // 坏值守卫:范围判断走 `!Number.isInteger(n)`,NaN 恰好命中并落到 String(n) → 「NaN」
+  if (!Number.isFinite(n)) return NOT_AVAILABLE
   if (!Number.isInteger(n) || n < 0 || n > 9999) return String(n)
   const DIGITS = '零一二三四五六七八九'
   const UNITS = ['', '十', '百', '千']

@@ -117,3 +117,17 @@ describe('遗产回声(fortuneEcho)', () => {
     })
   })
 })
+
+describe('机缘回响 · 没有文本的事件', () => {
+  // echoFor 先过 echoEligible,那个要读 store;单独 -t 跑时顶层 hook 不生效,须自己装
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('给定一个在回响表里查不到的事件 id,当取它的回响,则得 null 且不抛错', () => {
+    /*
+     * `if (!data) return null` 是真守卫:去掉后读 data.form 抛 TypeError。
+     * 事件表与回响表各维护各的,旧档里的事件 id 可能已被删掉。
+     */
+    expect(() => echoFor('no_such_event')).not.toThrow()
+    expect(echoFor('no_such_event')).toBeNull()
+  })
+})

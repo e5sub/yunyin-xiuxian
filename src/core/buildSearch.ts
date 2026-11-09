@@ -133,7 +133,8 @@ function scoreOne(build: RandomBuild, rng: RandomService, fightsPerArch: number)
   for (const arch of ENEMY_ARCHETYPES) {
     let wins = 0
     for (let f = 0; f < fightsPerArch; f += 1) {
-      if (resolveCombat(build.snap, arch.snap(), rng).win) wins += 1
+      // 只读 .win,不读战报:buildLog 默认构建每回合的字符串与 formatGN,这里纯属浪费
+      if (resolveCombat(build.snap, arch.snap(), rng, undefined, false).win) wins += 1
     }
     cells.push(wins / fightsPerArch)
   }
@@ -194,7 +195,7 @@ export async function searchBuildsAsync(opts: SearchBuildsAsyncOptions = {}): Pr
   const n = opts.n ?? 1000
   const fightsPerArch = opts.fightsPerArch ?? 20
   const seed = opts.seed ?? 20260830
-  const yieldEvery = Math.max(1, opts.yieldEvery ?? 40)
+  const yieldEvery = Math.max(1, opts.yieldEvery ?? 8)
   const rng = new RandomService(mulberry32(seed))
   const scored: ScoredBuild[] = []
   for (let i = 0; i < n; i += 1) {

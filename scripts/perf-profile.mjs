@@ -16,7 +16,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
-import { lateSlices, seedSave } from "./lib/saveFixture.mjs";
+import { lateSlices, seedSave, stressSlices } from "./lib/saveFixture.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = join(ROOT, "dist");
@@ -33,10 +33,27 @@ const MIME = {
 const extOf = (p) => p.slice(p.lastIndexOf("."));
 
 const args = process.argv.slice(2);
-const secs = Number(args[args.indexOf("--seconds") + 1] ?? 3);
+/*
+ * 不传 --seconds 时 indexOf 返回 -1,args[-1+1] = args[0] 会被当成秒数 ——
+ * 而 `--view home` 下 args[0] 是 "--view",Number("--view") 得到 NaN,
+ * 于是调度器收到 NaN 超时(node 直接告警 TimeoutNaNWarning),采样只跑了 1 帧。
+ * 这也是本门此前「注入卡顿仍报绿」的一半原因。
+ */
+const si = args.indexOf("--seconds");
+const secs = si >= 0 ? Number(args[si + 1] ?? 3) : 3;
 const vi = args.indexOf("--view");
 const only = vi >= 0 ? args[vi + 1] : undefined;
 const gate = !args.includes("--no-gate");
+/*
+ * 满行囊档:夹具默认只放 2 件装,而玩家真实上限是 BAG_CAPACITY=120 件满词条神品。
+ * 性能门的读数因此来自一份「几乎空的行囊」—— 行囊页、构筑页、图鉴页在小档与满档下
+ * 的渲染量差一个数量级,小档过线不代表满档过线。
+ * 用法:`node scripts/perf-profile.mjs --stress`
+ *
+ * 两档共用 dist/:两个 perf 命令并行跑时,后启动的那个会先 `bun run build` 重写 dist,
+ * 而前者正按需从该目录取资源 —— 读数会混杂甚至 404。故须串行跑,不要同时开两个。
+ */
+const stress = args.includes("--stress");
 
 /**
  * 判据上限:本机读数留数倍余量(机型/负载差异),只拦成倍回退。
@@ -49,6 +66,18 @@ const BUDGET = {
   longFramesMax: Number(process.env.PERF_LONG_FRAMES ?? 2),
   /** 单视图 DOM 节点下限:防量到空白/被重定向的页而空转 */
   minNodes: Number(process.env.PERF_MIN_NODES ?? 20),
+  /**
+   * 单视图采样帧数下限:防「页面被长任务卡死,几乎采不到帧」被判成通过。
+   *
+   * 实测踩过:在 App.vue 里注入一个每 100ms 占 80ms 的忙循环后,
+   * home 视图只采到 frames=1、max=-13ms(负数),而本门照样报 ✓ ——
+   * 因为判据只查 DOM 节点数、最差帧与长帧数,唯独不查「到底采了几帧」。
+   * 帧数不足时 max/median 全是无意义读数,拿它判红判绿都是在赌。
+   *
+   * 下限取每视图采样秒数 × 20:headless 按 ~60fps 节流,正常档实测约 60fps;
+   * 留到 1/3 是容许首帧冷启动与 gc 抖动。
+   */
+  minFramesPerSecond: Number(process.env.PERF_MIN_FPS ?? 20),
 };
 
 function startServer() {
@@ -136,7 +165,7 @@ for (const view of VIEWS) {
   try {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     // 每视图注入一份后期档;缺档会落到欢迎页,门量空
-    await seedSave(context, lateSlices());
+    await seedSave(context, stress ? stressSlices() : lateSlices());
     const page = await context.newPage();
     const errors = [];
     page.on("pageerror", (e) => errors.push(String(e)));
@@ -169,6 +198,12 @@ for (const r of results) {
   else if (r.errors.length) failures.push(`${r.name}: 页面异常 (${r.errors[0].slice(0, 80)})`);
   else if (gate && r.nodes < BUDGET.minNodes)
     failures.push(`${r.name}: 只渲染了 ${r.nodes} 个节点(< ${BUDGET.minNodes})—— 视图没出来,门空转`);
+  else if (gate && r.frames < BUDGET.minFramesPerSecond * secs)
+    failures.push(
+      `${r.name}: 只采到 ${r.frames} 帧(< ${BUDGET.minFramesPerSecond * secs})—— 页面被长任务卡死,max/median 都不可信,本门等于空转`,
+    );
+  else if (gate && !(r.max > 0))
+    failures.push(`${r.name}: 最差帧读数 ${r.max}ms 非正数 —— 帧间隔没测出来`);
   else if (gate && r.max > BUDGET.maxFrameMs)
     failures.push(`${r.name}: 最差帧 ${r.max}ms > ${BUDGET.maxFrameMs}ms`);
   else if (gate && r.over50ms > BUDGET.longFramesMax)

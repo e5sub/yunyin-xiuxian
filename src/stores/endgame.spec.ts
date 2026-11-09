@@ -1,3 +1,4 @@
+import { NAME_MAX_LENGTH } from '@/data/constants'
 /**
  * 远征读档恢复守卫:endgame.sanitize() 把 worldRun(在途远征)每一域夹回安全区间。
  * 故障注入:sanitize 任一处 clamp 写坏(unknown worldId 不 void / layer 不夹 / carriedHp 不夹 / rows 不过滤),本文件红。
@@ -23,12 +24,15 @@ vi.mock('@/core/worldGen', async importOriginal => {
   const mod = await importOriginal<typeof import('@/core/worldGen')>()
   // vi.mock 工厂被提升到静态 import 之前(TDZ),只能 await import
   const { celestialWorldDef } = await import('@/data/endgame')
+  const stub = (): GeneratedWorld | null =>
+    h.genResult === 'world'
+      ? ({ world: celestialWorldDef('chiyan')!, audit: {} as never, novelty: 0.5, rejected: 3 } as unknown as GeneratedWorld)
+      : null
   return {
     ...mod,
-    generateApprovedWorld: (): GeneratedWorld | null =>
-      h.genResult === 'world'
-        ? ({ world: celestialWorldDef('chiyan')!, audit: {} as never, novelty: 0.5, rejected: 3 } as unknown as GeneratedWorld)
-        : null
+    generateApprovedWorld: stub,
+    // rerollVoidWorld 走的是分块异步版,一并桩掉
+    generateApprovedWorldAsync: async () => stub()
   }
 })
 
@@ -219,36 +223,36 @@ describe('混元界重掷代价 · rerollVoidWorld 扣/退与失效分支', () =
     usePlayerStore().major = 9 // 达到飞升门槛,终局解锁
   })
 
-  it('虚界远征在途时不可重摇:worldId=void 拒绝,道源分文不动', () => {
+  it('虚界远征在途时不可重摇:worldId=void 拒绝,道源分文不动', async () => {
     const endgame = useEndgameStore()
     endgame.$patch({ daoPath: 'sword', daoSource: 50 })
     endgame.$patch({ worldRun: { worldId: 'void' } as unknown as WorldRunState })
-    expect(rerollVoidWorld()).toBe(false)
+    expect(await rerollVoidWorld()).toBe(false)
     expect(endgame.daoSource).toBe(50)
     expect(endgame.voidWorld).toBeNull()
   })
 
-  it('道源不足拒绝重摇,不扣账', () => {
+  it('道源不足拒绝重摇,不扣账', async () => {
     const endgame = useEndgameStore()
     endgame.$patch({ daoPath: 'sword', daoSource: VOID_REROLL_COST - 1 })
-    expect(rerollVoidWorld()).toBe(false)
+    expect(await rerollVoidWorld()).toBe(false)
     expect(endgame.daoSource).toBe(VOID_REROLL_COST - 1)
   })
 
-  it('重摇成功扣 VOID_REROLL_COST,虚界成形', () => {
+  it('重摇成功扣 VOID_REROLL_COST,虚界成形', async () => {
     h.genResult = 'world'
     const endgame = useEndgameStore()
     endgame.$patch({ daoPath: 'sword', daoSource: 50 })
-    expect(rerollVoidWorld()).toBe(true)
+    expect(await rerollVoidWorld()).toBe(true)
     expect(endgame.daoSource).toBe(50 - VOID_REROLL_COST)
     expect(endgame.voidWorld?.id).toBe('chiyan')
   })
 
-  it('裁判否决生成失败:扣了又退,道源无损、虚界不变', () => {
+  it('裁判否决生成失败:扣了又退,道源无损、虚界不变', async () => {
     h.genResult = 'null'
     const endgame = useEndgameStore()
     endgame.$patch({ daoPath: 'sword', daoSource: 50 })
-    expect(rerollVoidWorld()).toBe(false)
+    expect(await rerollVoidWorld()).toBe(false)
     expect(endgame.daoSource).toBe(50) // 先扣 10 又退 10
     expect(endgame.voidWorld).toBeNull()
   })
@@ -439,6 +443,43 @@ describe('终局公共写入 · 只认目录 id 与合法值', () => {
     expect(e.daoPath).toBeNull()
     expect(e.milestones.map(m => m.id)).toEqual(['first_world'])
     expect(e.records.fastest_world).toEqual({ value: 10, life: 1, note: '赤炎天' })
+  })
+
+  /**
+   * 纪录 note 要截到 NAME_MAX_LENGTH。
+   *
+   * 它有两个来源:自建挑战的书名(输入框写了 maxlength=8,但那只是输入侧约束)
+   * 与读档(手改存档能塞进几十万字符 —— 存档爆量、纪录行还要渲染那一整段)。
+   * 与 player.name / loadouts.name 同一把尺,见 data/constants 里 NAME_MAX_LENGTH 的注释。
+   * 补之前实测:5000 字的 note 被原样存进 records。
+   */
+  /**
+   * 读档侧也要截。
+   *
+   * 上一轮补的是 updateRecord 的**写入**路径,而 sanitize 那条仍原样收
+   * —— 手改存档塞 10 万字,$state 序列化出来 100343 字节,纪录行还要渲染那一整段。
+   * 写入与读档是两条独立路径,都得截。
+   */
+  it('sanitize 也把纪录 note 截到 NAME_MAX_LENGTH', () => {
+    const e = useEndgameStore()
+    const huge = '甲'.repeat(100000)
+    ;(e as unknown as { records: Record<string, unknown> }).records = {
+      fastest_world: { value: 10, life: 1, note: huge }
+    }
+    e.sanitize()
+    const stored = e.records.fastest_world?.note ?? ''
+    expect(stored.length, `读档后 note 长度 ${stored.length} 超了上限`).toBeLessThanOrEqual(NAME_MAX_LENGTH)
+    expect(JSON.stringify(e.$state).length, '坏档把 state 撑爆了').toBeLessThan(2000)
+  })
+
+  it('纪录 note 截到 NAME_MAX_LENGTH,超长不落库', () => {
+    const e = useEndgameStore()
+    e.updateRecord('best_custom', 100, 1, '甲'.repeat(5000), 'max')
+    const stored = e.records.best_custom?.note ?? ''
+    expect(stored.length, `存进来的 note 长度 ${stored.length} 超了上限`).toBeLessThanOrEqual(NAME_MAX_LENGTH)
+    // 正常长度原样保留
+    e.updateRecord('best_custom', 200, 1, '太虚试炼', 'max')
+    expect(e.records.best_custom?.note).toBe('太虚试炼')
   })
 
   it('每日落闸不接受非有限日号，避免 NaN 让当日赏无限重领', () => {

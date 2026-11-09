@@ -6,8 +6,11 @@ import {
   asBoundedGNum,
   asCombatSkills,
   asNonNegInt,
+  asPerRounds,
+  RULE_MULT_MAX,
   asPrice,
-  SAVE_GNUM_MAX_EXP
+  SAVE_GNUM_MAX_EXP,
+  truncateCodePoints
 } from './saveShape'
 import { formatGN } from '@/utils/format'
 
@@ -190,4 +193,55 @@ describe('saveShape · asBoundedGNum', () => {
     expect(formatGN(asBoundedGNum({ m: 1, e: SAVE_GNUM_MAX_EXP }))).not.toContain('e+')
   })
 })
+  /**
+   * 截断按字素簇,不按码点。
+   *
+   * ZWJ 序列(家庭 emoji、带肤色的职业)是「一个字」而不是一串码点:
+   * 家庭 emoji 的 `Array.from(...).length` 是 7,而它只是 1 个字。
+   * 按码点截会把它劈成两个分开的人 —— 代理对仍是完整的(`isWellFormed()` 为 true,
+   * 旧写法因此看不出问题),但字面已经变了。
+   */
+  it('按字素簇截断,ZWJ 序列不被劈开', () => {
+    /*
+     * 用 fromCodePoint 拼,不写裸 emoji 字面量:
+     * kaiFontCoverage.spec 会扫源码里出现的每一个字符,要求字体覆盖或登记为「交给系统字体」。
+     * 测试数据用不到楷体,没必要为它去动字体子集与白名单。
+     */
+    const family = String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467, 0x200d, 0x1f466)
+    // 前缀 5 个汉字 + 1 个家庭 emoji = 6 个字素,限 8 时原样返回
+    expect(truncateCodePoints('一二三四五' + family, 8)).toBe('一二三四五' + family)
+    // 超长时整簇截:3 个家庭 emoji 限 2,得 2 个完整家庭而不是 14 个码点里的前 2 个
+    expect(truncateCodePoints(family.repeat(3), 2)).toBe(family.repeat(2))
+    // 普通中文与代理对的基本行为不变
+    expect(truncateCodePoints('一二三四五六七八九十', 4)).toBe('一二三四')
+    expect(truncateCodePoints(String.fromCodePoint(0x1f600) + 'ab', 1)).toBe(String.fromCodePoint(0x1f600))
+  })
+
+})
+
+describe('saveShape · asPerRounds', () => {
+  /**
+   * 这三道钳制是「坏档不进战斗」的关键:
+   * 比例类失控会让玩家一进战斗满血变空血、开局即死;倍率类无上界则一击必杀;
+   * interval 写 0 会让 `round % 0` 恒为 NaN,整条规则静默失效。
+   */
+  it('给定比例类写成负数或大于 1,当读回战斗规则,则一律夹回 [0,1]', () => {
+    expect(asPerRounds({ playerHealPct: -0.5 })!.playerHealPct).toBe(0)
+    expect(asPerRounds({ playerHealPct: 3 })!.playerHealPct).toBe(1)
+    expect(asPerRounds({ playerShieldPct: -2 })!.playerShieldPct).toBe(0)
+    expect(asPerRounds({ playerShieldPct: 99 })!.playerShieldPct).toBe(1)
+    // 合法值原样保留
+    expect(asPerRounds({ playerHealPct: 0.35 })!.playerHealPct).toBe(0.35)
+  })
+
+  it('给定倍率类写成负数或 1e9,当读回战斗规则,则负值归零、超界夹到 RULE_MULT_MAX', () => {
+    expect(asPerRounds({ enemyAtkGrowth: -1 })!.enemyAtkGrowth).toBe(0)
+    expect(asPerRounds({ enemyAtkGrowth: 1e9 })!.enemyAtkGrowth).toBe(RULE_MULT_MAX)
+    expect(asPerRounds({ enemyAtkGrowth: 1.2 })!.enemyAtkGrowth).toBe(1.2)
+  })
+
+  it('给定 interval 写成 0 或负数,当读回战斗规则,则至少为 1(否则 round % 0 恒为 NaN)', () => {
+    expect(asPerRounds({ interval: 0 })!.interval).toBe(1)
+    expect(asPerRounds({ interval: -7 })!.interval).toBe(1)
+  })
 })

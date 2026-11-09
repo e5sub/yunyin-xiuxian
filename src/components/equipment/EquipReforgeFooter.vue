@@ -4,43 +4,70 @@
     正常玩法每件至少留一个可重掷位,「无可重铸词条」只给旧档/异常数据兜底。
   -->
   <template v-if="reforgeCostVal || sealCostVal">
-    <div class="flex gap-2 text-[11px]">
-      <!-- !py-2 不可降回 !py-1:盒高 27px,低于 28px 可点阈值(巡页判据会量弹窗内控件) -->
+    <!--
+      价目行常驻,按钮正文只留动作词。
+
+      价签原先内联在「重铸词条」钮里:数字一长就把钮撑高 —— 375 宽实测未确认态 150.5×51、
+      确认态 143.5×65.5,点一下再点回,钮忽大忽小,页脚整体高 220.8 与 235.3 之间来回、正文滚动盒跟着缩。
+      320 宽更糟:123×84,「重铸词条」四个字被挤成竖排(每行一个字),那是排版事故不是换行。
+      价签挪出钮外之后,两态都是「两枚等宽钮、单行主词」,几何不再随确认态变。
+    -->
+    <p class="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-0.5 text-[10px] tabular text-ink-faint">
+      <span v-if="reforgeCostVal" class="whitespace-nowrap">
+        一炉 灵石 {{ formatGN(reforgeCostVal.stone) }} · 器灵尘×{{ reforgeCostVal.dust }}
+      </span>
+      <span v-if="sealCostVal" class="whitespace-nowrap">
+        封存一词 灵石 {{ formatGN(sealCostVal) }}
+        <span v-if="sealGap && sealGap.m > 0" class="text-cinnabar">灵石尚差 {{ formatGap(sealGap) }}</span>
+      </span>
+    </p>
+    <!-- !py-2 不可降回 !py-1:盒高 27px,低于 28px 可点阈值(巡页判据会量弹窗内控件) -->
+    <!--
+      min-h-11:两态同高。少了它,确认态两枚单行钮(34.5)与未确认态(封存格两行)差 5.5px。
+
+      用 grid 而不是 flex:两态各有两枚钮,grid 的两栏严格等宽,与钮内文字长短无关。
+      flex 那条路走不通 —— flex-1 + basis-0 + min-w-0 全写了,两枚仍然差 2px(114/116):
+      .btn-seal 的左右内边距 18px 比 .btn-ghost 的 16px 宽,而内容最小宽以 padding 为下界,
+      于是「确认重铸」那一格先被撑到 116。统一 padding 只是把差值挪到另一枚身上(120/110 更糟)。
+      那 2px 正是玩家说的「点一下钮就左右各挪一点」。
+    -->
+    <div class="grid grid-cols-2 gap-2 text-[11px]">
       <template v-if="reforgeArm !== inst?.uid">
         <button
           v-if="reforgeCostVal"
-          class="btn-ghost flex-1 !py-2"
+          class="btn-ghost min-h-11 min-w-0 !py-2"
           :disabled="reforgeShortVal?.short != null"
+          :aria-label="reforgeShortVal?.short ? `重铸词条 · ${reforgeShortText}` : undefined"
+          :title="reforgeShortVal?.short ? reforgeShortText : undefined"
           @click="reforgeArm = inst?.uid ?? null"
         >
           重铸词条
-          <!--
-            灵石那个数原本裸着,只有「尘×N」带单位 —— 同屏的「强化」「连升」都写全了
-            「器灵尘×12 · 灵石 356.1万」,读者会以为 949.6万 是另一回事。
-          -->
-          <span class="ml-1 tabular text-[10px] text-ink-faint">
-            灵石 {{ formatGN(reforgeCostVal.stone) }} · 器灵尘×{{ reforgeCostVal.dust }}
-          </span>
         </button>
-        <div
-          v-if="sealCostVal"
-          class="flex flex-1 flex-col items-center justify-center rounded-md border border-azure/20 px-2 py-2 text-ink"
+        <!--
+          自动重铸的开关占住这一行右格:未确认态与确认态都是两枚等宽钮,行高等长。
+          它原本在页脚最下一行与「转移词条」并排,移上来后页脚少一行(320×568 下正文只剩一小截)。
+        -->
+        <button
+          v-if="reforgeCostVal"
+          class="btn-ghost min-h-11 min-w-0 !py-2"
+          :aria-expanded="autoOpen"
+          @click="emit('update:autoOpen', !autoOpen)"
         >
-          <span>封存一词 灵石 {{ formatGN(sealCostVal) }}</span>
-          <span v-if="sealGap && sealGap.m > 0" class="text-[9px] text-cinnabar tabular">
-            灵石尚差 {{ formatGap(sealGap) }}
-          </span>
-        </div>
+          {{ autoOpen ? '收起自动重铸' : '自动重铸' }}
+        </button>
       </template>
       <template v-else>
+        <!-- 取消在左、确认在右:与全站两步确认同一顺序(分解 / 熔尽 / 择道 / 立契) -->
+        <button class="btn-ghost min-h-11 min-w-0 !py-2 text-ink-faint" @click="reforgeArm = null">再想想</button>
         <button
-          class="btn-seal flex-1 !py-2"
+          class="btn-seal min-h-11 min-w-0 !py-2"
           :disabled="reforgeShortVal?.short != null"
+          :aria-label="reforgeShortVal?.short ? `确认重铸 · ${reforgeShortText}` : undefined"
+          :title="reforgeShortVal?.short ? reforgeShortText : undefined"
           @click="doReforge"
         >
-          确认重铸 灵石 {{ formatGN(reforgeCostVal?.stone ?? 0) }} · 器灵尘×{{ reforgeCostVal?.dust ?? 0 }}
+          确认重铸
         </button>
-        <button class="btn-ghost flex-1 !py-2 text-ink-faint" @click="reforgeArm = null">再想想</button>
       </template>
     </div>
     <!-- 条数上限在正文「n / 上限 条」,此处不重复 -->
@@ -54,11 +81,8 @@
       已重铸 {{ inst.reforgeCount ?? 0 }} 次 · 已封存 {{ (inst.sealedAffixIds ?? []).length }}/{{ sealCapacity(inst) }}
     </p>
     <!-- 并成一行:页脚不可加高(320×568 下正文本就只剩一小截) -->
-    <div class="flex gap-2">
-      <button v-if="reforgeCostVal" class="btn-ghost flex-1 !py-2 !text-[11px]" @click="emit('update:autoOpen', !autoOpen)">
-        {{ autoOpen ? '收起自动重铸' : '自动重铸' }}
-      </button>
-      <button v-if="canTransferOut" class="btn-ghost flex-1 !py-2 !text-[11px]" @click="emit('transfer')">
+    <div v-if="canTransferOut" class="flex gap-2">
+      <button class="btn-ghost flex-1 !py-2 !text-[11px]" @click="emit('transfer')">
         {{ TRANSFER_LABELS.entry }}
       </button>
     </div>

@@ -13,7 +13,7 @@ import {
   asRecord,
   asStringArray
 } from '@/utils/saveShape'
-import { eventDef } from '@/data/events'
+import { EVENTS, FORTUNE_EVENTS, eventDef } from '@/data/events'
 import { exploreModeOf } from '@/core/exploreModes'
 
 /**
@@ -155,6 +155,13 @@ function sanitizeLastBattle(raw: unknown): LastBattleView | null {
     enemyName: b.enemyName,
     enemyIcon: b.enemyIcon,
     isBoss: b.isBoss === true,
+    /*
+     * enemyId 声明为 string?,但此前只有 `...b` 原样带过来 —— 坏档塞个数字进来,
+     * 界面上 `b.enemyId ? enemyLoreView(b.enemyId) : null` 会拿非字符串去查表。
+     * 查表本身安全(BY_ID.get 返回 undefined),但类型契约是假的:
+     * 后面任何一处 `enemyId.startsWith(...)` 之类都会当场炸。故按 string 收一遍。
+     */
+    enemyId: typeof b.enemyId === 'string' && b.enemyId ? b.enemyId : undefined,
     result: {
       ...r,
       win: r.win,
@@ -224,10 +231,18 @@ export const useAdventureStore = defineStore(
 
     /** 存档修复:历练会话/解锁表/事件记忆被写坏会让历练页在渲染期抛错 */
     function sanitize(): void {
-      unlocked.value = asStringArray(unlocked.value)
+      /*
+       * unlocked / cleared 都要按区域目录过滤。
+       *
+       * 同函数里 revived 与 clearedAt 早就这么做了(`filter(id => !!regionDef(id))`),
+       * 只有这两个只做了去重 —— 手改存档塞 10 万条 id 后 $state 到 1.98MB / 989KB。
+       * 这里可以安全过滤(不像事件记忆要兼容下线内容):区域 id 认得才能用,
+       * 认不得的既进不了 unlockClosure,也渲染不出卡片。
+       */
+      unlocked.value = [...new Set(asStringArray(unlocked.value))].filter(id => !!regionDef(id))
       if (unlocked.value.length === 0) unlocked.value = ['qingyun']
       mortalCleared.value = [...new Set(asStringArray(mortalCleared.value))]
-      cleared.value = [...new Set(asStringArray(cleared.value))]
+      cleared.value = [...new Set(asStringArray(cleared.value))].filter(id => !!regionDef(id))
       revived.value = asStringArray(revived.value).filter(id => !!regionDef(id) && !cleared.value.includes(id))
       clearedAt.value = Object.fromEntries(
         Object.entries(asNumberRecord(clearedAt.value, 0)).filter(([id, at]) => at > 0 && !!regionDef(id))
@@ -266,7 +281,16 @@ export const useAdventureStore = defineStore(
       pendingEventSince.value = pendingEventId.value ? asFiniteNumber(pendingEventSince.value, 0, 0) : 0
       // 事件记忆:times / lastAt 为 NaN 会让 LegacyView 乱序、写出「NaN 次际遇」。
       // 认不出的事件 id 不清:可能是改名 / 下线的旧档内容。
-      seenOnceEvents.value = [...new Set(asStringArray(seenOnceEvents.value))]
+      /*
+       * 但长度要有上界。写入路径(markEventSeen)有 `eventDef(id)` 这道闸,
+       * 读档路径原先只有去重 —— 手改存档能塞进任意多条,实测 10 万条后
+       * $state 序列化出来 1.49MB,存档直接顶到配额上限。
+       *
+       * 上界取事件目录规模的两倍:够容纳「改名/下线旧档」的残留,
+       * 又远小于恶意膨胀的量级。超出的部分保留靠前的(它们才是真实玩过的)。
+       */
+      const SEEN_ONCE_CAP = (EVENTS.length + FORTUNE_EVENTS.length) * 2
+      seenOnceEvents.value = [...new Set(asStringArray(seenOnceEvents.value))].slice(0, SEEN_ONCE_CAP)
       const fixedMemories: Record<string, import('@/types').EventMemory> = {}
       for (const [id, raw] of Object.entries(asRecord<unknown>(eventMemories.value))) {
         if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue

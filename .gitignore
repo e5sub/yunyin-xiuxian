@@ -53,3 +53,5 @@ android/keystore.local.properties
 *.jks
 android/keystore-secrets.local.txt
 server/vendor/
+commit_message.txt
+.npm-cache-tmp/

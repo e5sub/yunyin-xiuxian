@@ -71,12 +71,26 @@ export const useQuestsStore = defineStore(
       const maxIdx = Math.max(0, MAIN_QUESTS.length - 1)
       mainIdx.value = Math.min(Math.floor(asFiniteNumber(mainIdx.value, 0, 0)), maxIdx)
       const d = asObjectOrNull<{ date?: unknown; base?: unknown; done?: unknown }>(daily.value)
+      const base = asNumberRecord(d?.base, 0)
+      /*
+       * 日课基线缺失时的兜底:把当前累计当作基线。
+       *
+       * dailyDelta = counters - base。base 被读成空记录(坏档、手改、字段改名)
+       * 而 date 恰好还是今天时,delta 就等于**历史累计** —— 实测 counters.kills=500、
+       * base={} 时 delta 是 500,于是 checkDaily 一开局就把所有日课判为达成,
+       * 白送全天奖励并刷一串 toast。
+       *
+       * 归零(delta=0)与抄成当前累计是同一个效果,但后备语义更清楚:
+       * 「今天从此刻开始算」,而不是「从 0 起算」。后备基线不钳:抄当前累计本就自洽,
+       * 钳到 DAILY_BASE_CAP 反而会凭空多出一段 delta。
+       */
+      const hasBase = Object.keys(base).length > 0
       const dailyTaskIds = new Set(DAILY_TASKS.map(t => t.id))
       daily.value = {
         date: typeof d?.date === 'string' ? d.date : '',
-        base: Object.fromEntries(
-          Object.entries(asNumberRecord(d?.base, 0)).map(([k, v]) => [k, Math.min(Math.max(0, v), DAILY_BASE_CAP)])
-        ),
+        base: hasBase
+          ? Object.fromEntries(Object.entries(base).map(([k, v]) => [k, Math.min(Math.max(0, v), DAILY_BASE_CAP)]))
+          : { ...counters.value },
         done: [...new Set(asStringArray(d?.done))].filter(id => dailyTaskIds.has(id))
       }
       // 名号只认「已达成成就的奖励里给的那枚」:称号 mods 进 finalStats,是实打实的战力,

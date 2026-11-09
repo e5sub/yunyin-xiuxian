@@ -6,6 +6,12 @@
     <TopStatusBar v-if="auth.loggedIn && game.started && route.name !== 'create'" />
 
     <main ref="scrollHost" tabindex="-1" class="relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden outline-none">
+      <!--
+        读屏的页面名。底栏五页里只有首页自带视觉隐藏 h1,其余十二页第一层标题直接是 h2 ——
+        无障碍树里没有 h1,用标题跳转会落在二级标题上,页面本身没有名字。
+        这里补一处,内容随路由走;认不出名字的路由(欢迎页/建号页有自己的 h1)不渲染。
+      -->
+      <h1 v-if="pageTitle(route.name)" class="sr-only">{{ pageTitle(route.name) }}</h1>
       <RouterView v-slot="{ Component }">
         <Transition name="page-fade" mode="out-in" @before-enter="resetScroll" @after-enter="focusContent">
           <component :is="Component" />
@@ -40,6 +46,7 @@
   import { useSettingsStore } from '@/stores/settings'
   import { useAuthStore } from '@/stores/auth'
   import { subscribeOtherTabSave, subscribeSaveWriteFailure, watchOtherTabSave } from '@/utils/storage'
+  import { pageTitle } from '@/ui/pageTitle'
   import { engine } from '@/core/engine'
   import { startAutoOps, stopAutoOps, prepOfflineAutoOps, collectOfflineBossLedger } from '@/core/autoOps'
   import { connectCloudWs, disconnectCloudWs, onSessionEnd } from '@/services/cloud'

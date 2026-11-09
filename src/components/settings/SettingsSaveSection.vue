@@ -21,12 +21,16 @@
       class="rounded-md border border-cinnabar/40 px-2 py-1.5 text-[11px] leading-relaxed text-cinnabar"
     >
       存档损坏:{{ corruptedNotice.map(id => STORE_NAMES[id] ?? id).join('、') }} · 原档留在本机
-      <button class="mt-1 inline-block rounded px-2 py-1 text-ink-faint ring-1 ring-inset ring-ink/25" @click="ui.corruptedNotice = []">知道了</button>
+      <!--
+        触控靶面:纯文字只有 17px 高,低于全站 28px 下限(与行囊「收纳/分解」同法:
+        负外边距配正内边距,盒高抬到 28px+,流中仍占原行高)。
+      -->
+      <button class="-my-1 mt-1 block min-h-[28px] rounded px-2 py-1 text-ink-faint ring-1 ring-inset ring-ink/25" @click="ui.corruptedNotice = []">知道了</button>
     </p>
 
-    <div class="flex gap-2">
-      <button class="btn-ghost flex-1 !text-[12px]" :disabled="busy" :title="busy ? '云端同步进行中' : undefined" @click="uploadNow">立即上传</button>
-      <button class="btn-ghost flex-1 !text-[12px]" :disabled="busy" :title="busy ? '云端同步进行中' : undefined" @click="pullConfirm = true">从云端恢复</button>
+    <div class="grid grid-cols-2 gap-2">
+      <button class="btn-ghost w-full !text-[12px]" :disabled="busy" :title="busy ? '云端同步进行中' : undefined" @click="uploadNow">立即上传</button>
+      <button class="btn-ghost w-full !text-[12px]" :disabled="busy" :title="busy ? '云端同步进行中' : undefined" @click="pullConfirm = true">从云端恢复</button>
     </div>
 
     <BaseModal :open="pullConfirm" title="从云端恢复" @close="pullConfirm = false">
@@ -34,9 +38,9 @@
         用<span class="text-cinnabar">云端存档覆盖本机</span>并重开游戏。本机尚未上传的进度会丢失;要保留就先「立即上传」。
       </p>
       <template #footer>
-        <div class="flex gap-2">
-          <button class="btn-ghost flex-1" :disabled="busy" :title="busy ? '云端同步进行中' : undefined" @click="pullConfirm = false">取消</button>
-          <button class="btn-seal flex-1" :disabled="busy" :title="busy ? '云端同步进行中' : undefined" @click="confirmPull">确认恢复</button>
+        <div class="grid grid-cols-2 gap-2">
+          <button class="btn-ghost w-full" :disabled="busy" :title="busy ? '云端同步进行中' : undefined" @click="pullConfirm = false">取消</button>
+          <button class="btn-seal w-full" :disabled="busy" :title="busy ? '云端同步进行中' : undefined" @click="confirmPull">确认恢复</button>
 
         </div>
       </template>

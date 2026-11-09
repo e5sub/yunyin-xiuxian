@@ -24,12 +24,14 @@ import {
 import { REFORGE_DUST_BASE, REFORGE_SEAL_LOAD, REFORGE_STONE_BASE } from '@/data/constants'
 import { AUTO_REFORGE_MAX_BUDGET, autoReforgeBudget } from './reforge'
 import { qualityDef } from '@/data/qualities'
+import { twoPartShortfall } from './costShortfall'
+import { transferShortfall } from './affixTransfer'
 import { rng } from '@/utils/random'
 import { useInventoryStore } from '@/stores/inventory'
 import { useResourcesStore } from '@/stores/resources'
 import { useUiStore } from '@/stores/ui'
 import { useAutoReforge } from '@/composables/useAutoReforge'
-import { gn, gnZero, sub } from '@/utils/gnum'
+import { gn, gnZero, sub, toNum } from '@/utils/gnum'
 import type { EquipmentInstance } from '@/types'
 
 const stoneOf = (g: { m: number; e: number }): number => g.m * Math.pow(10, g.e)
@@ -99,6 +101,27 @@ describe('重铸动作 · 条数与数值一起重掷', () => {
     res.addStone(gn(1e30))
     res.addSmall('dust', 100_000)
   }
+
+  it('uid 在行囊里找不到(已分解/旧界面残留)时不洗:不抛错、不扣账', () => {
+    /*
+     * 与上一条不同:上一条的模板块缺失,仍能 findItem 拿到实例;
+     * 这条是**实例本身不在了** —— 详情弹窗开着,装备却被别处分解掉,再来点「重铸」。
+     * 去掉 `if (!inst)` 后 reforgeCost(undefined) 会读 templateId 抛 TypeError。
+     */
+    /*
+     * 资源必须先给足:否则即便守卫被删、代码真去扣费,spendStone/spendDust 也会因余额不足
+     * 而拒付 —— 测试照样绿。给足之后「余额不变」才是有效断言。
+     */
+    const res = useResourcesStore()
+    res.spiritStone = gn(1e9)
+    res.dust = 100000
+    const stoneBefore = res.spiritStone
+    const dustBefore = res.dust
+    expect(() => reforgeEquipment('早已分解的 uid', true)).not.toThrow()
+    expect(reforgeEquipment('早已分解的 uid', true)).toBe(false)
+    expect(res.spiritStone, '找不到实例就不该扣灵石').toBe(stoneBefore)
+    expect(res.dust, '找不到实例就不该扣尘埃').toBe(dustBefore)
+  })
 
   it('模板缺失(坏档)不洗:没有价、不扣账 —— 抽取池要按部位过滤,不知部位就不洗', () => {
     const broken: EquipmentInstance = { ...base, uid: 'broken', templateId: 'no_such_template' }
@@ -495,5 +518,50 @@ describe('界面与判定同源 · 条数上限不写死', () => {
     const sheet = readFileSync(resolve(__dirname, '../components/equipment/AffixInfoSheet.vue'), 'utf8')
     expect(sheet, '满位文案读 AUTO_REFORGE_MAX_TARGETS').toContain('目标已满(${AUTO_REFORGE_MAX_TARGETS})')
     expect(sheet, '不再手写目标上限').not.toContain('目标已满(3)')
+  })
+})
+
+/**
+ * 差额口径只有一份:强化与词条转移走同一个 twoPartShortfall。
+ *
+ * 这段算式原在 reforge 与 affixTransfer 里各写一遍(逐字相同)。两条路径都拿它决定
+ * 置灰、价签与拒因 —— 抄两份时若只改一处,同一种「两样都缺」会在两处给出不同的首选拒因,
+ * 而玩家看不出这是两个独立实现,只会觉得「强化说缺灵石、转移却说缺尘」。
+ */
+describe('两样差额 · 强化与词条转移同源', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('同样的余额与价格下,两个入口给出完全相同的差额', () => {
+    const resources = useResourcesStore()
+    const cases: Array<[number, number, number, number]> = [
+      // [灵石余额, 尘余额, 灵石价, 尘价]
+      [1000, 500, 100, 50],
+      [400, 500, 1000, 50],
+      [1000, 200, 100, 500],
+      [0, 0, 1000, 500],
+      [100, 50, 100, 50]
+    ]
+    for (const [stoneOwn, dustOwn, stoneCost, dustCost] of cases) {
+      resources.spiritStone = gn(stoneOwn)
+      resources.dust = dustOwn
+      const cost = { stone: gn(stoneCost), dust: dustCost }
+      const viaReforge = reforgeShortfall(cost)
+      const viaTransfer = transferShortfall({ ...cost, sealStone: null })
+      expect(toNum(viaTransfer.stone), `余额 ${stoneOwn} 时灵石差额分叉`).toBeCloseTo(toNum(viaReforge.stone), 6)
+      expect(viaTransfer.dust, `尘 ${dustOwn} 时尘差额分叉`).toBe(viaReforge.dust)
+      expect(viaTransfer.short, '首选拒因分叉').toBe(viaReforge.short)
+    }
+  })
+
+  it('两个入口都走纯函数,不各自重写一份', () => {
+    const resources = useResourcesStore()
+    resources.spiritStone = gn(300)
+    resources.dust = 100
+    const cost = { stone: gn(900), dust: 400 }
+    const pure = twoPartShortfall(cost, resources.spiritStone, resources.dust)
+    expect(toNum(reforgeShortfall(cost).stone)).toBe(toNum(pure.stone))
+    expect(toNum(transferShortfall({ ...cost, sealStone: null }).stone)).toBe(toNum(pure.stone))
   })
 })

@@ -223,6 +223,7 @@
       <input
         v-model="draft.name"
         maxlength="8"
+        aria-label="挑战书名"
         class="mt-2 w-full rounded-md border border-ink/20 bg-paper-deep/60 px-3 py-1.5 font-kai text-[13px] tracking-widest text-ink outline-none focus:border-cinnabar/50"
         placeholder="挑战书名"
       />
@@ -237,10 +238,10 @@
         </p>
         <p v-else class="text-[11px] text-cinnabar">{{ challengeVerdict.reason }}</p>
       </div>
-      <div class="mt-2 flex gap-2">
-        <button class="btn-ghost flex-1 !py-2 !text-[12px]" @click="doVerify">验 约</button>
+      <div class="mt-2 grid grid-cols-2 gap-2">
+        <button class="btn-ghost w-full !py-2 !text-[12px]" @click="doVerify">验 约</button>
         <button
-          class="btn-seal flex-1 !py-2 !text-[12px]"
+          class="btn-seal w-full !py-2 !text-[12px]"
           :disabled="!challengeVerdict?.ok || busy !== null || endgame.daoSource < CHALLENGE_ENTRY_COST"
           :title="challengeBlockText"
           @click="doUndertake"

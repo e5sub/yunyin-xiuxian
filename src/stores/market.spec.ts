@@ -677,3 +677,50 @@ describe('即时售材/售草结算精额守恒', () => {
     })
   })
 })
+
+describe('坊市 · 坏档格号', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('给定负数的格号,当 sanitize,则该格被夹回 0 号而非保留负数', () => {
+    /*
+     * `Math.max(0, Math.floor(rawIdx))` 是真守卫:去掉后负 idx 会成为货架实际格号,
+     * 而买入/寄卖都按 idx 定位格子 —— 负号会让定位落到不存在的下标上。
+     */
+    const m = useMarketStore()
+    m.$patch({ stock: [pillSlot(-3)], stockedAt: FAR })
+    m.sanitize()
+    expect(m.stock.length, '负号格不该被整格丢弃(它有合法内容)').toBe(1)
+    expect(m.stock[0]!.idx, '格号该夹回 0').toBe(0)
+    expect(m.stock[0]!.idx).toBeGreaterThanOrEqual(0)
+  })
+
+  it('给定小数的格号,当 sanitize,则取整', () => {
+    const m = useMarketStore()
+    m.$patch({ stock: [pillSlot(3.7)], stockedAt: FAR })
+    m.sanitize()
+    expect(m.stock[0]!.idx).toBe(3)
+  })
+})
+
+describe('坊市 · 坏档格号挤掉好货', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('给定坏档格号(-3)排在合法 0 号装备之前,当 sanitize,则保留原号合法的装备', () => {
+    /*
+     * 夹到 0 的坏行若排在前面,按「先到先得」会把真正的 0 号装备挤掉 ——
+     * 玩家看到装备凭空少一件、报价也对不上。认号时须让原号本就合法的那行优先。
+     */
+    const m = useMarketStore()
+    m.$patch({
+      stock: [
+        { kind: 'equipment', idx: -3, tier: 3, minQualityRank: 0, price: { m: 77, e: 0 }, sold: false },
+        { kind: 'equipment', idx: 0, tier: 5, minQualityRank: 0, price: { m: 999, e: 0 }, sold: false }
+      ],
+      stockedAt: FAR
+    })
+    m.sanitize()
+    const equip = (m.stock as { kind: string; idx: number; tier?: number }[]).filter(s => s.kind === 'equipment')
+    expect(equip.some(e => e.tier === 5), '原号合法的 5 阶装备不该被挤掉').toBe(true)
+    expect(equip.every(e => e.idx >= 0), '格号都该是非负').toBe(true)
+  })
+})

@@ -1,3 +1,4 @@
+import { EVENTS, FORTUNE_EVENTS } from '@/data/events'
 /** 历练公共写入边界 —— 会话/区域/事件/暂停顺延 */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -77,6 +78,40 @@ describe('历练公共写入边界', () => {
     expect(a.seenOnceEvents).toEqual([])
     a.markEventSeen('ft_sword_remnant')
     expect(a.seenOnceEvents).toEqual(['ft_sword_remnant'])
+  })
+
+  /**
+   * 事件记忆要有上界。
+   *
+   * 写入路径(markEventSeen)有 `eventDef(id)` 这道闸,读档路径原先只有去重 ——
+   * 手改存档能塞进任意多条,实测 10 万条后 $state 序列化出来 1.49MB,存档顶到配额。
+   * 上界取事件目录规模的两倍:够容纳「改名/下线旧档」的残留,又远小于恶意膨胀量级。
+   */
+  it('读档时事件记忆截到目录规模的两倍以内', () => {
+    const a = useAdventureStore()
+    ;(a as unknown as { seenOnceEvents: unknown }).seenOnceEvents = Array.from({ length: 100000 }, (_, i) => `evt_${i}`)
+    a.sanitize()
+    const cap = (EVENTS.length + FORTUNE_EVENTS.length) * 2
+    expect(a.seenOnceEvents.length, `读档后 ${a.seenOnceEvents.length} 条超了上界 ${cap}`).toBeLessThanOrEqual(cap)
+    expect(JSON.stringify(a.$state).length, '坏档把 state 撑爆了').toBeLessThan(5000)
+  })
+
+  /**
+   * unlocked / cleared 也要按区域目录过滤。
+   *
+   * 同函数里 revived 与 clearedAt 早就这么做了,只有这两个只做了去重 ——
+   * 手改存档塞 10 万条假 id 后 $state 到 1.98MB / 989KB。
+   * 这里可以安全过滤(不像事件记忆要兼容下线内容):区域 id 认得才能用。
+   */
+  it('读档时把认不得的区域 id 从 unlocked / cleared 里清掉', () => {
+    const a = useAdventureStore()
+    const fake = Array.from({ length: 100000 }, (_, i) => `fake_${i}`)
+    ;(a as unknown as { cleared: unknown }).cleared = fake
+    ;(a as unknown as { unlocked: unknown }).unlocked = fake
+    a.sanitize()
+    expect(a.cleared.length, '认不得的区域 id 不该留在 cleared').toBeLessThan(100)
+    expect(a.unlocked.length, '认不得的区域 id 不该留在 unlocked').toBeLessThan(100)
+    expect(JSON.stringify(a.$state).length, '坏档把 state 撑爆了').toBeLessThan(10000)
     expect(a.markNodeCleared('')).toBe(false)
     expect(a.mortalCleared).toEqual([])
   })
@@ -277,6 +312,39 @@ describe('战报数值 · 坏档量级', () => {
     expect(st).toBeDefined()
     expect(formatGN(st!.dealt)).not.toBe('0')
     expect(formatGN(st!.dealt)).not.toContain('e+')
+  })
+
+  /**
+   * enemyId 声明为 `string?`,此前靠 `...b` 原样带过来 —— 坏档塞个数字进来,
+   * 类型是否成立没人管。查表本身安全(BY_ID.get 返回 undefined),
+   * 但后面任何一处按字符串用它(如 startsWith、拼进 URL)都会当场炸。
+   */
+  it('战报的 enemyId 非字符串时按缺失处理,不留在状态里', () => {
+    const a = useAdventureStore()
+    for (const bad of [123, { x: 1 }, [1], true]) {
+      a.lastBattle = {
+        enemyName: '试敌',
+        enemyIcon: 'sword',
+        enemyId: bad,
+        result: { win: true, log: [] }
+      } as never
+      a.sanitize()
+      const got = (a.lastBattle as { enemyId?: unknown } | null)?.enemyId
+      expect(typeof got, `enemyId 塞 ${JSON.stringify(bad)} 后仍是 ${typeof got}`).not.toBe('number')
+      expect(got, `enemyId 塞 ${JSON.stringify(bad)} 后该按缺失处理`).toBeUndefined()
+    }
+  })
+
+  it('正常 enemyId 原样保留(修形非空转)', () => {
+    const a = useAdventureStore()
+    a.lastBattle = {
+      enemyName: '试敌',
+      enemyIcon: 'sword',
+      enemyId: 'e_wolf',
+      result: { win: true, log: [] }
+    } as never
+    a.sanitize()
+    expect((a.lastBattle as { enemyId?: string } | null)?.enemyId, '好档的 enemyId 不该被清掉').toBe('e_wolf')
   })
 
   it('形状坏的单项归零,不影响同侧其它项', () => {

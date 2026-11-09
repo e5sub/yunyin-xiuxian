@@ -17,7 +17,7 @@ import {
   storageKey,
   subscribeSaveWriteFailure
 } from './storage'
-import { readSaveText } from './crypto'
+import { encryptSave, readSaveText } from './crypto'
 
 interface Probe {
   disk: Map<string, string>
@@ -147,6 +147,102 @@ describe('存档写盘 · 省下的电不能拿存档换', () => {
  *   二 失败的分片留在队列里,下次刷盘重试;
  *   三 恢复后报一声并清掉警告。
  */
+/**
+ * 启动期只解一次:`preflightScan` 为了判坏档必须把每一片解密,而紧跟其后的 Pinia 水合
+ * 要用同一份东西 —— 不接上的话每片解密两遍。满包档(108 件装备)单片约 3ms、17 片,
+ * 两遍叠在同一个启动长任务里。
+ *
+ * 判据看的是**可观测的行为差异**,不数函数调用(ESM 的模块内绑定 spyOn 改不动):
+ * 缓存命中时 `storage.getItem` 返回的已是明文,水合读到它就不再进 AES;
+ * 未命中时返回的仍是磁盘密文(`U2FsdGVkX1` 开头),照常解密。
+ */
+describe('启动期 · 扫描与水合共用一次解密', () => {
+  const CIPHER_HEAD = 'U2FsdGVkX1'
+  /** 造一片真存档(磁盘上是密文) */
+  const put = (id: string, value: unknown): void => {
+    probe.disk.set(storageKey(id), encryptSave(JSON.stringify(value)))
+  }
+
+  it('扫描过的分片,水合读到的是明文 —— 不再解密', async () => {
+    const { preflightScan, persistConfig } = await import('./storage')
+    put('game', { x: 'g' })
+    put('player', { x: 'p' })
+    expect(preflightScan(), '两片都是好档,不该被隔离').toEqual([])
+
+    for (const id of ['game', 'player']) {
+      const cfg = persistConfig(id)
+      const raw = cfg.storage.getItem(cfg.key) as string
+      expect(raw.startsWith(CIPHER_HEAD), `${id} 片水合时还是密文 —— 说明又解了一遍`).toBe(false)
+      expect(cfg.serializer.deserialize(raw), `${id} 片的明文不对`).toEqual({ x: id === 'game' ? 'g' : 'p' })
+    }
+  })
+
+  it('没扫描过的分片仍是密文 —— 缓存只覆盖扫描到的那一段', async () => {
+    const { preflightScan, persistConfig } = await import('./storage')
+    put('game', { x: 'g' })
+    preflightScan()
+    // 扫描时还不存在,水合前才写进来
+    put('lore', { x: 'l' })
+    const cfg = persistConfig('lore')
+    const raw = cfg.storage.getItem(cfg.key) as string
+    expect(raw.startsWith(CIPHER_HEAD), '不在缓存里的分片必须回到磁盘密文,照常解密').toBe(true)
+    expect(cfg.serializer.deserialize(raw)).toEqual({ x: 'l' })
+  })
+
+  it('明文只留到第一次读取:同一片取两次,第二次回到密文', async () => {
+    const { preflightScan, persistConfig } = await import('./storage')
+    put('game', { x: 1 })
+    preflightScan()
+    const cfg = persistConfig('game')
+    const first = cfg.storage.getItem(cfg.key) as string
+    const second = cfg.storage.getItem(cfg.key) as string
+    expect(first.startsWith(CIPHER_HEAD), '第一次读到的该是扫描留下的明文').toBe(false)
+    expect(second, '第二次该回到磁盘上的密文').toBe(probe.disk.get(storageKey('game')))
+    expect(JSON.parse(first), '两条路径读出的明文必须一致').toEqual({ x: 1 })
+    expect(cfg.serializer.deserialize(second)).toEqual({ x: 1 })
+  })
+
+  /**
+   * 迁移写回必须作废扫描留下的明文。
+   *
+   * `migrateLocalSchema` 紧跟 `preflightScan` 跑,而它在真迁移时会**把新形态写回磁盘**。
+   * 若一次性明文缓存还是扫描时那份旧形态,水合就会把迁移结果原地撤销 ——
+   * 迁移看着跑了、回写也落了,读进去的却是旧结构。
+   * 故障注入:把 migrateLocalSchema 里那行作废删掉 → 本条红。
+   */
+  it('迁移写回的分片,水合读到的是迁移后的形态', async () => {
+    const { preflightScan, migrateLocalSchema, persistConfig } = await import('./storage')
+    // 旧形态:单数 equippedArtifact,没有 equippedArtifacts
+    put('inventory', { items: [], equippedArtifact: 'a_old' })
+    preflightScan()
+    migrateLocalSchema()
+    const cfg = persistConfig('inventory')
+    const raw = cfg.storage.getItem(cfg.key) as string
+    const seen = cfg.serializer.deserialize(raw) as Record<string, unknown>
+    expect(seen.equippedArtifacts, '水合读到的是扫描时的旧明文 —— 迁移被原地撤销了').toEqual(['a_old'])
+    expect(seen.equippedArtifact, '旧字段该已被迁移清掉').toBeUndefined()
+  })
+
+  it('坏档不进缓存:解不出的分片照旧被隔离', async () => {
+    const { preflightScan, persistConfig } = await import('./storage')
+    probe.disk.set(storageKey('player'), '这不是存档')
+    const corrupted = preflightScan()
+    expect(corrupted).toContain('player')
+    expect(persistConfig('player').storage.getItem(storageKey('player'))).toBeNull()
+  })
+
+  it('清档把缓存一起丢掉 —— 否则新存档会读到上一份的明文', async () => {
+    const { preflightScan, persistConfig, clearAllSave } = await import('./storage')
+    put('game', { x: 'old' })
+    preflightScan()
+    clearAllSave()
+    put('game', { x: 'new' })
+    const cfg = persistConfig('game')
+    const raw = cfg.storage.getItem(cfg.key) as string
+    expect(cfg.serializer.deserialize(raw), '清档没清掉一次性明文缓存').toEqual({ x: 'new' })
+  })
+})
+
 describe('存档写盘 · 失败不许静默', () => {
   /** 让 localStorage.setItem 按开关抛错(模拟容量满/被拒);allow(true) = 能写得进去 */
   function installJammedStorage(probe: Probe): { allow: (ok: boolean) => void } {

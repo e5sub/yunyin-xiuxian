@@ -61,6 +61,47 @@ describe('变异扫描 · 等价名单', () => {
     }
   })
 
+  /**
+   * 名单里的 text 必须是**变异扫描能产出的那个形状**。
+   *
+   * 上面那条只验「这段文字在源码里存在」—— 不够。变异扫描匹配的是正则捕获到的片段,
+   * 与源码原文未必等长:
+   *  · 守卫恒假的正则只捕到 `if (!x) return`,不含后面的返回值 ——
+   *    写 `if (!x) return null` 就永远命中不了,名单形同虚设
+   *  · 空判取反只把 `.length === 0)` 截下来,不含前面的池名
+   *
+   * 这类「文本对不上」不会报错,只会让该条静默失效 —— 正是审查点出来的第三条。
+   */
+  it('名单的 text 与变异扫描的匹配形状一致,不是源码原文的随手摘抄', () => {
+    const NORM = (t: string): string => t.replace(/\s+/g, ' ').trim()
+    /*
+     * 与 mutation-scan.mjs 的 PATTERNS 同步。脚本里那份是内部常量、测试 import 不到,
+     * 只能复刻;若将来改了正则,这里也要跟着改。
+     */
+    const PATTERNS: RegExp[] = [
+      /if \((![A-Za-z_$][\w$.]*(?:\([^)]*\))?)\) return/g,
+      /Math\.max\(0(?:\.\d+)?,\s*([^;()]+(?:\([^)]*\))?[^;()]*)\)/g,
+      /\.length === 0\)/g
+    ]
+    const produced = (src: string): Set<string> => {
+      const out = new Set<string>()
+      for (const re of PATTERNS) {
+        re.lastIndex = 0
+        for (const m of src.matchAll(re)) out.add(NORM(m[0]!))
+      }
+      return out
+    }
+    for (const e of equivalentEntries()) {
+      const src = readFileSync(resolve(ROOT, e.file), 'utf-8')
+      const shapes = produced(src)
+      expect(
+        shapes.has(NORM(e.text)),
+        `${e.file} 的条目「${e.text}」与变异扫描产出的形状对不上(扫描只会产出正则捕获的那一截),` +
+          `这条永远不会命中 —— 同一文件里可用的形状有:${[...shapes].slice(0, 4).join(' | ')}`
+      ).toBe(true)
+    }
+  })
+
   it('等价跳过不计入退出码,漏掉的必须计入', () => {
     // 退出条件只看 missed 与 infra —— 等价的是缺陷吗?不是,但它也不该掩盖漏
     const tail = SRC.slice(SRC.indexOf('if (skipped.length > 0)'))
@@ -74,5 +115,88 @@ describe('变异扫描 · 等价名单', () => {
     expect(SRC, '应该用等价判定函数').toContain('function equivalentOf')
     expect(SRC, '匹配时该归一化空白').toContain('replace(/\\s+/g, \' \')')
     expect(SRC, '不该按行号匹配').not.toMatch(/EQUIVALENT\.find\([^)]*\.line/)
+  })
+})
+
+/**
+ * 分片轮转:CI 默认 limit=40,而全库有四百多个候选点。
+ *
+ * 定长取样时每天扫的都是同一批 —— CI 天天跑也只覆盖 8.8%,其余永远轮不到。
+ * 现在按日期选分片,同一天内稳定、跨天推进,ceil(总数/LIMIT) 天覆盖全部。
+ */
+describe('变异扫描 · 分片轮转', () => {
+  it('给定扫描脚本,当读它的分片逻辑,则确实按日期选片且显式 limit 不受日期影响', () => {
+    const src = readFileSync(resolve(ROOT, 'scripts/mutation-scan.mjs'), 'utf-8')
+    expect(src, '分片数该由「总数 / LIMIT」算出').toMatch(/shardCount\s*=\s*Math\.max\(1,\s*Math\.ceil\(all\.length\s*\/\s*LIMIT\)\)/)
+    expect(src, '分片下标该由 advance 取模算出').toMatch(/advance\s*%\s*shardCount/)
+    expect(src, 'CI 里有单调递增的 run number 时该优先用它').toMatch(/process\.env\.GITHUB_RUN_NUMBER/)
+    expect(src, '显式 --limit 时不该被推进依据干扰').toMatch(/explicit\s*\?\s*0\s*:\s*advance/)
+  })
+
+  it('给定 455 个候选点与上限 40,当用源码里的切片表达式逐片取样,则 12 片无重无漏且相邻天不重叠', () => {
+    /*
+     * 不能在这里自己重写一遍分片算法 —— 那验的是复制品,源码里的 all.slice(...) 改了也照样绿。
+     * 改为从源码抠出那一行表达式,用 new Function 求值,验的才是真在跑的逻辑。
+     */
+    const src = readFileSync(resolve(ROOT, 'scripts/mutation-scan.mjs'), 'utf-8')
+    const sliceLine = /found\.push\(\.\.\.(all\.slice\([^)]*\))\)/.exec(src)?.[1]
+    expect(sliceLine, '源码里找不到分片取样的那一行').toBeTruthy()
+    const pick = (all: number[], LIMIT: number, shard: number): number[] =>
+      new Function('all', 'LIMIT', 'shard', `return ${sliceLine}`)(all, LIMIT, shard) as number[]
+
+    const total = 455
+    const LIMIT = 40
+    const all = Array.from({ length: total }, (_, i) => i)
+    const shardCount = Math.max(1, Math.ceil(all.length / LIMIT))
+    expect(shardCount, '455 个点按 40 一片该是 12 天一轮').toBe(12)
+
+    const flat: number[] = []
+    for (let d = 0; d < shardCount; d += 1) flat.push(...pick(all, LIMIT, d))
+    expect(flat.length, '全部分片拼起来与总数不符').toBe(total)
+    expect(new Set(flat).size, '分片之间有重复').toBe(total)
+
+    // 相邻两片不重叠,且每片恰好 LIMIT 个(末片可以是余数)
+    for (let d = 0; d + 1 < shardCount; d += 1) {
+      const a = new Set(pick(all, LIMIT, d))
+      expect(pick(all, LIMIT, d + 1).some(x => a.has(x)), `第 ${d} 与 ${d + 1} 片重叠了`).toBe(false)
+      expect(a.size).toBe(LIMIT)
+    }
+  })
+})
+
+/**
+ * 退出码的两种语义。
+ *
+ * 分片是抽样:每天换一片,每天都会碰到此前没扫过的模块。若一律以退出码阻断,
+ * 任何 PR 都可能因为「今天轮到了某片」而被卡住,而它改的代码跟那片毫无关系。
+ * 显式 --limit 是「我在复现某一批」,那时漏了必须红。设施故障一律计入。
+ */
+describe('变异扫描 · 退出码语义', () => {
+  it('给定扫描脚本,当读它的退出码判定,则只有设施故障与显式 limit 下的遗漏会阻断', () => {
+    const src = readFileSync(resolve(ROOT, 'scripts/mutation-scan.mjs'), 'utf-8')
+    const tail = src.slice(src.indexOf('if (infra.length > 0) process.exitCode = 1'))
+    expect(tail, '设施故障必须计入退出码').toContain('infra.length > 0')
+    expect(tail, '显式 limit 下的遗漏必须计入').toMatch(/explicit\s*&&\s*missed\.length\s*>\s*0/)
+    expect(tail, '默认分片模式的遗漏不该阻断(否则每天换个分片就会卡住无关 PR)').not.toMatch(
+      /^if \(missed\.length > 0 \|\| infra\.length > 0\)/m
+    )
+  })
+})
+
+/**
+ * 关联 spec 过多的模块不参与扫描。
+ *
+ * player / resources 这类核心 store 被上百个 spec 引用,查一个变异点就要起上百次 vitest ——
+ * 实测第 27 片跑了 10 分钟还没完,直接顶死 job 的 15 分钟超时。
+ * 这种模块的覆盖率本来就靠全量 test 兜着。
+ */
+describe('变异扫描 · 关联 spec 上限', () => {
+  it('给定扫描脚本,当读它的收集逻辑,则有关联 spec 上限且默认 limit 不超过 10', () => {
+    const src = readFileSync(resolve(ROOT, 'scripts/mutation-scan.mjs'), 'utf-8')
+    expect(src, '该有 fanout 上限常量').toMatch(/SPEC_FANOUT_CAP\s*=\s*\d+/)
+    expect(src, '超过上限的模块该被跳过并记账').toMatch(/specs\.length\s*>\s*SPEC_FANOUT_CAP/)
+    expect(src, '默认 limit 该 <= 10(实测 10 点约 1.5 分钟,15 点要 3.8 分钟)').toMatch(
+      /return Number\.isFinite\(n\) && n >= 1 \? Math\.floor\(n\) : 10/
+    )
   })
 })

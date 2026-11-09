@@ -22,8 +22,17 @@
           <span class="font-kai shrink-0" :class="s.active ? 'text-jade' : 'text-ink-soft'">{{ s.def.name }}</span>
           <span class="tabular shrink-0" :class="s.active ? 'text-jade' : 'text-ink-faint'">{{ s.count }}/{{ s.def.required }}</span>
           <span class="min-w-0 grow text-[10px] leading-relaxed text-ink-faint">{{ s.def.effectDesc }}</span>
-          <!-- 触控靶面:负外边距配正内边距,盒高 31px 过 layout-check(≥28),流中仍占 15px 行高;同页收纳/分解同法 -->
-          <button class="-my-2 shrink-0 rounded px-1.5 py-2 text-[10px] text-azure ring-1 ring-inset ring-azure/30 active:opacity-60" @click="onEquipSet(s.def.id)">
+          <!--
+            触控靶面:负外边距配正内边距,盒高 31px 过 layout-check(≥28),流中仍占 15px 行高;同页收纳/分解同法。
+            无可换时置灰,不让人点一颗什么都不会发生的钮(AGENTS.md「禁用即给原因」);
+            置灰态的字色自己写:btn-ghost 的禁用底色这里没有,继承下来会是可点态的 azure。
+            禁用态只压字色不压透明度 —— 那行「无可换」正是拒因,压到 60% 就读不出。
+          -->
+          <button
+            class="-my-2 shrink-0 rounded px-1 py-2 text-[10px] text-azure ring-1 ring-inset ring-azure/30 active:opacity-60 disabled:text-ink-faint"
+            :disabled="s.preview <= 0"
+            @click="onEquipSet(s.def.id)"
+          >
             穿齐 →({{ s.preview > 0 ? `换 ${s.preview}` : '无可换' }})
           </button>
         </p>
@@ -228,22 +237,52 @@
         </p>
       </template>
       <template #footer>
+        <!--
+          「服 用」在增益丹的弹窗里是**唯一**一颗(连服只给非增益丹)——
+          而它此前待在 grid-cols-2 里,只占左半栏,右边空着一大块。
+          故只有一颗时让它跨满两栏。
+        -->
         <div class="grid grid-cols-2 gap-2">
           <button
             class="btn-seal"
+            :class="currentPill?.def?.kind === 'buff' ? 'col-span-2' : ''"
             :disabled="currentPillOverflow === 'full'"
             @click="onUsePill()"
           >
             服 用
           </button>
-          <!-- 增益丹每次只服 1 枚(药力顶格),不摆连服 -->
+          <!--
+            增益丹每次只服 1 枚(药力顶格),不摆连服。
+          -->
           <button
             v-if="(currentPill?.count ?? 0) >= 2 && currentPill?.def?.kind !== 'buff'"
             class="btn-ghost"
             @click="onUsePillBatch()"
           >
-            连服 ×{{ Math.min(5, currentPill?.count ?? 0) }}
+            连服 ×{{ pillBatchEffective }}
           </button>
+        </div>
+        <!--
+          服用数量:非增益丹才给。上限是手上的存量,由 usePillBatch 吃到没有为止。
+
+          原先这里写死 5(见 264d1278:那次只把按钮文案从「×5」改成真数,5 本身没人论证过),
+          而洞府连升 / 灵脉连投 / 熔炉连凝都是「用尽手头可负担的量」—— 全站只有连服不遵循这一条。
+          吃丹不可逆,故不直接给「全部服下」,而是让玩家自己填:默认 5,可改到存量。
+        -->
+        <div
+          v-if="(currentPill?.count ?? 0) >= 2 && currentPill?.def?.kind !== 'buff'"
+          class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5"
+        >
+          <span class="shrink-0 whitespace-nowrap text-[10px] text-ink-faint">一次服</span>
+          <input
+            v-model.number="pillBatchCount"
+            type="number"
+            :min="1"
+            :max="currentPill?.count ?? 1"
+            class="h-7 w-16 shrink-0 rounded border border-ink/15 bg-paper/70 px-1 text-[11px] tabular"
+            aria-label="服用数量"
+          />
+          <span class="shrink-0 whitespace-nowrap text-[10px] text-ink-faint tabular">枚 · 存 {{ currentPill?.count ?? 0 }}</span>
         </div>
       </template>
     </BaseModal>
@@ -298,7 +337,7 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, ref } from 'vue'
+  import { computed, ref, watch } from 'vue'
   import { useRoute } from 'vue-router'
   import { useInventoryStore } from '@/stores/inventory'
   import { useResourcesStore } from '@/stores/resources'
@@ -538,6 +577,35 @@
   const currentMaterial = computed(() => materialGrid.value.find(m => m.key === materialDetail.value) ?? null)
 
   const pillDetail = ref<string | null>(null)
+  /**
+   * 一次连服几枚:默认 5,可改到手上存量。
+   *
+   * 换一种丹药或重新打开详情时回到默认值 —— 上一次填的 500 不该留给下一种丹,
+   * 那是把「这次想多吃」误带到「下次也想多吃」。
+   */
+  const pillBatchCount = ref(5)
+  watch(pillDetail, () => {
+    pillBatchCount.value = 5
+  })
+  /**
+   * 这一下真会吃几枚:输入值钳在 [1, 存量]。
+   *
+   * 按钮文案与执行读同一份 —— 界面说的与做的必须同源。
+   * 只钳在 onUsePillBatch 里不够:吃完一批后存量变少而输入框还留着旧值,
+   * 按钮会挂着「连服 ×50」而实际只吃 10 枚(264d1278 修的就是同类问题)。
+   */
+  const pillBatchEffective = computed(() => {
+    const owned = currentPill.value?.count ?? 0
+    return Math.max(1, Math.min(owned, Math.floor(pillBatchCount.value) || 1))
+  })
+  // 存量变少(吃过了/换了存档)时把输入值收进上限,让输入框显示的数就是会吃的数
+  watch(
+    () => inventory.pills[pillDetail.value ?? ''] ?? 0,
+    owned => {
+      if (owned > 0 && pillBatchCount.value > owned) pillBatchCount.value = owned
+    },
+    { flush: 'post' }
+  )
   const currentPill = computed(() => (pillDetail.value ? (pillRows.value.find(r => r.def?.id === pillDetail.value) ?? null) : null))
   /** 当前查看的丹药的质感层(最上档才有);道品 rank 9 走同一入口 */
   /** 当前查看的丹药的质感层(最上档才有);行上已算好,这里直接取 */
@@ -574,7 +642,8 @@
   function onUsePillBatch(): void {
     const id = pillDetail.value
     if (!id) return
-    usePillBatch(id, 5)
+    // 与按钮文案读同一份钳制结果,不各算一次
+    usePillBatch(id, pillBatchEffective.value)
     if (!pillRows.value.some(r => r.def?.id === id)) pillDetail.value = null
   }
 

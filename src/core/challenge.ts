@@ -3,14 +3,21 @@
  * 难度实测、有解校验、奖励定价全由模拟裁判定,堵死「最低难度最高奖励」。
  */
 import type { CombatantSnap, CombatRules } from '@/types'
-import { rng } from '@/utils/random'
-import { mulberry32, RandomService } from '@/utils/random'
+import { rateText } from '@/ui/rateRank'
+import { mulberry32, RandomService, rng } from '@/utils/random'
 import { celestialWorldDef } from '@/data/endgame'
 import { mutatorDef } from '@/data/mutators'
 import { pactDef } from '@/data/pacts'
 import { BUILD_PROFILES, buildSnap } from './buildSim'
-import { SIM_REFERENCE } from './celestialSim'
-import { celestialFoeCaliber, mergeRules, runGauntlet, worldFoeSnap, NO_JUDGEMENT, type CelestialJudgement } from './gauntlet'
+import {
+  celestialFoeCaliber,
+  mergeRules,
+  runGauntlet,
+  worldFoeLineup,
+  NO_JUDGEMENT,
+  SIM_REFERENCE,
+  type CelestialJudgement
+} from './gauntlet'
 import { buildPlayerSnap } from './playerSnap'
 import { currentDaoRules, endgameUnlocked, recordMark, type ExpeditionResult } from './endgameService'
 import { recordMilestone } from './identity'
@@ -58,10 +65,7 @@ function draftFoes(
 ): CombatantSnap[] {
   const world = celestialWorldDef(worldId)
   if (!world) return []
-  const foes: CombatantSnap[] = []
-  for (let i = 0; i < world.fights - 1; i += 1) foes.push(worldFoeSnap(world.foes[i % world.foes.length]!, ref, 1, judgement))
-  foes.push(worldFoeSnap(world.guardian, ref, 1, judgement))
-  return foes
+  return worldFoeLineup(world, ref, judgement)
 }
 
 /**
@@ -74,7 +78,8 @@ export function verifyChallenge(draft: ChallengeDraft): ChallengeVerdict | null 
   const rules = draftRules(draft)
   const foes = draftFoes(draft.worldId, SIM_REFERENCE)
   const pact = draft.pactId ? pactDef(draft.pactId) : undefined
-  const opts = pact?.special === 'endHp80' ? { minHpAfterFight: 0.8 } : {}
+  // 循环内只读 .cleared,不读战报
+  const opts = { ...(pact?.special === 'endHp80' ? { minHpAfterFight: 0.8 } : {}), buildLog: false }
   const rates = BUILD_PROFILES.map((p, i) => {
     const seeded = new RandomService(mulberry32(510000 + i * 61 + draft.mutatorIds.length * 7 + (draft.pactId?.length ?? 0)))
     let clears = 0
@@ -85,7 +90,15 @@ export function verifyChallenge(draft: ChallengeDraft): ChallengeVerdict | null 
   }).sort((a, b) => b - a)
   const best = rates[0]!
   const viable = rates.filter(r => r >= 0.35).length
-  const difficulty = best >= 0.85 ? '闲庭信步' : best >= 0.6 ? '略有凶险' : best >= 0.4 ? '凶险' : '九死一生'
+  /*
+   * 档位说法取 ui/rateRank —— 与远征(expedition.ts)、构筑对照(compare.ts)、
+   * 换装推演(lab.ts)同一份阈值与措辞。
+   *
+   * 这里原先内联了一套自定义说法(闲庭信步 / 略有凶险 / 凶险),阈值与 rateRank 完全相同,
+   * 只是措辞不同 —— 而两者都在天界页面上:「远征」tab 说「稳操胜券」,
+   * 「试炼」tab 说「闲庭信步」,玩家会把它们当成两个不同的量。
+   */
+  const difficulty = rateText(best)
   if (best < 0.15) {
     return { ok: false, reason: '近乎无解', difficulty, viable, reward: 0 }
   }

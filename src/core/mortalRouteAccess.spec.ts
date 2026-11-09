@@ -6,6 +6,7 @@
  */
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { skeletonOf } from './mortalIdentity'
 import { createPinia, setActivePinia } from 'pinia'
 import { advanceRoute, canEnterNode, canEnterRegion, ensureMortalWorld, entryBlockReason, isNodeCleared, rerollMortalWorld } from './mortalWorldService'
@@ -24,6 +25,21 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+})
+
+describe('凡界路线 · 尚未凝出本世', () => {
+  it('mortalWorld 为 null 时问可达性:答否,不抛错', () => {
+    /*
+     * `if (!w) return false` 是真守卫:去掉后 `w.chain` 读 null 上的属性直接抛 TypeError。
+     * 这时候界面确实可能问 —— mortalWorld 由 reroll 时才凝,而路线页/按钮在凝出之前就渲染了。
+     */
+    const adventure = useAdventureStore()
+    adventure.mortalWorld = null
+    expect(() => canEnterNode('any_node')).not.toThrow()
+    expect(canEnterNode('any_node')).toBe(false)
+    expect(() => canEnterRegion('any_region')).not.toThrow()
+    expect(canEnterRegion('any_region')).toBe(false)
+  })
 })
 
 /** 从头走完整条路线,返回每一步的可达性读数 */
@@ -467,5 +483,48 @@ describe('本世之界 · 跨世去重真的接上了历史', () => {
     expect(rebuilt.seed).toBe(w1.seed)
     expect(rebuilt.chain.length).toBe(w1.chain.length)
     expect(skeletonOf(rebuilt)).toBe(skeletonOf(w1))
+  })
+})
+
+/**
+ * 凝界不许压在建页那一帧上。
+ *
+ * 凝一界要试 3~9 个种子,每个候选跑 6 构筑 × 8 次 × 5 段的战斗审计 ——
+ * 实测 112~468ms。原先它写在 `world` 那个 computed 里同步跑,进页时主线程直接卡这么久
+ * (实测首帧 168~272ms,期间白屏无任何反馈)。
+ *
+ * 现改为:computed 只读 store 里已凝好的世界,凝界挪到挂载之后单独一拍,
+ * 期间页面先渲染「凝界中」。实测骨架 28~55ms 即可见,世界在 182~404ms 内就绪。
+ *
+ * 故障注入:把 `ensureMortalWorld()` 写回 computed → 首条红。
+ */
+describe('凝界 · 不阻塞建页', () => {
+  const VIEW = readFileSync(resolve(__dirname, '../views/MortalWorldView.vue'), 'utf-8')
+
+  it('computed 只读已凝好的世界,不在里面现场生成', () => {
+    const start = VIEW.indexOf('const view = computed(')
+    expect(start, '找不到 view 这个 computed,判据会假绿').toBeGreaterThan(0)
+    const end = VIEW.indexOf('})', start)
+    const body = VIEW.slice(start, end)
+    expect(body, 'computed 里又在现场凝界 —— 进页会卡这么久').not.toContain('ensureMortalWorld')
+    expect(body, 'computed 该只读 store', ).toContain('adventure.mortalWorld')
+  })
+
+  it('凝界改在挂载之后跑,且先让「凝界中」画出来', () => {
+    expect(VIEW, '凝界该挪到 onMounted').toMatch(/onMounted\(async \(\) => \{/)
+    expect(VIEW, '凝界前要先让状态真的画出来').toContain('requestAnimationFrame')
+    // 模板里要有「凝界中」这一档,且与「此世未成」分开
+    expect(VIEW, '生成期间要有可读状态').toContain('凝界中')
+    expect(VIEW, '「此世未成」仍是生成失败那一档,不该被挪作他用').toContain('此世未成')
+    const tpl = VIEW.slice(0, VIEW.lastIndexOf('</template>'))
+    expect(tpl, '凝界中该排在「此世未成」之前 —— 否则生成期间显示的是「未成」').toMatch(
+      /凝界中[\s\S]*此世未成/
+    )
+  })
+
+  it('已经凝好过就不再重复凝', () => {
+    const m = /onMounted\(async \(\) => \{([\s\S]*?)\n  \}\)/.exec(VIEW)
+    expect(m, '找不到挂载钩子,判据会假绿').not.toBeNull()
+    expect(m![1], '挂载时该先看 store 里有没有').toContain('adventure.mortalWorld')
   })
 })

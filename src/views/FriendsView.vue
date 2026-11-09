@@ -29,6 +29,7 @@
       <div class="flex gap-2">
         <input
           v-model.trim="draft"
+          aria-label="聊天内容"
           maxlength="120"
           placeholder="说点什么"
           class="flex-1 rounded-lg border border-ink/15 bg-paper-deep/60 px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:border-cinnabar/60 focus:outline-none"
@@ -44,6 +45,7 @@
       <div class="card-ink flex gap-2 px-3 py-3">
         <input
           v-model.trim="friendName"
+          aria-label="道号"
           maxlength="12"
           placeholder="道号"
           class="flex-1 rounded-lg border border-ink/15 bg-paper-deep/60 px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint focus:border-cinnabar/60 focus:outline-none"
@@ -88,7 +90,7 @@
 
     <BaseModal :open="duelOpen" title="切磋" @close="duelOpen = false">
       <p v-if="duelResult" class="text-[13px] leading-relaxed text-ink-soft">
-        {{ duelResult.winner === 'me' ? '胜' : '负' }} · {{ duelResult.rounds }}回合
+        {{ duelResult.winner === 'me' ? '胜' : '负' }} · {{ duelResult.rounds }} 回合
       </p>
       <div v-if="duelResult" class="mt-3 max-h-60 space-y-1 overflow-y-auto rounded-md bg-paper-deep/60 px-3 py-2">
         <p v-for="(line, i) in duelResult.log" :key="i" class="text-[11px] leading-relaxed text-ink-faint">{{ line }}</p>

@@ -67,7 +67,12 @@
             两钮放不下时折成两行;钮内两段各自不拆,钮窄时上下叠(不叠会被压成逐字竖排)。
           -->
           <div class="flex basis-full flex-wrap items-center justify-end gap-1.5">
-            <button class="btn-ghost flex-wrap whitespace-normal !px-2.5 !py-1.5 !text-[11px]" :disabled="!canInvest(row.def.id)" @click="doInvest(row.def.id)">
+            <!--
+              两枚并排,高度须一致。原先「投一点」是 !py-1.5 + 11px、「改立主脉」是 !py-2 + 10px
+              —— 同一行量出来 31px 与 33px(实测 390 宽),点一下两枚就走齐不齐。
+              统一到 !py-2 + !text-[11px];正文各自 nowrap 不拆的老行为保留。
+            -->
+            <button class="btn-ghost flex-wrap whitespace-normal !px-2.5 !py-2 !text-[11px]" :disabled="!canInvest(row.def.id)" @click="doInvest(row.def.id)">
               <template v-if="canInvest(row.def.id)">
                 <span class="whitespace-nowrap">投一点 ·</span>
                 <span class="whitespace-nowrap">{{ formatGN(investCost) }} 石</span>
@@ -76,7 +81,7 @@
             </button>
             <button
               v-if="canSwitchTo(row.def.id)"
-              class="btn-ghost flex-wrap !px-2.5 !py-2 !text-[10px]"
+              class="btn-ghost flex-wrap !px-2.5 !py-2 !text-[11px]"
               :disabled="switchShort"
               :aria-label="switchLabel(row.def.id)"
               :title="switchShort ? `灵石尚差 ${formatGap(switchGap)}` : undefined"
@@ -93,21 +98,25 @@
           连投行:总账与群批同一条式子。
           flex-wrap + 文本保底宽不可去:否则 flex-1 文本被 shrink-0 双钮压成 0 宽竖排(同建筑连升)。
         -->
-        <div v-if="row.plan.points >= 2" class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md border border-ink/10 bg-paper-deep/50 px-2.5 py-2">
-          <template v-if="batchArm !== row.def.id">
-            <p class="min-w-[5rem] flex-1 text-[10px] leading-snug text-ink-soft">
-              连投至 <span class="font-kai text-[11px] text-cinnabar">第 {{ row.level + row.plan.points }} 点</span>
-              <span class="mt-0.5 block text-[9px] text-ink-faint tabular">共耗 灵石 {{ formatGN(row.plan.stone) }}</span>
-            </p>
-            <button class="btn-ghost shrink-0 !px-3 !py-2 !text-[11px]" @click="batchArm = row.def.id">连 投</button>
-          </template>
-          <template v-else>
-            <p class="min-w-[5rem] flex-1 text-[10px] leading-snug text-ink-soft">
-              连投 {{ row.plan.points }} 点 · 灵石 {{ formatGN(row.plan.stone) }}
-            </p>
-            <button class="btn-ghost shrink-0 !px-2.5 !py-2 !text-[11px]" @click="batchArm = null">再想想</button>
-            <button class="btn-seal shrink-0 !px-2.5 !py-2 !text-[11px]" @click="runBatch(row.def.id)">连 投</button>
-          </template>
+        <div v-if="row.plan.points >= 2" class="mt-2 rounded-md border border-ink/10 bg-paper-deep/50 px-2.5 py-2">
+          <!-- 正文两态同一段、钮组自成一行:见 BuildingCard 的连升行(同一种跳动) -->
+          <p class="min-w-[5rem] flex-1 text-[10px] leading-snug text-ink-soft">
+            连投至 <span class="font-kai text-[11px] text-cinnabar">第 {{ row.level + row.plan.points }} 点</span>
+            <span class="mt-0.5 block text-[9px] text-ink-faint tabular">共耗 灵石 {{ formatGN(row.plan.stone) }}</span>
+          </p>
+          <!--
+            正文两态同一段、钮组自成一行:见 BuildingCard 的连升行(同一种跳动)。
+            钮组整段右对齐,两态都是一行高 —— 不跟着正文挤,就不会因为多一枚钮而折行撑高。
+          -->
+          <div class="flex w-full shrink-0 justify-end gap-1.5">
+            <button v-if="batchArm === row.def.id" class="btn-ghost shrink-0 !px-2.5 !py-2 !text-[11px]" @click="batchArm = null">再想想</button>
+            <button
+              v-if="batchArm === row.def.id"
+              class="btn-seal shrink-0 !px-2.5 !py-2 !text-[11px]"
+              @click="runBatch(row.def.id)"
+            >连 投</button>
+            <button v-else class="btn-ghost shrink-0 !px-3 !py-2 !text-[11px]" @click="batchArm = row.def.id">连 投</button>
+          </div>
         </div>
 
         <div v-if="switchArm === row.def.id" class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md border border-ink/10 bg-paper-deep/50 px-2.5 py-2">

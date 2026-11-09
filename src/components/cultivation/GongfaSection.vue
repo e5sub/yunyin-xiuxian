@@ -14,20 +14,28 @@
         </p>
       </div>
       <!-- 每日限 10 次而灵石常够几十次:一枚一枚点十次没有意义,故给一次连兑 -->
+      <!--
+        chip-ink 自带的上下内边距只有 2px,只写 !text-[10px] 时盒高 21px ——
+        低于全站 28px 的触控下限(layout-check 与 aria-check 量的都是这条线)。
+        补 min-h-[28px]:兑一次与连兑都是要连点的钮,手指偏一点就落空。
+      -->
       <span class="flex shrink-0 items-center gap-1.5">
+        <input
+          v-if="player.wudaoExchangeAffordable > 1"
+          v-model.number="exchangeCount"
+          type="number"
+          :min="1"
+          :max="player.wudaoExchangeAffordable"
+          class="h-7 w-12 shrink-0 rounded border border-ink/15 bg-paper/70 px-1 text-[10px] tabular"
+          aria-label="兑换次数"
+          :title="`最多 ${player.wudaoExchangeAffordable} 次`"
+        />
         <button
-          class="chip-ink shrink-0 !text-[10px]"
+          class="chip-ink min-h-[28px] shrink-0 !text-[10px]"
           :disabled="!player.canExchangeWudao"
-          @click="doExchange"
+          @click="doExchangeBatch"
         >
-          {{ player.canExchangeWudao ? '兑换' : exchangeBlockedText }}
-        </button>
-        <button
-          v-if="player.canExchangeWudao && player.wudaoExchangeAffordable > 1"
-          class="chip-ink shrink-0 !text-[10px]"
-          @click="doExchangeAll"
-        >
-          连兑 {{ player.wudaoExchangeAffordable }}
+          {{ player.canExchangeWudao ? `兑换${exchangeEffective > 1 ? ` ×${exchangeEffective}` : ''}` : exchangeBlockedText }}
         </button>
       </span>
     </div>
@@ -139,10 +147,17 @@
             class="grid h-8 w-8 shrink-0 place-items-center rounded-md font-kai text-[13px]"
             :class="gongfaCatSeal(row.def.type)"
           >{{ sealOf(row.def.type) }}</span>
+          <!--
+            功法名会被 truncate 掐掉:320px 下这一格只剩 55px,而「太玄引气诀」要 65px。
+            名字是这一行唯一的身份信息(层数刻度、品阶色都是副属性),截成「太玄引…」就分不清是哪门。
+            补 title 给悬停即可 —— 文本本身就在 DOM 里,读屏读得到,不需要 aria-label
+            (而且裸 span 挂 aria-label 会被严格的实现丢掉,见 uiLayering.spec)。
+          -->
           <span
             class="min-w-0 grow truncate font-kai text-[13px]"
             :class="{ 'q-plaque': row.aura.plaque }"
             :style="{ color: qualityTextColor(row.def.quality) }"
+            :title="row.def.name"
           >{{ row.def.name }}</span>
           <!--
             层数刻度:各功法上限不同(密法 3 层、主辅 9 层),「第 5 层」在一门里是过半、
@@ -410,22 +425,19 @@
     return '未装配'
   }
 
-  function doExchange(): void {
-    const ok = player.exchangeStoneForWudao()
-    ui.toast(
-      ok
-        ? exchangeOkToast(WUDAO_EXCHANGE_GAIN)
-        : exchangeFailText(
-            exchangeState.value.lockedByRealm,
-            exchangeState.value.dailyFull,
-            formatGap(exchangeState.value.stoneShort)
-          ),
-      ok ? 'success' : 'warn'
-    )
-  }
-  /** 连兑:可兑次数由 store 现算,不在这里重算一遍 */
-  function doExchangeAll(): void {
-    const done = player.exchangeStoneForWudaoBatch()
+  /** 用户想兑几次;钳到 [1, 可兑次数] —— 手输 0/负数/超量都修回合法值 */
+  const exchangeCount = ref(1)
+  const exchangeEffective = computed(() =>
+    Math.max(1, Math.min(player.wudaoExchangeAffordable || 1, Math.floor(exchangeCount.value) || 1))
+  )
+  /**
+   * 按选中次数兑换。
+   *
+   * 原先只有「兑换」与「连兑 N」两颗钮:想兑 3 次的玩家只能点三次。
+   * 而 store 的 exchangeStoneForWudaoBatch 本来就收 n,只是界面没暴露。
+   */
+  function doExchangeBatch(): void {
+    const done = player.exchangeStoneForWudaoBatch(exchangeEffective.value)
     if (done <= 0) {
       ui.toast(
         exchangeFailText(
@@ -437,6 +449,8 @@
       )
       return
     }
+    // 兑成功就把次数复位,免得下次打开还停在上次的大数上
+    exchangeCount.value = 1
     ui.toast(exchangeOkToast(WUDAO_EXCHANGE_GAIN * done), 'success')
   }
 </script>

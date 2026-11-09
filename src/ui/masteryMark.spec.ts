@@ -139,8 +139,8 @@ describe('满级标记 · 玩家挣来的状态要有形状', () => {
 
     // 装备详情:按钮常驻,代价为 null 时禁用
     expect(DETAIL, '装备强化钮不该写 v-if="upQuote"').not.toMatch(/<button[^>]*\bv-if="upQuote"/)
-    expect(DETAIL, '装备满级时按钮禁用').toContain(':disabled="!upQuote || upShort !== null"')
-    expect(DETAIL, '装备满级时按钮写短状态').toContain("upQuote ? upLabel : '已至上限'")
+    expect(DETAIL, '装备满级时按钮禁用').toContain(':disabled="upCost ? upShort !== null : true"')
+    expect(DETAIL, '装备满级时按钮写短状态').toContain("!upCost ? '已至上限' : '强 化'")
 
     // 强化面板:整块不整块消失,留一条状态行
     expect(PANEL, '强化面板满级时应有状态行').toContain('v-else-if="inst && !quote"')

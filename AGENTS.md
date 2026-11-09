@@ -61,6 +61,10 @@ tsconfig paths `@/* → ./src/*`，开启 `strict` + `noUncheckedIndexedAccess` 
 - `bun run layout-check` — 构建 + `node scripts/layout-check.mjs`（**仅本地**，已从 CI 移除；Windows 用 `node` 而非 bun，耗时约 10 分钟）
 - `bun run offline-check` — 构建 + SW 离线自检
 - `bun run treasure-check` / `world-check` / `orb-check` — 构建 + 真浏览器验形制（得宝仪典 / 界域印与飞升跃升 / 法球界域形态）；三者都走后期存档夹具，前期档看不到顶档之物、四界与四态
+- `bun run detail-check` — `scripts/detail-geometry.mjs`：二步确认的几何实测，五处场景逐一点前后量真实宽高（宽度档 320/340/360/375/390/414/430 七档 + **亮色主题两档**，不只测端点 —— 「重铸钮忽大忽小」本就是宽度敏感问题）—— 装备详情页脚（重铸/分解，含付不起档）、器魂散置行（含 390）、洞府「连升至」段（含 390）、构筑快照行（含 390）、灵脉连投段（弹窗内）；钮、行、段都不许变形，底行也不许折行。另挂**后期档**（大境界 18）扫十页的触控下限 ≥28px —— `aria-check` 挂默认前期档，悟道兑换/洞府灵脉/道童那些整块不渲染，量不到；再量两处**异常路径**的 UI：坏档提示里那颗「知道了」（塞非法分片触发 preflightScan）与名额满时的「收道童」拒因（填满四个道童，量钮面写没写「门中已满」、两态钮高是否一致）—— 巡页与 aria-check 拿好人存档，这两处永远不出现
+- `bun run modal-check` — `scripts/modal-patrol.mjs`：逐扇推开 17 个能自动找到入口的弹窗，对每扇量触控下限 / 可访问名 / 禁用态对比度 / 面板名 / **同一水平行内按钮等高**，并对弹窗内的两步确认**点开确认态再量一遍几何**（装备详情的重铸、自动重铸、天道熔炉的全熔、灵脉的连投；只点前置触发钮，绝不点确认钮）。默认 375 宽，`--width=320` 跑窄屏那一档、`--height=520` 跑矮屏那一档、`--theme=light` 跑亮色主题那一档（正文可滚时才量得出「滚到底后最后一块内容有没有被裁」）。`layout-check` 的弹窗巡逻只开四扇，巡页更量不到没打开的弹窗 —— 修行页那两枚 21px 的「兑换」钮就是这样漏掉的
+- `bun run edge-check` — `scripts/edge-states.mjs`：造出十档**异常路径**（坏档 / 道童满员 / 资源归零 / 行囊塞满 / 存档写不进去 / 导入版本过新 / 闭关中不许历练 / 未拜师 / 欢迎页 / 建号页），逐档检查界面有没有把状态解释清楚。后两档是唯二能进到 `/welcome` 与 `/create` 的检查 —— 其余脚本的 ROUTES 都不含它们,因为路由守卫 `if (game.started) return { name: home }` 会把已有存档弹回首页。巡页与弹窗巡逻拿的都是好人存档，这些 UI 根本不出现 —— 前几轮修的三处触控缺陷里有两处就是这么漏掉的
+- `bun run build:android` / `build:apk` — 安卓客户端打包
 - `bun run build:electron --win` — Windows 桌面客户端打包，产物在 `pkg/`（完整包 + 增量包）
 - `bun run build:android` / `build:apk` — 安卓客户端打包
 - 楷体打包：`uv run scripts/fonts/build-kai-font.py`
@@ -190,7 +194,7 @@ tsconfig paths `@/* → ./src/*`，开启 `strict` + `noUncheckedIndexedAccess` 
 - `src/utils/storage.ts` — 存档持久化/加密/迁移（SAVE_PREFIX、SAVE_VERSION、PERSISTED_STORES）
 - `src/utils/gnum.ts` — 大数
 - `src/router/` — 路由与首启守卫
-- `scripts/test-report.mjs`、`ui-smoke.mjs`、`focus-check.mjs`、`aria-check.mjs`、`multitab-check.mjs`、`layout-check.mjs`、`offline-check.mjs`、`treasure-check.mjs`、`world-check.mjs`、`orb-check.mjs`
+- `scripts/test-report.mjs`、`ui-smoke.mjs`、`focus-check.mjs`、`aria-check.mjs`、`multitab-check.mjs`、`layout-check.mjs`、`offline-check.mjs`、`treasure-check.mjs`、`world-check.mjs`、`orb-check.mjs`、`detail-geometry.mjs`、`modal-patrol.mjs`、`edge-states.mjs`
 - `.github/workflows/` — CI 定义
 - `vite.config.ts` / `vitest.config.ts` / `tsconfig*.json`
 
@@ -213,7 +217,7 @@ tsconfig paths `@/* → ./src/*`，开启 `strict` + `noUncheckedIndexedAccess` 
   - `combat.spec.ts` — 无死循环，HP 在 0..1。
   - `offlineCap.spec.ts` — 离线上限生效，混沌道祖 5 条离线台词有限。
 - **惯用模式**：TTL / 去重淘汰用 `vi.useFakeTimers`。
-- **QA 脚本**：`test-report.mjs`（按系统分桶，失败/整文件失败/未归类/文档例数/vitest 非零退出即退出 1）；`ui-smoke.mjs`（375x812 交互冒烟，pageerror + NaN/Infinity 泄漏即失败，跳过破坏性按钮）；`layout-check.mjs`（38 项自检：无横向溢出、双栏 dvh 固定、触控目标 ≥28px、模态触控巡逻、tab-rail 粘性、无纵向挤压/孤行标点/数字单位断行、a11y 图标 aria；约 10 分钟，仅本地）；`offline-check.mjs`（SW 接管 + 离线启动 + 发布接管）；`treasure-check.mjs` / `world-check.mjs` / `orb-check.mjs`（形制实测：量的是真实 DOM 上的层级、几何、命中与读屏属性，单测只能证明「源码里写了那一句」）。CI 对 `test-report` 限 maxWorkers=4。
+- **QA 脚本**：`test-report.mjs`（按系统分桶，失败/整文件失败/未归类/文档例数/vitest 非零退出即退出 1）；`ui-smoke.mjs`（375x812 交互冒烟，pageerror + NaN/Infinity 泄漏即失败，跳过破坏性按钮）；`layout-check.mjs`（38 项自检：无横向溢出、双栏 dvh 固定、触控目标 ≥28px、模态触控巡逻、tab-rail 粘性、无纵向挤压/孤行标点/数字单位断行、a11y 图标 aria；约 10 分钟，仅本地）；`offline-check.mjs`（SW 接管 + 离线启动 + 发布接管）；`treasure-check.mjs` / `world-check.mjs` / `orb-check.mjs` / `detail-geometry.mjs`（形制实测：量的是真实 DOM 上的层级、几何、命中与读屏属性，单测只能证明「源码里写了那一句」）。CI 对 `test-report` 限 maxWorkers=4。
 - **Git 保护**:main 仅通过 PR merge,禁止 force-push;v* release tag 只由发布流水线打。PR 校验 CI = 类型检查 + lint + 单测 + 生产构建全部绿。**CHANGELOG.md 需更新**(新增 / 调整与优化 / 修复 三节,中文一行式,格式 `## [ver] — date · 副标题`)。
 - **历史线性**:main 历史必须线性,禁止 merge 提交。合入 PR 一律用 `gh pr merge --rebase`,逐提交保留分支历史——**默认不要用 `--squash`**:合入用 squash 会把分支上那几个「可独立评审」的提交并成一个,提交条目在 main 历史里就没了(除非用户明确要压成单个提交);严禁「Create a merge commit」/ `gh pr merge --merge`(会在 main 上引入双亲 merge 节点,破坏线性)。同步主干一律 `git rebase main`,禁止「Merge main into …」式提交(`.github/workflows/history-linear.yml` 会把这类提交判为失败,其权威合并期闸门是分支规则集「Require a linear history」)。
 - **PR 承载多 commit**：一个 PR 可承载多个 commit；PR 内每个 commit 都须能被独立评审，且 PR 作为整体说明改动主题。

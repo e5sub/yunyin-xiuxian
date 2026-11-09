@@ -2,7 +2,7 @@
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
     <div v-if="!unlocked" class="card-ink px-6 py-16 text-center">
       <p class="font-kai text-[22px] tracking-[0.4em] text-ink">器 魂</p>
-      <p class="mt-4 text-[12px] leading-relaxed text-ink-faint">需<span class="text-cinnabar">真仙境</span></p>
+      <p class="mt-4 text-[12px] leading-relaxed text-ink-faint">需<span class="text-cinnabar">{{ endgameGateRealmName() }}境</span></p>
     </div>
 
     <template v-else>
@@ -26,11 +26,14 @@
       <section>
         <SectionTitle title="已凝形意" :hint="`${endgame.activeSouls.length} / ${SOUL_SLOTS} 缕`" />
         <div class="mt-2 grid grid-cols-3 gap-2">
+          <!--
+            空槽不再整卡压 50% 透明:卡里那句「空槽」是状态词,压到 2.04:1 就读不出。
+            空与有由内部分支(有无 soul)自己表达,不靠透明度。
+          -->
           <div
             v-for="row in slotRows"
             :key="row.index"
             class="card-ink relative flex min-h-[86px] flex-col items-center justify-center px-2 py-2 text-center"
-            :class="row.soul ? '' : 'opacity-50'"
           >
             <!-- 最上阶(化真)独有的一圈魂环;其余阶只有阶点(见 ui/soulMark) -->
             <span v-if="row.mark?.top" class="soul-halo" aria-hidden="true" />
@@ -70,15 +73,20 @@
           v-if="pickReady.length > 0"
           class="mt-2 rounded-md border border-jade/25 bg-jade/5 px-3 py-2"
         >
+          <!--
+            只报状态。判据挪进钮的 title —— 它是「凭什么按这个次序」的注解,
+            按需出现,不占正文那一行(AGENTS.md「优先用 UI 表达」)。
+          -->
           <div class="flex items-center justify-between gap-2">
             <span class="min-w-0 text-[10px] leading-relaxed text-jade">
-              建议装上 {{ pickReady.length }} 缕 · {{ pickNames }}
+              可装 {{ pickReady.length }} 缕 · {{ pickNames }}
             </span>
-            <button class="btn-ghost shrink-0 !px-3 !py-2 !text-[11px]" @click="doPickBest">择优装配</button>
+            <button
+              class="btn-ghost shrink-0 !px-3 !py-2 !text-[11px]"
+              title="优先看阶位;同阶再看词条总量"
+              @click="doPickBest"
+            >择优装配</button>
           </div>
-          <p class="mt-1 text-[9px] leading-relaxed text-ink-faint">
-            优先看阶位;同阶再看词条总量。装上后可逐格核对阶点。
-          </p>
         </div>
       </section>
 
@@ -117,7 +125,19 @@
       <!-- 散去的后果须在动手之前看见 -->
       <p class="mb-2 text-[10px] leading-relaxed text-ink-faint">{{ dissolveNote() }}</p>
       <div v-if="idleSouls.length > 0" class="card-ink max-h-64 divide-y divide-ink/6 overflow-y-auto px-4">
-        <div v-for="row in idleSouls" :key="row.soul.uid" class="flex items-center justify-between gap-2 py-2.5">
+        <!--
+          两段式:正文一段、钮组一段,各占一行。
+
+          原先是一行 justify-between 不可折:未确认态两枚钮 88px,确认态变成三枚(46+54+65=165)。
+          320 宽下左列被压到 22px ——「朦胧·锋魂」竖排成一行一个字,那一行从 177px 涨到 745px。
+          改成可折行之后仍然不稳:375 宽下未确认态挤得进一行(102.5px)、确认态挤不进就折(126.8px)——
+          点一下「散去」,整行就长高 24px。
+
+          钮组行宽随状态变,是这枚钮「忽大忽小」的根源;故钮组固定独占一行、右对齐:
+          两态行高一致,320 宽也不会把名字压成竖排。代价是每行多 35px 高 ——
+          换来的是点前点后位置不动,且一屏仍看得下两枚魂。
+        -->
+        <div v-for="row in idleSouls" :key="row.soul.uid" class="py-2.5">
           <div class="min-w-0">
             <p class="flex items-center gap-1.5 text-[12px]">
               <!-- 魂型印:与出战槽那枚同源(六类器魂各有单字,见 data/souls 的 seal) -->
@@ -126,7 +146,7 @@
                 :style="{ color: row.color, background: `color-mix(in srgb, ${row.color} 12%, transparent)` }"
                 aria-hidden="true"
               >{{ row.seal }}</span>
-              <span class="truncate" :style="{ color: row.color }">{{ row.label }}</span>
+              <span class="truncate" :style="{ color: row.textColor }">{{ row.label }}</span>
               <span
                 class="soul-pips shrink-0"
                 :class="{ 'soul-pips--top': row.mark.top }"
@@ -142,14 +162,14 @@
             <p v-if="row.flavor" class="text-[10px] leading-relaxed text-violet-ink">{{ row.flavor }}</p>
           </div>
           <!-- 巡页夹具无灵魂,28px 尺子碰不到这些钮;!py-2 盒高 35px,与同行确认态按钮同高 -->
-          <div class="flex shrink-0 gap-1">
+          <div class="mt-1.5 flex justify-end gap-1">
             <button class="btn-ghost !px-2.5 !py-2 !text-[11px]" @click="wearSoul(row.soul.uid)">装配</button>
             <template v-if="pendingDissolveUid !== row.soul.uid">
               <button class="btn-ghost !px-2 !py-2 !text-[11px] !text-ink-faint" @click="pendingDissolveUid = row.soul.uid">散去</button>
             </template>
             <template v-else>
-              <button class="btn-seal !px-2 !py-2 !text-[11px]" @click="doDissolve(row.soul.uid)">确认散去</button>
               <button class="btn-ghost !px-2 !py-2 !text-[11px]" @click="pendingDissolveUid = null">再想想</button>
+              <button class="btn-seal !px-2 !py-2 !text-[11px]" @click="doDissolve(row.soul.uid)">确认散去</button>
             </template>
           </div>
         </div>
@@ -211,6 +231,7 @@
             {{ refineShort.reason ? `入 炉(${refineShort.reason})` : '入 炉' }}
           </button>
           <div v-else class="flex shrink-0 items-center gap-1.5">
+            <button class="btn-ghost !px-2.5 !py-2 !text-[11px]" @click="pendingRefineUid = null">再想想</button>
             <button
               class="btn-seal !px-2.5 !py-2 !text-[11px]"
               :disabled="refineShort.short.m > 0"
@@ -219,7 +240,6 @@
             >
               确认凝炼
             </button>
-            <button class="btn-ghost !px-2.5 !py-2 !text-[11px]" @click="pendingRefineUid = null">再想想</button>
           </div>
         </div>
       </div>
@@ -236,15 +256,16 @@
   import { useRouter } from 'vue-router'
   import { goBack } from '@/router/goBack'
   import { formatNum } from '@/utils/format'
-  import { modsText } from '@/data/statNames'
+  import { modsBriefText, modsText } from '@/data/statNames'
   import { dissolveNote, refineCostLine, soulFlavorText } from '@/ui/soulText'
   import { soulMark } from '@/ui/soulMark'
   import { soulPickSummary, soulPicks } from '@/ui/soulPick'
   import { equipmentTemplate } from '@/data/equipment'
   import { SOUL_SLOTS, soulGradeDef, soulMods, soulName, soulTypeDef, type SoulInstance } from '@/data/souls'
+  import { soulGradeTextColor } from '@/ui/soulMark'
   import { canRefine, dissolveSoul, previewSoul, refineEquipment, removeSoul, SOUL_REFINE_COST, wearSoul } from '@/core/soulService'
   import { daoSourceShortfall } from '@/core/daoSource'
-  import { endgameUnlocked } from '@/core/endgameService'
+  import { endgameGateRealmName, endgameUnlocked } from '@/core/endgameService'
   import { useEndgameStore } from '@/stores/endgame'
   import { useInventoryStore } from '@/stores/inventory'
   import SectionTitle from '@/components/common/SectionTitle.vue'
@@ -315,7 +336,9 @@
           soul: s,
           flavor: soulFlavorText(s),
           // 字色、阶位形制、魂型印各算一次:模板里原先 soulColor 调 4 次、soulMark 3 次
+          // color 管装饰(魂型印底),textColor 管正文(名字):两端档的原色当正文过不了 AA
           color: gradeDef.color,
+          textColor: soulGradeTextColor(s.grade),
           mark: soulMark(s.grade),
           seal: soulTypeDef(s.type)?.seal ?? '魂',
           label: soulName(s)
@@ -338,7 +361,7 @@
           gradeRank: preview.gradeRank,
           mark: soulMark(preview.gradeRank),
           gradeName: gradeDef.name,
-          gradeColor: gradeDef.color
+          gradeColor: soulGradeTextColor(preview.gradeRank)
         }
       })
   })
@@ -364,8 +387,13 @@
       }
     })
   )
+  /**
+   * 散置列表里的词条读数:不带注脚的短版。
+   * 每枚魂三四个词条,全带注脚会摊成一百三十多字、把行撑到 156px(实测)。
+   * 完整注脚留给「装着看」的场合,列表只报「有哪几样、各多少」。
+   */
   function soulModText(soul: SoulInstance): string {
-    return modsText(soulMods(soul))
+    return modsBriefText(soulMods(soul))
   }
   const activeModText = computed(() => modsText(endgame.soulMods))
 </script>

@@ -88,7 +88,7 @@
           <button
             v-for="(opt, i) in info?.riddle.options ?? []"
             :key="i"
-            class="w-full rounded-md border px-3 py-2 text-left text-[12px] leading-relaxed transition-colors disabled:opacity-100"
+            class="w-full rounded-md border px-3 py-2 text-left text-[12px] leading-relaxed transition-colors"
             :class="optionClass(i)"
             :disabled="riddleBusy || info === null || info.riddle.answered"
             :title="riddleBusy ? '谜面判定中' : undefined"

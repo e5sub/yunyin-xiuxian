@@ -269,6 +269,8 @@ describe('死导出审计', () => {
       '服务端炼器裁决入口:server/src/routes/forge.ts 动态加载本模块,从云档分片无头水合后跑同一份纯账层(1.58.3),消费方在 src 之外,审计扫不到;forgeResolve.spec 守其口径',
     resolveLevelFromSlices:
       '服务端升级裁决入口:server/src/routes/progress.ts 动态加载本模块,功法进修/建筑升级从云档分片无头水合后跑同一份纯账层(1.59.0),消费方在 src 之外,审计扫不到;levelResolve.spec 守其口径',
+    formatStamp:
+      '时刻戳原语:format.spec 的全导出坏值巡逻覆盖它;本仓本地导入导出链已删,运行时暂无调用方,待上游形制统一后随导入检视一并接回',
     validateExtraGains:
       '服务端法宝/器魂签发校验:server/src/lootGrant.ts 动态加载本模块,校验 defId 存在、器魂品阶合法、条数封顶后签发入账(1.58.1);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径'
   }

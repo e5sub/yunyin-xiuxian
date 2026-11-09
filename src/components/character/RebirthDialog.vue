@@ -74,7 +74,7 @@
           v-for="t in ownedTalents"
           :key="t!.id"
           class="chip-ink !py-1.5 border-current bg-transparent text-left"
-          :style="{ color: TALENT_GRADE_COLORS[t!.grade] }"
+          :style="{ color: talentTextColor(t!.grade) }"
           :title="t!.desc"
           :aria-expanded="talentTap === t!.id"
           @click="talentTap = talentTap === t!.id ? null : t!.id"
@@ -94,7 +94,7 @@
         <span v-if="!ownedTalents.length" class="text-[11px] text-ink-faint">暂无先天之姿</span>
       </div>
       <p v-if="talentTap && tappedTalent" class="mt-1.5 text-[10px] leading-relaxed text-ink-faint">
-        <span :style="{ color: TALENT_GRADE_COLORS[tappedTalent.grade] }">{{ tappedTalent.name }}</span>
+        <span :style="{ color: talentTextColor(tappedTalent.grade) }">{{ tappedTalent.name }}</span>
         :{{ tappedTalent.desc }}
         <span v-if="modsText(tappedTalent.mods)" class="mt-0.5 block text-azure tabular">{{ modsText(tappedTalent.mods) }}</span>
       </p>
@@ -151,24 +151,28 @@
   <BaseModal :open="trialOpen" title="逆旅契" @close="trialOpen = false">
     <p class="text-[11px] leading-relaxed text-ink-faint">一世一契 · 立下不可解 · 转世失效 · 回报仅履历</p>
     <div class="mt-3 space-y-2">
+      <!--
+        禁用态不再叠 opacity-40:那会把卡片正文(含「道果尚差 N」这句拒因)压到 1.99:1。
+        禁用由 :disabled 表达,拒因由下面那行朱砂字承担,两者各司其职。
+      -->
       <button
-        v-for="t in LIFE_TRIALS"
+        v-for="t in trialRows"
         :key="t.id"
-        :class="['card-ink w-full px-3 py-2 text-left', canSignLifeTrial(t.id) ? '' : 'opacity-40', lifeTrialShortfall(t.id) !== null ? 'cursor-not-allowed' : '']"
-        :disabled="!canSignLifeTrial(t.id)"
-        :title="lifeTrialShortfall(t.id) !== null ? `道果尚差 ${lifeTrialShortfall(t.id)}` : undefined"
+        :class="['card-ink w-full px-3 py-2 text-left', t.short !== null ? 'cursor-not-allowed' : '']"
+        :disabled="t.blocked"
+        :title="t.short !== null ? `道果尚差 ${t.short}` : undefined"
         @click="requestTrial(t.id)"
       >
         <span class="flex items-baseline justify-between">
           <span class="font-kai text-[14px] text-ink">{{ t.seal }} · {{ t.name }}</span>
-          <span class="tabular text-[12px]" :class="player.reincarnation.daoFruit >= t.cost ? 'text-cinnabar' : 'text-ink-faint'">
+          <span class="tabular text-[12px]" :class="t.affordable ? 'text-cinnabar' : 'text-ink-faint'">
             {{ t.cost }} 道果
           </span>
         </span>
         <span class="mt-0.5 block text-[11px] leading-relaxed text-ink-soft">{{ t.desc }}</span>
         <span class="mt-0.5 block text-[10px] text-ink-faint">{{ t.ruleText }}</span>
-        <span v-if="lifeTrialShortfall(t.id) !== null" class="mt-0.5 block text-[10px] tabular text-cinnabar">
-          道果尚差 {{ lifeTrialShortfall(t.id) }}
+        <span v-if="t.short !== null" class="mt-0.5 block text-[10px] tabular text-cinnabar">
+          道果尚差 {{ t.short }}
         </span>
       </button>
     </div>
@@ -182,8 +186,8 @@
       <p class="mt-2 text-[12px] leading-relaxed text-ink-soft">{{ pendingTrial.desc }}</p>
       <p class="mt-1 text-[10px] text-ink-faint">{{ pendingTrial.ruleText }}</p>
       <div class="mt-3 flex gap-2">
+        <button class="btn-ghost grow" @click="pendingTrial = null">再想想</button>
         <button class="btn-seal grow" @click="confirmSignTrial">确认立契</button>
-        <button class="btn-ink grow" @click="pendingTrial = null">再想想</button>
       </div>
     </template>
   </BaseModal>
@@ -195,8 +199,8 @@
   import { useUiStore } from '@/stores/ui'
   import { LIFE_TRIALS, type LifeTrialDef } from '@/data/lifeTrials'
   import { activeLifeTrial, canSignLifeTrial, lifeTrialShortfall, signLifeTrial } from '@/core/lifeTrialService'
-  import { talentDef, TALENT_GRADE_COLORS } from '@/data/talents'
-  import { talentMark, talentPips } from '@/ui/talentMark'
+  import { talentDef } from '@/data/talents'
+  import { talentMark, talentPips, talentTextColor } from '@/ui/talentMark'
   import { HERITAGE_GATE_MAJOR, heritageDef } from '@/data/heritage'
   import { REALMS } from '@/data/realms'
   import { prepareReincarnation, MANUAL_REBIRTH_MIN_MAJOR } from '@/core/reincarnation'
@@ -248,6 +252,24 @@ const showCurve = computed(() => fruitInfo.value.total >= 4)
         heritageOpen.value = false
       }
     }
+  )
+
+  /**
+   * 逆旅契的四张卡:缺口、能否签、道果够不够各算一次。
+   *
+   * 模板原先每张卡调 `lifeTrialShortfall(t.id)` 五次(禁用类名 / title / 卡面拒因 / 判空两处),
+   * 四张卡二十次 —— 每次都要穿一次 store 与 `lifeTrialDef` 查表。现一次算齐。
+   */
+  const trialRows = computed(() =>
+    LIFE_TRIALS.map(def => {
+      const short = lifeTrialShortfall(def.id)
+      return {
+        ...def,
+        short,
+        blocked: !canSignLifeTrial(def.id),
+        affordable: player.reincarnation.daoFruit >= def.cost
+      }
+    })
   )
 
   const trialOpen = ref(false)

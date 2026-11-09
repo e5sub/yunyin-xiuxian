@@ -30,6 +30,7 @@
       </label>
       <input
         v-model="codeInput"
+        aria-label="兑换码"
         class="mt-2 w-full rounded border border-ink/20 bg-transparent px-2 py-1.5 font-mono text-[12px] tracking-wider text-ink placeholder:text-ink-faint"
         placeholder="VIP-XXXX-XXXX-XXXX"
         maxlength="20"

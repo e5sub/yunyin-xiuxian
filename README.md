@@ -67,7 +67,7 @@ bun run build
 # 预览构建结果
 bun preview
 
-# 全量测试（数值/战斗/流派/曲线/经济/回归/终局/决策，全量 478 个 spec）
+# 全量测试（数值/战斗/流派/曲线/经济/回归/终局/决策，全量 489 个 spec）
 # 注意用 bun run test,不能用 bun test —— 后者会调 Bun 自带的测试器而非 Vitest
 bun run test
 
@@ -108,6 +108,10 @@ bun run first-paint
 
 # 运行时:每个视图采几秒帧间隔,量最差帧 / 长帧有没有回来(预算见 scripts/perf-profile.mjs)
 bun run perf-profile
+
+# 同上,但换成满行囊夹具(120 件满词条神品):夹具默认只放 2 件装,
+# 行囊/构筑/图鉴页在小档与满档下渲染量差一个数量级(实测 DOM 270 → 2864)
+bun run perf-stress
 
 # 楷体分片覆盖门(单测之一,证 slices 与 @font-face 的 unicode-range 一致、无孤儿片)
 bun run test -- src/ui/kaiFontCoverage.spec.ts
@@ -216,7 +220,7 @@ docker run -d -p 8787:8787 -e PORT=8787 yunyin-xiuxian
 | Tone.js         | 15    | FluidR3 乐器采样播放（BGM + SFX）           |
 | CryptoJS        | 4     | 存档 AES 加密                               |
 | lucide-vue-next | 0.577 | 图标库                                      |
-| Vitest          | 5     | 单元测试与平衡审计（全量 478 个 spec）        |
+| Vitest          | 5     | 单元测试与平衡审计（全量 489 个 spec）        |
 | Capacitor       | 8     | Android 客户端打包                          |
 | Electron        | 39    | Windows 桌面客户端打包（electron-builder）  |
 | Node + Express  | 4     | 后端：账号 / 云存档 / 拍卖行 / GM 后台（REST + WebSocket 同端口） |

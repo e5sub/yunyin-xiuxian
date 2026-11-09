@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cnNumber, formatClock, formatCountdown, formatDuration, formatGap, formatGN, formatPercent, roundToSum } from './format'
+import { cnNumber, formatChoiceSpan, formatClock, formatCountdown, formatDuration, formatGap, formatGN, formatNum, formatPercent, formatRate, formatStamp, formatYears, roundToSum } from './format'
 import { gn, powN } from './gnum'
 
 describe('数值格式化', () => {
@@ -260,5 +260,151 @@ describe('formatGap 差额向上取整', () => {
   it('零与负数没有「尚差」语义,退回原格式化', () => {
     expect(formatGap(gn(0))).toBe('0')
     expect(formatGap(gn(-5))).toBe('-5')
+  })
+
+  /**
+   * 坏值守卫。
+   *
+   * formatGN / formatGap 的入参是 `GNum | number`,走的是
+   * `typeof v === 'number' ? gn(v) : v` —— **对象分支不经过 gn()**,
+   * 于是反序列化进来的坏 GNum 会直接进后面的算术。
+   *
+   * 补守卫之前实测:
+   *   gn(1, NaN)      → 「NaNundefined」
+   *   gn(1, Infinity) → 「1.00eInfinity」
+   *   gn(NaN, 0)      → 「∞」
+   * 而 formatPercent / formatDuration / formatCountdown 早就返回 `--` 了,只有这两个口漏着。
+   */
+  it('坏 GNum 印占位符「--」,不印 NaNundefined / 1.00eInfinity / ∞', () => {
+    const bads = [
+      { m: Number.NaN, e: 0 },
+      { m: 1, e: Number.NaN },
+      { m: 1, e: Number.POSITIVE_INFINITY },
+      { m: Number.POSITIVE_INFINITY, e: 1 },
+      { m: Number.NEGATIVE_INFINITY, e: 2 }
+    ]
+    for (const v of bads) {
+      for (const [name, fn] of [
+        ['formatGN', formatGN],
+        ['formatGap', formatGap]
+      ] as const) {
+        expect(fn(v), `${name}(${JSON.stringify(v)}) 印出了乱码`).toBe('--')
+      }
+    }
+  })
+
+  it('守卫不误伤正常值', () => {
+    expect(formatGN({ m: 1, e: 4 })).toBe('1万')
+    expect(formatGN(gn(1234))).toBe('1,234')
+    expect(formatGap(gn(880))).toBe('880')
+  })
+
+  /**
+   * 同一类缺口:formatYears 与 cnNumber 也漏了守卫。
+   *
+   * 补之前实测:formatYears(NaN) → 「NaN 载」、formatYears(-Infinity) → 「-Infinity 载」、
+   * cnNumber(NaN) → 「NaN」。cnNumber 更隐蔽 —— 它的范围判断是
+   * `!Number.isInteger(n) || ...`,NaN 恰好命中第一个条件,直接落到 `String(n)`。
+   */
+  it('formatYears 与 cnNumber 对坏值也印「--」', () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(formatYears(bad), `formatYears(${bad}) 印出了乱码`).toBe('--')
+      expect(cnNumber(bad), `cnNumber(${bad}) 印出了乱码`).toBe('--')
+    }
+  })
+
+  /**
+   * roundToSum 的坏值守卫。
+   *
+   * 补之前实测:unit 为 0 / NaN / Infinity 时每一项都变 NaN;
+   * values 里某一项是 NaN / Infinity 时那一项变 NaN,还会把 target 合计带偏。
+   * 返回的 NaN 会原样进调用方的展示与配色判断
+   * (唯一调用点 cultivationText.ts 的 breakthroughRateView)。
+   */
+  it('roundToSum 遇坏输入返回全 0,不返回 NaN', () => {
+    const badCases = [
+      ['unit=0', roundToSum([1, 2], 0)],
+      ['unit=NaN', roundToSum([1, 2], Number.NaN)],
+      ['unit=Infinity', roundToSum([1, 2], Number.POSITIVE_INFINITY)],
+      ['unit=-1', roundToSum([1, 2], -1)],
+      ['含 NaN', roundToSum([1, Number.NaN, 2], 0.001)],
+      ['含 Infinity', roundToSum([1, Number.POSITIVE_INFINITY], 0.001)]
+    ] as const
+    for (const [tag, out] of badCases) {
+      expect(out.every(Number.isFinite), `${tag} 返回了非有限值:${JSON.stringify(out)}`).toBe(true)
+      expect(out.every(v => v === 0), `${tag} 应返回全 0,实际 ${JSON.stringify(out)}`).toBe(true)
+    }
+  })
+
+  /**
+   * 全导出终验:13 个函数、14 个调用点,喂 NaN 都不许印脏值。
+   *
+   * 这是「喂坏值」系列的总闸 —— 逐个修好之后,用一条判据把整组行为钉住,
+   * 免得将来新增函数或改动某个守卫时悄悄退化。判据本身不关心印的是 `--` 还是 `0`,
+   * 只要求别出现 NaN / undefined / Infinity / Invalid / null 这些一眼能看出的脏串。
+   */
+  it('format 的全部导出对坏值都不印脏字符串', () => {
+    const calls: readonly (readonly [string, () => string])[] = [
+      ['formatGN', () => formatGN(Number.NaN)],
+      ['formatGN(坏对象)', () => formatGN({ m: Number.NaN, e: 0 })],
+      ['formatGap', () => formatGap(Number.NaN)],
+      ['formatNum', () => formatNum(Number.NaN)],
+      ['formatRate', () => formatRate(Number.NaN)],
+      ['formatPercent', () => formatPercent(Number.NaN)],
+      ['formatDuration', () => formatDuration(Number.NaN)],
+      ['formatChoiceSpan', () => formatChoiceSpan(Number.NaN)],
+      ['formatCountdown', () => formatCountdown(Number.NaN)],
+      ['formatClock', () => formatClock(Number.NaN)],
+      ['formatStamp', () => formatStamp(Number.NaN)],
+      ['formatYears', () => formatYears(Number.NaN)],
+      ['cnNumber', () => cnNumber(Number.NaN)],
+      ['roundToSum', () => JSON.stringify(roundToSum([1, 2], Number.NaN))]
+    ]
+    const dirty: string[] = []
+    for (const [name, fn] of calls) {
+      let out: string
+      try {
+        out = fn()
+      } catch (e) {
+        out = `抛错:${String(e).slice(0, 40)}`
+      }
+      if (/NaN|undefined|Infinity|Invalid|null/.test(out)) dirty.push(`${name} → ${out}`)
+    }
+    expect(dirty, `这些导出还印脏值:\n${dirty.join('\n')}`).toEqual([])
+  })
+
+  it('roundToSum 的正常路径与空数组不受守卫影响', () => {
+    expect(roundToSum([], 0.001)).toEqual([])
+    const shown = roundToSum([0.95, 0.0025, 0.05, -0.0225], 0.001)
+    expect(shown.reduce((a, b) => a + b, 0)).toBeCloseTo(0.98, 6)
+  })
+
+  it('这两个函数的正常值不受守卫影响', () => {
+    expect(formatYears(300)).toBe('300 载')
+    expect(formatYears(20000)).toBe('2万 载')
+    expect(cnNumber(21)).toBe('二十一')
+    expect(cnNumber(0)).toBe('零')
+    // 范围外原样返回阿拉伯数字,这条语义保留
+    expect(cnNumber(10000)).toBe('10000')
+    expect(cnNumber(-3)).toBe('-3')
+  })
+})
+
+describe('formatGN · 极小数不印出 -0', () => {
+  it('给定极小负数(1e-10 量级),当格式化,则印「0」而不是「-0」', () => {
+    /*
+     * 定点格式化的位数封顶 6 位,1e-10 会被抹成 0;而负数分支是先取正再前缀负号,
+     * 于是原本的「0」变成「-0」—— 玩家读到的不是「几乎没有」而是一个畸形值。
+     */
+    expect(formatGN(gn(-1e-10))).toBe('0')
+    expect(formatGN(gn(-1e-12))).toBe('0')
+    expect(formatGN(gn(-1e-10))).not.toBe('-0')
+  })
+
+  it('给定能显示出来的负数,当格式化,则负号照常保留', () => {
+    // 修 -0 不能把正常的负数一并抹平成 0
+    expect(formatGN(gn(-0.001))).toBe('-0.001')
+    expect(formatGN(gn(-1.5))).toBe('-1.5')
+    expect(formatGN(gn(-1234))).toBe('-1,234')
   })
 })

@@ -2,7 +2,7 @@
   <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
     <div v-if="!unlocked" class="card-ink px-6 py-16 text-center">
       <p class="font-kai text-[22px] tracking-[0.4em] text-ink">天 界</p>
-      <p class="mt-4 text-[12px] leading-relaxed text-ink-faint">需<span class="text-cinnabar">真仙境</span></p>
+      <p class="mt-4 text-[12px] leading-relaxed text-ink-faint">需<span class="text-cinnabar">{{ endgameGateRealmName() }}境</span></p>
     </div>
 
     <template v-else>
@@ -88,7 +88,7 @@
             @click="furnaceOpen = true"
           >
             <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-cinnabar font-kai text-[19px] seal-face">炉</span>
-            <span class="min-w-0 flex-1">
+            <span class="min-w-0">
               <span class="block font-kai text-[14px] tracking-widest text-ink">天道熔炉</span>
             </span>
             <span class="shrink-0 text-[12px] text-ink-faint">›</span>
@@ -96,7 +96,7 @@
 
           <button class="card-ink flex w-full items-center justify-between gap-3 px-4 py-3 text-left active:scale-98" @click="goSouls()">
             <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-gold-ink font-kai text-[19px] seal-face">魂</span>
-            <span class="min-w-0 flex-1">
+            <span class="min-w-0">
               <span class="block font-kai text-[14px] tracking-widest text-ink">器 魂</span>
               <span class="block truncate text-[10px] leading-relaxed text-ink-faint">
                 已凝 {{ endgame.activeSouls.length }}/{{ SOUL_SLOTS }}
@@ -141,23 +141,23 @@
         <p class="mt-3 border-l-2 border-cinnabar/60 pl-2 text-[11px] text-cinnabar">此世不可更改 · 转世可重择</p>
       </template>
       <template #footer>
-        <div class="flex gap-2">
-          <button class="btn-ghost flex-1" @click="pendingDaoId = null">再想想</button>
-          <button class="btn-seal flex-1 !bg-cinnabar-deep" @click="confirmDao">确认择道</button>
+        <div class="grid grid-cols-2 gap-2">
+          <button class="btn-ghost w-full" @click="pendingDaoId = null">再想想</button>
+          <button class="btn-seal !bg-cinnabar-deep w-full" @click="confirmDao">确认择道</button>
         </div>
       </template>
     </BaseModal>
 
     <BaseModal :open="daoSourceDialogOpen" title="道源" @close="daoSourceDialogOpen = false">
-      <div class="space-y-3 text-[12px] leading-relaxed">
-        <p class="text-ink-soft">{{ daoSourceDialog().intro }}</p>
+      <div v-if="daoPanels" class="space-y-3 text-[12px] leading-relaxed">
+        <p class="text-ink-soft">{{ daoPanels.sourceText.intro }}</p>
         <div>
           <p class="font-kai text-[12px] tracking-wider text-ink">用途</p>
-          <p class="text-ink-faint">{{ daoSourceDialog().usages.join(' · ') }}</p>
+          <p class="text-ink-faint">{{ daoPanels.sourceText.usages.join(' · ') }}</p>
         </div>
         <div>
           <p class="font-kai text-[12px] tracking-wider text-ink">获取</p>
-          <p class="text-ink-faint">{{ daoSourceDialog().gains.join(' · ') }}</p>
+          <p class="text-ink-faint">{{ daoPanels.sourceText.gains.join(' · ') }}</p>
         </div>
         <!--
           生命周期:原先只是一行左边框色各写各的。roleTone 早已在数据里表达「本世 / 跨世」,
@@ -165,12 +165,12 @@
         -->
         <p
           class="flex items-start gap-2 border-l-2 pl-2 text-[11px]"
-          :class="`res-tone res-tone--${toneOf(daoSourceDialog().roleTone).tone}`"
+          :class="`res-tone res-tone--${daoPanels.sourceTone.tone}`"
         >
-          <span class="res-tone__seal shrink-0 font-kai" aria-hidden="true">{{ toneOf(daoSourceDialog().roleTone).seal }}</span>
+          <span class="res-tone__seal shrink-0 font-kai" aria-hidden="true">{{ daoPanels.sourceTone.seal }}</span>
           <span class="min-w-0">
-            <span class="block text-ink">{{ daoSourceDialog().lifecycle }}</span>
-            <span class="block text-[10px] text-ink-faint">{{ toneOf(daoSourceDialog().roleTone).note }}</span>
+            <span class="block text-ink">{{ daoPanels.sourceText.lifecycle }}</span>
+            <span class="block text-[10px] text-ink-faint">{{ daoPanels.sourceTone.note }}</span>
           </span>
         </p>
       </div>
@@ -192,7 +192,7 @@
   import { SOUL_SLOTS } from '@/data/souls'
   import { DAO_PATHS, daoPathDef } from '@/data/endgame'
   import { daoMark } from '@/ui/daoMark'
-  import { chooseDaoPath, endgameUnlocked } from '@/core/endgameService'
+  import { chooseDaoPath, endgameGateRealmName, endgameUnlocked } from '@/core/endgameService'
   import { currentDaoNarrative } from '@/core/identity'
   import { detectBuild } from '@/core/buildDetect'
   import { foeOriginLines } from '@/core/battleAnalysis'
@@ -225,6 +225,17 @@
   function goSouls(): void {
     router.push({ name: 'souls' })
   }
+
+  /**
+   * 道源说明弹窗的整块内容。
+   *
+   * 模板原先在七处调 `daoSourceDialog()`(正文 / 用途 / 获取 / 生命周期 / 形制 + 两处 toneOf),
+   * 每调一次就重新拼一遍那个纯数据对象。现算一次,模板只读字段。
+   */
+  const daoPanels = computed(() => {
+    const sourceText = daoSourceDialog()
+    return { sourceText, sourceTone: toneOf(sourceText.roleTone) }
+  })
 
   const daoSourceDialogOpen = ref(false)
   const furnaceOpen = ref(false)

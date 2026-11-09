@@ -8,6 +8,7 @@ import { DAILY_TASKS, MAIN_QUESTS } from '@/data/quests'
 import { ACHIEVEMENTS } from '@/data/achievements'
 import { track } from '@/core/progress'
 import { MAX_MAJOR } from '@/data/realms'
+import { todayStr } from '@/utils/time'
 
 describe('图鉴收录', () => {
   beforeEach(() => {
@@ -85,6 +86,22 @@ describe('sanitize:重复条目不再把计数撑破', () => {
     expect(quests.titlesOwned, '名号同一条只留一次').toEqual(['ti_churu'])
     expect(quests.collections.equip, '装备图鉴去重').toEqual(['w_zhuqing'])
     expect(quests.collections.pet, '灵兽册去重后不会画两行同 key').toEqual(['pet_qingyu'])
+  })
+
+  /**
+   * 日课的 done 也要按任务目录过滤。
+   *
+   * 写入路径(completeDaily)有 `DAILY_TASKS.some(t => t.id === taskId)` 这道闸,
+   * 读档路径原先只去重 —— 手改存档塞 10 万条假 id 后 $state 到 1.29MB,存档顶到配额。
+   * 同函数里 achieved / titlesOwned 早就按各自目录过滤了,只有 done 漏着。
+   */
+  it('读档时日课 done 里认不得的任务 id 被清掉', () => {
+    const quests = useQuestsStore()
+    const fake = Array.from({ length: 100000 }, (_, i) => `fake_${i}`)
+    quests.$patch({ daily: { date: '2026-11-08', base: {}, done: fake } } as never)
+    quests.sanitize()
+    expect(quests.daily.done.length, '认不得的任务 id 不该留在 done').toBeLessThan(100)
+    expect(JSON.stringify(quests.$state).length, '坏档把 state 撑爆了').toBeLessThan(5000)
   })
 
   it('认不出的成就/名号 id 清掉,不再虚增「N/总数」', () => {
@@ -284,5 +301,35 @@ describe('每日任务领奖与跨日重置(daily)', () => {
     expect(q.dailyDelta('kills')).toBe(0)
     track('kills', 3)
     expect(q.dailyDelta('kills')).toBe(3)
+  })
+})
+
+/**
+ * 日课基线坏档。
+ *
+ * dailyDelta = counters − base。base 被读成空记录(坏档、手改存档、字段改名)而
+ * date 恰好还是今天时,delta 就等于**历史累计** —— 于是 checkDaily 一开局就把
+ * 所有日课判为达成,白送全天奖励并刷一串 toast。
+ * 实测 counters.kills=500、base={} 时 delta 是 500,而正确值应为 0。
+ */
+describe('日课基线坏档', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('base 缺失时把当前累计当基线,delta 归零而不是等于历史累计', () => {
+    const q = useQuestsStore()
+    q.counters = { kills: 500 } as never
+    q.daily = { date: todayStr(), base: {} as never, done: [] }
+    q.sanitize()
+    expect(q.dailyDelta('kills'), 'base 丢了就把历史累计算成今日进度,日课会一开局全白送').toBe(0)
+  })
+
+  it('base 非空时原样保留,不被重置', () => {
+    const q = useQuestsStore()
+    q.counters = { kills: 500 } as never
+    q.daily = { date: todayStr(), base: { kills: 480 } as never, done: [] }
+    q.sanitize()
+    expect(q.dailyDelta('kills'), '正常档的基线被冲掉了').toBe(20)
   })
 })

@@ -845,11 +845,47 @@ describe('术语一致性 · 用户可见文本', () => {
     walk('../components')
     walk('../ui') // 含词条名表
     walk('../core') // toast 与区域事件文案
+    /*
+     * 扫到的文件数下限。
+     *
+     * 上面五条术语检查全是 `expect(hits).toEqual([])` 的形状 —— 扫不到文件,
+     * hits 自然为空,五条全绿,而它们什么都没验。
+     * 实测把五处 walk 全指向一个空目录:只有两条恰好带独立完整性断言的报红,
+     * 另外三条静默通过。目录改名、.vue 改成别的后缀、walk 漏掉某个入口,都会走到这条路上。
+     *
+     * 下限按现网规模取:改动时若真删了整片文件,这条会提醒一并下调。
+     */
+    if (out.length < 60) {
+      throw new Error(`用户可见文本只扫到 ${out.length} 个文件(应 ≥60)—— 术语检查没扫到东西`)
+    }
     return out
   }
 
+  /**
+   * 空态文案须是「暂无 + 具体名词」或「无可 + 动词」,不许用泛化的兜底词。
+   *
+   * 规范里空态一节写的是「优先『暂无 + 具体名词』(暂无战报 / 暂无丹药 / 暂无灵兽);
+   * 有对象但无可操作的写『无可 + 动词』(无可化尘)」。
+   * 实测踩过:属性构成弹窗(标题「XX · 来源明细」)空着时写的是「暂无数据」——
+   * 「数据」是抽象兜底词,玩家看不出到底是缺什么。改为「暂无来源」后与标题对得上。
+   *
+   * 只禁这两个已经踩过的泛化词,不做「名词必须来自白名单」那种强约束 ——
+   * 名词是本项目的自然语言,列白名单会逼着每加一个空态就改一次 spec。
+   */
+  const VAGUE_EMPTY = ['暂无数据', '暂无内容']
+
   /** 例外:此处「地脉」指村子的风水脉,不是洞府灵脉系统 */
   const ALLOWED = ['须惊动山下一整座村子的地脉']
+
+  it('空态不用泛化的兜底词', () => {
+    const bad: string[] = []
+    for (const { file, text } of userText()) {
+      for (const phrase of VAGUE_EMPTY) {
+        if (text.includes(phrase)) bad.push(`${file} → 「${phrase}」`)
+      }
+    }
+    expect(bad, '空态写「暂无数据」这类抽象词,玩家看不出缺的是什么').toEqual([])
+  })
 
   /**
    * 数字与单位之间的空格,两个方向都踩过:
@@ -860,7 +896,12 @@ describe('术语一致性 · 用户可见文本', () => {
    * 故障注入:任一处改回去,本条红。
    */
   it('数字与单位之间的空格:阿拉伯数字留、汉字数字不留', () => {
-    const ARABIC_UNITS = ['分钟', '小时', '灵石', '修为', '灵草', '玄铁', '器灵尘']
+    /*
+     * 「回合」原本不在表里,于是四处「{{ row.rounds }}回合」一路粘着没人管 ——
+     * 而同一个界面的旁处(GauntletPanel / TrialPanel / RegionCard)写的是「}} 回合」。
+     * 漏一档就等于漏了一整类写法,表宁全勿缺。
+     */
+    const ARABIC_UNITS = ['分钟', '小时', '灵石', '修为', '灵草', '玄铁', '器灵尘', '回合']
     const CN_UNITS = ['重', '层', '阶', '场', '次', '部', '卦', '档', '主星', '连战', '位']
 
     for (const { file, text } of userText()) {
@@ -868,7 +909,12 @@ describe('术语一致性 · 用户可见文本', () => {
       for (const u of ARABIC_UNITS) {
         const hits = [...text.matchAll(new RegExp(`\\{\\{([^}]*)\\}\\}(?!\\s)${u}`, 'g'))]
         const glued = hits
-          .filter(m => /formatGN|formatNum|formatGap|Math\.round|Math\.floor|\.toFixed|Cost|Short|price|Price/.test(m[1]!))
+          /*
+           * 认「这一格是数字」。除了格式化函数与算术,还要认 `rounds` / `Rounds` ——
+           * 它们本身就是整数读数,而 `{{ row.rounds }}回合` 正是原先漏掉的那一类:
+           * 只按 Math.round 认的话,这四个字一辈子抓不到(第一次写就是这样,注入后仍绿)。
+           */
+          .filter(m => /formatGN|formatNum|formatGap|Math\.round|Math\.floor|\.toFixed|Cost|Short|price|Price|rounds|Rounds/.test(m[1]!))
           .map((): string => `}}${u}`)
         expect(glued, `${file}:「}}${u}」缺空格`).toEqual([])
       }
@@ -1157,10 +1203,23 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(marks, '道痕在途拒因来自统一判据').toContain('endgameBusy(endgame.worldRun, usePlayerStore().secretRealm, useAdventureStore().session)')
     expect(furnace, '道果付不起要置灰').toContain(':disabled="fruitShort.short.m > 0"')
     expect(furnace, '灵石熔铸付不起也要置灰').toContain(':disabled="stoneShort.m > 0"')
-    expect(furnace, '灵石熔铸按钮就地写实际差额').toContain('灵石尚差 ${formatGap(stoneShort)}')
+    /*
+     * 差额写在左侧存量那一行,不在钮里。
+     *
+     * 钮里原本是「熔铸(灵石尚差 …)」或「33.51 亿 → 5 道源」:320 宽下这一格只有 100 余 px,
+     * 「源」被挤到第二行,整行比上面四行高出半行。价签挪到左边之后钮只写「熔 铸」,
+     * 与「熔尽本包」那四颗同宽同高。
+     * 差额本身仍在页面上(左边那行),「禁用即给原因」未失守。
+     * 故障注入:把差额从左侧那行删掉,或把括号拒因写回钮里,本条红。
+     */
+    expect(furnace, '灵石熔铸差额写在左侧存量行').toContain('灵石尚差 {{ formatGap(stoneShort) }}')
     expect(furnace, '灵石熔铸差额走指数感知减法').toContain('subClamp(cost, resources.spiritStone)')
-    expect(furnace, '灵石熔铸价与扣费同源').toContain('const cost = furnaceStoneCost()')
-    expect(furnace, '灵石熔铸未付时直接写尚差').toContain('熔铸(灵石尚差 ${formatGap(stoneShort)})')
+    // 价签与扣费同源:左侧那行的缺口按「单价 × 次数」算,单价仍取自 furnaceStoneCost()
+    expect(furnace, '灵石熔铸价签取单价').toContain('furnaceStoneCost()')
+    // 按次数放大后才与 furnaceConvertStone 的扣费口径一致
+    expect(furnace, '价签按次数放大').toContain('mulN(stoneUnit.value, stoneEffective.value)')
+    // 钮文在主词后带次数(「熔 铸 ×N」),主词仍是动作词
+    expect(furnace, '熔铸按钮正文只写动作词').toMatch(/熔 铸/)
   })
 
   /** 天道熔炉材料差额由 furnaceMaterialShortfall 单源给出,两条失败路径都写实际差量 */
@@ -1285,7 +1344,9 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     const service = src('./earlyGameService.ts')
     const exchange = src('./wudaoExchange.ts')
     expect(gongfa, '兑换钮读同源判据').toContain(':disabled="!player.canExchangeWudao"')
-    expect(gongfa, '兑换钮就地写拒因').toContain("{{ player.canExchangeWudao ? '兑换' : exchangeBlockedText }}")
+    // 可兑时写「兑换(×N)」,不可兑时就地写拒因 —— 两种形态都要在
+    expect(gongfa, '兑换钮可兑时写动作词').toContain('兑换${exchangeEffective > 1')
+    expect(gongfa, '兑换钮不可兑时就地写拒因').toContain('exchangeBlockedText')
     expect(exchange, '灵石余额进入兑换判据').toContain('stoneShort')
     expect(card, '备药钮按石差置灰').toContain(':disabled="!prepCanPill"')
     expect(card, '备药钮写实际石差').toContain('prepPillDisabledLabel(formatGap(prepPillShort))')
@@ -1318,21 +1379,29 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
   it('强化缺料时置灰,差额在面板里写出而非挤在按钮上', () => {
     const detail = src('../components/equipment/EquipmentDetailDialog.vue')
     const panel = src('../components/equipment/UpgradePanel.vue')
-    expect(detail, '强化按钮按缺口置灰').toContain(':disabled="!upQuote || upShort !== null"')
-    expect(detail, '置灰原因仍由 title 给全').toContain(':title="upTip"')
-    // 满级时按钮改为禁用并就地写原因(不再凭空消失),见 AGENTS.md「禁用即给原因」
-    expect(detail, '满级时按钮写「已至上限」').toContain("'已至上限'")
-    // 按钮上不写差数:窄格子会被挤成两行,差额由面板缺口行报出
-    expect(detail, '按钮不写尘差').not.toContain('强 化(尘差')
-    expect(detail, '按钮不写石差').not.toContain('强 化(石差')
+    expect(detail, '强化按钮按缺口置灰').toContain('upCost ? upShort !== null : true')
+    /*
+     * 拒因走 aria-label / title,不挂在按钮正文上。
+     *
+     * 这个钮与「卸 下」「垃圾桶」并排,宽只 78~105px:正文挂「强 化(尘差 36)」必然折两行,
+     * 底行因此从 44px 涨到 57px,整条页脚跟着高 37px(375 与 320 都如此,见 detail-geometry)。
+     * 而同一份差额在正上方的强化面板里已经整句写出,按钮上再写一遍本是第二处。
+     * 「禁用即给原因」并未失守:原因仍在(读屏与 hover 拿得到),只是不占正文那一格。
+     * 故障注入:把差额从 aria-label / title 里删掉,或把括号拒因写回正文,本条红。
+     */
+    expect(detail, '拒因进 aria-label(石差)').toContain('`强 化,灵石尚差 ${formatGap(upGap?.stone')
+    expect(detail, '拒因进 aria-label(尘差)').toContain('`强 化,器灵尘尚差 ${upGap?.dust')
+    expect(detail, '拒因进 aria-label(修为差)').toContain('`强 化,修为尚差 ${formatGap(upGap?.exp')
+    expect(detail, '拒因仍在 title 里').toContain('`器灵尘尚差 ${upGap?.dust ?? 0}`')
+    expect(detail, '正文只留动作词,不再挂括号拒因').not.toContain('石差 ${formatGap(upGap?.stone ?? { m: 0, e: 0 })}` : `尘差')
     expect(panel, '强化面板列实际缺口').toContain('器灵尘尚差 {{ gap.dust }}')
     expect(panel, '强化面板列灵石缺口').toContain('灵石尚差 {{ formatGap(gap.stone) }}')
     // 满级不再让整块消失:玩家要看得到「已至上限」而不是一片空白
     expect(panel, '满级时保留一条状态行').toContain('v-else-if="inst && !quote"')
     expect(panel, '满级状态行写原因').toContain('{{ upgradeCapToast() }}')
-    expect(detail, '详情弹窗满级时按钮不消失,改为禁用并写原因').toContain(':disabled="!upQuote || upShort !== null"')
+    expect(detail, '详情弹窗满级时按钮不消失,改为禁用并写原因').toContain(':disabled="upCost ? upShort !== null : true"')
     // 按钮只写短状态:这一格原是与「卸 下」并排的两字钮,四个字会折行
-    expect(detail, '满级按钮只写短状态,完整说法放 title').toContain("upQuote ? upLabel : '已至上限'")
+    expect(detail, '满级按钮只写短状态,完整说法放 title').toContain("!upCost ? '已至上限' : '强 化'")
   })
 
   /**
@@ -1532,5 +1601,36 @@ describe('数据文本 · 机械体检', () => {
       scan('奇门本义', g.name, g.gist, bad)
     }
     expect(bad, `数据文本有机械错误:\n${bad.join('\n')}`).toEqual([])
+  })
+})
+
+/**
+ * 天道熔炉的两处兑换都支持「自定义次数」。
+ *
+ * 这类能力的价值不在文案而在**输入框在不在**:只留「凝一枚 / 连凝全部」两颗钮时,
+ * 想凝 3 枚的玩家只能点三次或用掉全部道源 —— 而这两处本来都只是一次调用,
+ * 界面上却没有中间选项。判据从源码核这两个输入框与它们的可访问名。
+ */
+describe('天道熔炉 · 兑换支持自定义次数', () => {
+  const src = (from: string): string =>
+    readFileSync(resolve(__dirname, from), 'utf8')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*$/gm, '')
+
+  it('给定熔炉界面源码,当读两处兑换控件,则灵石熔铸与道源凝炼都有数量输入框', () => {
+    const f = src('../components/celestial/FurnaceDialog.vue')
+    // 两处都要有 aria-label 的 number 输入框
+    expect(f, '灵石熔铸缺数量输入框').toContain('aria-label="熔铸次数"')
+    expect(f, '道源凝炼缺数量输入框').toContain('aria-label="凝炼枚数"')
+    // 上限按「可熔/可凝次数」给,不是写死
+    expect(f, '熔铸上限该绑可熔次数').toContain(':max="stoneAffordable"')
+    expect(f, '凝炼上限该绑可凝枚数').toContain(':max="affordable"')
+    // 钮文随选中数变化,而不是固定的「熔 铸」/「道果 +1」
+    expect(f, '熔铸钮文该随次数变').toContain('熔 铸 ×${stoneEffective}')
+    expect(f, '凝炼钮文该随枚数变').toContain('道果 +${fruitEffective}')
+    // 两处都得真的把选中数传给服务层
+    expect(f, '熔铸该把次数传下去').toContain('furnaceConvertStone(stoneEffective.value)')
+    expect(f, '凝炼该把枚数传下去').toContain('doCondense(fruitEffective)')
   })
 })

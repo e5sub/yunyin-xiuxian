@@ -33,6 +33,26 @@ beforeEach(() => {
   setActivePinia(createPinia())
 })
 
+describe('逆旅契 · 坏 id 的守卫', () => {
+  /**
+   * `if (!def) return false` 不能省:去掉后 `def.cost` 会直接抛 TypeError。
+   *
+   * 这条路径真实存在 —— 契约 id 来自存档(旧版本写过、或手改档),
+   * 而 lifeTrialDef 对未知 id 返回 undefined。
+   */
+  it('未知契约 id:返回 false,不抛错、不扣道果、不刷拒因', () => {
+    const player = usePlayerStore()
+    player.addDaoFruit(100)
+    const before = player.reincarnation.daoFruit
+    const toastsBefore = useUiStore().toasts.length
+
+    expect(() => signLifeTrial('tr_不存在的契约')).not.toThrow()
+    expect(signLifeTrial('tr_不存在的契约')).toBe(false)
+    expect(player.reincarnation.daoFruit, '未签约不该扣道果').toBe(before)
+    expect(useUiStore().toasts.length, '查无此契不是玩家操作失误,不该弹拒因').toBe(toastsBefore)
+  })
+})
+
 describe('逆旅契 · 判据一:余额真的下降', () => {
   it('签约后道果减少,而不是只记一笔已花费', () => {
     const player = usePlayerStore()
@@ -77,9 +97,11 @@ describe('逆旅契 · 判据一:余额真的下降', () => {
 
   it('逆旅契卡付不起即禁用并就地列差,不再只降透明度', () => {
     const card = readFileSync(resolve(__dirname, '../components/character/RebirthDialog.vue'), 'utf8')
-    expect(card, '付不起的契必须真的禁用').toContain(':disabled="!canSignLifeTrial(t.id)"')
-    expect(card, '卡面缺口读同一份服务判据').toContain('lifeTrialShortfall(t.id)')
-    expect(card, '付不起时就地列差').toContain('道果尚差 {{ lifeTrialShortfall(t.id) }}')
+    // 落点从「模板里逐张现算」搬到 setup 的 trialRows(一次算齐),判据跟着钉新落点
+    expect(card, '付不起的契必须真的禁用').toContain(':disabled="t.blocked"')
+    expect(card, '卡面缺口读同一份服务判据').toContain('lifeTrialShortfall(def.id)')
+    expect(card, '禁用判据仍走服务,不自己比道果').toContain('canSignLifeTrial(def.id)')
+    expect(card, '付不起时就地列差').toContain('道果尚差 {{ t.short }}')
     expect(card, '不许退回笼统道果不足').not.toContain("ui.toast('道果不足'")
   })
 
@@ -125,6 +147,42 @@ describe('逆旅契 · 判据二:产物不进 StatMods', () => {
     expect(adverseViolations({ maxRounds: 45 })).toHaveLength(0)
     expect(adverseViolations({ maxRounds: 51 })).not.toHaveLength(0)
     console.log(`\n伪装示例被拒:${adverseViolations({ playerExtraMods: { attackPct: 0.2 } })[0]}`)
+  })
+
+  /**
+   * 第二道闸的**行为**判据:往数据里塞一份非法契约,真的签不下去。
+   *
+   * 上面那条只查源码里出现过 `isPurelyAdverse` 这个名字 —— 把三处守卫都改成
+   * `if (false) return` 而留着函数名,它照样绿。变异扫描正是这么点名这三处的。
+   * 这里改成往 `LIFE_TRIALS` 里 push 一份减难契约(数据层校验是第一道闸,
+   * 第一道闸失守时才轮到服务层),再实打实地调 canSign / shortfall / sign。
+   *
+   * 故障注入:把 lifeTrialService 任一处 `if (!isPurelyAdverse(...)) return` 删掉,本条红。
+   */
+  it('数据层失守时,服务层第二道闸仍然拦住减难契约', () => {
+    const EVIL = {
+      id: 'tr_evil_probe',
+      name: '伪契',
+      seal: '伪',
+      desc: '玩家攻击力翻倍',
+      cost: 10,
+      ruleText: '玩家攻击 +100%',
+      // 减难:直接给玩家加攻击,是 isPurelyAdverse 要拒的形状
+      rules: { playerExtraMods: { attackPct: 1 } }
+    } as (typeof LIFE_TRIALS)[number]
+    LIFE_TRIALS.push(EVIL)
+    try {
+      const player = usePlayerStore()
+      player.addDaoFruit(500)
+      expect(isPurelyAdverse(EVIL.rules), '探针契约本身该被校验器判为非法').toBe(false)
+      expect(canSignLifeTrial(EVIL.id), '非法契约不该被判成可签').toBe(false)
+      expect(lifeTrialShortfall(EVIL.id), '非法契约不该给出差额提示').toBeNull()
+      expect(signLifeTrial(EVIL.id), '非法契约不该签得下去').toBe(false)
+      expect(activeLifeTrial(), '签失败后本世不该有契约').toBeNull()
+    } finally {
+      const i = LIFE_TRIALS.indexOf(EVIL)
+      if (i >= 0) LIFE_TRIALS.splice(i, 1)
+    }
   })
 
   it('非法契约即使被写进数据也签不下去', () => {

@@ -28,6 +28,7 @@
       <form class="mt-4 space-y-3" @submit.prevent="onSubmit">
         <input
           v-model.trim="name"
+          aria-label="道号"
           type="text"
           maxlength="12"
           autocomplete="username"
@@ -37,6 +38,7 @@
         <input
           v-if="mode === 'register'"
           v-model.trim="email"
+          aria-label="邮箱"
           type="email"
           maxlength="190"
           autocomplete="email"
@@ -46,6 +48,7 @@
         <div v-if="mode === 'register' && codeRequired" class="flex gap-2">
           <input
             v-model.trim="code"
+            aria-label="邮箱验证码"
             type="text"
             inputmode="numeric"
             maxlength="6"
@@ -63,6 +66,7 @@
         </div>
         <input
           v-model="password"
+          aria-label="口令"
           type="password"
           maxlength="64"
           :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
@@ -72,6 +76,7 @@
         <input
           v-if="mode === 'register'"
           v-model="password2"
+          aria-label="再输一遍口令"
           type="password"
           maxlength="64"
           autocomplete="new-password"
@@ -104,6 +109,7 @@
       <div class="space-y-3">
         <input
           v-model.trim="fpEmail"
+          aria-label="注册邮箱"
           type="email"
           maxlength="190"
           placeholder="注册邮箱"
@@ -112,6 +118,7 @@
         <div class="flex gap-2">
           <input
             v-model.trim="fpCode"
+            aria-label="邮箱验证码"
             type="text"
             inputmode="numeric"
             maxlength="6"
@@ -129,6 +136,7 @@
         </div>
         <input
           v-model="fpPassword"
+          aria-label="新口令"
           type="password"
           maxlength="64"
           autocomplete="new-password"
