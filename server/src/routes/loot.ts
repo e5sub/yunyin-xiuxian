@@ -12,6 +12,7 @@ import { requireAuth } from '../auth.js'
 import { lootEnv } from '../recompute.js'
 import { grantLoot, verifyExtraGains } from '../lootGrant.js'
 import { recordLoot } from '../lootLedger.js'
+import { recordEquipStatesFromItems } from '../equipLedger.js'
 
 export const lootRouter = express.Router()
 
@@ -101,6 +102,19 @@ lootRouter.post('/loot/claim', requireAuth, (req: Request, res: Response) => {
     for (const { src, batch } of grantedBatches) {
       await recordLoot(userId, batch.map(e => String(e.uid)), src)
       equips.push(...batch)
+    }
+    /*
+     * 签发时同步入装备状态台账(1.66.2):uid 台账只保「这件存在」,状态台账保「这件长什么样」。
+     * 原先状态行要等首次上传才按客户端自报补登 —— 签发到上传之间改包把件改满(等级/词条/品质)
+     * 会被照单入账,台账的「覆盖」对新件形同虚设。服务端自己生成的实例自己记,上传时按台账覆盖。
+     * 记账失败不影响签发:宁少一道锁,不可不发掉落。
+     */
+    if (equips.length > 0) {
+      try {
+        await recordEquipStatesFromItems(userId, equips)
+      } catch {
+        /* 状态入账失败时回退到旧行为:首次上传补登 */
+      }
     }
     res.json({ equips })
   })().catch(() => {

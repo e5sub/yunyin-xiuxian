@@ -7,8 +7,11 @@
  *   「不超过上限」,钳不住「上限之内凭空得来」。现在强化/重铸/词条转移的唯一写入口是
  *   POST /api/forge/op,签发后把该件的新状态记在这里;上传存档时按台账覆盖客户端自报的值。
  *
- * 只管「原地改件」的六个字段:level / affixes / sealedAffixIds / reforgeCount / transferCount /
- * invested。模板、品质、阶数由签发时确定,不重复保管;装备/卸下、上锁这类不改变强度的操作也不走台账。
+ * 只管「原地改件」的七个字段:level / affixes / sealedAffixIds / reforgeCount / transferCount /
+ * invested / quality。模板与阶数由签发时确定且无处可改,不重复保管;品质同样是签发时确定的,
+ * 但它决定词条数上限与成色乘区 —— 不入账的话,改包把每件都写成最高品质就能白拿一整轮词条,
+ * 故 1.66.2 起一并入账(旧行缺 quality 时不覆盖,随下一次 op/补登自然补上);
+ * 装备/卸下、上锁这类不改变强度的操作也不走台账。
  *
  * 播种只此一次:存量档首次过账时把当时持有的件按当时状态入账(旧物来源无从考证,不追溯),
  * 标记落在 equip_seed 表 —— 删档重传不重播,否则「造一件 → 删档 → 重播」就是作弊环
@@ -48,7 +51,10 @@ function stateOf(item: Record<string, unknown>): Record<string, unknown> {
     sealedAffixIds: Array.isArray(item.sealedAffixIds) ? item.sealedAffixIds : [],
     reforgeCount: Math.max(0, Math.trunc(numOr(item.reforgeCount, 0))),
     transferCount: Math.max(0, Math.trunc(numOr(item.transferCount, 0))),
-    invested: isPlainObject(item.invested) ? item.invested : { dust: 0, stone: { m: 0, e: 0 } }
+    invested: isPlainObject(item.invested) ? item.invested : { dust: 0, stone: { m: 0, e: 0 } },
+    // 品质是签发时确定的权威值(掉落后无任何合法改动路径),入账后在覆盖时一并按台账回写;
+    // 空串表示「这件入账时拿不到品质」(旧版补登),applyRow 见空串不覆盖
+    quality: typeof item.quality === 'string' ? item.quality.slice(0, 24) : ''
   }
 }
 
@@ -61,14 +67,14 @@ function parseState(raw: string): Record<string, unknown> {
   }
 }
 
-/** 读台账;未播种时 seeded=false(调用方按「首传」处理) */
+/** 读台账;未播种时 seeded=false(调用方按「首传」处理),但状态行照载 ——
+ *  1.66.2 起签发(/loot/claim)即入状态账,播种必须能看到这些行,否则首传会把它们整批重播掉 */
 export async function equipHoldings(userId: number): Promise<EquipHoldings> {
   const seededRow = await get<{ seeded_at: number }>('SELECT seeded_at FROM equip_seed WHERE user_id = ?', [userId])
-  if (seededRow === undefined) return { seeded: false, byUid: new Map() }
   const rows = await all<StateRow>('SELECT uid, level, state FROM equip_state WHERE user_id = ?', [userId])
   const byUid = new Map<string, { level: number; state: Record<string, unknown> }>()
   for (const r of rows) byUid.set(r.uid, { level: r.level, state: parseState(r.state) })
-  return { seeded: true, byUid }
+  return { seeded: seededRow !== undefined, byUid }
 }
 
 /** 签发入账:同 uid 以最后一次签发为准(REPLACE 避免主键冲突把整批掷失败) */
@@ -159,7 +165,8 @@ function applyRow(item: Record<string, unknown>, row: { level: number; state: Re
     o.sealedAffixIds,
     o.reforgeCount,
     o.transferCount,
-    o.invested
+    o.invested,
+    o.quality
   ]
   const before = JSON.stringify(pick(item))
   item.level = row.level
@@ -168,6 +175,10 @@ function applyRow(item: Record<string, unknown>, row: { level: number; state: Re
   item.reforgeCount = numOr(row.state.reforgeCount, 0)
   item.transferCount = numOr(row.state.transferCount, 0)
   item.invested = isPlainObject(row.state.invested) ? row.state.invested : { dust: 0, stone: { m: 0, e: 0 } }
+  // 品质按台账回写;旧行(1.66.2 前入账)没有 quality 字段时不动,留待下一次 op 补上
+  if (typeof row.state.quality === 'string' && row.state.quality !== '') {
+    item.quality = row.state.quality
+  }
   return before !== JSON.stringify(pick(item))
 }
 
@@ -194,6 +205,10 @@ export async function enforceEquipStates(
     for (const item of items) {
       const uid = typeof item.uid === 'string' ? item.uid : ''
       if (uid === '' || uid.length > 64) continue
+      // 1.66.2 起签发(/loot/claim)即入状态账:已有行的件(签发时刚记的)不按上传重播 ——
+      // 否则「领件 → 改满 → 首传」会在播种时把改满的样子照单入账,签发入账形同虚设。
+      // 只补登台账里还没有的件(存量旧物),播种「唯一一次采信客户端」的语义不变。
+      if (holdings.byUid.has(uid)) continue
       const state = stateOf(item)
       entries.push({ uid, level: typeof state.level === 'number' ? state.level : 0, state })
     }
