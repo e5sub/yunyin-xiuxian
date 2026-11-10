@@ -12,6 +12,7 @@
  * · 相邻两帧间隔 >50ms 计长帧(Long Task 口径);headless 无 vsync,按 ~60fps 节流。
  */
 import { createServer } from "node:http";
+import { gzipSync } from "node:zlib";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,6 +68,17 @@ if (!Number.isFinite(cpuRate) || cpuRate < 1 || cpuRate > 20) {
   console.error("--cpu 须是 1~20 的数(1 为不限速)");
   process.exit(1);
 }
+/**
+ * `--rtt=MS --bw=KBPS`:模拟网络往返与带宽。
+ *
+ * 本地服务器没有延迟,20 个请求几乎免费 —— 只在本机测 chunk 数,会得出
+ * 「拆多拆少都一样」的结论,而真实网络不是。这两个参数把请求数的影响测出来。
+ * 都不给时不动网络(保持本地直连)。
+ */
+const rttArg = args.find((a) => /^--rtt=/.test(a));
+const bwArg = args.find((a) => /^--bw=/.test(a));
+const rttMs = rttArg === undefined ? 0 : Number(rttArg.slice(6));
+const bwKbps = bwArg === undefined ? 0 : Number(bwArg.slice(5));
 
 /**
  * 开一页,并按 `--cpu` 装好限速。
@@ -80,10 +92,19 @@ if (!Number.isFinite(cpuRate) || cpuRate < 1 || cpuRate > 20) {
  */
 async function openPage(context) {
   const page = await context.newPage();
-  if (cpuRate > 1) {
+  if (cpuRate > 1 || rttMs > 0 || bwKbps > 0) {
     const cdp = await context.newCDPSession(page);
-    await cdp.send("Emulation.setCPUThrottlingRate", { rate: cpuRate });
-    page.__cdp = cdp;
+    if (cpuRate > 1) await cdp.send("Emulation.setCPUThrottlingRate", { rate: cpuRate });
+    if (rttMs > 0 || bwKbps > 0) {
+      await cdp.send("Network.enable");
+      await cdp.send("Network.emulateNetworkConditions", {
+        offline: false,
+        latency: rttMs,
+        // CDP 的吞吐单位是 bytes/s;--bw 用 KB/s 更顺手,-1 表示不限
+        downloadThroughput: bwKbps > 0 ? bwKbps * 1024 : -1,
+        uploadThroughput: bwKbps > 0 ? bwKbps * 1024 : -1,
+      });
+    }
   }
   return page;
 }
@@ -188,7 +209,23 @@ function startServer() {
       if (rel.includes("..")) return r.writeHead(400).end("bad");
       try {
         const body = readFileSync(join(DIST, rel));
-        r.writeHead(200, { "content-type": MIME[extOf(rel)] ?? "application/octet-stream" });
+        const type = MIME[extOf(rel)] ?? "application/octet-stream";
+        /*
+         * 按真实部署的行为压缩。
+         *
+         * 不压缩时首屏要传 918KB(未压缩的 28 个 JS 模块),而 Pages/Nginx 上只有
+         * 343KB —— 差了 2.7 倍。之前模拟弱网测出的 6.2s 就是这个失真放大出来的:
+         * 918KB / 200KBps = 4.6s,而真实该是 1.7s。
+         * 只压文本类,woff2/png 本身就是压缩格式,再压反而变大。
+         */
+        const compressible = /\.(js|css|html|json|svg|txt)$/i.test(rel);
+        if (compressible && /gzip/.test(req.headers["accept-encoding"] ?? "")) {
+          const gz = gzipSync(body);
+          r.writeHead(200, { "content-type": type, "content-encoding": "gzip", "content-length": gz.length });
+          r.end(gz);
+          return;
+        }
+        r.writeHead(200, { "content-type": type, "content-length": body.length });
         r.end(body);
       } catch {
         r.writeHead(404).end("nf");
@@ -429,15 +466,26 @@ if (startupOnly) {
    * 250ms 是给不限速基线(实测 108ms)定的;4x 下实测 346ms,各段都按 4 倍放大
    * (模块加载 57→144、sanitize 17→68、mount 27→109)。拿绝对 250ms 卡限速档只会误报。
    */
+  /*
+   * 启动预算是对**主线程计算**定的,不含网络等待。
+   *
+   * 模拟弱网(--rtt/--bw)时 boot:start 之前会有几秒的下载与解析,
+   * 那是网络时间,不该拿 CPU 预算去卡它 —— 卡了只会得到「弱网很慢」这种没用的结论。
+   * 故预算只比 boot:start 之后的那一段。
+   */
+  const computeMs = last !== null && byName.has("boot:start") ? Math.round((last - byName.get("boot:start")) * 100) / 100 : last;
   const STARTUP_BUDGET_MS = Number(process.env.PERF_STARTUP_MS ?? 250) * Math.max(1, Math.min(cpuRate, 4));
   if (last !== null) {
     const total = Math.round(last * 100) / 100;
     console.log(`  ${"(启动合计)".padEnd(20)} ${total}ms`);
-    if (total > STARTUP_BUDGET_MS) {
-      console.error(`\n✗ 启动合计 ${total}ms > 预算 ${STARTUP_BUDGET_MS}ms`);
+    if (computeMs !== null && computeMs !== total) {
+      console.log(`  ${"(其中主线程)".padEnd(18)} ${computeMs}ms —— 判据只看这一段,前面是网络等待`);
+    }
+    if (computeMs !== null && computeMs > STARTUP_BUDGET_MS) {
+      console.error(`\n✗ 启动主线程 ${computeMs}ms > 预算 ${STARTUP_BUDGET_MS}ms`);
       process.exitCode = 1;
     } else {
-      console.log(`✓ 启动合计在预算内(≤ ${STARTUP_BUDGET_MS}ms)`);
+      console.log(`✓ 启动主线程在预算内(≤ ${STARTUP_BUDGET_MS}ms)`);
     }
   }
   await context.close();
