@@ -1,7 +1,9 @@
 /* eslint-disable no-console */
 /** 内容可达性审计:逐类核实门槛真伪,金丹刷得到的不算深修回报 */
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { rng } from '@/utils/random'
+import { useCultivationStore } from '@/stores/cultivation'
 import { CONTENT_GATES, disqualified, qualifiedRewards, reachabilityTable } from './contentGateAudit'
 import { MANUAL_REBIRTH_MIN_MAJOR } from './reincarnation'
 import { REALMS, WORLD_BREAK_MAJOR } from '@/data/realms'
@@ -78,7 +80,7 @@ describe('内容可达性 · 被证伪的候选', () => {
     }
   })
 
-  it('灵兽:真实解析泛型灵兽事件,实际发放的每一只都在入门档(无神兽漏网)', () => {
+  it('灵兽:真实解析泛型灵兽事件,实际发放的每一只都在入门档(无神兽漏网)', async () => {
     // 走事件结算入口,钉住 eventEngine 泛型分支用的就是 genericPetPool(改回 PETS.filter 会放过神兽)
     setActivePinia(createPinia())
     const player = usePlayerStore()
@@ -94,7 +96,7 @@ describe('内容可达性 · 被证伪的候选', () => {
       choices: [{ label: '收留', outcomes: [{ weight: 1, text: '得一灵兽', effects: [{ type: 'pet' }] }] }]
     }
     // 泛型池混入神兽时,刷 150 次几乎必然冒出仙/神品
-    for (let i = 0; i < 150; i += 1) resolveEventChoice(def, 0, 3)
+    for (let i = 0; i < 150; i += 1) await resolveEventChoice(def, 0, 3)
     expect(quests.collections.pet.length, '泛型灵兽事件应能发到入门圣兽').toBeGreaterThan(0)
     for (const id of quests.collections.pet) {
       const p = petDef(id)!
@@ -180,5 +182,34 @@ describe('内容可达性 · 结论', () => {
       `\n四类合格回报中,${knowledge.map(g => g.name).join('、')} 同属「知识」轴,` +
         `\n只有天界道痕在另一条轴上——方向差异不足,需要新增非知识类的深修价值`
     )
+  })
+})
+
+/*
+ * 事件施加的 buff 真能落到身上。
+ *
+ * `eventEngine.ts` 的 `case 'buff'` 里有一道 `if (!def) return null` 的判空。
+ * 实测事件表引用 5 个 buff id(bless_qingfeng / bless_daoyun / injury /
+ * bless_jiyuan / curse_xinmo)**全部有定义**,那道判空一处也走不到 —— 是死分支。
+ *
+ * 所以不补判空,改锁真正影响玩家的那条:选到「施加 buff」的结果时,
+ * 该 buff 必须出现在修为状态的 buff 列表里。少了这一步,玩家看到战报说
+ * 「你受了些内伤」,面板上却什么也没有。
+ */
+describe('事件效果 · buff 那一支真的生效', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('选到「灵力反噬受内伤」的结果,则内伤 buff 落到身上', async () => {
+    const def = EVENTS.find(e => e.id === 'ev_jade_slip')!
+    const cultivation = useCultivationStore()
+    // 第一个选择的第 3 个结果是 injury(权重 20/100);让 rand 落在最后一段
+    vi.spyOn(rng, 'rand').mockReturnValue(0.95)
+    try {
+      const res = await resolveEventChoice(def, 0, 3)
+      expect(res.lines.join('|'), '该报「陷入重伤」').toContain('重伤')
+      expect(cultivation.buffs.some(b => b.defId === 'injury'), '重伤 buff 该真的挂上').toBe(true)
+    } finally {
+      vi.restoreAllMocks()
+    }
   })
 })

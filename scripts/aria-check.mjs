@@ -59,21 +59,61 @@ try {
   console.log(`  ${mainFocusable ? '✓' : '✗'} main 可编程聚焦`)
 
   // 4) 每页都要有可定位的页面标题(读屏用户靠标题跳转)
-  const ROUTES = ['/', '/cultivation', '/adventure', '/inventory', '/character', '/dongfu', '/market', '/settings']
+  /*
+   * 全站 18 条路由都要有标题。
+   *
+   * 原先只列 8 条,codex / world / celestial / souls / collection / build /
+   * apprentice / titles / legacy 这 9 页的读屏属性从未被验过 —— 而它们拿同一份
+   * lateSlices 夹具都进得去、也都画得出标题,没有理由漏在外面。
+   * 「一条路由没被列进来」和「查过且没问题」在输出上长得一模一样,这是最危险的那种缺口。
+   */
+  const ROUTES = [
+    '/', '/cultivation', '/codex', '/adventure', '/world', '/inventory', '/character',
+    '/celestial', '/souls', '/dongfu', '/collection', '/build', '/market', '/apprentice',
+    '/titles', '/legacy', '/settings'
+    /*
+     * 不含 /welcome 与 /create:本脚本铺 lateSlices(已有存档),路由守卫
+     * `if (game.started) { if (to.name === 'welcome' || to.name === 'create') return { name: 'home' } }`
+     * 会把它们弹回首页 —— 那样量到的「标题 1 个」其实是首页的,是假绿。
+     * 这两页由 edge-check 的无存档场景覆盖。
+     */
+  ]
   for (const r of ROUTES) {
-    await page.evaluate(h => { location.hash = '#' + h }, r)
-    await page.waitForTimeout(600)
-    const n = await page.evaluate(() => document.querySelectorAll('h1,h2,h3').length)
+    if (!(await gotoRoute(page, r))) {
+      failures.push(`${r} 导航没落到目标页(hash 或过渡超时),本页标题判据未生效`)
+      console.log(`  ✗ ${r.padEnd(14)} 导航未落地`)
+      continue
+    }
+    /*
+     * 等标题出现,而不是量一次就走。
+     *
+     * /world 的界域是挂载后才异步凝出来的,标题包在 `v-if="view"` 里 ——
+     * 偶尔会超过 600ms,于是那一次量到 0 个标题,报成「没有标题元素」。
+     * 实测三次跑里冒过一次。这类「加载中的瞬间」不是缺陷,但用固定等待去量它,
+     * 结果就变成看运气;反过来若真把标题删了,这里也仍会超时,一样报得出来。
+     */
+    const n = await page
+      .waitForFunction(() => document.querySelectorAll('h1,h2,h3').length > 0, null, { timeout: 3000 })
+      .then(() => page.evaluate(() => document.querySelectorAll('h1,h2,h3').length))
+      .catch(() => page.evaluate(() => document.querySelectorAll('h1,h2,h3').length))
     if (n === 0) failures.push(`${r} 没有任何标题元素(h1/h2/h3),读屏用户无法按标题定位`)
     console.log(`  ${n > 0 ? '✓' : '✗'} ${r.padEnd(14)} 标题 ${n} 个`)
   }
 
   // 5) 触控目标不小于 28px:能点的盒子要够手指按
   //    复选框之类被 <label> 包住时,可点区域是 label 整体,量它而不是 input 本体
-  const TOUCH_ROUTES = ['/', '/cultivation', '/inventory', '/settings', '/dongfu', '/market']
+  /*
+   * 触控下限同覆盖 17 条路由。原先只列 6 条,codex / world / celestial / souls /
+   * collection / build / apprentice / titles / legacy 九页的点按面积从未量过。
+   * (layout-check 另有 190 个页面×视口的全量扫描,那条线更宽;此处是读屏脚本里的快速档。)
+   */
+  const TOUCH_ROUTES = ROUTES
   for (const r of TOUCH_ROUTES) {
-    await page.evaluate(h => { location.hash = '#' + h }, r)
-    await page.waitForTimeout(600)
+    if (!(await gotoRoute(page, r))) {
+      failures.push(`${r} 导航没落到目标页(hash 或过渡超时),本页触控判据未生效`)
+      console.log(`  ✗ ${r.padEnd(14)} 导航未落地`)
+      continue
+    }
     const small = await page.evaluate(() => {
       const out = []
       for (const e of document.querySelectorAll('button, a[href], input, select, textarea')) {
@@ -102,7 +142,15 @@ try {
    * 只扫首屏的话,/build 与 /celestial 的输入框都在弹窗里,永远扫不到,
    * 判据就成了空转。故障注入验过:去掉建号页的 aria-label,只扫首屏根本报不出来。
    */
-  const FORM_ROUTES = ['/create', '/', '/build', '/celestial', '/settings']
+  /*
+   * 不含 /create:本脚本铺有存档,路由守卫会把它弹回首页 ——
+   * 那一行「无可见输入框(判据在此页未覆盖)」其实是首页的结果,不是建号页的。
+   * 建号页的输入框由 edge-check 的无存档场景覆盖(它真的进得去)。
+   *
+   * /cultivation 的悟道兑换次数框要 major 够高且「兑得起 >1 次」才渲染,
+   * /market 的购买数量框要选中某件才出 —— 本夹具下两页都量不到,留着做将来的兜底。
+   */
+  const FORM_ROUTES = ['/', '/cultivation', '/build', '/celestial', '/market', '/settings']
   for (const r of FORM_ROUTES) {
     await page.evaluate(h => { location.hash = '#' + h }, r)
     await page.waitForTimeout(600)
@@ -228,3 +276,29 @@ if (failures.length > 0) {
 } else {
   console.log('\n✓ 关键读屏属性在真实 DOM 上都成立(不只是源码里写了)')
 }
+/**
+ * 跳到某条路由并**确认真的落到了那里**。
+ *
+ * 原先 `location.hash = ...` 之后固定等 600ms 就开量 —— 懒加载视图慢、导航被守卫弹走、
+ * 或过渡还没走完时,量到的是上一页(常常是首页),而结果看起来完全正常:
+ * 首页有标题、首页的控件也够大。它把「没量过」写成了「查过了」。
+ * 这里等到 hash 对上、并且 FADING 过渡类消失,才认为落地;落不了直接算失败。
+ */
+async function gotoRoute(page, r) {
+  await page.evaluate(h => { location.hash = '#' + h }, r)
+  try {
+    await page.waitForFunction(h => location.hash === '#' + h, r, { timeout: 3000 })
+    // 视图是懒加载的:hash 变了之后还要等 chunk 到位、过渡走完
+    await page.waitForTimeout(250)
+    await page.waitForFunction(
+      () => document.querySelector('.page-fade-enter-active, .page-fade-leave-active') === null,
+      null,
+      { timeout: 3000 }
+    )
+  } catch {
+    return false
+  }
+  return (await page.evaluate(h => location.hash === '#' + h, r)) === true
+}
+
+

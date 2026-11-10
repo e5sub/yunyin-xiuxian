@@ -1,10 +1,13 @@
 /* eslint-disable no-console */
 /** 藏经阁求索回归:每一张写进 PILLS 的可炼丹方,都须有一条走得通的到手路径。 */
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { PILLS } from '@/data/pills'
+import { MATERIALS } from '@/data/materials'
+import { ENEMIES } from '@/data/enemies'
+import { rng } from '@/utils/random'
 import { recipeCraft } from '@/data/crafting'
 import { MAX_MAJOR } from '@/data/realms'
 import { bearableRank } from './craftability'
@@ -15,6 +18,8 @@ import {
   STUDY_MASTERY_PER_HOUR,
   STUDY_REACH_OVER,
   discernChance,
+  encounterMaterial,
+  noteEnemyMany,
   natureChance,
   seedLoreIfNeeded,
   studiableRecipes,
@@ -350,5 +355,103 @@ describe('认知检定 · 概率夹在合法区间', () => {
         expect(n).toBeLessThanOrEqual(1)
       }
     }
+  })
+})
+
+/*
+ * 与灵材照面:认知层推进的唯一入口。
+ *
+ * `encounterMaterial` 此前零行为测试(只在源码扫描里被提到名字),
+ * 变异扫描因此把开头那道 `if (!def) return false` 报成「改坏了不会红」。
+ *
+ * 这条闸防的是喂进不存在的 id:少了它,`markSeen('nope')` 会先在
+ * `materialSeen` 里记下一个假键,再一路走到 `discernChance(def.rank, ...)` ——
+ * `def` 是 undefined,当场抛。
+ */
+describe('灵材照面 · encounterMaterial', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('给定不存在的灵材 id,当照面,则返回 false 且不抛', () => {
+    const lore = useLoreStore()
+    expect(encounterMaterial('no-such-material'), '查不到就该安静返回').toBe(false)
+    expect(lore.seenOf('no-such-material'), '不该往照面表里塞假键').toBe(0)
+  })
+
+  it('给定真灵材且判定命中,当照面,则认知层推进一格', () => {
+    const lore = useLoreStore()
+    const def = MATERIALS[0]!
+    vi.spyOn(rng, 'chance').mockReturnValue(true)
+    try {
+      expect(lore.loreOf(def.id), '起手是第 0 层').toBe(0)
+      expect(encounterMaterial(def.id, true), '命中就该推进').toBe(true)
+      expect(lore.loreOf(def.id), '推进到第 1 层').toBe(1)
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('给定真灵材且判定落空,当照面,则认知层不动但照面数 +1', () => {
+    const lore = useLoreStore()
+    const def = MATERIALS[0]!
+    vi.spyOn(rng, 'chance').mockReturnValue(false)
+    try {
+      const seenBefore = lore.seenOf(def.id)
+      expect(encounterMaterial(def.id, true), '没命中就返回 false').toBe(false)
+      expect(lore.loreOf(def.id), '认知层不动').toBe(0)
+      expect(lore.seenOf(def.id), '照面数还是要记 —— 熟识度是另一条尺').toBe(seenBefore + 1)
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('给定已到第 2 层,当再照面,则不再推进(封顶)', () => {
+    const lore = useLoreStore()
+    const def = MATERIALS[0]!
+    vi.spyOn(rng, 'chance').mockReturnValue(true)
+    try {
+      encounterMaterial(def.id, true)
+      encounterMaterial(def.id, true)
+      expect(lore.loreOf(def.id), '两次命中到第 2 层').toBe(2)
+      expect(encounterMaterial(def.id, true), '第 2 层就封顶了').toBe(false)
+      expect(lore.loreOf(def.id)).toBe(2)
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
+})
+
+/*
+ * 敌人照面记账:负数胜/败场不许把照面数记账记成负的,也不许反过来多记。
+ *
+ * `noteEnemyMany` 此前零覆盖。它唯一的生产调用点在离线结算:
+ * `noteEnemyMany(mobId, wins, battles - wins)` —— 正常情况下 battles >= wins,
+ * 两个入参都非负;但 battles 与 wins 都是存档可写字段,坏档里能出现 wins > battles,
+ * 于是 losses 为负。
+ *
+ * 少了 `Math.max(0, …)`,`wins=3, losses=-5` 算出 0.5 —— 一个**正数**,
+ * `seen <= 0` 拦不住它,`markEnemySeen` 也收下了(它只拒 <= 0),玩家于是被判
+ * 「与这只妖照面半次」。钳制后该格回到 3,与「只赢 3 场」一致。
+ */
+describe('敌人照面 · 负数场次的钳制', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('给定负数败场,当记账,则按 0 计而不是扣掉胜场的权重', () => {
+    const lore = useLoreStore()
+    const id = ENEMIES[0]!.id
+    noteEnemyMany(id, 3, -5)
+    // 只赢 3 场 = 照面 3 次;不钳制则 losses 的 -5 会抵掉一部分
+    expect(lore.enemySeenOf(id), '负败场该按 0 计,照面数就是 3').toBe(3)
+  })
+
+  it('给定全负场次,当记账,则不记、返回 false', () => {
+    const lore = useLoreStore()
+    const id = ENEMIES[0]!.id
+    expect(noteEnemyMany(id, -5, -5), '一次都没遇到就该返回 false').toBe(false)
+    expect(lore.enemySeenOf(id), '什么都不该记').toBe(0)
+  })
+
+  it('给定查不到的妖 id,当记账,则安静返回 false', () => {
+    expect(() => noteEnemyMany('no_such_enemy', 3, 2), '不该抛').not.toThrow()
+    expect(noteEnemyMany('no_such_enemy', 3, 2)).toBe(false)
   })
 })

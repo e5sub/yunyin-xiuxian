@@ -265,6 +265,26 @@ describe('整批连胜 · 坏档负值当 0 处理', () => {
     expect(run(-1), '负 1 也该与 0 同结果').toEqual(run(0))
   })
 
+  /*
+   * 负 losses 必须当成「有败场」处理 —— 连胜归零,不许继续累加。
+   *
+   * 这一侧的钳制此前没测过。上面几条都传 losses=0,走不到负值;
+   * 而 `Math.max(0, Math.floor(losses)) > 0` 在 losses 为负时判假,
+   * 于是连胜**当成没输过**继续往上加。
+   *
+   * 生产路径:离线结算 `recordWinStreakBatch(wins, battles - wins)` ——
+   * battles 与 wins 都是存档可写字段,坏档里 wins > battles 就得到负 losses。
+   * 实测 wins=3/losses=-5 时连胜从 7 涨到 10,玩家白拿连胜奖励。
+   */
+  it('负 losses 当作有败场:连胜归零,不继续累加', () => {
+    const player = usePlayerStore()
+    player.winStreak = 7
+    const granted = recordWinStreakBatch(3, -5)
+    expect(player.winStreak, '有败场就该归零,不该涨到 10').toBe(0)
+    // 这 3 场确实是赢的,该发的档照发:7→10 跨过 10 档
+    expect(granted.map(r => r.streak), '赢的那几场该发的档照发').toEqual([10])
+  })
+
   it('负 wins 不倒退计数,也不发奖', () => {
     const player = usePlayerStore()
     player.winStreak = 5
@@ -555,6 +575,26 @@ describe('闭关(Phase 28 · 接线后:buff 注册/互斥守卫/buff 到期)', (
     })
     expect(startRetreat()).toBe(false)
     expect(useCultivationStore().hasBuff('retreat')).toBe(false)
+  })
+
+  /*
+   * buff 还在、但按传入的墙钟已经过期 —— 剩余秒数必须是 0,不是负数。
+   *
+   * 上一条走的是「pruneBuffs 把 buff 清掉」那条路,`!inst` 直接返回 0,
+   * 根本没走到 `endsAt - at` 为负的那一支。而 isRetreating 就是靠
+   * `getRetreatRemainingSec() > 0` 判的:不夹 0 时负秒数仍然 > 0 为假,
+   * 看起来没事;但界面上「尚余」那一行会印出负数(或者被 formatDuration 画成怪东西)。
+   * 变异扫描报这处夹子「改坏了不会红」,原因就是用例只覆盖了 buff 已清那条。
+   */
+  it('给定 buff 仍在但墙钟已过 endsAt,当读剩余秒数,则为 0 而不是负数', () => {
+    startRetreat()
+    const cult = useCultivationStore()
+    const inst = cult.buffs.find(b => b.defId === 'retreat')!
+    expect(getRetreatRemainingSec(), '刚闭关时还有剩余').toBeGreaterThan(0)
+    // 不 pruneBuffs,直接按「闭关结束之后一小时」读
+    const after = inst.endsAt + 3600_000
+    expect(getRetreatRemainingSec(after), '过期后剩余秒数该是 0,不许是负数').toBe(0)
+    expect(isRetreating(), '按真实墙钟仍算闭关中(还没 prune)').toBe(true)
   })
 
   it('闭关 buff 到期后 isRetreating 转假、剩余秒数归零(持久化 buff 为唯一真相源)', () => {

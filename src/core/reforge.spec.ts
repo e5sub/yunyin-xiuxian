@@ -369,6 +369,24 @@ describe('重铸动作 · 条数与数值一起重掷', () => {
     expect(useInventoryStore().findItem('seal')!.sealedAffixIds).toEqual(['atk1'])
     expect(sealAffix('seal', 'def1'), '只剩一条可重掷位,封不了').toBe(false)
   })
+
+  /*
+   * 词条根本不在件上时不该收费、也不该封。
+   *
+   * `unsealAffix` 那条有同名用例(「ghost」),`sealAffix` 这侧一直没有 ——
+   * 变异扫描把 `if (!inst.affixes.some(...)) return false` 报成「改坏了不会红」。
+   * 少了这道闸,一个手滑的 affixId 会照价扣灵石,再把一个不存在的 id 记进封存表,
+   * 之后 reforgeableAffixIds 会把整件算成「已封满」而拒绝重铸。
+   */
+  it('词条不在件上时:不封、不扣钱、不往封存表里塞', () => {
+    useInventoryStore().items = [{ ...base, uid: 'ghost-affix' }]
+    const res = useResourcesStore()
+    res.addStone(gn(1e30))
+    const before = toNum(res.spiritStone)
+    expect(sealAffix('ghost-affix', 'nope'), '件上没这条,不该封成').toBe(false)
+    expect(useInventoryStore().findItem('ghost-affix')!.sealedAffixIds ?? [], '不该记进封存表').not.toContain('nope')
+    expect(toNum(res.spiritStone), '失败就不该扣灵石').toBe(before)
+  })
 })
 
 describe('封存 ↔ 解封 · 循环可逆', () => {
@@ -390,6 +408,28 @@ describe('封存 ↔ 解封 · 循环可逆', () => {
     expect(unsealAffix('nos', 'ghost'), '词条根本不在').toBe(false)
     expect(unsealAffix('unknown-uid', 'atk1'), '件不在').toBe(false)
     expect(useInventoryStore().findItem('nos')!.sealedAffixIds).toEqual([])
+  })
+
+  /*
+   * 封存表里记着一个「件上并不存在」的词条:这份存档是矛盾的,整条要清掉。
+   *
+   * 上面那条「词条根本不在」用的是 `sealedAffixIds: []` —— 空表时
+   * 后面那道 `!includes(affixId)` 就把它挡住了,两条守卫互为兜底,
+   * 去掉任一条都测不出来(实测去掉 affixes 那道,36 条仍全绿)。
+   *
+   * 真正能分开两者的只有「ID 在封存表里、但件上没这条」。这种存档怎么来?
+   * 洗练把词条换掉时若漏清封存表,或者玩家手改存档,都会留下。
+   * 不处理的话:封存表里挂着一个幽灵 id,`reforgeableAffixIds` 会把它算进
+   * 「已封满」,玩家从此不能重铸这件装备,界面上还看不到那条「已封」的词条。
+   */
+  it('封存表里有件上不存在的词条:解封返回 false,且把它从表里清掉', () => {
+    const inst: EquipmentInstance = { ...base, uid: 'phantom', sealedAffixIds: ['ghost'] }
+    useInventoryStore().items = [inst]
+    expect(unsealAffix('phantom', 'ghost'), '件上没有这条,不该报解封成功').toBe(false)
+    expect(
+      useInventoryStore().findItem('phantom')!.sealedAffixIds ?? [],
+      '幽灵 id 该被清掉,否则整件都重铸不了'
+    ).not.toContain('ghost')
   })
 
   it('解封后位子随即空出,可再封', () => {

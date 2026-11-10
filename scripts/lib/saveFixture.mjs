@@ -33,6 +33,34 @@ export async function seedSave(context, slices, guard = "__fixtureSeeded") {
 const gn = (m, e) => ({ m, e });
 
 /** 后期档:神人境 + 成套装备 */
+/**
+ * 给一份存档挂上「历练在途」的会话,让引擎每 tick 真的打一场。
+ *
+ * 内存那一档需要真实负载:空闲心跳不分配,量出来必然是平的。
+ * `nextBattleAt` 取过去时刻,进页面就立刻开打。
+ */
+export function withActiveRun(slices, regionId = "qingyun") {
+  const now = Date.now();
+  return {
+    ...slices,
+    adventure: {
+      session: {
+        regionId,
+        mode: "normal",
+        startedAt: now - 60_000,
+        endsAt: now + 3600_000,
+        nextBattleAt: now - 1,
+        wins: 0,
+        losses: 0,
+        events: 0,
+        stoneGain: { m: 0, e: 0 },
+        expGain: { m: 0, e: 0 },
+        itemGain: 0,
+      },
+    },
+  };
+}
+
 export function lateSlices() {
   return {
     /** 时间戳须取当前时刻:写 1970 会补算半个世纪的离线收益,冒烟每翻一页重算一次 */
@@ -186,7 +214,12 @@ export function lateSlices() {
  * 压测就变成「在七条词条的装备上量性能」而门照旧报绿。校验见
  * src/utils/fixtureParity.spec.ts —— 它直接调用本函数,不用源码文本猜。
  */
-export function stressSlices() {
+/**
+ * @param {number} [itemCount] 行囊件数,默认 120(即 BAG_CAPACITY 上限)。
+ *   供性能实验用:调小它可以看启动开销随件数的增长曲线,
+ *   从而分清哪一段是「与存档大小成正比」、哪一段是固定成本。
+ */
+export function stressSlices(itemCount = 120) {
   const base = lateSlices();
   /*
    * 九个可穿戴槽,每个槽一件 32 阶神品,模板与物品同阶。
@@ -209,7 +242,7 @@ export function stressSlices() {
    * 只按武器挑时护甲五槽又用不了 crit1/cdmg1/dmg1/bs1。
    */
   const AFFIX_IDS = ["atk1", "atk2", "atk3", "def1", "def2", "def3", "hp1", "hp2", "hp3"];
-  const ITEM_COUNT = 120;
+  const ITEM_COUNT = itemCount;
   const items = [];
   for (let i = 0; i < ITEM_COUNT; i += 1) {
     const slotPair = i < SLOT_TEMPLATES.length ? SLOT_TEMPLATES[i] : null;

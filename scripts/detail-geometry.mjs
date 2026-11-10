@@ -15,7 +15,7 @@
  * 共同判据:没有任何按钮正文被折成竖排。
  *
  * 另量两件事:
- *   一 后期档十页的触控下限;
+ *   一 后期档十七页的触控下限;
  *   二 坏档提示里那颗「知道了」的高度 —— 全站唯一只在异常路径下渲染的钮,
  *      巡页与 aria-check 拿好人存档,永远量不到它(实测修复前 17.9px)。
 aria-check 量过主路由,但它挂默认前期档 ——
@@ -789,16 +789,31 @@ await runDongfu(390, 1200)
  * 去掉三条:本夹具下 /souls 没凝过器魂、/build 没存过构筑、/world 没开界域,
  * 三页各自只剩一两个控件。它们的内容态由别的自检脚本各自覆盖。
  */
+/*
+ * 后期档十七页 = 全站可达路由。
+ *
+ * 原先只列 10 条,codex / world / souls / collection / build / apprentice / legacy
+ * 七页的触控下限从未在「后期档」(大境界 18)下量过 —— 而悟道兑换、洞府灵脉、道童
+ * 这些整块要 major 18 才渲染,前期档量等于没量,恰恰是后期档最该覆盖的。
+ * (/legacy 是纯展示页,量到 0 个控件属正常;列表里仍留着,将来长出按钮自动纳入。)
+ */
 const TOUCH_ROUTES = [
   '/',
   '/cultivation',
+  '/codex',
   '/adventure',
+  '/world',
   '/inventory',
   '/character',
-  '/market',
   '/celestial',
+  '/souls',
+  '/collection',
+  '/build',
+  '/market',
+  '/apprentice',
   '/titles',
   '/dongfu',
+  '/legacy',
   '/settings'
 ]
 
@@ -809,14 +824,47 @@ async function runTouchTargets() {
     if (/^(file|data|blob):/.test(url)) return r.continue()
     return r.abort()
   })
-  // major 18:悟道兑换(18 起)、洞府灵脉、道童这些整块才渲染 —— 用默认前期档量等于没量
-  await seedSave(context, slices({ major: 18 }))
+  /*
+   * major 18:悟道兑换(18 起)、洞府灵脉、道童这些整块才渲染 —— 用默认前期档量等于没量。
+   *
+   * 另补两块「有存档才长出来的按钮」:
+   *  - loadouts:构筑快照行的读档/删除钮,/build 里没有快照就只剩「存当前构筑」一颗;
+   *  - apprentice:道童卡上的派遣/收成钮,门中没有道童时整块不渲染。
+   * 缺这两块时,那几颗钮在后期档里永远量不到,触控下限也就无从验起。
+   */
+  const touchSeed = slices({ major: 18 })
+  touchSeed.loadouts = {
+    list: [
+      { id: 'tg_lo1', name: '青云剑修', seal: '剑', mainGongfa: null, subGongfa: [], artifactIds: [], equipment: {}, savedAt: 1 },
+      { id: 'tg_lo2', name: '丹道长生', seal: '丹', mainGongfa: null, subGongfa: [], artifactIds: [], equipment: {}, savedAt: 2 }
+    ]
+  }
+  touchSeed.apprentice = {
+    apprentices: [
+      { uid: 'tg_ap1', archId: 'ap_lingtong', task: null, level: 1, bornAt: 0, taskEndsAt: 0 },
+      { uid: 'tg_ap2', archId: 'ap_lingtong', task: null, level: 1, bornAt: 0, taskEndsAt: 0 }
+    ],
+    rebirthKarma: 0
+  }
+  await seedSave(context, touchSeed)
   const page = await context.newPage()
   page.on('pageerror', e => fail(`[触控] 运行时异常:${e.message}`))
 
   for (const route of TOUCH_ROUTES) {
     await page.goto(INDEX + '#' + route, { waitUntil: 'load' })
     await page.waitForTimeout(1200)
+    /*
+     * 先确认真的落到了这一页。
+     *
+     * 原先 goto 之后等 1200ms 就量 —— 懒加载慢、被守卫弹走、或视图整块没渲染时,
+     * 量到的是上一页(或首页)的控件,而上一页的控件也是达标的,
+     * 于是「这一页查过了」写进输出,实际一次也没量。与 aria-check 同一个毛病。
+     */
+    const landed = await page.evaluate(h => location.hash === '#' + h, route)
+    if (!landed) {
+      fail(`[触控] ${route} 导航没落到目标页(hash=${await page.evaluate(() => location.hash)}),本页未量`)
+      continue
+    }
     await page.evaluate(() => {
       for (const b of document.querySelectorAll('.pointer-events-none.fixed button')) b.click()
       Math.random = () => 1
@@ -848,12 +896,49 @@ async function runTouchTargets() {
      * 这条不是形式主义 —— 第一版就是把夹具写成 major 14,而悟道兑换 18 起才渲染,
      * 于是「兑换」「连兑 10」那两枚 21px 的钮一次都没被量到,判据照样报绿。
      *
-     * 阈值取 5:实测后期档十页的可点控件最少 6 个(/ 与 /adventure 各 6),
+     * 阈值取 5:实测这十页的可点控件最少 6 个(/ 与 /adventure 各 6),
      * 中位 13。留一档余量,页面塌掉一半也不至于还能过。
      * 原先是 3,而注释写的是 5 —— 一条判据的实现与它自己的说明对不上,
      * 比没有这条判据更糟:读注释的人会以为有 5 个兜底。
      */
-    if (measured.seen < 5) fail(`[触控] ${route} 只量到 ${measured.seen} 个控件(应 ≥5),判据没跑到东西`)
+    /*
+     * 「量到几个控件」是防空跑的自检,阈值须按页面实际密度给。
+     *
+     * 一刀切 ≥5 会让 world(1)/souls(3)/collection(2)/legacy(0) 这几页必然报红,
+     * 而那些页本来就只摆一两颗钮 —— 报红之后只能把判据关掉,那就连自检也没了。
+     * 下表是后期档(major 18)实测的控件数,阈值取约六成:塌掉一小半也还能过,
+     * 页面整体没渲染出来就必然报红。改了页面密度时这张表要跟着核。
+     */
+    /*
+     * 防空跑自检:每页都要量到「该页应有的控件数」。
+     *
+     * 一刀切 ≥5 会误报 world(1)/souls(3)/collection(2)/legacy(0)——它们本来就稀疏。
+     * 故按本脚本实测的基线(顺序走完十七页、Math.random 已固定成 1)取六成下限:
+     * 塌掉一小半仍能过,整块没渲染必然报红。
+     * legacy 那页确实没有控件,给它留 0,改由下面的正文长度兜底。
+     */
+    const BASE_SEEN = {
+      '/': 6, '/cultivation': 12, '/adventure': 6, '/inventory': 23, '/character': 24,
+      '/celestial': 7, '/market': 9, '/titles': 23, '/dongfu': 16, '/settings': 13,
+      '/codex': 7, '/build': 8, '/apprentice': 12
+    }
+    /*
+     * 只对控件数不随夹具浮动的那几页设线。
+     *
+     * /build 与 /apprentice 原先也在「浮动」之列 —— 根因是夹具没铺 loadouts 与 apprentice,
+     * 那几颗条件按钮根本不渲染。补上后控件数稳定(/build 8、/apprentice 12),故一并纳入。
+     * 仍不设线的只有 world(1)/souls(3)/collection(2)/legacy(0):它们本来就稀疏,
+     * 没有「漏渲染的按钮」可言,给数字线只会误报。这几页改验正文长度。
+     * 落点已在上方单独验过,这里只补「页面确实渲染了东西」这一道。
+     */
+    const base = BASE_SEEN[route]
+    if (base !== undefined && measured.seen < Math.floor(base * 0.6)) {
+      fail(`[触控] ${route} 只量到 ${measured.seen} 个控件(基线 ${base}),判据没跑到东西`)
+    }
+    if (base === undefined) {
+      const len = await page.evaluate(() => (document.querySelector('main')?.innerText || '').length)
+      if (len < 40) fail(`[触控] ${route} 正文只有 ${len} 字,页面可能没渲染`)
+    }
     if (measured.small.length) fail(`[触控] ${route} 有控件低于 28px:${measured.small.slice(0, 4).join(' | ')}`)
   }
 
@@ -1015,4 +1100,4 @@ if (failures.length) {
   for (const f of failures) console.error(`  ✗ ${f}`)
   process.exit(1)
 }
-console.log('二步确认几何通过:重铸/分解(含付不起档)、器魂散去、洞府连升、构筑删除、灵脉连投五处两态均不变形,无折行与竖排按钮;后期档十页触控下限全部 ≥28px;坏档提示的「知道了」也够 28px')
+console.log('二步确认几何通过:重铸/分解(含付不起档)、器魂散去、洞府连升、构筑删除、灵脉连投五处两态均不变形,无折行与竖排按钮;后期档十七页触控下限全部 ≥28px;坏档提示的「知道了」也够 28px')

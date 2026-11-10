@@ -68,7 +68,11 @@ async function auditModal(page) {
       return r.width > 0 && r.height > 0
     })
     const panel = panels[panels.length - 1] ?? null
-    if (!panel) return null
+    if (!panel) {
+      // 没开出来也得把禁令摘掉,否则这一页之后的所有过渡都不再可观测
+      st.remove()
+      return null
+    }
 
     const luma = rgb => {
       if (!rgb) return null
@@ -235,7 +239,7 @@ async function auditModal(page) {
       scroller.scrollTop = 0
     }
 
-    return {
+    const result = {
       count: rows.length,
       scrollClip,
       label: (panel.getAttribute('aria-label') || panel.querySelector('h3')?.textContent || '').trim(),
@@ -246,6 +250,15 @@ async function auditModal(page) {
       squeezed: squeezed.slice(0, 3),
       wrapped: wrapped.slice(0, 3)
     }
+    /*
+     * 量完摘掉禁令。这条是 `*{transition:none!important}`,全局生效;
+     * 留在 DOM 里会让此后任何过渡检测失效(弹窗淡出瞬间完成、FADING 类抓不到)。
+     * 本脚本目前只按固定时长等,暂时没撞上 —— 但那不等于安全:
+     * 后面谁加一句「等淡出走完」就会踩雷,且很难想到根因在这。
+     * 与 layout-check 同一处修复口径。
+     */
+    st.remove()
+    return result
   })
 }
 
@@ -306,12 +319,27 @@ async function probeTwoStep(page, name) {
     return [...panel.querySelectorAll('button')]
       .map((b, i) => ({ i, t: (b.textContent || '').trim().replace(/\s+/g, ' '), dis: b.disabled }))
       .filter(b => !b.dis && b.t && !skip.test(b.t))
-      .map(b => b.i)
+      .map(b => ({ i: b.i, t: b.t }))
   }, SAFE_SKIP.source)
   if (cands.length === 0) return
 
+  /*
+   * 候选可能很多:「收纳」那扇窗有 19 颗钮(品质档 / 阶数档 / 开关),
+   * 而前置钮「清理行囊(N 件)」排在最后。原先只试前 6 个,永远到不了它,
+   * 于是这扇窗的两步确认一直记为「没探到」。
+   * 先试带动作词的(清理 / 分解 / 熔 / 铸 / 择 / 返 这类),再按原顺序兜底。
+   */
+  const ACTION = /清理|分解|熔|铸|择|返|升|投|炼|洗/
+  const ordered = [
+    ...cands.filter(c => ACTION.test(c.t)),
+    ...cands
+  ].map(c => c.i)
+  const tried = new Set()
+
   let entered = false
-  for (const idx of cands.slice(0, 6)) {
+  for (const idx of ordered.slice(0, 14)) {
+    if (tried.has(idx)) continue
+    tried.add(idx)
     // 取栈顶那层面板里的按钮(别用 :visible —— 那是 Playwright 专有伪类,页面选择器里无效)
     const btns = page.locator('.modal-panel').last().locator('button')
     const n = await btns.count()
@@ -513,7 +541,20 @@ function cultivationSlices() {
      * 而它里面有一颗自定义数量输入(背包连服),触控下限与 aria 名都要量。
      * 放一味非增益丹:增益丹不摆连服钮,数量框也不出现。
      */
-    inventory: { ...base.inventory, pills: { p_xuanyuan: 200 } }
+    /*
+     * 行囊另加两件凡品无词条:smartKeep 的 minQuality 是 3(灵品),
+     * 这两件会被判「未成流派 → 可清理」,「清理行囊(N 件)」那颗前置钮才亮得起来。
+     * 不加的话该钮恒 disabled,「收纳」那扇窗的两步确认在这脚本里从未被量过。
+     */
+    inventory: {
+      ...base.inventory,
+      items: [
+        ...base.inventory.items,
+        { uid: 'p_sweep1', templateId: 'w_zhuqing', quality: 'mortal', tier: 2, level: 0, affixes: [] },
+        { uid: 'p_sweep2', templateId: 'b_mabu', quality: 'mortal', tier: 2, level: 0, affixes: [] }
+      ],
+      pills: { p_xuanyuan: 200 }
+    }
   }
 }
 

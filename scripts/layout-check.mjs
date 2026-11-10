@@ -42,6 +42,13 @@ const VIEWPORTS = [
   { width: 1280, height: 800, tag: '1280x800', dpr: 1 }
 ]
 /** 全量路由:漏一页即该页无守卫 */
+/*
+ * 全站可达路由。原先漏了 /market 与 /apprentice ——
+ * 前者只有「续草落点」一个专项(量的是弹窗几何,不是巡页那套尺子),
+ * 后者在本脚本里一处都没出现过。而 /apprentice 是主玩法页,有「收道童 / 派活 / 收成」,
+ * 新档下还带「(门中已满)」拒因,正是最容易挤变形的那类行内钮。
+ * 主巡页从建号流程起手(真实新档),这两页都会正常渲染,量得到。
+ */
 const ROUTES = [
   '/',
   '/cultivation',
@@ -57,7 +64,9 @@ const ROUTES = [
   '/legacy',
   '/dongfu',
   '/world',
-  '/celestial'
+  '/celestial',
+  '/market',
+  '/apprentice'
 ]
 
 /**
@@ -93,6 +102,7 @@ async function auditModalControls(page) {
     // 动画禁令:量稳态布局,不量过渡中间帧;与 measurePage 同口径
     const st = document.createElement('style')
     st.textContent = '*,*::before,*::after{animation:none!important;transition:none!important}'
+    st.setAttribute('data-no-anim', '1')
     document.head.appendChild(st)
     const panel = document.querySelector('.modal-panel')
     if (!panel) return null
@@ -186,7 +196,7 @@ async function auditModalControls(page) {
       }
       return out
     })()
-    return {
+    const result = {
       count: rows.length,
       label: (panel.getAttribute('aria-label') || panel.querySelector('h3')?.textContent || '').trim(),
       unnamed: rows.filter(r => !r.name).map(r => `${r.h.toFixed(1)}px`),
@@ -194,6 +204,8 @@ async function auditModalControls(page) {
       dimDisabled,
       badGroups
     }
+    st.remove()
+    return result
   })
 }
 
@@ -237,10 +249,11 @@ async function readFormatted(page, title) {
 
 /** 一页一量(空档与后期档共用):横向溢出、外壳偏移、越界元素、无名控件、过小可点元素、选择组选中态、底部导航项数 */
 async function measurePage(page) {
-  return page.evaluate(() => {
+  const result = await page.evaluate(() => {
     // 动画禁令:量稳态布局,与截图 animations:'disabled' 同口径;减动效自检另量,不受此注入影响
     const st = document.createElement('style')
     st.textContent = '*,*::before,*::after{animation:none!important;transition:none!important}'
+    st.setAttribute('data-no-anim', '1')
     document.head.appendChild(st)
     const vw = window.innerWidth
     const overflows = [...document.querySelectorAll('body *')]
@@ -629,6 +642,21 @@ async function measurePage(page) {
       })()
     }
   })
+  /*
+   * 摘掉测量期间注入的全局动画禁令。
+   *
+   * 那条 style 是 `*{transition:none!important}` 全局生效 —— 留在 DOM 里会让此后
+   * 所有过渡检测失效:弹窗淡出瞬间完成、FADING 类抓不到,焦点与挡路判据随之全乱。
+   * 原先三个测量函数各注入一份、谁都不摘,只因此前没有「量完还要继续用同一页」的顺序;
+   * 把欢迎页也纳入测量后立刻暴露(后续焦点场景连报五处)。
+   *
+   * 靠 style 上的 data 标记精确摘除,不按内容匹配 ——
+   * 试过按 `animation:none!important` 匹配,把别处注入的一起删了,吸顶判据连报 28 处。
+   */
+  await page.evaluate(() => {
+    for (const st of document.querySelectorAll('style[data-no-anim]')) st.remove()
+  })
+  return result
 }
 
 /**
@@ -637,10 +665,20 @@ async function measurePage(page) {
  */
 async function measureTabRail(page) {
   return page.evaluate(() => {
+    /*
+     * 自己注入动画禁令,不再蹭 measurePage 留下的那一条。
+     *
+     * 滚 600px 后量吸顶位置,若过渡还在跑,量到的是中间帧(实测偏离 12px)。
+     * 原先能过,只是因为 measurePage 注入的全局禁令从不摘除 —— 那是副作用,不是契约。
+     * 现在 measurePage 量完就摘,这里必须自带。
+     */
+    const st = document.createElement('style')
+    st.textContent = '*,*::before,*::after{animation:none!important;transition:none!important}'
+    document.head.appendChild(st)
     const main = document.querySelector('main')
     const rail = document.querySelector('.tab-rail')
     const root = main?.querySelector('.stagger-in') ?? main?.firstElementChild
-    if (!main || !rail || !root) return null
+    if (!main || !rail || !root) { st.remove(); return null }
     const spacer = document.createElement('div')
     spacer.style.height = '1200px'
     root.appendChild(spacer)
@@ -652,6 +690,7 @@ async function measureTabRail(page) {
       drift: Math.round(box.top - main.getBoundingClientRect().top),
       bleed: Math.round(box.left - mainBox.left) + Math.round(mainBox.right - box.right)
     }
+    st.remove()
     main.scrollTop = 0
     spacer.remove()
     return out
@@ -733,8 +772,9 @@ async function measureSmallTargets(page) {
     // 测量前禁动画(同 measurePage):入场位移会量出假越界
     const st = document.createElement('style')
     st.textContent = '*,*::before,*::after{animation:none!important;transition:none!important}'
+    st.setAttribute('data-no-anim', '1')
     document.head.appendChild(st)
-    return [...document.querySelectorAll('button, a, [role=button]')]
+    const out = [...document.querySelectorAll('button, a, [role=button]')]
       .map(el => {
         const r = el.getBoundingClientRect()
         const declared = parseFloat(getComputedStyle(el).minHeight) || 0
@@ -744,6 +784,9 @@ async function measureSmallTargets(page) {
       .filter(({ r, ok }) => r.width > 0 && r.height > 0 && !ok)
       .slice(0, 5)
       .map(({ el, r }) => `${r.height.toFixed(1)}px «${(el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 14)}»`)
+    // 量完摘掉:这条禁令全局生效,留着会让后续过渡检测失效
+    st.remove()
+    return out
   })
 }
 
@@ -759,6 +802,22 @@ for (const vp of VIEWPORTS) {
     const welcome = await measureSmallTargets(page)
     checked += 1
     if (welcome.length) failures.push(`[${vp.tag}] 欢迎页 可点元素过小:${welcome.join(' | ')}`)
+    /*
+     * 欢迎页此前只过「触控下限」一条尺子 —— 它进不了 ROUTES(路由守卫会把有存档的
+     * 会话弹回首页),只能就地量。它是玩家看到的第一屏,窄屏与缩放下最容易出事。
+     * 溢出与 200% 两档在这里补;底部导航那一条不适用(首启页不在主壳里),过滤掉。
+     */
+    const welcomeInfo = await measurePage(page)
+    checked += 1
+    for (const p of problemsOf(welcomeInfo).filter(x => !/底部导航/.test(x))) {
+      failures.push(`[${vp.tag}] 欢迎页 → ${p}`)
+    }
+    const welcomeZoom = await measureZoomScale(page, vp)
+    zoomSeen += 1
+    checked += 1
+    for (const z of zoomProblems(welcomeZoom, vp.tag).filter(x => !/底部导航/.test(x))) {
+      failures.push(`[${vp.tag}] 欢迎页 200% → ${z}`)
+    }
   }
   // 建号:传送门约 2.5s
   await page.getByRole('button', { name: /开\s*始\s*游\s*戏/ }).first().click()
@@ -783,6 +842,18 @@ for (const vp of VIEWPORTS) {
     // 建号页懒挂载:量到空页即报错
     if ((await page.locator('button').count()) === 0) failures.push(`[${vp.tag}] 建号页 没量到任何控件,判据没跑到东西`)
     if (create.length) failures.push(`[${vp.tag}] 建号页 可点元素过小:${create.join(' | ')}`)
+    // 溢出与 200% 档:建号页有输入框、灵根卡与长文案,窄屏下要独立量
+    const createInfo = await measurePage(page)
+    checked += 1
+    for (const p of problemsOf(createInfo).filter(x => !/底部导航/.test(x))) {
+      failures.push(`[${vp.tag}] 建号页 → ${p}`)
+    }
+    const createZoom = await measureZoomScale(page, vp)
+    zoomSeen += 1
+    checked += 1
+    for (const z of zoomProblems(createZoom, vp.tag).filter(x => !/底部导航/.test(x))) {
+      failures.push(`[${vp.tag}] 建号页 200% → ${z}`)
+    }
   }
   await page.getByRole('button', { name: /踏\s*入\s*仙\s*途/ }).first().click()
   await page.waitForTimeout(1200)
@@ -1235,6 +1306,21 @@ for (const vp of VIEWPORTS) {
       veinPoints: { gather: 52 },
       veinMain: 'gather'
     },
+    /*
+     * 道童铺满四名,且刻意各带一种状态 —— 空列表时卡片整块不渲染,
+     * 名号行、层数刻度、羁绊行那些「文字 + 点阵」的组合一个都量不到。
+     * 四种:闲置新手 / 满层满羁绊 / 任务在途 / 高羁绊未满层;
+     * 羁绊 100 与 30 两档让「羁绊已至真传」与「羁绊还差 N 趟」两种文案都出现。
+     */
+    apprentice: {
+      apprentices: [
+        { uid: 'lc_ap1', archId: 'ap_xiantong', level: 1, bond: 0, task: null },
+        { uid: 'lc_ap2', archId: 'ap_daotong', level: 20, bond: 100, task: null },
+        { uid: 'lc_ap3', archId: 'ap_youxia', level: 7, bond: 30, task: { spec: 'adventure', startAt: Date.now() - 60000, finishAt: Date.now() + 1800000 } },
+        { uid: 'lc_ap4', archId: 'ap_lingtong', level: 13, bond: 60, task: null }
+      ],
+      rebirthKarma: 0
+    },
     settings: {
       privacyAccepted: true,
       sfxOn: false,
@@ -1295,7 +1381,16 @@ for (const vp of VIEWPORTS) {
     Math.random = () => 1
   })
   await page.waitForTimeout(400)
-  for (const route of ['/', '/cultivation', '/adventure', '/inventory', '/character', '/celestial', '/souls', '/collection', '/build', '/dongfu']) {
+  /*
+   * 吃主清单 ROUTES,不另写一份。
+   *
+   * 这里原先是一行内联的 17 条,与上面的 ROUTES 各写各的 ——
+   * 加路由时容易只改一处,而漏掉的那一份不会有任何提示:
+   * /codex /titles /settings /legacy /world 五页就因此在后期档下从没量过,
+   * 而 /codex 有九处读 player.major,正是后期档最该覆盖的。
+   * 两条线跑的是同一套尺子(measurePage + measureTabRail + 200% 缩放),没有理由分家。
+   */
+  for (const route of ROUTES) {
     await page.goto(INDEX + '#' + route, { waitUntil: 'load' })
     await page.waitForTimeout(700)
     const info = await measurePage(page)
@@ -1780,7 +1875,15 @@ for (const vp of VIEWPORTS) {
     downloaded = download.suggestedFilename()
     await download.saveAs(savePath)
   } catch (err) {
-    failures.push(`[390] 存读场景:点「导出存档」没有拿到下载(${String(err).split('\n')[0]?.slice(0, 60)})`)
+    /*
+     * 没拿到文件就别往下走。
+     *
+     * 原先只记一条失败继续,下一步 setInputFiles 会因文件不存在抛 ENOENT,
+     * 整跑崩在这里 —— 后面几十个场景一个都跑不到,而报出来的是个 Node 栈,
+     * 看不出真正的原因。失败要就地止损。
+     */
+    failures.push(`[390] 存读场景:点「导出存档」没有拿到下载(${String(err).split('\n')[0]?.slice(0, 60)}),后续导入步骤跳过`)
+    downloaded = ''
   }
   if (downloaded && !/\.save$/.test(downloaded)) failures.push(`[390] 存读场景:导出的文件名不像存档(${downloaded})`)
 
@@ -1815,6 +1918,10 @@ for (const vp of VIEWPORTS) {
   await page.evaluate(() => {
     window.__beforeImport = 'alive'
   })
+  if (!downloaded) {
+    // 上一步没拿到文件:跳过导入,别让 setInputFiles 抛 ENOENT 把整跑打崩
+    rmSync(savePath, { force: true })
+  } else {
   await page.locator('input[type=file]').first().setInputFiles(savePath)
   await page.waitForTimeout(500)
   // 导入先弹确认(与重置同纪律),点「确认导入」才落库
@@ -1836,6 +1943,8 @@ for (const vp of VIEWPORTS) {
   if (pageErrors.length) failures.push(`[390] 存读场景页面异常:${[...new Set(pageErrors)].join(' | ')}`)
   console.log(`\n存读往返:导出时 ${s0.text} → 投脉后 ${spent?.text ?? '(没投成)'} → 导入后 ${after.text}`)
   rmSync(savePath, { force: true })
+  await ctx.close()
+  }
   await ctx.close()
 }
 
@@ -1996,7 +2105,7 @@ for (const vp of VIEWPORTS) {
       [...document.querySelectorAll('[role=status] > div')].map(d => (d.textContent || '').replace(/\s*×\s*$/, '').trim()).join('|')
     )
   const opened = await page
-    .locator('main button', { hasText: /^分解$/ })
+    .locator('main button', { hasText: /^\s*分\s*解\s*$/ })
     .first()
     .click({ timeout: 3000 })
     .then(() => true)
@@ -3390,13 +3499,13 @@ for (const vp of [
   }
 
   await patrol('分解', async () => {
-    const btn = page.locator('main button', { hasText: /^分\s*解$/ }).first()
+    const btn = page.locator('main button', { hasText: /^\s*分\s*解\s*$/ }).first()
     if ((await btn.count()) === 0) return false
     await btn.click({ timeout: 3000 }).catch(() => {})
     return true
   })
   await patrol('收纳', async () => {
-    const btn = page.locator('main button', { hasText: /^收\s*纳/ }).first()
+    const btn = page.locator('main button', { hasText: /^\s*收\s*纳/ }).first()
     if ((await btn.count()) === 0) return false
     await btn.click({ timeout: 3000 }).catch(() => {})
     return true
@@ -3408,6 +3517,20 @@ for (const vp of [
     return true
   })
   await patrol('开炉炼丹', async () => {
+    /*
+     * 这一格只在「丹药」页签下渲染(v-else-if="tab === 'pill'"),而巡逻进来时停在「装备」。
+     * 原先直接找按钮,永远 count=0,被当成「夹具未铺前置」放过了 —— 其实这扇窗从未被量过。
+     */
+    // 页签按钮的 textContent 带前导/尾随空白,且「丹药」签可能还挂一个圆点;按包含匹配
+    const pillTab = page.locator('main button', { hasText: /丹\s*药/ }).first()
+    if ((await pillTab.count()) > 0) {
+      await pillTab.click({ timeout: 3000 }).catch(() => {})
+      await page.waitForTimeout(500)
+    }
+    /*
+     * 这格按钮的 textContent 是「炉开炉炼丹已知丹方 N 种…」—— 开头那个「炉」是印章图标里的字。
+     * 故不能用 ^ 锚定到「开」,按包含匹配即可(整页只此一处含「开炉炼丹」)。
+     */
     const btn = page.locator('main button', { hasText: /开\s*炉\s*炼\s*丹/ }).first()
     if ((await btn.count()) === 0) return false
     await btn.click({ timeout: 3000 }).catch(() => {})

@@ -498,6 +498,22 @@ describe('镇压资格进度', () => {
     expect(p.qualified).toBe(false)
   })
 
+  /*
+   * 坏档里的负总场次按 0 算,不许拿负数去比「胜场够不够」。
+   *
+   * `Math.max(0, src?.totalFights ?? 0)` 这一夹制此前没喂过负数。
+   * totalFights 是存档可写字段;不夹的话 `wins >= minWins` 判假(这侧还好),
+   * 但界面上「已胜 -5 场」会直接印给玩家看 —— 镇守资格面板上出现负数胜场。
+   */
+  it('负总场次按 0 算:不显示负数胜场', () => {
+    for (const bad of [-1, -50, -1e9]) {
+      const p = suppressionProgress(stats({ totalFights: bad, avgRounds: 2, avgDamageTakenPct: 0.02 }))
+      expect(p.wins, `总场次 ${bad} 该按 0 算`).toBe(0)
+      expect(p.hasStats, '负场次不算有战绩').toBe(false)
+      expect(p.winsOk).toBe(false)
+    }
+  })
+
   it('胜场够但打得久:只有回合项不合格,玩家能看出卡在哪', async () => {
     const p = suppressionProgress(stats({ totalFights: 25, avgRounds: 4, avgDamageTakenPct: 0.05 }))
     expect(p.winsOk).toBe(true)
@@ -746,5 +762,35 @@ describe('镇压复苏 · settle 级(72h 复生当拍不产石)', () => {
     expect(fullStone, '不收越界的那一截').toBeLessThan(wholeStone)
     expect(fullStone).toBeCloseTo(wholeStone / 3, -3)
     expect(player.suppressedRegions, '跨线就该松开').not.toContain('qingyun')
+  })
+})
+
+/*
+ * 镇压产出行:灵石/时 与 物产/时 拼成一行,兴衰系数两边都乘。
+ *
+ * 这行是玩家在区域卡上唯一能看到的「镇压能拿到什么」。变异扫描把
+ * `if (!rate.resource) return stone` 报成「改坏了不会红」—— 查下来那条是死分支:
+ * 44 个区域全部有物产(`suppressYield` 按 eventTags 命中 YIELD_BY_TAG),
+ * 一处也走不到。故这里不补那条,改锁**有物产时**的真实文案。
+ */
+describe('镇压产出行 · 玩家看到的那一行', () => {
+  it('给定有物产的区域,当读产出行,则灵石与物产两段都在', () => {
+    const line = suppressRateLine('qingyun', 'stable')
+    expect(line, '该报灵石/时').toMatch(/灵石\/时/)
+    expect(line, '该报物产/时(青云山麓有玄铁)').toContain('玄铁')
+    expect(line, '两段用 · 分隔').toContain(' · ')
+  })
+
+  it('给定兴衰不同,当读产出行,则灵石那段跟着走', () => {
+    const num = (t: string): number => Number((t.match(/([\d.]+)灵石/) ?? [])[1] ?? 0)
+    const boom = num(suppressRateLine('qingyun', 'flourish'))
+    const peace = num(suppressRateLine('qingyun', 'stable'))
+    const ruin = num(suppressRateLine('qingyun', 'chaos'))
+    expect(boom, '兴盛该比平常高').toBeGreaterThan(peace)
+    expect(ruin, '荒芜该比平常低').toBeLessThan(peace)
+  })
+
+  it('给定不存在的区域,当读产出行,则报占位符而不是空串', () => {
+    expect(suppressRateLine('no-such-region', 'stable'), '查不到要给占位符').toBe('—')
   })
 })

@@ -15,6 +15,7 @@ import {
   GEAR_PROFILES,
   modDepth,
   modelPlayer,
+  gongfaModsAt,
   powerSourceAudit,
   realmLeapAudit,
   reachableTiers
@@ -186,6 +187,26 @@ describe('膨胀治理 · 乘区来源归因', () => {
     }
   })
 
+  /*
+   * 来源结构的两条硬约束:每项非负、合计为 1。
+   *
+   * 变异扫描把其中一处 `Math.max(0, fullPower - withParts(...))` 报成「改坏了不会红」——
+   * 这一批夹子是**等价变异**:五类来源在当前配置下都是正贡献(实测丹药灵脉那项 10.7%~22.5%),
+   * 夹不夹读出来一样。故锁的是结果契约:占比是给玩家看的饼,负数或合计不为 1 就是坏读数。
+   */
+  it('每项占比非负,且五项合计为 1', () => {
+    for (const major of [2, 5, 9, MAX_MAJOR]) {
+      const rows = powerSourceAudit(major, TYPICAL)
+      expect(rows.length, `major=${major} 该有五项`).toBe(5)
+      for (const r of rows) {
+        expect(r.share, `${REALMS[major]!.name} 的「${r.name}」占比为负`).toBeGreaterThanOrEqual(0)
+        expect(Number.isFinite(r.share), `${REALMS[major]!.name} 的「${r.name}」占比非有限数`).toBe(true)
+      }
+      const sum = rows.reduce((acc, r) => acc + r.share, 0)
+      expect(sum, `${REALMS[major]!.name} 五项合计该是 1`).toBeCloseTo(1, 6)
+    }
+  })
+
   it('境界基础的占比被显著抬回,突破重新有分量', () => {
     const jindan = powerSourceAudit(2, TYPICAL).find(r => r.id === 'realm')!
     const lianxu = powerSourceAudit(5, TYPICAL).find(r => r.id === 'realm')!
@@ -318,5 +339,28 @@ describe('膨胀审计 · 建模自洽性', () => {
     const optimized = toNum(modelPlayer(5, 9, gearProfile('optimized')).stats.power)
     expect(typical).toBeGreaterThan(casual)
     expect(optimized).toBeGreaterThan(typical)
+  })
+})
+
+/*
+ * 功法乘区在「查不到可用功法」时返回空对象,而不是抛。
+ *
+ * `gongfaModsAt` 里 `if (usable.length === 0) return {}` 这一支,
+ * 正境界下永远走不到(实测 major=0 就有 4 条主修、3 条辅修),
+ * 但**负境界会走到** —— 那里 `g.minRealm <= -1` 一条也不满足,usable 为空。
+ *
+ * 少了守卫,下一行 `usable.reduce(...)` 会对空数组无初值归并,当场抛
+ * TypeError。而 gongfaModsAt 是战力归因的取数口径,调用方假定它总能返回一个对象。
+ */
+describe('功法乘区 · 查不到可用功法时返回空对象', () => {
+  it('给定负境界(一条功法都够不到),则返回 {} 而不是抛', () => {
+    expect(() => gongfaModsAt(-1), '不该抛').not.toThrow()
+    expect(gongfaModsAt(-1), '查不到就返回空对象').toEqual({})
+    expect(gongfaModsAt(-999)).toEqual({})
+  })
+
+  it('给定凡境,则确有功法可用(证明上一支是边界而非常态)', () => {
+    const at0 = gongfaModsAt(0)
+    expect(Object.keys(at0).length, '凡境该有可用的功法乘区').toBeGreaterThan(0)
   })
 })

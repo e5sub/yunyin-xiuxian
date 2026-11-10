@@ -5,6 +5,7 @@ import type { OwnedApprentice } from '@/core/apprenticeService'
 import { APPRENTICE_MAX_LEVEL, STARTER_APPRENTICE, APPRENTICES, apprenticeSlots, APPRENTICE_SLOT_HARD_CAP } from '@/data/apprentices'
 import { herbGradeOfMajor } from '@/data/herbGrades'
 import { gn, toNum } from '@/utils/gnum'
+import { apprenticeRecruitCost } from '@/core/apprenticeService'
 import { useApprenticeStore } from '@/stores/apprentice'
 import { useResourcesStore } from '@/stores/resources'
 import { usePlayerStore } from '@/stores/player'
@@ -152,6 +153,82 @@ describe('收徒 · 派发与收割', () => {
     res.spiritStone = gn(1e40) // 本源道童报价随境界抬到四十阶,须给得起
     expect(a.recruit(MAX_MAJOR + 99), '超界境界夹回最高境后仍可收').toBe('ok')
     expect(a.apprentices, '只收一人,不因超界境界多开槽').toHaveLength(1)
+  })
+
+  /*
+   * 负境界也要夹回凡境 —— 这一档与 NaN / 超界不同,它**会改价格**。
+   *
+   * `clampMajor` 的下限去掉后,实测 major=-1 收到 36 石、major=0 收到 68.4 石:
+   * `apprenticeRecruitCost` 走 `stoneByTier(maxTierForMajor(major))`,而
+   * `maxTierForMajor` 对负数是「没有任何区域满足 minRealm <= -1」,退回 best=1 阶;
+   * 第 0 境则命中较后的区域。两条路径的层级不同,价签就不同。
+   *
+   * 所以这不是等价变异:漏了夹子,玩家能用一个负数(比如「上一境」算成 -1)
+   * 以半价收道童。名额那边 `apprenticeSlots` 自带 Math.max,两条尺在这里分家 ——
+   * 名额不会错,价格会错,正是最难看出来的一种。
+   */
+  it('负境界夹回凡境:价签与凡境一致,不许半价', () => {
+    const a = useApprenticeStore()
+    const res = useResourcesStore()
+    a.$patch({ apprentices: [] })
+    res.spiritStone = gn(1e12)
+    const atZero = toNum(apprenticeRecruitCost(0))
+    const beforeZero = toNum(res.spiritStone)
+    a.recruit(0)
+    const paidZero = beforeZero - toNum(res.spiritStone)
+
+    a.$patch({ apprentices: [] })
+    res.spiritStone = gn(1e12)
+    const beforeNeg = toNum(res.spiritStone)
+    a.recruit(-1)
+    const paidNeg = beforeNeg - toNum(res.spiritStone)
+
+    // GNum 走 m×10^e 再还原,比较用相对误差
+    expect(paidNeg, `负境界实收 ${paidNeg},凡境 ${paidZero} —— 夹子没了`).toBeCloseTo(paidZero, 3)
+    expect(paidNeg).toBeCloseTo(atZero, 3)
+  })
+
+  /*
+   * 坏档里的负 startAt 夹成 0 —— 与 market 的 finishAt 不同,这里**保留**是对的。
+   *
+   * 任务合法性由紧随其后的 `finishAt >= startAt` 判:startAt 夹成 0 之后,
+   * 只要 finishAt 也是非负,任务就是「从此刻起算、到 finishAt 结束」,语义自洽。
+   * 而 market 那处夹成 0 等于「已在过去到期」,会把寄卖立刻结算掉 —— 两者相反。
+   */
+  it('sanitize:负 startAt 夹成 0,任务本身保留(与寄卖的负 finishAt 相反)', () => {
+    const a = useApprenticeStore()
+    const now = Date.now()
+    a.$patch({
+      apprentices: [
+        make('ap_luanniao', { task: { spec: 'herb', startAt: -1e9, finishAt: now + 60_000 } })
+      ] as never
+    })
+    a.sanitize()
+    const t = a.apprentices[0]!.task
+    expect(t, '任务该保留 —— startAt 夹成 0 后语义仍自洽').not.toBeNull()
+    expect(t!.startAt, '负的开始时刻夹成 0').toBe(0)
+    expect(t!.finishAt).toBe(now + 60_000)
+  })
+
+  /*
+   * 负 finishAt 的任务整条置闲 —— 与负 startAt 的处理不同。
+   *
+   * finishAt 夹成 0 之后,`finishAt >= startAt`(startAt 已被夹到 >= 0)
+   * 只在 startAt 也为 0 时才成立;两个都为 0 意味着「零时长任务」,
+   * 开局即收割。所以这里的 Math.max 只是把「负」和「0」并成一档,
+   * 真正拦下它的是随后的 finishAt >= startAt。
+   */
+  it('sanitize:负 finishAt 的任务置闲,不会变成零时长任务', () => {
+    const a = useApprenticeStore()
+    a.$patch({
+      apprentices: [
+        make('ap_luanniao', { task: { spec: 'herb', startAt: 0, finishAt: -1 } }),
+        make('ap_daotong', { task: { spec: 'ore', startAt: 100, finishAt: -1e9 } })
+      ] as never
+    })
+    a.sanitize()
+    expect(a.apprentices[0]!.task, '零时长的任务该置闲').toBeNull()
+    expect(a.apprentices[1]!.task, '结束早于开始的任务该置闲').toBeNull()
   })
 
   it('sanitize:坏弟子整位丢弃、坏任务当作闲置、坏等级/羁绊夹回', () => {

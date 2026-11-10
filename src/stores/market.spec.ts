@@ -484,6 +484,31 @@ describe('坊市 · 买卖', () => {
     )
   })
 
+  /*
+   * 坏档里的负 finishAt 必须整条丢掉,不能被夹成 0 留下来。
+   *
+   * 原文是 `Math.max(0, Math.floor(raw.finishAt))`,紧跟着 `if (finishAt < 0) continue`
+   * ——夹到 0 之后那个 continue 永远不会触发。而 finishAt=0 意味着「已在过去到期」,
+   * 玩家一进游戏就被迫结算一笔本不该有的寄卖,钱和货都凭空产生。
+   *
+   * 变异扫描把这一处的 Math.max 报成「改坏了不会红」,因为既有用例只喂过正常时间戳。
+   */
+  it('sanitize:负 finishAt 的寄卖整条丢弃,不夹成「立即到期」', () => {
+    const market = useMarketStore()
+    const now = Date.now()
+    market.$patch({
+      consign: [
+        { slot: 0, tier: 3, qualityRank: 1, price: { m: 5, e: 0 }, finishAt: -1, name: '坏' },
+        { slot: 1, tier: 3, qualityRank: 1, price: { m: 5, e: 0 }, finishAt: -1e12, name: '坏' },
+        { slot: 2, tier: 3, qualityRank: 1, price: { m: 5, e: 0 }, finishAt: now + 60_000, name: '好' }
+      ] as never
+    })
+    market.sanitize()
+    expect(market.consign, '两条坏的该丢掉,只留一条好的').toHaveLength(1)
+    expect(market.consign[0]!.name).toBe('好')
+    expect(market.consign.every(p => p.finishAt > 0), '留下来的都得是未来时刻').toBe(true)
+  })
+
   it('sanitize:寄卖格号重复只理顺号,一件都不丢、各自内容不串', () => {
     const market = useMarketStore()
     const now = Date.now()
@@ -722,5 +747,38 @@ describe('坊市 · 坏档格号挤掉好货', () => {
     const equip = (m.stock as { kind: string; idx: number; tier?: number }[]).filter(s => s.kind === 'equipment')
     expect(equip.some(e => e.tier === 5), '原号合法的 5 阶装备不该被挤掉').toBe(true)
     expect(equip.every(e => e.idx >= 0), '格号都该是非负').toBe(true)
+  })
+
+  /*
+   * minQualityRank 的**下限**同样要夹 —— 上限那条已有用例(999 → divine)。
+   *
+   * 它决定货架上那件最低能出什么品质:负的 rank 会让 qualityDef 取到不存在的档,
+   * 而 `buy` 时按它生成装备,玩家买到的是件没品质的物件。
+   * 变异扫描报这处夹子「改坏了不会红」——既有用例只喂过 0 与 999,没喂过负数。
+   */
+  it('给定负的 minQualityRank,当 sanitize,则夹回最低品质', async () => {
+    const m = useMarketStore()
+    // 格身取自真实货架(签发按 (major, stockedAt) 再生,手写假格买不动,见上一 describe);
+    // 只把 minQualityRank 写负,专测 sanitize 的下限夹子
+    const real = generateMarketStock(0, FAR).goods.filter(s => s.kind === 'equipment').slice(0, 2)
+    m.$patch({
+      stock: [
+        { ...real[0]!, minQualityRank: -7, price: { m: 50, e: 0 }, sold: false },
+        { ...real[1]!, minQualityRank: -1e9, price: { m: 50, e: 0 }, sold: false }
+      ] as MarketSlot[],
+      stockedAt: FAR
+    })
+    m.sanitize()
+    for (const slot of m.stock) {
+      if (slot.kind !== 'equipment') continue
+      expect(slot.minQualityRank, '负的 minQualityRank 该夹回 0').toBe(0)
+    }
+    // 夹回之后仍须买得动,且拿到的品质是合法的
+    const res = useResourcesStore()
+    const inventory = useInventoryStore()
+    res.spiritStone = gn(1e6)
+    expect(await m.buy(real[0]!.idx), '夹回后该能正常买入').toBe('ok')
+    expect(inventory.items, '该入账一件').toHaveLength(1)
+    expect(() => qualityDef(inventory.items[0]!.quality), '品质须是合法档').not.toThrow()
   })
 })
