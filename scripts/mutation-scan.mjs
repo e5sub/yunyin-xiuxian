@@ -67,6 +67,26 @@ const PATTERNS = [
  */
 const EQUIVALENT = [
   {
+    file: 'src/core/ruleBudget.ts',
+    text: 'if (!mods) return',
+    why: 'budgetOfMods 开头的 `if (!mods) return 0`:去掉后 `for (const k in undefined)` 在 JS 里合法、一次不迭代,sum 保持 0,同样返回 0'
+  },
+  {
+    file: 'src/core/identity.ts',
+    text: 'if (!daoId) return',
+    why: 'daoNarrative 的 `if (!daoId) return null`:去掉后 switch(null) 不匹配任何 case,落到函数末尾的 `return null` —— 两条路径同值。它的返回值只进 v-if,Vue 里 null 与 undefined 同判'
+  },
+  {
+    file: 'src/core/worldGen.ts',
+    text: '.length === 0)',
+    why: 'noveltyScore 的 `if (history.length === 0) return 1`:去掉后 for 循环一次不执行,nearest 保持初值 1 原样返回 —— 与提前返回同值'
+  },
+  {
+    file: 'src/core/pillValue.ts',
+    text: 'Math.max(0, speed + regen)',
+    why: 'tempoRateOf 的返回值只有两个使用点,都是 `> 0` 判断(分型 tempo/state、算 durationSec)。负值与 0 在这两处同判,钳不钳结果一样'
+  },
+  {
     file: 'src/core/combat.ts',
     text: 'Math.max(0.2, 1 - target.defSunder)',
     why: 'ARTIFACT_SUNDER_CAP 是 0.5,defSunder 封顶 0.5,1-0.5=0.5 远高于 0.2 的下限,这道钳制永不触发'
@@ -159,21 +179,6 @@ const EQUIVALENT = [
       'healSelf 是 `missing = subClamp(maxHp, hp)`、`applied = gnMin(missing, amount)`(不会超过 maxHp)。' +
       '所以 ratio 恒在 [0,1],钳制永不触发。留着是因为 hpPct 还兼作「进战报的 php/ehp 读数」,' +
       '那条路直方图化,一个越界的 1.02 会让进度条画到框外。'
-  },
-  {
-    file: 'src/core/audio.ts',
-    text: 'Math.max(0, Math.min(1, p.musicVol))',
-    why:
-      '音量夹逼。取值路径是 App.vue 传 musicVol/100,正常档位本就在 [0,1];' +
-      '平时观察不到,只有存档被外部改成 200 或 -5 才起作用。' +
-      '判据不可达的原因是那两条钳制写在 prefs 模块私域里:不导出读不到,导出又会被' +
-      'deadExportAudit 判为「骨架空转」;而要让 applyPrefs 真正跑一次还得完整模拟 Tone.js。' +
-      '现有用例只钉「畸形输入不抛错」,是这条边界上能验到的最远处。'
-  },
-  {
-    file: 'src/core/audio.ts',
-    text: 'Math.max(0, Math.min(1, p.sfxVol))',
-    why: '同 musicVol:音效音量夹逼,理由一致。'
   },
   {
     file: 'src/core/combat.ts',
@@ -715,17 +720,27 @@ for (const t of found) {
 console.log(
   `\n检查 ${checked} 处 | 漏 ${missed.length} 处 | 等价跳过 ${skipped.length} 处 | 设施故障 ${infra.length} 处`
 )
+/**
+ * 摘要里**必须带行号**。
+ *
+ * 原先只打「文件 + 文本」,同一个模块里两处同形守卫在摘要里长得一模一样 ——
+ * bounty.ts 的 `if (!eq) return` 有 claim 与 claimEquip 两处,前者有测试、
+ * 后者没有,摘要里分不出来。我按摘要去核实,手动注入的是有测试那处,
+ * 于是把真缺口误判成「扫描误报」,差点写进等价名单放过。
+ * 逐条日志本来就有行号(`rel`),摘要漏了它。
+ */
+const where = (m) => `${m.file.slice(ROOT.length + 1)}:${m.line ?? m.index}`
 if (missed.length > 0) {
   console.log('\n漏掉的(改坏了不会红):')
-  for (const m of missed) console.log(`  ${m.file.slice(ROOT.length + 1)}  ${m.text.trim().slice(0, 70)}`)
+  for (const m of missed) console.log(`  ${where(m)}  ${m.text.trim().slice(0, 70)}`)
 }
 if (infra.length > 0) {
   console.log('\n设施故障(没测成,不算抓到也不算漏):')
-  for (const m of infra) console.log(`  ${m.file.slice(ROOT.length + 1)}  ${m.detail}`)
+  for (const m of infra) console.log(`  ${where(m)}  ${m.detail}`)
 }
 if (skipped.length > 0) {
   console.log('\n等价变异(改不出可见差别,不算漏 —— 每条附理由):')
-  for (const m of skipped) console.log(`  ${m.file.slice(ROOT.length + 1)}  ${m.text.trim().slice(0, 70)}\n      理由:${m.why}`)
+  for (const m of skipped) console.log(`  ${where(m)}  ${m.text.trim().slice(0, 70)}\n      理由:${m.why}`)
 }
 /*
  * 退出码:显式 --limit 时严格(本地复现,漏了就是红),默认分片模式只报告。
