@@ -62,6 +62,17 @@ describe('已达成成就展示实发奖励', () => {
  * 故障注入:把 rewardPreview 的 `alreadyOwned` 判断去掉,本条红。
  */
 describe('称号预览 · 已拥有时不再许诺', () => {
+  /*
+   * 新 pinia = 干净的任务分片。
+   *
+   * 本组与「奖励预览 · 与实发逐条对拍」一样,原先没有自己的 beforeEach:
+   * `--sequence.shuffle` 把它排到最前时,第一句 `useQuestsStore()` 就抛
+   * `[🍍] there was no active Pinia`(实测全量乱序红过一次)。
+   */
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
   it('未拥有时列出,已拥有时省去,其余奖励照旧', () => {
     const quests = useQuestsStore()
     const title = TITLES[0]!
