@@ -18,8 +18,10 @@ export const SOUL_REFINE_COST = 20
  * 1.58.1 起器魂也要服务端签发(记台账,否则上传时被验源移除):先签发再生效 ——
  * 签发失败就把道源退回、原器留着,不让玩家白烧一件。
  */
-/** 凝炼在途:refineEquipment 里 await mintSoul(登录态是一次签发网络往返)期间,
- *  原器还没被移除、守卫全都拦不住第二次调用 —— 不加闸,连点一件原器能凝出两枚器魂 */
+/*
+ * 凝炼在途:refineEquipment 里 await mintSoul(登录态是一次签发网络往返)期间,
+ * 原器还没被移除、守卫全都拦不住第二次调用 —— 不加闸,连点一件原器能凝出两枚器魂。
+ */
 const refiningUids = new Set<string>()
 
 export async function refineEquipment(uid: string): Promise<boolean> {

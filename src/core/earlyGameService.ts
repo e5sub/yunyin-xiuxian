@@ -18,6 +18,7 @@ import {
   earlyEventDecay
 } from '@/data/earlyGame'
 import { gn, gnZero, gte, subClamp } from '@/utils/gnum'
+import { BUSY_REASON } from './endgameActivity'
 import { expFromSecs } from '@/core/formulas'
 import { INSTANT_EXP_LAYER_CAP } from '@/data/constants'
 import { enlightenmentOptionText } from '@/ui/enlightenmentText'
@@ -131,7 +132,8 @@ export function startRetreat(): boolean {
 
   const adventure = useAdventureStore()
   if (adventure.session) {
-    useUiStore().toast('历练在途', 'warn')
+    // 与 startExploration 的拒因同词:取 BUSY_REASON,不另抄一份字面量
+    useUiStore().toast(BUSY_REASON.exploration, 'warn')
     return false
   }
 
@@ -289,7 +291,15 @@ export function mayTriggerCaveEvent(): CaveEvent | null {
 
   const player = usePlayerStore()
   const today = todayLocalNum()
-  if (player.lastCaveEventDay === today) return null
+  /*
+   * 用 `>=` 而不是 `===` —— **时钟回拨也要挡住**。
+   *
+   * 等号只挡「今天已经抽过」;玩家把系统时间调回昨天,today 变小、
+   * lastCaveEventDay 仍是那个较大的值,等号不成立 → 巡游**重新可抽**。
+   * 调快那一侧 `player.sanitize` 已归零处理(见那里的注释),调慢这一侧没挡。
+   * `>=` 同时覆盖两侧:记录日不早于今天才算「今日已做」。
+   */
+  if (player.lastCaveEventDay >= today) return null
 
   // 掷签失败也记今日,否则 30s 轮询会反复重掷
   const presence = earlyEventDecay('cavePatrol', player.major)

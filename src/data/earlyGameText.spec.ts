@@ -52,10 +52,10 @@ describe('顿悟选项 · 文案与实发一致', () => {
     let checked = 0
     for (const opt of ENLIGHTENMENT_OPTIONS) {
       if (!opt.reward) continue
-      // 「立即获得 5 悟道点」
-      const m = /(\d+)\s*悟道点/.exec(opt.desc)
+      // 两种词序都认:全仓统一「悟道点 N」,历史写法是「N 悟道点」
+      const m = /悟道点\s*(\d+)|(\d+)\s*悟道点/.exec(opt.desc)
       expect(m, `「${opt.label}」的文案里没写点数`).not.toBeNull()
-      expect(Number(m![1]), `「${opt.label}」文案点数与实发不符`).toBe(opt.reward.value)
+      expect(Number(m![1] ?? m![2]), `「${opt.label}」文案点数与实发不符`).toBe(opt.reward.value)
       expect(opt.buffId, '即时奖励不该同时挂 buff').toBeUndefined()
       expect(opt.duration, '即时奖励不该有持续时间').toBe(0)
       checked += 1
@@ -106,15 +106,21 @@ describe('突破准备 · 文案与实发一致', () => {
     expect(checked).toBeGreaterThan(0)
   })
 
-  it('desc 里的「N 灵石」等于 cost.stone', () => {
+  it('desc 里的灵石数额等于 cost.stone', () => {
+    /*
+     * 两种词序都认:`灵石 80`(全仓通用的「灵石 + 数字」)与 `80 灵石`。
+     * 这条验的是**数额与实发一致**,词序不是它的职责 ——
+     * 只认一种写法时,统一词序会让它悄悄漏检(实测 checked 掉到 0)。
+     */
     let checked = 0
     for (const opt of BREAKTHROUGH_PREP_OPTIONS) {
-      const m = /(\d+)\s*灵石/.exec(opt.desc)
+      const m = /灵石\s*(\d+)|(\d+)\s*灵石/.exec(opt.desc)
       if (!m) continue
-      expect(opt.cost?.stone, `「${opt.label}」文案写 ${m[1]} 灵石,实际没有灵石消耗`).toBe(Number(m[1]))
+      const n = Number(m[1] ?? m[2])
+      expect(opt.cost?.stone, `「${opt.label}」文案写 ${n} 灵石,实际没有灵石消耗`).toBe(n)
       checked += 1
     }
-    expect(checked).toBeGreaterThan(0)
+    expect(checked, '一条都没匹配到 —— 判据在空转').toBeGreaterThan(0)
   })
 
   it('文案说「无额外准备」的,确实不带任何加成、耗时与花销', () => {

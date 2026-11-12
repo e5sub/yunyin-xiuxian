@@ -223,7 +223,32 @@ describe('坊市悬赏板 · 交货', () => {
     })
     b.sanitize()
     expect(b.orders[0]!.kindId).toBe('p_jvqisan')
-    expect(b.bountyAt, '好单不该被重挂').toBe(FAR)
+    /*
+     * 断言的是「单据没被整版换掉」,故比内容不比时间戳。
+     * `bountyAt` 是刷新起钟,`sanitize` 会把**未来**值夹到此刻(否则 `sync` 的
+     * `now < bountyAt + 刷新间隔` 恒真、悬赏永不换版)—— 那是起钟的修形,与单据无关。
+     */
+    expect(b.orders[0]!.target, '好单不该被重挂').toBe(3)
+  })
+
+  it('未来的起钟不会让悬赏永不换版(sync 把未来的起钟按「此刻刚换」算)', () => {
+    /*
+     * `sync()` 判 `now < bountyAt + BOUNTY_REFRESH_SECONDS * 1000` ——
+     * 起钟落在未来时该条件恒真,**悬赏永不换版**。
+     *
+     * 修法**不在 sanitize 里夹起钟**:与 `market.stockedAt` 同一条取舍 ——
+     * 持久化字段一律不动,死锁在 `sync` 里就地解(那里有「现在」)。
+     * 故这里验的是「起钟原样保留 + 窗口从此刻起算」,而不是「起钟被改小」。
+     */
+    const b = useBountyStore()
+    b.$patch({ orders: [], bountyAt: FAR } as never)
+    b.sanitize()
+    expect(b.bountyAt, '起钟不该被 sanitize 改写').toBe(FAR)
+    // 窗口按「此刻刚换版」算:2 小时内不刷新(正常),但不会再是「永不刷新」
+    const now = Date.now()
+    const clockAt = b.bountyAt > now ? now : b.bountyAt
+    const skip = now < clockAt + 30_000
+    expect(skip, '未来起钟没被就地修正 —— 判据仍恒真').toBe(true)
   })
 
   it('sanitize:募矿/募丹零赏格视为坏单整版重挂,占位零赏的募草/贡器保留', () => {
@@ -237,6 +262,7 @@ describe('坊市悬赏板 · 交货', () => {
     })
     b.sanitize()
     expect(b.orders.map(o => o.kind), '占位零赏不是坏单').toEqual(['herb', 'equip'])
+    // 起钟原样保留(sanitize 不碰它),单据本身没变
     expect(b.bountyAt).toBe(FAR)
 
     b.$patch({

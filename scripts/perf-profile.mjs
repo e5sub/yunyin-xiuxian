@@ -132,6 +132,8 @@ const startupOnly = args.includes("--startup");
  * 采样前必须 gc():不回收的话量到的是待回收垃圾,任何页面看起来都在涨。
  */
 const memoryOnly = args.includes("--memory");
+/** `--curve`:空包 vs 满包的启动增量(存档变大的代价),判据见下方 curveOnly 分支 */
+const curveOnly = args.includes("--curve");
 /**
  * `--active`:给内存档挂一场在途历练,让引擎每 tick 真的打一场。
  *
@@ -331,7 +333,20 @@ if (memoryOnly) {
   await seedSave(context, activeLoad ? withActiveRun(baseSlices) : baseSlices);
   const page = await openPage(context);
   const route = only ? (VIEWS.find((v) => v.name === only)?.route ?? "/") : activeLoad ? "/adventure" : "/";
-  await page.goto(base + `#${route}`, { waitUntil: "domcontentloaded", timeout: 30000 });
+  /*
+   * 导航失败要说清楚是哪一步,别把 node 的栈甩给读报告的人。
+   * 实测 `--memory --active --view inventory` 偶发 `goto` 30s 超时(同一配置连跑 5 次都过,
+   * 撞上时是一整段未捕获异常,连浏览器都没关)。
+   */
+  try {
+    await page.goto(base + `#${route}`, { waitUntil: "domcontentloaded", timeout: 30000 });
+  } catch (err) {
+    console.error(`✗ 内存档打不开 #${route}:${String(err).split("\n")[0]}`);
+    await context.close().catch(() => {});
+    await browser.close();
+    server.close();
+    process.exit(1);
+  }
   await page.waitForTimeout(2500);
 
   /*
@@ -342,24 +357,38 @@ if (memoryOnly) {
    * 而同一时刻 CDP 报 0.9 → 31.4MB。用它当判据等于空转。
    */
   const cdp = await context.newCDPSession(page);
+  /*
+   * 采样返回**原始字节**与展示用的 MB 两样。
+   *
+   * 「读数全程不变 = 度量失效」这条守卫必须看原始字节:显示值取整到 0.1MB,
+   * 而 GC 后的驻留本身在几十 KB 量级随机游走(实测 4 点:5883664 → 5861740 → 5857920 → 5861580),
+   * 取整后四点全成 5.6MB —— 于是一次正常的平坦测量被误判成「测量手段坏了」。
+   */
   const sample = async () => {
     await page.evaluate(() => globalThis.gc?.());
     await page.waitForTimeout(120);
     const { usedSize } = await cdp.send("Runtime.getHeapUsage");
-    return Math.round((usedSize / 1048576) * 10) / 10;
+    return { bytes: usedSize, mb: Math.round((usedSize / 1048576) * 10) / 10 };
   };
 
-  const points = [];
+  const samples = [];
   for (let i = 0; i < memoryRounds; i += 1) {
     if (i > 0) await page.waitForTimeout(memoryGapMs);
-    points.push(await sample());
+    samples.push(await sample());
   }
+  const points = samples.map((s) => s.mb);
 
   console.log(`\n长会话内存(#${route},${memoryRounds} 点 × 间隔 ${memoryGapMs / 1000}s,采样前强制 GC):`);
   console.log(`  ${points.map((v) => `${v}MB`).join(" → ")}`);
 
   const known = points.filter((v) => Number.isFinite(v));
-  if (known.length < 2 || known.every((v) => v === known[0])) {
+  /*
+   * 守卫看**原始字节**是否一个字都没变 —— 那才是「度量手段失效」(例如退回 performance.memory)。
+   * 显示值全同不算:0.1MB 的取整分辨率挡不住几十 KB 的正常抖动。
+   */
+  const rawBytes = samples.map((s) => s.bytes).filter((v) => Number.isFinite(v));
+  const rawFrozen = rawBytes.length >= 2 && rawBytes.every((v) => v === rawBytes[0]);
+  if (known.length < 2 || rawFrozen) {
     console.log("  ✗ 堆读数全程不变 —— 度量手段失效,这一档等于空转");
     process.exitCode = 1;
   } else {
@@ -423,6 +452,86 @@ if (memoryOnly) {
  *
  * 不进这个分支时完全不影响常规巡页。
  */
+/**
+ * 量一次启动:返回 `{ computeMs, segments }`,`computeMs` 是「扣掉 boot:start 之前网络等待」的主线程那一截。
+ *
+ * 抽成函数是为了 `--curve`:它要在同一进程里各量一次空包与满包,
+ * 跨进程跑两次会带上机器负载差异,比不出「存档变大到底多花了多少」。
+ */
+async function measureStartup(viewport, slices) {
+  const context = await browser.newContext({ viewport });
+  await seedSave(context, slices);
+  const page = await openPage(context);
+  await page.goto(base + "#/", { waitUntil: "domcontentloaded", timeout: 30000 });
+  await page.waitForTimeout(2500);
+  const marks = await page.evaluate(() =>
+    performance.getEntriesByType("mark").map((m) => ({ name: m.name, at: Math.round(m.startTime * 100) / 100 }))
+  );
+  const byName = new Map(marks.map((m) => [m.name, m.at]));
+  const order = [
+    "boot:start",
+    "boot:preflight",
+    "boot:sanitize",
+    "boot:engineStart",
+    "boot:offlineInputs",
+    "boot:offlineSettled",
+    "boot:achievements",
+    "boot:mounted",
+  ];
+  let prev = null;
+  const segments = [];
+  for (const name of order) {
+    if (!byName.has(name)) continue;
+    const at = byName.get(name);
+    segments.push({ name, at, delta: prev === null ? at : Math.round((at - prev) * 100) / 100 });
+    prev = at;
+  }
+  const last = prev;
+  const computeMs =
+    last !== null && byName.has("boot:start") ? Math.round((last - byName.get("boot:start")) * 100) / 100 : last;
+  await context.close();
+  return { computeMs, total: last, segments };
+}
+
+/*
+ * `--curve`:同一进程里量「空包 → 满包」的启动增量。
+ *
+ * 为什么要它:`--items` 一直只是个手动开关,没有任何判据消费它 ——
+ * 存档变大到底多花了多少主线程时间,此前只有人工读数,回归了没人拦。
+ *
+ * 不跨进程各跑一次的理由:那会带上两次之间的机器负载差异,比不出「存档变大的代价」。
+ * 同进程连着量,空包与满包吃的是同一份机器状态。
+ *
+ * 判据定「满包 ≤ 空包 + 75ms」。推导:
+ *   · 四次同进程实测增量 54.3 / 56.0 / 53.3 / 53.7ms,均值 54.3、最大 56.0;
+ *   · 先按 60ms 定过一版,余量只剩 4ms(7%)—— 噪声就能顶过线,那是误报源不是判据;
+ *   · 取均值 × 1.4 ≈ 76,取整 75:既容得下噪声,又能在「每件多花半毫秒」这种量级回归时翻红
+ *     (120 件 × 0.5ms = 60ms,叠加到现基础上必然越线)。
+ *
+ * 不卡绝对值的理由 —— 机器快慢会整体平移,而**增量**才是「存档变大」的代价。
+ */
+if (curveOnly) {
+  const viewport = { width: 390, height: 844 };
+  const empty = await measureStartup(viewport, stressSlices(0));
+  // 120 = src/data/constants.ts 的 BAG_CAPACITY;.mjs 读不了 TS,与 --items 的默认值同源
+  const full = await measureStartup(viewport, stressSlices(120));
+  const grow = Math.round((full.computeMs - empty.computeMs) * 10) / 10;
+  const CURVE_BUDGET_MS = Number(process.env.PERF_CURVE_MS ?? 75);
+  console.log(`\n启动开销曲线(主线程,空包 → 满包 120 件):`);
+  console.log(`  空包   ${empty.computeMs}ms`);
+  console.log(`  满包   ${full.computeMs}ms`);
+  console.log(`  增量   +${grow}ms —— 判据 ≤ ${CURVE_BUDGET_MS}ms`);
+  if (grow > CURVE_BUDGET_MS) {
+    console.error(`\n✗ 满包启动比空包多 ${grow}ms,超过 ${CURVE_BUDGET_MS}ms —— 存档变大在启动路径上变贵了`);
+    process.exitCode = 1;
+  } else {
+    console.log("✓ 存档变大带来的启动增量在预算内");
+  }
+  await browser.close();
+  server.close();
+  process.exit(process.exitCode ?? 0);
+}
+
 if (startupOnly) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await seedSave(context, stress ? stressSlices(itemCount) : lateSlices());
@@ -432,15 +541,24 @@ if (startupOnly) {
   const marks = await page.evaluate(() =>
     performance.getEntriesByType("mark").map((m) => ({ name: m.name, at: Math.round(m.startTime * 100) / 100 }))
   );
+  /*
+   * 顺序必须按**真实**打点次序,不是按「直觉上该在哪个阶段」。
+   *
+   * `boot:engineStart` 系那一串是 App.vue 的 `onMounted` 里跑的,
+   * 而 `onMounted` 在 `app.mount()` **返回之前**就同步执行完了 ——
+   * 于是 engineStart 比 main.ts 里紧随 `app.mount()` 之后的 `boot:mounted` 还要早。
+   * 原先把它排在 mounted 之后,实测每次都算出负增量(+-5.3ms),
+   * 报表上看起来像「有一段花了 -5 毫秒」,而那只是顺序写错了。
+   */
   const order = [
     "boot:start",
     "boot:preflight",
     "boot:sanitize",
-    "boot:mounted",
     "boot:engineStart",
     "boot:offlineInputs",
     "boot:offlineSettled",
     "boot:achievements",
+    "boot:mounted",
   ];
   const byName = new Map(marks.map((m) => [m.name, m.at]));
   console.log("\n启动分段(ms,相对导航起点):");
@@ -452,19 +570,28 @@ if (startupOnly) {
     console.log(`  ${name.padEnd(22)} @${String(at).padStart(8)}  +${delta}`);
     prev = at;
   }
-  const last = byName.has("boot:achievements") ? byName.get("boot:achievements") : prev;
+  /*
+   * 末尾取**序列里最后一个实际存在的标记**,不写死某个名字。
+   * 写死 `boot:achievements` 时,它在 engineStart 之后、mounted 之前,
+   * 于是「启动合计」漏掉 mounted 那一段(实测 142.2 vs 142.3 —— 这次差 0.1ms,
+   * 但顺序一改就可能差出整段)。
+   */
+  const last = prev;
   /*
    * 启动合计也进判据。
    *
-   * 两点实测:late(2KB 存档)108ms、stress(38KB 满包)161ms。
+   * 判据看的是**主线程计算**那一段(见下面 computeMs),现在实测 late ≈ 51ms、stress(满包)≈ 100ms。
    * 行囊上限 120 件 ≈ 36KB,stress 夹具已接近最坏情况 —— 玩家再怎么样也不会比它更差。
-   * 故 250ms 是「最坏情况再留一倍余量」,不是随手取整。
+   * 故 250ms 是「最坏情况再留一倍半余量」,不是随手取整。
+   *
+   * 旧注释写的是「late 108ms、stress 161ms」—— 那两个数是加了 `boot:start` 之前的导航等待、
+   * 或喂给判据的口径不同时的读数,与现在 `computeMs` 的定义对不上,已按实测更新。
    */
   /*
    * 启动预算同样按限速倍数放宽。
    *
-   * 250ms 是给不限速基线(实测 108ms)定的;4x 下实测 346ms,各段都按 4 倍放大
-   * (模块加载 57→144、sanitize 17→68、mount 27→109)。拿绝对 250ms 卡限速档只会误报。
+   * 250ms 是给不限速基线定的;4x 下主线程实测约 206ms(未限速约 51ms),各段都按 4 倍放大。
+   * 拿绝对 250ms 卡限速档只会误报。
    */
   /*
    * 启动预算是对**主线程计算**定的,不含网络等待。
@@ -496,10 +623,24 @@ if (startupOnly) {
 for (const view of VIEWS) {
   if (only && view.name !== only) continue;
   let record = null;
+  /*
+   * context 必须在外层声明并在 finally 里收 —— 记在 try 里的话,视图一抛异常就永远关不掉。
+   *
+   * 踩过:4x 限速下 goto 偶发超时,那一页的 context 带着整个渲染进程留着;
+   * 后面几个视图接着开新 context,内存与句柄越堆越多,于是**崩的页一个比一个多**
+   * (实测同一轮里 codex 与 dongfu 先后超时,单独跑这两个都过)。
+   * 一个假崩溃会把后面几页一起拖红,读数就全不可信了。
+   */
+  let context = null;
   try {
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     // 每视图注入一份后期档;缺档会落到欢迎页,门量空
-    if (!noSave) await seedSave(context, stress ? stressSlices() : lateSlices());
+    if (!noSave) {
+      const base = stress ? stressSlices() : lateSlices();
+      // `--active` 让引擎每 tick 真打一场:本档原先只量静置页面,而放置游戏的时间
+      // 大多花在「历练在途」这种持续产生战斗与战报的状态上
+      await seedSave(context, activeLoad ? withActiveRun(base) : base);
+    }
     const page = await openPage(context);
     const errors = [];
     page.on("pageerror", (e) => errors.push(String(e)));
@@ -537,9 +678,11 @@ for (const view of VIEWS) {
       mountLongTaskMaxMs: Array.isArray(mountTasks) && mountTasks.length > 0 ? Math.round(Math.max(...mountTasks)) : 0,
       errors
     };
-    await context.close();
   } catch (err) {
     record = { name: view.name, route: view.route, crashed: String(err).slice(0, 160) };
+  } finally {
+    // 成功与失败都要收:失败的 context 留着,后面几页会被它拖崩(见外层注释)
+    await context?.close().catch(() => {});
   }
   results.push(record);
 }

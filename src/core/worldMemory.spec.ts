@@ -437,3 +437,47 @@ describe('S3 事件余波', () => {
     expect(aftermathText('青石上的老者', 'silence')).toContain('寂静')
   })
 })
+
+
+/**
+ * 复聚钟的两个候选(镇压起钟 / 通关时刻)都要按**时间戳**修形。
+ *
+ * `regionTouchedAt` 在 `lastUpdateAt` / `suppressedSince` / `clearedAt` 三者间取 max,
+ * 而 `isRegionRevived` 判 `(now - touchedAt) / 3600_000 > REVIVE_AFTER_HOURS`。
+ * 任一候选是坏档巨值时,那个减法恒为极大负数 —— **该地界永不复苏**。
+ */
+describe('复聚钟 · 坏档巨值不许让地界永不复苏', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('镇压起钟是巨值时按此刻重起', () => {
+    const player = usePlayerStore()
+    player.$patch({ suppressedRegions: ['qingyun'], suppressedSince: { qingyun: 1e300 } } as never)
+    player.sanitize()
+    const clock = player.suppressedSince.qingyun!
+    expect(clock, '巨值起钟没被重起 —— 复聚钟会停在它上面').toBeLessThanOrEqual(Date.now())
+    expect(clock, '重起钟该落在「此刻」附近').toBeGreaterThan(Date.now() - 5000)
+  })
+
+  it('未来的镇压起钟要夹到此刻 —— asTimestamp 只挡超范围,不挡未来', () => {
+    /*
+     * 一个**合法但晚于此刻**的时间戳照样通过 `asTimestamp`(它只判 Date 可表示范围),
+     * 而复聚钟取 max 之后同样停在未来 —— 该地界要等到真实时间追上那个时刻才可能复苏。
+     */
+    const player = usePlayerStore()
+    const future = Date.now() + 365 * 24 * 3600_000
+    player.$patch({ suppressedRegions: ['qingyun'], suppressedSince: { qingyun: future } } as never)
+    player.sanitize()
+    expect(
+      player.suppressedSince.qingyun,
+      '未来的起钟没被夹住 —— 复聚钟会停在未来'
+    ).toBeLessThanOrEqual(Date.now())
+  })
+
+  it('正常镇压起钟原样保留', () => {
+    const player = usePlayerStore()
+    const at = Date.now() - 50 * 3600_000
+    player.$patch({ suppressedRegions: ['qingyun'], suppressedSince: { qingyun: at } } as never)
+    player.sanitize()
+    expect(player.suppressedSince.qingyun, '正常起钟被误改了').toBe(at)
+  })
+})

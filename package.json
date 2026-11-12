@@ -38,7 +38,8 @@
     "build:vendor": "bun scripts/build-vendor.mjs",
     "build:android": "bun run build && bunx cap sync android",
     "build:apk": "bun run build:android && cd android && ./gradlew assembleRelease",
-    "mutation-scan": "node scripts/mutation-scan.mjs"
+    "mutation-scan": "node scripts/mutation-scan.mjs",
+    "perf-curve": "bun run build && node scripts/perf-profile.mjs --curve"
   },
   "dependencies": {
     "@capacitor/android": "^8.1.0",

@@ -19,11 +19,23 @@ function normalize(m: number, e: number): GNum {
   const sign = m < 0 ? -1 : 1
   const abs = Math.abs(m)
   const shift = Math.floor(LOG10(abs))
-  // 次正规数(shift ≤ -324)时 10^shift 下溢为 0,abs/0 会得到 Infinity,破坏「m ∈ [1,10)」。
-  // 这种量级远低于任何可显示/可判定的刻度,直接按 0 收口,别让 Infinity 流进 mul/add/formatGN。
-  const scale = Math.pow(10, shift)
-  if (!(scale > 0)) return { m: 0, e: 0 }
-  const nm = abs / scale
+  /*
+   * 非正规数(denormal)会把移位除法做成 0 除:`Math.pow(10, -324)` 下溢成 0,
+   * 而 `5e-324 / 0` 得 Infinity —— 于是 gn(5e-324) 产出 `{ m: Infinity }`。
+   * 后果不是「印个占位符」那么简单:`add` 的 `usable()` 见到 Infinity 就整份回
+   * gnZero(),**加法的另一半被一起吞掉**(实测 `add(gn(5e-324), gn(1))` 得 0)。
+   *
+   * 只在**除法真会下溢**时才走对数路径(指数低于 -300):
+   * 对数路径 `10 ** (log10(abs) - shift)` 虽不下溢,却有 ~1ulp 的精度损失
+   * (0.5 会变成 4.999999999999999e-1),全量测试立刻红 29 条。
+   * 正规数仍走原来的除法,一位不动。
+   */
+  const nm =
+    shift < -300
+      ? 10 ** (LOG10(abs) - shift)
+      : abs / Math.pow(10, shift)
+  // 对数路径挡得住下溢,但 m 本身非有限(Infinity/NaN)时 shift 也非有限,结果仍是 NaN;
+  // 这种量级不可能是真数值,按 0 收口,别让 NaN 流进 mul/add/formatGN
   if (!Number.isFinite(nm)) return { m: 0, e: 0 }
   // 处理浮点边界(如 9.9999999 → 10)
   if (nm >= 10) return { m: sign * (nm / 10), e: e + shift + 1 }
@@ -186,8 +198,19 @@ export function ratio(a: GNum, b: GNum): number {
   return (a.m / b.m) * Math.pow(10, diff)
 }
 
-/** 进度百分比(0~1) */
+/**
+ * 进度百分比(0~1)。
+ *
+ * **不能只靠 `Math.max/min` 收口**:它们挡不住 NaN —— `Math.max(0, Math.min(1, NaN))`
+ * 仍是 NaN(AGENTS.md 明文点过这个坑,反复踩)。输入是 GNum,`{ m: NaN }` 这类
+ * 结构上合法、数值上非法的值能一路穿到界面上,印成「进度 NaN%」。
+ * 这里先判非有限:算不出就给 0(进度条的合法下限),并夹回 0~1。
+ *
+ * @param cur    当前值
+ * @param target 目标值
+ */
 export function progress(cur: GNum, target: GNum): number {
   const r = ratio(cur, target)
+  if (!Number.isFinite(r)) return r > 0 ? 1 : 0
   return Math.max(0, Math.min(1, r))
 }

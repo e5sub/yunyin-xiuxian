@@ -52,7 +52,11 @@
           />
           {{ m!.name }}:{{ m!.text }}
         </p>
-        <div class="mt-2 flex gap-2">
+        <!-- 收益归卡面:按钮只写代价与余量(同 ExpeditionPanel,见 dataTextAudit 的同一条判据) -->
+        <p class="mt-2 text-[10px] text-ink-faint tabular">
+          入界 {{ MUTATION_ENTRY_COST }} 道源 · 破解得 {{ MUTATION_BASE_REWARD }}
+        </p>
+        <div class="mt-1 flex gap-2">
           <button
             class="btn-seal flex-1 !py-2 !text-[12px]"
             :disabled="busy !== null || endgame.daoSource < MUTATION_ENTRY_COST"
@@ -64,7 +68,7 @@
                 ? `应 战(${busy.reason})`
                 : endgame.daoSource < MUTATION_ENTRY_COST
                   ? `应 战(道源尚差 ${daoSourceShortText(MUTATION_ENTRY_COST, endgame.daoSource)} · 需 ${MUTATION_ENTRY_COST} · 余 ${formatNum(endgame.daoSource)})`
-                  : `应 战(道源 ${MUTATION_ENTRY_COST} · 余 ${formatNum(endgame.daoSource)} · 破解得 ${MUTATION_BASE_REWARD})`
+                  : `应 战(道源 ${MUTATION_ENTRY_COST} · 余 ${formatNum(endgame.daoSource)})`
             }}
           </button>
           <button class="btn-ghost !px-3 !text-[12px]" @click="mutationDraw = rollMutators()">再探</button>
@@ -126,8 +130,12 @@
         <p class="mt-1 flex flex-wrap gap-x-3 text-[10px] text-violet-ink">
           <span v-for="(r, i) in row.def.ruleText" :key="i">{{ r }}</span>
         </p>
+        <!-- 收益归卡面:按钮只写代价与余量(同 ExpeditionPanel,见 dataTextAudit 的同一条判据) -->
+        <p class="mt-1.5 text-[10px] text-ink-faint tabular">
+          入界 {{ row.def.entryCost }} 道源 · 功成得 {{ row.def.rewardDaoSource }}
+        </p>
         <button
-          class="btn-ghost mt-2.5 w-full !py-2 !text-[13px]"
+          class="btn-ghost mt-1.5 w-full !py-2 !text-[13px]"
           :disabled="busy !== null || endgame.daoSource < row.def.entryCost"
           :title="busy?.reason ?? (endgame.daoSource < row.def.entryCost ? `道源尚差 ${daoSourceShortText(row.def.entryCost, endgame.daoSource)}` : undefined)"
           @click="goTrial(row.def.id)"
@@ -137,7 +145,7 @@
               ? `应 试(${busy.reason})`
               : endgame.daoSource < row.def.entryCost
                 ? `应 试(道源尚差 ${daoSourceShortText(row.def.entryCost, endgame.daoSource)} · 需 ${row.def.entryCost} · 余 ${formatNum(endgame.daoSource)})`
-                : `应 试(道源 ${row.def.entryCost} · 余 ${formatNum(endgame.daoSource)} · 功成得 ${row.def.rewardDaoSource})`
+                : `应 试(道源 ${row.def.entryCost} · 余 ${formatNum(endgame.daoSource)})`
           }}
         </button>
       </div>
@@ -332,20 +340,14 @@
   const tierLimits = tierSpan()
 
   /**
-   * 天道试炼的行:每行的形制在这里算一次。
+   * 天道试炼与契约的行:每行的形制在 setup 里各算一次。
    *
-   * `TRIALS` 是静态数据,`trialMark(trial)` 也是纯函数 ——
-   * 而模板里一个渲染周期要调它 7 次(标签、枚数、恢复档 ×2、层阶 ×2),
-   * 恢复档那一处的键还要再查一次表。同一种东西算七遍,
-   * 且模板里读不出「这七处说的是同一个 mark」。
+   * `TRIALS` / `PACTS` 是静态数据,`trialMark` / `pactMark` 也是纯函数 ——
+   * 而模板里一个渲染周期要调 trialMark 7 次(标签、枚数、恢复档 ×2、层阶 ×2)、
+   * pactMark 5 次(契重、读屏说法、有无判断、契纹类名),同一种东西算好几遍,
+   * 且模板里读不出「这几处说的是同一个 mark」。
    *
    * 铁律与仓库既有做法一致:纯函数在 setup 里算一次,模板只读字段。
-   */
-  /**
-   * 天道契约的行:契重与契纹各算一次。
-   *
-   * `pactMark` 在同一枚按钮里被调 5 次(契重、读屏说法、有无判断、契纹类名)——
-   * `PACTS` 是静态数据,`pactMark` 是纯函数,没理由每帧算五遍。
    */
   const pactRows = PACTS.map(p => ({ def: p, mark: pactMark(p.id) }))
 

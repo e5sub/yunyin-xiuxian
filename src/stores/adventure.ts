@@ -4,6 +4,27 @@ import { computed, ref } from 'vue'
 import type { AdventureSession, CombatResult, CombatSideStats, FoeOrigin, FoeOriginPart, GNum } from '@/types'
 import { persistConfig } from '@/utils/storage'
 import { regionDef, unlockClosure } from '@/data/regions'
+
+/**
+ * 一场历练里各项计数的读档上界。
+ *
+ * 四个计数只用于显示(「胜 N 场 · 际遇 M 次 · 拾获 K 件」)。
+ * 一场历练的胜场不可能过亿 —— 上界宽到不误伤正常档,窄到拦得住 `1e300` 那种坏档。
+ */
+const SESSION_COUNT_MAX = 1e8
+
+/**
+ * 敌人加成来源的读档上界(三维倍率 / 增伤减伤)。
+ *
+ * 正常值都有硬顶:厚化受构筑软上限约束,增伤减伤由判定的两个常量管着
+ * (`CELESTIAL_JUDGE_CAP` 0.35 与 `CELESTIAL_SUPPRESS_BONUS` 0.25)。
+ * 上界取「远高于真实值」—— 倍率 1000、增减伤 10,越过的必定是坏档。
+ */
+const FOE_ORIGIN_RATIO_MAX = 1000
+const FOE_ORIGIN_EXTRA_MAX = 10
+
+/** 一场战斗的回合数上界:真实是两位到三位数,取一万已极宽 */
+const BATTLE_ROUNDS_MAX = 10_000
 import {
   asBoundedGNum,
   asCombatRules,
@@ -11,7 +32,8 @@ import {
   asNumberRecord,
   asObjectOrNull,
   asRecord,
-  asStringArray
+  asStringArray,
+  asTimestamp,
 } from '@/utils/saveShape'
 import { EVENTS, FORTUNE_EVENTS, eventDef } from '@/data/events'
 import { exploreModeOf } from '@/core/exploreModes'
@@ -119,12 +141,31 @@ function sanitizeFoeOrigin(raw: unknown): FoeOrigin | undefined {
           !!p && typeof p === 'object' && typeof p.label === 'string' && Number.isFinite(p.ratio)
       )
     : []
+  /*
+   * 三个倍率都要有上界 —— 它们进战报文案(「三维 ×1.90 · 增伤 +35%」)。
+   *
+   * 正常值都有硬顶:`厚化` 受构筑软上限约束(实测量级在个位到几十),
+   * `增伤/减伤` 由 `celestialJudgement` 算:judge 有 `CELESTIAL_JUDGE_CAP`(0.35)、
+   * suppress 只可能是 0 或 0.25。故上界按「远高于真实值」取:
+   * 倍率 1000、增减伤 10 —— 越过的必定是坏档。
+   *
+   * 不封顶的后果:坏档写 1e300 时战报印出「三维 ×1e+300 · 增伤 +1e+302%」。
+   */
   return {
     label: o.label,
-    ratio: asFiniteNumber(o.ratio, 1, 1),
-    damageBonus: asFiniteNumber(o.damageBonus, 0, 0),
-    damageReduction: asFiniteNumber(o.damageReduction, 0, 0),
-    parts,
+    ratio: asFiniteNumber(o.ratio, 1, 1, FOE_ORIGIN_RATIO_MAX),
+    damageBonus: asFiniteNumber(o.damageBonus, 0, 0, FOE_ORIGIN_EXTRA_MAX),
+    damageReduction: asFiniteNumber(o.damageReduction, 0, 0, FOE_ORIGIN_EXTRA_MAX),
+    /*
+     * parts 的 ratio **不能设下限 1**。
+     *
+     * 这一层记录的是「各件事各乘了多少」——既有增益也有减益:
+     * 「危地 ×0.98」「弱于本层 ×0.9」都小于 1,而 `foeOriginPartsText`
+     * 靠 `filter(p => p.ratio !== 1)` 决定显示哪几项 —— 把 0.98 抬成 1
+     * 会让那条减益整条消失,战报的账就成了错的(审查意见指出的)。
+     * 只封上界:倍数再大也不该超过 1000,而小于 1 是正常业务值。
+     */
+    parts: parts.map(p => ({ label: p.label, ratio: asFiniteNumber(p.ratio, 1, 0.01, FOE_ORIGIN_RATIO_MAX) })),
     note: typeof o.note === 'string' ? o.note : ''
   }
 }
@@ -166,14 +207,15 @@ function sanitizeLastBattle(raw: unknown): LastBattleView | null {
       ...r,
       win: r.win,
       log: r.log.filter(x => !!x && typeof x === 'object' && typeof x.text === 'string'),
-      rounds: Math.max(0, Math.floor(asFiniteNumber(r.rounds, 0))),
-      playerHpPct: Math.min(1, asFiniteNumber(r.playerHpPct, 0, 0)),
+      // 战报会印「胜于第 N 回合」「鏖战 N 回合」;坏档写 1e300 会印出巨大数字
+      rounds: Math.floor(asFiniteNumber(r.rounds, 0, 0, BATTLE_ROUNDS_MAX)),
+      playerHpPct: asFiniteNumber(r.playerHpPct, 0, 0, 1),
       // 两侧都补得回来才留遥测:只有一侧可读是坏档,分析面板按「无遥测」不渲染更安全
       stats: stats && stats.player && stats.enemy ? { player: stats.player, enemy: stats.enemy } : undefined,
       foeOrigin: sanitizeFoeOrigin(r.foeOrigin),
       firstMove: sanitizeFirstMove(r.firstMove)
     },
-    at: asFiniteNumber(b.at, 0),
+    at: asTimestamp(b.at, 0),
     loot: b.loot === undefined ? undefined : asStringArray(b.loot),
     enemyPower: b.enemyPower === undefined ? undefined : gnStrict(b.enemyPower),
     playerPower: b.playerPower === undefined ? undefined : gnStrict(b.playerPower),
@@ -244,8 +286,19 @@ export const useAdventureStore = defineStore(
       mortalCleared.value = [...new Set(asStringArray(mortalCleared.value))]
       cleared.value = [...new Set(asStringArray(cleared.value))].filter(id => !!regionDef(id))
       revived.value = asStringArray(revived.value).filter(id => !!regionDef(id) && !cleared.value.includes(id))
+      /*
+       * 通关时刻要按**时间戳**修形,不能只保底。
+       *
+       * 它不只用来显示:`worldMemory.regionTouchedAt` 拿它当「妖气复聚钟」的候选,
+       * 而 `isRegionRevived` 判的是 `(now - touchedAt) / 3600_000 > 72`。
+       * 坏档写 `1e300` 时这个减法恒为极大负数 —— **该地界永不复苏**
+       * (实测复聚钟停在 1e300,isRegionRevived 恒假)。
+       * `asTimestamp` 把超出 Date 可表示范围的值回落到 0,复聚钟随之退回其余候选。
+       */
       clearedAt.value = Object.fromEntries(
-        Object.entries(asNumberRecord(clearedAt.value, 0)).filter(([id, at]) => at > 0 && !!regionDef(id))
+        Object.entries(asNumberRecord(clearedAt.value, 0))
+          .map(([id, at]) => [id, asTimestamp(at, 0)] as const)
+          .filter(([id, at]) => at > 0 && !!regionDef(id))
       )
       // 旧档补票「前置已靖 → 此地已开」:解锁只在击败时发生,数据表新增的下游区域旧档开不了。幂等。
       unlocked.value = unlockClosure(unlocked.value, cleared.value)
@@ -254,20 +307,25 @@ export const useAdventureStore = defineStore(
       if (session.value) {
         const s = session.value
         const regionOk = !!regionDef(s.regionId)
-        const endsAt = asFiniteNumber(s.endsAt, 0, 0)
+        const endsAt = asTimestamp(s.endsAt, 0)
         if (!regionOk || endsAt <= 0) {
           session.value = null
         } else {
           session.value = {
             ...s,
             mode: exploreModeOf(s.mode),
-            startedAt: asFiniteNumber(s.startedAt, 0, 0),
+            startedAt: asTimestamp(s.startedAt, 0),
             endsAt,
-            nextBattleAt: asFiniteNumber(s.nextBattleAt, 0, 0),
-            wins: Math.floor(asFiniteNumber(s.wins, 0, 0)),
-            losses: Math.floor(asFiniteNumber(s.losses, 0, 0)),
-            events: Math.floor(asFiniteNumber(s.events, 0, 0)),
-            itemGain: Math.floor(asFiniteNumber(s.itemGain, 0, 0)),
+            nextBattleAt: asTimestamp(s.nextBattleAt, 0),
+            /*
+             * 四个计数都加上界。它们只用于显示(「胜 N 场 · 际遇 M 次 · 拾获 K 件」),
+             * 而 `sessionRecordText` 虽已改走 formatNum,单位表之外仍会印成 `1.00e300`。
+             * 一场历练的胜场不可能过亿 —— 上界按「宽到不误伤、窄到拦坏档」取。
+             */
+            wins: Math.min(SESSION_COUNT_MAX, Math.floor(asFiniteNumber(s.wins, 0, 0))),
+            losses: Math.min(SESSION_COUNT_MAX, Math.floor(asFiniteNumber(s.losses, 0, 0))),
+            events: Math.min(SESSION_COUNT_MAX, Math.floor(asFiniteNumber(s.events, 0, 0))),
+            itemGain: Math.min(SESSION_COUNT_MAX, Math.floor(asFiniteNumber(s.itemGain, 0, 0))),
             // 须经 asBoundedGNum 归一:坏 GNum 会让 exploration 的 add() 每场胜利都抛,历练永久卡死;
             // 它同时带指数上界,裸 gn() 不设界会让本世收益印出「1.00e1000000000」
             stoneGain: asBoundedGNum(s.stoneGain),
@@ -278,7 +336,15 @@ export const useAdventureStore = defineStore(
       // 认不出的待处理事件 id 须清:EventDialog 打不开,历练却被堵到 120 秒超时
       const pendingId = typeof pendingEventId.value === 'string' ? pendingEventId.value : null
       pendingEventId.value = pendingId && eventDef(pendingId) ? pendingId : null
-      pendingEventSince.value = pendingEventId.value ? asFiniteNumber(pendingEventSince.value, 0, 0) : 0
+      /*
+       * 起钟落在未来会让 `now - pendingEventSince > 超时` 恒假 ——
+       * **事件永不超时,历练永久堵塞**(`exploration.ts` 的自动结算那条分支进不去)。
+       * 夹到此刻:最坏是让玩家多等一个超时窗口,而不是整局卡死。
+       * `asFiniteNumber` 只管下限,不管方向。
+       */
+      pendingEventSince.value = pendingEventId.value
+        ? Math.min(asFiniteNumber(pendingEventSince.value, 0, 0), Date.now())
+        : 0
       // 事件记忆:times / lastAt 为 NaN 会让 LegacyView 乱序、写出「NaN 次际遇」。
       // 认不出的事件 id 不清:可能是改名 / 下线的旧档内容。
       /*
@@ -297,7 +363,7 @@ export const useAdventureStore = defineStore(
         const m = raw as Partial<import('@/types').EventMemory>
         const times = Math.floor(asFiniteNumber(m.times, 0, 0))
         if (times <= 0) continue
-        const lastAt = asFiniteNumber(m.lastAt, 0, 0)
+        const lastAt = asTimestamp(m.lastAt, 0)
         const choiceCount = eventDef(id)?.choices.length ?? 0
         const rawIdx = Math.floor(asFiniteNumber(m.lastChoiceIdx, 0, 0))
         const lastChoiceIdx = choiceCount > 0 ? Math.min(choiceCount - 1, rawIdx) : 0

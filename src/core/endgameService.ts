@@ -24,7 +24,7 @@ import { maxTierForMajor } from '@/data/regions'
 import { stoneByTier } from './formulas'
 import { buildPlayerSnap } from './playerSnap'
 import { detectBuild } from './buildDetect'
-import { SWORD_PER_WIN, SLAUGHTER_PER_WIN } from './daoDepth'
+import { perWinModsOf } from './daoDepth'
 import { recordMilestone, trackClearRecords } from './identity'
 import { celestialJudgement, mergeRules, runGauntlet, worldFoeLineup, worldFoeSnap, type GauntletReport } from './gauntlet'
 import { usePlayerStore } from '@/stores/player'
@@ -32,7 +32,7 @@ import { useResourcesStore } from '@/stores/resources'
 import { useEndgameStore } from '@/stores/endgame'
 import { useUiStore } from '@/stores/ui'
 import { daoSourceShortfall } from './daoSource'
-import { endgameBusy } from './endgameActivity'
+import { endgameBusy, ENTRY_REASON } from './endgameActivity'
 
 /** 真仙(WORLD_BREAK_MAJOR)方可踏足天界;借 MAX_MAJOR 会让终局随加境漂移 */
 export function endgameUnlocked(): boolean {
@@ -386,7 +386,7 @@ export function rewriteMark(mark: DaoMark): ExpeditionResult | null {
   const target = (world ?? trial)!
   // 环境按当年,道途取今世
   const rules = mergeRules(currentDaoRules(), markRules({ ...mark, daoPathId: null }, world, trial))
-  const perWin = endgame.daoPath === 'sword' ? SWORD_PER_WIN : endgame.daoPath === 'slaughter' ? SLAUGHTER_PER_WIN : undefined
+  const perWin = perWinModsOf(endgame.daoPath)
   const markRng = new RandomService(mulberry32(seedOf(mark.targetId, mark.life)))
   const report = runGauntlet(buildPlayerSnap(true), foes, rules, 'healBetweenPct' in target ? target.healBetweenPct : 0.5, markRng, {
     perWinPlayerMods: perWin
@@ -397,7 +397,7 @@ export function rewriteMark(mark: DaoMark): ExpeditionResult | null {
     trackClearRecords(mark.targetName, report.totalRounds, mark.replay.pactId, 0)
     ui.toast(`【胜于旧我】${mark.targetName}:${mark.rounds} 回合 → ${report.totalRounds} 回合`, 'rare')
   } else if (report.cleared) {
-    ui.toast(`重写功成 · 未破纪录(${report.totalRounds} vs ${mark.rounds} 回合)`, 'info')
+    ui.toast(`功成 · 未破纪录(${report.totalRounds} vs ${mark.rounds} 回合)`, 'info')
   } else {
     ui.toast('重写未竟', 'warn')
   }
@@ -422,7 +422,7 @@ export function challengeTrial(trialId: string): ExpeditionResult | null {
   const trial = trialDef(trialId)
   if (!trial || !endgameUnlocked()) return null
   if (!endgame.daoPath) {
-    ui.toast('未择道途', 'warn')
+    ui.toast(ENTRY_REASON.noDaoPath, 'warn')
     return null
   }
   const busy = endgameBusy(useEndgameStore().worldRun, usePlayerStore().secretRealm, useEndgameStore().adventureSession)
@@ -443,7 +443,7 @@ export function challengeTrial(trialId: string): ExpeditionResult | null {
     foes.push(worldFoeSnap(TRIAL_FOES[i % TRIAL_FOES.length]!, ref, Math.pow(trial.escalation, i), judgement))
   }
   const rules = mergeRules(currentDaoRules(), trial.rules)
-  const perWin = endgame.daoPath === 'sword' ? SWORD_PER_WIN : endgame.daoPath === 'slaughter' ? SLAUGHTER_PER_WIN : undefined
+  const perWin = perWinModsOf(endgame.daoPath)
   const trialRng = new RandomService(mulberry32(seedOf(trial.id, 0)))
   const report = runGauntlet(buildPlayerSnap(true), foes, rules, trial.healBetweenPct, trialRng, { perWinPlayerMods: perWin })
 

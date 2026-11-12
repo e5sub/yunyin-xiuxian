@@ -7,6 +7,7 @@ import { LORE_MAX, materialDef } from '@/data/materials'
 import { recipeCraft, skillDef, type RecipeCraft, type SkillId } from '@/data/crafting'
 import { pillDef, PILLS } from '@/data/pills'
 import { PILL_SECOND_CAP } from '@/data/constants'
+import { RECIPE_MASTERY_TEXT } from '@/ui/pillText'
 import { modOf } from './statsCalc'
 import { useLoreStore } from '@/stores/lore'
 import { usePlayerStore } from '@/stores/player'
@@ -80,7 +81,6 @@ export function weightedSkill(craft: RecipeCraft, levelOf: (id: SkillId) => numb
   return weight > 0 ? total / weight : 0
 }
 
-/** 合成成功率:四个乘区各有下限,任何一项都不会把成功率直接归零 */
 /**
  * 夹到 [0,1];坏值(NaN/Infinity)按 0 计。
  *
@@ -94,6 +94,7 @@ function fraction(v: number): number {
   return Math.max(0, Math.min(1, v))
 }
 
+/** 合成成功率:四个乘区各有下限,任何一项都不会把成功率直接归零 */
 export function composeSuccessRate(mastery: number, matLore: number, skill: number, over: number): number {
   const masteryFactor = 0.22 + 0.78 * fraction(mastery)
   const loreFactor = 0.42 + 0.58 * fraction(matLore)
@@ -179,7 +180,7 @@ export function craftability(id: string, opts?: { omitWeakness?: boolean }): Cra
   const over = Math.max(0, craft.rank - bearable)
 
   const blockers: string[] = []
-  if (mastery <= 0) blockers.push('未得方')
+  if (mastery <= 0) blockers.push(RECIPE_MASTERY_TEXT.none)
 
   return {
     recipeId: id,

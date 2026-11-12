@@ -9,14 +9,6 @@ describe('GameNumber 大数运算', () => {
     expect(gn(0.5).e).toBe(-1)
   })
 
-  it('次正规数不产出 Infinity 尾数(10^shift 下溢时按 0 收口)', () => {
-    // 5e-324 是 number 能表示的最小正值;10^-324 下溢为 0,abs/0 会得到 Infinity
-    const tiny = gn(Number.MIN_VALUE)
-    expect(Number.isFinite(tiny.m), 'm 必须是有限数').toBe(true)
-    expect(tiny).toEqual({ m: 0, e: 0 })
-    expect(Number.isFinite(gn(1e-323).m)).toBe(true)
-  })
-
   it('损坏数据回退为零', () => {
     expect(gn({ m: Number.NaN, e: 2 })).toEqual({ m: 0, e: 0 })
     // 指数也须是有限数
@@ -137,6 +129,41 @@ describe('GameNumber 大数运算', () => {
  * 它只查 m 不查 e,于是 e 为 NaN/Infinity 时坏值一路传下去。
  * add / neg / cmp 各有绕过 normalize 的路径,得单独挡。
  */
+describe('GameNumber · 非正规数(denormal)不许产出 Infinity 尾数', () => {
+  /*
+   * `Math.pow(10, -324)` 下溢成 0,`5e-324 / 0` 得 Infinity —— 于是
+   * `gn(5e-324)` 会产出 `{ m: Infinity }`。
+   *
+   * 后果不止「印个占位符」:`add` 的 `usable()` 见到非有限 m 就整份回 gnZero(),
+   * **加法的另一半被一起吞掉**(修复前 `add(gn(5e-324), gn(1))` 得 0)。
+   */
+  it('非正规数的尾数仍是有限数', () => {
+    for (const v of [5e-324, 1e-320, 1e-310]) {
+      const g = gn(v)
+      expect(Number.isFinite(g.m), `${v} 的尾数成了 ${g.m}`).toBe(true)
+      expect(g.m, `${v} 的尾数该落在 [1,10)`).toBeGreaterThanOrEqual(1)
+      expect(g.m).toBeLessThan(10)
+    }
+  })
+
+  it('与非正规数相加,另一侧不被吞掉', () => {
+    // 修复前这里是 0:`usable({m:Infinity})` 为假 → add 整份回 gnZero()
+    expect(add(gn(5e-324), gn(1))).toEqual({ m: 1, e: 0 })
+    expect(add(gn(1), gn(5e-324))).toEqual({ m: 1, e: 0 })
+  })
+
+  it('输入本身非有限时按 0 收口(对数路径取到 Infinity-Infinity 也是 NaN)', () => {
+    expect(gn(Number.POSITIVE_INFINITY)).toEqual({ m: 0, e: 0 })
+    expect(gn(Number.NEGATIVE_INFINITY)).toEqual({ m: 0, e: 0 })
+  })
+
+  it('正规数一位不动:对数路径只在除法真会下溢时才走', () => {
+    // 首版无条件走对数路径,0.5 的尾数变成 4.999999999999999e-1,全量测试红 29 条
+    expect(gn(0.5)).toEqual({ m: 5, e: -1 })
+    expect(gn(9.99999).m).toBeCloseTo(9.99999, 10)
+  })
+})
+
 describe('GameNumber 的坏值守卫', () => {
   const BAD = [
     { m: 1, e: Number.NaN },
@@ -189,5 +216,36 @@ describe('GameNumber 的坏值守卫', () => {
     expect(cmp(gn(2), gn(1))).toBe(1)
     expect(cmp(gn(1), gn(2))).toBe(-1)
     expect(cmp(gn(1), gn(1))).toBe(0)
+  })
+})
+
+/**
+ * progress 挡得住坏 GNum。
+ *
+ * `ratio` 对 `{ m: NaN }` 这类结构合法、数值非法的值返回 NaN,而
+ * `Math.max(0, Math.min(1, NaN))` 仍是 NaN —— 两道钳制串起来也留不住它
+ * (AGENTS.md 明文点过这个坑)。坏值一路穿到界面就是「进度 NaN%」。
+ *
+ * 实测写法:界面读 progress 的地方是 `Math.round(x * 100)`,NaN 直接印成 NaN%。
+ */
+describe('进度 · 坏值不得穿成 NaN', () => {
+  it('NaN 尾数给出合法下限,而不是 NaN', () => {
+    const bad = { m: NaN, e: 0 }
+    const out = progress(bad, gn(100))
+    expect(Number.isNaN(out), 'NaN 漏出来了').toBe(false)
+    expect(out).toBe(0)
+    // 阴性对照:这正是修复前的算式
+    expect(Math.max(0, Math.min(1, NaN)), 'Math.max/min 确实挡不住 NaN').toBeNaN()
+  })
+
+  it('Infinity 按上限算', () => {
+    // 目标为 0(除零)时 ratio 给 Infinity
+    expect(progress(gn(5), gn(0))).toBe(1)
+  })
+
+  it('正常值仍是线性的', () => {
+    expect(progress(gn(25), gn(100))).toBeCloseTo(0.25, 10)
+    expect(progress(gn(0), gn(100))).toBe(0)
+    expect(progress(gn(200), gn(100))).toBe(1)
   })
 })

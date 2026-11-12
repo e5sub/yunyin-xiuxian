@@ -32,10 +32,44 @@ export function asRecordOf<T>(v: unknown, isValid: (x: unknown) => boolean): Rec
   return out
 }
 
-/** 有限数字就用它,否则兜底;可选下限 */
-export function asFiniteNumber(v: unknown, fallback: number, min?: number): number {
-  const n = typeof v === 'number' && Number.isFinite(v) ? v : fallback
-  return min === undefined ? n : Math.max(min, n)
+/**
+ * `Date` 能表示的时间戳上下界(±8.64e15 毫秒)。
+ *
+ * `Number.isFinite` 挡不住「有限的超范围数」:坏档写 `lastAt: 1e300` 它照样是有限数,
+ * 过了 `asFiniteNumber` 这一关,然后被 `new Date()` 变成 Invalid Date ——
+ * 渲染出来是「NaN月NaN日」或英文「Invalid Date」,不报任何错。
+ * 时间戳字段的守卫用它当上界。
+ */
+export const MAX_TIMESTAMP_MS = 8_640_000_000_000_000
+
+/**
+ * 有限数字就用它,否则兜底;可选上下限。
+ *
+ * `max` 这一档是后补的:AGENTS.md 一直写着 `asFiniteNumber(v, fallback, min, max)`,
+ * 而实现只有 `min`。于是两轮下来凡是「上界」都只能各处手写
+ * (`Math.min(CAP, asFiniteNumber(...))`),写漏了不报错、也没有判据。
+ *
+ * 上界挡的是 `Number.isFinite` 拦不住的那一类:坏档写 `age: Number.MAX_VALUE` 仍是有限数,
+ * 过了 `isFinite` 就被渲染成 `1.80e308`。给了 `max` 就一并夹住。
+ *
+ * `min > max` 时以 `min` 为准 —— 与分别写 `Math.min(max, Math.max(min, n))` 的既有写法一致
+ * (先夹下限再夹上限),不静默反转参数。
+ */
+export function asFiniteNumber(v: unknown, fallback: number, min?: number, max?: number): number {
+  let n = typeof v === 'number' && Number.isFinite(v) ? v : fallback
+  if (min !== undefined) n = Math.max(min, n)
+  if (max !== undefined) n = Math.min(max, n)
+  return n
+}
+
+/**
+ * 时间戳:有限且在 `Date` 能表示的范围内,否则兜底(默认 0 =「没有记录」)。
+ *
+ * 比 `asFiniteNumber` 多挡一类:有限但超出范围的数(`1e300`)。这类值不会抛错,
+ * 只会在渲染期变成「NaN月NaN日」/「Invalid Date」,自愈路径正是该把它在这里挡掉。
+ */
+export function asTimestamp(v: unknown, fallback = 0): number {
+  return typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= MAX_TIMESTAMP_MS ? v : fallback
 }
 
 /** 残余生命占比:夹到 [0.05, 1],非有限数兜底 1;天界/凡界远征共用 */
@@ -85,18 +119,13 @@ export function asObjectOrNull<T extends object>(v: unknown): T | null {
 }
 
 /**
- * 存档里的价格(GNum):形状不对就归零。货架/悬赏会重新上货、重填价格,不会以零成交。
- * 坊市与悬赏共用这一份。
- */
-/**
- * 存档里的价格/奖励 GNum。
+ * 存档 GNum 的指数绝对值上界:只为拦坏档,远高于真实数值(两位数)。
  *
- * 指数须有界:`gn` 只规范化 m、**不限制 e**,而 formatGN 会把 e 原样印出来 ——
+ * `gn` 只规范化 m、**不限制 e**,而 formatGN 会把 e 原样印出来 ——
  * 坏档写 { m: 1, e: 1e9 } 会让界面出现「1.00e1000000000」,
  * { m: 1e308, e: 1e308 } 更会印成「1.00e1e+308」这种非法数字。
- * 正常数值的指数只有两位数(满级玩家四维实测最大 e=15),故 ±999 足够宽又拦得住坏档。
+ * 满级玩家四维实测最大 e=15,故 ±999 足够宽又拦得住坏档。
  */
-/** 存档 GNum 的指数绝对值上界:只为拦坏档,远高于真实数值(两位数) */
 export const SAVE_GNUM_MAX_EXP = 999
 
 /**
@@ -125,7 +154,7 @@ export function asBoundedGNum(v: unknown): GNum {
 }
 
 /**
- * 价格/奖励的 GNum。
+ * 价格/奖励的 GNum:形状不对就归零。货架/悬赏会重新上货、重填价格,不会以零成交。
  *
  * 与 asBoundedGNum 同一条指数界,但**只收 { m, e } 结构**:
  * 价格是导出契约的一部分,写成裸数字属于格式错误,该按「读不出」处理。

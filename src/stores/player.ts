@@ -4,13 +4,79 @@ import { computed, ref } from 'vue'
 import type { FinalStats, GNum, LinggenProfile, StatMods, WorldId } from '@/types'
 import { gn, gnZero, add, gte, mulN, progress, subClamp } from '@/utils/gnum'
 import { persistConfig } from '@/utils/storage'
-import { realmDef, realmLabel, worldOf, WORLDS, SUB_NAMES, MAX_MAJOR } from '@/data/realms'
+import { realmDef, realmLabel, worldOf, WORLDS, SUB_NAMES, MAX_MAJOR, lifespanOf } from '@/data/realms'
 import { NAME_MAX_LENGTH, SUB_LEVELS, START_AGE } from '@/data/constants'
 import { QI_BANK_MULT, QI_RICH_RATIO } from '@/data/constants'
 import {
   STAR_FOCUS_COST_BASE, MANSION_REDIRECT_COST, MANSION_REDIRECT_MAX,
   WUDAO_EXCHANGE_GAIN, WUDAO_EXCHANGE_PER_DAY
 } from '@/data/constants'
+/**
+ * 转世计数/货币的读档上界。
+ *
+ * `count` 决定本世号(`suppressLife` 用它和「当前世」比等号),坏档写 `MAX_VALUE`
+ * 会让镇压权益整块判定永远对不上;`daoFruit` / `insight` 是可直接花掉的货币,
+ * 界面会照 formatGN 印成 `1.80e308`。1e6 远高于任何真实游玩量级(转世几百次、道果累计几千)。
+ */
+const LIFE_COUNTER_CAP = 1_000_000
+
+/** 连胜计数的读档上界:坏档写 MAX_VALUE 会让它永远涨不到头(界面印 1.79e308) */
+const WIN_STREAK_CAP = 1_000_000
+
+/**
+ * 单个区域的胜场上限。
+ *
+ * `worldMemory` 的兴衰判据是 `totalWins >= 80`,坏档写 1e300 会让该区域永久「兴盛」;
+ * 胜场数本身也印在区域卡上。一局里在同一区域打几百场已是极值。
+ */
+const REGION_WINS_MAX = 10_000
+
+/** 秘境内胜负场数的读档上界:一层只有几场,取一万已极宽 */
+const SECRET_FIGHT_CAP = 10_000
+
+/**
+ * 道侣机缘计数的读档上界。
+ *
+ * 触发判据是 `opportunities < nextEventAt`,而 `nextEventAt` 由
+ * `opportunities + EVENT_GAP`(=6)推出来 —— 正常值域是 0..6。
+ * 坏档写 1e300 时两边一起极大,判据恒假,那位道侣的机缘再也不来。
+ */
+const BOND_EVENT_CAP = 100
+/** 道侣机缘的间隔次数,与 `daoluService` 的 EVENT_GAP 同值(那边是私有常量,不便导出) */
+const BOND_EVENT_GAP = 6
+
+/**
+ * 宿敌「败我 N 次」的读档上界。
+ *
+ * 那处是裸插值(`败我 {{ lossCount }} 次`),且参与 `>= 3` 的筛选;
+ * 坏档写 1e300 会印出巨大数字并永远满足筛选。正常量级是几次到几十次。
+ */
+const NEMESIS_LOSS_CAP = 10_000
+
+/**
+ * 游玩日号(`gameDay(totalPlaySec)`)的读档上界。
+ *
+ * `totalPlaySec` 自身在 `game.sanitize` 里封顶 100 年(36500 天),取一万天留足余量。
+ * 这里用**固定值**而不是实时读 `game.totalPlaySec` —— `sanitizeAllStores` 里
+ * player 先于 game 跑,那个值此刻还可能是坏的。
+ */
+const GAME_DAY_MAX = 10_000
+
+/**
+ * 区域战绩里两个计数的读档上界。
+ *
+ * `totalFights` 只用于显示,夹到上界即可。
+ *
+ * `avgRounds` 另有讲究:它参与抑制判定(`avgRounds <= 3`)。
+ * 夹到上界**解决不了问题** —— 10000 仍大于 3,复聚钟照样不响。
+ * 故越界的值归零(语义是「没有记录」),见调用处的说明。
+ * `SUPPRESS_AVG_ROUNDS_LIMIT` 是「一场战斗算打得久」的门槛,与判定同源。
+ */
+const AVG_ROUNDS_CAP = 10_000
+const TOTAL_FIGHTS_CAP = 10_000_000
+/** 平均回合数的「久」门槛:超过它就该当作异常记录处理(与 suppress 的判据同量级) */
+const SUPPRESS_AVG_ROUNDS_LIMIT = 1000
+
 import { legacyInsightOf } from '@/data/samsara'
 import { titleDef } from '@/data/titles'
 import { petDef } from '@/data/pets'
@@ -31,14 +97,14 @@ import { computeFinalStats, mergeMods, modOf } from '@/core/statsCalc'
 import { todayWeather } from '@/core/weather'
 import { divinationActiveAt, readingFromState, readingMods } from '@/core/divination'
 import { gameNow } from '@/core/enginePause'
-import { asArray, asBoundedGNum, asCarriedHpPct, asFiniteNumber, asNumberRecord, asRecord, asStringArray, truncateCodePoints } from '@/utils/saveShape'
+import { asArray, asBoundedGNum, asCarriedHpPct, asFiniteNumber, asNumberRecord, asRecord, asStringArray, truncateCodePoints, asTimestamp } from '@/utils/saveShape'
 import { SECRET_LAYERS, SECRET_MAX_LOSSES, SECRET_REALMS, secretRuleByText } from '@/data/secretRealms'
 import { DAOLU, ENDING_NAMES, STAGE_NAMES, STAGE_ORDER, type BondEnding, type BondStage } from '@/data/daolu'
 import { lifeThemeDef } from '@/data/lifeThemes'
 import { bondEventDef } from '@/data/bondEvents'
 import { regionDef } from '@/data/regions'
 // 事件表从 data/ 引:core/regionEvent 依赖本 store,反向 import 会成环
-import { regionEventDef } from '@/data/regionEvents'
+import { REGION_EVENT_MAX_MINUTES, regionEventDef } from '@/data/regionEvents'
 import { artifactSlotsFor } from '@/data/artifacts'
 import { lifeTrialDef, type LifeTrialState } from '@/data/lifeTrials'
 import { STARS } from '@/data/ziwei'
@@ -526,7 +592,7 @@ export const usePlayerStore = defineStore(
                 ending: typeof bond.ending === 'string' && bond.ending in ENDING_NAMES ? bond.ending : ''
               }
             : null,
-          at: Math.max(0, Math.floor(asFiniteNumber(l.at, 0, 0)))
+          at: Math.max(0, Math.floor(asTimestamp(l.at, 0)))
         })
       }
       return out
@@ -562,7 +628,7 @@ export const usePlayerStore = defineStore(
       if (typeof v.themeId !== 'string' || !lifeThemeDef(v.themeId)) return null
       return {
         themeId: v.themeId,
-        at: Math.max(0, asFiniteNumber(v.at, 0, 0)),
+        at: Math.max(0, asTimestamp(v.at, 0)),
         base: asNumberRecord(v.base, 0),
         baseBranches: Math.max(0, Math.floor(asFiniteNumber(v.baseBranches, 0, 0))),
         baseAvenged: Math.max(0, Math.floor(asFiniteNumber(v.baseAvenged, 0, 0))),
@@ -637,8 +703,26 @@ export const usePlayerStore = defineStore(
       const previousLife = reincarnation.value.count
       reincarnation.value = {
         ...reincarnation.value,
+        /*
+         * 这里**不能**饱和。
+         *
+         * `count` 不只是个计数,它是「本世」的标识:`suppressLife` 与它比等号,
+         * 相等才算本世的镇压权益。饱和之后两世的世号会相同 ——
+         * 旧世残留的权益会在新世生效(审查意见里那条「高」)。
+         *
+         * `LIFE_COUNTER_CAP` 是**读档守卫**,防的是坏档写 MAX_VALUE;
+         * 正常游玩几百年也转不了几万次,不需要也不该在写入端夹。
+         */
         count: reincarnation.value.count + 1,
-        heritageUses: {}
+        heritageUses: {},
+        /*
+         * 本世立下的题与签下的契都要清 —— 它们的字段注释一直写着「转世时清空」,
+         * 而这个 `...reincarnation.value` 展开会把它们原样带过来。
+         * 后果不是摆设:`lifeTrialService` 用 `if (trial) return false` 挡「再签一张」,
+         * 新世带着旧契就永远签不了新的。
+         */
+        trial: null,
+        vow: null
       }
       linggen.value = newLinggen
       major.value = birthMajorFloor(reincarnation.value.heritage)
@@ -674,6 +758,13 @@ export const usePlayerStore = defineStore(
       // 世号当场同步,不等下一次 sanitize
       suppressLife.value = reincarnation.value.count
       petId.value = null
+      /*
+       * 本世道侣关系要清 —— 注释写着「转世时清空」,而先前漏了它。
+       * `daoluService` 用 `if (player.bond) return false` 挡「这一世只能遇一位」,
+       * 新世带着旧道侣就再也遇不到新的一位。
+       * 历世履历在 `reincarnation.bonds` 里,那份保留(宿缘重逢的依据)。
+       */
+      bond.value = null
       dongfu.resetForRebirth()
       apprentices.resetForRebirth()
       // 每世重掷道号,不与上世撞名(见 samsaraAudit 的姓名一行)
@@ -682,6 +773,22 @@ export const usePlayerStore = defineStore(
         fresh = randomDaoName(rng)
       } while (fresh === name.value)
       name.value = fresh
+    }
+
+    /**
+     * 剔掉「属于旧世」的本世记录。
+     *
+     * 修复前的 `rebirth` 没有清 `vow` / `trial` / `bond`,那些存档转世后会带着旧值,
+     * 而各自的闸门都是「已有即不许再立」—— 新世被永久挡在门外。
+     * 判据:履历最后一条的 `at` 是本世开始时刻,记录自身的 `at` 早于它即旧世残留。
+     * 无履历(从未转世过)时返回原值,不误删。
+     */
+    function staleThisLife<T extends { at: number }>(record: T | null): T | null {
+      if (!record) return record
+      const lives = reincarnation.value.lives
+      const lastLifeAt = lives[lives.length - 1]?.at
+      if (typeof lastLifeAt !== 'number' || !Number.isFinite(lastLifeAt)) return record
+      return record.at < lastLifeAt ? null : record
     }
 
     /** 存档修复 */
@@ -707,7 +814,17 @@ export const usePlayerStore = defineStore(
       // 负年龄与 NaN 一并修正:死亡判据是 age < lifespanMax,负年龄永远死不了,
       // 而 TopStatusBar 直接印 Math.floor(age),坏档会显示「寿元 -100/120」;
       // lifespanRatio 也会算出 >1 的值喂给血色档位判断
-      if (!Number.isFinite(age.value) || age.value < 0) age.value = START_AGE
+      /*
+       * 岁数只修「非有限 / 负数」还不够:坏档写 `age: 1e300` 是有限正数,照样过。
+       * 那会让寿元那一格印出 `1.00e300 载`(formatYears 的兜底),而死亡判据
+       * `age < lifespanMax` 恒假 —— 玩家永远死不了,也永远看不出档坏了。
+       * 上界取「最高境界寿元的 10 倍」:混沌道祖约 1.01e15 载(实测 lifespanOf(20),
+       * 不是我一开始估的 386 亿 —— 那个数漏了境界表里的分世界阶梯),
+       * 真实游玩再延寿也到不了它的十倍,超出的必定是坏档,按开局年龄重来。
+       * 上界本身要能被当数字读:再乘 1000 就成 1e18,和坏档没什么区别了。
+       */
+      const MAX_AGE_YEARS = lifespanOf(MAX_MAJOR) * 10
+      if (!Number.isFinite(age.value) || age.value < 0 || age.value > MAX_AGE_YEARS) age.value = START_AGE
       // 大阶是境界表下标、层数直接进公式
       major.value = Math.min(MAX_MAJOR, Math.max(0, Math.floor(asFiniteNumber(major.value, 0))))
       sub.value = Math.min(SUB_LEVELS - 1, Math.max(0, Math.floor(asFiniteNumber(sub.value, 0))))
@@ -730,10 +847,25 @@ export const usePlayerStore = defineStore(
        * lifespanMax 算出负数(实测炼气一层 150 → -849),玩家看到「寿元上限 -849 岁」,
        * 而 lifespanRatio 恒为 0,寿元条永远是空的。
        */
-      lifespanBonusYears.value = asFiniteNumber(lifespanBonusYears.value, 0, 0)
+      /*
+       * 加算项同样要有上界:它直接进 `base * (1+pct) + bonus`,负档已挡住,
+       * 但 1e300 这种有限巨值会让寿元上限变成天文数字 —— 界面印 `1.00e300 载`,
+       * 而 `age < lifespanMax` 永远成立,人物从此不老了。
+       */
+      lifespanBonusYears.value = Math.min(
+        lifespanOf(MAX_MAJOR) * 10,
+        asFiniteNumber(lifespanBonusYears.value, 0, 0)
+      )
       // 旧存档缺宿慧/履历/命题三项:按转世次数折算补齐
       const r = reincarnation.value
-      const count = Number.isFinite(r?.count) ? Math.max(0, r.count) : 0
+      /*
+       * 这里的 count 早于下面那次 `reincarnation.value = {...}` 的钳位,故须自带同样的上界 ——
+       * 它直接赋给 suppressLife,而 suppressLife 与「当前世号」比等号;
+       * 坏档写 MAX_VALUE 时两边都被写成它,镇压权益整块判定永远对不上。
+       */
+      const count = Math.floor(
+        asFiniteNumber(r?.count, 0, 0, LIFE_COUNTER_CAP)
+      )
       // 旧存档无卦象一栏
       if (divination.value) {
         const d = divination.value
@@ -751,8 +883,8 @@ export const usePlayerStore = defineStore(
         const ok = Number.isFinite(p.bonus) && Number.isFinite(p.readyAt) && (p.kind === 'meditate' || p.kind === 'pill')
         if (!ok) breakthroughPrep.value = null
       }
-      // 旧存档无顿悟冷却一栏;0 = 从未顿悟
-      if (!Number.isFinite(enlightenmentAt.value) || enlightenmentAt.value < 0) enlightenmentAt.value = 0
+      // 旧存档无顿悟冷却一栏;0 = 从未顿悟。它是个时间戳,故与别处同一把尺(asTimestamp 挡超范围)
+      enlightenmentAt.value = Math.max(0, asTimestamp(enlightenmentAt.value, 0))
       if (fateFocus.value !== null && !STARS.some(s => s.id === fateFocus.value)) {
         fateFocus.value = null
       }
@@ -768,8 +900,21 @@ export const usePlayerStore = defineStore(
         ) {
           mansionRedirect.value = null
         } else {
+          /*
+           * 日记号不许大得离谱 —— 判定是 `current.gameDay === day`
+           * (`mansionRedirectCheck`),未来日会让等号恒不成立、
+           * `count >= MANSION_REDIRECT_MAX` 那道每日上限**永远不生效**。
+           *
+           * 上界用**固定值**而不是读 `game.totalPlaySec`:
+           * `sanitizeAllStores` 里 player 先于 game 跑(见那里的顺序),
+           * 此刻的 totalPlaySec 可能还是坏值 —— 实测 `MAX_VALUE` 会让
+           * 「今天」变成 2e303,任何记录都不再越界,守卫形同虚设。
+           * `totalPlaySec` 自身封顶 100 年(见 game.sanitize),
+           * 折算成日就是 36500 天;取一万天留足余量。
+           */
+          const mrDay = Math.max(0, Math.floor(mr.gameDay))
           mansionRedirect.value = {
-            gameDay: Math.max(0, Math.floor(mr.gameDay)),
+            gameDay: mrDay > GAME_DAY_MAX ? 0 : mrDay,
             worldId: mr.worldId,
             count: Math.min(MANSION_REDIRECT_MAX, Math.max(0, Math.floor(mr.count)))
           }
@@ -779,10 +924,17 @@ export const usePlayerStore = defineStore(
       if (!we || !Number.isFinite(we.gameDay) || !Number.isFinite(we.count)) {
         wudaoExchange.value = { gameDay: 0, count: 0 }
       } else {
-        // 同理:gameDay 落在今天之后会让「今日已兑」的等号恒不成立,每日兑换停摆
+        /*
+         * 日记号不许大得离谱:判定是 `cur.gameDay === day`,未来日会让
+         * 「今日已兑」的等号恒不成立、每日兑换停摆 —— 但**两个方向都要防**:
+         * 归零的语义是「今天还没兑」,而坏档的巨值恰恰会被归零成可兑。
+         *
+         * 与 mansionRedirect 同一条:上界用**固定值**,不实时读 `game.totalPlaySec`
+         * (player 先于 game 跑,那个值此刻还可能是坏的)。
+         */
         const day = Math.max(0, Math.floor(we.gameDay))
         wudaoExchange.value = {
-          gameDay: day > gameDay(useGameStore().totalPlaySec) ? 0 : day,
+          gameDay: day > GAME_DAY_MAX ? 0 : day,
           count: Math.min(WUDAO_EXCHANGE_PER_DAY, Math.max(0, Math.floor(we.count)))
         }
       }
@@ -797,7 +949,8 @@ export const usePlayerStore = defineStore(
             realmId: sr.realmId,
             enteredAt: asFiniteNumber(sr.enteredAt, Date.now(), 0),
             layer: Math.min(SECRET_LAYERS, Math.max(1, Math.floor(asFiniteNumber(sr.layer, 1, 1)))),
-            wins: Math.floor(asFiniteNumber(sr.wins, 0, 0)),
+            // 秘境内胜场;不进判定也不显示,但同样不该是坏档的巨值
+            wins: Math.floor(asFiniteNumber(sr.wins, 0, 0, SECRET_FIGHT_CAP)),
             losses: Math.min(SECRET_MAX_LOSSES, Math.floor(asFiniteNumber(sr.losses, 0, 0))),
             spoils: asStringArray(sr.spoils),
             // 旧说法归一为现行说法并去重
@@ -807,6 +960,21 @@ export const usePlayerStore = defineStore(
           }
         }
       }
+      /*
+       * 旧世残留的道侣要清掉 —— **修复前转世过的存档**会带着上一位道侣,
+       * 而 `daoluService.meet()` 用 `if (player.bond) return false` 挡「这一世只能遇一位」,
+       * 那些档就再也遇不到新的一位(审查意见指出的)。
+       *
+       * 判据用履历里的归档时刻:`reincarnation.lives` 最后一条的 `at` 就是本世开始时刻,
+       * 而 `bond.metAt` 是初遇时刻 —— 早于本世开始即旧世残留。
+       * 旧档若无履历(从未转世),判据不成立,道侣照常保留。
+       */
+      if (bond.value) {
+        const lastLifeAt = reincarnation.value.lives[reincarnation.value.lives.length - 1]?.at
+        if (typeof lastLifeAt === 'number' && Number.isFinite(lastLifeAt) && bond.value.metAt < lastLifeAt) {
+          bond.value = null
+        }
+      }
       // 三维是 0~100 的钳制量(同 advanceBond)
       if (bond.value) {
         const b = bond.value
@@ -814,7 +982,7 @@ export const usePlayerStore = defineStore(
         if (!known) {
           bond.value = null
         } else {
-          const clamp100 = (v: unknown, fallback = 0): number => Math.min(100, asFiniteNumber(v, fallback, 0))
+          const clamp100 = (v: unknown, fallback = 0): number => asFiniteNumber(v, fallback, 0, 100)
           bond.value = {
             ...b,
             stage: STAGE_ORDER.includes(b.stage) ? b.stage : 'met',
@@ -826,8 +994,29 @@ export const usePlayerStore = defineStore(
             fallen: b.fallen === true,
             departed: b.departed === true,
             doneEvents: asStringArray(b.doneEvents),
-            opportunities: Math.floor(asFiniteNumber(b.opportunities, 0, 0)),
-            nextEventAt: Math.floor(asFiniteNumber(b.nextEventAt, 0, 0)),
+            /*
+             * 道侣机缘的触发判据是 `b.opportunities < b.nextEventAt`,
+             * 而 `nextEventAt` 由 `opportunities + EVENT_GAP` 推出来(每 6 次重排一次)。
+             * 坏档把 opportunities 写成 1e300 时,两边一起极大 → 判据**恒假**,
+             * 那位道侣的机缘再也不来。正常值域是 0..EVENT_GAP,取一百已极宽。
+             */
+            /*
+             * 这两个数是**一对**,必须一起复位。
+             *
+             * 判据是 `opportunities < nextEventAt`,而 nextEventAt 由
+             * `opportunities + EVENT_GAP`(=6)推出来 —— 只修其中一个会让时序错乱:
+             * 单独把 nextEventAt 复位成 6、opportunities 仍是一百多,判据恒假;
+             * 反过来则每次调用都触发事件。
+             *
+             * 任一方越界就把**两边一起**重置成「刚触发过」的初态
+             * (opportunities=0、nextEventAt=EVENT_GAP),与 `createBond` 的初值一致。
+             */
+            ...(b.opportunities > BOND_EVENT_CAP || b.nextEventAt > BOND_EVENT_CAP
+              ? { opportunities: 0, nextEventAt: BOND_EVENT_GAP }
+              : {
+                  opportunities: Math.floor(asFiniteNumber(b.opportunities, 0, 0)),
+                  nextEventAt: Math.floor(asFiniteNumber(b.nextEventAt, 0, 0))
+                }),
             // offerBondEvent 见非空 pendingEventId 即不出新事件:认不出的 id 会永久堵死道侣线
             pendingEventId:
               typeof b.pendingEventId === 'string' && bondEventDef(b.pendingEventId) ? b.pendingEventId : null,
@@ -841,7 +1030,19 @@ export const usePlayerStore = defineStore(
       if (regionEvent.value) {
         const ev = regionEvent.value
         const regionOk = !!regionDef(ev.regionId) && !!regionEventDef(ev.eventId)
-        const endsAt = asFiniteNumber(ev.endsAt, 0, 0)
+        /*
+         * 到期时刻**落在正常时长之外**才算坏档。
+         *
+         * 「endsAt 在未来」本身是**正常状态** —— 事件持续 30~120 分钟,
+         * 一上来就夹到此刻会把玩家正在享受的事件清掉(审查意见里那条「高」)。
+         *
+         * 真正的问题是坏档/时钟调快留下的远期值:`rollRegionEvent` 判
+         * `cur.endsAt > now`,那种值会让**整片地界再也掷不出新事件**
+         * (实测远期值下 500 次掷签 0 次)。
+         * 判据取「最长时长」:超出它即不可能是正常事件,直接作废。
+         */
+        const endsRaw = asTimestamp(ev.endsAt, 0)
+        const endsAt = endsRaw > Date.now() + REGION_EVENT_MAX_MINUTES * 60_000 ? 0 : endsRaw
         if (!regionOk || endsAt <= 0) regionEvent.value = null
         else regionEvent.value = { ...ev, endsAt }
       }
@@ -876,12 +1077,28 @@ export const usePlayerStore = defineStore(
       suppressLife.value = count
       // NaN 起钟永不复苏、≤0 当场复聚:均按此刻重起
       // 仍在镇压或仍持有资格即保留:unsuppressRegion 摘镇压表时起点照留,切回时复聚钟接着走
+      /*
+       * 起钟值不只要「> 0」,还要按**时间戳**收口 ——
+       * 它同样是 `worldMemory.regionTouchedAt` 的候选(三者取 max),
+       * 而 `isRegionRevived` 判 `(now - touchedAt) / 3600_000 > 72`。
+       * 坏档写 `1e300` 时那个减法恒为极大负数,**该地界永不复苏**
+       * (与 `adventure.clearedAt` 同一条,上一轮修的就是那边)。
+       */
       const rawSince = asNumberRecord(suppressedSince.value)
       const fixedSince: Record<string, number> = {}
       const keepsTenure = new Set([...suppressedRegions.value, ...suppressQualified.value])
       for (const id of keepsTenure) {
         const at = rawSince[id]
-        fixedSince[id] = at !== undefined && at > 0 ? at : Date.now()
+        /*
+         * `asTimestamp` 只挡「超出 Date 可表示范围」,不挡**未来的**时间戳:
+         * 一个合法但晚于此刻的值照样通过,而复聚钟取 max 之后同样停在未来 ——
+         * 该地界要等到「真实时间追上那个未来时刻」才可能复苏(审查意见指出的)。
+         * 未来值**夹到此刻**:既挡住坏档,也保住「正在镇压」的语义
+         * (与第 54 轮洞府巡游的 lastCaveEventDay、第 64 轮天道日号同一处理)。
+         */
+        const nowMs = Date.now()
+        const bounded = at === undefined ? 0 : Math.min(asTimestamp(at, 0), nowMs)
+        fixedSince[id] = bounded > 0 ? bounded : nowMs
       }
       suppressedSince.value = fixedSince
       // 零头取值 [0,1),只认镇压表内地界(松开镇压时已清)
@@ -904,11 +1121,22 @@ export const usePlayerStore = defineStore(
         const st = raw as Partial<import('@/core/suppress').RegionStats>
         const rawLife = asFiniteNumber(st.life, Number.NaN, 0)
         fixedRegionStats[id] = {
-          totalFights: Math.floor(asFiniteNumber(st.totalFights, 0, 0)),
-          avgRounds: asFiniteNumber(st.avgRounds, 0, 0),
+          totalFights: Math.floor(asFiniteNumber(st.totalFights, 0, 0, TOTAL_FIGHTS_CAP)),
+          /*
+           * 越界要**归零**,不是夹到上界。
+           *
+           * 判定是 `avgRounds <= 3`。夹到 10000 后它仍大于 3,复聚钟照样不响 ——
+           * 等于把「永远不满足」从 1e300 换成了 10000,问题没解决。
+           * 归零的语义是「没有记录」,这正是坏档该有的样子。
+           * (`Number.isFinite` 之前的注释只防了 NaN,而 1e300 是有限数。)
+           */
+          avgRounds: (() => {
+            const v = asFiniteNumber(st.avgRounds, 0, 0, AVG_ROUNDS_CAP)
+            return v > SUPPRESS_AVG_ROUNDS_LIMIT ? 0 : v
+          })(),
           // 受伤占比 0~1(界面乘 100)
-          avgDamageTakenPct: Math.min(1, asFiniteNumber(st.avgDamageTakenPct, 0, 0)),
-          consecutiveWins: Math.floor(asFiniteNumber(st.consecutiveWins, 0, 0)),
+          avgDamageTakenPct: asFiniteNumber(st.avgDamageTakenPct, 0, 0, 1),
+          consecutiveWins: Math.floor(asFiniteNumber(st.consecutiveWins, 0, 0, WIN_STREAK_CAP)),
           lastUpdateAt: asFiniteNumber(st.lastUpdateAt, 0, 0),
           // 有世号原样留(旧世的不参与判据);老档无世号按当前世认,不追溯没收
           life: Number.isFinite(rawLife) ? Math.floor(rawLife) : statsLife
@@ -916,16 +1144,32 @@ export const usePlayerStore = defineStore(
       }
       regionStats.value = fixedRegionStats
       // 巡游日期为 NaN 时「今日已抽」恒假,每 30 秒重掷一次
-      winStreak.value = Math.floor(asFiniteNumber(winStreak.value, 0, 0))
+      // 上界:连胜是计数,坏档写 MAX_VALUE 会让它永远涨不到头(界面印 1.79e308)
+      winStreak.value = Math.floor(asFiniteNumber(winStreak.value, 0, 0, WIN_STREAK_CAP))
       /*
-       * 日记号不许落在今天之后:闸门写的是 `lastCaveEventDay === today`,
-       * 时钟调快过留下的未来日会让等号永不成立,每日巡游就此停摆(实测一年后的日期能一路通过)。
-       * 归零等于「今日未做」,与坏档该有的行为一致。
+       * 日记号不许落在今天之后。闸门写的是 `lastCaveEventDay >= today`,
+       * 未来日会让它恒真、每日巡游永久停摆(实测一年后的日期能一路通过)。
+       *
+       * **夹到「今天」而不是归零**:归零的语义是「从未巡游过」,
+       * 而时钟调快再调回、或时钟回拨后重载时,那条记录的语义其实是
+       * 「刚巡游过」—— 归零会把它变成「可以再抽一次」(审查意见指出的)。
+       * 夹到今天既挡住未来日,也保住「今日已做」。
        */
       lastCaveEventDay.value = Math.floor(asFiniteNumber(lastCaveEventDay.value, 0, 0))
-      if (lastCaveEventDay.value > todayLocalNum()) lastCaveEventDay.value = 0
+      const todayNum = todayLocalNum()
+      if (lastCaveEventDay.value > todayNum) lastCaveEventDay.value = todayNum
+      /*
+       * 区域胜场要封顶 —— 它同时是**判定依据**与**显示值**。
+       *
+       * `worldMemory` 的兴衰判据是 `totalWins >= FLOURISH_WINS`(=80),
+       * 坏档写 1e300 时该区域永久「兴盛」;胜场数本身也会印在区域卡上。
+       * 上界取一万:一局里在同一区域打几百场已是极值,到不了这个数。
+       */
       regionWins.value = Object.fromEntries(
-        Object.entries(asNumberRecord(regionWins.value, 0)).map(([id, n]) => [id, Math.floor(n)])
+        Object.entries(asNumberRecord(regionWins.value, 0)).map(([id, n]) => [
+          id,
+          Math.floor(asFiniteNumber(n, 0, 0, REGION_WINS_MAX))
+        ])
       )
       // 老档无世号按当前世认,同 regionStats.life 口径
       const rawWinsLife = asNumberRecord(regionWinsLife.value, Number.NaN)
@@ -949,7 +1193,12 @@ export const usePlayerStore = defineStore(
         [],
         x => !!x && typeof (x as import('@/types').NemesisRecord).enemyId === 'string'
       )) {
-        const lossCount = Math.max(0, Math.floor(asFiniteNumber(n.lossCount, 0, 0)))
+        /*
+         * 宿敌的「败我 N 次」是**裸插值**,还参与 `>= 3` 的筛选;
+         * 坏档写 1e300 会印出巨大数字,并且永远满足筛选。
+         * 正常量级是几次到几十次,取一万已极宽。
+         */
+        const lossCount = Math.floor(asFiniteNumber(n.lossCount, 0, 0, NEMESIS_LOSS_CAP))
         const lastLossAt = asFiniteNumber(n.lastLossAt, 0, 0)
         const avengedAt = typeof n.avengedAt === 'number' && Number.isFinite(n.avengedAt) ? n.avengedAt : undefined
         const enemyName = typeof n.enemyName === 'string' && n.enemyName ? n.enemyName : n.enemyId
@@ -981,18 +1230,34 @@ export const usePlayerStore = defineStore(
       // 槽数上限同 toggleArtifact/applyLoadout;截断保留先祭炼的,与「槽满时替换最早」顺序一致
       // sanitizeAll 里 player 先于 inventory:此处读到原始分片,形状须自兜
       inventory.equippedArtifacts = asStringArray(inventory.equippedArtifacts).slice(0, artifactSlotsFor(major.value))
+      /*
+       * 上界:计数与货币都只挡了下界(负数),而 `Number.isFinite` 挡不住 MAX_VALUE 这类**有限巨值**。
+       * `count` 决定本世号(suppressLife 用它与「当前世」比等号),写坏之后镇压权益整块判定永远对不上;
+       * `daoFruit` / `insight` 是可直接花掉的货币,界面会照 formatGN 印成 `1.80e308`。
+       * 1e6 远高于任何真实游玩量级(转世几百次、道果累计几千)。
+       */
+      const cappedInt = (v: unknown, fallback = 0): number =>
+        Math.floor(asFiniteNumber(v, fallback, 0, LIFE_COUNTER_CAP))
       reincarnation.value = {
-        count,
-        daoFruit: Number.isFinite(r?.daoFruit) ? Math.max(0, r.daoFruit) : 0,
+        count: cappedInt(count),
+        daoFruit: cappedInt(r?.daoFruit),
         // 集合须去重:重复天赋会被 talentMods 算两次
         // 天赋保留认不出的 id(改名/下线的旧档);传承须清:参与「是否持有」判定,会挡住发放路径
         talents: [...new Set(asStringArray(r?.talents))],
         heritage: [...new Set(asStringArray(r?.heritage).filter(id => !!heritageDef(id)))],
         heritageUses: sanitizeHeritageUses(r?.heritageUses),
-        insight: Number.isFinite(r?.insight) ? Math.max(0, r.insight) : legacyInsightOf(count),
+        insight: Number.isFinite(r?.insight) ? cappedInt(r.insight) : cappedInt(legacyInsightOf(count)),
         lives: sanitizeLives(r?.lives),
-        vow: sanitizeVow(r?.vow),
-        trial: sanitizeTrial(r?.trial),
+        /*
+         * 本世的题与契要按履历剔旧 —— **修复前转世过的存档**会把它们带过来,
+         * 而 `lifeTrialService` 用 `if (trial) return false` 挡「再签一张」,
+         * 那些档就再也签不了新的(与道侣同一条问题)。
+         *
+         * 判据:履历最后一条的 `at` 是本世开始时刻,而两者的 `at` 都是「本世开世时刻」——
+         * 早于本世开始的即旧世残留。无履历(从未转世)时判据不成立,照常保留。
+         */
+        vow: staleThisLife(sanitizeVow(r?.vow)),
+        trial: staleThisLife(sanitizeTrial(r?.trial)),
         bonds: sanitizeBonds(r?.bonds)
       }
     }
@@ -1100,7 +1365,12 @@ export const usePlayerStore = defineStore(
       const winsBase = taggedLife === undefined || taggedLife < 0 || taggedLife === life
         ? (regionWins.value[regionId] ?? 0)
         : 0
-      regionWins.value = { ...regionWins.value, [regionId]: winsBase + count }
+      /*
+       * 自增要饱和。`sanitize` 只在开场跑一次,而批量结算一次可加几十场;
+       * 不封顶的话,越过上限后重启会被夹回来,玩家看到该区域胜场变小。
+       * 与 `recordWorldClear` / `diag.record` 同一条理。
+       */
+      regionWins.value = { ...regionWins.value, [regionId]: Math.min(REGION_WINS_MAX, winsBase + count) }
       regionWinsLife.value = { ...regionWinsLife.value, [regionId]: life }
     }
 
@@ -1109,11 +1379,27 @@ export const usePlayerStore = defineStore(
       suppressLife.value = reincarnation.value.count
       if (!suppressedRegions.value.includes(regionId)) {
         suppressedRegions.value = [...suppressedRegions.value, regionId]
-        /**
-         * 起点只在缺失时补(首次镇压 / 坏档被清掉)。
-         * 切回收益态时重写会让守时归零:兴衰掉回混乱、装备气运清零、72 小时复聚钟从头再走。
+        /*
+         * 起点「缺失」或「已越过复聚线」时才重锚,两者之间保留原起点。
+         *
+         * 两个职责压在同一字段上,只能这样分:
+         *   · 兴衰守时(`heldHours`)要求切回收益态时**保留**起点 —— 停取只是关产出,
+         *     不是「没守过」,重置会让守了两天的兴衰、气运白丢
+         *     (`suppressRebirth.spec` 的「停取收益再切回,守土起点不重置」钉着这条)
+         *   · 复聚判定要求切回时**重置** —— 否则旧起点早已越过 72 小时线,
+         *     下一次 tick 立刻判「镇压松开」,按钮点了等于没点(玩家实报)
+         *
+         * 分界就取复聚线:还没到线的,守时继续算;已经过线的,那份起点对复聚已无意义,
+         * 重锚进新的一轮。48 小时停取再切回 → 守时保住;73 小时停取再切回 → 不会当场松开。
          */
-        if (!(suppressedSince.value[regionId]! > 0)) {
+        const since = suppressedSince.value[regionId]
+        /*
+         * 72 小时与 `core/worldMemory` 的 `REVIVE_AFTER_HOURS` 同值。
+         * 不 import 那个常量:worldMemory 已经 import 本 store,反向引会成环。
+         * 两处对不上时 `suppressRebirth.spec` 的「停取收益再切回」那条会红。
+         */
+        const REVIVE_LINE_MS = 72 * 3_600_000
+        if (!(since! > 0) || Date.now() - since! > REVIVE_LINE_MS) {
           suppressedSince.value = { ...suppressedSince.value, [regionId]: Date.now() }
         }
       }
@@ -1173,7 +1459,11 @@ export const usePlayerStore = defineStore(
       // 换世后胜场从 1 重新起算;与 updateRegionStats 的判据账同一口径
       const tagged = regionWinsLife.value[regionId]
       const sameLife = tagged === undefined || tagged < 0 || tagged === life
-      regionWins.value = { ...regionWins.value, [regionId]: sameLife ? (regionWins.value[regionId] ?? 0) + 1 : 1 }
+      regionWins.value = {
+        ...regionWins.value,
+        // 同 applyRegionWinBatch:自增要饱和
+        [regionId]: sameLife ? Math.min(REGION_WINS_MAX, (regionWins.value[regionId] ?? 0) + 1) : 1
+      }
       regionWinsLife.value = { ...regionWinsLife.value, [regionId]: life }
     }
 

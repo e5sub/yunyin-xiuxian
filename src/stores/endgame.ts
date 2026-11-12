@@ -35,7 +35,8 @@ import {
   asRecord,
   asRecordOf,
   asStringArray,
-  truncateCodePoints
+  truncateCodePoints,
+  asTimestamp,
 } from '@/utils/saveShape'
 
 interface TrialRecord {
@@ -69,6 +70,7 @@ const MAX_MARKS = 60
  * 词条表修形:只留属性目录里的键与有限非零值;一条不剩返回 null(= 无加成)。
  * 野键会被 `modDepth` 算进构筑厚度,坏值经 `stackedMods` 把攻防染成 NaN。
  */
+
 function sanitizeMods(raw: unknown): StatMods | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const out: StatMods = {}
@@ -78,6 +80,50 @@ function sanitizeMods(raw: unknown): StatMods | null {
   }
   return Object.keys(out).length > 0 ? out : null
 }
+
+/**
+ * 虚界(程序化生成)四个配置数的读档上界。
+ *
+ * 这些不是「只给人看的」字段,而是直接进结算的:
+ * `rewardDaoSource` 决定道源到账、`entryCost` 是入场费、`fights` 是全程场数。
+ * 上界按 `worldGen` 的真实产出来定,各留一档余量:
+ * 赏格被夹在 55–100、入场费恒 20、场数恒 6、锚点层级恒 32。
+ */
+const VOID_ANCHOR_TIER_MAX = 64
+const VOID_REWARD_MAX = 200
+const VOID_ENTRY_COST_MAX = 500
+const VOID_FIGHTS_MAX = 20
+const VOID_NODE_BONUS_MAX = 100
+
+/**
+ * 界域/试炼战绩与世号的读档上界 —— 这几处都是**裸插值**,没有格式化兜底。
+ *
+ * 「已破 ×N」「最佳 N 回合」「第N世」直接印数字:坏档写 1e300 就成了科学计数。
+ * 一局里破一界几百次、一场打几百回合都已是极值。
+ *
+ * **世号的上界必须比写入端高一档**:多个写入点记的是
+ * `player.reincarnation.count + 1`(道痕、里程碑、试炼记录),而
+ * `player.ts` 里 `count` 的读档守卫是 1e6。若这里取同一个数,
+ * `count` 正好等于上限时写入端会写 `cap + 1`,读回来却被夹成 `cap` ——
+ * 本世道痕/里程碑的世号对不上,整块记录消失(审查意见指出的)。
+ */
+const LIFE_COUNTER_CAP = 10_000_000
+
+/** 忆战快照的速度上界:真实量级在 1~3,取一百已极宽 */
+const REPLAY_SPEED_MAX = 100
+
+/**
+ * 一趟远征的总回合上界(仅用于无战报行的旧档兜底)。
+ *
+ * 它进 `slaughterSpeedBonus` 与道痕记录的回合数 —— 后者会印在道痕面板上。
+ * 一趟五战、每战至多数百回合,取一万已极宽。
+ */
+const WORLD_RUN_ROUNDS_MAX = 10_000
+
+const WORLD_CLEARS_MAX = 10_000
+const TRIAL_CLEARS_MAX = 10_000
+const BATTLE_ROUNDS_CAP = 10_000
+
 
 /**
  * 虚界敌方形态修形:远征每战都读 `shape.skills.map` 与 `atkR/hpR`,缺一样即白屏。
@@ -110,6 +156,7 @@ function sanitizeFoeShape(raw: unknown): import('@/types').WorldFoeShape | null 
  * 不修局部:CelestialView 读 `foes`/`ruleText`,远征读 `routes[layer][choice]` 与 `guardian`;
  * 半份世界的入场费/赏格/规则也已不对应。
  */
+
 function sanitizeVoidWorld(raw: unknown): CelestialWorldDef | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const w = raw as Partial<CelestialWorldDef>
@@ -134,7 +181,7 @@ function sanitizeVoidWorld(raw: unknown): CelestialWorldDef | null {
         desc: typeof node.desc === 'string' ? node.desc : '',
         foe,
         ...(hasCombatRules(node.rules) ? { rules: asCombatRules(node.rules) } : {}),
-        bonus: Math.floor(asFiniteNumber(node.bonus, 0, 0)),
+        bonus: Math.floor(asFiniteNumber(node.bonus, 0, 0, VOID_NODE_BONUS_MAX)),
         riskText: typeof node.riskText === 'string' ? node.riskText : ''
       }
     })
@@ -145,16 +192,27 @@ function sanitizeVoidWorld(raw: unknown): CelestialWorldDef | null {
     id: 'void',
     name: w.name,
     seal: w.seal,
-    anchorTier: asFiniteNumber(w.anchorTier, 0, 0),
+    /*
+     * 四个配置数都要封顶 —— 它们不是「只给人看的」,而是**直接进结算**:
+     * `rewardDaoSource` 进 `reward = world.rewardDaoSource + run.bonus`(道源到账),
+     * `entryCost` 是入场费,`fights` 是全程场数,`anchorTier` 决定该界锚点境界。
+     * 坏档写 1e300 时:白得 1e300 道源、入场费永远付不起、远征永远打不完。
+     *
+     * 上界按生成器的真实产出来定(`worldGen`):
+     * `rewardDaoSource` 被 `Math.min(100, Math.max(55, ...))` 夹在 55–100;
+     * `entryCost` 恒为 20、`fights` 恒为 6、`anchorTier` 恒为 `VOID_ANCHOR_TIER`(32)。
+     * 各留一档余量。
+     */
+    anchorTier: Math.floor(asFiniteNumber(w.anchorTier, 0, 0, VOID_ANCHOR_TIER_MAX)),
     desc: typeof w.desc === 'string' ? w.desc : '',
     ruleText: asStringArray(w.ruleText),
     rules: asCombatRules(w.rules),
-    entryCost: Math.floor(asFiniteNumber(w.entryCost, 0, 0)),
-    fights: Math.max(1, Math.floor(asFiniteNumber(w.fights, 1, 1))),
-    healBetweenPct: asFiniteNumber(w.healBetweenPct, 0.5, 0),
+    entryCost: Math.floor(asFiniteNumber(w.entryCost, 0, 0, VOID_ENTRY_COST_MAX)),
+    fights: Math.floor(asFiniteNumber(w.fights, 1, 1, VOID_FIGHTS_MAX)),
+    healBetweenPct: asFiniteNumber(w.healBetweenPct, 0.5, 0, 1),
     foes: foes as import('@/types').WorldFoeShape[],
     guardian,
-    rewardDaoSource: Math.floor(asFiniteNumber(w.rewardDaoSource, 0, 0)),
+    rewardDaoSource: Math.floor(asFiniteNumber(w.rewardDaoSource, 0, 0, VOID_REWARD_MAX)),
     routes
   }
 }
@@ -174,7 +232,13 @@ function sanitizeMarkReplay(raw: unknown): DaoMark['replay'] | undefined {
   const attack = gnumOf(r.attack)
   const defense = gnumOf(r.defense)
   const maxHp = gnumOf(r.maxHp)
-  const speed = asFiniteNumber(r.speed, 0, 0)
+  /*
+   * 速度要有上界 —— 它直接进 `CombatantSnap.speed`,参与先手判定
+   * (`pFirst = pSpeed >= eSpeed`)。坏档写 1e300 时,**忆战重演里玩家永远后手**,
+   * 「往世之你 vs 今世之你」的对比就不再是当年那一场。
+   * 正常量级:玩家侧是 `1 + modOf(speed)`,词缀与法宝各加零点几,到不了两位数。
+   */
+  const speed = asFiniteNumber(r.speed, 0, 0, REPLAY_SPEED_MAX)
   if (attack.m === 0 || defense.m === 0 || maxHp.m === 0 || speed <= 0) return undefined
   const mods = sanitizeMods(r.mods) ?? {}
   const skills = asCombatSkills(r.skills)
@@ -235,16 +299,17 @@ function sanitizeMarks(raw: unknown): DaoMark[] {
       }
     }
     out.push({
-      life: Math.max(1, Math.floor(asFiniteNumber(m.life, 1, 1))),
+      life: Math.floor(asFiniteNumber(m.life, 1, 1, LIFE_COUNTER_CAP)),
       daoPathId: typeof m.daoPathId === 'string' && daoPathDef(m.daoPathId) ? (m.daoPathId as DaoPathId) : null,
       ...(Number.isFinite(m.major) ? { major: Math.min(MAX_MAJOR, Math.floor(major)) } : {}),
       targetId: m.targetId,
       targetName: typeof m.targetName === 'string' && m.targetName ? m.targetName : m.targetId,
       cleared: m.cleared === true,
-      rounds: Math.floor(asFiniteNumber(m.rounds, 0, 0)),
+      // 道痕面板印「{{ mark.rounds }} 回合」,是裸插值;坏档巨值会印成科学计数
+      rounds: Math.floor(asFiniteNumber(m.rounds, 0, 0, BATTLE_ROUNDS_CAP)),
       buildName: typeof m.buildName === 'string' && m.buildName ? m.buildName : '杂学',
       powerText: typeof m.powerText === 'string' ? m.powerText : '',
-      at: Math.floor(asFiniteNumber(m.at, 0, 0)),
+      at: Math.floor(asTimestamp(m.at, 0)),
       ...(typeof m.ruleset === 'string' ? { ruleset: m.ruleset } : {}),
       ...(fixedContext ? { context: fixedContext } : {}),
       ...(replay ? { replay } : {})
@@ -259,6 +324,30 @@ export const useEndgameStore = defineStore(
   () => {
     /** 本世道途(转世后重选) */
     const daoPath = ref<DaoPathId | null>(null)
+    // 道源的上界,只为拦坏档;真实累积到不了百万
+    const DAO_SOURCE_MAX = 1e9
+    /*
+     * 一趟远征里两个计数的上界 —— **按各自的真实上限分别定**,不共用一个数。
+     *
+     * 逐胜叠层:`入界 + 每层择路 + 界主` 共 `EXPEDITION_ROUTE_LAYERS + 2 = 5` 战,
+     * 故叠层不可能超过 5;留一档余量到 16。
+     *
+     * 沿途道源(`run.bonus`)是**累计的路线奖励、会并入最终结算**
+     * (`reward = world.rewardDaoSource + run.bonus`)。节点 bonus 实测取值
+     * 8/10/12/14/16,三层各取一个 → 正常上限 48。首版把两个计数共用一个 16 的
+     * 上界,会直接吞掉玩家已经挣到的道源(审查意见里那条「高」)。
+     * 取 256:宽到任何真实路线都够,窄到拦得住 1e300。
+     */
+    const WORLD_RUN_STACKS_MAX = 16
+    /*
+     * 沿途道源:`run.bonus` 在每次**择路**后累加当层节点的 bonus,
+     * 而择路只发生在 `layer 0..EXPEDITION_ROUTE_LAYERS-1` —— 即最多
+     * `EXPEDITION_ROUTE_LAYERS`(3)次。节点 bonus 实测最大 16,故一趟最多 48。
+     * 取 256 留五倍余量:正常到不了,越过的必定是坏档。
+     */
+    const WORLD_RUN_BONUS_MAX = 256
+    // 两处都走 asFiniteNumber 的第四个参数,不再手写 Math.min(统一钳制规则)
+
     /** 道源(跨世保留) */
     const daoSource = ref(0)
     const worldClears = ref<Record<string, number>>({})
@@ -290,17 +379,33 @@ export const useEndgameStore = defineStore(
     function sanitize(): void {
       // 认不出的道途回落 null(同转世后未择道);否则选道被「此生道途已定」挡回
       daoPath.value = typeof daoPath.value === 'string' && daoPathDef(daoPath.value) ? (daoPath.value as DaoPathId) : null
-      daoSource.value = asFiniteNumber(daoSource.value, 0, 0)
+      /*
+       * 上界只为拦坏档:道源按「道果 ×200」这类速率累积,真实游玩到不了百万。
+       * 原先 `asFiniteNumber(v, 0, 0)` 只给了下限 —— 而 `1e300` 是有限数,
+       * 原样通过,界面经 formatNum 印成「1.00e300」。实测灌 1e300 后 sanitize 不修。
+       *
+       * **越界要归零,不是夹到上界**:夹到 1e9 等于凭空送给玩家十亿道源,
+       * 而道源是可以直接花掉的(熔炉、器魂)。坏值本来就没有可信来源,
+       * 与「非有限」同一条退路 —— 归 0。
+       */
+      const rawDaoSource = asFiniteNumber(daoSource.value, 0, 0)
+      daoSource.value = rawDaoSource > DAO_SOURCE_MAX ? 0 : rawDaoSource
       // 一次性引导标记:与 settings 的布尔开关同一套清洗纪律
       endgameTutorialSeen.value = endgameTutorialSeen.value === true
       daoFruitTutorialSeen.value = daoFruitTutorialSeen.value === true
       resourceDialogSeen.value = resourceDialogSeen.value === true
       soulTutorialSeen.value = soulTutorialSeen.value === true
-      // 「已破 ×N」只留认得的天界/虚界,次数收口为非负整数
+      /*
+       * 「已破 ×N」只留认得的天界/虚界,次数收口为非负整数**且封顶**。
+       *
+       * 界面上那处是裸插值(`已破 ×{{ endgame.worldClears[world.id] }}`),
+       * 而 `asNumberRecord` 只判 `Number.isFinite` —— 坏档写 1e300 会印成「已破 ×1e+300」。
+       * 一局里破一界几百次已经极多,取一万已极宽。
+       */
       const fixedClears: Record<string, number> = {}
       for (const [id, n] of Object.entries(asNumberRecord(worldClears.value, 0))) {
         if (id !== 'void' && !celestialWorldDef(id)) continue
-        fixedClears[id] = Math.floor(n)
+        fixedClears[id] = Math.floor(asFiniteNumber(n, 0, 0, WORLD_CLEARS_MAX))
       }
       worldClears.value = fixedClears
       // 试炼纪录同理;bestRounds 的 NaN 经 `Math.min(NaN, x)` 再也好不了
@@ -308,9 +413,13 @@ export const useEndgameStore = defineStore(
       for (const [id, raw] of Object.entries(asRecordOf<TrialRecord>(trialRecords.value, r => !!r && typeof r === 'object'))) {
         if (!trialDef(id)) continue
         const r = raw as Partial<TrialRecord>
-        const clears = Math.floor(asFiniteNumber(r.clears, 0, 0))
+        const clears = Math.floor(asFiniteNumber(r.clears, 0, 0, TRIAL_CLEARS_MAX))
         if (clears <= 0) continue
-        fixedTrials[id] = { clears, bestRounds: Math.floor(asFiniteNumber(r.bestRounds, 0, 0)) }
+        // 「最佳 N 回合」同样是裸插值;回合数真实是两位到三位数
+        fixedTrials[id] = {
+          clears,
+          bestRounds: Math.floor(asFiniteNumber(r.bestRounds, 0, 0, BATTLE_ROUNDS_CAP))
+        }
       }
       trialRecords.value = fixedTrials
       marks.value = sanitizeMarks(marks.value)
@@ -329,8 +438,9 @@ export const useEndgameStore = defineStore(
           ).map(r => ({
             foeName: r.foeName,
             win: r.win === true,
-            rounds: Math.floor(asFiniteNumber(r.rounds, 0, 0)),
-            hpLeftPct: Math.min(1, asFiniteNumber(r.hpLeftPct, 0, 0))
+            // 战报行里的回合数也是裸插值
+            rounds: Math.floor(asFiniteNumber(r.rounds, 0, 0, BATTLE_ROUNDS_CAP)),
+            hpLeftPct: asFiniteNumber(r.hpLeftPct, 0, 0, 1)
           }))
           worldRun.value = {
             ...run,
@@ -338,15 +448,28 @@ export const useEndgameStore = defineStore(
             pactId: typeof run.pactId === 'string' && pactDef(run.pactId) ? run.pactId : null,
             gateId: typeof run.gateId === 'string' && gateDef(run.gateId) ? run.gateId : null,
             layer: Math.min(EXPEDITION_GUARDIAN_LAYER, Math.max(0, Math.floor(asFiniteNumber(run.layer, 0, 0)))),
-            bonus: Math.floor(asFiniteNumber(run.bonus, 0, 0)),
+            /*
+             * 上界按「一趟远征最多几战」推:入界 + 每层择路 + 界主 = ROUTE_LAYERS+2 = 5 战,
+             * 故逐胜叠层不可能超过 5。`bonus`(沿途道源)同量级。
+             * 这两个数会**乘进战斗属性**(见 expedition 的 stackedMods),
+             * 坏档写 1e300 会让玩家攻击瞬间无限大。原先只有下限,实测原样保留。
+             */
+            bonus: Math.floor(asFiniteNumber(run.bonus, 0, 0, WORLD_RUN_BONUS_MAX)),
             rows,
             carriedHpPct: asCarriedHpPct(run.carriedHpPct),
             // 总回合以逐行战报回合和为准,不一致会让杀伐速战赏与道痕多给;无 rows 的旧档保留原值
-            totalRounds:
+            /*
+             * 两条路都要封顶:rows 非空时是**逐行累加**,空时取存档原值。
+             * 首版只封了后者 —— 而逐行求和同样会越过上限(每行本身已夹到
+             * BATTLE_ROUNDS_CAP,五行相加就能到五倍)。
+             */
+            totalRounds: Math.min(
+              WORLD_RUN_ROUNDS_MAX,
               rows.length > 0
                 ? rows.reduce((sum, row) => sum + row.rounds, 0)
-                : Math.floor(asFiniteNumber(run.totalRounds, 0, 0)),
-            winStacks: Math.floor(asFiniteNumber(run.winStacks, 0, 0)),
+                : Math.floor(asFiniteNumber(run.totalRounds, 0, 0))
+            ),
+            winStacks: Math.floor(asFiniteNumber(run.winStacks, 0, 0, WORLD_RUN_STACKS_MAX)),
             // 逆命契封印每场并入玩家属性;整份不可用视为无封印
             sealedMods: sanitizeMods(run.sealedMods) ?? undefined
           }
@@ -367,11 +490,19 @@ export const useEndgameStore = defineStore(
        * 坏档(时钟调快过)正好给的是后者 —— 实测一年后的日期能一路通过 sanitize。
        * 超出今天的归 null,即「今日未挑战」。
        */
+      /*
+       * 未来日**夹到今天**,不归 null。
+       *
+       * 归 null 的语义是「今天还没挑战」—— 那正是坏档/时钟调快该被挡住的方向。
+       * 更麻烦的是它与闸门的 `>=` 判据互相抵消:今天领过 → 时钟回拨 → 重载,
+       * 这条被归 null,`dailyDoneDay >= day` 恒假,天道赏又能领一次。
+       * 夹到今天既挡住未来日,也保住「今日已领」的语义。
+       * (与第 54 轮洞府巡游的 `lastCaveEventDay` 同一条处理。)
+       */
+      const todayNum = localDayNum(Date.now())
       dailyDoneDay.value =
         typeof dailyDoneDay.value === 'number' && Number.isFinite(dailyDoneDay.value) && dailyDoneDay.value >= 0
-          ? Math.floor(dailyDoneDay.value) > localDayNum(Date.now())
-            ? null
-            : Math.floor(dailyDoneDay.value)
+          ? Math.min(Math.floor(dailyDoneDay.value), todayNum)
           : null
       // 修行节点只认 MILESTONE_DEFS 里的 id:野 id 会把「修行节点 N/总数」顶破
       milestones.value = asArray<{ id: string; life: number; at: number }>(
@@ -380,8 +511,8 @@ export const useEndgameStore = defineStore(
         m => !!m && typeof (m as { id?: unknown }).id === 'string' && !!milestoneDef((m as { id: string }).id)
       ).map(m => ({
         id: m.id,
-        life: Math.floor(asFiniteNumber(m.life, 0, 0)),
-        at: Math.floor(asFiniteNumber(m.at, 0, 0))
+        life: Math.floor(asFiniteNumber(m.life, 0, 0, LIFE_COUNTER_CAP)),
+        at: Math.floor(asTimestamp(m.at, 0))
       }))
       // 「首次」语义(同 addMilestone):同 id 只留先出现的那条
       const seenMilestone = new Set<string>()
@@ -401,7 +532,7 @@ export const useEndgameStore = defineStore(
         if (value <= 0) continue
         fixedRecords[id] = {
           value,
-          life: Math.floor(asFiniteNumber(r.life, 0, 0)),
+          life: Math.floor(asFiniteNumber(r.life, 0, 0, LIFE_COUNTER_CAP)),
           /*
            * note 截到 NAME_MAX_LENGTH,与 updateRecord 的写入路径同一把尺。
            * 上一轮只补了 updateRecord,读档这条仍能塞进几十万字符
@@ -539,18 +670,32 @@ export const useEndgameStore = defineStore(
     function recordWorldClear(worldId: string): void {
       if (worldId !== 'void' && !celestialWorldDef(worldId)) return
       const clears = asNumberRecord(worldClears.value, 0)
-      worldClears.value = { ...clears, [worldId]: Math.floor(clears[worldId] ?? 0) + 1 }
+      /*
+       * 自增要饱和。`sanitize` 只在开场跑一次,而这里每次通关都 +1 ——
+       * 不封顶的话,拖到上限之后重启会被夹回来,玩家看到「已破 ×N」变小。
+       * 与 `diag.record` 的自增封顶同一条理:两处用同一个常量。
+       */
+      worldClears.value = {
+        ...clears,
+        [worldId]: Math.min(WORLD_CLEARS_MAX, Math.floor(clears[worldId] ?? 0) + 1)
+      }
     }
 
     function recordTrial(trialId: string, rounds: number): void {
       if (!trialDef(trialId) || !Number.isFinite(rounds) || rounds <= 0) return
-      const fixedRounds = Math.max(1, Math.floor(rounds))
+      /*
+       * 回合数也要封顶 —— 它与 `bestRounds` 出自同一处,
+       * 而读档守卫已按 `BATTLE_ROUNDS_CAP` 夹过;这里不夹的话,
+       * 一次坏入参(比如别处传了个 1e300)就能让「最佳 N 回合」当场变成科学计数。
+       */
+      const fixedRounds = Math.min(BATTLE_ROUNDS_CAP, Math.max(1, Math.floor(rounds)))
       const records = asRecordOf<TrialRecord>(trialRecords.value, r => !!r && typeof r === 'object')
       const prev = records[trialId]
       trialRecords.value = {
         ...records,
         [trialId]: {
-          clears: Math.floor(asFiniteNumber(prev?.clears, 0, 0)) + 1,
+          // 同 recordWorldClear:自增要饱和,否则重启后计数会变小
+          clears: Math.min(TRIAL_CLEARS_MAX, Math.floor(asFiniteNumber(prev?.clears, 0, 0)) + 1),
           bestRounds: prev ? Math.min(Math.max(1, Math.floor(asFiniteNumber(prev.bestRounds, fixedRounds, 1))), fixedRounds) : fixedRounds
         }
       }

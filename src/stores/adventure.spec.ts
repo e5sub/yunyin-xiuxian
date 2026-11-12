@@ -3,6 +3,7 @@ import { EVENTS, FORTUNE_EVENTS } from '@/data/events'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAdventureStore } from '@/stores/adventure'
+import { tickExploration } from '@/core/exploration'
 import type { AdventureSession } from '@/types'
 import { gnZero } from '@/utils/gnum'
 import { formatGN } from '@/utils/format'
@@ -103,6 +104,71 @@ describe('历练公共写入边界', () => {
    * 手改存档塞 10 万条假 id 后 $state 到 1.98MB / 989KB。
    * 这里可以安全过滤(不像事件记忆要兼容下线内容):区域 id 认得才能用。
    */
+  it('待处理事件的起钟落在未来时夹到此刻,历练不会被永久堵塞', () => {
+    /*
+     * `exploration.ts` 的自动结算判 `now - pendingEventSince > 超时`，
+     * 起钟在未来时该条件恒假 —— 事件**永不超时**,而待处理事件会阻塞战斗,
+     * 整段历练就此卡死。`asFiniteNumber` 只管下限,不管方向。
+     */
+    const ad = useAdventureStore()
+    const future = Date.now() + 365 * 24 * 3600_000
+    ad.$patch({ pendingEventId: 'ev_jade_slip', pendingEventSince: future } as never)
+    ad.sanitize()
+    expect(ad.pendingEventId, '夹具前提:事件 id 该被认出来').toBe('ev_jade_slip')
+    expect(ad.pendingEventSince, '未来的起钟没被夹住 —— 历练会永久堵塞').toBeLessThanOrEqual(Date.now())
+  })
+
+  it('运行期时钟回拨:起钟重锚到此刻,超时窗口重新起算', () => {
+    /*
+     * 读档那道夹到此刻**管不到运行期**。游戏跑着的时候把系统时间往回拨,
+     * `now - since` 恒为负,事件一直挂着 —— 玩家要等真实时间追平才能脱身。
+     * `tickExploration` 见到「起钟晚于此刻」就重锚,超时窗口从这一刻再起算。
+     */
+    setActivePinia(createPinia())
+    const ad = useAdventureStore()
+    ad.$patch({
+      session: {
+        regionId: 'qingyun', endsAt: Date.now() + 3600_000, events: 0, battles: 0,
+        wins: 0, losses: 0, nextBattleAt: 0, lastAt: 0, itemGain: 0,
+        stoneGain: { m: 0, e: 0 }, expGain: { m: 0, e: 0 }
+      },
+      pendingEventId: 'ev_jade_slip',
+      pendingEventSince: Date.now()
+    } as never)
+    const backNow = Date.now() - 300_000
+    tickExploration(backNow)
+    expect(ad.pendingEventSince, '回拨后起钟没被重锚 —— 事件永不超时').toBeLessThanOrEqual(backNow)
+  })
+
+  it('待处理事件的正常起钟原样保留', () => {
+    const ad = useAdventureStore()
+    const at = Date.now() - 30_000
+    ad.$patch({ pendingEventId: 'ev_jade_slip', pendingEventSince: at } as never)
+    ad.sanitize()
+    expect(ad.pendingEventSince, '正常起钟被误改了').toBe(at)
+  })
+
+  it('读档时通关时刻按时间戳修形,巨值不再让地界永不复苏', () => {
+    /*
+     * `clearedAt` 不只用来显示:`worldMemory.regionTouchedAt` 拿它当「妖气复聚钟」的候选,
+     * 而 `isRegionRevived` 判的是 `(now - touchedAt) / 3600_000 > 72`。
+     * 坏档写 `1e300` 时那个减法恒为极大负数 —— **该地界永不复苏**
+     * (修复前复聚钟停在 1e300,isRegionRevived 恒假)。
+     */
+    const ad = useAdventureStore()
+    ad.$patch({ clearedAt: { qingyun: 1e300 } } as never)
+    ad.sanitize()
+    expect(ad.clearedAt.qingyun, '巨值通关时刻没被清 —— 复聚钟会停在它上面').toBeUndefined()
+  })
+
+  it('读档时正常通关时刻原样保留', () => {
+    const ad = useAdventureStore()
+    const at = Date.now() - 1000
+    ad.$patch({ clearedAt: { qingyun: at } } as never)
+    ad.sanitize()
+    expect(ad.clearedAt.qingyun, '正常时间戳被误删了').toBe(at)
+  })
+
   it('读档时把认不得的区域 id 从 unlocked / cleared 里清掉', () => {
     const a = useAdventureStore()
     const fake = Array.from({ length: 100000 }, (_, i) => `fake_${i}`)
@@ -116,17 +182,6 @@ describe('历练公共写入边界', () => {
     expect(a.mortalCleared).toEqual([])
   })
 
-/**
- * 本世之界的读档自愈。
- *
- * sanitizeMortalWorld 对结构错误一律返回 null(整条链丢弃),而不是逐个节点剔除 ——
- * 只要一个节点缺字段,玩家的本世之界就整个没了。这条链路此前没有测试。
- *
- * 丢弃之后不是死局:mortalWorldService.ensureMortalWorld 见 mortalWorld 为空会重新生成,
- * 所以后果是「换了一个世界」而非「卡死」。本条把两条都钉住:
- *   1. 坏结构被整条丢弃(不留下半截世界)
- *   2. 丢弃后 mortalCleared 仍在(那是玩家已通关的记录,不该随世界一起消失)
- */
 /** 造一个结构合法的本世之界 */
 function mortalWorld(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -156,6 +211,17 @@ function mortalWorld(over: Record<string, unknown> = {}): Record<string, unknown
   }
 }
 
+/**
+ * 本世之界的读档自愈。
+ *
+ * sanitizeMortalWorld 对结构错误一律返回 null(整条链丢弃),而不是逐个节点剔除 ——
+ * 只要一个节点缺字段,玩家的本世之界就整个没了。这条链路此前没有测试。
+ *
+ * 丢弃之后不是死局:mortalWorldService.ensureMortalWorld 见 mortalWorld 为空会重新生成,
+ * 所以后果是「换了一个世界」而非「卡死」。本条把两条都钉住:
+ *   1. 坏结构被整条丢弃(不留下半截世界)
+ *   2. 丢弃后 mortalCleared 仍在(那是玩家已通关的记录,不该随世界一起消失)
+ */
 describe('本世之界 · 读档自愈', () => {
   beforeEach(() => setActivePinia(createPinia()))
 

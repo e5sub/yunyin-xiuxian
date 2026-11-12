@@ -30,10 +30,17 @@
     </div>
     <div v-if="autoTargets.length" class="mt-1.5 space-y-0.5">
       <p v-for="t in autoTargets" :key="t.affixId" class="flex items-center gap-2 text-[10px]">
+        <!--
+          词条名在 w-10(40px)里放不下五个字:实测「装备掉落率」scrollWidth 50 / clientWidth 40,
+          屏上只剩「装备掉…」。而这是一个**按名字认的词条** —— 玩家要对照到底在给哪一条设阈值。
+          触屏没有 hover,title 帮不上;读屏读到的又是被截断的可见文字。
+          故把完整名字放进可访问名(与货架副标题同一做法),title 仍留作桌面端悬停。
+        -->
         <button
           type="button"
           class="flex min-h-[28px] w-10 shrink-0 items-center truncate rounded px-0.5 text-left font-kai ring-1 ring-inset ring-ink/20"
           :style="{ color: targetColor(t.affixId) }"
+          :aria-label="`查看「${affixDef(t.affixId)?.name ?? t.affixId}」词条`"
           :title="`查看「${affixDef(t.affixId)?.name ?? t.affixId}」`"
           @click="openCodex(t.affixId)"
         >
@@ -81,7 +88,7 @@
         <button
           class="btn-seal ml-auto shrink-0 !px-3 !py-1.5 !text-[11px]"
           :disabled="!autoTargets.length"
-          :title="autoTargets.length ? undefined : '未选目标'"
+          :title="autoTargets.length ? undefined : TRANSFER_LABELS.pendingTarget"
           @click="autoArm = true"
         >
           开 洗
@@ -132,6 +139,7 @@
   import { AUTO_REFORGE_MAX_BUDGET, AUTO_REFORGE_MAX_TARGETS } from '@/core/reforge'
   import { formatGN, formatGap } from '@/utils/format'
   import { useAutoReforge } from '@/composables/useAutoReforge'
+  import { TRANSFER_LABELS } from '@/ui/affixTransferText'
   import AffixInfoSheet from './AffixInfoSheet.vue'
 
   /**

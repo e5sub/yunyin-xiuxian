@@ -59,7 +59,6 @@ beforeEach(() => {
   setActivePinia(createPinia())
 })
 
-/** 把关系推到目标阶,返回实际到达的阶序 */
 /** 把某事件挂成待决:chooseBondEvent 只认 pendingEventId(与真实 UI 同流程) */
 function pend(eventId: string): void {
   usePlayerStore().setBond({ ...currentBond()!, pendingEventId: eventId })

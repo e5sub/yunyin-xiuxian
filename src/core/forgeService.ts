@@ -213,7 +213,6 @@ function reportBatch(uid: string, up: number, tries: number, stone: GNum, dust: 
   return up
 }
 
-/** GNum 的形态只在格式化那一层用;与 spend 的钱袋分开命名,免得读混 */
 /**
  * 一键强化:身上已装备的按部位顺序各掷一次,遇第一件付不起即止,只报一次总账。
  * 队列由服务端按水合后的行囊现算(客户端报什么都不改顺序);未登录走本地同一条链。

@@ -1,5 +1,7 @@
 /** dead → 冒烟判失败(exitCode 1) */
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { classifySmoke, namePattern, SMOKE_ALLOWLIST } from '../../scripts/smoke-classify'
 
 describe('冒烟死按钮分类器(纯决策)', () => {
@@ -67,5 +69,125 @@ describe('冒烟死按钮分类器(纯决策)', () => {
     // 不带数字的名字不受影响
     expect(namePattern('出发').test('出发')).toBe(true)
     expect(namePattern('出发').test('出发了')).toBe(false)
+  })
+})
+
+/**
+ * 冒烟取按钮的口径 —— 两处都曾经让整页空跑。
+ *
+ *  一 **只取 getByRole('button') 会漏掉标签组**。`InkTabs` 渲染的是 `role="tab"`,
+ *    那是 WAI-ARIA 的正确写法(整组只留一个 tabindex=0,靠左右键走)——
+ *    /codex 与 /collection 两页的按钮全是 tab,于是它们在此脚本里一次都没被点过。
+ *  二 **先切再筛会把名额让给提示条的「×」**。`slice(0, DEPTH)` 之后在循环里 continue,
+ *    那几个关闭钮占掉了 12 个名额,真正的入口卡被挤到切片之外。
+ *
+ * 两处都不报错:全局点击数仍然够,只是那几页空跑。
+ */
+describe('冒烟取按钮 · 两处口径', () => {
+  const RAW = readFileSync(resolve(__dirname, '../../scripts/ui-smoke.mjs'), 'utf-8')
+  /**
+   * 剥掉整行注释再判。
+   *
+   * 解释「先前写成 buttons.slice(0, DEPTH)」的那段注释本身含有那个片段,
+   * 直接扫原文会把注释当成回退的证据(实测就是这么红了一次)。
+   * 只剥整行注释,不动行内 —— 脚本里有 `file://` 与正则,行内截断会误伤。
+   */
+  const SRC = RAW.replace(/^\s*(\*|\/\/).*$/gm, '')
+
+  it('button 与 role=tab 都取', () => {
+    expect(SRC, '没取 role=tab —— /codex 与 /collection 会整页空跑').toContain("getByRole('tab')")
+    expect(SRC, '没取 button').toContain("getByRole('button')")
+  })
+
+  it('先筛再切片,不是先切再筛', () => {
+    // 筛选循环必须在 slice 之前完成;写成 buttons.slice(0, DEPTH) 再筛就是回退
+    expect(SRC, '又回到「先切再筛」—— 提示条的关闭钮会占掉名额').not.toMatch(/buttons\.slice\(0,\s*DEPTH\)/)
+    expect(SRC, '该在筛完后再按 DEPTH 截断').toContain('buttons.length >= DEPTH')
+  })
+
+  it('提示条的关闭钮不算页面交互', () => {
+    expect(SRC, '该排除「×」这类关闭钮').toMatch(/label === '×'/)
+  })
+
+  it('逐页读数只打印、不设下限', () => {
+    // 页面状态会被前序点击改变(实测 /souls 跑到时已锁成「需真仙境」),
+    // 设下限必误报 —— 故只保留读数
+    expect(SRC, '逐页读数该保留').toContain('clickedPerRoute')
+    expect(SRC, '逐页下限会误报,不该有').not.toContain('idlePages')
+  })
+})
+
+/**
+ * 视口外的钮不点,点不中不计数。
+ *
+ * 两处都是「点击」这一步本身的问题,不修就会以「死按钮」的形态误报:
+ *
+ *  一 **`isVisible()` 只问 CSS 可见性,不管在不在视口里**。
+ *     /adventure 的「出发」在 y=833(视口高 812)——筛得到、点不着;
+ *     Playwright 会先滚动过去,滚动又把别的元素移位,800ms 内点不中即超时。
+ *  二 **点击超时也照样 `clicked += 1`**。于是 ① 读数虚高;
+ *     ② 指纹没变就被判成「死按钮」,而它其实一下都没点到。
+ *
+ * 判据不能只查「源码里有没有那句话」——那证明不了**位置**对不对。
+ * 所以这里逐处核结构:
+ *   · 每个点击点都必须先接住结果,再决定计数与分类;
+ *   · `classifySilent` 必须在该分支之后(否则点了没反应仍会被分类);
+ *   · `inView` 必须两个方向都判、且认容器裁切。
+ */
+describe('冒烟点击 · 视口、计数与三处点击点', () => {
+  const RAW = readFileSync(resolve(__dirname, '../../scripts/ui-smoke.mjs'), 'utf-8')
+  const SRC = RAW.replace(/^\s*(\*|\/\/).*$/gm, '')
+
+  /** 每个点击点:接住结果的变量名 */
+  const CLICK_GUARDS = ['clickedOk', 'modalClickOk', 'ok']
+
+  it('三处按钮点击都接住了结果(主循环 / 弹窗内 / 干净重试)', () => {
+    /*
+     * 只扫 `b` / `target` 这两个按钮变量。
+     *
+     * 导航链接那处 `link.click({ force: true }).catch(...)` 是**有意的例外**:
+     * 它不看点击返回什么,而是看「hash 有没有真的落到目标」——
+     * 落不到会进 silent 读数并留给别的路由重试,不存在「超时被当成有反应」的问题。
+     */
+    const swallowed = [...SRC.matchAll(/\b(?:b|target)\.click\(\{[^}]*\}\)\s*\.catch\(\(\) => \{\}\)/g)]
+    expect(swallowed.length, '还有按钮点击把失败吞掉了 —— 超时会被当成「有反应」').toBe(0)
+    for (const g of CLICK_GUARDS) {
+      expect(SRC, `找不到 ${g} —— 那一处按钮点击没有接住结果`).toContain(g)
+    }
+    // 导航那处仍是 `.catch(() => {})`,别把它也改了 —— 它靠 hash 判落点
+    expect(SRC, '导航链接那处被改成看点击结果了?它该看 hash 落点').toContain('link.click({ force: true, timeout: 800 }).catch(() => {})')
+  })
+
+  it('主循环:失败先 continue,分类在其后', () => {
+    const i = SRC.indexOf('if (!clickedOk) continue')
+    expect(i, '主循环没有「点不中就不往下走」').toBeGreaterThan(-1)
+    const after = SRC.slice(i)
+    const classifyAt = after.indexOf('classifySilent(route')
+    expect(classifyAt, '主循环里找不到 classifySilent').toBeGreaterThan(-1)
+    // 关键:分类必须发生在守卫**之后**(after 从守卫开始切,所以位置必为正)
+    expect(classifyAt, 'classifySilent 跑到守卫前面去了 —— 没点到的也会被分类').toBeGreaterThan(0)
+  })
+
+  it('弹窗内点击同样守住了计数与分类', () => {
+    const i = SRC.indexOf('if (!modalClickOk) continue')
+    expect(i, '弹窗内点击没守住').toBeGreaterThan(-1)
+    const after = SRC.slice(i, i + 600)
+    expect(after, '弹窗内该在守卫后计数').toContain('clicked += 1')
+    expect(after, '弹窗内该在守卫后分类').toContain("classifySilent(route, 'modal'")
+  })
+
+  it('干净重试:点不中返回 null(判不了),不当成死控件', () => {
+    const i = SRC.indexOf('const ok = await b')
+    expect(i, 'cleanRetry 没接住点击结果').toBeGreaterThan(-1)
+    expect(SRC.slice(i, i + 300), '点不中该返回 null,不是 false').toContain('if (!ok) return null')
+  })
+
+  it('inView 两个方向都判,且认容器裁切', () => {
+    const i = SRC.indexOf('const inView = await b')
+    expect(i, '找不到 inView 判定').toBeGreaterThan(-1)
+    const block = SRC.slice(i, i + 1600)
+    expect(block, '只判了纵向,横向在视口外没被拦').toContain('innerWidth')
+    expect(block, '该判纵向').toContain('innerHeight')
+    expect(block, '不认容器裁切 —— main 自己可滚时元素在 main 可视区外仍会被点').toMatch(/overflowY/)
   })
 })

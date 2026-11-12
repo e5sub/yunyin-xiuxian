@@ -10,7 +10,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useCultivationStore } from '@/stores/cultivation'
 import { useAdventureStore } from '@/stores/adventure'
 import { useUiStore } from '@/stores/ui'
-import { TICK_MS, OFFLINE_MIN_SECONDS } from '@/data/constants'
+import { TICK_MS, OFFLINE_MIN_SECONDS, ACTIVE_STAMP_MS } from '@/data/constants'
 
 vi.mock('./offline', async importOriginal => {
   const actual = await importOriginal<typeof OfflineMod>()
@@ -39,6 +39,16 @@ describe('引擎心跳 · start/stop/dt 路由直测', () => {
       setInterval: () => 0,
       clearInterval: () => {}
     })
+    /*
+     * 先停一次再装 spy。
+     *
+     * engine 是模块单例,`start()` 里那句 `if (this.timer === undefined)` 是防重复的 ——
+     * 若上一条用例因断言失败提前退出、`afterEach` 里 restore 掉 spy 之后
+     * 那个 interval id 仍留在 `engine.timer` 上,本条 start() 就直接跳过 setInterval,
+     * `capturedTick` 一直是 null,报出来是 `capturedTick is not a function`(实测乱序下偶发)。
+     * 这里在装新 spy 之前用真的 clearInterval 停干净。
+     */
+    engine.stop()
     capturedTick = null
     setIntervalSpy = vi.spyOn(window, 'setInterval').mockImplementation((cb: () => void) => {
       capturedTick = cb
@@ -107,15 +117,56 @@ describe('引擎心跳 · start/stop/dt 路由直测', () => {
     expect(settle, 'dt=0 不应离线结算').not.toHaveBeenCalled()
   })
 
-  it('墙钟回拨:回拨期间不推进,但每拍都重锚,墙钟走回正常区间即刻恢复(1.66.1)', () => {
+  it('时钟回拨后引擎要立刻恢复,而不是停摆到真实时间追平', () => {
+    /*
+     * `lastTickAt` 是上一拍的时刻。系统时钟往回拨之后它停在「未来」,
+     * 于是 `dt <= 0` 每一拍都成立、`lastTickAt` 永不更新 ——
+     * 引擎会一直停摆到真实时间追平那个未来时刻(回拨 5 分钟就停 5 分钟)。
+     * `start()` 与 `offline` 早就有同一处理,`tick` 这一处先前漏了。
+     */
     const { t0, gainExpSpy } = startStarted()
-    vi.setSystemTime(t0 - 5_000) // 校时/改钟,now 落后于上拍锚点
+
+    // 先正常走一拍,把 lastTickAt 推到 t0 + TICK_MS
+    vi.setSystemTime(t0 + TICK_MS)
     capturedTick!()
-    expect(gainExpSpy, '回拨那一拍的 dt 为负,不推进').not.toHaveBeenCalled()
-    // 关键:锚点没跟着退,下一拍仍是负 dt —— 旧实现会一直冻到墙钟追回 t0
-    vi.setSystemTime(t0 - 4_000)
+    gainExpSpy.mockClear()
+
+    // 时钟往回拨 5 分钟:这一拍不该推进,但必须重锚
+    vi.setSystemTime(t0 + TICK_MS - 300_000)
     capturedTick!()
-    expect(gainExpSpy, '重锚后 dt=1s,应恢复推进').toHaveBeenCalled()
+    expect(gainExpSpy, '回拨那一拍不该推进(dt 为负)').not.toHaveBeenCalled()
+
+    // 再走一拍(回拨后的下一秒):若未重锚,此刻 dt 仍是负的、不会推进
+    vi.setSystemTime(t0 + TICK_MS - 300_000 + TICK_MS)
+    capturedTick!()
+    expect(gainExpSpy, '回拨后引擎没恢复 —— lastTickAt 停在未来时刻没被重锚').toHaveBeenCalled()
+  })
+
+  it('时钟回拨后活跃时长仍要累计 —— lastStampAt 也要重锚', () => {
+    /*
+     * `lastStampAt` 是上一次记游玩时长的时刻。回拨后它停在「未来」,
+     * 于是 `now - lastStampAt` 恒为负、`>= ACTIVE_STAMP_MS` 永不成立 ——
+     * **游玩时长不再累计**,`game.totalPlaySec` 停住。
+     * 与 lastTickAt 是同一件事的两半:只重锚一个就只修好一半。
+     */
+    const { t0 } = startStarted()
+    const game = useGameStore()
+    const addPlayTimeSpy = vi.spyOn(game, 'addPlayTime')
+
+    // 正常跑到一个盖章周期之后
+    vi.setSystemTime(t0 + ACTIVE_STAMP_MS + TICK_MS)
+    capturedTick!()
+    expect(addPlayTimeSpy, '正常拍该记游玩时长').toHaveBeenCalled()
+    addPlayTimeSpy.mockClear()
+
+    // 时钟往回拨 5 分钟
+    vi.setSystemTime(t0 + ACTIVE_STAMP_MS + TICK_MS - 300_000)
+    capturedTick!()
+
+    // 回拨后再走一个盖章周期:若 lastStampAt 未重锚,这里仍不会记
+    vi.setSystemTime(t0 + ACTIVE_STAMP_MS + TICK_MS - 300_000 + ACTIVE_STAMP_MS + TICK_MS)
+    capturedTick!()
+    expect(addPlayTimeSpy, 'lastStampAt 停在未来时刻没被重锚 —— 游玩时长不再累计').toHaveBeenCalled()
   })
 
   it('小 dt → 走 advance(在线推进:玩家修为增长)', () => {

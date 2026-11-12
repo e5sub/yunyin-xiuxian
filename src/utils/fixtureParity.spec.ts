@@ -16,10 +16,12 @@ import { affixDef, affixFitBlock } from '@/data/affixes'
 import { equipmentTemplate } from '@/data/equipment'
 import { qualityDef } from '@/data/qualities'
 import { BAG_CAPACITY } from '@/data/constants'
+import { buildingDef } from '@/data/buildings'
+import { WORLD_BREAK_MAJOR } from '@/data/realms'
 import { herbGradeOfMajor } from '@/data/herbGrades'
-import { lateSlices, stressSlices } from '../../scripts/lib/saveFixture.mjs'
+import { lateSlices, midSlices, stressSlices } from '../../scripts/lib/saveFixture.mjs'
 import { resolve } from 'node:path'
-import { PERSISTED_STORES } from '@/utils/storage'
+import { PERSISTED_STORES, STORE_NAMES } from '@/utils/storage'
 
 const ROOT = resolve(__dirname, '../..')
 const product = readFileSync(resolve(ROOT, 'src/utils/crypto.ts'), 'utf-8')
@@ -593,5 +595,89 @@ describe('QA 脚本夹具 · 每个 store 分片的字段都真实可写', () =>
       }
     }
     expect(reports, `这些夹具字段写进去会被静默忽略:\n${reports.join('\n')}`).toEqual([])
+  })
+})
+
+/**
+ * 分片中文名表与分片清单必须同步。
+ *
+ * `STORE_NAMES` 的注释写着「须与 PERSISTED_STORES 同步」,但没有任何判据。
+ * 它喂的是**玩家看得见的两处回执**:
+ *   - 坏档提示「存档损坏:{名字} · 原档留在本机」
+ *   - 导出无回执时的「导出不全 · 缺{名字}」
+ * 两处都写 `STORE_NAMES[id] ?? id` —— 漏一条时界面直接把内部 id(如 `apprentice`)
+ * 印给玩家看,而不是「道童」。
+ *
+ * 判据:两张表的键集合完全相等(不是「不少于」:多出来的名字永远用不到,也是死数据)。
+ */
+describe('存档分片 · 中文名表与清单同步', () => {
+  it('键集合完全相等', () => {
+    const ids = PERSISTED_STORES as readonly string[]
+    const named = Object.keys(STORE_NAMES)
+    expect(ids.length, '分片清单读空了').toBeGreaterThan(5)
+    expect(named.length, '中文名表读空了').toBeGreaterThan(5)
+
+    const missing = ids.filter(id => !named.includes(id))
+    expect(missing, `这些分片没有中文名,坏档时会印出内部 id:${missing.join('、')}`).toEqual([])
+
+    const extra = named.filter(id => !ids.includes(id))
+    expect(extra, `中文名表里有清单外的键(死数据):${extra.join('、')}`).toEqual([])
+  })
+
+  it('每个名字都是非空中文,不是占位符', () => {
+    for (const id of PERSISTED_STORES as readonly string[]) {
+      const name = STORE_NAMES[id]
+      expect(name, `${id} 没有中文名`).toBeTruthy()
+      expect(name, `${id} 的名字里没有汉字`).toMatch(/[\u4e00-\u9fa5]/)
+      expect(name, `${id} 的名字就是 id 本身 —— 等于没起名`).not.toBe(id)
+    }
+  })
+})
+
+
+/**
+ * 中期夹具的合法性 —— 同样**实际调用** midSlices(),不靠源码文本猜。
+ *
+ * 它补的是「内容已展开、终局未开」这一段:六个 QA 脚本原先只用 lateSlices(终局全开),
+ * 中期那一屏的读屏结构从没被量过。夹具本身写错就白搭 ——
+ * 实测首版把洞府 id 写成 `garden` / `furnace`(真名是 `field` / `alchemy`),页面不报错,
+ * 只是三项产出全部显示「—」,看上去像「中期就是没有产出」而不是「夹具写错了」。
+ */
+describe('中期夹具 · 实际调用后每一条都成立', () => {
+  const slices = midSlices()
+  const dongfu = slices.dongfu
+
+  it('大境界停在「终局未开」那一段', () => {
+    expect(slices.player.major, '中期档该低于 WORLD_BREAK_MAJOR').toBeLessThan(WORLD_BREAK_MAJOR)
+    expect(slices.player.major, '太靠前就不是「内容已展开」').toBeGreaterThan(3)
+    expect(slices.endgame.daoPath, '道途该还没立').toBeNull()
+    expect(slices.endgame.daoSource, '道源该还是 0').toBe(0)
+  })
+
+  it('每一个洞府建筑 id 都真实存在', () => {
+    const ids = Object.keys(dongfu.levels)
+    expect(ids.length, '洞府等级一项都没写').toBeGreaterThan(3)
+    for (const id of ids) {
+      expect(buildingDef(id as never), `洞府 id「${id}」在 data/buildings 里不存在 —— 那一项产出会静默显示「—」`).toBeTruthy()
+    }
+  })
+
+  it('有产出的那几个建筑都已起造', () => {
+    // 洞府纪要那三项读的是 field / library / array;全 0 则整块是「—」
+    for (const id of ['field', 'library', 'array'] as const) {
+      expect(dongfu.levels[id as keyof typeof dongfu.levels] ?? 0, `${id} 没起造,中期档的产出读数会是「—」`).toBeGreaterThan(0)
+    }
+  })
+
+  it('灵脉已投点且有主脉(中期玩家已投入)', () => {
+    const total = Object.values<number>(dongfu.veinPoints).reduce((a, b) => a + b, 0)
+    expect(total, '灵脉一处都没投,中期状态不成立').toBeGreaterThan(0)
+    expect(dongfu.veinMain, '该已立主脉').not.toBeNull()
+  })
+
+  it('灵根与转世历史都在(中期玩家已经转世过)', () => {
+    expect(slices.player.linggen, '灵根缺失').toBeTruthy()
+    expect(slices.player.linggen!.roots.length, '灵根一根都没有').toBeGreaterThan(0)
+    expect(slices.player.reincarnation.count, '转世次数该 ≥1').toBeGreaterThanOrEqual(1)
   })
 })

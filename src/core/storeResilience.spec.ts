@@ -2,11 +2,20 @@ import { describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia, type Store } from 'pinia'
 import type { BondState } from '@/core/daoluService'
 import { usePlayerStore } from '@/stores/player'
+import { lifespanOf, MAX_MAJOR } from '@/data/realms'
+import { DAOLU } from '@/data/daolu'
 import { useAdventureStore } from '@/stores/adventure'
 import { usePacingTelemetry } from '@/stores/pacingTelemetry'
 import { useLoreStore } from '@/stores/lore'
 import { useResourcesStore } from '@/stores/resources'
 import { useMarketStore } from '@/stores/market'
+import { useEndgameStore } from '@/stores/endgame'
+import { useInventoryStore } from '@/stores/inventory'
+import { useDiagStore } from '@/stores/diag'
+import { upgradeCost } from '@/core/formulas'
+import { EQUIP_LEVEL_SANITIZE_CAP } from '@/data/buildings'
+import { MAX_EQUIP_TIER } from '@/data/equipment'
+import { EQUIP_COUNTER_MAX, INVESTED_DUST_MAX } from '@/data/constants'
 import { useApprenticeStore } from '@/stores/apprentice'
 import { sanitizeOfflineInputs } from './offline'
 
@@ -159,8 +168,30 @@ describe('坏档韧性 · 每个字段被抹掉后 sanitize 都要跑得完', ()
   }
 })
 
-/** 恶意值:形状对、内容是垃圾 */
-const HOSTILE: unknown[] = [null, 0, -1, NaN, '', 'x', [], {}, [null], { a: null }, true, [{ uid: null }]]
+/**
+ * 恶意值:形状对、内容是垃圾。
+ *
+ * **有限极大值同样算恶意**:`1e300` 与 `Number.MAX_VALUE` 都能过
+ * `Number.isFinite`,于是「只挡非有限」的守卫对它们一路放行,
+ * 界面再经 formatNum 印成「1.00e300」。实测 resources.qi/wudao 与
+ * endgame.daoSource 三条就是这样原样通过的 —— 补进这一组后当场暴露。
+ */
+const HOSTILE: unknown[] = [
+  null,
+  0,
+  -1,
+  NaN,
+  '',
+  'x',
+  [],
+  {},
+  [null],
+  { a: null },
+  true,
+  [{ uid: null }],
+  1e300,
+  Number.MAX_VALUE
+]
 
 describe('坏档韧性 · 恶意值也不该炸', () => {
   for (const { name, use } of STORES) {
@@ -195,6 +226,61 @@ describe('坏档韧性 · 恶意值也不该炸', () => {
   }
 })
 
+/**
+ * 第二条:被修回来的值还得是「有限且不离谱」。
+ *
+ * 上面那条只要求「不抛」——`1e300` 原样躺在 state 里同样不抛,
+ * 于是 `resources.qi` / `resources.wudao` / `endgame.daoSource` 三条
+ * 一直没被发现。它们的界面读数会印成「1.00e300」。
+ *
+ * 判据:灌一遍恶意值后,store.$state 里**每个数字**都必须是有限数;
+ * 若某个字段原本是资源读数,还要求它不超过一个宽到不可能误伤的上界。
+ * 这里只查数字类型 —— 字符串/数组/对象的合法性由各 store 自己的用例管。
+ */
+describe('坏档韧性 · 修回来的数字不许是有限巨值', () => {
+  /**
+   * 宽到不可能误伤,且**从本仓境界表现算**,不写死一个数。
+   *
+   * `player.lifespanBonusYears` 的正当上界就是 `lifespanOf(MAX_MAJOR) * 10`
+   * (`player.sanitize` 里那道钳制)。上游四界(29 境)下这个值是 1.0e16 量级,
+   * 首版因此取 1e17;本仓五界 29 境把顶阶寿元推到 1.7e20,同一个封顶值就变成 1.7e21
+   * —— 写死的 1e17 会把一个**健康的封顶值**误判成超量级。
+   * 现按境界表现算,增减境界时自动跟上;它仍比 `1e300` 小十几个量级,拦得住真巨值。
+   */
+  const SANE_NUMBER = lifespanOf(MAX_MAJOR) * 10
+
+  for (const { name, use } of STORES) {
+    it(`${name}:灌恶意值后,state 里的数字都有限且不离谱`, () => {
+      setActivePinia(createPinia())
+      const keys = Object.keys(use().$state)
+      const bad: string[] = []
+      /*
+       * 只查**原本就是数字**的字段。
+       *
+       * 灌 `NaN` 给一个对象字段(regionEvent / secretRealm 等)时,
+       * `store.$state` 里那个键会整个变成 NaN —— 那不是「没修回来」,
+       * 是这条判据在拿对象字段当数字量。对象的合法性由各 store 自己的用例管。
+       */
+      setActivePinia(createPinia())
+      const numericKeys = keys.filter(k => typeof (use().$state as unknown as Record<string, unknown>)[k] === 'number')
+      for (const key of numericKeys) {
+        for (const hostile of HOSTILE) {
+          setActivePinia(createPinia())
+          const store = use()
+          store.$patch({ [key]: hostile } as never)
+          store.sanitize()
+          const after = (store.$state as unknown as Record<string, unknown>)[key]
+          if (typeof after !== 'number') continue
+          if (!Number.isFinite(after)) bad.push(`${key} = ${String(hostile)} → ${after}`)
+          else if (Math.abs(after) > SANE_NUMBER) bad.push(`${key} = ${String(hostile)} → ${after}(超量级)`)
+        }
+      }
+      expect(bad, `${name} 有字段没被修回来:\n${[...new Set(bad)].slice(0, 6).join('\n')}`).toEqual([])
+    })
+  }
+})
+
+/** 小数资源与道源这几条有明确上界,单独钉死 */
 describe('坏档韧性 · 复杂状态的值也要修回来(不只是"不炸")', () => {
   it('道侣:三维夹回 0~100、坏 id 作废、坏意图整块丢掉', () => {
     setActivePinia(createPinia())
@@ -454,4 +540,1042 @@ describe('坏档韧性 · 毒化之后不许残留负数', () => {
       expect(bad, `${name} 在毒化之后残留了负值(界面会把它印给玩家看):\n${bad.join('\n')}`).toEqual([])
     })
   }
+})
+
+/**
+ * 坏档韧性 · 毒成「有限的巨大值」之后不许残留天文数字
+ *
+ * 上一条毒的是 -999,它只压到「下界」那一侧。而 `Number.isFinite` 挡不住**上界**:
+ * 坏档写 `age: 1e300` / `createdAt: 8640000000000001` 都是有限数,一路通过
+ * `asFiniteNumber`,再被渲染成 `1.00e300 载`、`NaN月NaN日`、`Invalid Date`。
+ *
+ * 这一条把每个持久化 store 的全部数值字段一次毒成 `Number.MAX_VALUE`,过 sanitize,
+ * 再扫「仍然天文数字」的残留。判据的阈值放过 GNum(它本来就按指数存大数)
+ * 与少数**合法**的大数值字段(列在 HUGE_OK 里并写明理由)。
+ */
+const HUGE_LIMIT = 1e15
+
+/**
+ * 这些字段本来就允许很大,列出来并写明理由 —— 不做白名单会逼着把真实设计改掉。
+ *
+ * 资源类(qi / ore / page / dust / wudao / daoSource)与修为:它们是玩家的存量,
+ * 走 `formatGN` 渲染,而 formatGN 对超出单位表的量级有**有意的**科学计数兜底
+ * (`1.80e308`),AGENTS.md 记着这一条。喂给它们的坏值不会崩、不会印 NaN,
+ * 只是显示成科学计数 —— 与「时间戳坏成不了日期」不是一回事。
+ * 上一段毒化以外的东西(refund/rounds 之类计数)由各自的 spec 负责。
+ */
+const HUGE_OK: Record<string, string[]> = {
+  /*
+   * lifespanBonusYears / age:上界是 lifespanOf(MAX_MAJOR) × 10 ≈ 1.01e16,
+   * 这个数**本身就是设计上限**(最高境界寿元的一万倍),不是残留 —— 判据要放过它。
+   * 真实游玩到不了,但它是被 sanitize 明确夹到这里的,不是漏网。
+   */
+  player: ['exp', 'lifespanBonusYears', 'age'],
+  resources: ['qi', 'ore', 'page', 'dust', 'wudao', 'spiritStone', 'herbByGrade'],
+  endgame: ['daoSource'],
+  game: [],
+  lore: ['skillExp'],
+  // 极端值下 age/lifespanBonusYears 会被夹回开局值,这里不该再剩
+  dongfu: [],
+  settings: []
+}
+
+/** 把一份 state 里的所有有限数字改成 Number.MAX_VALUE(保留字符串/布尔/结构形状) */
+function inflateNumbers(v: unknown, depth = 0): unknown {
+  if (depth > 6) return v
+  if (typeof v === 'number') return Number.MAX_VALUE
+  if (Array.isArray(v)) return v.map(x => inflateNumbers(x, depth + 1))
+  if (v && typeof v === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, x] of Object.entries(v)) out[k] = inflateNumbers(x, depth + 1)
+    return out
+  }
+  return v
+}
+
+/** 递归收集「仍然大得不像话」的有限数字 */
+function collectHuge(v: unknown, path: string, out: string[], depth = 0): void {
+  if (depth > 6) return
+  if (typeof v === 'number') {
+    if (Number.isFinite(v) && Math.abs(v) > HUGE_LIMIT) out.push(`${path}=${v}`)
+    return
+  }
+  if (Array.isArray(v)) {
+    v.forEach((x, i) => collectHuge(x, `${path}[${i}]`, out, depth + 1))
+    return
+  }
+  if (v && typeof v === 'object') {
+    if (isGNum(v)) return
+    for (const [k, x] of Object.entries(v)) collectHuge(x, `${path}.${k}`, out, depth + 1)
+  }
+}
+
+describe('坏档韧性 · 毒成有限巨值之后不留天文数字', () => {
+  for (const { name, use } of STORES) {
+    it(`${name}:全部数字灌成 MAX_VALUE 后,sanitize 不许留下天文数字`, () => {
+      setActivePinia(createPinia())
+      const store = use()
+      store.$patch(inflateNumbers(JSON.parse(JSON.stringify(store.$state ?? {}))) as never)
+      store.sanitize()
+      const huge: string[] = []
+      /*
+       * 只扫 `$state`,不扫整个 store —— 后者会走进 Pinia 内部的 `_p` / `_hmrPayload`,
+       * 那里装着 **computed getter 的缓存**(realm.lifespanYears、qiCapValue、finalStats…)。
+       * 那些是从坏输入算出来的派生值,不是持久化状态;把它们算进来等于要求「坏输入也别把算式算大」,
+       * 而真正的判据是「存下来的字段有没有被修好」。
+       */
+      collectHuge(JSON.parse(JSON.stringify(store.$state ?? {})), '', huge)
+      const allowed = HUGE_OK[name] ?? []
+      const bad = huge.filter(p => !allowed.some(a => p.split('=')[0]!.split('.').includes(a)))
+      expect(bad, `${name} 在灌成巨值之后残留了天文数字(界面会把它印给玩家看):\n${bad.join('\n')}`).toEqual([])
+    })
+  }
+})
+
+/**
+ * 三条具体字段的上界 —— 都是审查意见指出的,而且**首版的修法各错一处**。
+ *
+ * 一 **灵气上界不能凭感觉取**。最高境界的气海实测 `qiCap(MAX_MAJOR, maxSub) = 1.172e16`,
+ *    乘 `QI_BANK_MULT = 10` 的积余是 **1.172e17** —— 正常存档能到这么高。
+ *    首版取 1e15,会把后期玩家的有效灵气清零。
+ * 二 **道源越界要归零,不是夹到上界**。夹到 1e9 等于凭空送十亿道源,
+ *    而道源可以直接花掉(熔炉、器魂)。
+ * 三 **灵草分账同样要上界**。首版只改了小数资源,漏了 `herbByGrade`。
+ */
+describe('坏档韧性 · 三条上界的取值与退路', () => {
+  /** 正常档不该被这些守卫误伤 */
+  it('灵气:真实上限以内原样保留', () => {
+    setActivePinia(createPinia())
+    const r = useResourcesStore()
+    // 1.172e17 是「最高境界气海 × 积余倍率」,正常存档能到这里
+    for (const v of [0, 1e6, 1.17e17]) {
+      r.$patch({ qi: v } as never)
+      r.sanitize()
+      expect(r.qi, `正常档的灵气 ${v} 被误清`).toBe(v)
+    }
+  })
+
+  it('灵气:坏档巨值归零', () => {
+    setActivePinia(createPinia())
+    const r = useResourcesStore()
+    r.$patch({ qi: 1e300 } as never)
+    r.sanitize()
+    expect(r.qi, '1e300 没被清').toBe(0)
+  })
+
+  it('道源:越界归零,不是夹到上界(否则等于送钱)', () => {
+    setActivePinia(createPinia())
+    const e = useEndgameStore()
+    for (const v of [1e300, 1e12]) {
+      e.$patch({ daoSource: v } as never)
+      e.sanitize()
+      expect(e.daoSource, `${v} 被夹成了 ${e.daoSource} —— 应该归零`).toBe(0)
+    }
+  })
+
+  it('道源:上限以内原样保留', () => {
+    setActivePinia(createPinia())
+    const e = useEndgameStore()
+    for (const v of [0, 1234, 1e8]) {
+      e.$patch({ daoSource: v } as never)
+      e.sanitize()
+      expect(e.daoSource, `正常值 ${v} 被改`).toBe(v)
+    }
+  })
+
+  it('灵草分账:巨值归零,正常值保留', () => {
+    setActivePinia(createPinia())
+    const r = useResourcesStore()
+    r.$patch({ herbByGrade: { 1: 1e300, 2: 500, 3: 0, 4: 0, 5: 0 } } as never)
+    r.sanitize()
+    expect(r.herbOf(1), '巨量灵草没被清').toBe(0)
+    expect(r.herbOf(2), '正常灵草被误清').toBe(500)
+  })
+})
+
+/**
+ * 装备的两个计数器也要有上界。
+ *
+ * `reforgeCount` / `transferCount` 只用于显示(「已重铸 N 次」),
+ * 而那一处是**裸插值**、没有格式化兜底 —— 坏档写 `1e300` 会印成
+ * 「已重铸 1e+300 次」。实测 sanitize 原先原样保留。
+ *
+ * 这与上一轮那批上界是同一条思路:只用于展示的字段同样需要守卫,
+ * 因为展示路径不一定经过格式化函数。
+ */
+describe('坏档韧性 · 装备计数器的上界', () => {
+  const patchWith = (v: unknown): ReturnType<typeof useInventoryStore> => {
+    setActivePinia(createPinia())
+    const inv = useInventoryStore()
+    inv.$patch({
+      items: [
+        { uid: 'x', templateId: 'w_zidian', quality: 'mortal', tier: 1, level: 0, affixes: [], reforgeCount: v, transferCount: v }
+      ]
+    } as never)
+    inv.sanitize()
+    return inv
+  }
+
+  it('巨值被夹到上界,不再原样保留', () => {
+    for (const v of [1e300, 1e20, 1e10]) {
+      const it = patchWith(v).items[0]
+      expect(it?.reforgeCount, `reforgeCount ${v} 没被夹住`).toBeLessThanOrEqual(EQUIP_COUNTER_MAX)
+      expect(it?.transferCount, `transferCount ${v} 没被夹住`).toBeLessThanOrEqual(EQUIP_COUNTER_MAX)
+    }
+  })
+
+  it('真实累计不该被夹 —— 两项操作本身没有上限', () => {
+    /*
+     * 首版把上界取成一万,而每次重铸都会 +1、几世累计可以越过一万 ——
+     * 那样读档时会把真实历史夹掉(审查意见指出的)。上界只为拦坏档,
+     * 不该卡在「常见量级」。
+     */
+    for (const v of [5000, 50000, 5_000_000]) {
+      const it = patchWith(v).items[0]
+      expect(it?.reforgeCount, `真实累计 ${v} 被误夹`).toBe(v)
+      expect(it?.transferCount, `真实累计 ${v} 被误夹`).toBe(v)
+    }
+  })
+
+  it('上界本身仍在裸插值可读的范围内', () => {
+    // 裸插值在 1e21 起改用科学计数法;上界必须远低于它
+    expect(EQUIP_COUNTER_MAX, '上界太高,裸插值会印出 1e+N').toBeLessThan(1e21)
+    expect(String(EQUIP_COUNTER_MAX)).not.toMatch(/e\+/)
+  })
+})
+
+/**
+ * 历练会话的四个计数也要有上界。
+ *
+ * 它们只用于显示(「胜 N 场 · 际遇 M 次 · 拾获 K 件」),
+ * 而 `formatNum` 在单位表之外仍会印成 `1.00e300`。
+ * 与装备计数器同一条思路:展示字段同样需要守卫。
+ */
+describe('坏档韧性 · 历练会话计数的上界', () => {
+  it('巨值被夹住,真实累计不误伤', () => {
+    const patch = (v: unknown): number | undefined => {
+      setActivePinia(createPinia())
+      const a = useAdventureStore()
+      a.$patch({
+        session: { regionId: 'qingyun', startedAt: 1, endsAt: 2, nextBattleAt: 3, wins: v, losses: v, events: v, itemGain: v }
+      } as never)
+      a.sanitize()
+      return a.session?.wins
+    }
+    expect(patch(1e300), '巨值没被夹住').toBeLessThanOrEqual(1e8)
+    // 一场历练的正常量级不该被夹
+    expect(patch(500), '正常值被误夹').toBe(500)
+  })
+})
+
+/**
+ * 远征运行态的计数要封顶 —— 它们会**乘进战斗属性**。
+ *
+ * `run.winStacks` 经 `stackedMods(mods, perWin, run.winStacks)` 直接乘进攻防,
+ * 坏档写 `1e300` 会让玩家攻击瞬间无限大;而原先只有下限、原样保留。
+ *
+ * 上界不是随手取的:一趟远征是「入界 + 每层择路 + 界主」共
+ * `EXPEDITION_ROUTE_LAYERS + 2 = 5` 战,故叠层不可能超过 5;留一档余量到 16。
+ */
+describe('坏档韧性 · 远征运行态的计数上界', () => {
+  const patchRun = (v: unknown): { winStacks?: number; bonus?: number } | undefined => {
+    setActivePinia(createPinia())
+    const e = useEndgameStore()
+    e.$patch({
+      worldRun: { worldId: 'chiyan', pactId: null, gateId: null, layer: 1, bonus: v, rows: [], carriedHpPct: 1, totalRounds: 0, winStacks: v }
+    } as never)
+    e.sanitize()
+    return e.worldRun as { winStacks?: number; bonus?: number } | undefined
+  }
+
+  it('巨值被夹住', () => {
+    for (const v of [1e300, 1e12]) {
+      const r = patchRun(v)
+      expect(r?.winStacks, `winStacks ${v} 没被夹住`).toBeLessThanOrEqual(16)
+      expect(r?.bonus, `bonus ${v} 没被夹住`).toBeLessThanOrEqual(256)
+    }
+  })
+
+  it('正常叠层不被误夹', () => {
+    // 一趟远征最多 5 战,叠层 0..5 都是正常值
+    for (const v of [0, 3, 5]) {
+      const r = patchRun(v)
+      expect(r?.winStacks, `正常叠层 ${v} 被误夹`).toBe(v)
+    }
+  })
+
+  it('正常路线奖励不被误夹 —— bonus 会并入最终结算', () => {
+    /*
+     * 这一条是审查意见指出的高危处:`run.bonus` 是**累计的路线奖励**,
+     * `reward = world.rewardDaoSource + run.bonus` 直接把它算进道源。
+     * 首版让它与叠层共用 16 的上界,会吞掉玩家已经挣到的奖励。
+     *
+     * 节点 bonus 实测 8/10/12/14/16,三层各取一个 → 正常上限 48。
+     */
+    for (const v of [0, 16, 32, 48]) {
+      const r = patchRun(v)
+      expect(r?.bonus, `正常路线奖励 ${v} 被误夹`).toBe(v)
+    }
+  })
+
+  it('两条上界各按自己的真实范围定,不共用', () => {
+    // 叠层与道源是两个量级的数,共用上界必有一方被误夹
+    const r = patchRun(48)
+    expect(r?.bonus, 'bonus 的正常上限 48 被叠层那条上界误夹').toBe(48)
+    expect(r?.winStacks, '叠层仍该夹到 16').toBe(16)
+  })
+})
+
+/**
+ * 区域战绩的 `avgRounds` 要有上界 —— 它参与抑制判定。
+ *
+ * 抑制的判据是 `avgRounds <= SUPPRESS_THRESHOLDS.maxAvgRounds`(=3)。
+ * 坏档写 `1e300` 时这条恒为假,复聚钟永远满足不了条件;
+ * 而原先只给了下限,`Number.isFinite(1e300)` 为真、原样通过。
+ *
+ * 这与「NaN 会让判定恒假」是同一个坑的两种形态 —— 那段注释只防了 NaN。
+ */
+describe('坏档韧性 · 区域战绩 avgRounds 的上界', () => {
+  const patchAvg = (v: unknown): number | undefined => {
+    setActivePinia(createPinia())
+    const p = usePlayerStore()
+    p.$patch({
+      regionStats: { qingyun: { totalFights: 10, avgRounds: v, avgDamageTakenPct: 0.2, consecutiveWins: 3, lastUpdateAt: 1, life: 1 } }
+    } as never)
+    p.sanitize()
+    return (p.regionStats as Record<string, { avgRounds?: number }> | undefined)?.qingyun?.avgRounds
+  }
+
+  it('巨值归零 —— 不是夹到上界', () => {
+    /*
+     * 这一条被审查意见纠正过一次。首版把巨值夹到 10000,
+     * 而抑制判定是 `avgRounds <= 3` —— 10000 仍大于 3,复聚钟照样不响,
+     * 等于把「永远不满足」从 1e300 换成了 10000,问题没解决。
+     * 归零的语义是「没有记录」,这才是坏档该有的样子。
+     */
+    for (const v of [1e300, Number.MAX_VALUE, 5000]) {
+      expect(patchAvg(v), `avgRounds ${v} 该归零`).toBe(0)
+    }
+  })
+
+  it('正常回合数原样保留', () => {
+    // 一场战斗的回合数是两位到三位数;1/2.5/8/30/500 都在合理范围
+    for (const v of [1, 2.5, 8, 30, 500]) {
+      expect(patchAvg(v), `正常值 ${v} 被误清`).toBe(v)
+    }
+  })
+
+  it('阈值必须远高于一场真实战斗的回合数', () => {
+    /*
+     * 这条钉的是「阈值不能太低」:若哪天把门槛调到 5,
+     * 一场打了 30 回合的硬仗记录就会被当成坏档清零。
+     * 真实回合数是两位到三位数,门槛取一千 —— 高出两个量级。
+     */
+    const REAL_BATTLE_ROUNDS = 500
+    expect(patchAvg(REAL_BATTLE_ROUNDS), '真实的硬仗记录被清了').toBe(REAL_BATTLE_ROUNDS)
+    expect(patchAvg(1e300), '巨值没被清').toBe(0)
+  })
+})
+
+/**
+ * 战报里的倍率与回合数要有上界 —— 它们直接进文案。
+ *
+ * `foeOrigin` 的三个倍率进「三维 ×1.90 · 增伤 +35%」;`rounds` 进
+ * 「胜于第 N 回合」「鏖战 N 回合」。坏档写 1e300 时分别印出
+ * 「三维 ×1e+300 · 增伤 +1e+302%」与一个读不出来的回合数。
+ *
+ * 正常值都有硬顶:厚化受构筑软上限约束,增伤减伤由判定的两个常量管着
+ * (`CELESTIAL_JUDGE_CAP` 0.35 与 `CELESTIAL_SUPPRESS_BONUS` 0.25)。
+ * 故上界按「远高于真实值」取,不会误伤。
+ */
+describe('坏档韧性 · 战报倍率与回合数的上界', () => {
+  const patch = (v: number): { ratio?: number; bonus?: number; rounds?: number; partRatio?: number } | undefined => {
+    setActivePinia(createPinia())
+    const a = useAdventureStore()
+    a.$patch({
+      lastBattle: {
+        enemyName: '狼', enemyIcon: 'wolf', at: 1,
+        result: {
+          win: true, log: [], rounds: v, playerHpPct: 1,
+          foeOrigin: { label: '层级补偿', ratio: v, damageBonus: v, damageReduction: v, parts: [{ label: '危地', ratio: v }], note: '' }
+        }
+      }
+    } as never)
+    a.sanitize()
+    const r = (a.lastBattle as { result?: { rounds?: number; foeOrigin?: { ratio?: number; damageBonus?: number; parts?: { ratio?: number }[] } } } | null)?.result
+    return { ratio: r?.foeOrigin?.ratio, bonus: r?.foeOrigin?.damageBonus, rounds: r?.rounds, partRatio: r?.foeOrigin?.parts?.[0]?.ratio }
+  }
+
+  it('给定巨值,则三处倍率与 rounds 都封得住', () => {
+    const got = patch(1e300)
+    expect(got?.ratio, 'foeOrigin.ratio 没被夹').toBeLessThanOrEqual(1000)
+    expect(got?.bonus, 'damageBonus 没被夹').toBeLessThanOrEqual(10)
+    expect(got?.rounds, 'rounds 没被夹').toBeLessThanOrEqual(10000)
+    // parts 里那一层也要夹 —— 它进「(危地 ×N)」那一段
+    expect(got?.partRatio, 'parts[].ratio 没被夹').toBeLessThanOrEqual(1000)
+  })
+
+  it('给定正常值,则一字不改', () => {
+    const got = patch(2.5)
+    expect(got?.ratio).toBe(2.5)
+    expect(got?.bonus).toBe(2.5)
+    // rounds 走 Math.floor(整数回合数),2.5 → 2
+    expect(got?.rounds).toBe(2)
+    expect(got?.partRatio).toBe(2.5)
+  })
+
+  it('上界须覆盖得住真实量级', () => {
+    // 回合数真实是两位到三位数;倍率真实在个位到几十;增减伤至多 0.6(=0.35+0.25)
+    expect(10_000, '回合数上界低于真实值').toBeGreaterThan(1000)
+    expect(1000, '倍率上界低于真实值').toBeGreaterThan(100)
+    expect(10, '增减伤上界低于真实上限 0.6').toBeGreaterThan(1)
+  })
+
+  it('减益倍率(<1)必须原样保留 —— 别把它抬成 1', () => {
+    /*
+     * 这一条是审查意见指出的、我引入过的 bug:
+     * `parts` 里的 ratio 既有增益也有减益(「危地 ×0.98」「弱于本层 ×0.9」),
+     * 而 `foeOriginPartsText` 靠 `filter(p => p.ratio !== 1)` 决定显示哪几项 ——
+     * 给这一层加 `min: 1` 会把减益抬成 1,那条来源就从战报里整条消失。
+     *
+     * 原来那处只判了 `Number.isFinite`,是对的;只该补上界。
+     */
+    setActivePinia(createPinia())
+    const a = useAdventureStore()
+    a.$patch({
+      lastBattle: {
+        enemyName: '狼', enemyIcon: 'wolf', at: 1,
+        result: {
+          win: true, log: [], rounds: 5, playerHpPct: 1,
+          foeOrigin: { label: '层级补偿', ratio: 1, damageBonus: 0, damageReduction: 0, parts: [{ label: '危地', ratio: 0.98 }], note: '' }
+        }
+      }
+    } as never)
+    a.sanitize()
+    const parts = (a.lastBattle as { result?: { foeOrigin?: { parts?: { ratio?: number }[] } } } | null)?.result?.foeOrigin?.parts
+    expect(parts?.[0]?.ratio, '减益倍率 0.98 被抬成了 1,战报会漏掉这条来源').toBeCloseTo(0.98, 5)
+  })
+
+  it('极大的增减伤也被夹住', () => {
+    // 真实至多 0.6(judge 0.35 + suppress 0.25);坏档写 1e300 要封得住
+    const got = patch(1e300)
+    expect(got?.bonus, 'damageBonus 没被夹').toBeLessThanOrEqual(10)
+  })
+})
+
+/**
+ * 装备「累计投入」的器灵尘要有守卫 —— 它会被**原样退还**。
+ *
+ * `enhanceInvested` 在分解/回收时直接返回 `item.invested.dust`,
+ * 坏档写 `1e300` 就等于让玩家白得 1e300 器灵尘。
+ *
+ * 上界按真实最大投入算:满强化(15 级、最高层级、最高品质)累计实测 8743。
+ * 越界**归零**而不是夹到上界 —— 夹到两万仍是白送两万,
+ * 与「道源越界归零」同一条理。
+ */
+describe('坏档韧性 · 装备投入的器灵尘不许凭空退还', () => {
+  const patchInvested = (v: unknown): { dust?: number } | undefined => {
+    setActivePinia(createPinia())
+    const inv = useInventoryStore()
+    inv.$patch({
+      items: [{ uid: 'x', templateId: 'w_zidian', quality: 'mortal', tier: 1, level: 0, affixes: [], invested: { dust: v, stone: { m: 0, e: 0 } } }]
+    } as never)
+    inv.sanitize()
+    return inv.items[0]?.invested
+  }
+
+  it('巨值归零,分解时不退还', () => {
+    for (const v of [1e300, Number.MAX_VALUE, 1e9]) {
+      const got = patchInvested(v)
+      expect(got?.dust, `invested.dust ${v} 该归零`).toBe(0)
+    }
+  })
+
+  it('真实投入原样保留', () => {
+    // 满强化累计实测 8743;几百到几千都是正常档
+    for (const v of [0, 500, 1000, 8743]) {
+      expect(patchInvested(v)?.dust, `真实投入 ${v} 被误清`).toBe(v)
+    }
+  })
+
+  it('上界须覆盖得住满强化的真实累计', () => {
+    // 15 级满强化 + 最高层级 + 最高品质,实测 8743;上界两万留一档余量
+    expect(20_000, '上界低于满强化的真实累计').toBeGreaterThan(8743)
+  })
+})
+
+/**
+ * 器灵尘上界须**覆盖得住真实可达的最大累计** —— 不能只凭一个手算的数字。
+ *
+ * 首版的依据是「满强化 15 级累计 8743」,而审查意见提醒:
+ * 若哪天出现「等级重置但投入保留」的路径,累计就会超过它。
+ * 这条判据把那个前提**算出来钉住**:遍历全部等级与层级,
+ * 断言累计投入的上确界确实低于我们设的 20000。
+ *
+ * 若将来真出现重置路径,这条会红 —— 那时该做的是重新算上界,
+ * 而不是把门槛抬高蒙混过去。
+ */
+describe('坏档韧性 · 器灵尘上界与真实可达的最大累计', () => {
+  it('满强化的累计投入确实远低于上界', () => {
+    let maxDust = 0
+    // 每一档层级与品质都算一遍,取最大
+    for (let tier = 1; tier <= MAX_EQUIP_TIER; tier += 1) {
+      for (let rank = 0; rank <= 4; rank += 1) {
+        let dust = 0
+        for (let lv = 0; lv < EQUIP_LEVEL_SANITIZE_CAP; lv += 1) dust += upgradeCost(lv, tier, rank, 0).dust
+        maxDust = Math.max(maxDust, dust)
+      }
+    }
+    expect(maxDust, '真实累计投入已超过读档上界 —— 正常档会被误清').toBeLessThan(INVESTED_DUST_MAX)
+    // 也不能低得离谱:至少要有几千,否则说明算错了
+    expect(maxDust, '算出来的最大累计小得不像话,判据没跑到东西').toBeGreaterThan(1000)
+  })
+})
+
+/**
+ * 诊断条目的「出现次数」要有上界 —— 面板上那处是裸插值。
+ *
+ * `SettingsDiagnosticsSection` 印的是 `×{{ latestError.count }}`,
+ * 没有走格式化函数,坏档写 `1e300` 就直接印出「×1e+300」。
+ *
+ * 这是「只用于展示的字段同样需要守卫」的又一个例子:
+ * 该字段不参与任何计算,所以「不影响判定」不等于「不需要守」。
+ */
+describe('坏档韧性 · 诊断条目出现次数的上界', () => {
+  const patchCount = (v: unknown): number | undefined => {
+    setActivePinia(createPinia())
+    const d = useDiagStore()
+    d.$patch({ errors: [{ at: 1, info: '', message: 'x', route: '', count: v }] } as never)
+    d.sanitize()
+    return (d.errors as { count?: number }[] | undefined)?.[0]?.count
+  }
+
+  it('巨值被夹住,不再印出科学计数', () => {
+    for (const v of [1e300, Number.MAX_VALUE, 1e9]) {
+      expect(patchCount(v), `count ${v} 没被夹住`).toBeLessThanOrEqual(10_000)
+    }
+  })
+
+  it('正常次数原样保留', () => {
+    for (const v of [1, 3, 500]) {
+      expect(patchCount(v), `正常次数 ${v} 被误改`).toBe(v)
+    }
+  })
+
+  it('下限仍是 1(0 次不算出现过)', () => {
+    expect(patchCount(0), '0 次该被抬到 1').toBe(1)
+    expect(patchCount(-5), '负数该被抬到 1').toBe(1)
+  })
+})
+
+/**
+ * 诊断计数在**运行期**也要封顶,不只是读档时。
+ *
+ * `sanitize()` 只在场次开始时跑一次,而一条反复触发的诊断会经 `record()`
+ * 一路涨上去;重启后被夹回上限,玩家看到计数突然变小(审查意见指出的)。
+ *
+ * 这条钉的是「两处用同一个口径」:直接构造一个已到上限的条目,
+ * 再触发一次同文案的 record,断言计数停在上限、不越过。
+ */
+describe('坏档韧性 · 诊断计数的运行期与读档口径一致', () => {
+  it('已到上限时再触发一次,计数停在上限', () => {
+    setActivePinia(createPinia())
+    const d = useDiagStore()
+    // 先灌一条已顶到上限的条目
+    d.$patch({ errors: [{ at: 1, info: '', message: '同一条', route: '', count: 10_000 }] } as never)
+    d.sanitize()
+    expect((d.errors as { count: number }[])[0]?.count, '读档后应停在上限').toBe(10_000)
+    // 运行期再触发同一条
+    d.record({ info: '', message: '同一条' })
+    expect((d.errors as { count: number }[])[0]?.count, '运行期自增越过了上限').toBe(10_000)
+  })
+
+  it('未到上限时正常自增', () => {
+    setActivePinia(createPinia())
+    const d = useDiagStore()
+    d.record({ info: '', message: '同一条' })
+    d.record({ info: '', message: '同一条' })
+    d.record({ info: '', message: '同一条' })
+    expect((d.errors as { count: number }[])[0]?.count, '正常自增被误伤').toBe(3)
+  })
+})
+
+/**
+ * 虚界的四个配置数要有上界 —— 它们**直接进结算**,不是只给人看的。
+ *
+ * `rewardDaoSource` 进 `reward = world.rewardDaoSource + run.bonus`(道源到账)、
+ * `entryCost` 是入场费、`fights` 是全程场数、`anchorTier` 决定该界锚点境界。
+ * 坏档写 `1e300` 时分别对应:白得天文数字道源、入场费永远付不起、远征永远打不完。
+ *
+ * 上界按 `worldGen` 的真实产出来定:赏格被 `Math.min(100, Math.max(55, ...))` 夹在 55–100、
+ * 入场费恒 20、场数恒 6、锚点层级恒 `VOID_ANCHOR_TIER`(32)。各留一档余量。
+ */
+describe('坏档韧性 · 虚界配置数的上界', () => {
+  /*
+   * 夹具**手写**,不调生成器。
+   *
+   * `generateApprovedWorldAsync` 在本文件里产出的 id 是 `chiyan`(天界世界),
+   * 而 `sanitizeVoidWorld` 要求 `w.id === 'void'` —— 拿生成器当夹具会让整座
+   * 世界按「形状坏」作废,判据静默空转(实测)。单独跑那份 spec 时它又确实产出
+   * `id: 'void'`,说明它依赖全局状态,不适合当夹具。
+   */
+  const world = {
+    id: 'void',
+    name: '试界',
+    seal: '幻',
+    anchorTier: 32,
+    desc: '',
+    ruleText: ['规则一', '规则二'],
+    rules: {},
+    entryCost: 20,
+    fights: 6,
+    healBetweenPct: 0.5,
+    rewardDaoSource: 60,
+    foes: [
+      { name: '甲', icon: 'user', atkR: 1, defR: 1, hpR: 1, speed: 1, skills: [], mods: {} },
+      { name: '乙', icon: 'user', atkR: 1, defR: 1, hpR: 1, speed: 1, skills: [], mods: {} }
+    ],
+    guardian: { name: '主', icon: 'user', atkR: 1, defR: 1, hpR: 1, speed: 1, skills: [], mods: {} },
+    routes: [
+      [
+        { id: 'a1', name: '甲路', desc: '', foe: { name: '甲', icon: 'user', atkR: 1, defR: 1, hpR: 1, speed: 1, skills: [], mods: {} }, bonus: 8, riskText: '' },
+        { id: 'a2', name: '乙路', desc: '', foe: { name: '乙', icon: 'user', atkR: 1, defR: 1, hpR: 1, speed: 1, skills: [], mods: {} }, bonus: 10, riskText: '' }
+      ],
+      [
+        { id: 'b1', name: '丙路', desc: '', foe: { name: '甲', icon: 'user', atkR: 1, defR: 1, hpR: 1, speed: 1, skills: [], mods: {} }, bonus: 12, riskText: '' },
+        { id: 'b2', name: '丁路', desc: '', foe: { name: '乙', icon: 'user', atkR: 1, defR: 1, hpR: 1, speed: 1, skills: [], mods: {} }, bonus: 14, riskText: '' }
+      ],
+      [
+        { id: 'c1', name: '戊路', desc: '', foe: { name: '甲', icon: 'user', atkR: 1, defR: 1, hpR: 1, speed: 1, skills: [], mods: {} }, bonus: 8, riskText: '' },
+        { id: 'c2', name: '己路', desc: '', foe: { name: '乙', icon: 'user', atkR: 1, defR: 1, hpR: 1, speed: 1, skills: [], mods: {} }, bonus: 12, riskText: '' }
+      ]
+    ]
+  } as const
+
+  it('真实产出原样通过', () => {
+    setActivePinia(createPinia())
+    const e = useEndgameStore()
+    e.$patch({ voidWorld: JSON.parse(JSON.stringify(world)) } as never)
+    e.sanitize()
+    const kept = e.voidWorld
+    expect(kept, '手写夹具没通过 sanitize —— 夹具形状要与 sanitizeVoidWorld 对齐(否则判据空转)').toBeTruthy()
+    expect(kept?.rewardDaoSource, '真实赏格被误改').toBe(60)
+    expect(kept?.entryCost, '真实入场费被误改').toBe(20)
+    expect(kept?.fights, '真实场数被误改').toBe(6)
+    expect(kept?.anchorTier, '真实锚点层级被误改').toBe(32)
+  })
+
+  it('坏的巨值必须封住 —— 这四个数直接进结算', () => {
+    setActivePinia(createPinia())
+    const e = useEndgameStore()
+    e.$patch({ voidWorld: { ...JSON.parse(JSON.stringify(world)), rewardDaoSource: 1e300, entryCost: 1e300, fights: 1e300, anchorTier: 1e300 } } as never)
+    e.sanitize()
+    const got = e.voidWorld
+    expect(got, '夹具在坏值下也整座作废了,判据测不到东西').toBeTruthy()
+    /*
+     * 这里的断言要**精确**,不能只写「小于等于上界」——
+     * 那样「把坏值换成兜底默认值 0」也能过,而 0 赏格意味着打赢也拿不到道源。
+     * 故先钉住「确实是夹到上界」,再钉住「不是归零」。
+     */
+    expect(got?.rewardDaoSource, '赏格没被夹到上界(归零也不对:打赢拿不到道源)').toBe(200)
+    expect(got?.entryCost, '入场费没被夹到上界').toBe(500)
+    expect(got?.fights, '场数没被夹到上界').toBe(20)
+    expect(got?.anchorTier, '锚点层级没被夹到上界').toBe(64)
+  })
+})
+
+/**
+ * 界域/试炼战绩的三处数字要有上界 —— 它们都是**裸插值**。
+ *
+ * 界面上直接印「已破 ×N」「最佳 N 回合」,没有格式化兜底;
+ * 而读档守卫只判了 `Number.isFinite`,坏档写 1e300 就印成「已破 ×1e+300」。
+ *
+ * 同一条线在第 40-47 轮反复出现:展示路径不一定经过格式化函数,
+ * 所以「只给人看的字段」同样要守。
+ */
+describe('坏档韧性 · 界域与试炼战绩的上界', () => {
+  const patchAll = (v: unknown): { clears?: number; trialClears?: number; bestRounds?: number } => {
+    setActivePinia(createPinia())
+    const e = useEndgameStore()
+    e.$patch({ trialRecords: { qisha: { clears: v, bestRounds: v } }, worldClears: { chiyan: v } } as never)
+    e.sanitize()
+    return {
+      clears: (e.worldClears as Record<string, number> | undefined)?.chiyan,
+      trialClears: (e.trialRecords as Record<string, { clears?: number }> | undefined)?.qisha?.clears,
+      bestRounds: (e.trialRecords as Record<string, { bestRounds?: number }> | undefined)?.qisha?.bestRounds
+    }
+  }
+
+  it('三处巨值都被夹住', () => {
+    for (const v of [1e300, Number.MAX_VALUE, 1e9]) {
+      const got = patchAll(v)
+      expect(got.clears, `worldClears ${v} 没被夹住`).toBeLessThanOrEqual(10_000)
+      expect(got.trialClears, `trialRecords.clears ${v} 没被夹住`).toBeLessThanOrEqual(10_000)
+      expect(got.bestRounds, `bestRounds ${v} 没被夹住`).toBeLessThanOrEqual(10_000)
+    }
+  })
+
+  it('真实战绩原样保留', () => {
+    const got = patchAll(500)
+    expect(got.clears, '真实破界次数被误改').toBe(500)
+    expect(got.trialClears, '真实试炼通关数被误改').toBe(500)
+    expect(got.bestRounds, '真实最佳回合数被误改').toBe(500)
+  })
+
+  it('上界宽到不会误伤任何真实对局', () => {
+    // 一局里破一界几百次、一场打几百回合都已是极值
+    expect(10_000, '上界低于真实可能值').toBeGreaterThan(1000)
+  })
+
+  it('写入端自增也饱和 —— 否则重启后计数会变小', () => {
+    /*
+     * 审查意见指出的:`sanitize` 只在开场跑一次,而 `recordWorldClear` / `recordTrial`
+     * 每次通关都 +1 —— 不饱和的话,拖到上限之后重启会被夹回来,玩家看到数字变小。
+     * 与 `diag.record` 的自增封顶同一条理。
+     */
+    setActivePinia(createPinia())
+    const e = useEndgameStore()
+    e.$patch({ worldClears: { chiyan: 10_000 }, trialRecords: { qisha: { clears: 10_000, bestRounds: 50 } } } as never)
+    e.recordWorldClear('chiyan')
+    e.recordTrial('qisha', 1e300)
+    expect((e.worldClears as Record<string, number>).chiyan, '破界次数自增越过了上限').toBe(10_000)
+    expect((e.trialRecords as Record<string, { clears: number }>).qisha?.clears, '试炼次数自增越过了上限').toBe(10_000)
+    // 回合数入参也要封顶,否则「最佳 N 回合」会跳成科学计数
+    expect((e.trialRecords as Record<string, { bestRounds: number }>).qisha?.bestRounds, '坏入参的回合数没被封住').toBeLessThanOrEqual(10_000)
+  })
+
+  it('未到上限时正常自增', () => {
+    setActivePinia(createPinia())
+    const e = useEndgameStore()
+    e.recordWorldClear('chiyan')
+    e.recordWorldClear('chiyan')
+    expect((e.worldClears as Record<string, number>).chiyan, '正常自增被误伤').toBe(2)
+  })
+})
+
+/**
+ * 区域胜场要封顶 —— 它同时是**判定依据**与**显示值**。
+ *
+ * `worldMemory` 的兴衰判据是 `totalWins >= FLOURISH_WINS`(=80):
+ * 坏档写 1e300 时该区域**永久兴盛**,而胜场数本身也会印在区域卡上。
+ *
+ * 这是「有上界不等于行为正确」的正向例子:封顶之后判定恢复正常,
+ * 因为一万仍大于 80 —— 但这不代表该归零(归零会让真实战绩消失)。
+ */
+describe('坏档韧性 · 区域胜场的上界', () => {
+  const patchWins = (v: unknown): number | undefined => {
+    setActivePinia(createPinia())
+    const p = usePlayerStore()
+    p.$patch({ regionWins: { qingyun: v } } as never)
+    p.sanitize()
+    return (p.regionWins as Record<string, number> | undefined)?.qingyun
+  }
+
+  it('巨值被夹住,不再让该区域永久兴盛', () => {
+    for (const v of [1e300, Number.MAX_VALUE, 1e9]) {
+      const got = patchWins(v)
+      expect(got, `regionWins ${v} 没被夹住`).toBeLessThanOrEqual(10_000)
+    }
+  })
+
+  it('真实胜场原样保留', () => {
+    for (const v of [0, 5, 30, 80, 500]) {
+      expect(patchWins(v), `真实胜场 ${v} 被误改`).toBe(v)
+    }
+  })
+
+  it('上界须远高于兴衰判据的两个阈值', () => {
+    // STABLE_WINS=30 / FLOURISH_WINS=80;上界必须大于它们,否则正常档判不出兴衰
+    expect(10_000, '上界低于兴衰阈值,正常档会被误判').toBeGreaterThan(80)
+  })
+
+  it('写入端自增也饱和 —— 否则重启后胜场会变小', () => {
+    /*
+     * 审查意见指出的:`sanitize` 只在开场跑一次,而 `recordRegionWin` /
+     * `applyRegionWinBatch` 直接 `+n` —— 不饱和的话,越过上限后重启会被夹回来,
+     * 玩家看到该区域胜场变小。与 `recordWorldClear` / `diag.record` 同一条理。
+     */
+    setActivePinia(createPinia())
+    const p = usePlayerStore()
+    p.$patch({ regionWins: { qingyun: 10_000 } } as never)
+    p.recordRegionWin('qingyun')
+    expect((p.regionWins as Record<string, number>).qingyun, '单次自增越过了上限').toBe(10_000)
+  })
+
+  it('未到上限时正常自增', () => {
+    setActivePinia(createPinia())
+    const p = usePlayerStore()
+    p.recordRegionWin('qingyun')
+    p.recordRegionWin('qingyun')
+    expect((p.regionWins as Record<string, number>).qingyun, '正常自增被误伤').toBe(2)
+  })
+})
+
+/**
+ * 转世次数的**写入端**也要饱和 —— 与战绩计数同一条理。
+ *
+ * `sanitize` 用 `LIFE_COUNTER_CAP` 封顶,但 `rebirth()` 每次转世都 +1 且不饱和:
+ * 转世次数越过上限后重启会被夹回来,玩家看到「第 N 世」变小。
+ * 这个数还进 `suppressLife` 的等号判定,差一位就对不上。
+ */
+describe('坏档韧性 · 转世次数不能饱和', () => {
+  /*
+   * 这一条被审查意见纠正过一次,而且**方向是反的**。
+   *
+   * `count` 不只是个计数,它是「本世」的标识:`suppressLife` 与它比等号,
+   * 相等才算本世的镇压权益。给自增加饱和后,两世的世号会相同 ——
+   * 旧世残留的权益会在新世生效(审查意见里那条「高」)。
+   *
+   * `LIFE_COUNTER_CAP` 是**读档守卫**,防的是坏档写 MAX_VALUE;
+   * 正常游玩几百年也转不了几万次,不需要也不该在写入端夹。
+   */
+  it('转世后世号必须递增 —— 它是本世标识,不能停在同一个值上', () => {
+    setActivePinia(createPinia())
+    const p = usePlayerStore()
+    p.$patch({ reincarnation: { ...p.reincarnation, count: 5 } } as never)
+    p.rebirth({ roots: [] } as never)
+    expect(p.reincarnation.count, '正常自增被误伤').toBe(6)
+    p.rebirth({ roots: [] } as never)
+    expect(p.reincarnation.count, '两次转世后应到 7;停住会让两世共用一个世号').toBe(7)
+  })
+
+  it('即使起点已在上限,转世后世号仍须变化', () => {
+    /*
+     * 这条专防「把饱和加回来」。起点取上限值:若写入端夹住,
+     * 转世后 count 仍是 1000000,与上一世共用一个世号 ——
+     * `suppressLife` 的等号判定就会把旧世残留认成本世。
+     */
+    setActivePinia(createPinia())
+    const p = usePlayerStore()
+    p.$patch({ reincarnation: { ...p.reincarnation, count: 1_000_000 } } as never)
+    p.rebirth({ roots: [] } as never)
+    expect(p.reincarnation.count, '转世后世号没变 —— 两世共用一个标识').toBe(1_000_001)
+  })
+
+  it('读档守卫仍在 —— 坏档的 MAX_VALUE 会被夹', () => {
+    setActivePinia(createPinia())
+    const p = usePlayerStore()
+    p.$patch({ reincarnation: { ...p.reincarnation, count: Number.MAX_VALUE } } as never)
+    p.sanitize()
+    expect(p.reincarnation.count, '坏档的转世次数没被读档守卫夹住').toBeLessThanOrEqual(1_000_000)
+  })
+})
+
+/**
+ * 道侣机缘的计数要归零,不是夹到上界。
+ *
+ * 触发判据是 `b.opportunities < b.nextEventAt`,而 `nextEventAt` 由
+ * `opportunities + EVENT_GAP`(=6)推出来 —— 正常值域是 0..6。
+ * 坏档写 1e300 时两边一起极大,**判据恒假,那位道侣的机缘再也不来**。
+ *
+ * 夹到同一个上界不算解决:两值相等虽会触发一次,但语义上仍是「攒了 100 次」。
+ * 归零表示「刚触发过、从头攒」,与坏档该有的行为一致。
+ */
+describe('坏档韧性 · 道侣机缘计数越界归零', () => {
+  const patchBond = (v: unknown): { opportunities?: number; nextEventAt?: number } | null => {
+    setActivePinia(createPinia())
+    const p = usePlayerStore()
+    const id = (DAOLU[0] as { id: string } | undefined)?.id ?? ''
+    p.$patch({
+      bond: {
+        daoluId: id, stage: 'met', fate: 50, trust: 50, accord: 50, shared: 3, metAt: 1,
+        fallen: false, departed: false, doneEvents: [], opportunities: v, nextEventAt: v,
+        pendingEventId: null, intentPending: false, intent: null
+      }
+    } as never)
+    p.sanitize()
+    return p.bond as { opportunities?: number; nextEventAt?: number } | null
+  }
+
+  const patchBondPair = (opp: unknown, next: unknown): { opportunities?: number; nextEventAt?: number } | null => {
+    setActivePinia(createPinia())
+    const p = usePlayerStore()
+    const id = (DAOLU[0] as { id: string } | undefined)?.id ?? ''
+    p.$patch({
+      bond: {
+        daoluId: id, stage: 'met', fate: 50, trust: 50, accord: 50, shared: 3, metAt: 1,
+        fallen: false, departed: false, doneEvents: [], opportunities: opp, nextEventAt: next,
+        pendingEventId: null, intentPending: false, intent: null
+      }
+    } as never)
+    p.sanitize()
+    return p.bond as { opportunities?: number; nextEventAt?: number } | null
+  }
+
+  it('巨值归零,并让下一次机缘重新可期', () => {
+    const got = patchBond(1e300)
+    expect(got?.opportunities, '机会计数没归零').toBe(0)
+    expect(got?.nextEventAt, '下一次机缘的门槛没复位').toBe(6)
+    // 判据 `opportunities < nextEventAt` 必须重新成立
+    expect((got?.opportunities ?? 0) < (got?.nextEventAt ?? 0), '机缘判据仍是恒假').toBe(true)
+  })
+
+  it('只坏一个时,两个一起复位 —— 它们是一对', () => {
+    /*
+     * 审查意见指出的:分别处理这两个字段会让时序错乱 ——
+     * 单独把 nextEventAt 复位成 6、opportunities 仍是一百多,判据恒假;
+     * 反过来则每次调用都触发事件。
+     */
+    for (const [opp, next] of [
+      [1e300, 3],
+      [3, 1e300]
+    ] as const) {
+      const got = patchBondPair(opp, next)
+      expect(got?.opportunities, `只坏一方 (${opp},${next}) 时机会计数没复位`).toBe(0)
+      expect(got?.nextEventAt, `只坏一方 (${opp},${next}) 时门槛没复位`).toBe(6)
+      expect((got?.opportunities ?? 0) < (got?.nextEventAt ?? 0), '复位后判据仍不成立').toBe(true)
+    }
+  })
+
+  it('正常计数原样保留', () => {
+    const got = patchBond(5)
+    expect(got?.opportunities).toBe(5)
+    expect(got?.nextEventAt).toBe(5)
+  })
+})
+
+/**
+ * 道痕的世号与宿敌的败绩数要有上界。
+ *
+ * 道痕世号同时是**筛选依据**(`m.life === currentLife` 筛本世)、
+ * **随机种子成分**(`seedOf(targetId, life)`)与**显示值**(「第N世」);
+ * 宿敌的「败我 N 次」是裸插值且参与 `>= 3` 筛选。
+ */
+describe('坏档韧性 · 道痕世号与宿敌败绩的上界', () => {
+  it('道痕世号被夹住,不会印出「第1e+300世」', () => {
+    setActivePinia(createPinia())
+    const e = useEndgameStore()
+    e.$patch({
+      marks: [{
+        targetId: 'chiyan', targetName: '赤炎界', life: 1e300, daoPathId: null, at: 1,
+        cleared: false, rounds: 10, buildName: '测试', powerText: '1'
+      }]
+    } as never)
+    e.sanitize()
+    const m = (e.marks as { life?: number }[] | undefined)?.[0]
+    /*
+     * 上界不再写死:它必须比 `reincarnation.count` 的守卫高一档
+     * (写入端记的是 count+1,同值会让世号对不上),故断言「明显小于坏值」即可。
+     */
+    expect(m?.life, '道痕世号没被夹住').toBeLessThan(1e9)
+    expect(m?.life, '道痕世号被夹得太狠,正常档会被误伤').toBeGreaterThan(1e5)
+  })
+
+  it('宿敌败绩被夹住,不再永远满足「败我 ≥ 3」的筛选', () => {
+    setActivePinia(createPinia())
+    const p = usePlayerStore()
+    p.$patch({
+      nemeses: [{ enemyId: 'e1', enemyName: '狼', regionId: 'qingyun', lossCount: 1e300, lastLossAt: 1 }]
+    } as never)
+    p.sanitize()
+    const n = (p.nemeses as { lossCount?: number }[] | undefined)?.[0]
+    expect(n?.lossCount, '宿敌败绩没被夹住').toBeLessThanOrEqual(10_000)
+  })
+
+  it('真实值原样保留', () => {
+    setActivePinia(createPinia())
+    const p = usePlayerStore()
+    p.$patch({
+      nemeses: [{ enemyId: 'e2', enemyName: '虎', regionId: 'qingyun', lossCount: 5, lastLossAt: 1 }]
+    } as never)
+    p.sanitize()
+    expect((p.nemeses as { lossCount?: number }[] | undefined)?.[0]?.lossCount).toBe(5)
+  })
+})
+
+/**
+ * 世号的上界必须**比写入端高一档**。
+ *
+ * 多个写入点记的是 `player.reincarnation.count + 1`(道痕、里程碑、试炼记录),
+ * 而 `count` 的读档守卫是 1e6。若道痕世号的上界取同一个数,
+ * `count` 正好等于上限时写入端写 `1e6 + 1`,读回来却被夹成 `1e6` ——
+ * 本世道痕/里程碑的世号对不上,整块记录消失(审查意见指出的)。
+ *
+ * 这条判据不复制常量,而是**实测**两者的关系:把 count 顶到它的守卫上限,
+ * 再写一条世号为 `count + 1` 的道痕,要求它读回来仍是那个值。
+ */
+describe('坏档韧性 · 世号上界须容得下 count + 1', () => {
+  it('count 顶到上限时,本世道痕的世号仍能对上', () => {
+    setActivePinia(createPinia())
+    const p = usePlayerStore()
+    p.$patch({ reincarnation: { ...p.reincarnation, count: 1_000_000 } } as never)
+    p.sanitize()
+    const thisLife = p.reincarnation.count + 1
+
+    const e = useEndgameStore()
+    e.$patch({
+      marks: [{
+        targetId: 'chiyan', targetName: '赤炎界', life: thisLife, daoPathId: null, at: 1,
+        cleared: false, rounds: 10, buildName: '测试', powerText: '1'
+      }]
+    } as never)
+    e.sanitize()
+    const kept = (e.marks as { life?: number }[] | undefined)?.[0]
+    expect(kept?.life, `本世道痕的世号 ${thisLife} 被读档守卫夹掉了,整整一世的记录会消失`).toBe(thisLife)
+  })
+})
+
+/**
+ * 忆战快照的速度、道痕回合数、远征总回合数要有上界。
+ *
+ * 三处各有后果:
+ *   · `r.speed` 进 `CombatantSnap.speed`,参与先手判定(`pSpeed >= eSpeed`)——
+ *     坏档写 1e300 时忆战重演里玩家永远后手,「往世之你 vs 今世之你」不再是当年那场;
+ *   · `m.rounds` 进道痕面板的「{{ mark.rounds }} 回合」,是裸插值;
+ *   · `run.totalRounds` 进 `slaughterSpeedBonus` 与道痕记录的回合数。
+ */
+describe('坏档韧性 · 忆战速度与回合数的上界', () => {
+  const patch = (v: number): { markRounds?: number; replaySpeed?: number; totalRounds?: number } => {
+    setActivePinia(createPinia())
+    const e = useEndgameStore()
+    e.$patch({
+      marks: [{
+        targetId: 'chiyan', targetName: '赤炎', life: 1, daoPathId: null, at: 1, cleared: false,
+        rounds: v, buildName: 't', powerText: '1',
+        replay: { attack: { m: 1, e: 2 }, defense: { m: 1, e: 2 }, maxHp: { m: 1, e: 2 }, speed: v, skills: [], artifacts: [] }
+      }],
+      worldRun: { worldId: 'chiyan', pactId: null, gateId: null, layer: 1, bonus: 0, rows: [], carriedHpPct: 1, totalRounds: v, winStacks: 0 }
+    } as never)
+    e.sanitize()
+    const mark = (e.marks as { rounds?: number; replay?: { speed?: number } }[] | undefined)?.[0]
+    return {
+      markRounds: mark?.rounds,
+      replaySpeed: mark?.replay?.speed,
+      totalRounds: (e.worldRun as { totalRounds?: number } | null)?.totalRounds
+    }
+  }
+
+  it('三处巨值都被夹住', () => {
+    const got = patch(1e300)
+    expect(got.markRounds, '道痕回合数没被夹住').toBeLessThanOrEqual(10_000)
+    expect(got.replaySpeed, '忆战速度没被夹住 —— 玩家会永远后手').toBeLessThanOrEqual(100)
+    expect(got.totalRounds, '远征总回合数没被夹住').toBeLessThanOrEqual(10_000)
+  })
+
+  it('真实值原样保留', () => {
+    const got = patch(5)
+    expect(got.markRounds).toBe(5)
+    expect(got.replaySpeed).toBe(5)
+    expect(got.totalRounds).toBe(5)
+  })
+
+  it('速度上界须远高于真实量级(玩家侧是 1 + 词缀之和)', () => {
+    expect(100, '速度上界低于真实量级,正常档会被误夹').toBeGreaterThan(10)
+  })
+
+  it('totalRounds 的**累加路径**也要封顶', () => {
+    /*
+     * 审查意见指出的:首版只封了「rows 为空时取存档原值」那条,
+     * 而 rows 非空时是逐行累加 —— 每行本身已夹到 BATTLE_ROUNDS_CAP,
+     * 五行相加就能到五倍。
+     */
+    setActivePinia(createPinia())
+    const e = useEndgameStore()
+    const rows = Array.from({ length: 5 }, () => ({ foeName: '甲', win: true, rounds: 10_000, hpLeftPct: 0.5 }))
+    e.$patch({
+      worldRun: { worldId: 'chiyan', pactId: null, gateId: null, layer: 1, bonus: 0, rows, carriedHpPct: 1, totalRounds: 0, winStacks: 0 }
+    } as never)
+    e.sanitize()
+    expect((e.worldRun as { totalRounds?: number } | null)?.totalRounds, '累加后越过了上界').toBeLessThanOrEqual(10_000)
+  })
 })

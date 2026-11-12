@@ -1020,6 +1020,75 @@ describe('调色板 · 货架副标题在品阶淡底上也要过线', () => {
     const bg: [number, number, number] = [c[0] * 0.13 + paper[0] * 0.87, c[1] * 0.13 + paper[1] * 0.87, c[2] * 0.13 + paper[2] * 0.87]
     expect(ratio(faint, bg), 'ink-faint 在神品底上居然过线了,判据可以撤').toBeLessThan(4.5)
   })
+
+  /**
+   * 价签比副标题更吃紧。
+   *
+   * 副标题换 ink-soft 就安全了(6.86 起步),但同一张卡底上还有一条 `text-gold-ink`
+   * 的价签 —— 它是玩家判断买不买得起的那条读数,而 gold-ink 对纸本就在 4.7 上下,
+   * 再叠一档浓底就跌破。实测:装备卡那个分支早就把底封在 6%,
+   * 灵草格却一直用的 herbTier.bg(神品 13%),价签压上去只剩 4.39:1。
+   *
+   * 判据两条:两条分支的底都封在 6%,且 gold-ink 压在那档底上仍过 AA。
+   */
+  it('两条分支的品阶淡底都封在 6%,价签仍过 4.5:1', () => {
+    // 从源码读实际用的 alpha,不在这里写死 —— 写死的话改回 herbTier.bg 判据照样绿
+    const lines = SHOP.split('\n').filter(l => l.includes('tierStyle:'))
+    expect(lines.length, '货架卡的两条 tierStyle 分支都要找得到').toBeGreaterThanOrEqual(2)
+    for (const line of lines) {
+      // 一行里有两次 tint():边框 alpha 在前、底浓在后。旧的 `herbTier.bg` / `tier.bg`
+      // 不能当数值读,按它们各自的真实浓淡代入(0.13 / 0.06),这样改回去会被量到。
+      const alphas = [...line.matchAll(/tint\([^,]+,\s*([^)]+?)\s*\)/g)].map(x => x[1]!.trim())
+      expect(alphas.length, `这一行找不到 tint():${line.trim()}`).toBeGreaterThanOrEqual(2)
+      const bgAlpha = alphas[alphas.length - 1]!
+      const numeric = bgAlpha === 'herbTier.bg' ? 0.13 : bgAlpha === 'tier.bg' ? 0.13 : Number(bgAlpha)
+      expect(Number.isFinite(numeric), `认不出底浓写法:${bgAlpha}`).toBe(true)
+      expect(numeric, `淡底 ${bgAlpha} 太浓 —— 价签会跌破 AA(见本条注释)`).toBeLessThanOrEqual(0.06)
+    }
+  })
+
+  it('gold-ink 压在最深的 6% 品阶底上仍过 4.5:1', () => {
+    // 实底是 card-ink 的 paper-lifted(夜主题另算),品阶色取灵草五品与装备九品的装饰色
+    const lifted: Record<'light' | 'dark', [number, number, number]> = {
+      light: [244, 240, 230],
+      dark: [51, 49, 46]
+    }
+    const tones: [string, [number, number, number], [number, number, number]][] = [
+      ['凡', [104, 99, 88], [168, 161, 140]],
+      ['灵', [80, 109, 88], [147, 175, 149]],
+      ['仙', [62, 142, 139], [62, 142, 139]],
+      ['神', [168, 63, 57], [238, 136, 126]],
+      ['道', [233, 185, 73], [233, 185, 73]]
+    ]
+    const gold: Record<'light' | 'dark', [number, number, number]> = {
+      light: [124, 94, 42],
+      dark: [200, 163, 90]
+    }
+    for (const theme of ['light', 'dark'] as const) {
+      const base = lifted[theme]
+      const fg = gold[theme]
+      for (const [name, lightTone, darkTone] of tones) {
+        const tone = theme === 'light' ? lightTone : darkTone
+        const bg: [number, number, number] = [
+          tone[0]! * 0.06 + base[0] * 0.94,
+          tone[1]! * 0.06 + base[1] * 0.94,
+          tone[2]! * 0.06 + base[2] * 0.94
+        ]
+        expect(ratio(fg, bg), `${name}品 6% 底上价签只有 ${ratio(fg, bg).toFixed(2)}:1 @${theme}`).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+
+  it('抓得住:13% 底上价签确实跌破 —— 所以封 6% 这条判据必要', () => {
+    const base: [number, number, number] = [244, 240, 230]
+    const divine: [number, number, number] = [168, 63, 57]
+    const bg: [number, number, number] = [
+      divine[0] * 0.13 + base[0] * 0.87,
+      divine[1] * 0.13 + base[1] * 0.87,
+      divine[2] * 0.13 + base[2] * 0.87
+    ]
+    expect(ratio([124, 94, 42], bg), '13% 底上价签居然过线了,判据可以撤').toBeLessThan(4.5)
+  })
 })
 
 describe('调色板 · 暗色当前境界卡的灰字也过线', () => {
@@ -1302,15 +1371,7 @@ describe('调色板 · 同色淡底不该承载同色文字', () => {
   })
 
   /**
-   * 承载**文字**的同色淡底已全部转成墨色字(第 264 轮)。
-   *
-   * 这一条钉住那次清理的落点:这些位置的字必须是 `text-ink`,不能再回到彩色字。
-   * 色块与描边保留,视觉上的品类区分由颜色块本身承担。
-   *
-   * 故障注入:把任一处改回 `text-cinnabar` / `text-jade` 等,本条红。
-   */
-  /**
-   * 承载文字的徽章已改墨色字(第 264~265 轮),但**源码层判不了这一条**。
+   * 承载**文字**的同色淡底已全部转成墨色字(第 264~265 轮),但**源码层判不了这一条**。
    *
    * 试过三种写法:按行找、按词回溯、按 ±6 行窗口。都不稳 ——
    *   一 模板里 class 与文字常分处相邻行;
@@ -1465,5 +1526,31 @@ describe('形制 · 不吃指针事件', () => {
     for (const m of CSS.matchAll(/^\.([a-z][a-z0-9-]+)\s*\{([\s\S]*?)^\}/gm)) blocks.set(m[1]!, m[2]!)
     const hit = [...blocks.keys()].filter(n => FORM.test(n) && !WAIVED.has(n))
     expect(hit.length, '扫到的形制基类太少,正则可能写歪了').toBeGreaterThan(20)
+  })
+})
+
+/**
+ * 货架卡的名字被截断时要留一条退路。
+ *
+ * 名字是这张卡第一样要读的东西(「这一件到底是什么」),而两列窄格在 320 宽下
+ * 格内只有约 78px —— 六个字的装备名必定截断。截断了却只给悬停之外无路可走,
+ * 玩家读不到全文。判据沿「副标题同法」既有那一条,补到名字上。
+ */
+describe('调色板 · 货架卡的名字被截断时给全文', () => {
+  const SHOP2 = readFileSync(resolve(ROOT, 'src/components/market/MarketShelfSection.vue'), 'utf-8')
+
+  it('名字那一行带 title,且仍是 truncate(窄格放不下)', () => {
+    // 名字那一段:p 开标签 + 插值。用插值定位,再回看同一段里有没有 truncate 与 title
+    const at = SHOP2.indexOf('{{ c.name }}')
+    expect(at, '找不到名字那一段').toBeGreaterThan(0)
+    const seg = SHOP2.slice(Math.max(0, at - 400), at)
+    expect(seg, '名字行应有 :title="c.name"').toContain(':title="c.name"')
+    // 同一段里还得有 truncate:加 title 不该顺手把截断去掉(去掉会撑破两列窄卡)
+    const tagStart = seg.lastIndexOf('<p')
+    expect(seg.slice(tagStart), '名字行仍是 truncate').toContain('truncate')
+  })
+
+  it('副标题仍保留它自己的 title(别把两处混成一处)', () => {
+    expect(SHOP2, '副标题那行也要有自己的 title').toContain(':title="c.sub"')
   })
 })

@@ -76,6 +76,18 @@ describe('设置 · decomposeRanks 档位守卫', () => {
 })
 
 describe('设置 · 布尔开关坏档清洗', () => {
+  /*
+   * 新 pinia = 干净的 settings 分片。
+   *
+   * 原先没有 beforeEach:`useSettingsStore()` 复用上一条用例的实例,
+   * 而本组会把字段直接改成脏值('false' / 1 / 'true')再 sanitize ——
+   * 乱序下若前面某条已经改过同一字段,sanitize 的输入就不是这条想要的,
+   * 报出来是「字符串真值"false"不再永久减速」这种像是真回归的话。
+   */
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
   it('只有字面 true 存活,其余字符串/数字真值一律 ===true 归一到 false', () => {
     const s = useSettingsStore()
     ;(s as unknown as { reduceMotion: unknown }).reduceMotion = 'false'
@@ -91,6 +103,16 @@ describe('设置 · 布尔开关坏档清洗', () => {
 })
 
 describe('设置 · 智能收纳品质线坏档清洗', () => {
+  /*
+   * 新 pinia = 干净的 settings 分片。
+   *
+   * 本组把 `smartKeep` 改坏再 sanitize,复用上一条用例的实例时输入就不是这条想要的:
+   * 乱序下两条都红,报的是「只留真实存在的品质 rank」这种像真回归的话。
+   */
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
   it('认不出的品质线回落灵品:99 不再让所有掉落静默化尘', () => {
     const s = useSettingsStore()
     s.smartKeep = { ...s.smartKeep, enabled: true, minQuality: 99, keepMinTier: 0 }

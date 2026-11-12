@@ -390,6 +390,79 @@ const SCENES = [
   },
   {
     /*
+     * 首启全流程:欢迎页 → 勾同意 → 「同意并开始」→ 传送动画 → 建号页。
+     *
+     * 上面两档只验**静态渲染**(页面画出来对不对);这条验**流程能不能走通**。
+     * 差别在于:动画、定时器、路由守卫三者串起来才决定玩家到底走不走得下去,
+     * 而它们只在真实点击序列里才一起生效。
+     *
+     * 实测踩过:第一次量时点完「同意并开始」只等 2 秒就看路由,停在 #/welcome ——
+     * 差一点当成「点了没反应」去修。查 `confirmStart()` 才看到中间有 2500ms 的传送动画
+     * (`enterTimer`),3 秒后才 router.push('/create')。**那不是缺陷,是我的等待太短。**
+     * 该等待时长写死在这里,免得后人重踩。
+     */
+    name: '首启全流程走到建号页',
+    route: '/welcome',
+    slices: () => ({
+      game: {
+        started: false,
+        saveVersion: 2,
+        createdAt: Date.now(),
+        lastActiveAt: Date.now(),
+        totalPlaySec: 0,
+        createRerolls: null,
+        createProfile: null
+      },
+      settings: { privacyAccepted: false, sfxOn: false, musicOn: false, musicVol: 0, sfxVol: 0, reduceMotion: true, battleSpeed: 4, decomposeRanks: [], smartKeep: { enabled: true, minQuality: 3, keepCoreAffix: true, keepComboPiece: true }, theme: 'dark' }
+    }),
+    after: async page => {
+      // 一、点「开始游戏」应弹出隐私确认,不是直接跳走
+      await page.evaluate(() => {
+        const b = [...document.querySelectorAll('button')].find(x => /开\s*始\s*游\s*戏/.test(x.textContent || ''))
+        b?.click()
+      })
+      await page.waitForTimeout(900)
+      const asked = await page.evaluate(() => !!document.querySelector('.modal-panel'))
+      // 二、不勾同意时确认钮必须置灰
+      const blockedBefore = await page.evaluate(() => {
+        const b = [...document.querySelectorAll('.modal-panel button')].find(x => /同意并开始/.test(x.textContent || ''))
+        return b ? b.disabled : null
+      })
+      // 三、勾上同意再确认
+      await page.evaluate(() => {
+        const cb = document.querySelector('.modal-panel input[type=checkbox]')
+        if (cb && !cb.checked) cb.click()
+      })
+      await page.waitForTimeout(300)
+      await page.evaluate(() => {
+        const b = [...document.querySelectorAll('.modal-panel button')].find(x => /同意并开始/.test(x.textContent || ''))
+        b?.click()
+      })
+      // 传送动画 2500ms,等 3.2s 留余量
+      await page.waitForTimeout(3200)
+      const landed = await page.evaluate(() => location.hash)
+      const onCreate = await page.evaluate(() => /道\s*号|灵\s*根|踏\s*入\s*仙\s*途/.test(document.body.innerText))
+      await page.evaluate(
+        r => {
+          window.__firstRun = r
+        },
+        { asked, blockedBefore, landed, onCreate }
+      )
+    },
+    grab: () => ({ text: '', buttons: [], panel: false, firstRun: window.__firstRun }),
+    judge: page => {
+      const r = page.firstRun
+      if (!r) return ['首启流程没跑起来(场景 after 未执行)']
+      const out = []
+      if (!r.asked) out.push('点「开始游戏」没弹隐私确认窗 —— 没同意就放行?')
+      if (r.blockedBefore !== true) out.push('没勾同意时「同意并开始」不是置灰的')
+      if (r.landed !== '#/create') out.push(`同意后落在 ${r.landed},不是 #/create(传送动画约 2.5s,本判据等 3.2s)`)
+      if (!r.onCreate) out.push('落在建号页但没渲染出道号/灵根/踏入仙途')
+      return out
+    }
+  },
+  {
+    /*
      * 建号页。
      *
      * 这是玩家必经的首屏流程,却一直不在任何真浏览器检查里:
@@ -444,15 +517,37 @@ const SCENES = [
      * 单字段畸形:整片损坏已有「坏档提示」那档管,但存档能解开、只有个别字段是 NaN/Infinity/
      * -1 的情形没有覆盖 —— 那种档 sanitize 会逐字段修,界面不该再去显示坏值。
      *
-     * 这一档同时灌坏多个字段,然后走遍主路由,检查 main 的可见文案里有没有
-     * NaN / Infinity / undefined 漏出来。逐个路由跳完把结果攒在 window 上,
-     * 最后用 grab 取回来判。
+     * 这一档同时灌坏多个字段,然后走遍主路由,检查可见文案里有没有坏值漏出来。
+     * 逐个路由跳完把结果攒在 window 上,最后用 grab 取回来判。
+     *
+     * **扫整页而不只是 main**(2026-11 修):寿元/灵石那几格在顶栏,不在 main 里 ——
+     * 而 `1.7976931348623157e+308/1.013京 载` 正是只在顶栏露出来的。
+     *
+     * **五类坏值,不只是 NaN/Infinity/undefined**:
+     *   · 有限的巨值:`age: MAX_VALUE` 过得了 `Number.isFinite`/`asFiniteNumber`,
+     *     裸插值印成 `1.7976931348623157e+308`、经 formatGN 印成 `1.80e308`;
+     *   · 超范围时间戳:`8640000000000001` 让 toLocaleString 吐出**英文** `Invalid Date`,
+     *     `getMonth()` 返回 NaN 于是印成 `NaN月NaN日`;
+     *   · `[object Object]`:字段被灌成对象而不是数字。
      */
     name: '单字段畸形走遍主路由',
     route: '/',
     slices: () => {
       const s = lateSlices()
-      s.player.age = NaN
+      /*
+       * age 用**有限巨值**而不是 NaN:NaN 被 `isFinite` 挡下,MAX_VALUE 不会 ——
+       * 后者才是「过得了守卫、印得出来」的那一类。原先这里灌的是 NaN,
+       * 于是新加的正则永远没有输入可抓(实测:拆掉上界+换回裸插值后仍然全绿)。
+       */
+      s.player.age = Number.MAX_VALUE
+      s.player.lifespanBonusYears = Number.MAX_VALUE
+      s.player.reincarnation = { ...(s.player.reincarnation ?? {}), count: Number.MAX_VALUE, daoFruit: Number.MAX_VALUE }
+      s.settings.lastExportAt = 8_640_000_000_000_001
+      s.game = { ...(s.game ?? {}), totalPlaySec: Number.MAX_VALUE }
+      s.adventure = {
+        ...(s.adventure ?? {}),
+        eventMemories: { ev_spring: { eventId: 'ev_spring', times: 3, lastAt: 8_640_000_000_000_001, lastChoiceIdx: 0 } }
+      }
       s.player.major = -5
       s.player.exp = { m: NaN, e: Infinity }
       s.resources.spiritStone = { m: NaN, e: 0 }
@@ -466,9 +561,13 @@ const SCENES = [
     },
     after: async page => {
       const routes = [
+        // 须与 src/router/index.ts 的真实路由逐项对齐。首启两页(/welcome /create)不在其列:
+        // 这一档铺的是坏档夹具,路由守卫会把它们弹回首页。
+        // 原写 `/endgame` —— 路由表里没有这条,通配兜底把它重定向到 `/`,
+        // 于是首页被扫了两遍,而那一项看着像在扫一个终局页(实测 hash 落到 `#/`)。
         '/', '/cultivation', '/adventure', '/inventory', '/character', '/build',
         '/codex', '/souls', '/titles', '/collection', '/market', '/dongfu',
-        '/endgame', '/settings', '/celestial', '/world', '/apprentice', '/legacy'
+        '/settings', '/celestial', '/world', '/apprentice', '/legacy'
       ]
       const hits = []
       for (const r of routes) {
@@ -477,8 +576,16 @@ const SCENES = [
         }, r)
         await page.waitForTimeout(280)
         const leaked = await page.evaluate(() => {
-          const t = document.querySelector('main')?.innerText ?? ''
-          return (t.match(/\bNaN\b|\bInfinity\b|\bundefined\b/g) || []).slice(0, 3)
+          const t = document.body?.innerText ?? ''
+          /*
+           * 科学计数那一段要盖住两种写法:
+           *   `1e+300` 来自 JS 的 Number→String(裸插值);
+           *   `1.7976931348623157e+308` 同样是裸插值,指数三位;
+           *   `1.80e308` 来自 formatGN 的兜底(mantissa 两位 + `e` + 无符号指数)。
+           * 只写 `e\+` 会漏掉最后一种 —— 那正是「经 formatGN 渲染」的形态。
+           */
+          const re = /\bNaN\b|\bInfinity\b|\bundefined\b|\bInvalid Date\b|[0-9]e\+?[0-9]{2,}|\[object Object\]/g
+          return (t.match(re) || []).slice(0, 3)
         })
         if (leaked.length) hits.push(`${r}:${leaked.join('/')}`)
       }
@@ -549,4 +656,9 @@ if (failures.length) {
   for (const f of failures) console.error(`  ✗ ${f}`)
   process.exit(1)
 }
-console.log('\n异常路径通过:坏档 / 满员 / 归零 / 满包 / 写盘失败 / 导入过新 / 闭关拦截 / 未拜师 / 欢迎页 / 建号页 / 单字段畸形十一档都解释得清')
+/*
+ * 档数由 SCENES.length 数出来,不手写 ——
+ * 上一版写死「十一档」,加了「首启全流程」之后仍印十一,而实际跑了十二档。
+ * 手写的计数会一直这么说下去,读的人无从发现少算了一档。
+ */
+console.log(`\n异常路径通过:${SCENES.length} 档(${SCENES.map(s => s.name).join(' / ')})都解释得清`)

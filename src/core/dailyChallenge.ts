@@ -24,10 +24,6 @@ export function todayNumber(): number {
   return todayLocalNum()
 }
 
-/**
- * 生成指定本地日的天道:日期种子确定性;裁判不受(无解/虚设)则顺延候选。
- * `day` 可注入,供界面用响应式墙钟日号驱动题面。
- */
 /** 第 t 个候选草稿(种子只取 day 与 t,故同步/异步两版逐位一致) */
 function draftForDay(day: number, t: number): ChallengeDraft {
   const rng = new RandomService(mulberry32(day * 131 + t * 977))
@@ -41,6 +37,10 @@ function draftForDay(day: number, t: number): ChallengeDraft {
   return { worldId: world.id, mutatorIds, pactId, name: `今日天道` }
 }
 
+/**
+ * 生成指定本地日的天道:日期种子确定性;裁判不受(无解/虚设)则顺延候选。
+ * `day` 可注入,供界面用响应式墙钟日号驱动题面。
+ */
 export function todayChallenge(day = todayNumber()): DailyChallenge | null {
   // 候选上限 32:取 16 时 2026-10-24、2027-10-17 两天全数落选(第 17、18 个才过)
   for (let t = 0; t < 32; t += 1) {
@@ -75,7 +75,14 @@ export function undertakeDaily(daily: DailyChallenge): ExpeditionResult | null {
   // 判闸用当下本地日号,不信 daily.day:驻足跨本地午夜时 daily 仍可能是昨天的考题,
   // 按传参判会让同一会话连领两份天道赏。
   const day = todayLocalNum()
-  if (endgame.dailyDoneDay === day) {
+  /*
+   * 用 `>=` 而不是 `===` —— **时钟回拨也要挡住**。
+   *
+   * 等号只挡「今天已领」;把系统时间调回昨天,day 变小、
+   * dailyDoneDay 仍是那个较大的值,等号不成立 → 天道赏可以再领一次。
+   * 与洞府巡游(第 54 轮)、日课翻日(第 63 轮)是同一类:日期判据要认「更晚」,不能只认「相等」。
+   */
+  if (typeof endgame.dailyDoneDay === 'number' && endgame.dailyDoneDay >= day) {
     ui.toast('今日已完成', 'info')
     return null
   }

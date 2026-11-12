@@ -6,7 +6,7 @@
  * - 相邻同条只加计数:连发会刷满格子,挤掉第一条
  */
 import { defineStore } from 'pinia'
-import { truncateCodePoints } from '@/utils/saveShape'
+import { truncateCodePoints, asTimestamp } from '@/utils/saveShape'
 import { ref } from 'vue'
 import { persistConfig } from '@/utils/storage'
 import { asArray, asFiniteNumber } from '@/utils/saveShape'
@@ -28,6 +28,12 @@ interface DiagEntry {
 export const DIAG_MAX = 20
 /** 单条摘要长度上限 */
 export const DIAG_MESSAGE_MAX = 200
+
+/**
+ * 单条诊断的「出现次数」读档上界 —— 面板会印「×N」,而那处是裸插值。
+ * 同一条错误在一局里重复几十上百次已极罕见,取一万已极宽;越过的必定是坏档。
+ */
+export const DIAG_COUNT_MAX = 10_000
 
 /** 任意异常值 → 一行摘要 */
 export function summarizeError(err: unknown): string {
@@ -53,11 +59,16 @@ export const useDiagStore = defineStore(
     function sanitize(): void {
       errors.value = asArray<DiagEntry>(errors.value, [], e => !!e && typeof (e as DiagEntry).message === 'string')
         .map(e => ({
-          at: asFiniteNumber(e.at, 0, 0),
+          at: asTimestamp(e.at, 0),
           info: typeof e.info === 'string' ? e.info : '',
           message: truncateCodePoints(String(e.message), DIAG_MESSAGE_MAX),
           route: typeof e.route === 'string' ? e.route : '',
-          count: Math.max(1, Math.floor(asFiniteNumber(e.count, 1, 1)))
+          /*
+           * 上界:诊断面板会印「×N」,而那处是**裸插值**、没有格式化兜底 ——
+           * 坏档写 1e300 会印出「×1e+300」。同一条错误在一局里重复几十上百次已极罕见,
+           * 取一万已极宽;越过的必定是坏档。
+           */
+          count: Math.floor(asFiniteNumber(e.count, 1, 1, DIAG_COUNT_MAX))
         }))
         .slice(-DIAG_MAX)
     }
@@ -76,7 +87,13 @@ export const useDiagStore = defineStore(
       const route = typeof raw?.route === 'string' ? raw.route : ''
       const last = errors.value[errors.value.length - 1]
       if (last && last.message === message && last.info === info) {
-        errors.value = [...errors.value.slice(0, -1), { ...last, at, route, count: last.count + 1 }]
+        /*
+         * 自增同样要有上界 —— `sanitize` 只在场次开始时跑一次,
+         * 而一条反复触发的诊断会在运行期一路涨上去;重启后被夹回上限,
+         * 玩家看到计数突然变小(审查意见指出的)。
+         * 两处用同一个常量,读档与运行期口径一致。
+         */
+        errors.value = [...errors.value.slice(0, -1), { ...last, at, route, count: Math.min(DIAG_COUNT_MAX, last.count + 1) }]
         return
       }
       const next = [...errors.value, { at, info, message, route, count: 1 }]

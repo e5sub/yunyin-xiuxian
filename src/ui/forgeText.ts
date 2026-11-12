@@ -1,13 +1,26 @@
+import { resourceShortText, shortageText } from './resourceShortText'
+
 /** 炼器提示:强化、分解、祭炼。只报结果与差额,数字与材料不省;缺料写「不足 / 尚差 N」,与重铸同一说法 */
 export function upgradeCapToast(): string {
   return '强化已至上限'
 }
 
-/** 强化缺料:缺哪一样就说哪一样,不用一句「或」 */
-export function upgradeShortToast(short: 'stone' | 'dust' | 'exp', gap?: { stone: string; dust: number; exp: string }): string {
-  if (short === 'stone') return `灵石${gap?.stone ? `尚差 ${gap.stone}` : '不足'}`
-  if (short === 'exp') return `修为${gap?.exp ? `尚差 ${gap.exp}` : '不足'}`
-  return `器灵尘${gap?.dust ? `尚差 ${gap.dust}` : '不足'}`
+/**
+ * 强化缺料:缺哪一样就说哪一样,不用一句「或」。
+ *
+ * 灵石/器灵尘两句转调 ui/resourceShortText —— 那里是「X 尚差 N」的唯一实现
+ * (重铸与词条转移早已并过去)。本处原先另写一份,差额算出来是 0 时按 falsy
+ * 报「不足」,与别处照实报「尚差 0」分成两种说法,正是那个模块要解决的问题。
+ *
+ * 本仓强化另收第三样成本「修为」(服务端下发),表里没有,单列一行,
+ * 但词序照 shared 的「X 尚差 N / X 不足」走,不再自带一套。
+ */
+export function upgradeShortToast(
+  short: 'stone' | 'dust' | 'exp',
+  gap?: { stone: string; dust: number; exp?: string }
+): string {
+  if (short === 'exp') return shortageText('修为', gap?.exp)
+  return resourceShortText(short, gap)
 }
 
 /** 强化失手:掉了级 */
@@ -70,14 +83,17 @@ export function artifactCapToast(): string {
   return '祭炼已至上限'
 }
 
-/** 祭炼缺料:悟道点与灵石分开报 */
+/**
+ * 祭炼缺料:悟道点与灵石分开报。
+ *
+ * 与强化、重铸、词条转移同走 resourceShortText 的 shortageText ——
+ * 「X尚差 N / X不足」这一句只该有一处实现。
+ */
 export function artifactShortToast(
   short: 'wudao' | 'stone',
   gap?: { wudao: number; stone: string }
 ): string {
-  const amount = short === 'wudao' ? gap?.wudao : gap?.stone
-  const missing = amount === undefined ? '不足' : `尚差 ${amount}`
-  return short === 'wudao' ? `悟道点${missing}` : `灵石${missing}`
+  return short === 'wudao' ? shortageText('悟道点', gap?.wudao) : shortageText('灵石', gap?.stone)
 }
 
 export function artifactDoneToast(name: string): string {

@@ -26,7 +26,7 @@ import { VOID_ANCHOR_TIER } from './worldGen'
 import { MAX_MAJOR } from '@/data/realms'
 import { resolveCombat, sampleWinRate } from './combat'
 import { modOf } from './statsCalc'
-import { SLAUGHTER_PER_WIN, SWORD_PER_WIN, slaughterSpeedBonus, stackedMods } from './daoDepth'
+import { perWinModsOf, slaughterSpeedBonus, stackedMods } from './daoDepth'
 import { currentDaoRules, endgameUnlocked, recordMark } from './endgameService'
 import { recordMilestone, trackClearRecords } from './identity'
 import { defaultHistoryAsync, generateApprovedWorldAsync, type HistoryEntry } from './worldGen'
@@ -36,7 +36,7 @@ import { useEndgameStore, type WorldRunState } from '@/stores/endgame'
 import { gateDef } from '@/data/qimen'
 import { useUiStore } from '@/stores/ui'
 import { daoSourceShortfall } from './daoSource'
-import { endgameBusy } from './endgameActivity'
+import { endgameBusy, ENTRY_REASON } from './endgameActivity'
 
 /** 单场战果 */
 export interface StepOutcome {
@@ -65,12 +65,9 @@ export function resolveWorld(id: string): CelestialWorldDef | undefined {
   return celestialWorldDef(id)
 }
 
-/** 道途逐胜叠层词条 */
+/** 道途逐胜叠层词条(选择逻辑收在 daoDepth.perWinModsOf,与 tryChallenge 等共用) */
 function perWinMods(): StatMods | undefined {
-  const dao = useEndgameStore().daoPath
-  if (dao === 'sword') return SWORD_PER_WIN
-  if (dao === 'slaughter') return SLAUGHTER_PER_WIN
-  return undefined
+  return perWinModsOf(useEndgameStore().daoPath)
 }
 
 /** 逆命契:封印当前主流派核心词条(生成负向词条快照) */
@@ -226,7 +223,7 @@ export function startWorldExpedition(worldId: string, pactId: string | null, gat
   const world = resolveWorld(worldId)
   if (!world || !endgameUnlocked()) return null
   if (!endgame.daoPath) {
-    ui.toast('未择道途', 'warn')
+    ui.toast(ENTRY_REASON.noDaoPath, 'warn')
     return null
   }
   const busy = endgameBusy(endgame.worldRun, usePlayerStore().secretRealm, endgame.adventureSession)
@@ -400,7 +397,7 @@ export function challengeMutation(mutatorIds: string[]): MutationResult | null {
   const endgame = useEndgameStore()
   const ui = useUiStore()
   if (!endgameUnlocked() || !endgame.daoPath) {
-    ui.toast('未择道途', 'warn')
+    ui.toast(ENTRY_REASON.noDaoPath, 'warn')
     return null
   }
   const busy = endgameBusy(endgame.worldRun, usePlayerStore().secretRealm, endgame.adventureSession)
@@ -458,7 +455,7 @@ export async function rerollVoidWorld(): Promise<boolean> {
   const ui = useUiStore()
   if (voidRerolling) return false
   if (!endgameUnlocked() || !endgame.daoPath) {
-    ui.toast('未择道途', 'warn')
+    ui.toast(ENTRY_REASON.noDaoPath, 'warn')
     return false
   }
   if (endgame.worldRun?.worldId === 'void') {

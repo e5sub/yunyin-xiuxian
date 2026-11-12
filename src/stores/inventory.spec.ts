@@ -22,18 +22,6 @@ function mk(uid: string, affixes: Array<{ id: string; roll: number }>, templateI
 }
 
 /**
- * 已装备件只解算一次。
- *
- * `equipFlats` 与 `equipMods` 原各 `map(equippedItems, resolveEquipStats)` ——
- * 同一件装备在一次失效里被完整解算两遍(词条排序、品质查表、幂缩放),
- * 而两者都读 `equippedItems`,换一件就同时失效、同时重算,两遍必挨在一起。
- *
- * 现在两者共读一份 `equippedResolved`。判据钉的是**同源**:两个派生量的读数
- * 必须与「一次解算的结果」逐位一致 —— 若哪天有人把其中一路改回自己 map 一遍,
- * 两条路径就可能算出不同结果(比如某一处漏了法宝、或漏了某件),读数会分叉。
- * 这条不能靠数调用(ESM 的模块内绑定改不动),只能靠结果一致性守着。
- */
-/**
  * 行囊一次分区。
  *
  * `equippedItems` 与 `bagItems` 原各 `items.filter(...)` 一遍:满包 120 件时整表被遍历两次,
@@ -84,6 +72,18 @@ describe('行囊 · 已装备与未装备互补不丢不重', () => {
   })
 })
 
+/**
+ * 已装备件只解算一次。
+ *
+ * `equipFlats` 与 `equipMods` 原各 `map(equippedItems, resolveEquipStats)` ——
+ * 同一件装备在一次失效里被完整解算两遍(词条排序、品质查表、幂缩放),
+ * 而两者都读 `equippedItems`,换一件就同时失效、同时重算,两遍必挨在一起。
+ *
+ * 现在两者共读一份 `equippedResolved`。判据钉的是**同源**:两个派生量的读数
+ * 必须与「一次解算的结果」逐位一致 —— 若哪天有人把其中一路改回自己 map 一遍,
+ * 两条路径就可能算出不同结果(比如某一处漏了法宝、或漏了某件),读数会分叉。
+ * 这条不能靠数调用(ESM 的模块内绑定改不动),只能靠结果一致性守着。
+ */
 describe('已装备件 · 平铺与百分比同源', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -690,6 +690,17 @@ describe('装备 · 词条适配(部位 + 品质门槛)', () => {
  * 而现有判据只覆盖了「坏档截断」,没覆盖「满时拒收」—— 实测变异后全绿。
  */
 describe('背包 · 满了就拒收新装备', () => {
+  /*
+   * 新 pinia = 干净的行囊。
+   *
+   * 原先没有 beforeEach:`useInventoryStore()` 在 `--sequence.shuffle` 把本组排到最前时
+   * 直接抛 `[🍍] there was no active Pinia`;排到后面又会复用上一条用例的实例,
+   * 件数起点不是 0。
+   */
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
   function mkItems(n: number) {
     return Array.from({ length: n }, (_, i) => ({
       uid: `u${i}`,

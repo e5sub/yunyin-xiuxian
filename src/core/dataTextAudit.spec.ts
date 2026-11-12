@@ -17,7 +17,7 @@ import { SECRET_RULES } from '@/data/secretRealms'
 import { BUFFS, buffDef } from '@/data/buffs'
 import { PACTS } from '@/data/pacts'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { resolve, join } from 'node:path'
 import { cnNumber } from '@/utils/format'
 import { REALMS, WORLDS, ascensionLeap } from '@/data/realms'
 import { VEIN_MAIN_CAPACITY, VEIN_SIDE_CAP, VEIN_TOTAL_CAPACITY } from '@/data/constants'
@@ -314,12 +314,6 @@ describe('文案数值对账 · 视图不手抄数字', () => {
   })
 
   /**
-   * 首页六个入口格里只有两个带副信息,修行志那格空着 —— 而它恰恰有可数的状态:
-   * 今日几项日课还没做。要打开弹窗才看得到,不如摆在格上。
-   *
-   * 故障注入:把 dailyLeft 改回写死的数,本条红。
-   */
-  /**
    * 首页六个入口格:原只有两个带副信息(本世之界、洞府营造),
    * 其余四格各自都有可数的状态,却要打开对应页面才看得到。
    * 现六格都报出实况,且每一条都取既有的同源算法 —— 不另算一遍。
@@ -501,9 +495,15 @@ describe('文案数值对账 · 视图不手抄数量', () => {
     expect(card).toContain('cnNumber(SECRET_LAYERS)')
     expect(card).not.toContain('三层 · 出则散')
     expect(card, '秘境入口该读统一在途判据').toContain('endgameBusy(endgame.worldRun, player.secretRealm, useAdventureStore().session)')
-    expect(card, '在途原因要显示到卡面').toContain('entryBlockText(')
-    expect(card, '入口 disabled 必须走合判据').toContain(':disabled="!canPay(r)"')
-    expect(card, 'canPay 必须同时拒绝在途活动').toContain('return !busy.value && entryShortfallOf(r, player.major) === null')
+    /*
+     * 一行的事实收在 realmRow 里一次算齐(原先模板对同一处反复调用十二次),
+     * 故这三条按**字段**认,不再按模板里的函数调用认 —— 语义不变:
+     * 在途原因要显示、disabled 要同时拒绝在途、拒因取自统一判据。
+     */
+    expect(card, '在途原因要显示到卡面').toContain(':title="row.block ?? undefined"')
+    expect(card, '卡面也要把拒因写出来').toContain('{{ row.block }}')
+    expect(card, '入口 disabled 必须走合判据').toContain(':disabled="!row.payable"')
+    expect(card, 'canPay 必须同时拒绝在途活动').toContain("const block = busy.value ? busy.value.reason : (short?.reason ?? null)")
   })
 
   /**
@@ -529,16 +529,23 @@ describe('文案数值对账 · 视图不手抄数量', () => {
   /**
    * 四个在途状态词以 endgameActivity 的 BUSY_REASON 为准(AGENTS.md 明文)。
    *
-   * 有四处拒绝路径并不经过 endgameBusy(闭关与历练互斥的另一半、秘境入口自己那道门、
-   * 首页状态行),从前各自手抄一份字面量 —— 改词就得全仓搜,漏一处就出现两套说法。
+   * 有六处拒绝路径并不经过 endgameBusy(闭关与历练互斥的两端、秘境入口自己那道门、
+   * 首页状态行、以及历练页开模式窗前的闭关拦截),从前各自手抄一份字面量 ——
+   * 改词就得全仓搜,漏一处就出现两套说法。
+   *
+   * 闭关与历练互斥是**一对**:startRetreat 拦「历练在途」、chooseMode 与 startExploration
+   * 拦「闭关中」。前四处早改成了常量,这一对的两处一直手抄着 ——
+   * 于是「改词」这件事在互斥关系的两端只剩一边有人管。
    *
    * 故障注入:把任一处改回字面量,本条红。
    */
   it('四个在途状态词只有一份出处,各处取 BUSY_REASON', () => {
     const SITES = [
       ['../core/exploration.ts', 'startExploration'],
+      ['../core/earlyGameService.ts', 'startRetreat'],
       ['../core/secretRealm.ts', '秘境入口'],
       ['../ui/homeStatus.ts', '首页状态行'],
+      ['../views/AdventureView.vue', '历练页的闭关拦截'],
       ['../core/endgameActivity.ts', '判据本体']
     ] as const
     const WORDS = ['闭关中', '远征在途', '身在秘境', '历练在途']
@@ -559,10 +566,24 @@ describe('文案数值对账 · 视图不手抄数量', () => {
   })
 
   /**
-   * 词条名是玩家在行囊卡、转移面板、战报里认词条的唯一凭据:
-   * 曾有两个都叫「破妄」(增伤 dmg1 与 命中 ac2),同屏两个「破妄」加不同效果,分不清谁是谁。
-   * 故障注入:把任一词条名改成与另一条相同,本条红。
+   * 入口前置拒因同规:一句话只写一处。
+   *
+   * 「未择道途」拦的是真仙已至却还没去道途页选道 —— 远征 / 天道试炼 / 天道变数 /
+   * 虚界窥探四个入口各抄了一遍。与在途那四个词同一种毛病:改词得全仓搜。
    */
+  it('入口前置拒因也只有一份出处', () => {
+    const SITES = [
+      ['../core/expedition.ts', '远征与虚界'],
+      ['../core/endgameService.ts', '试炼与变数']
+    ] as const
+    for (const [path, name] of SITES) {
+      expect(src(path), `${name}又手抄了「未择道途」`).not.toContain("'未择道途'")
+      expect(src(path), `${name}该读 ENTRY_REASON`).toContain('ENTRY_REASON.noDaoPath')
+    }
+    const hub = src('../core/endgameActivity.ts')
+    expect(hub, 'ENTRY_REASON 缺「未择道途」').toContain("noDaoPath: '未择道途'")
+  })
+
   /**
    * 紫微十二宫各有「所给之路」:data/ziwei 的 channel(修行/同道/因缘/灵兽…)。
    * 原先界面只写「所主 · 管什么」,说不到它落在哪一路 —— 而十二宫各管一路正是这张盘的骨架。
@@ -592,6 +613,11 @@ describe('文案数值对账 · 视图不手抄数量', () => {
     expect(tail, '说明列该有下界').toContain('min-w-')
   })
 
+  /**
+   * 词条名是玩家在行囊卡、转移面板、战报里认词条的唯一凭据:
+   * 曾有两个都叫「破妄」(增伤 dmg1 与 命中 ac2),同屏两个「破妄」加不同效果,分不清谁是谁。
+   * 故障注入:把任一词条名改成与另一条相同,本条红。
+   */
   it('词条名唯一', () => {
     const byName = new Map<string, string[]>()
     for (const a of AFFIXES) {
@@ -648,11 +674,14 @@ describe('文案数值对账 · 视图不手抄数量', () => {
     expect(hits, '一处 busy.reason 都没读到,断言形同虚设').toBeGreaterThanOrEqual(5)
   })
 
-  it('启程按钮只写代价与余量 —— 收益归卡面,不塞进主词后面把自己撑成两行', () => {
+  it('入口按钮只写代价与余量 —— 收益归卡面,不塞进主词后面把自己撑成两行', () => {
     /*
      * 实测:390 宽下「启 程(道源 20 · 余 1,200 · 破界底赏 60)」折成两行,
      * 括号里断在「破界底赏 / 60」处。三样里面「破界底赏」是**收益**,
      * 按本站文案纪律(按钮写代价或拒因,收益归卡面)不该在按钮里。
+     *
+     * 远征改掉之后,天道变数与天道试炼还留着同一个写法(「破解得 55」「功成得 45」),
+     * 同屏对比「启 程(道源 20 · 余 1,200)」一眼就看出两套 —— 故三处一并扫。
      */
     const expedition = src('../components/celestial/ExpeditionPanel.vue')
     expect(expedition, '卡面要摊出入界代价与破界底赏').toMatch(/入界 \{\{ world\.entryCost \}\} 道源 · 破界底赏/)
@@ -660,6 +689,21 @@ describe('文案数值对账 · 视图不手抄数量', () => {
     // 按钮里的文案不许再出现收益:它只报代价与余量
     for (const m of expedition.matchAll(/启 程\(([^`]*?)`/g)) {
       expect(m[1] ?? '', `启程按钮里不该夹收益:${(m[1] ?? '').slice(0, 60)}`).not.toContain('破界底赏')
+    }
+
+    const trial = src('../components/celestial/TrialPanel.vue')
+    expect(trial, '变数卡面要摊出入界代价与破解所得').toMatch(
+      /入界 \{\{ MUTATION_ENTRY_COST \}\} 道源 · 破解得 \{\{ MUTATION_BASE_REWARD \}\}/
+    )
+    expect(trial, '试炼卡面要摊出入界代价与功成所得').toMatch(
+      /入界 \{\{ row\.def\.entryCost \}\} 道源 · 功成得 \{\{ row\.def\.rewardDaoSource \}\}/
+    )
+    // 按钮里同样只报代价与余量;两种主词(应 战 / 应 试)都扫
+    for (const m of trial.matchAll(/应 [战试]\(([^`]*?)`/g)) {
+      const inner = m[1] ?? ''
+      for (const word of ['破解得', '功成得', 'rewardDaoSource', 'MUTATION_BASE_REWARD']) {
+        expect(inner, `天道变数/试炼按钮里不该夹收益(${word}):${inner.slice(0, 60)}`).not.toContain(word)
+      }
     }
   })
 
@@ -1137,8 +1181,9 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
 
   it('丹方熟练度只报读数 —— 不列半截来路冒充全部', () => {
     // 熟练来路:成功开炉 +0.01、炸炉 +0.02、藏经阁被动钻研
+    // 三态读数(未得方 / 熟练 N% / 已通晓)取 ui/pillText.recipeMasteryText —— 可炼性判据那里也要同一句
     const view = src('../views/InventoryView.vue')
-    expect(view, '熟练度读数取自 recipeMastery 的现值').toContain('`熟练 ${Math.round(m * 100)}%`')
+    expect(view, '熟练度读数取自 recipeMastery 的现值').toContain('recipeMasteryText(lore.recipeMastery(id))')
     expect(view, '来路说明已删,不该残留半句').not.toContain('长记性')
   })
 
@@ -1169,7 +1214,8 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     const market = src('../components/market/MarketShelfSection.vue')
     expect(market, '卡面要有实际缺口字段').toContain('stoneShort:')
     expect(market, '卡面缺口用指数感知减法').toContain('subClamp(slot.price, resources.spiritStone)')
-    expect(market, '按钮直接写出尚差多少').toContain('`尚差 ${formatGap(c.stoneShort)}`')
+    // 主语要与 title 一致:光写「尚差 8」时同屏还挂着道源/器灵尘,玩家得回头猜是哪一种
+    expect(market, '按钮直接写出尚差多少(带资源名)').toContain('`灵石尚差 ${formatGap(c.stoneShort)}`')
     expect(market, '扣款瞬时失败也报实际差额').toContain('灵石尚差 ${formatGap(renderSlot(slot).stoneShort)}')
     expect(market, '不再用笼统的灵石不足作按钮文案').not.toContain("? '灵石不足'")
   })
@@ -1644,5 +1690,90 @@ describe('天道熔炉 · 兑换支持自定义次数', () => {
     expect(f, '凝炼收益该按选中枚数算').toContain('fruitMarginalInfo(fruitEffective.value)')
     expect(f, '边际刻度该看这批的收尾那枚').toContain('marginMark(fruitInfo.value.total + fruitEffective.value)')
     expect(f, '曲线起点该与刻度同一枚').toContain('marginCurvePoints(fruitInfo.value.total + fruitEffective.value - 1)')
+  })
+})
+
+
+/**
+ * 灵石数额的词序只有一种:「灵石 N」。
+ *
+ * 全仓绝大多数地方写「灵石 6509万」「共耗 灵石 12」,而修行页的兑换行、
+ * 突破準備按钮、天界改向成本、道童招募成本曾写成「80 灵石」「4.468亿 灵石」——
+ * 同一个量在相邻两页一个词序,读起来像是两个不同的东西。
+ *
+ * 只扫 .vue 与 data 里**面向玩家**的模板串,跳过注释与 spec 自身的样例。
+ *
+ * 另一条同源:数字与中文单位之间要留一个空格。全仓 19 处写成「耗时 3 分钟」
+ * 「一炷香(30 分钟)」,只有 `data/earlyGame` 的静坐调息写成「耗时3分钟」——
+ * 它与同表下一条「消耗灵石 80」并排显示,一个有一格一个没有,读起来像两种排版。
+ * 那条只扫 `desc` / `effect` / `label` 这类面向玩家的字段。
+ */
+describe('文案排版 · 数字与中文单位之间留空格', () => {
+  it('数据表的说明文本里没有「3分钟」这种连写', () => {
+    const SRC = resolve(__dirname, '..', 'data')
+    const UNITS = '分钟|小时|秒钟|时辰'
+    const offenders: string[] = []
+    for (const name of readdirSync(SRC)) {
+      if (!name.endsWith('.ts')) continue
+      const text = readFileSync(join(SRC, name), 'utf8')
+      for (const [i, line] of text.split('\n').entries()) {
+        if (/^\s*(\*|\/\/)/.test(line)) continue
+        // 只认面向玩家的字段:desc / effect / label
+        if (!/(desc|effect|label)\s*:/.test(line)) continue
+        if (new RegExp(`\\d(${UNITS})`).test(line)) {
+          offenders.push(`src/data/${name}:${i + 1}`)
+        }
+      }
+    }
+    expect(offenders, `这些地方数字与单位连写了:\n${offenders.join('\n')}`).toEqual([])
+  })
+})
+
+describe('文案用词 · 灵石数额的词序一致', () => {
+  it('界面与数据表里不再出现「数字 灵石」', () => {
+    const SRC = resolve(__dirname, '..')
+    const offenders: string[] = []
+    const walk = (dir: string): void => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, e.name)
+        if (e.isDirectory()) {
+          walk(p)
+          continue
+        }
+        if (!/\.(vue|ts)$/.test(e.name) || /\.spec\.ts$/.test(e.name)) continue
+        const text = readFileSync(p, 'utf8')
+        for (const [i, line] of text.split('\n').entries()) {
+          // 跳过注释行:注释里写「80 灵石」是说明,不是界面文案
+          if (/^\s*(\*|\/\/|<!--)/.test(line)) continue
+          /*
+           * 数字(含 formatGN 调用结果)紧跟「灵石」= 反序。
+           *
+           * 排除「灵石/时」这类**单位**写法:``${n}灵石/时` 是「每小时多少灵石」,
+           * 单位在后本来就对,与「80 灵石」那种量词反序不是一回事。
+           */
+          /*
+           * 三种写法都要认:
+           *   - 模板插值 `{{ n }} 灵石` / `${n} 灵石`
+           *   - **字面量** `80 灵石`(数据表 desc、静态提示语里很常见)——
+           *     只认插值会漏掉这一类,而它恰恰是最容易被手写反的
+           * 排除「灵石/时」这类**单位**写法:单位在后本来就对。
+           */
+          const reversed =
+            /\}\}\s*灵石|\$\{[^}]+\}\s*灵石|\d\s*灵石/.test(line) &&
+            !/(\}\}|\$\{[^}]+\}|\d)\s*灵石\s*\//.test(line)
+          /*
+           * 悟道点同理:全仓统一「悟道点 N」。`石` 那种简称不在此列 ——
+           * 它是有意的紧凑写法(按钮里用),`format.ts` 的注释把它当既有模式举例。
+           */
+          const reversedWudao =
+            /\}\}\s*悟道点|\$\{[^}]+\}\s*悟道点|\d\s*悟道点/.test(line)
+          if (reversed || reversedWudao) {
+            offenders.push(`${p.replace(SRC, 'src')}:${i + 1}`)
+          }
+        }
+      }
+    }
+    walk(SRC)
+    expect(offenders, `这些地方把数额写在「灵石」前面了:\n${offenders.join('\n')}`).toEqual([])
   })
 })

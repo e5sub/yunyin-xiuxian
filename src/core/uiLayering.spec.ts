@@ -431,23 +431,13 @@ describe('可访问性 · 状态播报', () => {
     expect(host, 'toast 按钮不该进 Tab 序:键盘焦点会落到一条即将消失的元素上').toMatch(/tabindex="-1"/)
   })
 
-  /**
-   * PWA 更新横幅的触控尺子。
-   *
-   * 它只在 Service Worker 装上新版本后出现 —— `layout-check` 的巡页摸不到,
-   * `ui-smoke` 也不会触发,是唯一一块「没人量过」的界面。
-   * 实测修前「重新加载」盒高 24.5px、关闭钮 21.4×32px,都低于 28px 触控线。
-   * 判据取静态类名(py / h-w),不依赖运行时。
-   */
-  /**
-   * 横幅不能变成遮罩。
-   *
-   * 外层是 `inset-0` 的 flex,`align-items` 缺省为 `stretch` —— 内层卡片会被拉满整屏。
-   * 实测修前 390×844 下卡片 788px 高、`pointer-events-auto`,整页点不动;
-   * 它却只在 SW 更新后出现,巡页与 layout-check 都永远看不到。
-   * 判据:外层必须写 `items-start`,且内层不得再写 `h-full` 之类的拉伸。
-   */
   it('PWA 更新横幅只占一行,不铺满整屏吞掉点击', () => {
+    /*
+     * 外层是 `inset-0` 的 flex,`align-items` 缺省为 `stretch` —— 内层卡片会被拉满整屏。
+     * 实测修前 390×844 下卡片 788px 高、`pointer-events-auto`,整页点不动;
+     * 它却只在 SW 更新后出现,巡页与 layout-check 都永远看不到。
+     * 判据:外层必须写 `items-start`,且内层不得再写 `h-full` 之类的拉伸。
+     */
     const src = readFileSync(resolve(SRC, 'components/common/UpdatePrompt.vue'), 'utf-8')
     const outer = /<div v-if="ui\.pwaUpdatePending"[^>]*class="([^"]*)"/.exec(src)?.[1] ?? ''
     expect(outer, '找不到横幅外层').not.toBe('')
@@ -476,6 +466,12 @@ describe('可访问性 · 状态播报', () => {
   })
 
   it('PWA 更新横幅的两颗钮都过 28px 触控线', () => {
+    /*
+     * 它只在 Service Worker 装上新版本后出现 —— `layout-check` 的巡页摸不到,
+     * `ui-smoke` 也不会触发,是唯一一块「没人量过」的界面。
+     * 实测修前「重新加载」盒高 24.5px、关闭钮 21.4×32px,都低于 28px 触控线。
+     * 判据取静态类名(py / h-w),不依赖运行时。
+     */
     const src = readFileSync(resolve(SRC, 'components/common/UpdatePrompt.vue'), 'utf-8')
     // 只看按钮标签本身:注释里写着「不可降回 !py-1」,整文件正则会把那句也算进来
     const reload = /<button\b[^>]*>\s*重新加载/.exec(src)?.[0] ?? ''
@@ -709,5 +705,27 @@ describe('页面标题 · 每页都有标题元素', () => {
       missing.push(f)
     }
     expect(missing, `这些视图没有标题元素,读屏按标题跳转会跳过它们:${missing.join(', ')}`).toEqual([])
+  })
+})
+
+/**
+ * 寿元那一格:可见文字与读屏说法必须同一把尺。
+ *
+ * 原写法左边是裸 `Math.floor(player.age)`,右边是 `formatYears(lifespanMax)` —— 同一处两套口径。
+ * 3000 岁印成「3000」而上限印成「1000亿」还只是难看;坏档把 age 写成 1e300 时
+ * 左边直接吐出 JS 的「1e+300」(真浏览器实测),而 aria-label 用的是 formatYears(age),
+ * **屏幕上与读屏念的不是同一个数**。JSDoc 也记着 old:注释里写着「TopStatusBar 直接印 Math.floor(age)」。
+ */
+describe('可访问性 · 寿元可见文字与读屏同源', () => {
+  it('TopStatusBar 的岁数走 formatYears,不再裸印 Math.floor(age)', () => {
+    const bar = readFileSync(resolve(SRC, 'components/common/TopStatusBar.vue'), 'utf-8')
+    expect(bar, '可见文字还在裸印 age').not.toContain('Math.floor(player.age)')
+    expect(bar, '岁数与上限该同用 formatYears').toMatch(/\{\{ formatYears\(player\.age\) \}\}/)
+  })
+
+  it('转世弹窗的岁数同样走 formatYears', () => {
+    const dlg = readFileSync(resolve(SRC, 'components/character/ReincarnationDialog.vue'), 'utf-8')
+    expect(dlg, '弹窗里还在裸印 age').not.toContain('Math.floor(player.age)')
+    expect(dlg, '岁数该带单位出来').toContain('formatYears(player.age)')
   })
 })

@@ -61,6 +61,62 @@ describe('成就达成时刻', () => {
 })
 
 /** 成就/名号/图鉴是集合语义:坏档同一条写两遍时,界面按 Set 只画一枚,计数按 `.length` 会多报 */
+describe('sanitize:计数器巨值要归零,不能白送成就', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  /*
+   * 计数器是**成就/任务/日课三处的判定依据**,不只是显示值。
+   * `asNumberRecord` 只挡非有限值与负数,不管上界 —— 坏档写 `kills: 1e300`
+   * 会原样留下,而 `evalCond` 的判据是 `counter(key) >= cond.value`,
+   * 于是**一次解锁全部计数类成就**(实测 5 个),日课也一并判为达成。
+   *
+   * 超出上界归零而不是夹到上界:夹到一亿仍是「远超所有成就阈值」的合法读数,
+   * 判据照样全过。归零才表达「这条读数不可信」。
+   */
+  it('巨值归零,不再解锁计数类成就', () => {
+    const quests = useQuestsStore()
+    quests.$patch({ counters: { kills: 1e300 } } as never)
+    quests.sanitize()
+    expect(quests.counters.kills, '巨值没被归零 —— 成就判据会全过').toBe(0)
+  })
+
+  it('日课基线是巨值时回落当前累计,delta 不会是负数', () => {
+    /*
+     * 基线与计数器是同一类判定依据:`dailyDelta = counters - base`。
+     * 坏档写 `base.kills: 1e300` 时 delta 恒为极大负数,日课**永远做不完**。
+     * 巨值按「基线缺失」处理(回落当前累计,今天从此刻开始算)——
+     * 归零反而会让 delta 变成历史累计,那是另一条已知的白送路径。
+     */
+    const quests = useQuestsStore()
+    quests.$patch({
+      counters: { kills: 500 },
+      daily: { date: todayStr(), base: { kills: 1e300 }, done: [] }
+    } as never)
+    quests.sanitize()
+    expect(quests.daily.base.kills, '巨值基线没被处理').toBe(500)
+    expect(quests.dailyDelta('kills'), 'delta 成了负数,日课永远做不完').toBe(0)
+  })
+
+  it('健康的日课基线原样保留', () => {
+    const quests = useQuestsStore()
+    quests.$patch({
+      counters: { kills: 510 },
+      daily: { date: todayStr(), base: { kills: 500 }, done: [] }
+    } as never)
+    quests.sanitize()
+    expect(quests.daily.base.kills).toBe(500)
+    expect(quests.dailyDelta('kills')).toBe(10)
+  })
+
+  it('正常计数原样保留', () => {
+    const quests = useQuestsStore()
+    quests.$patch({ counters: { kills: 500, battles: 12 } } as never)
+    quests.sanitize()
+    expect(quests.counters.kills).toBe(500)
+    expect(quests.counters.battles).toBe(12)
+  })
+})
+
 describe('sanitize:重复条目不再把计数撑破', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
@@ -126,22 +182,33 @@ describe('sanitize:重复条目不再把计数撑破', () => {
     expect(quests.titlesOwned).toEqual(['ti_churu'])
   })
 
-  it('计数器钳上界:灌进来的天文数字压回 1e7,负数归零(1.59.1)', () => {
+  /*
+   * 上界取一亿,超出**归零而不是夹到上界**。
+   *
+   * 计数是成就/任务/日课三处的判定依据(`counter(key) >= cond.value`),夹到一亿
+   * 仍是「远超所有成就阈值」的合法读数,判据照样全过 —— 归零才表达「这条读数不可信」。
+   */
+  it('计数器挡坏档:灌进来的天文数字归零,负数归零', () => {
     const quests = useQuestsStore()
     quests.$patch({ counters: { kills: 1e15, battles: -5 } } as never)
     quests.sanitize()
-    expect(quests.counter('kills')).toBe(10_000_000)
+    expect(quests.counter('kills'), '超上界该归零,不是夹到上界').toBe(0)
     expect(quests.counter('battles')).toBe(0)
+    // 边界:上界本身仍是合法读数,不动
+    quests.$patch({ counters: { kills: 100_000_000 } } as never)
+    quests.sanitize()
+    expect(quests.counter('kills')).toBe(100_000_000)
   })
 
-  it('日课基线钳上界、done 只认目录里的任务(1.59.1)', () => {
+  it('日课基线遇巨值按「基线缺失」处理、done 只认目录里的任务', () => {
     const quests = useQuestsStore()
     quests.$patch({
       daily: { date: '2026-11-04', base: { kills: 5e9 }, done: ['d_kill', 'd_ghost', 'd_ghost'] }
     } as never)
     quests.sanitize()
-    // 上界与计数同尺(1e7):基线是计数快照,若钳得比计数小,「今日增量」会凭空变大
-    expect(quests.daily.base.kills).toBe(10_000_000)
+    // delta = counters - base,巨值会让 delta 恒为极负、日课永远做不完;
+    // 故按「基线缺失」处理 —— 回落到当前累计(此刻 counters 还是空,即 {}),不是夹到上界
+    expect(quests.daily.base.kills, '巨值基线该整份回落当前累计').toBeUndefined()
     expect(quests.daily.done).toEqual(['d_kill'])
   })
 

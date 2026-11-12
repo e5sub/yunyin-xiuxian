@@ -32,7 +32,6 @@ export async function seedSave(context, slices, guard = "__fixtureSeeded") {
 
 const gn = (m, e) => ({ m, e });
 
-/** 后期档:神人境 + 成套装备 */
 /**
  * 给一份存档挂上「历练在途」的会话,让引擎每 tick 真的打一场。
  *
@@ -61,6 +60,7 @@ export function withActiveRun(slices, regionId = "qingyun") {
   };
 }
 
+/** 后期档:神人境 + 成套装备。巡页与形制自检共用这一份,任何一片缺口都会让它们量到初始态 */
 export function lateSlices() {
   return {
     /** 时间戳须取当前时刻:写 1970 会补算半个世纪的离线收益,冒烟每翻一页重算一次 */
@@ -128,16 +128,6 @@ export function lateSlices() {
     },
     endgame: { daoPath: "sword", daoSource: 1200, souls: [], equippedSouls: [] },
     /**
-     * 洞府:七座建筑各建到「当前洞府等级允许的上限」。
-     *
-     * 原先这一片完全没有 —— 于是 lateSlices 的「后期档」在洞府页上看到的是
-     * 七座全 0 级的未启用建筑,与「后期」名不副实(而注释只承诺「神人境 + 成套装备」,
-     * 严格说没撒谎,但依赖它的巡页脚本量到的洞府状态是初始态)。
-     *
-     * 等级取 (mansion + 1) * 5 这条与 stores/dongfu 的 buildingLevelCap 同源,
-     * 手写 4/5 级是为了让「已营 7/7」在页面上成立;洞府本身满 4 级。
-     */
-    /**
      * 图鉴:材料与敌人各铺几条见闻,让图鉴页/敌情面板不再全空。
      *
      * 与 dongfu / cultivation 同一类缺口 —— 没有这一片时,图鉴页是空的、
@@ -169,6 +159,16 @@ export function lateSlices() {
       buffs: [],
       gongfaBranch: {}
     },
+    /**
+     * 洞府:七座建筑各建到「当前洞府等级允许的上限」。
+     *
+     * 原先这一片完全没有 —— 于是 lateSlices 的「后期档」在洞府页上看到的是
+     * 七座全 0 级的未启用建筑,与「后期」名不副实(而注释只承诺「神人境 + 成套装备」,
+     * 严格说没撒谎,但依赖它的巡页脚本量到的洞府状态是初始态)。
+     *
+     * 等级取 (mansion + 1) * 5 这条与 stores/dongfu 的 buildingLevelCap 同源,
+     * 手写 4/5 级是为了让「已营 7/7」在页面上成立;洞府本身满 4 级。
+     */
     dongfu: {
       levels: { mansion: 4, array: 5, alchemy: 5, forge: 4, field: 5, library: 4, beast: 3 },
       frac: { herb: 0, ore: 0, wudao: 0 },
@@ -213,8 +213,7 @@ export function lateSlices() {
  * 每一条都必须**真能进档**,否则 inventory.sanitize() 会静默剔除,
  * 压测就变成「在七条词条的装备上量性能」而门照旧报绿。校验见
  * src/utils/fixtureParity.spec.ts —— 它直接调用本函数,不用源码文本猜。
- */
-/**
+ *
  * @param {number} [itemCount] 行囊件数,默认 120(即 BAG_CAPACITY 上限)。
  *   供性能实验用:调小它可以看启动开销随件数的增长曲线,
  *   从而分清哪一段是「与存档大小成正比」、哪一段是固定成本。
@@ -269,6 +268,68 @@ export function stressSlices(itemCount = 120) {
       pills: { p_xuanyuan: 999 },
       artifacts: [],
       equippedArtifacts: [],
+    },
+  };
+}
+
+/**
+ * 中期存档:内容已展开、终局未开。
+ *
+ * `lateSlices` 是 major 14(已在界外),`stressSlices` 基于它 —— 六个 QA 脚本
+ * (aria-check / ui-smoke / focus-check / modal-patrol / edge-states / detail-geometry)
+ * 全都只用这两档。于是 **介于两者之间的界面状态从来没被扫过**:
+ *   · 天界 / 器魂页显示「需真仙境」而尚未进入(major < WORLD_BREAK_MAJOR = 9);
+ *   · 转世系统已开(宿慧、先天之姿有读数)但道途未立;
+ *   · 洞府已起造、灵脉已投点,而终局的凝道果/器魂仍是空的;
+ *   · 画像是「本世未立题」,轮回录有历史但未至下一境地。
+ * 这些状态在前期档(几乎全空)与后期档(几乎全开)之间,是 patch 覆盖面最薄的一段。
+ *
+ * @param major 大境界,默认 7(结丹前后);须 < WORLD_BREAK_MAJOR(9) 才停在「未至天界」
+ */
+export function midSlices(major = 7) {
+  const base = lateSlices();
+  return {
+    ...base,
+    player: {
+      ...base.player,
+      major,
+      sub: 3,
+      age: 420,
+      // 灵根与天赋保留:中期玩家已经转世过、有先天之姿与灵根
+      linggen: {
+        roots: [
+          { element: "fire", aptitude: 72 },
+          { element: "wood", aptitude: 64 },
+        ],
+        gradeName: "双灵根",
+        growthMult: 1.3,
+      },
+      reincarnation: {
+        ...base.player.reincarnation,
+        count: 1,
+        // 中期:宿慧够读出「下一境地尚差多少」,但不足以升阶
+        insight: 120,
+        daoFruit: 3,
+      },
+    },
+    // 洞府已起造(不是空壳),但未满级
+    dongfu: {
+      // id 须与 data/buildings 对齐:mansion / array / alchemy / forge / field / library / beast
+      // (首版写成 garden / furnace,页上于是三项产出全显示「—」)
+      levels: { mansion: 2, array: 3, alchemy: 2, forge: 2, field: 3, library: 2, beast: 1 },
+      veinPoints: { gather: 6, craft: 3, alchemy: 2, insight: 1 },
+      veinMain: "gather",
+    },
+    // 终局系统一个都还没开
+    endgame: {
+      daoPath: null,
+      daoSource: 0,
+      marks: [],
+      // souls 即可;activeSouls 是 store 的 computed,写进夹具不生效(判据抓到过一次)
+      souls: [],
+      worldClears: {},
+      worldRun: null,
+      voidWorld: null,
     },
   };
 }

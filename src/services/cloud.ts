@@ -638,10 +638,10 @@ export const cloudApi = {
    */
   claimLoot: (payload: { claims: readonly unknown[] }): Promise<{ equips: EquipmentInstance[] }> =>
     request('POST', '/loot/claim', payload),
-  /** 法宝/器魂签发(1.58.1):入台账后上传才不会在验源时被移除 */
   /** 坊市成交记账(1.58.1):服务端按货架复算价并落账,上传时把这笔钱从增量里扣掉 */
   marketBuy: (payload: { stockedAt: number; idx: number }): Promise<{ ok: boolean; recorded: boolean }> =>
     request('POST', '/market/buy', payload),
+  /** 法宝/器魂签发(1.58.1):入台账后上传才不会在验源时被移除 */
   claimLootExtras: (payload: {
     artifacts?: readonly string[]
     souls?: readonly { uid: string; type: string; grade: number }[]

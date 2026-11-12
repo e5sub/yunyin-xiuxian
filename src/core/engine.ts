@@ -125,9 +125,21 @@ class GameEngine {
       this.lastTickAt = now
       return
     }
+    /*
+     * 时钟回拨要**重锚**,不能直接 return。
+     *
+     * `lastTickAt` 是上一次 tick 的时刻、`lastStampAt` 是上次记游玩时长的时刻;
+     * 系统时钟往回拨之后两者都停在「未来」:
+     *   · `lastTickAt` 不重锚 → `dt <= 0` 每拍都成立,引擎停摆到真实时间追平
+     *     (回拨 5 分钟就停 5 分钟);修炼/灵气/寿元/历练一起冻结;
+     *   · `lastStampAt` 不重锚 → `now - lastStampAt` 恒为负,`>= ACTIVE_STAMP_MS`
+     *     永不成立,**游玩时长不再累计**。
+     * 两者是同一件事的两半,漏一个就只修好一半。`start()` 与 `offline` 同一口径。
+     */
+    if (now < this.lastTickAt) this.lastTickAt = now
+    if (now < this.lastStampAt) this.lastStampAt = now
     const dt = (now - this.lastTickAt) / 1000
-    // 墙钟回拨/校时会让 now < lastTickAt:重锚到当下,否则 dt 恒为负、advance 永不再跑
-    // (修炼/灵气/寿元/历练一起冻结,直到墙钟自己追回旧锚点)。同 offline.ts 的重锚口径。
+    // 极短间隔(暂停恢复那一拍)也不推进:dt <= 0 时重锚即返回
     if (dt <= 0) {
       this.lastTickAt = now
       return

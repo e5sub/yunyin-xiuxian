@@ -8,6 +8,24 @@ const UNITS = ['万', '亿', '兆', '京', '垓', '秭', '穰', '沟', '涧', '�
 /** 数值非法时的统一占位 */
 const NOT_AVAILABLE = '--'
 
+/**
+ * 天数到这个量级就改用 formatGN 的中文单位,不再印裸数字。
+ *
+ * **上界是多少**:存档能塞进来的最大时间戳是 `MAX_TIMESTAMP_MS`(8.64e15 毫秒),
+ * 减当前时刻再折算成天约 **1 亿天**(实测 99,979,231 天)。
+ *
+ * **门槛取多少**:`1e7`,即**一千万天**(约 2.7 万年)—— 比上面那个上界低一个数量级。
+ * 首版取的正是 1e8,被 99,979,231 天擦过去,坏档仍印八位裸数字。
+ *
+ * **超过门槛之后印什么**:交给 `formatGN`。它有自己的单位表(万→极),
+ * 表内印「9997万天」这类;超出「极」则退回它自己的科学计数兜底(`1.16e295天`)。
+ * 那种极端值只在坏档里出现,能读出行数即可,不再为它另造单位。
+ *
+ * 真实游玩到不了这里:这里量的是**倒计时与时长**,
+ * 由界面上限收着(离线上限 72 时、丹药增益 8 时)。
+ */
+const DURATION_DAY_UNIT_CAP = 1e7
+
 /** 格式化大数:1,234 → 12.35万 → 1.235亿 → 1.24e52 */
 export function formatGN(v: GNum | number): string {
   const g = typeof v === 'number' ? gn(v) : v
@@ -20,6 +38,16 @@ export function formatGN(v: GNum | number): string {
    * 存档经 sanitize 应已修好,但界面在 sanitize 之前也可能读到(见 storeResilience)。
    */
   if (!Number.isFinite(g.m) || !Number.isFinite(g.e)) return NOT_AVAILABLE
+  /*
+   * 指数**本身**也得是「小整数」,不只是有限。
+   *
+   * 兜底那条路是 `` `${m}e${g.e}` `` —— 直接拼 `g.e`。若 `g.e` 是 1e22,
+   * 拼出来就是「1.00e1e+22」:科学计数里套了一层科学计数,读都读不出来。
+   * `asBoundedGNum` 读档时已把 |e| 夹到 999,但这里是**公共函数**,
+   * 不能假定每个调用方都先过那道关(界面上、审计脚本里都直接调)。
+   * 与 SAVE_GNUM_MAX_EXP 同一把尺:超过它的指数只可能来自坏档。
+   */
+  if (Math.abs(g.e) > 999) return NOT_AVAILABLE
   if (g.m === 0) return '0'
   if (g.m < 0) {
     /*
@@ -86,6 +114,16 @@ export function formatGap(v: GNum | number): string {
   const g = typeof v === 'number' ? gn(v) : v
   // 与 formatGN 同一道守卫:对象分支不经过 gn(),坏值会一路走到 toNum/ceilTo
   if (!Number.isFinite(g.m) || !Number.isFinite(g.e)) return NOT_AVAILABLE
+  /*
+   * 指数**本身**也得是「小整数」,不只是有限。
+   *
+   * 兜底那条路是 `` `${m}e${g.e}` `` —— 直接拼 `g.e`。若 `g.e` 是 1e22,
+   * 拼出来就是「1.00e1e+22」:科学计数里套了一层科学计数,读都读不出来。
+   * `asBoundedGNum` 读档时已把 |e| 夹到 999,但这里是**公共函数**,
+   * 不能假定每个调用方都先过那道关(界面上、审计脚本里都直接调)。
+   * 与 SAVE_GNUM_MAX_EXP 同一把尺:超过它的指数只可能来自坏档。
+   */
+  if (Math.abs(g.e) > 999) return NOT_AVAILABLE
   if (g.m === 0) return '0'
   // 负数没有「尚差」语义,退回原格式化
   if (g.m < 0) return formatGN(g)
@@ -153,8 +191,17 @@ export function roundToSum(values: readonly number[], unit: number): number[] {
   if (values.length === 0) return []
   if (!values.every(v => Number.isFinite(v))) return values.map(() => 0)
   // 先抹浮点尾差:0.8599999999999999 / 0.001 不该落到 859
+  /*
+   * 缩放**过程**本身也会上溢:unit 极小(1e-300)配 values 极大(1e300)时,
+   * `v / unit` 得 Infinity,`Math.round(Infinity)` 仍是 Infinity ——
+   * 上面三段守卫都过了(unit 有限且 > 0、每项都有限),可返回的却是一串 null。
+   * 故缩放完再验一遍:任一项非有限,与「没有可分配的份额」同样处理。
+   */
   const scaled = values.map(v => Math.round((v / unit) * 1e6) / 1e6)
+  if (!scaled.every(v => Number.isFinite(v))) return values.map(() => 0)
   const target = Math.round(scaled.reduce((a, b) => a + b, 0))
+  // 合计也可能上溢(单项都有限、加起来却成了 Infinity)
+  if (!Number.isFinite(target)) return values.map(() => 0)
   const out = scaled.map(v => Math.floor(v))
   let short = target - out.reduce((a, b) => a + b, 0)
   const byRemainder = scaled.map((v, i) => ({ i, r: v - Math.floor(v) })).sort((a, b) => b.r - a.r)
@@ -174,11 +221,41 @@ export function formatPercent(x: number, dp = 1): string {
   if (!Number.isFinite(v)) return NOT_AVAILABLE
   // 极小值显示 0%,不出「-0%」
   if (Math.abs(v) < Math.pow(10, -dp)) return '0%'
+  /*
+   * 大值须自己兜底:`String(1e22)` 是 `1e+22`,而这条路径既过了 `isFinite`
+   * (1e22 是有限数)也过了上面的上溢检查(×100 后仍是有限数)——
+   * 于是 percent 会印出「1e+22%」这种非法数字。实测从 1e20 起就开始了。
+   *
+   * 兜底与 formatGN 同形:`1.00e22`(尾数两位、指数不带 + 号),
+   * 而不是 JS 的 `1e+22` —— 全站只该有一种科学计数写法。
+   */
+  if (Math.abs(v) >= 1e21) {
+    let exp = Math.floor(Math.log10(Math.abs(v)))
+    let mant = v / Math.pow(10, exp)
+    /*
+     * 尾数进位:`mant` 可能四舍五入成 10.00(如 v = 9.9999e21 → 9.9999 → 10.00),
+     * 那时须把指数抬一位、尾数回到 1.00 —— 否则输出 `10.00e21%`,
+     * 它既不是规范写法,读起来也比真值小一个数量级。
+     * formatGN 的兜底早有这一步(注释:`9.99…e407 → 1.00e408`),这里沿用同一条。
+     */
+    if (Math.abs(mant).toFixed(2) === '10.00') {
+      exp += 1
+      mant = v / Math.pow(10, exp)
+    }
+    return `${mant.toFixed(2)}e${exp}%`
+  }
   const s = Number.isInteger(v) ? String(v) : v.toFixed(dp)
   return `${trimZero(s)}%`
 }
 
-/** 时长:秒 → 中文可读;非法值(NaN/Infinity)显示 -- */
+/**
+ * 时长:秒 → 中文可读;非法值(NaN/Infinity)显示 --。
+ *
+ * 末位为零的单位不写:整小时写「1小时」,不写「1小时0分」。
+ * 这条与 formatChoiceSpan 的「整分钟写 10分钟」同一口径,是对同一种缺口的补齐 ——
+ * 修行页的「修为圆满约 100天0小时」、历练页的「行程 1小时0分」都印着那个没信息的 0,
+ * 而中文时长本就没有「1天0小时」这种说法。
+ */
 export function formatDuration(totalSec: number): string {
   if (!Number.isFinite(totalSec)) return NOT_AVAILABLE
   const sec = Math.max(0, Math.floor(totalSec))
@@ -186,9 +263,19 @@ export function formatDuration(totalSec: number): string {
   const h = Math.floor((sec % 86400) / 3600)
   const m = Math.floor((sec % 3600) / 60)
   const s = sec % 60
-  if (d > 0) return `${d}天${h}小时`
-  if (h > 0) return `${h}小时${m}分`
-  if (m > 0) return `${m}分${s}秒`
+  /*
+   * 天数过大时退回中文单位,不印裸数字。
+   *
+   * `Math.floor(1e300 / 86400)` 是有限值,能过上面的守卫,但拼出来是
+   * 「1.1574074074074075e+295天17小时」—— 十七位小数的科学计数法。
+   * 本作其余地方(灵石、修为)都用 UNITS 那套万进单位,时间这条也该一致:
+   * 超过一亿天(≈27 万年)就交给 formatGN,写「1157万天」而不是一串浮点。
+   * 真实游玩到不了这个量级(混沌道祖寿元约 1e15 载),它只拦坏档。
+   */
+  if (d >= DURATION_DAY_UNIT_CAP) return `${formatGN(d)}天${h > 0 ? `${h}小时` : ''}`
+  if (d > 0) return h > 0 ? `${d}天${h}小时` : `${d}天`
+  if (h > 0) return m > 0 ? `${h}小时${m}分` : `${h}小时`
+  if (m > 0) return s > 0 ? `${m}分${s}秒` : `${m}分`
   return `${s}秒`
 }
 
@@ -212,6 +299,14 @@ export function formatCountdown(totalSec: number): string {
   const h = Math.floor((sec % 86400) / 3600)
   const m = Math.floor((sec % 3600) / 60)
   const s = sec % 60
+  /*
+   * 与 formatDuration 同一条门槛。
+   *
+   * 「逐位定宽」是为了状态胶囊 nowrap 时宽度不抖 —— 那是在**正常量级**内的诉求。
+   * 天数到八位(坏档塞一个 MAX_TIMESTAMP_MS 内的极大时间戳就能到)时,
+   * 定宽已无从谈起,裸数字反而读不出来,故一并改用中文单位。
+   */
+  if (d >= DURATION_DAY_UNIT_CAP) return `${formatGN(d)}天${pad2(h)}时`
   if (d > 0) return `${d}天${pad2(h)}时`
   if (h > 0) return `${pad2(h)}时${pad2(m)}分`
   return `${pad2(m)}分${pad2(s)}秒`
@@ -258,7 +353,15 @@ export function formatStamp(ts: number, now = Date.now()): string {
 export function formatYears(y: number): string {
   // 坏值守卫:缺了它 Math.floor(NaN) 会印出「NaN 载」,Math.floor(-Infinity) 印「-Infinity 载」
   if (!Number.isFinite(y)) return NOT_AVAILABLE
-  if (y >= 10000) return `${formatNum(Math.floor(y))} 载`
+  /*
+   * 负值走 formatNum 那条,不走裸数字。
+   *
+   * 下面那句 `${Math.floor(y)} 载` 只适合小正数;`-1e22` 会被 JS 转成
+   * 「-1e+22」,于是印出「-1e+22 载」。而负寿元本身就只可能来自坏档
+   * (player.sanitize 把 age 拉回 START_AGE),这里不必保留「-」的语义,
+   * 但也不该印脏串 —— 交给 formatNum,与正值同一条格式化路径。
+   */
+  if (Math.abs(y) >= 10000) return `${formatNum(Math.floor(y))} 载`
   return `${Math.floor(y)} 载`
 }
 

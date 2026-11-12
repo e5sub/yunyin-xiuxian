@@ -47,7 +47,7 @@
             v-for="(node, i) in currentNodes"
             :key="node.id"
             class="relative overflow-hidden rounded-md border border-ink/15 bg-paper-deep/60 px-2.5 py-2 pl-3 text-left active:scale-98"
-            :aria-label="`${node.name} · ${routeMark(node).label} · 道源 +${node.bonus}`"
+            :aria-label="expeditionRouteLabel(node.name, routeMark(node), node.bonus, nodePreviews[i]?.winText ?? null)"
             @click="pickNode(i as 0 | 1)"
           >
             <!-- 份量:两径谁更险一眼可比,不必逐字读「道源 +7 / +12」 -->
@@ -170,7 +170,7 @@
               :disabled="busy !== null || rerolling || endgame.daoSource < VOID_REROLL_COST"
               :title="busy?.reason ?? (endgame.daoSource < VOID_REROLL_COST ? `道源尚差 ${daoSourceShortText(VOID_REROLL_COST, endgame.daoSource)}` : undefined)"
               @click="onRerollVoid()"
-            >{{ rerolling ? '窥探中' : endgame.daoSource < VOID_REROLL_COST ? `再窥(尚差${daoSourceShortText(VOID_REROLL_COST, endgame.daoSource)})` : `再窥(${VOID_REROLL_COST})` }}</button>
+            >{{ rerolling ? '窥探中' : endgame.daoSource < VOID_REROLL_COST ? `再窥(道源尚差${daoSourceShortText(VOID_REROLL_COST, endgame.daoSource)})` : `再窥(${VOID_REROLL_COST})` }}</button>
           </div>
         </template>
         <template v-else>
@@ -180,7 +180,7 @@
             :title="busy?.reason ?? (endgame.daoSource < VOID_REROLL_COST ? `道源尚差 ${daoSourceShortText(VOID_REROLL_COST, endgame.daoSource)}` : undefined)"
             @click="onRerollVoid()"
           >
-            {{ rerolling ? '窥探中' : endgame.daoSource < VOID_REROLL_COST ? `窥探虚界(尚差${daoSourceShortText(VOID_REROLL_COST, endgame.daoSource)})` : `窥探虚界(道源 ${VOID_REROLL_COST})` }}
+            {{ rerolling ? '窥探中' : endgame.daoSource < VOID_REROLL_COST ? `窥探虚界(道源尚差${daoSourceShortText(VOID_REROLL_COST, endgame.daoSource)})` : `窥探虚界(道源 ${VOID_REROLL_COST})` }}
           </button>
         </template>
       </div>
@@ -322,7 +322,7 @@
   import { pactMark } from '@/ui/pactMark'
   import { gateDef } from '@/data/qimen'
   import { gateKindMark, palaceBoard } from '@/ui/gateBoard'
-  import { perilGlyph, routeMark } from '@/ui/routeMark'
+  import { expeditionRouteLabel, perilGlyph, routeMark } from '@/ui/routeMark'
   import { fightMarks } from '@/ui/fightStreak'
   import { gateRuleSummary } from '@/core/gateRuleText'
   import {

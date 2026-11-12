@@ -40,7 +40,16 @@
             {{ c.tag }}
           </span>
           <div class="min-w-0">
-            <p class="truncate font-kai text-[13px]" :class="{ 'q-plaque': c.plaque }" :style="c.nameCls">{{ c.name }}</p>
+            <!--
+              名字是这张卡第一样要读的东西,而窄格(320 下格内宽约 78px)放不下 ——
+              截掉的是「这一件到底是什么」。悬停给全文,与下一行副标题同一做法。
+            -->
+            <p
+              class="truncate font-kai text-[13px]"
+              :class="{ 'q-plaque': c.plaque }"
+              :style="c.nameCls"
+              :title="c.name"
+            >{{ c.name }}</p>
             <!--
               副标题原用 ink-faint,它在纯纸上是 5.20:1,可分。但货架卡有品阶淡底:
               灵草/装备卡按品阶铺 6%~13%,神品那档的朱色最深,ink-faint 压上去只剩 4.32:1。
@@ -69,7 +78,7 @@
             :title="c.kind === 'equipment' && inventory.bagFull ? '行囊已满' : !c.sold && !c.afford ? `灵石尚差 ${formatGap(c.stoneShort)}` : undefined"
             @click="buyOne(c.idx)"
           >
-            {{ c.sold ? '已售' : c.kind === 'equipment' && inventory.bagFull ? '行囊已满' : c.afford ? '买下' : `尚差 ${formatGap(c.stoneShort)}` }}
+            {{ c.sold ? '已售' : c.kind === 'equipment' && inventory.bagFull ? '行囊已满' : c.afford ? '买下' : `灵石尚差 ${formatGap(c.stoneShort)}` }}
           </button>
         </div>
       </div>
@@ -228,7 +237,16 @@
         sub: `${herbGradeBandLabel(grade)} · ×${slot.count}`,
         herbGrade: grade,
         luster: herbQualityLuster(grade),
-        tierStyle: { borderColor: tint(herbQualityTone(grade), herbTier.border), background: tint(herbQualityTone(grade), herbTier.bg) },
+        /*
+         * 底色封到 6%,与装备卡同规 —— 品阶浓淡交给边框与角章。
+         *
+         * 原先这里直接用 herbTier.bg(神品那档 13%):13% 的朱叠在卡片底上,
+         * 价签的 gold-ink 压上去只剩 4.39:1(实测,跌破正文 AA)。而价签是
+         * 「买不买得起」唯一的那条读数,不能为了一层色感牺牲它。
+         * 隔壁装备卡早就是这个口径(「密卡底色固定弱晕染」),灵草格当时漏了。
+         * 判据见 palette.spec「货架价签在品阶淡底上也要过线」。
+         */
+        tierStyle: { borderColor: tint(herbQualityTone(grade), herbTier.border), background: tint(herbQualityTone(grade), 0.06) },
         price: slot.price
       }
     }

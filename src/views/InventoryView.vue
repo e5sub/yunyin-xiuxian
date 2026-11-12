@@ -51,7 +51,7 @@
           v-for="row in slotRows"
           :key="row.slot"
           class="card-ink relative flex flex-col items-center gap-1 px-2 py-2.5 active:scale-98"
-          :aria-label="`${row.name}${row.upgradeable ? ',可换' : ''}`"
+          :aria-label="row.label"
           @click="pickerSlot = row.slot"
         >
           <span
@@ -354,12 +354,14 @@
   import { useSettingsStore } from '@/stores/settings'
   import { useCultivationStore } from '@/stores/cultivation'
   import { qualityDef, qualityTextColor } from '@/data/qualities'
+  import { equipSlotLabel } from '@/ui/inventoryText'
   import { lusterByRank } from '@/ui/luster'
   import { pillDef, pillQualityColor, pillQualityName, pillRank } from '@/data/pills'
   import { HERB_GRADES, HERB_GRADE_SHORT, type HerbGrade } from '@/data/herbGrades'
   import { herbStashText } from '@/ui/herbText'
   import { herbQualityLuster, herbQualityRank, herbQualityTextColor, herbQualityTier, herbQualityTone } from '@/ui/herbQuality'
   import { pillFuncText } from '@/ui/itemText'
+  import { recipeMasteryText } from '@/ui/pillText'
   import { EQUIP_SLOT_NAMES, EQUIP_SLOTS, equipmentTemplate } from '@/data/equipment'
   import { BAG_CAPACITY } from '@/data/constants'
   import { usePill, usePillBatch } from '@/core/pillService'
@@ -394,7 +396,8 @@
   // 与开炉弹窗(BrewingDialog)同读一份丹方账;游戏时钟也从这里取,
   // 「顶满」判据读游戏钟(暂停时药效冻住、恢复时顺延 endsAt),不读墙钟。
   // 别再调一次 useNow():那是第二个每秒 interval,整页依赖会被双份唤醒
-  const { herbGrade, recipes, now } = useBrewing()
+  // 圆点只读静态段(anyCraftable):装备/材料/法宝三签不该随时钟重算丹方账
+  const { herbGrade, recipes, anyCraftable, now } = useBrewing()
   const ui = useUiStore()
   const settings = useSettingsStore()
   const lore = useLoreStore()
@@ -445,13 +448,24 @@
       const item = uid ? inventory.findItem(uid) : undefined
       // 与一键换装同一把 bestEquipFor
       const best = bestEquipFor(slot)
+      const template = item ? equipmentTemplate(item.templateId) : undefined
+      const upgradeable = !!best && best.uid !== uid
+      /*
+       * 可访问名里的「戴着什么」与卡面同一份拼法。
+       * 卡面:名字 + `+N`(强化)+ `·标记`(自定 note);空槽写「未装备」。
+       * 原先可访问名只有「武器」/「武器,可换」—— 读屏听不出这格是空的还是戴了什么。
+       */
+      const equippedText = item && template
+        ? [template.name + (item.level > 0 ? ` +${item.level}` : ''), item.note].filter(Boolean).join(' · ')
+        : null
       return {
         slot,
         name: EQUIP_SLOT_NAMES[slot],
         item,
-        template: item ? equipmentTemplate(item.templateId) : undefined,
+        template,
         stock: inventory.bagItems.filter(it => equipmentTemplate(it.templateId)?.slot === slot).length,
-        upgradeable: !!best && best.uid !== uid
+        upgradeable,
+        label: equipSlotLabel(EQUIP_SLOT_NAMES[slot], equippedText, upgradeable)
       }
     })
   )
@@ -525,7 +539,7 @@
 
   // 丹药签圆点:有一味能开炉(与结算同源)
   const tabs = computed<readonly { id: Tab; label: string; dot?: boolean }[]>(() =>
-    TABS.map(t => (t.id === 'pill' ? { ...t, dot: recipes.value.some(r => r.plan.rounds > 0) } : t))
+    TABS.map(t => (t.id === 'pill' ? { ...t, dot: anyCraftable.value } : t))
   )
   /** 逐品灵草存量,不报总和 */
   const herbStash = computed(() => herbStashText(g => resources.herbOf(g), formatNum))
@@ -629,7 +643,6 @@
     { flush: 'post' }
   )
   const currentPill = computed(() => (pillDetail.value ? (pillRows.value.find(r => r.def?.id === pillDetail.value) ?? null) : null))
-  /** 当前查看的丹药的质感层(最上档才有);道品 rank 9 走同一入口 */
   /** 当前查看的丹药的质感层(最上档才有);行上已算好,这里直接取 */
   const pillLuster = computed(() => currentPill.value?.luster ?? null)
 
@@ -706,14 +719,14 @@
     ui.toast(changed > 0 ? `已换上 ${changed} 件` : '无可换', changed > 0 ? 'success' : 'info')
   }
 
-  /** 丹方读到几分熟,与图鉴「已得方/通晓」同源(lore.recipeLore);只报读数,不列熟练来路 */
+  /**
+   * 丹方读到几分熟,与图鉴「已得方/通晓」同源(lore.recipeLore);只报读数,不列熟练来路。
+   * 三态说法取 ui/pillText.recipeMasteryText —— 可炼性判据那里也要同一句。
+   */
   function pillMasteryText(id: string): string {
     const def = pillDef(id)
     if (!def?.recipe) return ''
-    const m = lore.recipeMastery(id)
-    if (m <= 0) return '未得方'
-    if (m >= 1) return '已通晓'
-    return `熟练 ${Math.round(m * 100)}%`
+    return recipeMasteryText(lore.recipeMastery(id))
   }
 
 </script>

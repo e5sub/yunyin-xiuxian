@@ -27,6 +27,37 @@ describe('区域动态事件(regionEvent)', () => {
     expect(player.regionEvent).toBeNull()
   })
 
+  it('远期的到期时刻作废,事件槽不再被永久占住', () => {
+    /*
+     * `rollRegionEvent` 判的是 `cur.endsAt > now` —— 远期值恒真,
+     * 于是**整片地界再也掷不出新事件**(实测远期值下 500 次掷签 0 次)。
+     *
+     * 判据取「最长时长」而不是「不得晚于此刻」:事件持续 30~120 分钟,
+     * 「endsAt 在未来」本身是**正常状态**,一律夹到此刻会把玩家正在享受的事件清掉。
+     */
+    setActivePinia(createPinia())
+    const player = usePlayerStore()
+    player.$patch({
+      regionEvent: { regionId: 'qingyun', eventId: 'yaochao', endsAt: Date.now() + 365 * 24 * 3600_000 }
+    } as never)
+    player.sanitize()
+    expect(player.regionEvent, '远期值该整条作废').toBeNull()
+  })
+
+  it('正常进行中的事件重载后要保留', () => {
+    /*
+     * 这是上一版修法的反面:把「未来到期时刻」一律夹到此刻,
+     * 会让每个正在生效的区域事件在重载时被清掉(审查意见里那条「高」)。
+     */
+    setActivePinia(createPinia())
+    const player = usePlayerStore()
+    const endsAt = Date.now() + 60 * 60_000 // 还剩 60 分钟,正常档位
+    player.$patch({ regionEvent: { regionId: 'qingyun', eventId: 'yaochao', endsAt } } as never)
+    player.sanitize()
+    expect(player.regionEvent?.endsAt, '进行中的事件被误清了').toBe(endsAt)
+    expect(currentRegionEvent('qingyun'), '进行中的事件该能被读到').not.toBeNull()
+  })
+
   it('妖潮更险更多掉落,灵脉无额外危险', () => {
     const yaochao = regionEventDef('yaochao')!
     expect(yaochao.dangerMult).toBeGreaterThan(1)
@@ -41,15 +72,11 @@ describe('区域动态事件(regionEvent)', () => {
    * 上一条用例只断言了灵脉「无额外危险」(dangerMult=1),没断言它有没有好处。
    * 一个三个倍率全为 1 的事件在结算里等于不存在,玩家却会读到它的 desc
    * (「地底灵脉喷薄,天地灵气大盛」)—— 文案承诺了效果,代码里却没有。
-   * 本条把「至少一项 ≠ 1」钉住,防止未来有人把某个事件的倍率调平。
-   */
-  /**
-   * 已知问题(2026-11,记录待决,未擅自修):
-   * 「灵脉暴动」三个倍率全为 1,在结算里等于不存在;而它的 desc 写着
-   * 「地底灵脉喷薄,天地灵气大盛」,承诺了效果。RegionEventDef 也没有灵气字段。
    *
-   * 不擅自加效果,是因为那会改变平衡;也不擅自改文案,因为那会让这个事件失去存在意义。
-   * 这里只把现状钉成显式清单:中性事件必须在此登记,新增中性事件时本行会红,
+   * 已知问题(2026-11,记录待决,未擅自修):「灵脉暴动」正是这样一个事件,
+   * 而 `RegionEventDef` 也没有灵气字段。不擅自加效果,是因为那会改变平衡;
+   * 也不擅自改文案,因为那会让这个事件失去存在意义。
+   * 故这里只把现状钉成显式清单:中性事件必须登记,新增中性事件时本行会红,
    * 迫使后来者决定「补效果」还是「改文案」,而不是默默留一个空事件。
    */
   const KNOWN_NEUTRAL = new Set(['lingmai'])

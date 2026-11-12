@@ -40,6 +40,38 @@ describe('数值格式化', () => {
     expect(formatDuration(90000)).toBe('1天1小时')
   })
 
+  /**
+   * 末位为零的单位不写。
+   *
+   * 修行页实测印出「修为圆满约 100天0小时」、历练页「行程 1小时0分」——
+   * 那个 0 不携带任何信息,而中文时长的说法里也没有「1天0小时」。
+   * formatChoiceSpan 早就单独处理了整分钟(「10分钟」不写「10分0秒」),
+   * 但只覆盖 <1 小时那一种,其余三档照样漏。
+   *
+   * 判据抓的是**末位**为零,不是中间为零:「1天0小时30分」本来就不会出现
+   * (单位只取到下一级),而「2小时0分」这种末位零才是要消掉的。
+   */
+  it('时长:末位为零的单位不写,不出现「1天0小时」「1小时0分」「30分0秒」', () => {
+    for (const [sec, want] of [
+      [86400, '1天'],
+      [172800, '2天'],
+      [86400 + 59, '1天'],
+      [3600, '1小时'],
+      [7200, '2小时'],
+      [3660, '1小时1分'],
+      [1800, '30分'],
+      [65, '1分5秒'],
+      [0, '0秒']
+    ] as const) {
+      expect(formatDuration(sec), `${sec} 秒`).toBe(want)
+    }
+    // 全量扫一遍:任何输入都不许出现「零单位」结尾(0 秒本身是有效读数,不在此列)
+    // 只看数位恰好是 0 的那一格 —— 「20分」「10小时」的末位 0 不在此列
+    for (let s = 1; s <= 4 * 86400; s += 97) {
+      expect(formatDuration(s), `${s} 秒落到了零单位结尾`).not.toMatch(/(?:^|\D)0(分|小时|天)$/)
+    }
+  })
+
   it('倒计时定宽:同一量级内每秒宽度不变', () => {
     const w = (s: string): number => s.length
     // 分秒量级逐秒走一遍(含 9→10 秒、59→60 秒跳档点)
@@ -406,5 +438,275 @@ describe('formatGN · 极小数不印出 -0', () => {
     expect(formatGN(gn(-0.001))).toBe('-0.001')
     expect(formatGN(gn(-1.5))).toBe('-1.5')
     expect(formatGN(gn(-1234))).toBe('-1,234')
+  })
+})
+
+/**
+ * `formatYears` 的分辨率下限 —— 这是一个**已知的、有意的**精度取舍,不是缺陷。
+ *
+ * 它按全局中文单位走 `formatNum`(每 4 个数量级一档),于是大数上相邻年份会撞到同一个显示值:
+ * 最高境界 major=20 的寿元上限是 1.0125e15,而 `formatYears(上限 - 1)` 与 `formatYears(上限)`
+ * 都是「1012兆 载」—— 相差 2749 亿年仍显示成同一个数。
+ *
+ * 真要精确到个位就得放弃单位缩写,而那是全站列宽与阅读密度的口径(formatGN 的注里写着)。
+ * 寿元那一格已经在用 `lifespanRatio < LIFESPAN_WARN_RATIO` 转朱砂做「接近上限」的提示,
+ * 数字本身不承担这件事。
+ *
+ * **这条判据把它钉成事实**:将来若有人以为「显示撞了 = bug」而改精度,
+ * 会在全站列宽上看到代价,而不是在这里悄悄改掉。
+ */
+describe('formatYears · 大数上的分辨率(有意取舍)', () => {
+  it('接近上限时与上限同显示 —— 单位缩写的固有结果', () => {
+    const LIFE = 1_012_500_000_000_000 // lifespanOf(20)
+    const cap = formatYears(LIFE)
+    expect(cap).toBe('1012兆 载')
+    // 相差几十亿年仍同显示:这是单位分辨率,不是算错
+    expect(formatYears(LIFE - 1)).toBe(cap)
+    expect(formatYears(LIFE - 1_000_000_000)).toBe(cap)
+  })
+
+  it('小数值上分辨率足够 —— 早期玩家看到的是逐位精确', () => {
+    expect(formatYears(0)).toBe('0 载')
+    expect(formatYears(16)).toBe('16 载')
+    expect(formatYears(9999)).toBe('9999 载')
+    // 一万起才进单位档
+    expect(formatYears(10_000)).toBe('1万 载')
+  })
+})
+
+/**
+ * formatPercent 的大值兜底。
+ *
+ * 原先那条路径有两道守卫(输入 `isFinite`、`×100` 后仍 `isFinite`),
+ * 但 `1e22` 两道都过 —— 它既有限、×100 后也有限,而 `Number.isInteger` 为真
+ * 于是走 `String(v)` 分支,印出 **`1e+22%`**(实测从 1e20 起就开始了)。
+ *
+ * 兜底须与 formatGN 同形:`1.00e22`(尾数两位、指数不带 + 号),
+ * 而不是 JS 默认的 `1e+22` —— 全站只该有一种科学计数写法。
+ */
+describe('formatPercent · 大值不进 JS 默认科学计数', () => {
+  it('给定 1e21 至 1e300 的正数,则用 formatGN 同形的写法', () => {
+    for (const x of [1e21, 1e28, 1e300]) {
+      const got = formatPercent(x)
+      expect(got, `${x} 印出了 JS 默认的 1e+N:${got}`).not.toMatch(/e\+/)
+      expect(got, `${x} 该用 formatGN 同形的 eN:${got}`).toMatch(/^\d+\.\d{2}e\d+%$/)
+    }
+  })
+
+  it('给定 1e18(×100 后未到门槛),则仍是定点写法', () => {
+    // 门槛按「×100 之后」比,故 1e18 → 1e20 还没到,1e19 → 1e21 恰好到
+    expect(formatPercent(1e18), '1e18 ×100 后还没到门槛').not.toMatch(/e/)
+    expect(formatPercent(1e19), '1e19 ×100 后恰好到门槛').toMatch(/e\d+%$/)
+  })
+
+  it('给定尾数会四舍五入成 10.00 的临界值,则指数抬一位', () => {
+    /*
+     * 这是本轮修的第二处:`mant.toFixed(2)` 可能得 `10.00`(如 v = 9.9999e21),
+     * 那时须把指数抬一位、尾数回到 1.00 —— 否则输出 `10.00e21%`,
+     * 既不是规范写法,读起来也比真值小一个数量级。
+     * formatGN 的兜底早有这一步(`9.99…e407 → 1.00e408`),这里沿用同一条。
+     */
+    for (const x of [9.999e19, 9.9999e19]) {
+      const got = formatPercent(x)
+      expect(got, `${x} 尾数没进位:${got}`).not.toMatch(/^10\.00e/)
+      expect(got, `${x} 该进位成 1.00e22%:${got}`).toBe('1.00e22%')
+    }
+  })
+
+  it('给定负数大值,则保留符号', () => {
+    expect(formatPercent(-1e22)).toMatch(/^-1\.00e24%$/)
+  })
+
+  it('给定门槛之下的常规值,则行为不变', () => {
+    expect(formatPercent(0.5)).toBe('50%')
+    expect(formatPercent(1)).toBe('100%')
+    expect(formatPercent(0.1234, 2)).toBe('12.34%')
+    expect(formatPercent(0)).toBe('0%')
+  })
+
+  it('给定非有限值,则返回占位符', () => {
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      expect(formatPercent(bad)).toBe('--')
+    }
+  })
+})
+
+/**
+ * 时长类格式化的天数上界。
+ *
+ * `formatDuration(1e300)` 原先印出「1.1574074074074075e+295天17小时」——
+ * 十七位小数的科学计数法。它过了 `isFinite` 守卫,因为 `1e300/86400` 仍是有限数。
+ *
+ * 门槛不能随便定:存档里**合法范围内**的最大时间戳是 `MAX_TIMESTAMP_MS`(8.64e15 毫秒),
+ * 减当前时刻再折算成天约 **1 亿天**(实测 99,979,231 天)。首版把门槛写成 1e8,
+ * 恰好被这个值擦过去 —— 于是坏档仍然印出八位裸数字。现取一千万天。
+ *
+ * 两条格式化函数共用这条门槛:`formatCountdown` 的「逐位定宽」只在正常量级内有意义,
+ * 到了八位天数,定宽已无从谈起。
+ */
+describe('时长格式化 · 天数上界改中文单位', () => {
+  const MAX_SECONDS = (8_640_000_000_000_000 - Date.now()) / 1000
+
+  it('给定坏档最大合法时间戳,则两条都印中文单位而非裸数字', () => {
+    /*
+     * 只查「含万/亿/兆」是不够的:若把天数算错、或者把 1e7 当成 1 亿,
+     * 照样印出「1万天」这种带单位的错值,判据仍会绿。
+     * 故连**数值本身**一起核:期望值由天数独立算一遍,再要求输出里出现它。
+     */
+    const maxDays = Math.floor(MAX_SECONDS / 86400)
+    const wantMantissa = formatGN(maxDays) // 与实现无关的期望:交给 formatGN 算
+    expect(wantMantissa, '坏档上界该落在万进单位区间').toMatch(/[万亿兆]/)
+    for (const [name, fn, tail] of [
+      ['formatDuration', formatDuration, '天(\\d+小时)?'],
+      ['formatCountdown', formatCountdown, '天\\d{2}时']
+    ] as const) {
+      const got = fn(MAX_SECONDS)
+      expect(got, `${name} 印出了八位裸数字:${got}`).not.toMatch(/^\d{7,}天/)
+      expect(got, `${name} 不该出现科学计数:${got}`).not.toMatch(/e\+/)
+      // 值与 formatGN(maxDays) 一致 —— 不能被换成别的数量级
+      expect(got, `${name} 的数量级不对(期望 ${wantMantissa}天):${got}`).toMatch(
+        new RegExp(`^${wantMantissa.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}${tail}$`)
+      )
+    }
+  })
+
+  it('给定 1e300 秒,则给出可读结果,不是占位符也不是浮点尾巴', () => {
+    /*
+     * 原先只断言「不含 `\d.\d{5,}e`」—— 那样 `--` 也能过。
+     * 现在要求:有内容、有「天」、且不带十七位小数的浮点尾巴。
+     */
+    const got = formatDuration(1e300)
+    expect(got, '落到了占位符 —— 那不是格式化,是放弃了').not.toBe('--')
+    expect(got, `该仍是时长读数:${got}`).toContain('天')
+    expect(got, `印出了浮点尾巴:${got}`).not.toMatch(/\d\.\d{5,}e/)
+  })
+
+  it('给定正常量级,则行为一字不变', () => {
+    expect(formatDuration(1e6)).toBe('11天13小时')
+    expect(formatDuration(86400)).toBe('1天')
+    expect(formatDuration(3600)).toBe('1小时')
+    expect(formatCountdown(1e6)).toBe('11天13时')
+    expect(formatCountdown(86400)).toBe('1天00时')
+    expect(formatCountdown(90)).toBe('01分30秒')
+  })
+
+  it('门槛落在「坏档可达的最大天数」之下', () => {
+    const maxDays = Math.floor(MAX_SECONDS / 86400)
+    expect(maxDays, '这条判据假设坏档上界约一亿天,若 MAX_TIMESTAMP_MS 变了要重新核').toBeGreaterThan(9e7)
+    // 首版门槛 1e8 会被 99,979,231 天擦过去,故必须更低
+    expect(maxDays, '门槛又抬回一亿天以上了').toBeGreaterThan(1e7)
+  })
+})
+
+/**
+ * 「喂坏值」总闸的第二档:有限但极大。
+ *
+ * 上面那道总闸只喂 `NaN` —— 而 `NaN` 最容易被守卫挡住。
+ * 本轮与上一轮修的两处都不是 `NaN`:
+ *   · `formatPercent(1e22)` 印 `1e+22%`(过了 isFinite、过了上溢检查);
+ *   · `formatDuration(1e300)` 印 `1.1574074074074075e+295天`。
+ * 两者都是**有限数**,原先那道总闸从没喂过它们,自然也从没红过。
+ *
+ * 故补这一档:全部导出再喂一遍「有限但极大」的值,判据照旧——不许出脏串
+ * (JS 默认的 `e+N`、五位数以上的浮点尾巴)。
+ *
+ * `cnNumber` 单独说明:它按契约只处理 0–9999,范围外原样返回是**有意**行为
+ * (见其函数注释);调用点全是数组长度与常量,不可能到大数。
+ * 但它同样该给出「不是脏串」的结果 —— 这里把它一起纳入,用同一条尺子量。
+ */
+describe('format · 有限极大值也不许印脏串', () => {
+  /** 存档能塞进来的最大时间戳量级,以及远超它的值 */
+  const HUGE = [8.64e15, 1e18, 1e22, 1e300] as const
+
+  /**
+   * 「脏」的四种形态 —— 比首版多认两种:
+   *
+   *   一 JS 默认的科学计数 `1e+22`(指数带 + 号);
+   *   二 **嵌套**的科学计数 `1.00e1e+22`(formatGN 直接拼 `g.e` 的产物);
+   *   三 **定点**的五位以上浮点尾巴 `1.1574074074074075`(不一定带指数);
+   *   四 老四样 NaN / undefined / Infinity / Invalid。
+   *
+   * 首版只认「长小数**后面必须跟 e**、且 e 后必须带 +」——
+   * 于是 `1.1574074074074075天`(不带 e)与 `1.00e1e+22`(e 后不带 +)都漏了。
+   */
+  const DIRTY = [/e\+\d/, /e\d+e/, /\d\.\d{5,}/, /NaN|undefined|Infinity|Invalid/]
+
+  const dirtyOf = (label: string, out: string): string | null => {
+    const hit = DIRTY.find(re => re.test(out))
+    return hit ? `${label} → ${out.slice(0, 40)}` : null
+  }
+
+  it('除 cnNumber 外,全部导出对有限极大值都不出脏串', () => {
+    const dirty: string[] = []
+    for (const v of HUGE) {
+      const calls: readonly (readonly [string, string])[] = [
+        ['formatGN', formatGN(v)],
+        ['formatGap', formatGap(v)],
+        ['formatNum', formatNum(v)],
+        ['formatRate', formatRate(v)],
+        ['formatPercent', formatPercent(v)],
+        ['formatDuration', formatDuration(v)],
+        ['formatChoiceSpan', formatChoiceSpan(v)],
+        ['formatCountdown', formatCountdown(v)],
+        ['formatClock', formatClock(v)],
+        ['formatStamp', formatStamp(v)],
+        ['formatYears', formatYears(v)],
+        // 负值同样扫:formatYears(-1e22) 曾印出「-1e+22 载」
+        ['formatGN(-v)', formatGN(-v)],
+        ['formatNum(-v)', formatNum(-v)],
+        ['formatGap(-v)', formatGap(-v)],
+        ['formatYears(-v)', formatYears(-v)],
+        ['formatPercent(-v)', formatPercent(-v)],
+        ['formatDuration(-v)', formatDuration(-v)]
+      ]
+      for (const [name, out] of calls) {
+        const d = dirtyOf(`${name}(${v.toExponential(1)})`, out)
+        if (d) dirty.push(d)
+      }
+    }
+    expect(dirty, `这些导出在有限极大值上印了脏串:\n${dirty.join('\n')}`).toEqual([])
+  })
+
+  it('GNum 输入同样扫 —— 不只是裸 number', () => {
+    /*
+     * 首版只喂裸 `number`,漏掉了 GNum 这条入口。而 `formatGN({ m: 1, e: 1e22 })`
+     * 曾印出「1.00e1e+22」:兜底那句直接拼 `g.e`,科学计数套了一层科学计数。
+     */
+    const dirty: string[] = []
+    for (const e of [1e22, 1e6, 5000, 1000]) {
+      for (const [name, out] of [
+        ['formatGN', formatGN({ m: 1, e })],
+        ['formatGap', formatGap({ m: 1, e })],
+        ['formatRate', formatRate({ m: 1, e })]
+        // formatNum / formatYears 只收 number,不吃 GNum —— 它们在上面那条裸 number 的扫描里
+      ] as const) {
+        const d = dirtyOf(`${name}({m:1,e:${e}})`, out)
+        if (d) dirty.push(d)
+      }
+    }
+    expect(dirty, `这些 GNum 入口印了脏串:\n${dirty.join('\n')}`).toEqual([])
+  })
+
+  it('roundToSum 的缩放过程也不许溢出成非有限值', () => {
+    /*
+     * 三段守卫(unit 有限且 >0、每项都有限、非空)之外还有一段**过程**:
+     * unit 极小配 values 极大时,`v / unit` 得上溢。
+     * 实测 roundToSum([1e300, 1e300], 1e-3) 曾返回 [null, null]。
+     */
+    for (const [vals, unit] of [
+      [[1e300, 1e300], 1e-3],
+      [[1e300, 1], 1e-300],
+      [[1e308, 1e308, 1e308], 1e-308]
+    ] as const) {
+      const out = roundToSum([...vals], unit)
+      expect(out.every(Number.isFinite), `roundToSum 返回了非有限值:${JSON.stringify(out)}`).toBe(true)
+    }
+  })
+
+  it('cnNumber 的范围外契约:原样返回,不试图格式化', () => {
+    expect(cnNumber(10000), '范围外该原样返回').toBe('10000')
+    expect(cnNumber(1e21), '范围外该原样返回').toBe(String(1e21))
+    expect(cnNumber(9999)).toMatch(/^[零一二三四五六七八九十百千]+$/)
+    expect(cnNumber(10000)).not.toMatch(/[零一二三四五六七八九十百千]/)
   })
 })
