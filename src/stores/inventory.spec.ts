@@ -617,6 +617,17 @@ describe('装备 · 词条数上限', () => {
  * 4 条用例分别钉:部位不符、品质门槛不够、装得上的不误伤、同 id 不叠份。
  */
 describe('装备 · 词条适配(部位 + 品质门槛)', () => {
+  /*
+   * 新 pinia = 干净的行囊。
+   *
+   * 本条是文件里唯一一个直接挂在顶层的 describe(其余都在别的块里继承了 beforeEach),
+   * 原先没有自己的 beforeEach:`--sequence.shuffle` 把它排到最前时,
+   * `sanitized()` 里第一句 `useInventoryStore()` 就抛 `[🍍] no active Pinia`。
+   */
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
   const weapon = equipmentTemplate('w_zhuqing')!
   /** 只落在护甲/饰品上的词条:放到武器上部位不符 */
   const offSlot = AFFIXES.find(a => a.slots !== undefined && !a.slots.includes(weapon.slot))!
