@@ -127,7 +127,7 @@ describe('界面分层 · 浮层只有一个出处', () => {
     expect(codex, 'RealmCodexView 不见了').toBeDefined()
     expect(codex!.src, '问卦置灰要合成「卦在身或不足」').toContain(':disabled="askDisabled"')
     expect(codex!.src, '问卦差额与置灰同源').toContain('const askShort = computed(')
-    expect(codex!.src, '问卦按钮要直说差几枚悟道').toContain('悟道点尚差 ${askShort.value}')
+    expect(codex!.src, '问卦按钮要直说差几枚悟道').toContain("shortageText('悟道点', askShort.value)")
     expect(codex!.src, '点化付不起要置灰(已显化那枚仍保留)').toContain(
       ':disabled="player.fateFocus !== s.id && focusShort > 0"'
     )
@@ -150,7 +150,6 @@ describe('界面分层 · 浮层只有一个出处', () => {
     expect(codex!.src, '卦象倒计时要走定宽格式').toContain('formatCountdown(')
     expect(codex!.src, '卦象倒计时不得再借修行时长刷新').not.toContain('game.totalPlaySec')
   })
-
 
   it('首页法球的断点监听随组件卸载 —— 重进首页不许累积闭包', () => {
     const f = FILES.find(x => x.path === 'views/HomeView.vue')

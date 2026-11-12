@@ -75,10 +75,10 @@
           <button
             class="btn-ghost min-w-0 whitespace-normal !px-2.5 !py-2 !text-[11px] text-center"
             :disabled="c.sold || !c.afford || (c.kind === 'equipment' && inventory.bagFull)"
-            :title="c.kind === 'equipment' && inventory.bagFull ? '行囊已满' : !c.sold && !c.afford ? `灵石尚差 ${formatGap(c.stoneShort)}` : undefined"
+            :title="c.kind === 'equipment' && inventory.bagFull ? '行囊已满' : !c.sold && !c.afford ? c.shortText : undefined"
             @click="buyOne(c.idx)"
           >
-            {{ c.sold ? '已售' : c.kind === 'equipment' && inventory.bagFull ? '行囊已满' : c.afford ? '买下' : `灵石尚差 ${formatGap(c.stoneShort)}` }}
+            {{ c.sold ? '已售' : c.kind === 'equipment' && inventory.bagFull ? '行囊已满' : c.afford ? '买下' : c.shortText }}
           </button>
         </div>
       </div>
@@ -102,6 +102,7 @@
   import { equipmentTemplate } from '@/data/equipment'
   import { qualityDef, qualityTextColor } from '@/data/qualities'
   import { isRareQuality, qualityTierStyle } from '@/ui/qualityTier'
+  import { shortageText } from '@/ui/resourceShortText'
   import { qualityAura } from '@/ui/qualityAura'
   import { lusterByRank, lusterOf } from '@/ui/luster'
   import { herbQualityLuster, herbQualityRank, herbQualityTextColor, herbQualityTier, herbQualityTone } from '@/ui/herbQuality'
@@ -141,6 +142,8 @@
     afford: boolean
     /** 灵石尚差；买得起时为 0 */
     stoneShort: GNum
+    /** 卡面正文与 title 共用的缺料句，买得起时无意义 */
+    shortText: string
   }
 
   const MAT_META: Record<'herb' | 'ore', { name: string; icon: string }> = {
@@ -201,7 +204,9 @@
       plaque: false,
       // 丹药格走 rank 入口(道品 rank 9 在这里也要享有质感层)
       luster: slot.kind === 'pill' ? lusterByRank(pillRank(pillDef(slot.pillId)!)) : null,
-      stoneShort: afford ? gnZero() : subClamp(slot.price, resources.spiritStone)
+      stoneShort: afford ? gnZero() : subClamp(slot.price, resources.spiritStone),
+      // 卡面正文与 title 各写一遍同一个表达式,改词时容易只改一处;这里算一次
+      shortText: shortageText('灵石', formatGap(afford ? gnZero() : subClamp(slot.price, resources.spiritStone)))
     }
     if (slot.kind === 'pill') {
       const def = pillDef(slot.pillId)!
@@ -279,7 +284,10 @@
       ui.toast(`购得「${name}」`, 'success')
       // 顶档之物另办仪典:与拾得同一份判定(见 ui/treasureCeremony)
       if (slot) celebratePurchase(slot)
-    } else if (result === 'poor') ui.toast(slot ? `灵石尚差 ${formatGap(renderSlot(slot).stoneShort)}` : '灵石不足', 'warn')
+    } else if (result === 'poor') {
+      // 与强化/词条转移/灵脉同一句:共用 shortageText,不各写一份
+      ui.toast(shortageText('灵石', slot ? formatGap(renderSlot(slot).stoneShort) : undefined), 'warn')
+    }
     else if (result === 'bagfull') ui.toast('行囊已满', 'warn')
     else if (result === 'expired') ui.toast('货架已刷新', 'warn')
   }

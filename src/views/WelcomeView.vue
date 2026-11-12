@@ -78,7 +78,6 @@
     }, 2500)
   }
 
-
   onUnmounted(() => {
     if (enterTimer !== undefined) clearTimeout(enterTimer)
   })

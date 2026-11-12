@@ -40,7 +40,7 @@ const REQUIRED: readonly (readonly [string, string])[] = [
   ['暂无藏品', 'src/views/InventoryView.vue'],
   ['暂无纪录', 'src/views/LegacyView.vue'],
   ['货架已刷新', 'src/components/market/MarketShelfSection.vue'],
-  // 「文件为空」随本地文件导入一并移除(转云端后 SettingsSaveSection 不再读本地文件),故不在此列
+  // 「文件为空」「导出失败」随本地导入导出存档一并移除(转云端后不再读/写本地文件),故不在此列
   ['复制失败', 'src/components/settings/SettingsDiagnosticsSection.vue'],
   ['导出存档', 'src/components/settings/SettingsDiagnosticsSection.vue'],
   ['修为未至圆满', 'src/ui/cultivationText.ts'],
@@ -52,7 +52,6 @@ const REQUIRED: readonly (readonly [string, string])[] = [
    * 却从没进过这份清单 —— 有人照文档反例改回去,不会有任何东西拦他。
    */
   ['存档写入失败', 'src/App.vue'],
-  ['导出失败', 'src/components/settings/SettingsSaveSection.vue'],
   ['强化已至上限', 'src/ui/forgeText.ts'],
   ['历练在途', 'src/ui/homeStatus.ts'],
   ['已装备', 'src/ui/affixTransferText.ts']

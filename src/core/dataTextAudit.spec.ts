@@ -1130,8 +1130,9 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     // 满重时也禁用(按钮不再消失),故判据取「缺一样 + 满重」两段都写出来
     expect(view, '禁用态按缺的那一样判,不能拿整个缺口对象当布尔').toContain(':disabled="!row.upCost || row.short?.short != null"')
     expect(view, '满重不隐藏按钮,改为禁用并写原因').toContain('<template v-else>已至上限</template>')
-    expect(view, '行内写悟道缺口').toContain('悟道点尚差 ${short.wudao}')
-    expect(view, '行内写灵石缺口').toContain('灵石尚差 ${formatGap(short.stone)}')
+    // 两句都转调 shortageText(与强化/词条转移/灵脉同一份实现)
+    expect(view, '行内写悟道缺口').toContain("shortageText('悟道点', short.wudao)")
+    expect(view, '行内写灵石缺口').toContain("shortageText('灵石', formatGap(short.stone))")
     expect(view, '行内不再缀 toast 的来路提示').not.toContain('artifactShortToast(')
     expect(view, '不许再用笼统的「悟道或灵石不足」').not.toContain('悟道或灵石不足')
   })
@@ -1215,8 +1216,11 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(market, '卡面要有实际缺口字段').toContain('stoneShort:')
     expect(market, '卡面缺口用指数感知减法').toContain('subClamp(slot.price, resources.spiritStone)')
     // 主语要与 title 一致:光写「尚差 8」时同屏还挂着道源/器灵尘,玩家得回头猜是哪一种
-    expect(market, '按钮直接写出尚差多少(带资源名)').toContain('`灵石尚差 ${formatGap(c.stoneShort)}`')
-    expect(market, '扣款瞬时失败也报实际差额').toContain('灵石尚差 ${formatGap(renderSlot(slot).stoneShort)}')
+    // 卡面正文与 title 共用一个字段(shortText),不再各拼一遍模板
+    expect(market, '按钮直接写出尚差多少(带资源名)').toContain("shortageText('灵石', formatGap(")
+    expect(market, '正文与 title 共用同一个字段').toContain('c.shortText')
+    // 瞬时失败那一支与其余缺料句共用 shortageText(灵石),仍须带实际差额
+    expect(market, '扣款瞬时失败也报实际差额').toContain("shortageText('灵石', slot ? formatGap(renderSlot(slot).stoneShort) : undefined)")
     expect(market, '不再用笼统的灵石不足作按钮文案').not.toContain("? '灵石不足'")
   })
 
@@ -1417,7 +1421,8 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(card, '投点钮就地写实际石差').toContain('灵石尚差 ${formatGap(investGap.value)}')
     expect(service, '单点拒因写实际石差').toContain('veinShortToast(formatGap(veinPointShortfall()))')
     expect(service, '批量拒因同写实际石差').toContain('else ui.toast(veinShortToast(formatGap(veinPointShortfall())), \'warn\')')
-    expect(text, '短差文案只在传入差数时才写尚差').toContain('`灵石尚差 ${stoneText}`')
+    // 短差句转调 ui/resourceShortText 的 shortageText:只在传入差数时才写尚差
+    expect(text, '短差文案只在传入差数时才写尚差').toContain("shortageText('灵石', stoneText)")
   })
 
   /**
@@ -1507,9 +1512,10 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(service, '进修回执传实际短差').toContain('gongfaUpShortToast(short, gongfaUpgradeShortfall(cost))')
     expect(dialog, '详情复用同一份短差').toContain('gongfaUpgradeShortfall(c)')
     expect(dialog, '详情不再自己减余额').not.toContain('c.wudao - resources.wudao')
-    expect(text, '残页拒因带页数').toContain('残页尚差 ${pageShort} 页')
-    expect(text, '进修拒因带悟道差').toContain('悟道点尚差 ${gap.wudao}')
-    expect(text, '进修拒因带残页差').toContain('残页尚差 ${gap.page} 页')
+    // 转调 shortageText,量词作为第三参传进去
+    expect(text, '残页拒因带页数').toContain("shortageText('残页', pageShort, '页')")
+    expect(text, '进修拒因带悟道差').toContain("shortageText('悟道点', gap?.wudao)")
+    expect(text, '进修拒因带残页差').toContain("shortageText('残页', gap?.page, '页')")
   })
 
   /**
