@@ -235,13 +235,18 @@ export async function enforceLootProvenance(
       else strippedSouls += 1
     }
     const stripped = strippedEquips + strippedArtifacts + strippedSouls
+    /*
+     * 已离手的签发行一律清账,不只在「干净轮」清(1.66.3 专项扫描第二轮):
+     * 剥离轮里跳过 prune 会让「本轮离手的合法件」的签发行多活一轮,而 equip_state
+     * 每轮都按 keep 清 —— 错位窗口里把已出售件塞回档:签发行还在(过验源)、
+     * 状态行已清,补登路径当场采信上传,强化注入得手。清账失败走外层兜底按原样落库。
+     */
+    await pruneLoot(userId, {
+      equip: new Set(keptItems.map(uidOf).filter((u): u is string => u !== null)),
+      artifact: new Set(keptArtifacts.map(artifactIdOf).filter((u): u is string => u !== null)),
+      soul: new Set(keptSouls.map(uidOf).filter((u): u is string => u !== null))
+    })
     if (stripped === 0) {
-      // 全部在账:顺手清掉已离手的签发行,台账不无限增长
-      await pruneLoot(userId, {
-        equip: new Set(keptItems.map(uidOf).filter((u): u is string => u !== null)),
-        artifact: new Set(keptArtifacts.map(artifactIdOf).filter((u): u is string => u !== null)),
-        soul: new Set(keptSouls.map(uidOf).filter((u): u is string => u !== null))
-      })
       return { data, stripped: 0 }
     }
 

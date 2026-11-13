@@ -313,6 +313,7 @@ gmRouter.delete('/users/:id', requireAdmin, (req: Request, res: Response) => {
       'profiles',
       'loot_ledger',
       'loot_seed',
+      'soul_burns',
       'equip_state',
       'equip_seed',
       'forge_spend',

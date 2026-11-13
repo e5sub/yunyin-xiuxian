@@ -13,6 +13,7 @@ import { lootEnv } from '../recompute.js'
 import { grantLoot, verifyExtraGains, expectedSoulGradeOf } from '../lootGrant.js'
 import { recordLoot, burnedSoulUids, recordSoulBurns } from '../lootLedger.js'
 import { recordEquipStatesFromItems } from '../equipLedger.js'
+import { withKeyLock } from '../mutex.js'
 
 export const lootRouter = express.Router()
 
@@ -137,17 +138,21 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
  * 老客户端不带 burnedUid 时沿用合法域钳制的旧径(兼容口,与 realmAuth 同思路)。
  *
  * 与 /loot/claim 共用同一套限速与小时封顶:签发流量不因多开一个口子而放大。
+ *
+ * 处理体按账号串行(1.66.3 专项扫描第二轮):烧炼账的「查过没有 → 记账」若不串行,
+ * 两个并发请求带同一个 burnedUid 都能在查账时看到「没烧过」,一件装备刷出两枚魂。
  */
 lootRouter.post('/loot/extras', requireAuth, (req: Request, res: Response) => {
-  void (async () => {
-    const userId = req.user!.id
-    const now = Date.now()
-    const last = lastClaimAt.get(userId) ?? 0
-    if (now - last < CLAIM_MIN_GAP_MS) {
-      res.status(429).json({ error: '操作太快,稍候再试' })
-      return
-    }
-    lastClaimAt.set(userId, now)
+  const userId = req.user!.id
+  const now = Date.now()
+  const last = lastClaimAt.get(userId) ?? 0
+  if (now - last < CLAIM_MIN_GAP_MS) {
+    res.status(429).json({ error: '操作太快,稍候再试' })
+    return
+  }
+  lastClaimAt.set(userId, now)
+
+  void withKeyLock(`loot:${userId}`, async () => {
 
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
     const gains = await verifyExtraGains(body)
@@ -208,11 +213,13 @@ lootRouter.post('/loot/extras', requireAuth, (req: Request, res: Response) => {
       res.status(429).json({ error: '签发过于频繁,稍候再试' })
       return
     }
+    // 烧炼账先落,签发行后落:中途失败时「烧了没签成」(客户端退款保留原器,原器
+    // 离手后烧炼账行随瘦身清掉),而不是「签了没烧成」(白拿一魂)。
+    if (burnedNow.length > 0) await recordSoulBurns(userId, burnedNow)
     await recordLoot(userId, gains.artifacts, 'artifact', 'artifact')
     await recordLoot(userId, souls.map(s => s.uid), 'soul', 'soul')
-    if (burnedNow.length > 0) await recordSoulBurns(userId, burnedNow)
     res.json({ artifacts: gains.artifacts, souls: souls.map(s => s.uid) })
-  })().catch(() => {
+  }).catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })
 })
