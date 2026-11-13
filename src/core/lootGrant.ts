@@ -225,7 +225,8 @@ export function validateExtraGains(raw: unknown): ExtraGains {
     if (uid === '' || uid.length > 64) continue
     if (soulTypeDef(type as never) === undefined) continue
     const grade = typeof o.grade === 'number' && Number.isFinite(o.grade) ? Math.trunc(o.grade) : 0
-    // burnedUid 限长透传:服务端凭它在云档里找到原器复算品阶;没带的老客户端走钳制旧径
+    // burnedUid 限长透传:服务端凭它在云档里找到原器复算品阶;没带的申请是否采信
+    // 自报品阶由服务端旧径开关(soul_legacy_grades,默认关)决定,这里照单上报不裁
     const burnedUid = typeof o.burnedUid === 'string' && o.burnedUid !== '' && o.burnedUid.length <= 64
       ? o.burnedUid
       : undefined

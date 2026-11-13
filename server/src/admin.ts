@@ -372,6 +372,8 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'save_history_keep',
       'event_enabled',
       'leisure_enabled',
+      // 器魂旧径(自报品阶兼容):默认关死,凝炼一律凭 burnedUid 复算;老客户端过渡期可后台回开
+      'soul_legacy_grades',
       // 注意:人机验证是三个键 —— 开关漏登记会让「掰了开关点保存」只回一句「不支持的参数」
       'turnstile_enabled',
       'turnstile_site_key',
@@ -474,7 +476,7 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'dungeon_growth_reset_days',
       'smtp_port'
     ]
-    const boolKeys = ['email_enabled', 'email_code_required', 'alipay_enabled', 'boss_autoops_smart', 'turnstile_enabled', 'event_enabled', 'leisure_enabled']
+    const boolKeys = ['email_enabled', 'email_code_required', 'alipay_enabled', 'boss_autoops_smart', 'turnstile_enabled', 'event_enabled', 'leisure_enabled', 'soul_legacy_grades']
     // VIP 定价:元,最多两位小数(0 = 该档不开放)
     const priceKeys = ['vip_price_month', 'vip_price_half', 'vip_price_year', 'vip_price_forever']
     // 支付宝密钥:PKCS8 base64 较长

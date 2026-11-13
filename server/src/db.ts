@@ -895,6 +895,9 @@ async function seedConfig(): Promise<void> {
     ['turnstile_enabled', 'false'],
     ['turnstile_site_key', ''],
     ['turnstile_secret_key', ''],
+    // 器魂旧径(自报品阶兼容):默认关死 —— 凝炼签发一律凭被烧装备的 burnedUid 复算品阶;
+    // 老客户端过渡期可由 GM 后台回开(开=不带 uid 的申请沿用合法域钳制的自报值)
+    ['soul_legacy_grades', 'false'],
     ['boss_daily_attempts', '1'],
     ['boss_hp_atk_mult', '20'],
     ['boss_strike_rounds', '10'],

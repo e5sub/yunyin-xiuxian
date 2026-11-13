@@ -8,6 +8,7 @@
  */
 import express, { type Request, type Response } from 'express'
 import { get } from '../db.js'
+import { getConfig } from '../config.js'
 import { requireAuth } from '../auth.js'
 import { lootEnv } from '../recompute.js'
 import { grantLoot, verifyExtraGains, expectedSoulGradeOf } from '../lootGrant.js'
@@ -135,7 +136,7 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
  * 记进台账后上传才不会被验源移除。法宝的自报 defId 按存在性钳制;器魂的自报品阶在 1.66.3 起
  * 不再照单全收 —— 客户端须带被烧装备的 uid,服务端按云档里这件的品质复算品阶
  * (与 core/soulForge 的 previewSoul 同一条映射),复算不出或原器已烧过一律不签。
- * 老客户端不带 burnedUid 时沿用合法域钳制的旧径(兼容口,与 realmAuth 同思路)。
+ * 自报品阶的旧径默认关死(GM 后台 soul_legacy_grades 才能回开,仅供老客户端过渡期兜底)。
  *
  * 与 /loot/claim 共用同一套限速与小时封顶:签发流量不因多开一个口子而放大。
  *
@@ -164,13 +165,14 @@ lootRouter.post('/loot/extras', requireAuth, (req: Request, res: Response) => {
     /*
      * 器魂品阶复算:带 burnedUid 的申请,原器必须在云档行囊里、品质必须可复算、
      * 且这一件没烧过(soul_burns 台账)。三条有一条不满足就不签 —— 凝炼客户端会退款
-     * 并保留原器,宁可白点一次,不发无据之魂。云档读不到时按旧径钳制放行
-     * (加固环节不变成拒收;自坏档的号本来也玩不下去)。
+     * 并保留原器,宁可白点一次,不发无据之魂。
      */
     const souls: Array<{ uid: string; type: string; grade: number; burnedUid?: string }> = []
     const burnedNow: string[] = []
     const claimedSouls = gains.souls
     const withBurn = claimedSouls.filter(s => typeof s.burnedUid === 'string' && s.burnedUid !== '')
+    // 自报品阶的旧径默认关死;GM 后台 soul_legacy_grades=true 仅作老客户端过渡期兜底
+    const legacyGrades = (await getConfig('soul_legacy_grades')) === 'true'
     if (withBurn.length > 0) {
       let saveItems: Array<Record<string, unknown>> | null = null
       try {
@@ -196,11 +198,13 @@ lootRouter.post('/loot/extras', requireAuth, (req: Request, res: Response) => {
         souls.push({ uid: s.uid, type: s.type, grade: Math.trunc(expected) })
         burnedNow.push(burnedUid)
       }
-      // 老客户端兼容口:不带 burnedUid 的申请沿用钳制后的自报值
-      for (const s of claimedSouls) {
-        if (typeof s.burnedUid !== 'string' || s.burnedUid === '') souls.push({ uid: s.uid, type: s.type, grade: s.grade })
+      // 老客户端兼容口(旧径开关,默认关):不带 burnedUid 的申请沿用钳制后的自报值
+      if (legacyGrades) {
+        for (const s of claimedSouls) {
+          if (typeof s.burnedUid !== 'string' || s.burnedUid === '') souls.push({ uid: s.uid, type: s.type, grade: s.grade })
+        }
       }
-    } else {
+    } else if (legacyGrades) {
       souls.push(...claimedSouls.map(s => ({ uid: s.uid, type: s.type, grade: s.grade })))
     }
 
