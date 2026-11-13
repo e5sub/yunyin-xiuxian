@@ -135,4 +135,11 @@ describe('法宝/器魂签发校验', () => {
     expect(validateExtraGains(null)).toEqual({ artifacts: [], souls: [] })
     expect(validateExtraGains({ artifacts: 'a_x', souls: {} })).toEqual({ artifacts: [], souls: [] })
   })
+
+  it('burnedUid 限长透传,缺省不带', () => {
+    const ok = validateExtraGains({ souls: [{ uid: 'u1', type: SOUL_TYPES[0]!.id, grade: 1, burnedUid: 'w_x' }] })
+    expect(ok.souls[0]!.burnedUid).toBe('w_x')
+    const tooLong = validateExtraGains({ souls: [{ uid: 'u1', type: SOUL_TYPES[0]!.id, grade: 1, burnedUid: 'x'.repeat(80) }] })
+    expect(tooLong.souls[0]!.burnedUid).toBeUndefined()
+  })
 })

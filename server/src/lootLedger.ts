@@ -69,8 +69,74 @@ export async function seedLoot(
   await run('REPLACE INTO loot_seed (user_id, seeded_at) VALUES (?, ?)', [userId, Date.now()])
 }
 
-/** 已离手的签发行不再占台账(装备化尘/分解、法宝重复折悟道、器魂装配后消失都在此清账) */
-export async function pruneLoot(userId: number, keep: Record<LootKind, ReadonlySet<string>>): Promise<void> {
+/**
+ * 回档专用:按回档档里现存的件重录签发行(不碰 loot_seed)。
+ *
+ * 为什么需要:签发行会随「件离手」被 pruneLoot 清掉(分解/出售),而 save_history 里
+ * 存的旧档仍含这些件 —— 回档把它们带回来时台账已无此账,下一次上传验源整批移除,
+ * 玩家凭空丢件;同批件还会走 equipLedger 的「补登」路径采信上传状态,平白重开一道口子。
+ * 回档是服务端自己换档,与 resetEquipStatesFromData 同思路:按档内现值把账补齐。
+ * 历史行是服务端留的旧快照,不是客户端可写面,重录不构成注入。
+ */
+export async function reseedLootFromData(userId: number, data: unknown): Promise<void> {
+  const root = isPlainObject(data) ? data : null
+  if (root === null) return
+  const inv = isPlainObject(root.inventory) ? root.inventory : null
+  const endgame = isPlainObject(root.endgame) ? root.endgame : null
+  const items = inv !== null && Array.isArray(inv.items) ? inv.items : []
+  const artifacts = inv !== null && Array.isArray(inv.artifacts) ? inv.artifacts : []
+  const souls = endgame !== null && Array.isArray(endgame.souls) ? endgame.souls : []
+  const uidOf = (x: unknown): string | null => {
+    if (!isPlainObject(x)) return null
+    const uid = x.uid
+    return typeof uid === 'string' && uid !== '' && uid.length <= 64 ? uid : null
+  }
+  const defIdOf = (x: unknown): string | null => {
+    if (!isPlainObject(x)) return null
+    const defId = x.defId
+    return typeof defId === 'string' && defId !== '' && defId.length <= 64 ? defId : null
+  }
+  await recordLoot(userId, items.map(uidOf).filter((u): u is string => u !== null), 'restore', 'equip')
+  await recordLoot(userId, artifacts.map(defIdOf).filter((u): u is string => u !== null), 'restore', 'artifact')
+  await recordLoot(userId, souls.map(uidOf).filter((u): u is string => u !== null), 'restore', 'soul')
+}
+
+/* ---------------- 器魂烧炼账(1.66.3) ----------------
+ *
+ * 凝炼的语义是「烧一件装备、品质决定魂阶」,但 /loot/extras 的签发在原器离开云档之前
+ * (客户端是先签发、后移除、再随上传落库)—— 服务端若不记账,同一件在「签发 → 上传」
+ * 的窗口里能被反复凝炼刷魂。soul_burns 以原器 uid 记一笔,同 uid 只认一魂;
+ * 上传落库后原器已离手,行随行囊瘦身清掉。
+ */
+
+/** 已烧过的原器 uid 集合(只查请求里带到的那些,避免整表回读) */
+export async function burnedSoulUids(userId: number, uids: readonly string[]): Promise<Set<string>> {
+  const out = new Set<string>()
+  for (const uid of uids) {
+    const row = await get<{ uid: string }>('SELECT uid FROM soul_burns WHERE user_id = ? AND uid = ?', [userId, uid])
+    if (row !== undefined) out.add(uid)
+  }
+  return out
+}
+
+/** 原器烧炼入账(同 uid 幂等,重复烧同件不重复记账) */
+export async function recordSoulBurns(userId: number, uids: readonly string[]): Promise<void> {
+  const now = Date.now()
+  for (const uid of uids) {
+    if (typeof uid !== 'string' || uid === '' || uid.length > 64) continue
+    await run('REPLACE INTO soul_burns (user_id, uid, created_at) VALUES (?, ?, ?)', [userId, uid, now])
+  }
+}
+
+/** 原器已随上传离手(不在行囊里了):烧炼账清行,防表随年月增长 */
+export async function pruneSoulBurns(userId: number, keep: ReadonlySet<string>): Promise<void> {
+  const rows = await all<{ uid: string }>('SELECT uid FROM soul_burns WHERE user_id = ?', [userId])
+  for (const r of rows) {
+    if (!keep.has(r.uid)) await run('DELETE FROM soul_burns WHERE user_id = ? AND uid = ?', [userId, r.uid])
+  }
+}
+
+/** 已离手的签发行不再占台账(装备化尘/分解、法宝重复折悟道、器魂装配后消失都在此清账) */export async function pruneLoot(userId: number, keep: Record<LootKind, ReadonlySet<string>>): Promise<void> {
   const rows = await all<{ uid: string; kind: string }>('SELECT uid, kind FROM loot_ledger WHERE user_id = ?', [userId])
   for (const row of rows) {
     const kind: LootKind = row.kind === 'artifact' || row.kind === 'soul' ? row.kind : 'equip'

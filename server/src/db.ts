@@ -235,6 +235,14 @@ CREATE TABLE IF NOT EXISTS loot_seed (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   seeded_at INTEGER NOT NULL
 );
+-- 器魂烧炼账(1.66.3):凝炼烧掉的那件装备 uid 记在此处,签发一魂只认一件原器 ——
+-- 防同一件在「签发 → 上传落库」的窗口里被反复凝炼刷魂;上传存档后原器离手,行随之清掉
+CREATE TABLE IF NOT EXISTS soul_burns (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  uid TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, uid)
+);
 -- 装备状态台账(1.58.3):强化/重铸/词条转移的唯一写入口是 POST /api/forge/op,
 -- 签发后把该件的等级与词条记在此处;上传存档时以台账为准 —— 客户端自报的等级/词条不作数。
 -- 只管「原地改件」的那几个字段(level/affixes/sealed/reforgeCount/transferCount/invested),
@@ -568,6 +576,13 @@ CREATE TABLE IF NOT EXISTS loot_seed (
   user_id BIGINT PRIMARY KEY,
   seeded_at BIGINT NOT NULL,
   CONSTRAINT fk_loot_seed_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS soul_burns (
+  user_id BIGINT NOT NULL,
+  uid VARCHAR(64) NOT NULL,
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, uid),
+  CONSTRAINT fk_soul_burns_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS equip_state (
   user_id BIGINT NOT NULL,

@@ -80,11 +80,11 @@ export async function markLevelsSeeded(userId: number): Promise<void> {
   await run('REPLACE INTO level_seed (user_id, seeded_at) VALUES (?, ?)', [userId, Date.now()])
 }
 
-/** 删档时一并清空(与 equip_state 同:删档即放弃这份修为,重开按新档播种) */
-export async function clearLevelStates(userId: number): Promise<void> {
-  await run('DELETE FROM level_state WHERE user_id = ?', [userId])
-  await run('DELETE FROM level_seed WHERE user_id = ?', [userId])
-}
+/*
+ * 删档不清台账(1.66.3):与 loot_seed 同语义 —— 标记随号不随档。删档清掉播种标记
+ * 会把等级台账退回「首传采信客户端」,删档重传即可注入满级功法/建筑,且每删一次
+ * 重置一次。台账只升不降:对删档后的新档,旧行只有「钳住注水等级」的作用。
+ */
 
 /**
  * 回档专用:按档内等级**原值**重写台账(允许下调),但保留播种标记。

@@ -10,8 +10,8 @@ import express, { type Request, type Response } from 'express'
 import { get } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { lootEnv } from '../recompute.js'
-import { grantLoot, verifyExtraGains } from '../lootGrant.js'
-import { recordLoot } from '../lootLedger.js'
+import { grantLoot, verifyExtraGains, expectedSoulGradeOf } from '../lootGrant.js'
+import { recordLoot, burnedSoulUids, recordSoulBurns } from '../lootLedger.js'
 import { recordEquipStatesFromItems } from '../equipLedger.js'
 
 export const lootRouter = express.Router()
@@ -127,11 +127,14 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 
 /**
- * 法宝与器魂签发(1.58.1)。
+ * 法宝与器魂签发(1.58.1;器魂品阶服务端复算 1.66.3)。
  *
  * 这两类物件不是「掉落流程」的一部分:法宝掉不掉在战斗/际遇里掷,器魂由「烧一件凡器」凝出 ——
  * 所以服务端不重新掷点,只做**存在性**与**归属**两件事:数据表里确有其物(validateExtraGains)、
- * 记进台账后上传才不会被验源移除。客户端自报的品阶会被夹回表内合法域。
+ * 记进台账后上传才不会被验源移除。法宝的自报 defId 按存在性钳制;器魂的自报品阶在 1.66.3 起
+ * 不再照单全收 —— 客户端须带被烧装备的 uid,服务端按云档里这件的品质复算品阶
+ * (与 core/soulForge 的 previewSoul 同一条映射),复算不出或原器已烧过一律不签。
+ * 老客户端不带 burnedUid 时沿用合法域钳制的旧径(兼容口,与 realmAuth 同思路)。
  *
  * 与 /loot/claim 共用同一套限速与小时封顶:签发流量不因多开一个口子而放大。
  */
@@ -152,7 +155,51 @@ lootRouter.post('/loot/extras', requireAuth, (req: Request, res: Response) => {
       res.json({ artifacts: [], souls: [] })
       return
     }
-    const want = gains.artifacts.length + gains.souls.length
+
+    /*
+     * 器魂品阶复算:带 burnedUid 的申请,原器必须在云档行囊里、品质必须可复算、
+     * 且这一件没烧过(soul_burns 台账)。三条有一条不满足就不签 —— 凝炼客户端会退款
+     * 并保留原器,宁可白点一次,不发无据之魂。云档读不到时按旧径钳制放行
+     * (加固环节不变成拒收;自坏档的号本来也玩不下去)。
+     */
+    const souls: Array<{ uid: string; type: string; grade: number; burnedUid?: string }> = []
+    const burnedNow: string[] = []
+    const claimedSouls = gains.souls
+    const withBurn = claimedSouls.filter(s => typeof s.burnedUid === 'string' && s.burnedUid !== '')
+    if (withBurn.length > 0) {
+      let saveItems: Array<Record<string, unknown>> | null = null
+      try {
+        const row = await get<{ data: string }>('SELECT data FROM saves WHERE user_id = ?', [userId])
+        if (row !== undefined) {
+          const parsed = JSON.parse(row.data) as unknown
+          const inv = typeof parsed === 'object' && parsed !== null && typeof (parsed as Record<string, unknown>).inventory === 'object'
+            ? ((parsed as Record<string, unknown>).inventory as Record<string, unknown>)
+            : null
+          if (inv !== null && Array.isArray(inv.items)) saveItems = inv.items.filter(isPlainObject)
+        }
+      } catch {
+        saveItems = null
+      }
+      const burned = await burnedSoulUids(userId, withBurn.map(s => s.burnedUid as string))
+      for (const s of withBurn) {
+        const burnedUid = s.burnedUid as string
+        if (burned.has(burnedUid)) continue
+        const item = saveItems?.find(it => it.uid === burnedUid)
+        if (item === undefined || typeof item.quality !== 'string') continue
+        const expected = await expectedSoulGradeOf(item.quality)
+        if (expected === null || !Number.isFinite(expected) || expected < 0) continue
+        souls.push({ uid: s.uid, type: s.type, grade: Math.trunc(expected) })
+        burnedNow.push(burnedUid)
+      }
+      // 老客户端兼容口:不带 burnedUid 的申请沿用钳制后的自报值
+      for (const s of claimedSouls) {
+        if (typeof s.burnedUid !== 'string' || s.burnedUid === '') souls.push({ uid: s.uid, type: s.type, grade: s.grade })
+      }
+    } else {
+      souls.push(...claimedSouls.map(s => ({ uid: s.uid, type: s.type, grade: s.grade })))
+    }
+
+    const want = gains.artifacts.length + souls.length
     if (want === 0) {
       res.json({ artifacts: [], souls: [] })
       return
@@ -162,8 +209,9 @@ lootRouter.post('/loot/extras', requireAuth, (req: Request, res: Response) => {
       return
     }
     await recordLoot(userId, gains.artifacts, 'artifact', 'artifact')
-    await recordLoot(userId, gains.souls.map(s => s.uid), 'soul', 'soul')
-    res.json({ artifacts: gains.artifacts, souls: gains.souls.map(s => s.uid) })
+    await recordLoot(userId, souls.map(s => s.uid), 'soul', 'soul')
+    if (burnedNow.length > 0) await recordSoulBurns(userId, burnedNow)
+    res.json({ artifacts: gains.artifacts, souls: souls.map(s => s.uid) })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })

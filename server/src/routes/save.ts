@@ -6,12 +6,12 @@ import { getConfigNumber } from '../config.js'
 import { recomputeProfile } from '../recompute.js'
 import { normalizeSaveSlices } from '../saveNormalize.js'
 import { enforceAuthority } from '../saveAuthority.js'
-import { enforceLootProvenance } from '../lootLedger.js'
-import { clearEquipStates, enforceEquipStates, pruneEquipStates, resetEquipStatesFromData } from '../equipLedger.js'
+import { enforceLootProvenance, reseedLootFromData, pruneSoulBurns } from '../lootLedger.js'
+import { enforceEquipStates, pruneEquipStates, resetEquipStatesFromData } from '../equipLedger.js'
 import { clearPurchases, pendingSpend, settlePurchases } from '../marketLedger.js'
 import { clearForgeSpend, pendingForgeSpend, settleForgeSpend } from '../forgeLedger.js'
 import { clearProgressSpend, pendingProgressSpend, settleProgressSpend } from '../progressLedger.js'
-import { clearLevelStates, enforceLevelStates, resetLevelStatesFromData } from '../levelLedger.js'
+import { enforceLevelStates, resetLevelStatesFromData } from '../levelLedger.js'
 import { withKeyLock } from '../mutex.js'
 
 export interface ProfileSnapshot {
@@ -528,6 +528,8 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
         }
       }
       await pruneEquipStates(req.user!.id, keep)
+      // 烧炼账随行囊瘦身:凝炼的原器已随上传离手,账行清掉(失败只影响体积)
+      await pruneSoulBurns(req.user!.id, keep)
     } catch {
       /* 同上 */
     }
@@ -561,9 +563,14 @@ saveRouter.delete('/save', requireAuth, (req: Request, res: Response) => {
     await clearPurchases(req.user!.id)
     await clearForgeSpend(req.user!.id)
     await clearProgressSpend(req.user!.id)
-    // 装备台账一并清空:新档的件按新档播种(与 loot_seed 同:删档即放弃这批物件)
-    await clearEquipStates(req.user!.id)
-    await clearLevelStates(req.user!.id)
+    /*
+     * 装备与等级台账不清(1.66.3):与 loot_seed/loot_ledger 同语义 —— 标记随号不随档。
+     * 此前删档把 equip_seed/level_seed 一并清掉、loot_ledger 却保留:旧 uid 仍过得了验源,
+     * 而状态台账回到「首传采信客户端」,改包把旧 uid 配上满强化/满词条、功法建筑注满级,
+     * 删档重传即可入账 —— 且每删一次重置一次,成了可重复利用的注入链。现在台账行与
+     * 播种标记都保留:新档行囊为空,孤儿行随 pruneEquipStates/pruneLoot 自然清掉;
+     * 等级台账只升不降,对新档只有钳制作用,没有放水作用。
+     */
     res.json({ ok: true })
   }).catch(() => {
     res.status(500).json({ error: '服务器异常' })
@@ -623,6 +630,9 @@ saveRouter.post('/save/restore', requireAuth, (req: Request, res: Response) => {
       // 强化词条顶回回档前(台账「只升不降」是防直注,回档是服务端自己换档,必须跟着降)
       await resetLevelStatesFromData(req.user!.id, restored)
       await resetEquipStatesFromData(req.user!.id, restored)
+      // 签发行随「件离手」被清过(分解/出售),回档把件带回来时须把账补齐,
+      // 否则下一次上传验源把回档带回来的件整批移除(1.66.3)
+      await reseedLootFromData(req.user!.id, restored)
     } catch {
       // 快照复算失败时 profiles 与台账不动:下一次上传仍会按存档内容重算
     }

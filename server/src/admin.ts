@@ -12,6 +12,7 @@ import { onlineCount } from './ws.js'
 import { bodyStr, rateLimit } from './rateLimit.js'
 import { syncProfileFromData } from './routes/save.js'
 import { resetEquipStatesFromData } from './equipLedger.js'
+import { reseedLootFromData } from './lootLedger.js'
 import { resetLevelStatesFromData } from './levelLedger.js'
 import { withKeyLock } from './mutex.js'
 import { CODE_TYPE_DAYS, generateCode, grantVipDays, isCodeType } from './vip.js'
@@ -696,6 +697,8 @@ gmRouter.post('/saves/:userId/restore', requireAdmin, (req: Request, res: Respon
       await syncProfileFromData(userId, restored, now)
       await resetLevelStatesFromData(userId, restored)
       await resetEquipStatesFromData(userId, restored)
+      // 签发行随「件离手」被清过,回档把件带回来时须把账补齐(1.66.3,与玩家回档同规)
+      await reseedLootFromData(userId, restored)
     } catch {
       // 快照复算失败时 profiles 与台账不动:下一次上传仍会按存档内容重算
     }

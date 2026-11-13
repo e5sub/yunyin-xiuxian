@@ -56,12 +56,18 @@ export async function mintArtifacts(defIds: readonly string[]): Promise<string[]
   }
 }
 
-/** 签发一枚器魂;true 表示可入档 */
-export async function mintSoul(soul: SoulGain): Promise<boolean> {
+/**
+ * 签发一枚器魂;true 表示可入档。
+ * burnedUid 是被烧掉的那件装备:服务端按云档里这件的品质复算品阶(1.66.3),
+ * 自报的 grade 不再照单全收。
+ */
+export async function mintSoul(soul: SoulGain, burnedUid: string): Promise<boolean> {
   const auth = useAuthStore()
   if (!auth.loggedIn) return true
   try {
-    const { souls } = await cloudApi.claimLootExtras({ souls: [soul] })
+    const { souls } = await cloudApi.claimLootExtras({
+      souls: [{ uid: soul.uid, type: soul.type, grade: soul.grade, burnedUid }]
+    })
     return souls.includes(soul.uid)
   } catch {
     return false

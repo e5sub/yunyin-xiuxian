@@ -20,15 +20,17 @@ type GrantFn = (ctx: unknown, env: unknown, rng?: unknown) => LootGrantResult | 
 
 export interface ExtraGains {
   artifacts: string[]
-  souls: Array<{ uid: string; type: string; grade: number }>
+  souls: Array<{ uid: string; type: string; grade: number; burnedUid?: string }>
 }
 
 type ValidateExtrasFn = (raw: unknown) => ExtraGains
+/** 品质 → 器魂品阶(1.66.3 服务端复算 grade 用);未知品质返回 null */
+type ExpectedGradeFn = (quality: string) => number | null
 
-let cached: Promise<{ grantEquips: GrantFn; validateExtraGains: ValidateExtrasFn }> | null = null
+let cached: Promise<{ grantEquips: GrantFn; validateExtraGains: ValidateExtrasFn; expectedSoulGrade: ExpectedGradeFn }> | null = null
 
-function clientGrant(): Promise<{ grantEquips: GrantFn; validateExtraGains: ValidateExtrasFn }> {
-  cached ??= loadClientModule<{ grantEquips: GrantFn; validateExtraGains: ValidateExtrasFn }>(SOURCE_MODULE, VENDOR_FILE)
+function clientGrant(): Promise<{ grantEquips: GrantFn; validateExtraGains: ValidateExtrasFn; expectedSoulGrade: ExpectedGradeFn }> {
+  cached ??= loadClientModule<{ grantEquips: GrantFn; validateExtraGains: ValidateExtrasFn; expectedSoulGrade: ExpectedGradeFn }>(SOURCE_MODULE, VENDOR_FILE)
 // 加载失败不缓存 rejected promise:vendor 缺失/损坏是部署事故,修好后不该重启进程才恢复
   cached.catch(() => {
     cached = null
@@ -54,6 +56,19 @@ export async function verifyExtraGains(raw: unknown): Promise<ExtraGains | null>
     return mod.validateExtraGains(raw)
   } catch (err) {
     console.warn('[loot] 法宝/器魂校验失败,按不签发处理:', err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
+/**
+ * 品质 → 器魂品阶(1.66.3):/loot/extras 凭它把自报 grade 压回原器品质决定的权威值。
+ * 失败返回 null(调用方按拒签处理)。
+ */
+export async function expectedSoulGradeOf(quality: string): Promise<number | null> {
+  try {
+    const mod = await clientGrant()
+    return mod.expectedSoulGrade(quality)
+  } catch {
     return null
   }
 }

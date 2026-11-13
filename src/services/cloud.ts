@@ -644,7 +644,7 @@ export const cloudApi = {
   /** 法宝/器魂签发(1.58.1):入台账后上传才不会在验源时被移除 */
   claimLootExtras: (payload: {
     artifacts?: readonly string[]
-    souls?: readonly { uid: string; type: string; grade: number }[]
+    souls?: readonly { uid: string; type: string; grade: number; burnedUid?: string }[]
   }): Promise<{ artifacts: string[]; souls: string[] }> => request('POST', '/loot/extras', payload),
   /**
    * 炼器裁决(1.58.3):强化/重铸/自动重铸/词条转移的唯一写入口。

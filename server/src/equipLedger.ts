@@ -122,11 +122,11 @@ export async function pruneEquipStates(userId: number, keep: ReadonlySet<string>
   }
 }
 
-/** 删档时一并清空(与 loot_ledger 同:删档即放弃这批物件,重开按新档播种) */
-export async function clearEquipStates(userId: number): Promise<void> {
-  await run('DELETE FROM equip_state WHERE user_id = ?', [userId])
-  await run('DELETE FROM equip_seed WHERE user_id = ?', [userId])
-}
+/*
+ * 删档不清台账(1.66.3):与 loot_seed 同语义 —— 标记随号不随档。删档清掉播种标记
+ * 会把状态台账退回「首传采信客户端」,旧 uid(loot_ledger 保留)配上改满的状态即可
+ * 删档重传入账,成了可重复利用的注入链。新档行囊为空,孤儿行由 pruneEquipStates 清掉。
+ */
 
 /**
  * 回档专用:按档内现存的件**原值**重写台账(允许降级、删件),保留播种标记。

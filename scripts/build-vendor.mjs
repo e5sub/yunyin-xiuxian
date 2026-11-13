@@ -41,7 +41,7 @@ const EXPECTED = {
   'saveAuthority.mjs': ['enforceSaveAuthority'],
   'profileRecompute.mjs': ['snapshotFromSlices', 'lootEnvFromSlices'],
   'breakthroughResolve.mjs': ['resolveBreakthroughFromSlices'],
-  'lootGrant.mjs': ['grantEquips', 'validateExtraGains', 'marketPriceAt'],
+  'lootGrant.mjs': ['grantEquips', 'validateExtraGains', 'marketPriceAt', 'expectedSoulGrade'],
   'forgeResolve.mjs': ['resolveForgeFromSlices'],
   'levelResolve.mjs': ['resolveLevelFromSlices']
 }

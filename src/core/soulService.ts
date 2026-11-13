@@ -58,7 +58,7 @@ export async function refineEquipment(uid: string): Promise<boolean> {
   }
   refiningUids.add(uid)
   try {
-    if (!(await mintSoul(soul))) {
+    if (!(await mintSoul(soul, uid))) {
       endgame.addDaoSource(SOUL_REFINE_COST)
       ui.toast('凝炼失败', 'warn')
       return false

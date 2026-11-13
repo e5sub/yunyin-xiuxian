@@ -18,7 +18,9 @@ const ALLOWLIST: Record<string, string> = {
   studyBlueprint: '炼器图纸骨架:contentReachabilityAudit 已钉"读与给必须一起接",此处不重复扣押',
   lootEnvFromSlices: '服务端掉落签发的环境复算入口:server/src/recompute.ts 动态加载本模块,从云档分片复算掉落环境(1.58.0),消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径',
   marketPriceAt:
-    '服务端坊市定价:server/src/routes/market.ts 经 server/src/lootGrant.ts 动态加载本模块,按 (major, stockedAt) 确定性复算货格价格,不让客户端自报成交价(1.58.1);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径'
+    '服务端坊市定价:server/src/routes/market.ts 经 server/src/lootGrant.ts 动态加载本模块,按 (major, stockedAt) 确定性复算货格价格,不让客户端自报成交价(1.58.1);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径',
+  expectedSoulGrade:
+    '服务端器魂品阶复算:server/src/routes/loot.ts 经 server/src/lootGrant.ts 动态加载本模块,按云档里被烧装备的品质复算签发品阶,不让客户端自报 grade(1.66.3);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径'
 }
 
 /**

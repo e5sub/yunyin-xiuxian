@@ -22,7 +22,8 @@ import { capChance } from './statsCalc'
 import { EQUIP_DROP_CHANCE, EQUIP_DROP_CHANCE_CAP } from '@/data/constants'
 import { maxTierForMajor } from '@/data/regions'
 import { artifactDef } from '@/data/artifacts'
-import { SOUL_GRADES, soulTypeDef } from '@/data/souls'
+import { SOUL_GRADES, soulTypeDef, soulGradeOfQuality } from '@/data/souls'
+import { qualityDef } from '@/data/qualities'
 import { generateMarketStock, marketEquipInstance, marketSlotAt } from './marketService'
 import { suppressionEquipmentLuck, SUPPRESS_EQUIP_LUCK_CAP } from './suppressLuck'
 
@@ -188,6 +189,11 @@ export interface SoulGain {
   uid: string
   type: string
   grade: number
+  /**
+   * 被烧掉的那件装备 uid(1.66.3)。登录态凝炼必须带上:服务端按云档里这件的品质
+   * 复算品阶,自报的 grade 只在复算不出时(老客户端)按合法域钳制采信。
+   */
+  burnedUid?: string
 }
 
 export interface ExtraGains {
@@ -219,9 +225,25 @@ export function validateExtraGains(raw: unknown): ExtraGains {
     if (uid === '' || uid.length > 64) continue
     if (soulTypeDef(type as never) === undefined) continue
     const grade = typeof o.grade === 'number' && Number.isFinite(o.grade) ? Math.trunc(o.grade) : 0
-    out.souls.push({ uid, type, grade: Math.max(0, Math.min(maxGrade, grade)) })
+    // burnedUid 限长透传:服务端凭它在云档里找到原器复算品阶;没带的老客户端走钳制旧径
+    const burnedUid = typeof o.burnedUid === 'string' && o.burnedUid !== '' && o.burnedUid.length <= 64
+      ? o.burnedUid
+      : undefined
+    out.souls.push({ uid, type, grade: Math.max(0, Math.min(maxGrade, grade)), ...(burnedUid !== undefined ? { burnedUid } : {}) })
   }
   return out
+}
+
+/**
+ * 品质 → 器魂品阶(服务端复算用):凝炼的品阶只由原器品质决定,见 core/soulForge 的
+ * previewSoul —— 同一条映射在这里单点再导出,服务端 /loot/extras 凭它压回自报的 grade。
+ * 未知品质串返回 null(调用方按拒签处理)。
+ */
+export function expectedSoulGrade(quality: string): number | null {
+  // 未知品质串(改档/旧档)在表里查不到,按 null 回给调用方拒签
+  const q = qualityDef(quality as Parameters<typeof qualityDef>[0])
+  if (q === undefined) return null
+  return soulGradeOfQuality(q.rank).rank
 }
 
 /* ------------------------------------------------------------------ *
