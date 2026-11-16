@@ -64,4 +64,24 @@ describe('档案快照复算 · 属性只认重推,不认存档自述', () => {
     expect(snapshotFromSlices(null)).toBeNull()
     expect(snapshotFromSlices('乱串')).toBeNull()
   })
+
+  /*
+   * 门派不进存档分片(状态服务端独占),复算要算它的加成只能由调用方把表里的状态传进来:
+   * 不传 → 与「未立派」同值;传了 → 技能/建筑的加成必须落到快照上,否则排行榜读到的战力
+   * 会比玩家面板低一截(save.ts / loot.ts 就是这么递的)。
+   */
+  it('门派加成按传入的门派状态计入快照,不传则不计', () => {
+    usePlayerStore().$patch({ major: 6, sub: 2, name: '剑修' })
+    const slices = JSON.parse(JSON.stringify(currentSlices())) as Record<string, unknown>
+    const plain = snapshotFromSlices(slices)
+    expect(plain).not.toBeNull()
+    // 太虚剑意五重 = 攻击 +10%
+    const withSect = snapshotFromSlices(slices, { sectId: 'taixu', skills: { taixu_sword: 5 }, buildings: {} })
+    expect(withSect).not.toBeNull()
+    const attackOf = (s: { atkM: number; atkE: number }): number => s.atkM * Math.pow(1000, s.atkE)
+    expect(attackOf(withSect!)).toBeGreaterThan(attackOf(plain!))
+    // 认不出的宗门/跨宗门的技能一律丢弃(修形在 store 里跑),快照回到未立派的值
+    const bogus = snapshotFromSlices(slices, { sectId: '无此宗门', skills: { taixu_sword: 5 }, buildings: {} })
+    expect(bogus).toEqual(plain)
+  })
 })

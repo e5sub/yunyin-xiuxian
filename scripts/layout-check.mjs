@@ -66,7 +66,8 @@ const ROUTES = [
   '/world',
   '/celestial',
   '/market',
-  '/apprentice'
+  '/apprentice',
+  '/sect'
 ]
 
 /**

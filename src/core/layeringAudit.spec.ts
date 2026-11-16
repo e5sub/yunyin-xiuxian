@@ -97,8 +97,10 @@ const STATEFUL_CORE = new Set<string>([
  * 1.67.0:246 → 248。两处都是把「改数值」的动作收进服务端带来的合法依赖 ——
  *   · core/levelResolve 读 inventory:祭炼重数与灵脉点数都要经同一条无头结算链改 store;
  *   · core/veinService 读 auth:登录态走 progress/op,未登录才走本地链(同 forgeService 的既有做法)。
+ * 1.68.0:248 → 249。core/profileRecompute 读 sect:门派状态服务端独占、不在存档分片里,
+ *   复算战力/掉落环境要把表里的状态水合进 store —— 不注进去,服务端快照就比玩家面板少一截。
  */
-const CORE_STORE_SITES = 248;
+const CORE_STORE_SITES = 249;
 /**
  * core 用例里需要 Pinia 的文件数基线(只许减)。
  * 上游 121 + 本仓 autoOpsDaily/gongfaSeats 等新增,合并后以实跑数为准,见本文件底部对账。

@@ -30,6 +30,7 @@ const ROUTES = [
   '/cultivation',
   '/adventure',
   '/apprentice',
+  '/sect',
   '/market',
   '/inventory',
   '/character',

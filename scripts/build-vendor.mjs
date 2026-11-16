@@ -16,7 +16,8 @@ const ENTRY_POINTS = [
   'src/core/breakthroughResolve.ts',
   'src/core/lootGrant.ts',
   'src/core/forgeResolve.ts',
-  'src/core/levelResolve.ts'
+  'src/core/levelResolve.ts',
+  'src/core/sectRules.ts'
 ]
 
 await build({
@@ -43,7 +44,8 @@ const EXPECTED = {
   'breakthroughResolve.mjs': ['resolveBreakthroughFromSlices'],
   'lootGrant.mjs': ['grantEquips', 'validateExtraGains', 'marketPriceAt', 'expectedSoulGrade'],
   'forgeResolve.mjs': ['resolveForgeFromSlices'],
-  'levelResolve.mjs': ['resolveLevelFromSlices']
+  'levelResolve.mjs': ['resolveLevelFromSlices'],
+  'sectRules.mjs': ['sectNameOk', 'foundCost', 'donationDef', 'donationSplit', 'buildingCost', 'settleBuild', 'canFound']
 }
 
 let failed = false
@@ -62,4 +64,4 @@ for (const [file, names] of Object.entries(EXPECTED)) {
   }
 }
 if (failed) process.exit(1)
-console.log('[build-vendor] 冒烟通过:7 个入口全部可装载、导出齐全')
+console.log(`[build-vendor] 冒烟通过:${Object.keys(EXPECTED).length} 个入口全部可装载、导出齐全`)

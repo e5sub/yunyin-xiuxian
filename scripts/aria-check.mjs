@@ -70,7 +70,7 @@ try {
   const ROUTES = [
     '/', '/cultivation', '/codex', '/adventure', '/world', '/inventory', '/character',
     '/celestial', '/souls', '/dongfu', '/collection', '/build', '/market', '/apprentice',
-    '/titles', '/legacy', '/settings'
+    '/sect', '/titles', '/legacy', '/settings'
     /*
      * 不含 /welcome 与 /create:本脚本铺 lateSlices(已有存档),路由守卫
      * `if (game.started) { if (to.name === 'welcome' || to.name === 'create') return { name: 'home' } }`

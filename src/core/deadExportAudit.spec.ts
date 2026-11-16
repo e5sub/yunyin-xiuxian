@@ -20,7 +20,9 @@ const ALLOWLIST: Record<string, string> = {
   marketPriceAt:
     '服务端坊市定价:server/src/routes/market.ts 经 server/src/lootGrant.ts 动态加载本模块,按 (major, stockedAt) 确定性复算货格价格,不让客户端自报成交价(1.58.1);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径',
   expectedSoulGrade:
-    '服务端器魂品阶复算:server/src/routes/loot.ts 经 server/src/lootGrant.ts 动态加载本模块,按云档里被烧装备的品质复算签发品阶,不让客户端自报 grade(1.66.3);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径'
+    '服务端器魂品阶复算:server/src/routes/loot.ts 经 server/src/lootGrant.ts 动态加载本模块,按云档里被烧装备的品质复算签发品阶,不让客户端自报 grade(1.66.3);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径',
+  sectExists:
+    '宗门存在性校验:server/src/routes/sect.ts 建派时验道统 id(客户端挑选处只遍历 SECTS),消费方在 src 之外,审计扫不到;sectRules.spec 守三门齐备'
 }
 
 /**
@@ -274,7 +276,13 @@ describe('死导出审计', () => {
     formatStamp:
       '时刻戳原语:format.spec 的全导出坏值巡逻覆盖它;本仓本地导入导出链已删,运行时暂无调用方,待上游形制统一后随导入检视一并接回',
     validateExtraGains:
-      '服务端法宝/器魂签发校验:server/src/lootGrant.ts 动态加载本模块,校验 defId 存在、器魂品阶合法、条数封顶后签发入账(1.58.1);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径'
+      '服务端法宝/器魂签发校验:server/src/lootGrant.ts 动态加载本模块,校验 defId 存在、器魂品阶合法、条数封顶后签发入账(1.58.1);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径',
+    settleBuild:
+      '服务端营造结算:server/src/sectState.ts 读门派状态时按服务端时钟落级(1.68.0);客户端只显示倒计时,不参与结算。消费方在 src 之外,审计扫不到;sectRules.spec 守口径',
+    donationSplit:
+      '捐献折算(三成入门派库):由 server/src/routes/sect.ts 结算,客户端只显示总额;sectRules.spec 守拆分与余数不丢',
+    donationDef:
+      '捐献档位查表:server/src/routes/sect.ts 按 kind 取份数与贡献;客户端渲染直接遍历 SECT_DONATIONS,消费方在 src 之外'
   }
 
   it('运行时模块里的导出,不能只被 spec 用到 —— 那是骨架空转的样子', () => {

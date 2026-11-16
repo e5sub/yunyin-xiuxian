@@ -123,7 +123,7 @@ try {
   {
     const ROUTES = [
       '/', '/cultivation', '/adventure', '/inventory', '/character', '/codex', '/souls', '/titles',
-      '/settings', '/build', '/collection', '/legacy', '/dongfu', '/world', '/celestial', '/market', '/apprentice'
+      '/settings', '/build', '/collection', '/legacy', '/dongfu', '/world', '/celestial', '/market', '/apprentice', '/sect'
     ]
     const unreachable = []
     for (const route of ROUTES) {

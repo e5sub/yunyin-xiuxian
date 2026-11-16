@@ -18,6 +18,7 @@ import { useInventoryStore } from '@/stores/inventory'
 import { useCultivationStore } from '@/stores/cultivation'
 import { useDongfuStore } from '@/stores/dongfu'
 import { useResourcesStore } from '@/stores/resources'
+import { useSectStore } from '@/stores/sect'
 import { realmLabel } from '@/data/realms'
 import { powerScore } from '@/core/formulas'
 import { modOf } from '@/core/statsCalc'
@@ -63,6 +64,23 @@ function asSlices(data: unknown): Record<string, Record<string, unknown>> | null
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+/**
+ * 把分片水合进临时 store。
+ *
+ * 门派是唯一的例外:它**不在存档分片里**(整份状态只住服务端,见 server/src/sectState.ts),
+ * 但技能与建筑都给永久属性、聚宝阁还给机缘 —— 不注进来,服务端复算出的 power/luck 就会
+ * 比玩家面板低一截。所以由服务端自己读表后经 `sect` 入参送进来,两边同一份 normalizeSectState。
+ * 没传(离线/未接门派)就按「未立派」算,与玩家面板上那一路为空时同值。
+ */
+function hydrateStores(slices: Record<string, Record<string, unknown>>, sect: unknown): void {
+  usePlayerStore().$patch(slices.player!)
+  if (isPlainObject(slices.inventory)) useInventoryStore().$patch(slices.inventory)
+  if (isPlainObject(slices.cultivation)) useCultivationStore().$patch(slices.cultivation)
+  if (isPlainObject(slices.dongfu)) useDongfuStore().$patch(slices.dongfu)
+  if (isPlainObject(slices.resources)) useResourcesStore().$patch(slices.resources)
+  if (sect !== undefined && sect !== null) useSectStore().hydrate(sect)
 }
 
 /** 从「当前已激活的 store」直接取快照;链路任何一环产出非有限值即 null(调用方回落) */
@@ -127,17 +145,13 @@ export function lootEnvFromActiveStores(): LootEnv | null {
 }
 
 /** 从云档分片无头复算掉落环境(服务端 /api/loot/claim 走这条);失败返回 null */
-export function lootEnvFromSlices(data: unknown): LootEnv | null {
+export function lootEnvFromSlices(data: unknown, sect?: unknown): LootEnv | null {
   const slices = asSlices(data)
   if (slices === null) return null
   const pinia = createPinia()
   setActivePinia(pinia)
   try {
-    usePlayerStore().$patch(slices.player!)
-    if (isPlainObject(slices.inventory)) useInventoryStore().$patch(slices.inventory)
-    if (isPlainObject(slices.cultivation)) useCultivationStore().$patch(slices.cultivation)
-    if (isPlainObject(slices.dongfu)) useDongfuStore().$patch(slices.dongfu)
-    if (isPlainObject(slices.resources)) useResourcesStore().$patch(slices.resources)
+    hydrateStores(slices, sect)
     return lootEnvOfPlayer()
   } catch {
     return null
@@ -150,18 +164,17 @@ export function lootEnvFromSlices(data: unknown): LootEnv | null {
  * 从云档分片无头复算(服务端走这条):临时 pinia 水合 → 同一套 finalStats。
  * 客户端算什么它就算什么 —— 存档里就算被塞了 attack: 1e999 这类字段也不读,
  * 属性一律由装备/功法/洞府等分片重推。链路抛错或结果非有限值返回 null。
+ *
+ * `sect` 是服务端读 sect_state 表后传进来的门派状态(门派不在分片里,见上)。
+ * 它只来自服务端的表,客户端无法伪造 —— 也就不构成「上传声明」那条攻击面。
  */
-export function snapshotFromSlices(data: unknown): ProfileSnapshot | null {
+export function snapshotFromSlices(data: unknown, sect?: unknown): ProfileSnapshot | null {
   const slices = asSlices(data)
   if (slices === null) return null
   const pinia = createPinia()
   setActivePinia(pinia)
   try {
-    usePlayerStore().$patch(slices.player!)
-    if (isPlainObject(slices.inventory)) useInventoryStore().$patch(slices.inventory)
-    if (isPlainObject(slices.cultivation)) useCultivationStore().$patch(slices.cultivation)
-    if (isPlainObject(slices.dongfu)) useDongfuStore().$patch(slices.dongfu)
-    if (isPlainObject(slices.resources)) useResourcesStore().$patch(slices.resources)
+    hydrateStores(slices, sect)
     return snapshotFromActiveStores()
   } catch {
     return null

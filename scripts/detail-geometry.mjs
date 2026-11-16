@@ -811,6 +811,7 @@ const TOUCH_ROUTES = [
   '/build',
   '/market',
   '/apprentice',
+  '/sect',
   '/titles',
   '/dongfu',
   '/legacy',

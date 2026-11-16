@@ -12,6 +12,7 @@ import { clearPurchases, pendingSpend, settlePurchases } from '../marketLedger.j
 import { clearForgeSpend, pendingForgeSpend, settleForgeSpend } from '../forgeLedger.js'
 import { clearProgressSpend, pendingProgressSpend, settleProgressSpend } from '../progressLedger.js'
 import { enforceLevelStates, resetLevelStatesFromData } from '../levelLedger.js'
+import { clearSect, pendingSectSpend, readSectState, settleSectSpend } from '../sectState.js'
 import { withKeyLock } from '../mutex.js'
 
 export interface ProfileSnapshot {
@@ -212,7 +213,8 @@ function snapshotComplete(s: Record<string, unknown> | null): s is ProfileSnapsh
  * 否则权威化会把客户端境界压回旧值,回档等于没回、突破等于白突。
  */
 export async function syncProfileFromData(userId: number, data: unknown, now: number): Promise<void> {
-  const recomputed = await recomputeProfile(data)
+  // 门派不进分片:复算要算它的加成,只能在这里把表里的状态一并递进去(读表,不加锁)
+  const recomputed = await recomputeProfile(data, await readSectState(userId, now))
   if (!snapshotComplete(recomputed)) return
   const realmIndex = finite(recomputed.realmIndex) ? Math.trunc(recomputed.realmIndex) : 0
   await upsertProfile(userId, clampSnapshot(recomputed, realmIndex, userId), now)
@@ -420,6 +422,9 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
     const forgeSpend = await pendingForgeSpend(req.user!.id)
     // 升级支出账(1.59.0):功法进修(悟道点/残页)与建筑升级(灵石/玄铁),同套机制
     const progressSpend = await pendingProgressSpend(req.user!.id)
+    // 门派捐献与建派(1.68.0):门派状态不进存档,但捐献的实物是资源 —— 这笔账一样要在这里兑现,
+    // 否则「捐了不扣」可以反复刷贡献。灵草按品阶分别扣(herbByGrade)。
+    const sectSpend = await pendingSectSpend(req.user!.id)
     const authority = await enforceAuthority({
       prev: prevData,
       next: normalizedData,
@@ -437,12 +442,13 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       // 1.58.1:道果/天赋/年龄/游玩时长的乘数基线(见 core/saveAuthority 的「转世乘区」一节)
       prevRebirths,
       pendingSpend: {
-        m: spend.m + forgeSpend.stone.m + progressSpend.stone.m,
-        e: spend.e + forgeSpend.stone.e + progressSpend.stone.e,
+        m: spend.m + forgeSpend.stone.m + progressSpend.stone.m + sectSpend.stone.m,
+        e: spend.e + forgeSpend.stone.e + progressSpend.stone.e + sectSpend.stone.e,
         dust: forgeSpend.dust,
-        ore: progressSpend.ore,
-        wudao: progressSpend.wudao,
-        page: progressSpend.page
+        ore: progressSpend.ore + sectSpend.ore,
+        wudao: progressSpend.wudao + sectSpend.wudao,
+        page: progressSpend.page,
+        herb: sectSpend.herbByGrade
       }
     })
     const data = authority === null ? normalizedData : authority.data
@@ -493,7 +499,8 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
     // 复算失败(分片畸形/链路抛错)才回落客户端快照;两边都拿不到(老客户端不带 profile)就不动 profiles。
     // 用归一化后的 data 复算,与落库内容同源。两条路最后都过同一把钳制尺。
     const clientSnap = parseSnapshot(body.profile, req.user!.id)
-    const recomputed = await recomputeProfile(data)
+    // 门派状态是服务端独占的(不在分片里),复算要算它的加成得由这里递进去
+    const recomputed = await recomputeProfile(data, await readSectState(req.user!.id, now))
     if (snapshotComplete(recomputed)) {
       await upsertProfile(req.user!.id, clampSnapshot(recomputed, metrics.realmIndex, req.user!.id), now)
     } else if (clientSnap !== null) {
@@ -523,6 +530,11 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
     }
     try {
       await settleProgressSpend(req.user!.id)
+    } catch {
+      /* 同上方:留到下一次 */
+    }
+    try {
+      await settleSectSpend(req.user!.id)
     } catch {
       /* 同上方:留到下一次 */
     }
@@ -573,6 +585,8 @@ saveRouter.delete('/save', requireAuth, (req: Request, res: Response) => {
     await clearPurchases(req.user!.id)
     await clearForgeSpend(req.user!.id)
     await clearProgressSpend(req.user!.id)
+    // 门派随档一起散:删档是「重来」,建派花掉的资源不该留成一份永久属性
+    await clearSect(req.user!.id)
     /*
      * 装备与等级台账不清(1.66.3):与 loot_seed/loot_ledger 同语义 —— 标记随号不随档。
      * 此前删档把 equip_seed/level_seed 一并清掉、loot_ledger 却保留:旧 uid 仍过得了验源,

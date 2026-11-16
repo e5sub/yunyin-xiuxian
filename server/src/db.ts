@@ -296,6 +296,30 @@ CREATE TABLE IF NOT EXISTS level_state (
   updated_at INTEGER NOT NULL,
   UNIQUE (user_id, kind, item_id)
 );
+-- 门派(1.68.0):整份状态存服务端,不进存档分片。
+-- 贡献是服务端签发的货币,又能换永久属性(mods)—— 放进存档就等于「本地可写」,
+-- 所以 sect_state 的 data 只由 routes/sect.ts 写;上传存档时服务端**不读**客户端对门派的任何声明。
+-- data 为 JSON:SectState(道统/门派名/个人贡献/门派库/技能/建筑/营造任务/日限次),见 core/sectRules
+CREATE TABLE IF NOT EXISTS sect_state (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  data TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+-- 建派与捐献的支出账(1.68.0):与 forge_spend / progress_spend 同一套机制 ——
+-- 扣款写在客户端,这里记「该扣多少」,上传时从资源可增长量里扣掉(见 core/saveAuthority 的 pendingSpend)。
+-- herb_grade 取 0~5;非灵草行为 -1。stone/ore/herb 三列互斥,一次捐献只填一列,但建派会同时填石与玄铁。
+CREATE TABLE IF NOT EXISTS sect_spend (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  cost_stone_m REAL NOT NULL DEFAULT 0,
+  cost_stone_e INTEGER NOT NULL DEFAULT 0,
+  cost_ore REAL NOT NULL DEFAULT 0,
+  cost_wudao REAL NOT NULL DEFAULT 0,
+  herb_grade INTEGER NOT NULL DEFAULT -1,
+  cost_herb REAL NOT NULL DEFAULT 0,
+  settled INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
 -- 首次登记标记:存量档的等级首传一次性按当时的等级入账(与 equip_seed/loot_seed 同思路,删档重传不重播)
 CREATE TABLE IF NOT EXISTS level_seed (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -625,6 +649,25 @@ CREATE TABLE IF NOT EXISTS progress_spend (
   settled TINYINT NOT NULL DEFAULT 0,
   created_at BIGINT NOT NULL,
   CONSTRAINT fk_progress_spend_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS sect_state (
+  user_id BIGINT PRIMARY KEY,
+  data LONGTEXT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  CONSTRAINT fk_sect_state_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS sect_spend (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  cost_stone_m DOUBLE NOT NULL DEFAULT 0,
+  cost_stone_e INT NOT NULL DEFAULT 0,
+  cost_ore DOUBLE NOT NULL DEFAULT 0,
+  cost_wudao DOUBLE NOT NULL DEFAULT 0,
+  herb_grade INT NOT NULL DEFAULT -1,
+  cost_herb DOUBLE NOT NULL DEFAULT 0,
+  settled TINYINT NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL,
+  CONSTRAINT fk_sect_spend_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS level_state (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,

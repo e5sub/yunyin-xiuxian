@@ -121,6 +121,7 @@ import type { FortuneChoice } from '@/core/fortuneChain'
 import { useInventoryStore } from './inventory'
 import { useCultivationStore } from './cultivation'
 import { useDongfuStore } from './dongfu'
+import { useSectStore } from './sect'
 import { useApprenticeStore } from './apprentice'
 import { useResourcesStore } from './resources'
 import { useEndgameStore } from './endgame'
@@ -295,12 +296,15 @@ export const usePlayerStore = defineStore(
      * finalStats (qiRich → qiCap → finalStats would cycle; pet scaling
      * cannot include the pet's own mods).
      */
+    const sect = useSectStore()
+
     const ownedModSources = computed(() => [
       inventory.equipMods,
       cultivation.gongfaMods,
       cultivation.buffMods,
       dongfu.buildingMods,
       dongfu.veinMods,
+      sect.mods,
       titleMods.value,
       mentorMods.value,
       weatherMods.value,
@@ -353,6 +357,7 @@ export const usePlayerStore = defineStore(
           cultivation.buffMods,
           dongfu.buildingMods,
           dongfu.veinMods,
+          sect.mods,
           titleMods.value,
           mentorMods.value,
           petMods.value,
@@ -369,6 +374,7 @@ export const usePlayerStore = defineStore(
           '丹药与增益',
           '洞府建筑',
           '灵脉',
+          '门派',
           '称号',
           '师承',
           '灵兽',
@@ -401,6 +407,7 @@ export const usePlayerStore = defineStore(
           cultivation.buffMods,
           dongfu.buildingMods,
           dongfu.veinMods,
+          sect.mods,
           titleMods.value,
           mentorMods.value,
           petMods.value,
@@ -416,6 +423,7 @@ export const usePlayerStore = defineStore(
           '丹药与增益',
           '洞府建筑',
           '灵脉',
+          '门派',
           '称号',
           '师承',
           '灵兽',

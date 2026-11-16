@@ -1,0 +1,105 @@
+<template>
+  <div class="stagger-in space-y-4 px-4 pb-6 pt-4">
+    <div class="card-ink relative flex items-center justify-between gap-2 px-4 py-3">
+      <button class="-my-1.5 rounded px-2 py-1.5 text-left text-[12px] text-ink-faint ring-1 ring-inset ring-ink/20 active:text-ink" @click="goBack(router, { name: 'home' })">← 返回</button>
+      <p class="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap font-kai text-[15px] tracking-[0.3em] text-ink">
+        {{ sect.founded ? sect.name : '开宗立派' }}
+      </p>
+    </div>
+
+    <!-- 未建派:一段说明 + 三选一 -->
+    <template v-if="!sect.founded">
+      <div class="rounded-md border border-amber-ink/25 bg-amber-ink/5 px-3 py-2.5">
+        <p class="text-[10px] leading-relaxed text-ink-faint">
+          元婴之后可自开山门。门派是一世的经营:门人守山,同门捐输,山门愈高,能容纳的人与能修的道愈广。
+        </p>
+      </div>
+      <SectFoundCard v-if="sect.loaded" />
+      <p v-else class="py-6 text-center text-[11px] text-ink-faint">未能读取门派存档 · 稍候再试</p>
+    </template>
+
+    <template v-else>
+      <!-- 概览 -->
+      <div class="rounded-md border border-ink/10 bg-paper-deep/50 px-3 py-2.5">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-kai text-[12px] tracking-wider text-ink-soft">{{ sectName }} · {{ sectIdName }}</span>
+          <span class="shrink-0 text-[10px] tabular" :class="sect.donationsLeft > 0 ? 'text-jade' : 'text-ink-faint'">
+            今日捐献 {{ sect.donationsLeft }}/{{ quota }} 次
+          </span>
+        </div>
+        <div class="mt-1.5 grid grid-cols-3 gap-1.5">
+          <div class="rounded bg-paper-deep/60 px-1 py-1.5 text-center">
+            <p class="text-[9px] text-ink-faint">个人贡献</p>
+            <p class="tabular font-kai text-[14px] leading-tight text-gold-ink">{{ sect.personal }}</p>
+            <p class="mt-0.5 text-[8px] leading-none text-ink-faint">修技能</p>
+          </div>
+          <div class="rounded bg-paper-deep/60 px-1 py-1.5 text-center">
+            <p class="text-[9px] text-ink-faint">门派库</p>
+            <p class="tabular font-kai text-[14px] leading-tight text-azure">{{ sect.pool }}</p>
+            <p class="mt-0.5 text-[8px] leading-none text-ink-faint">营建筑</p>
+          </div>
+          <div class="rounded bg-paper-deep/60 px-1 py-1.5 text-center">
+            <p class="text-[9px] text-ink-faint">门人</p>
+            <p class="tabular font-kai text-[14px] leading-tight text-ink-soft">{{ sect.members }}</p>
+            <p class="mt-0.5 text-[8px] leading-none text-ink-faint">山门定员</p>
+          </div>
+        </div>
+        <p class="mt-1.5 flex items-baseline justify-between text-[9px] text-ink-faint">
+          <span>累计捐献贡献</span>
+          <span class="tabular text-ink-soft">{{ sect.state.totalDonated }}</span>
+        </p>
+      </div>
+
+      <SectDonateCard />
+
+      <section>
+        <SectionTitle title="营造" :hint="`门人 ${sect.members} 人 · 山门 ${hallLevel} 级`" />
+        <SectBuildingCard :def="hallDef" class="mt-2" />
+        <div class="mt-2.5 grid grid-cols-1 gap-2.5 min-[320px]:grid-cols-2">
+          <SectBuildingCard v-for="def in otherBuildings" :key="def.id" :def="def" />
+        </div>
+      </section>
+
+      <section>
+        <SectionTitle title="门派技能" :hint="`个人贡献 ${sect.personal}`" />
+        <div class="mt-2 space-y-2.5">
+          <SectSkillCard v-for="def in skills" :key="def.id" :def="def" />
+        </div>
+      </section>
+    </template>
+  </div>
+</template>
+
+<script setup lang="ts">
+  import { computed, onMounted } from 'vue'
+  import { useRouter } from 'vue-router'
+  import { goBack } from '@/router/goBack'
+  import { SECT_BUILDINGS, sectBuildingDef, sectDef, sectSkillsOf } from '@/data/sect'
+  import { donationQuota } from '@/core/sectRules'
+  import { useAuthStore } from '@/stores/auth'
+  import { useSectStore } from '@/stores/sect'
+  import SectionTitle from '@/components/common/SectionTitle.vue'
+  import SectFoundCard from '@/components/sect/SectFoundCard.vue'
+  import SectDonateCard from '@/components/sect/SectDonateCard.vue'
+  import SectBuildingCard from '@/components/sect/SectBuildingCard.vue'
+  import SectSkillCard from '@/components/sect/SectSkillCard.vue'
+
+  const router = useRouter()
+  const auth = useAuthStore()
+  const sect = useSectStore()
+
+  /** 每日捐献上限:常驻 3、VIP 5(与服务端限次同源) */
+  const quota = computed(() => donationQuota(auth.isVip))
+
+  const sectName = computed(() => sect.name)
+  const sectIdName = computed(() => sectDef(sect.state.sectId ?? '')?.name ?? '')
+  const skills = computed(() => sectSkillsOf(sect.state.sectId ?? ''))
+  const hallDef = computed(() => sectBuildingDef('hall')!)
+  const otherBuildings = computed(() => SECT_BUILDINGS.filter(b => b.id !== 'hall'))
+  const hallLevel = computed(() => sect.buildingLevel('hall'))
+
+  onMounted(() => {
+    // 进门派页必刷一次:状态只住服务端,别让面板停在上次读到的数
+    void sect.load()
+  })
+</script>

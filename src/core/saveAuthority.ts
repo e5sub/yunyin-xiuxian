@@ -102,7 +102,16 @@ export interface AuthorityInput {
    * 扣款在客户端,这里把它从「各资源本窗口可增长量」里扣掉 —— 没付钱的存档必然对不上账。
    * 各键缺省按 0(1.58.3 起炼器记账,1.59.0 起功法进修/建筑升级也记账,老调用方不传不会误伤)。
    */
-  pendingSpend?: { m: number; e: number; dust?: number; ore?: number; wudao?: number; page?: number }
+  pendingSpend?: {
+    m: number
+    e: number
+    dust?: number
+    ore?: number
+    wudao?: number
+    page?: number
+    /** 门派捐献的灵草:品阶 → 尚未兑现的株数(1.68.0) */
+    herb?: Record<string, number>
+  }
   /**
    * 云端**已有**上次落库的档(老调用方不传按 true 处理,与 1.66 及以前行为一致)。
    *
@@ -469,7 +478,9 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
         for (const [grade, raw] of Object.entries(herbs)) {
           const n = Math.trunc(numOf(raw))
           const prevVal = prevHerbs !== null ? finiteNum(prevHerbs[grade]) : null
-          const ceil = catchUpCeil(prevVal, produced, herbCap)
+          // 门派捐献(1.68.0):这一品的株数要从可增长量里扣 —— 捐出去的草不能又长回来
+          const donated = Math.max(0, numOf(input.pendingSpend?.herb?.[grade] ?? 0))
+          const ceil = Math.max(0, catchUpCeil(prevVal, produced, herbCap) - donated)
           const capped = Math.min(Math.max(n, 0), Math.floor(ceil))
           if (capped !== n) touched = true
           fixed[grade] = capped

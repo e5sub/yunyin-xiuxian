@@ -25,6 +25,7 @@ const PAGE_TITLES: Readonly<Record<string, string>> = {
   collection: '成就',
   build: '流派',
   apprentice: '道童',
+  sect: '门派',
   titles: '名号',
   settings: '设置',
   soulsList: '器魂'

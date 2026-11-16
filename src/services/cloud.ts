@@ -5,6 +5,7 @@
  */
 import { useAuthStore } from '@/stores/auth'
 import type { EquipmentInstance } from '@/types'
+import type { SectState } from '@/core/sectRules'
 import type { ForgeDetail, ForgeOp, ForgeSpend } from '@/core/forgeResolve'
 import type { LevelDetail, LevelOp, LevelSpend } from '@/core/levelResolve'
 
@@ -461,6 +462,24 @@ export interface AuthConfig {
   turnstileSiteKey?: string
 }
 
+/** 门派响应:ok=false 时 reason 为拒因(nosect/realm/insufficient/daily/busy/cap/pool/personal/locked...) */
+export interface SectStateResp {
+  ok: boolean
+  reason?: string
+  state: SectState
+  /** 服务端此刻(毫秒),客户端据此校正倒计时 */
+  now: number
+  /** 本次请求顺手结算掉的完工建筑 id */
+  done?: string | null
+  /**
+   * 本次实扣(建派为灵石/玄铁/悟道点三项,捐献为一份实物)。
+   * 客户端必须按它扣本地,不自行按 VIP 状态重算 —— 两边 vip 判据可能差一次到期。
+   */
+  spend?:
+    | { stone?: number; ore?: number; wudao?: number }
+    | { kind: 'stone' | 'ore' | 'herb'; amount: number; grade: number }
+}
+
 export interface EmailCodeResp {
   ok: boolean
   /** SMTP 未启用时联调用 */
@@ -674,6 +693,20 @@ export const cloudApi = {
     ore?: number
     stone?: { m: number; e: number }
   }): Promise<LevelOpResponse> => request('POST', '/progress/op', payload),
+  /* ---- 门派(1.68.0):状态只住服务端,这里只提交动作 ---- */
+  /** 读门派:状态 + 服务端此刻(客户端按它校正倒计时,不用本机时钟) */
+  sectState: (): Promise<SectStateResp> => request('GET', '/sect'),
+  /** 开宗立派:道统三选一 + 门派名(服务端校验境界、扣建派开销) */
+  sectFound: (sectId: string, name: string): Promise<SectStateResp> =>
+    request('POST', '/sect/found', { sectId, name }),
+  /** 捐献:灵石/玄铁/灵草三档,服务端按云档余额判够不够 */
+  sectDonate: (kind: string): Promise<SectStateResp> => request('POST', '/sect/donate', { kind }),
+  /** 开工营造:扣门派库、写服务端时间(同一时刻只能有一座) */
+  sectBuildStart: (id: string): Promise<SectStateResp> => request('POST', '/sect/build/start', { id }),
+  /** 收取完工:服务端时钟到点才落级 */
+  sectBuildClaim: (): Promise<SectStateResp> => request('POST', '/sect/build/claim', {}),
+  /** 修习技能:扣个人贡献 */
+  sectSkillLearn: (id: string): Promise<SectStateResp> => request('POST', '/sect/skill/learn', { id }),
   dungeonOverview: (): Promise<DungeonOverview> => request('GET', '/dungeon'),
   dungeonRoom: (): Promise<{ room: DungeonRoom | null }> => request('GET', '/dungeon/room'),
   dungeonRoomCreate: (dungeon: DungeonKey, difficulty: DungeonDifficulty = 'normal'): Promise<{ room: DungeonRoom }> =>

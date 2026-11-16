@@ -14,6 +14,7 @@ import { lootEnv } from '../recompute.js'
 import { grantLoot, verifyExtraGains, expectedSoulGradeOf } from '../lootGrant.js'
 import { recordLoot, burnedSoulUids, recordSoulBurns } from '../lootLedger.js'
 import { recordEquipStatesFromItems } from '../equipLedger.js'
+import { readSectState } from '../sectState.js'
 import { withKeyLock } from '../mutex.js'
 
 export const lootRouter = express.Router()
@@ -73,7 +74,7 @@ lootRouter.post('/loot/claim', requireAuth, (req: Request, res: Response) => {
       res.json({ equips: [] })
       return
     }
-    const env = await lootEnv(data)
+    const env = await lootEnv(data, await readSectState(userId, now))
     if (env === null) {
       // 复算不出就不发:宁可不掉,也不按客户端自报的属性签发
       res.json({ equips: [] })

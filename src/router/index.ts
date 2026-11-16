@@ -26,6 +26,7 @@ export const router = createRouter({
     { path: '/build', name: 'build', component: () => import('@/views/BuildView.vue') },
     { path: '/market', name: 'market', component: () => import('@/views/MarketView.vue') },
     { path: '/apprentice', name: 'apprentice', component: () => import('@/views/ApprenticeView.vue') },
+    { path: '/sect', name: 'sect', component: () => import('@/views/SectView.vue') },
     { path: '/titles', name: 'titles', component: () => import('@/views/TitlesView.vue') },
     { path: '/legacy', name: 'legacy', component: () => import('@/views/LegacyView.vue') },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },

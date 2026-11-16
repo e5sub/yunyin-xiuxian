@@ -111,6 +111,15 @@
         </span>
       </RouterLink>
 
+      <RouterLink to="/sect" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ink/5 text-ink-soft"><GameIcon name="landmark" :size="18" /></span>
+        <span class="font-kai text-[13px] tracking-widest text-ink">门派</span>
+        <!-- 未立派时给一句可做的事;立了派报门人,门人由山门定员(初始 10,每级 +1) -->
+        <span class="text-[9px] leading-snug tabular" :class="sect.founded ? 'text-ink-faint' : 'text-cinnabar'">
+          {{ sect.founded ? `门人 ${sect.members}` : '可开宗立派' }}
+        </span>
+      </RouterLink>
+
       <button type="button" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98" aria-haspopup="dialog" @click="questsOpen = true">
         <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-amber-ink/10 text-amber-ink"><GameIcon name="book" :size="18" /></span>
         <span class="font-kai text-[13px] tracking-widest text-ink">修行志</span>
@@ -205,6 +214,7 @@
   import { useEndgameStore } from '@/stores/endgame'
   import { useMarketStore } from '@/stores/market'
   import { useApprenticeStore } from '@/stores/apprentice'
+  import { useSectStore } from '@/stores/sect'
   import { marketRemainingSec } from '@/core/marketService'
   import { localDayNum } from '@/utils/time'
   import { useQuestsStore } from '@/stores/quests'
@@ -237,6 +247,7 @@
   const endgame = useEndgameStore()
   const market = useMarketStore()
   const apprentice = useApprenticeStore()
+  const sect = useSectStore()
   const quests = useQuestsStore()
 
   // 法球尺寸须与模板容器 max-[380px] 断点一致(以下 108px)。

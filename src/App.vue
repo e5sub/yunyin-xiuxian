@@ -44,6 +44,7 @@
   import { useGameStore } from '@/stores/game'
   import { useUiStore } from '@/stores/ui'
   import { useSettingsStore } from '@/stores/settings'
+  import { useSectStore } from '@/stores/sect'
   import { useAuthStore } from '@/stores/auth'
   import { subscribeOtherTabSave, subscribeSaveWriteFailure, watchOtherTabSave } from '@/utils/storage'
   import { pageTitle } from '@/ui/pageTitle'
@@ -80,6 +81,8 @@
   setVipResolver(() => auth.isVip)
   const ui = useUiStore()
   const settings = useSettingsStore()
+  // 门派状态只住服务端:启动时拉一份(不进存档),给属性来源与首页入口用
+  const sect = useSectStore()
   const route = useRoute()
   const router = useRouter()
 
@@ -125,6 +128,8 @@
     const newerAt = await probeCloudNewer()
     if (newerAt !== null) ui.toast('云端存档比本机新,可在「设置 → 存档」中恢复', 'warn')
     startCloudSync()
+    // 门派不进存档分片,须单独拉一次;失败不拦启动(门派页会再试)
+    void sect.load()
     // 云端就绪后领离线托管讨伐所得(restored 分支已重载,由下一次启动领取)
     void collectOfflineBossLedger()
   }
@@ -161,6 +166,7 @@
     }
     stopCloudSync()
     disconnectCloudWs()
+    sect.reset()
     auth.logout()
     ui.toast(
       reason === 'kicked'
