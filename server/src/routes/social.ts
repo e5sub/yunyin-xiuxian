@@ -174,9 +174,23 @@ socialRouter.delete('/friends/:friendId', requireAuth, (req: Request, res: Respo
   })
 })
 
-socialRouter.get('/leaderboard', requireAuth, (_req: Request, res: Response) => {
+/**
+ * 榜单每页人数:界面默认就显示这一页(20 人),其余翻页看。
+ * GM 参数 leaderboard_size 仍是这个数(缺省 20),夹在 10~200 —— 它从「一次吐多少人」
+ * 变成「一页多少人」,名字与用途仍然对得上。
+ */
+const BOARD_PAGE_SIZE = 20
+
+socialRouter.get('/leaderboard', requireAuth, (req: Request, res: Response) => {
   void (async () => {
-    const size = Math.min(Math.max(await getConfigNumber('leaderboard_size', 50), 10), 200)
+    const rawPage = Number(req.query.p)
+    const page = Number.isFinite(rawPage) ? Math.max(1, Math.trunc(rawPage)) : 1
+    const size = Math.min(Math.max(await getConfigNumber('leaderboard_size', BOARD_PAGE_SIZE), 10), 200)
+    const totalRow = await get<{ n: number }>('SELECT COUNT(*) AS n FROM profiles')
+    const total = Math.max(0, Math.trunc(Number(totalRow?.n ?? 0)))
+    const pages = Math.max(1, Math.ceil(total / size))
+    // 越界页夹到末页:玩家在第 5 页时别人掉榜,重拉不该回一张空表
+    const pageNow = Math.min(page, pages)
     const rows = await all<{
       user_id: number
       name: string
@@ -185,19 +199,22 @@ socialRouter.get('/leaderboard', requireAuth, (_req: Request, res: Response) => 
       power_m: number
       power_e: number
     }>(
-      'SELECT user_id, name, realm_label, realm_index, power_m, power_e FROM profiles ORDER BY realm_index DESC, power_e DESC, power_m DESC LIMIT ?',
-      [size]
+      'SELECT user_id, name, realm_label, realm_index, power_m, power_e FROM profiles ORDER BY realm_index DESC, power_e DESC, power_m DESC LIMIT ? OFFSET ?',
+      [size, (pageNow - 1) * size]
     )
     res.json({
       board: rows.map((r, i) => ({
-        rank: i + 1,
+        rank: (pageNow - 1) * size + i + 1,
         id: r.user_id,
         name: r.name,
         realmLabel: r.realm_label,
         realmIndex: r.realm_index,
         powerM: r.power_m,
         powerE: r.power_e
-      }))
+      })),
+      total,
+      page: pageNow,
+      pages
     })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })

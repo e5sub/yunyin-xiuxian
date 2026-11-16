@@ -39,7 +39,11 @@ import { useApprenticeStore } from '@/stores/apprentice'
 import { apprenticeSpoils } from './apprenticeService'
 import { herbGradeOfMajor } from '@/data/herbGrades'
 import { gn } from '@/utils/gnum'
-import { EXPLORE_MODES, BAG_CAPACITY } from '@/data/constants'
+import { EXPLORE_MODES } from '@/data/constants'
+import { bagCapacity } from '@/data/realms'
+
+/** 人间界的行囊格数(容量随界抬,这里固定取第一界) */
+const BAG_CAPACITY = bagCapacity(0)
 
 const GAP_HOURS = 60
 const HOUR_MS = 3600 * 1000

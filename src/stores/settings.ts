@@ -44,6 +44,11 @@ export const useSettingsStore = defineStore(
      * 切磋要挑道友、秘境要选层数、猜谜只有一次机会,都不代做(见 core/autoOps 注释)。
      */
     const autoDailyEvent = ref(false)
+    /**
+     * 自动捐献(VIP 托管):每日把门派捐献名额用完 —— 灵石 → 玄铁 → 灵草,
+     * 前一档不够才退下一档;服务端每分钟巡检时结算(见 server/src/autoOps 的 tickAutoDonate)。
+     */
+    const autoDonate = ref(false)
     /** 自动历练的去处与档位('' = 未选;AUTO_REGION_ID 即 'auto' = 托管自行择地) */
     const autoRegionId = ref('')
     const autoMode = ref<import('@/types').ExploreMode>('normal')
@@ -90,6 +95,7 @@ export const useSettingsStore = defineStore(
       autoRetreat.value = autoRetreat.value === true
       autoAdventure.value = autoAdventure.value === true
       autoDailyEvent.value = autoDailyEvent.value === true
+      autoDonate.value = autoDonate.value === true
       autoRegionId.value = typeof autoRegionId.value === 'string' ? autoRegionId.value : ''
       autoMode.value = exploreModeOf(autoMode.value)
       bossDifficulty.value = bossDifficultyOf(bossDifficulty.value)
@@ -141,6 +147,7 @@ export const useSettingsStore = defineStore(
       autoRetreat,
       autoAdventure,
       autoDailyEvent,
+      autoDonate,
       autoRegionId,
       autoMode,
       bossDifficulty,

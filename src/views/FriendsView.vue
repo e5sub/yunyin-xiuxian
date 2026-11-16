@@ -85,6 +85,28 @@
           <span class="tabular text-[11px] text-ink-soft">{{ powerLabel(row) }}</span>
           <button v-if="row.id !== auth.userId" class="btn-ghost !px-3 !text-[12px]" :disabled="dueling === row.id" :title="dueling === row.id ? '切磋判定中' : undefined" @click="duel(row.id)">切磋</button>
         </div>
+        <!--
+          榜单默认只摊开一页(20 人):上百人的名册一次铺完,首屏就只剩数字。
+          服务端按页给,这里只负责翻 —— total 是榜上总人数,不是本页人数。
+        -->
+        <div v-if="boardPages > 1" class="flex items-center justify-between gap-2 border-t border-ink/10 pt-2">
+          <button
+            class="btn-ghost !px-3 !text-[12px]"
+            :disabled="boardBusy || boardPage <= 1"
+            :title="boardPage <= 1 ? '已是首屏' : undefined"
+            @click="loadBoard(boardPage - 1)"
+          >上一页</button>
+          <span class="tabular text-[11px] text-ink-faint">第 {{ boardPage }}/{{ boardPages }} 页 · 共 {{ boardTotal }} 人</span>
+          <button
+            class="btn-ghost !px-3 !text-[12px]"
+            :disabled="boardBusy || boardPage >= boardPages"
+            :title="boardPage >= boardPages ? '已是末页' : undefined"
+            @click="loadBoard(boardPage + 1)"
+          >下一页</button>
+        </div>
+        <p v-else-if="boardTotal > 0" class="border-t border-ink/10 pt-2 text-center tabular text-[11px] text-ink-faint">
+          共 {{ boardTotal }} 人上榜
+        </p>
       </div>
     </template>
 
@@ -135,6 +157,11 @@
   const online = ref<Array<{ id: number; name: string }>>([])
   const friends = ref<FriendsData>({ incoming: [], outgoing: [], accepted: [] })
   const board = ref<LeaderRow[]>([])
+  /** 榜单翻页:一页 20 人(页长由服务端定),这里只记当前页与总数 */
+  const boardPage = ref(1)
+  const boardPages = ref(1)
+  const boardTotal = ref(0)
+  const boardBusy = ref(false)
   const draft = ref('')
   const friendName = ref('')
   const adding = ref(false)
@@ -196,18 +223,30 @@
     }
   }
 
+  /** 拉某一页榜单;失败就停在原页(翻页钮的等待态会解开,不至于卡死) */
+  async function loadBoard(page: number): Promise<void> {
+    if (boardBusy.value) return
+    boardBusy.value = true
+    try {
+      const res = await cloudApi.leaderboard(page)
+      board.value = res.board
+      boardPage.value = res.page
+      boardPages.value = res.pages
+      boardTotal.value = res.total
+    } catch {
+      // 下次翻页/切页重拉
+    } finally {
+      boardBusy.value = false
+    }
+  }
+
   watch(tab, t => {
     if (t === 'chat') {
       void loadChat()
     } else if (t === 'friends') {
       void loadFriends()
     } else {
-      void cloudApi
-        .leaderboard()
-        .then(res => {
-          board.value = res.board
-        })
-        .catch(() => undefined)
+      void loadBoard(1)
     }
   })
 

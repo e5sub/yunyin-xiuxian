@@ -122,7 +122,7 @@
 
       <!-- hint「满包掉落化尘」:不可逆后果(见 core/loot),事前只此一处 -->
       <div v-if="allItems.length" class="mt-4">
-        <SectionTitle title="全部藏品" :hint="`${allItems.length} 件 · 行囊 ${inventory.bagItems.length}/${BAG_CAPACITY} · 满包掉落化尘`" />
+        <SectionTitle title="全部藏品" :hint="`${allItems.length} 件 · 行囊 ${inventory.bagItems.length}/${inventory.capacity} · 满包掉落化尘`" />
         <div class="mt-2 grid grid-cols-5 gap-1.5">
           <EquipmentCard v-for="row in shownItems" :key="row.item.uid" :item="row.item" :equipped="row.equipped" @open="openDetail" />
         </div>
@@ -381,7 +381,6 @@
   import { pillFuncText } from '@/ui/itemText'
   import { recipeMasteryText } from '@/ui/pillText'
   import { EQUIP_SLOT_NAMES, EQUIP_SLOTS, equipmentTemplate } from '@/data/equipment'
-  import { BAG_CAPACITY } from '@/data/constants'
   import { usePill, usePillBatch } from '@/core/pillService'
   import { buffOverflowOf, type BuffOverflow } from '@/core/buffCap'
 

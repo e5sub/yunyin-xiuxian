@@ -339,7 +339,6 @@ export const DECOMPOSE_DUST = [1, 2, 4, 8, 16, 32, 64, 128, 256] as const
 export const DECOMPOSE_REFUND_RATE = 0.8
 /** 智能收纳:词条 roll 达到此线才算「近满」(条条达标才当藏) */
 export const SMART_KEEP_PERFECT_ROLL = 0.85
-export const BAG_CAPACITY = 120
 
 /**
  * 玩家可输入文本的长度上限(道号、构筑名、试炼备注)。

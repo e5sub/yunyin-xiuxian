@@ -9,13 +9,25 @@ import { mergeMods } from '@/core/statsCalc'
 import { useLoreStore } from '@/stores/lore'
 import { usePlayerStore } from '@/stores/player'
 import { ARTIFACT_MAX_LEVEL, ARTIFACT_MAX_SLOTS, artifactDef, artifactValue } from '@/data/artifacts'
-import { BAG_CAPACITY, EQUIP_AFFIX_HARD_CAP, EQUIP_COUNTER_MAX, INVESTED_DUST_MAX } from '@/data/constants'
+import { EQUIP_AFFIX_HARD_CAP, EQUIP_COUNTER_MAX, INVESTED_DUST_MAX } from '@/data/constants'
+import { MAX_MAJOR, bagCapacity } from '@/data/realms'
 import { EQUIP_LEVEL_SANITIZE_CAP } from '@/data/buildings'
 import { EQUIP_SLOTS, MAX_EQUIP_TIER, equipmentTemplate } from '@/data/equipment'
 import { pillDef } from '@/data/pills'
 import { QUALITIES, qualityDef } from '@/data/qualities'
 import { affixDef, affixFitBlock } from '@/data/affixes'
 import { asArray, asBoundedGNum, asFiniteNumber, asNumberRecord, asRecord, asStringArray, truncateCodePoints } from '@/utils/saveShape'
+
+/**
+ * 当前大境界的读数:由 player store 在自身 setup 里注入(见 stores/player 的 setBagRealmResolver)。
+ * 默认 0(人间界)—— 未注入时宁可少算容量(120 格),也不凭空放宽。
+ */
+let majorOf: () => number = () => 0
+
+/** 注入境界读数(只该由 player store 调一次) */
+export function setBagRealmResolver(fn: () => number): void {
+  majorOf = fn
+}
 
 /** 累计投入灵石的读档上界:满强化实测 5.32e11,取约 2.3 倍余量(dust 按同一比例) */
 const INVESTED_STONE_MAX = gn(1.2e12)
@@ -29,6 +41,21 @@ export const useInventoryStore = defineStore(
     const artifacts = ref<ArtifactOwned[]>([])
     /** 已祭炼的法宝(元婴起可佩两件) */
     const equippedArtifacts = ref<string[]>([])
+
+    /**
+     * 行囊格数:随所在界抬(人间 120,仙界 240……见 data/realms 的 bagCapacity)。
+     *
+     * 读档时的越界裁剪**不能**用它:那一刻玩家境界还没落,按当前值裁会把
+     * 前一界攒下的件当成坏档删掉。故裁剪用最宽的一档(本源界),见 sanitize。
+     */
+    // 境界经注入读,不在本 store 里直接 `usePlayerStore()`:
+    // player store 一开局就要 `useInventoryStore()`(见其 setup 首行),两边互相推演会成环,
+    // `useInventoryStore` 退化成 any,全仓 200 多个隐式 any 都是从这一处塌下来的。
+    // 与 core/spendRate 的 vipResolver 同一套做法:纯账层不认全局,由上层注入。
+    const capacity = computed(() => bagCapacity(majorOf()))
+
+    /** 读档裁剪的硬上界:全游戏最宽的一档(本源界 600 格) */
+    const BAG_HARD_CAP = bagCapacity(MAX_MAJOR)
 
     /**
      * 存档修复:行囊/丹药/法宝坏形会让装备合计与图鉴渲染期抛错。
@@ -140,21 +167,23 @@ export const useInventoryStore = defineStore(
       /*
        * 超容量坏档截断。
        *
-       * BAG_CAPACITY 原本只用来判 bagFull(「行囊已满」),从不用来限容;
-       * 于是把 items 撑到几千件的坏档会被原样吃下,bagFull 恒为 true,
-       * addItem 从此一律 return false —— 玩家再也捡不到装备,且界面要渲染几千行。
+       * 行囊格数原本是个死数(只判 bagFull,从不限容);于是把 items 撑到几千件的坏档
+       * 会被原样吃下,bagFull 恒为 true,addItem 从此一律 return false ——
+       * 玩家再也捡不到装备,且界面要渲染几千行。
        *
-       * 截断时优先保住已装备的件(equipped 的原始映射还没被校验,这里只按 uid 认),
-       * 其余按读档顺序保留。容量本身就是玩家正常能持有的上限,不构成惩罚。
+       * 现容量随界抬,而读档这一刻玩家境界还没落:按当前界裁,会把上一界攒下的件
+       * 当成坏档删掉。故裁剪一律按**最宽的一档**(本源界 BAG_HARD_CAP),
+       * 真正的「满包」判定留给 capacity(bagFull)。截断仍然优先保住已装备的件
+       * (equipped 的原始映射还没被校验,这里只按 uid 认),其余按读档顺序保留。
        */
-      if (cleanItems.length > BAG_CAPACITY) {
+      if (cleanItems.length > BAG_HARD_CAP) {
         const rawEquippedForCap = asRecord<unknown>(equipped.value)
         const keepUid = new Set(
           Object.values(rawEquippedForCap).filter((u): u is string => typeof u === 'string' && u.length > 0)
         )
         const equippedKept = cleanItems.filter(it => keepUid.has(it.uid))
         const restKept = cleanItems.filter(it => !keepUid.has(it.uid))
-        const room = Math.max(0, BAG_CAPACITY - equippedKept.length)
+        const room = Math.max(0, BAG_HARD_CAP - equippedKept.length)
         // 保持读档顺序:已装备的与其余的各自有序,合并时按原下标重排
         const keepIds = new Set([...equippedKept, ...restKept.slice(0, room)].map(it => it.uid))
         items.value = cleanItems.filter(it => keepIds.has(it.uid))
@@ -253,7 +282,7 @@ export const useInventoryStore = defineStore(
 
     const bagItems = computed(() => partitionedItems.value.bag)
 
-    const bagFull = computed(() => partitionedItems.value.bag.length >= BAG_CAPACITY)
+    const bagFull = computed(() => partitionedItems.value.bag.length >= capacity.value)
 
     /**
      * 已装备件解算一次,平铺与百分比各取一半。
@@ -448,6 +477,8 @@ export const useInventoryStore = defineStore(
       equippedItems,
       equippedUids,
       bagItems,
+      /** 行囊格数(随界):界面与满包判定都读它,别各写一个 120 */
+      capacity,
       bagFull,
       equipFlats,
       equipMods,

@@ -6,7 +6,10 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { EquipmentInstance, QualityId } from '@/types'
-import { BAG_CAPACITY } from '@/data/constants'
+import { bagCapacity } from '@/data/realms'
+
+/** 人间界的行囊格数(容量随界抬,这里固定取第一界) */
+const BAG_CAPACITY = bagCapacity(0)
 import { useSettingsStore } from '@/stores/settings'
 import { useInventoryStore } from '@/stores/inventory'
 import { acquireEquipment } from './loot'

@@ -614,6 +614,8 @@ export const cloudApi = {
     autoBoss: boolean
     autoRetreat: boolean
     autoAdventure: boolean
+    /** 门派自动捐献(VIP 托管) */
+    autoDonate?: boolean
     regionId: string
     mode: string
     bossDifficulty: 'calm' | 'normal' | 'peril'
@@ -694,7 +696,9 @@ export const cloudApi = {
   friendRespond: (requestId: number, accept: boolean): Promise<{ ok: boolean }> =>
     request('POST', '/friends/respond', { requestId, accept }),
   friendRemove: (friendId: number): Promise<{ ok: boolean }> => request('DELETE', `/friends/${friendId}`),
-  leaderboard: (): Promise<{ board: LeaderRow[] }> => request('GET', '/leaderboard'),
+  /** 榜单:20 人一页(服务端定页长),默认第一页;total/pages 供翻页与「共几人」 */
+  leaderboard: (page = 1): Promise<{ board: LeaderRow[]; total: number; page: number; pages: number }> =>
+    request('GET', `/leaderboard?p=${Math.max(1, Math.trunc(page))}`),
   chatHistory: (): Promise<{ messages: ChatMsg[] }> => request('GET', '/chat/history'),
   pvp: (targetId: number): Promise<{ winner: 'me' | 'target'; rounds: number; log: string[] }> =>
     request('POST', '/pvp', { targetId }),

@@ -18,6 +18,7 @@ import {
   decomposeToast,
   salvageYieldText,
   upgradeCapToast,
+  upgradeMissingToast,
   upgradeDoneToast,
   upgradeShortToast,
   upgradeSafeToast,
@@ -103,8 +104,8 @@ export interface UpgradeRun {
   after: EquipmentInstance | null
   /** 实扣的料;一件未动为 null */
   spent: { dust: number; stone: GNum; exp: GNum } | null
-  /** 未动的原因:缺料(三样之一)或已至上限 */
-  block?: 'dust' | 'exp' | 'stone' | 'cap'
+  /** 未动的原因:缺料(三样之一)、已至上限,或云端尚无此件('gone') */
+  block?: 'dust' | 'exp' | 'stone' | 'cap' | 'gone'
   /** 掷点前的等级(提示要报「跌了几级」) */
   levelBefore: number
 }
@@ -159,6 +160,8 @@ export function noteUpgrade(after: EquipmentInstance, outcome: UpgradeOutcome): 
 function upgradeToastOf(uid: string, run: UpgradeRun): { text: string; tone: 'success' | 'warn' } | null {
   const name = equipmentTemplate(useInventoryStore().findItem(uid)?.templateId ?? '')?.name ?? '此器'
   if (run.outcome === 'blocked') {
+    // 云端查无此件 ≠ 满级:前者补传后重按即可,后者才是真的到头了
+    if (run.block === 'gone') return { text: upgradeMissingToast(), tone: 'warn' }
     const quote = equipUpgradeQuote(uid)
     if (run.block === 'cap' || quote === null) return { text: upgradeCapToast(), tone: 'warn' }
     const gap = upgradeShortfall(quote)

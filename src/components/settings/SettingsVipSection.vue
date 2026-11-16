@@ -100,9 +100,9 @@
         </button>
       </div>
 
-      <!-- 四项托管:一行四滑块,各自独立 -->
+      <!-- 五项托管:一行五滑块,各自独立 -->
       <div class="py-3">
-        <div class="grid grid-cols-4 gap-2">
+        <div class="grid grid-cols-5 gap-2">
           <div v-for="item in AUTO_ITEMS" :key="item.key" class="flex flex-col items-center gap-2">
             <ToggleSwitch v-model="settings[item.key]" :label="item.label" />
             <span
@@ -112,7 +112,7 @@
           </div>
         </div>
         <p class="mt-2 text-[10px] leading-relaxed text-ink-faint">
-          四项托管各自独立,想开哪项开哪项;历练与闭关都开时历练优先,历练间隙才闭关
+          五项托管各自独立,想开哪项开哪项;历练与闭关都开时历练优先,历练间隙才闭关
         </p>
         <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
           自动活动:七会里代打擂台连战、达标即领赏;闲趣里代抽观星签、竿竿钓满再收篓。
@@ -122,6 +122,10 @@
         <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
           打 BOSS 量力而行:能补刀先补刀,站得住便出剑;力有不及则蓄势,临期兜底出手。
           出剑无资粮,妖王被推倒时凡出过剑者按功均分击杀赏
+        </p>
+        <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
+          自动捐献:每日把门派捐献名额用完 —— 灵石 → 玄铁 → 灵草,前一档不够才退下一档;
+          捐献须先入派,未入派则什么也不做。个人贡献与门派库按三成/七成分账,与手动捐献同规
         </p>
         <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
           离线托管:妖王按日代出剑,归来时把剑数与击杀赏一并结给你;历练与闭关按
@@ -205,7 +209,7 @@
   /** 到期仍留在原处的托管项数:只作「没有白设」的告知,不参与 gate */
   const keptToggles = computed(() => {
     const s = settings
-    return [s.autoBoss, s.autoRetreat, s.autoAdventure, s.autoDailyEvent].filter(Boolean).length
+    return [s.autoBoss, s.autoRetreat, s.autoAdventure, s.autoDailyEvent, s.autoDonate].filter(Boolean).length
   })
 
   const codeInput = ref('')
@@ -339,15 +343,16 @@
   })
 
   /** 一行四滑块:key 直指 settings 字段,点滑块即翻转 */
-  const AUTO_ITEMS: ReadonlyArray<{ key: 'autoBoss' | 'autoRetreat' | 'autoAdventure' | 'autoDailyEvent'; label: string }> = [
+  const AUTO_ITEMS: ReadonlyArray<{ key: 'autoBoss' | 'autoRetreat' | 'autoAdventure' | 'autoDailyEvent' | 'autoDonate'; label: string }> = [
     { key: 'autoBoss', label: '自动打 BOSS' },
     { key: 'autoRetreat', label: '自动闭关' },
     { key: 'autoAdventure', label: '自动历练' },
-    { key: 'autoDailyEvent', label: '自动活动' }
+    { key: 'autoDailyEvent', label: '自动活动' },
+    { key: 'autoDonate', label: '自动捐献' }
   ]
 
   const allOn = computed(
-    () => settings.autoBoss && settings.autoRetreat && settings.autoAdventure && settings.autoDailyEvent
+    () => settings.autoBoss && settings.autoRetreat && settings.autoAdventure && settings.autoDailyEvent && settings.autoDonate
   )
 
   function toggleAll(): void {
@@ -356,6 +361,7 @@
     settings.autoRetreat = next
     settings.autoAdventure = next
     settings.autoDailyEvent = next
+    settings.autoDonate = next
   }
 
   /**

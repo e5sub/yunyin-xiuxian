@@ -6,6 +6,17 @@ export function upgradeCapToast(): string {
 }
 
 /**
+ * 云端还没有这一件(与「已至上限」是两件事)。
+ *
+ * 新捡到的装备先落在本地,存档二十秒一推;这期间点强化,服务端那份云档里查无此件,
+ * 原先与满级共用一个 'cap',于是新件一按就被告知「强化已至上限」——
+ * 玩家看到的等级与你说的上限对不上,还以为强化坏了。
+ */
+export function upgradeMissingToast(): string {
+  return '此器尚未入册,已补传存档,请再点一次'
+}
+
+/**
  * 强化缺料:缺哪一样就说哪一样,不用一句「或」。
  *
  * 灵石/器灵尘两句转调 ui/resourceShortText —— 那里是「X 尚差 N」的唯一实现

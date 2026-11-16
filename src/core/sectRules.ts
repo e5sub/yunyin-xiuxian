@@ -18,6 +18,10 @@ import {
   SECT_DONATE_VIP_CAP,
   SECT_FOUND_COST,
   SECT_FOUND_MAJOR,
+  SECT_HALL_SKILL_CUT,
+  SECT_HALL_SKILL_CUT_MAX,
+  SECT_HALL_TIME_CUT,
+  SECT_HALL_TIME_CUT_MAX,
   SECT_JOIN_MAJOR,
   SECT_LEVEL_HARD_MAX,
   SECT_MEMBERS_BASE,
@@ -171,6 +175,24 @@ function priceRate(rate: number): number {
 }
 
 /**
+ * 山门照拂之一:技能所耗个人贡献的系数(1 = 不打折)。
+ * 每级 -0.5%,封顶 -50%(百级)—— 山门愈高,门中传功愈省。
+ */
+export function hallSkillRate(hallLevel: number): number {
+  const hall = intIn(hallLevel, 0, SECT_LEVEL_HARD_MAX)
+  return 1 - Math.min(SECT_HALL_SKILL_CUT_MAX, hall * SECT_HALL_SKILL_CUT)
+}
+
+/**
+ * 山门照拂之二:营造工期的系数(1 = 不打折)。
+ * 每级 -1%,封顶 -60%(百级)—— 山门愈高,营造愈快,但仍要等。
+ */
+export function hallTimeRate(hallLevel: number): number {
+  const hall = intIn(hallLevel, 0, SECT_LEVEL_HARD_MAX)
+  return 1 - Math.min(SECT_HALL_TIME_CUT_MAX, hall * SECT_HALL_TIME_CUT)
+}
+
+/**
  * 技能的等级上限:基础五重,山门每 20 级再开五重(20/40/60/80/100 级各一次,封顶三十重)。
  * 与建筑闸门同一思路 —— 主建筑定余地,只是这里定的是「能练到第几重」。
  */
@@ -205,7 +227,8 @@ export function skillCost(skillId: string, level: number, rate = 1, hallLevel = 
   const tail = Math.max(0, lv - (SECT_SKILL_MAX_LEVEL - 1))
   const cost =
     base * Math.pow(SECT_SKILL_COST_GROWTH, head) * Math.pow(SECT_SKILL_COST_TAIL_GROWTH, tail)
-  return Math.ceil(cost * priceRate(rate))
+  // 两个系数各管一头:VIP 九折是「人」的优待,山门减免是「门」的优待,相乘而不是取其一
+  return Math.ceil(cost * priceRate(rate) * hallSkillRate(hallLevel))
 }
 
 /** 开宗立派的一次性开销(灵石/玄铁/悟道点),VIP 有效期内同样九折 */
@@ -259,11 +282,11 @@ export function buildingCost(id: string, level: number, rate = 1): number | null
  * 曲线 `timeBaseMin × (lv+1)^0.75`:1 级六分钟,10 级约半小时,50 级约两小时,100 级约三小时。
  * 时间只随等级缓涨而不指数爆炸 —— 否则高等级一升就是等几天,经营感会变成罚站。
  */
-export function buildingDurationMs(id: string, level: number): number | null {
+export function buildingDurationMs(id: string, level: number, hallLevel = 0): number | null {
   const def = sectBuildingDef(id)
   if (def === undefined) return null
   const lv = intIn(level, 0, SECT_LEVEL_HARD_MAX)
-  return Math.ceil(def.timeBaseMin * 60_000 * Math.pow(lv + 1, 0.75))
+  return Math.ceil(def.timeBaseMin * 60_000 * Math.pow(lv + 1, 0.75) * hallTimeRate(hallLevel))
 }
 
 /**

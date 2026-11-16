@@ -128,7 +128,7 @@ import {
 } from '@/core/wudaoExchange'
 import { cutGNum } from '@/core/spendRate'
 import type { FortuneChoice } from '@/core/fortuneChain'
-import { useInventoryStore } from './inventory'
+import { setBagRealmResolver, useInventoryStore } from './inventory'
 import { useCultivationStore } from './cultivation'
 import { useDongfuStore } from './dongfu'
 import { useSectStore } from './sect'
@@ -152,6 +152,8 @@ export const usePlayerStore = defineStore(
     const name = ref('无名散修')
     const linggen = ref<LinggenProfile | null>(null)
     const major = ref(0)
+    // 行囊格数随界抬:把境界读数注入 inventory(它不能反向 import 本 store,否则类型成环)
+    setBagRealmResolver(() => major.value)
     const sub = ref(0)
     const exp = ref<GNum>(gnZero())
     const age = ref(START_AGE)

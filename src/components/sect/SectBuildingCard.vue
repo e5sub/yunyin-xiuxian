@@ -12,6 +12,7 @@
           <!-- 山门不封顶,只报当前级;其余按山门给的余地报「N/上限」 -->
           <span class="shrink-0 text-[10px] tabular text-ink-faint">{{ isHall ? `${level} 级` : `${level}/${cap} 级` }}</span>
           <span v-if="gateLimited" class="shrink-0 rounded border border-amber-ink/40 bg-amber-ink/10 px-1.5 py-0.5 text-[10px] leading-none text-ink">辖于山门</span>
+          <span v-if="!gateLimited && timeCut > 0" class="shrink-0 text-[10px] leading-none text-jade">营造 -{{ timeCut }}%</span>
         </p>
       </div>
     </div>
@@ -59,7 +60,7 @@
   import GameIcon from '@/components/common/GameIcon.vue'
   import ProgressBar from '@/components/common/ProgressBar.vue'
   import type { SectBuildingDef } from '@/data/sect'
-  import { buildingCost, buildingDurationMs } from '@/core/sectRules'
+  import { buildingCost, buildingDurationMs, hallTimeRate } from '@/core/sectRules'
   import { useSectStore } from '@/stores/sect'
   import { useWallNow } from '@/composables/useWallClock'
   import { formatCountdown, formatDuration } from '@/utils/format'
@@ -92,8 +93,12 @@
   })
 
   const cost = computed(() => buildingCost(props.def.id, level.value, sect.rate) ?? 0)
-  const durationMs = computed(() => buildingDurationMs(props.def.id, level.value) ?? 0)
+  /** 工期吃山门减免(每级 -1%,封顶 -60%):与服务端同一把尺 */
+  const hallLevel = computed(() => sect.buildingLevel('hall'))
+  const durationMs = computed(() => buildingDurationMs(props.def.id, level.value, hallLevel.value) ?? 0)
   const timeLine = computed(() => formatDuration(Math.ceil(durationMs.value / 1000)))
+  /** 山门已省下的工期百分比:0 时不提,免得每张卡都挂一句「-0%」 */
+  const timeCut = computed(() => Math.round((1 - hallTimeRate(hallLevel.value)) * 100))
 
   const canStart = computed(
     () => !gateLimited.value && !building.value && sect.pool >= cost.value && !sect.pending

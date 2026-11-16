@@ -127,3 +127,24 @@ export function worldOf(major: number): WorldDef {
 export function isWorldEntry(major: number): boolean {
   return worldOf(major).start === Math.max(0, Math.min(MAX_MAJOR, major))
 }
+
+/**
+ * 行囊基数 —— 人间界的格数。每跨一界加一份:仙界 240、神界 360、混沌海 480、本源 600。
+ *
+ * 为什么跟着界走而不是给个统一的死数:装备阶数随界抬,一件高阶件的产出量也是,
+ * 而跨界前攒下的低阶件在下一界已无用处 —— 同一个 120 格,人间界够用一世,
+ * 到了本源界连一趟历练的掉落都装不下。容量随界走,收拾行囊的节奏才和修行同步。
+ */
+export const BAG_CAP_BASE = 120
+
+/** 某大境界在 WORLDS 里的界序(0 起);越界按两端夹 */
+function worldIndexOf(major: number): number {
+  const m = Math.max(0, Math.min(MAX_MAJOR, Number.isFinite(major) ? Math.trunc(major) : 0))
+  const i = WORLDS.findIndex(w => m >= w.start && m <= w.end)
+  return i < 0 ? 0 : i
+}
+
+/** 该境界的行囊格数:人间界 120,每跨一界 +120 */
+export function bagCapacity(major: number): number {
+  return BAG_CAP_BASE * (worldIndexOf(major) + 1)
+}

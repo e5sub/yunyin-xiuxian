@@ -23,6 +23,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useUiStore } from '@/stores/ui'
 import { cloudApi, type ForgeOpResponse, type LevelOpResponse } from '@/services/cloud'
+import { pushCloudSave } from './cloudSave'
 import { playSfx } from './audio'
 import {
   artifactBatchPlan,
@@ -134,13 +135,22 @@ async function ask(op: ForgeOp): Promise<ForgeOpResponse | null> {
 async function askInner(op: ForgeOp): Promise<ForgeOpResponse | null> {
   const player = usePlayerStore()
   const resources = useResourcesStore()
+  const send = (): Promise<ForgeOpResponse> =>
+    cloudApi.forgeOp({ op, exp: player.exp, dust: resources.dust, stone: resources.spiritStone })
   try {
-    return await cloudApi.forgeOp({
-      op,
-      exp: player.exp,
-      dust: resources.dust,
-      stone: resources.spiritStone
-    })
+    const res = await send()
+    /*
+     * 「查无此件」几乎只有一个来源:这一件刚捡到/刚换到手,存档还压在本地(二十秒一推)。
+     * 服务端只认自己那份云档,于是回 gone —— 原先客户端把它当「已满级」报出去,
+     * 玩家看着 +0 的件被告知「已至上限」。这里补推一次存档再掷一次:
+     * 存档到位后同一件就在云端了,玩家不必自己猜「为什么点不动」。
+     * 只重试一次:仍查无此件说明另有原因(比如已被分解),交给提示如实说。
+     */
+    if (res.ok === false && res.reason === 'gone') {
+      await pushCloudSave(true)
+      return await send()
+    }
+    return res
   } catch {
     return null
   }
@@ -150,7 +160,9 @@ async function askInner(op: ForgeOp): Promise<ForgeOpResponse | null> {
 function upgradeRunOf(uid: string, res: ForgeOpResponse): UpgradeRun {
   const d = res.detail?.kind === 'upgrade' ? res.detail : null
   if (d === null) {
-    return { outcome: 'blocked', after: null, spent: null, block: 'cap', levelBefore: 0 }
+    // 没有 detail 时按机读原因分:查无此件不是满级,别让它冒充「已至上限」
+    const block = res.reason === 'gone' ? 'gone' : 'cap'
+    return { outcome: 'blocked', after: null, spent: null, block, levelBefore: 0 }
   }
   const run: UpgradeRun = {
     outcome: d.outcome,

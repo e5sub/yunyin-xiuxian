@@ -499,6 +499,8 @@ CREATE TABLE IF NOT EXISTS autoops_state (
   auto_boss INTEGER NOT NULL DEFAULT 0,
   auto_retreat INTEGER NOT NULL DEFAULT 0,
   auto_adventure INTEGER NOT NULL DEFAULT 0,
+  -- 门派自动捐献(VIP 托管):每日按石→铁→草的次序把当日名额用完
+  auto_donate INTEGER NOT NULL DEFAULT 0,
   region_id TEXT NOT NULL DEFAULT '',
   mode TEXT NOT NULL DEFAULT '',
   -- 托管出剑所选难度(离线代打按它算赏格)
@@ -543,6 +545,7 @@ CREATE INDEX IF NOT EXISTS idx_progress_spend_user ON progress_spend(user_id, se
       'ALTER TABLE boss_state ADD COLUMN period_start INTEGER NOT NULL DEFAULT 0',
       "ALTER TABLE dungeon_teams ADD COLUMN difficulty TEXT NOT NULL DEFAULT 'normal'",
       "ALTER TABLE boss_damage ADD COLUMN difficulty TEXT NOT NULL DEFAULT 'normal'",
+      "ALTER TABLE autoops_state ADD COLUMN auto_donate INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE autoops_state ADD COLUMN boss_difficulty TEXT NOT NULL DEFAULT 'normal'",
       "ALTER TABLE autoops_state ADD COLUMN last_skip TEXT NOT NULL DEFAULT ''",
       'ALTER TABLE autoops_state ADD COLUMN last_skip_at INTEGER NOT NULL DEFAULT 0'
@@ -916,6 +919,8 @@ CREATE TABLE IF NOT EXISTS autoops_state (
   auto_boss TINYINT NOT NULL DEFAULT 0,
   auto_retreat TINYINT NOT NULL DEFAULT 0,
   auto_adventure TINYINT NOT NULL DEFAULT 0,
+  -- 门派自动捐献(VIP 托管):每日按石→铁→草的次序把当日名额用完
+  auto_donate TINYINT NOT NULL DEFAULT 0,
   region_id VARCHAR(64) NOT NULL DEFAULT '',
   mode VARCHAR(16) NOT NULL DEFAULT '',
   -- 托管出剑所选难度(离线代打按它算赏格)
@@ -954,6 +959,7 @@ CREATE TABLE IF NOT EXISTS autoops_state (
     'ALTER TABLE boss_state ADD COLUMN period_start BIGINT NOT NULL DEFAULT 0',
     "ALTER TABLE dungeon_teams ADD COLUMN difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'",
     "ALTER TABLE boss_damage ADD COLUMN difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'",
+    "ALTER TABLE autoops_state ADD COLUMN auto_donate TINYINT NOT NULL DEFAULT 0",
     "ALTER TABLE autoops_state ADD COLUMN boss_difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'",
     "ALTER TABLE autoops_state ADD COLUMN last_skip VARCHAR(24) NOT NULL DEFAULT ''",
     'ALTER TABLE autoops_state ADD COLUMN last_skip_at BIGINT NOT NULL DEFAULT 0'

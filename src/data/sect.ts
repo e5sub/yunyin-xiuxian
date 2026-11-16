@@ -145,6 +145,23 @@ export const SECT_SKILL_COST_GROWTH = 1.9
  */
 export const SECT_SKILL_COST_TAIL_GROWTH = 1.15
 
+/**
+ * 山门的双重照拂:山门每高一级,门中做事都省一分。
+ *
+ * 一、技能消耗的个人贡献 -0.5%/级(百级即 -50%,到此为止)。
+ *    理由:山门是「传功」的地方 —— 藏经殿给突破、演武场给攻击,山门给的是
+ *    「这一门的东西练起来更省」。封顶五成,是因为剩下那一半仍要个人自己掏:
+ *    门派库与个人贡献是两条账,全免了等于技能不要钱。
+ * 二、营造工期 -1%/级(百级即 -60%,到此为止,只剩四成)。
+ *    理由:山门是营造的组织者。封顶六成同理 —— 高等级仍要等,只是不必等那么久。
+ *
+ * 判据:`sectRules.spec` 的「山门愈高,技能愈省、工期愈短,且各自封顶」。
+ */
+export const SECT_HALL_SKILL_CUT = 0.005
+export const SECT_HALL_SKILL_CUT_MAX = 0.5
+export const SECT_HALL_TIME_CUT = 0.01
+export const SECT_HALL_TIME_CUT_MAX = 0.6
+
 export const SECTS: SectDef[] = [
   {
     id: 'taixu',
@@ -304,12 +321,13 @@ export const SECT_BUILDINGS: SectBuildingDef[] = [
   {
     id: 'hall',
     name: '山门',
-    desc: '门派根本。山门愈高,门人愈众,其余营造的余地愈大',
+    desc: '门派根本。山门愈高,门人愈众,传功愈省,营造愈快',
     icon: 'mountain',
     costBase: 60,
     timeBaseMin: 6,
     effectText: lv =>
-      `门人 ${SECT_MEMBERS_BASE + lv * SECT_MEMBERS_PER_LEVEL} 人;其余建筑上限 ${(lv + 1) * SECT_BUILDING_GATE_MULT} 级;修炼 +${(lv * 1.5).toFixed(1)}%`,
+      `门人 ${SECT_MEMBERS_BASE + lv * SECT_MEMBERS_PER_LEVEL} 人;余筑上限 ${(lv + 1) * SECT_BUILDING_GATE_MULT} 级;`
+      + `技能耗 -${Math.min(50, lv * 0.5)}% · 营造 -${Math.min(60, lv)}%;修炼 +${(lv * 1.5).toFixed(1)}%`,
     mods: lv => ({ cultivationSpeed: lv * 0.015 })
   },
   {

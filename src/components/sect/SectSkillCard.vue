@@ -23,6 +23,16 @@
       下一重:<span class="text-ink-soft">{{ def.effectText(level + 1) }}</span>
     </p>
 
+    <!--
+      减免要说出来:VIP 九折是「人」的优待,山门减免是「门」的优待,两者相乘。
+      玩家看到的价格若比牌价低,得知道低在哪 —— 否则会以为是显示错。
+    -->
+    <p v-if="saved > 0" class="mt-1 flex flex-wrap items-center gap-x-2 text-[10px] leading-relaxed text-ink-faint">
+      <span>原价 <span class="tabular line-through">{{ baseCost }}</span></span>
+      <span v-if="sect.rate < 1" class="text-gold-ink">VIP 九折</span>
+      <span v-if="hallCut > 0" class="text-jade">山门 -{{ hallCut }}%</span>
+    </p>
+
     <button
       class="btn-ghost mt-2 w-full !py-1.5 !text-[12px]"
       :disabled="!canLearn"
@@ -42,7 +52,7 @@
   import { computed } from 'vue'
   import GameIcon from '@/components/common/GameIcon.vue'
   import { sectOfSkill, type SectSkillDef } from '@/data/sect'
-  import { skillCapNextHall, skillCost, skillLevelCap, skillUnlocked } from '@/core/sectRules'
+  import { hallSkillRate, skillCapNextHall, skillCost, skillLevelCap, skillUnlocked } from '@/core/sectRules'
   import { useSectStore } from '@/stores/sect'
 
   const props = defineProps<{ def: SectSkillDef }>()
@@ -60,6 +70,11 @@
   const locked = computed(() => !skillUnlocked(sect.state.skills, props.def.id))
 
   const cost = computed(() => skillCost(props.def.id, level.value, sect.rate, hallLevel.value) ?? 0)
+  /** 价目牌上的原价(无 VIP、无山门减免):只在真有减免时用来对照 */
+  const baseCost = computed(() => skillCost(props.def.id, level.value, 1, 0) ?? 0)
+  /** 山门减免的百分比(每级 -0.5%,封顶 50%) */
+  const hallCut = computed(() => Math.round((1 - hallSkillRate(hallLevel.value)) * 100))
+  const saved = computed(() => baseCost.value - cost.value)
   const atMax = computed(() => level.value >= cap.value)
   /** 真·圆满:不仅顶到当前上限,而且山门已开尽(百级,三十重) */
   const topped = computed(() => atMax.value && skillCapNextHall(hallLevel.value) === null)

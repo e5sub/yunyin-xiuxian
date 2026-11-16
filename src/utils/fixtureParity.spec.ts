@@ -15,7 +15,10 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { affixDef, affixFitBlock } from '@/data/affixes'
 import { equipmentTemplate } from '@/data/equipment'
 import { qualityDef } from '@/data/qualities'
-import { BAG_CAPACITY } from '@/data/constants'
+import { bagCapacity } from '@/data/realms'
+
+/** 人间界的行囊格数(容量随界抬,这里固定取第一界) */
+const BAG_CAPACITY = bagCapacity(0)
 import { buildingDef } from '@/data/buildings'
 import { WORLD_BREAK_MAJOR } from '@/data/realms'
 import { herbGradeOfMajor } from '@/data/herbGrades'

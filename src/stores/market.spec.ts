@@ -4,7 +4,10 @@ import { createPinia, setActivePinia } from 'pinia'
 import { MARKET_MAT_COUNT, MARKET_CONSIGN_SLOTS, MARKET_REFRESH_SECONDS, type MarketSlot } from '@/data/market'
 import { pillSellPrice } from '@/core/marketService'
 import { gn, toNum } from '@/utils/gnum'
-import { BAG_CAPACITY } from '@/data/constants'
+import { bagCapacity } from '@/data/realms'
+
+/** 人间界的行囊格数(容量随界抬,这里固定取第一界) */
+const BAG_CAPACITY = bagCapacity(0)
 import { consignPrice, focusHerbSlot, generateMarketStock, marketRemainingSec, herbSellBatch, materialSellPrice } from '@/core/marketService'
 import { MAX_EQUIP_TIER } from '@/data/equipment'
 import { qualityDef } from '@/data/qualities'

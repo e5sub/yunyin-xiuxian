@@ -22,6 +22,8 @@ import {
   donationQuota,
   donationSplit,
   emptySectState,
+  hallSkillRate,
+  hallTimeRate,
   memberCap,
   normalizeSectState,
   sectMods,
@@ -150,6 +152,53 @@ describe('建筑价目与工期', () => {
     expect(buildingLevelCap('arena', 8)).toBe(18)
     expect(buildingLevelCap('arena', 49)).toBe(100)
     expect(buildingLevelCap('nope', 8)).toBe(0)
+  })
+})
+
+describe('山门照拂:技能减耗与工期缩短', () => {
+  it('技能个人贡献:山门每级 -0.5%,百级封顶 -50%', () => {
+    const full = skillCost(skill1.id, 0, 1, 0)!
+    expect(hallSkillRate(0)).toBe(1)
+    expect(skillCost(skill1.id, 0, 1, 20)! / full).toBeCloseTo(0.9, 6)
+    expect(skillCost(skill1.id, 0, 1, 100)! / full).toBeCloseTo(0.5, 6)
+    // 封顶之后不再降:百级与硬夹上限同价
+    expect(skillCost(skill1.id, 0, 1, SECT_LEVEL_HARD_MAX)).toBe(skillCost(skill1.id, 0, 1, 100))
+    expect(hallSkillRate(SECT_LEVEL_HARD_MAX)).toBe(0.5)
+  })
+
+  it('VIP 九折与山门减免相乘:两者都享时折上折,且逐重仍严格递增', () => {
+    const full = skillCost(skill1.id, 0, 1, 0)!
+    expect(skillCost(skill1.id, 0, 0.9, 100)! / full).toBeCloseTo(0.45, 6)
+    let prev = 0
+    for (let lv = 0; lv < 30; lv += 1) {
+      const vip = skillCost(skill5.id, lv, 0.9, 100)!
+      const plain = skillCost(skill5.id, lv, 1, 100)!
+      /*
+       * 九折实付 ≈ 牌价 × 0.9:两处各自向上取整,差最多 1 点贡献
+       * (先合后乘再取整,不能拿已取整的牌价再乘 —— 那会多算一点)。
+       * 要紧的是:VIP 一定更便宜,且不出现「折后比牌价还贵」的荒谬值。
+       */
+      expect(Math.abs(vip - plain * 0.9)).toBeLessThanOrEqual(1)
+      expect(vip).toBeLessThanOrEqual(Math.ceil(plain * 0.9))
+      expect(vip).toBeLessThan(plain)
+      expect(vip).toBeGreaterThan(prev)
+      prev = vip
+    }
+  })
+
+  it('工期:山门每级 -1%,封顶只剩四成', () => {
+    const base = buildingDurationMs('arena', 9)!
+    expect(hallTimeRate(0)).toBe(1)
+    expect(buildingDurationMs('arena', 9, 20)! / base).toBeCloseTo(0.8, 3)
+    expect(buildingDurationMs('arena', 9, 100)! / base).toBeCloseTo(0.4, 3)
+    expect(buildingDurationMs('arena', 9, SECT_LEVEL_HARD_MAX)).toBe(buildingDurationMs('arena', 9, 100))
+  })
+
+  it('减免不吃掉「愈高愈贵」:同一山门等级下,价与工期仍随等级涨', () => {
+    for (const b of SECT_BUILDINGS) {
+      expect(buildingCost(b.id, 30)!).toBeGreaterThan(buildingCost(b.id, 20)!)
+      expect(buildingDurationMs(b.id, 30, 100)!).toBeGreaterThan(buildingDurationMs(b.id, 20, 100)!)
+    }
   })
 })
 

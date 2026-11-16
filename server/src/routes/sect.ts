@@ -67,7 +67,7 @@ interface SectRules {
   donationSplit: (contribution: number) => { personal: number; pool: number }
   donationHerbGrade: (major: number) => number
   buildingCost: (id: string, level: number, rate?: number) => number | null
-  buildingDurationMs: (id: string, level: number) => number | null
+  buildingDurationMs: (id: string, level: number, hallLevel?: number) => number | null
   buildingLevelCap: (id: string, hallLevel: number) => number
   /** 技能等级上限:基础五重,山门每 20 级再开五重(百级封顶三十重) */
   skillLevelCap: (hallLevel: number) => number
@@ -450,50 +450,119 @@ sectRouter.post(
   })
 )
 
+/** 捐献一次:调用方须已在 save:<uid> 与 sect:<row> 两把锁内,且 state/member 是锁内读到的数 */
+async function donateOnce(
+  ctx: { userId: number; now: number; state: SectState; member: SectMemberRow; sectRow: number; rules: SectRules; vip: boolean },
+  kind: string
+): Promise<{ ok: true; extra: Record<string, unknown> } | { ok: false; reason: string }> {
+  const { userId, now, state, member, sectRow, rules, vip } = ctx
+  const def = rules.donationDef(kind)
+  if (def === undefined) return { ok: false, reason: 'gone' }
+  const day = dayKeyOf(now)
+  const today = member.day === day ? member.donations_today : 0
+  if (today >= rules.donationQuota(vip)) return { ok: false, reason: 'daily' }
+  const data = await readSave(userId)
+  if (data === null) return { ok: false, reason: 'nosave' }
+  const avail = await affordable(userId, data)
+  const major = await realmMajorOf(userId)
+  const grade = rules.donationHerbGrade(major)
+  const enough =
+    def.kind === 'stone'
+      ? avail.stone >= def.amount
+      : def.kind === 'ore'
+        ? avail.ore >= def.amount
+        : avail.herbOf(grade) >= def.amount
+  if (!enough) return { ok: false, reason: 'insufficient' }
+  const split = rules.donationSplit(def.contribution)
+  const spend: SectSpend =
+    def.kind === 'stone'
+      ? { ...NO_SECT_SPEND, stone: gnOf(def.amount) }
+      : def.kind === 'ore'
+        ? { ...NO_SECT_SPEND, ore: def.amount }
+        : { ...NO_SECT_SPEND, herbGrade: grade, herb: def.amount }
+  await recordSectSpend(userId, spend)
+  await patchMember(userId, {
+    personal: member.personal + split.personal,
+    day,
+    donationsToday: today + 1,
+    totalDonated: member.total_donated + def.contribution
+  })
+  await writeBody(sectRow, { ...state, pool: state.pool + split.pool })
+  return {
+    ok: true,
+    extra: { spend: { kind: def.kind, amount: def.amount, grade: def.kind === 'herb' ? grade : -1 } }
+  }
+}
+
 /** 捐献:三档,日限次;贡献三成入门派库(公账),其余记个人 */
 sectRouter.post(
   '/sect/donate',
   requireAuth,
-  act('donate', async ({ userId, now, body, state, member, sectRow, rules, vip }) => {
+  act('donate', async ctx => {
+    const member = ctx.member
     if (member === null) return { ok: false, reason: 'nosect' }
-    const def = rules.donationDef(typeof body.kind === 'string' ? body.kind : '')
-    if (def === undefined) return { ok: false, reason: 'gone' }
-    const day = dayKeyOf(now)
-    const today = member.day === day ? member.donations_today : 0
-    if (today >= rules.donationQuota(vip)) return { ok: false, reason: 'daily' }
-    const data = await readSave(userId)
-    if (data === null) return { ok: false, reason: 'nosave' }
-    const avail = await affordable(userId, data)
-    const major = await realmMajorOf(userId)
-    const grade = rules.donationHerbGrade(major)
-    const enough =
-      def.kind === 'stone'
-        ? avail.stone >= def.amount
-        : def.kind === 'ore'
-          ? avail.ore >= def.amount
-          : avail.herbOf(grade) >= def.amount
-    if (!enough) return { ok: false, reason: 'insufficient' }
-    const split = rules.donationSplit(def.contribution)
-    const spend: SectSpend =
-      def.kind === 'stone'
-        ? { ...NO_SECT_SPEND, stone: gnOf(def.amount) }
-        : def.kind === 'ore'
-          ? { ...NO_SECT_SPEND, ore: def.amount }
-          : { ...NO_SECT_SPEND, herbGrade: grade, herb: def.amount }
-    await recordSectSpend(userId, spend)
-    await patchMember(userId, {
-      personal: member.personal + split.personal,
-      day,
-      donationsToday: today + 1,
-      totalDonated: member.total_donated + def.contribution
-    })
-    await writeBody(sectRow, { ...state, pool: state.pool + split.pool })
-    return {
-      ok: true,
-      extra: { spend: { kind: def.kind, amount: def.amount, grade: def.kind === 'herb' ? grade : -1 } }
-    }
+    return donateOnce(
+      { userId: ctx.userId, now: ctx.now, state: ctx.state, member, sectRow: ctx.sectRow, rules: ctx.rules, vip: ctx.vip },
+      typeof ctx.body.kind === 'string' ? ctx.body.kind : ''
+    )
   })
 )
+
+/**
+ * 托管自动捐献:VIP 开着「自动捐献」时,把当日名额用尽。
+ *
+ * **次序**:灵石 → 玄铁 → 灵草 —— 灵石是最不心疼的一档(人间界第 10 境起就长期闲置),
+ * 前一档不够才退到下一档;三档都不够或名额满了就停手。
+ *
+ * **锁序与手动捐献完全相同**:save:<uid> → sect:<row> → 锁内重读状态。
+ * 不这么做的话,「锁外读旧额度 → 等锁 → 按旧值写」会让同一笔名额捐两遍。
+ * 名额是唯一的闸,连点最多把今日份捐完,不会多出贡献。
+ */
+export async function autoDonateFor(userId: number): Promise<number> {
+  const now = Date.now()
+  const rules = await clientRules()
+  const vip = await vipActive(userId)
+  /*
+   * 锁外粗筛:托管巡检每分钟扫一遍全部开着开关的人,绝大多数早已捐满 ——
+   * 先读一行成员记录判额度,不够格就不进两把锁。
+   */
+  const pre = await readMember(userId)
+  if (pre === null) return 0
+  const day = dayKeyOf(now)
+  const todayPre = pre.day === day ? pre.donations_today : 0
+  if (todayPre >= rules.donationQuota(vip)) return 0
+
+  return withKeyLock(`save:${userId}`, async () => {
+    const probe = await readMember(userId)
+    if (probe === null) return 0
+    return withKeyLock(`sect:${probe.sect_row}`, async () => {
+      // 等锁期间可能被逐出/自己退了:换门了就作罢(下一分钟再来)
+      const again = await readMember(userId)
+      if (again === null || again.sect_row !== probe.sect_row) return 0
+      let done = 0
+      for (;;) {
+        const { state, member, sectRow } = await readSettledSectState(userId, now)
+        if (member === null) break
+        const quota = rules.donationQuota(vip)
+        const used = member.day === day ? member.donations_today : 0
+        if (used >= quota) break
+        let hit = false
+        for (const kind of ['stone', 'ore', 'herb']) {
+          const out = await donateOnce({ userId, now, state, member, sectRow, rules, vip }, kind)
+          if (out.ok) {
+            done += 1
+            hit = true
+            break
+          }
+          // 额度满:不必再试下一档
+          if (out.reason === 'daily') return done
+        }
+        if (!hit) break
+      }
+      return done
+    })
+  })
+}
 
 /** 开工营造:扣门派库、写服务端时间;同一时刻只能有一座在造(门人也可发起 —— 公账公造) */
 sectRouter.post(
@@ -506,7 +575,8 @@ sectRouter.post(
     const cur = state.buildings[id] ?? 0
     const cap = rules.buildingLevelCap(id, state.buildings.hall ?? 0)
     const cost = rules.buildingCost(id, cur, vipRate(vip))
-    const duration = rules.buildingDurationMs(id, cur)
+    // 工期也吃山门减免(每级 -1%,封顶 -60%):与服务端同一把尺,见 core/sectRules 的 hallTimeRate
+    const duration = rules.buildingDurationMs(id, cur, state.buildings.hall ?? 0)
     if (cost === null || duration === null) return { ok: false, reason: 'gone' }
     if (cur + 1 > cap) return { ok: false, reason: 'cap' }
     if (state.pool < cost) return { ok: false, reason: 'pool' }

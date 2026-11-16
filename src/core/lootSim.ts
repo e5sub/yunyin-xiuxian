@@ -5,7 +5,8 @@
  */
 import { mulberry32, RandomService } from '@/utils/random'
 import { qualityDef, QUALITIES } from '@/data/qualities'
-import { BAG_CAPACITY, EQUIP_DROP_CHANCE, DECOMPOSE_DUST } from '@/data/constants'
+import { EQUIP_DROP_CHANCE, DECOMPOSE_DUST } from '@/data/constants'
+import { bagCapacity } from '@/data/realms'
 import { generateEquipment } from './equipGen'
 import { winsPerHour } from './expIncome'
 
@@ -23,7 +24,11 @@ export interface LootPressure {
   dropsPer30d: number
 }
 
-export function simulateLootPressure(tier: number, samples = 600): LootPressure {
+/**
+ * @param major 当前大境界:行囊格数随界抬(人间 120 → 本源 600),同一掉落速率下
+ *              高界能装更久。默认 0(人间界),与旧读数逐位相同。
+ */
+export function simulateLootPressure(tier: number, major = 0, samples = 600): LootPressure {
   const rng = new RandomService(mulberry32(tier * 977))
   const rankCounts = new Array<number>(QUALITIES.length).fill(0)
   let dustSum = 0
@@ -43,7 +48,7 @@ export function simulateLootPressure(tier: number, samples = 600): LootPressure 
   return {
     tier,
     dropsPerHour,
-    hoursToFillBag: BAG_CAPACITY / dropsPerHour,
+    hoursToFillBag: bagCapacity(major) / dropsPerHour,
     rankShare: rankCounts.map(n => n / samples),
     avgRank,
     dustPerDay: (dustSum / samples) * dropsPerHour * 24,

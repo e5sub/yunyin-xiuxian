@@ -13,6 +13,7 @@ import { getConfigNumber } from './config.js'
 import { dayKey, attemptsUsed } from './dungeonCore.js'
 import { bossAttemptBonus } from './eventCore.js'
 import { performStrike, ensureBoss, assessStrike, bossDifficultyOf, type BossDifficulty } from './routes/boss.js'
+import { autoDonateFor } from './routes/sect.js'
 
 export const autoOpsRouter = express.Router()
 
@@ -35,6 +36,8 @@ interface AutoOpsRow {
   auto_boss: number
   auto_retreat: number
   auto_adventure: number
+  /** 门派自动捐献:VIP 每日把名额捐完(石→铁→草) */
+  auto_donate: number
   region_id: string
   mode: string
   boss_difficulty: string
@@ -56,6 +59,7 @@ function settingsOf(r: AutoOpsRow | undefined): Record<string, unknown> {
     autoBoss: (r?.auto_boss ?? 0) === 1,
     autoRetreat: (r?.auto_retreat ?? 0) === 1,
     autoAdventure: (r?.auto_adventure ?? 0) === 1,
+    autoDonate: (r?.auto_donate ?? 0) === 1,
     regionId: r?.region_id ?? '',
     mode: r?.mode ?? '',
     bossDifficulty: bossDifficultyOf(r?.boss_difficulty)
@@ -105,6 +109,7 @@ autoOpsRouter.put('/', requireAuth, (req: Request, res: Response) => {
       auto_boss: b(body.autoBoss) ? 1 : 0,
       auto_retreat: b(body.autoRetreat) ? 1 : 0,
       auto_adventure: b(body.autoAdventure) ? 1 : 0,
+      auto_donate: b(body.autoDonate) ? 1 : 0,
       region_id: s(body.regionId, 64),
       mode: s(body.mode, 16),
       boss_difficulty: bossDifficultyOf(body.bossDifficulty),
@@ -124,12 +129,13 @@ autoOpsRouter.put('/', requireAuth, (req: Request, res: Response) => {
     } else {
       await run(
         `UPDATE autoops_state
-         SET auto_boss = ?, auto_retreat = ?, auto_adventure = ?, region_id = ?, mode = ?, boss_difficulty = ?, updated_at = ?
+         SET auto_boss = ?, auto_retreat = ?, auto_adventure = ?, auto_donate = ?, region_id = ?, mode = ?, boss_difficulty = ?, updated_at = ?
          WHERE user_id = ?`,
         [
           settings.auto_boss,
           settings.auto_retreat,
           settings.auto_adventure,
+          settings.auto_donate,
           settings.region_id,
           settings.mode,
           settings.boss_difficulty,
@@ -247,11 +253,33 @@ async function tickOfflineBoss(): Promise<void> {
   }
 }
 
+/**
+ * 一轮巡检:门派自动捐献。
+ *
+ * 只看开关与 VIP —— 不看在线:捐献是纯服务端账(额度、余额、门派库都在服务端),
+ * 玩家挂着不动也该捐。日界一到,第一名巡检进来的人把当日名额捐满,之后每分钟的重扫
+ * 会被 autoDonateFor 的锁外粗筛挡掉(只读一行成员记录)。
+ */
+async function tickAutoDonate(): Promise<void> {
+  const rows = await all<{ user_id: number }>('SELECT user_id FROM autoops_state WHERE auto_donate = 1')
+  for (const r of rows) {
+    try {
+      if (!(await vipActive(r.user_id))) continue
+      await autoDonateFor(r.user_id)
+    } catch {
+      // 单人的账出错不影响其余道友
+    }
+  }
+}
+
 let jobTimer: ReturnType<typeof setInterval> | undefined
 
 /** 服务端启动时挂离线托管巡检 */
 export function startAutoOpsJob(): void {
   if (jobTimer !== undefined) return
-  jobTimer = setInterval(() => void tickOfflineBoss().catch(() => undefined), JOB_TICK_MS)
+  jobTimer = setInterval(() => {
+    void tickOfflineBoss().catch(() => undefined)
+    void tickAutoDonate().catch(() => undefined)
+  }, JOB_TICK_MS)
   jobTimer.unref?.()
 }

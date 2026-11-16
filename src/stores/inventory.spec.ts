@@ -3,13 +3,15 @@
  * 真值取 mergeMods(已装备件的 resolveEquipStats.mods) 深等,抓幻影来源/叠加错/漏撤三类回归。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ref } from 'vue'
 import { ARTIFACTS } from '@/data/artifacts'
 import { createPinia, setActivePinia } from 'pinia'
-import { useInventoryStore } from '@/stores/inventory'
+import { setBagRealmResolver, useInventoryStore } from '@/stores/inventory'
 import { toNum } from '@/utils/gnum'
 import type { GNum } from '@/types'
 import { mergeMods } from '@/core/statsCalc'
-import { BAG_CAPACITY, EQUIP_AFFIX_HARD_CAP } from '@/data/constants'
+import { EQUIP_AFFIX_HARD_CAP } from '@/data/constants'
+import { MAX_MAJOR, bagCapacity } from '@/data/realms'
 import { AFFIXES, affixFitBlock } from '@/data/affixes'
 import { EQUIPMENT_TEMPLATES, equipmentTemplate } from '@/data/equipment'
 import { qualityDef } from '@/data/qualities'
@@ -17,6 +19,9 @@ import { resolveEquipStats } from '@/core/equipGen'
 import { ARTIFACT_MAX_LEVEL, ARTIFACT_MAX_SLOTS, artifactDef, artifactEvictedBy, artifactSlotViews, artifactValue } from '@/data/artifacts'
 import { artifactUpCost, upgradeArtifact } from '@/core/forge'
 import { useResourcesStore } from '@/stores/resources'
+
+/** 人间界的行囊格数(容量随界抬,这里固定取第一界) */
+const BAG_CAPACITY = bagCapacity(0)
 import type { EquipmentInstance } from '@/types'
 import { add, gn } from '@/utils/gnum'
 
@@ -478,12 +483,16 @@ describe('法宝公共写入边界 · 目录、拥有、满重与祭炼槽', () 
 /**
  * 超容量坏档的截断。
  *
- * BAG_CAPACITY 原本只用来判 bagFull(「行囊已满」),从不用来限容:
- * 把 items 撑到几千件的坏档会被原样吃下,bagFull 恒为 true,
- * addItem 从此一律 return false —— 玩家再也捡不到装备,界面还要渲染几千行。
- * 这条把「读档后容量有上界、已装备的不会被截掉」钉住。
+ * 行囊格数随界抬(人间 120 → 本源 600,见 data/realms 的 bagCapacity),而**读档那一刻
+ * 境界还没落**(player store 尚未 hydrate,注入的读数仍是默认的人间界)。若按当时读数裁,
+ * 一个仙界玩家带着 240 件上传,下次登录就会被当成坏档砍掉一半 —— 所以裁剪线取
+ * **最宽的一档**(本源 600),真正的「满包」判定交给 capacity。
+ *
+ * 这几条把「读档后件数有硬上界、已装备的不会被截掉、顺序不乱」钉住。
  */
 describe('行囊容量 · 坏档截断', () => {
+  /** 读档裁剪线:最宽一档(本源界) */
+  const HARD = bagCapacity(MAX_MAJOR)
   const WEAPON = 'w_zhuqing'
 
   function makeItems(n: number) {
@@ -500,25 +509,26 @@ describe('行囊容量 · 坏档截断', () => {
 
   it('容量以内的库存原样保留', () => {
     const inv = useInventoryStore()
-    inv.items = makeItems(BAG_CAPACITY) as never
+    inv.items = makeItems(HARD) as never
     inv.sanitize()
-    expect(inv.items).toHaveLength(BAG_CAPACITY)
+    expect(inv.items).toHaveLength(HARD)
   })
 
-  it('超容量时截断到 BAG_CAPACITY', () => {
+  it('超容量时截断到最宽一档', () => {
     const inv = useInventoryStore()
-    inv.items = makeItems(BAG_CAPACITY * 5) as never
+    inv.items = makeItems(HARD * 5) as never
     inv.sanitize()
-    expect(inv.items.length, '坏档撑不破容量上限').toBe(BAG_CAPACITY)
+    expect(inv.items.length, '坏档撑不破容量上限').toBe(HARD)
   })
 
-  it('截断后 bagFull 不再恒为 true —— 玩家还能捡到新装备', () => {
+  it('截断后件数有上界 —— 不会吃到几千件', () => {
     const inv = useInventoryStore()
-    inv.items = makeItems(BAG_CAPACITY * 3) as never
+    inv.items = makeItems(HARD * 3) as never
     inv.sanitize()
-    // 全部在背包里(没有装备)→ 恰好满;但不会「超满」到永远加不进
-    expect(inv.bagItems.length).toBeLessThanOrEqual(BAG_CAPACITY)
-    expect(inv.items.some(it => !inv.bagItems.includes(it)) || inv.bagItems.length === BAG_CAPACITY).toBe(true)
+    expect(inv.items.length).toBe(HARD)
+    // 人间界 120 格:600 件确实「满」了,但界一抬就装得下 —— 上限不是死数
+    expect(inv.bagFull).toBe(true)
+    expect(bagCapacity(MAX_MAJOR)).toBeGreaterThanOrEqual(inv.items.length)
   })
 
   it('已装备的件一定被保住(哪怕原下标在容量之外)', () => {
@@ -533,20 +543,19 @@ describe('行囊容量 · 坏档截断', () => {
 
   it('截断后背包仍有空位(装备占位不算进背包)', () => {
     const inv = useInventoryStore()
-    inv.items = makeItems(BAG_CAPACITY * 2) as never
-    inv.equipped = { weapon: `u${BAG_CAPACITY * 2 - 1}` } as never
+    inv.items = makeItems(HARD * 2) as never
+    inv.equipped = { weapon: `u${HARD * 2 - 1}` } as never
     inv.sanitize()
-    expect(inv.bagItems.length, '截断后背包数应比容量少一件(那件在身上)').toBe(BAG_CAPACITY - 1)
-    expect(inv.bagFull).toBe(false)
+    expect(inv.bagItems.length, '截断后背包数应比裁剪线少一件(那件在身上)').toBe(HARD - 1)
   })
 
   it('截断保持读档顺序(前面的留下)', () => {
     const inv = useInventoryStore()
-    inv.items = makeItems(BAG_CAPACITY * 2) as never
+    inv.items = makeItems(HARD * 2) as never
     inv.sanitize()
     const kept = inv.items.map(it => it.uid)
     expect(kept[0]).toBe('u0')
-    expect(kept.length).toBe(BAG_CAPACITY)
+    expect(kept.length).toBe(HARD)
   })
 
   it('满仓但一件未装备时 bagFull 为 true(这是正常状态,不是坏档)', () => {
@@ -554,6 +563,43 @@ describe('行囊容量 · 坏档截断', () => {
     inv.items = makeItems(BAG_CAPACITY) as never
     inv.sanitize()
     expect(inv.bagFull).toBe(true)
+  })
+})
+
+function mkCapItem(i: number) {
+  return { uid: `cap${i}`, templateId: 'w_zhuqing', tier: 1, quality: 'mortal' as const, level: 1, locked: false, affixes: [] }
+}
+
+/**
+ * 行囊随界抬:人间 120、仙界 240、神界 360、混沌海 480、本源 600。
+ * 格数由 data/realms 的 bagCapacity(major) 定,境界经 player store 注入(见 stores/player)。
+ */
+describe('行囊容量 · 随界抬', () => {
+  it('五界各一档,每跨一界 +120', () => {
+    expect(bagCapacity(0)).toBe(120)
+    expect(bagCapacity(9), '仙界起点').toBe(240)
+    expect(bagCapacity(14), '神界起点').toBe(360)
+    expect(bagCapacity(18), '混沌海起点').toBe(480)
+    expect(bagCapacity(MAX_MAJOR), '本源界终境').toBe(600)
+    // 越界夹到两端,不会算出 0 格或负数
+    expect(bagCapacity(-5)).toBe(120)
+    expect(bagCapacity(999)).toBe(600)
+  })
+
+  it('满包判定读当前界的格数,不是死数 120', () => {
+    // 境界必须是响应式读数:computed 会缓存,plain 变量改动不会让它重算
+    const major = ref(0)
+    setBagRealmResolver(() => major.value)
+    const inv = useInventoryStore()
+    inv.items = Array.from({ length: 120 }, (_, i) => mkCapItem(i)) as never
+    expect(inv.capacity).toBe(120)
+    expect(inv.bagFull, '人间界 120 格已满').toBe(true)
+    // 飞升仙界:容量翻倍,同一行囊立刻有空位 —— 不必先扔东西
+    major.value = 9
+    expect(inv.capacity).toBe(240)
+    expect(inv.bagFull).toBe(false)
+    // 还原注入,免得影响后续用例
+    setBagRealmResolver(() => 0)
   })
 })
 

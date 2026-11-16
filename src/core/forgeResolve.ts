@@ -66,8 +66,11 @@ export type ForgeDetail =
       kind: 'upgrade'
       /** 最后一次的结果;times 次全成时也是 'up' */
       outcome: UpgradeOutcome
-      /** 未动的原因 */
-      block?: 'dust' | 'exp' | 'stone' | 'cap'
+      /**
+       * 未动的原因。'gone' 单列:云端那份存档里还没有这一件(刚捡到、尚未上传),
+       * 不是「已满级」—— 两者原先共用 'cap',害得玩家的新件一强化就被告知「已至上限」。
+       */
+      block?: 'dust' | 'exp' | 'stone' | 'cap' | 'gone'
       levelBefore: number
       levelAfter: number
       /** 实际掷了几次(失手即停) */
@@ -199,7 +202,7 @@ export function resolveForgeOnStores(op: ForgeOp): ForgeResult {
         op: 'upgrade',
         items: [],
         spend: emptySpend(),
-        detail: { kind: 'upgrade', outcome: 'blocked', block: 'cap', levelBefore, levelAfter: levelBefore, tries: 0 }
+        detail: { kind: 'upgrade', outcome: 'blocked', block: 'gone', levelBefore, levelAfter: levelBefore, tries: 0 }
       }
     }
     // 首次就付不起(缺料/满级):一次都不掷
@@ -236,7 +239,7 @@ export function resolveForgeOnStores(op: ForgeOp): ForgeResult {
     const spend = emptySpend()
     let tries = 0
     let last: UpgradeOutcome = 'up'
-    let block: 'dust' | 'exp' | 'stone' | 'cap' | undefined
+    let block: 'dust' | 'exp' | 'stone' | 'cap' | 'gone' | undefined
     for (let i = 0; i < op.times; i += 1) {
       const run = upgradeOnce(op.uid)
       if (run.spent === null) {

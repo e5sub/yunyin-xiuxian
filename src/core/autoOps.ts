@@ -383,7 +383,7 @@ export function startAutoOps(): void {
     () => {
       const auth = useAuthStore()
       const s = useSettingsStore()
-      return [auth.loggedIn, auth.isVip, s.autoBoss, s.autoRetreat, s.autoAdventure, s.autoRegionId, s.autoMode, s.bossDifficulty] as const
+      return [auth.loggedIn, auth.isVip, s.autoBoss, s.autoRetreat, s.autoAdventure, s.autoDonate, s.autoRegionId, s.autoMode, s.bossDifficulty] as const
     },
     () => scheduleSync(),
     { immediate: true }
@@ -436,6 +436,7 @@ function pushAutoOpsSettings(): void {
       autoBoss: settings.autoBoss,
       autoRetreat: settings.autoRetreat,
       autoAdventure: settings.autoAdventure,
+      autoDonate: settings.autoDonate,
       regionId: settings.autoRegionId,
       mode: settings.autoMode,
       bossDifficulty: settings.bossDifficulty
