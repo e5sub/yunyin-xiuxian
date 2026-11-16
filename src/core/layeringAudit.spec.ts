@@ -110,8 +110,11 @@ const CORE_STORE_SITES = 249;
  * (三段路径毁档修复,合并逻辑以现对象为底,不动真 store 测不出来)。
  * 1.66.3 的 forgeServiceCharge.spec +1:在线炼器的料耗落账要真扣 store
  * (服务端只回「该付多少」,扣款在客户端 —— 不打桩测不出漏扣)。
+ * 1.68.0(+1,131 → 132):上游这批带来的 voidRerollRebirth.spec —— `rerollVoidWorld` 读
+ * endgame/ui 两个 store、`onRebirth` 本身也是 store 方法,这条「await 窗口里转世」的
+ * 时序判据绕不开 Pinia(上游自己在同一处把它的基线从 121 调到 122,理由相同)。
  */
-const CORE_PINIA_SPECS = 131;
+const CORE_PINIA_SPECS = 132;
 
 function sources(dir: string): { name: string; text: string }[] {
   return readdirSync(dir)

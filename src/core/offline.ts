@@ -163,7 +163,19 @@ async function settleOfflineInner(nowMs: number): Promise<OfflineSummary | null>
    * 离线期间每次装备入账(历练掉落、镇压产出、际遇奖励)都记这本账;入包件带 uid,化尘的不带。
    * 腾位不能只看 bagged:被挤掉的旧件化出的尘与件数也要记。
    */
+  /*
+   * `ledgerDone` 是这个监听器的存活性:`settleOffline` 正常跑完时置 true 并退订;
+   * **中途抛错时退订那一句跑不到**,于是监听器永久留在模块级 Set 里 ——
+   * 后续每次装备入账都往这个早已结束的 `equipmentGained` 数组里 push,
+   * 而且每抛一次就多留一个。实测:spy 掉 `player.addAge` 让它抛,
+   * 再 `acquireEquipment`,账本仍被写入。
+   *
+   * 所以监听器被调用时先看这个标记:结算已经结束就回 `false`,
+   * `acquireEquipment` 会当场把它摘掉(见 loot.ts 的 AcquireListener)。
+   */
+  let ledgerDone = false
   const stopLedger = onAcquire((inst, res) => {
+    if (ledgerDone) return false
     equipmentGained.push({
       name: equipmentTemplate(inst.templateId)?.name ?? '未知',
       quality: inst.quality,
@@ -540,6 +552,8 @@ async function settleOfflineInner(nowMs: number): Promise<OfflineSummary | null>
     if (session) adventure.setSession({ ...session, itemGain: session.itemGain + deferredEventItems })
   }
 
+
+  ledgerDone = true
   stopLedger()
   const summary: OfflineSummary = {
     seconds: dtSec,
@@ -584,6 +598,19 @@ async function settleOfflineInner(nowMs: number): Promise<OfflineSummary | null>
     track('offlineClaims')
     ui.offlineSummary = summary
   }
+  /*
+   * 结算完就盖掉 `lastActiveAt` —— 这一段已经被用掉了。
+   *
+   * 原先靠调用方(引擎)在结算之后补 `stampActive`,而引擎那条路径上,
+   * `stampActive` 只在 `now - lastStampAt >= ACTIVE_STAMP_MS`(60 秒)时才执行。
+   * 于是结算后 60 秒内若又判一次「长时间停摆」,同一段时间会被**再结算一遍**。
+   * 实测:先 `settleOffline(t0)` 结 10800 秒,再 `settleOffline(t0 + 1000)`,
+   * 第二次仍报 **10801 秒** 而不是 1 秒 —— 收益被按整个离线时长重复发放。
+   *
+   * 盖在这里是幂等的:引擎随后再调 `stampActive(now)` 也是同一个值。
+   * 用 `stampActive` 而不是直接赋值,是为了走它那道坏时钟守卫。
+   */
+  game.stampActive(nowMs)
   return summary
 }
 

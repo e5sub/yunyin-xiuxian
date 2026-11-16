@@ -1,5 +1,5 @@
 /** 玩家区域统计、奇缘与暂停顺延的公共写入边界 */
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { usePlayerStore } from '@/stores/player'
 import { useQuestsStore } from '@/stores/quests'
@@ -310,5 +310,152 @@ describe('player.sanitize · 履历缺失时不许抛', () => {
       // 无履历时判据不成立:道侣照常保留(与「从未转世的旧档」同义)
       expect(player.bond?.daoluId, '没有履历就不该把道侣当成旧世残留清掉').toBe('dl_muyan')
     }
+  })
+})
+
+/**
+ * 秘境战利清单须封顶。
+ *
+ * `player.sanitize` 里同一块把 `layer` / `wins` / `losses` 都夹了上界,只有 `spoils`
+ * 原样吃下。而 `SecretRealmCard` 用 `v-for` 逐条渲染,`max-h-24 overflow-y-auto`
+ * 只管视觉高度、管不住 DOM 节点数 —— 坏档写 5000 条就渲 5000 个 `<span>`。
+ * 与行囊 `BAG_CAPACITY` 那处同一类(AGENTS.md 记着「几千件被原样吃下」那次)。
+ *
+ * 故障注入:把 `asStringArray(sr.spoils).slice(-SPOILS_CAP)` 改回裸 `asStringArray(sr.spoils)` → 本条红。
+ */
+describe('秘境战利 · 读档条数封顶', () => {
+  it('坏档塞 5000 条,读档后只留尾部一小段', () => {
+    const player = usePlayerStore()
+    player.initCharacter('探针', { roots: [] } as never)
+    player.secretRealm = {
+      realmId: 'sr_kurong',
+      enteredAt: Date.now(),
+      layer: 1,
+      wins: 0,
+      losses: 0,
+      spoils: Array.from({ length: 5000 }, (_, i) => `战利 ${i}`),
+      rules: [],
+      carriedHpPct: 1,
+      finished: false
+    } as never
+
+    player.sanitize()
+
+    const spoils = (player.secretRealm as { spoils: string[] } | null)?.spoils ?? []
+    expect(spoils.length, '战利清单没封顶 —— 界面会逐条渲出来').toBeLessThanOrEqual(50)
+    expect(spoils.length, '封顶后不该是空的').toBeGreaterThan(0)
+    expect(spoils[spoils.length - 1], '该保留最新的那几条').toBe('战利 4999')
+  })
+})
+
+/**
+ * 区域事件的到期上界须给「时钟回拨」留余量。
+ *
+ * 只写 `now + 最长时长` 时,回拨会让 `now + MAX` 跟着缩小 ——
+ * 实测回拨 3 小时后,一个还剩 90 分钟的**合法事件被当场作废**。
+ * 与 155 轮 buff 的 `addEstimatedCap` 是同一类:参照点不能只用「现在」。
+ *
+ * 判据两半:回拨 3 小时合法事件保留;十天后的远期坏档照常作废。
+ *
+ * 故障注入:把 `slackMs` 改回 `REGION_EVENT_MAX_MINUTES * 60_000` → 第一条红。
+ */
+describe('区域事件 · 到期上界与时钟回拨', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('时钟回拨后合法事件不被作废,远期坏档仍清掉', () => {
+    const p = usePlayerStore()
+    p.initCharacter('探针', { roots: [] } as never)
+    const t0 = 1_800_000_000_000
+
+    p.regionEvent = { regionId: 'qingyun', eventId: 'yaochao', endsAt: t0 + 90 * 60_000 } as never
+    vi.spyOn(Date, 'now').mockReturnValue(t0 - 3 * 3600_000)
+    p.sanitize()
+    expect(p.regionEvent, '回拨 3 小时后合法事件被清 —— 玩家平白丢一个事件').not.toBeNull()
+
+    vi.restoreAllMocks()
+    vi.spyOn(Date, 'now').mockReturnValue(t0)
+    p.regionEvent = { regionId: 'qingyun', eventId: 'yaochao', endsAt: t0 + 10 * 86_400_000 } as never
+    p.sanitize()
+    expect(p.regionEvent, '十天后的远期坏档没清 —— 该地界再也掷不出新事件').toBeNull()
+  })
+})
+
+/**
+ * 区域胜场的读档侧只认真实地界。
+ *
+ * 写入侧（`recordRegionWin`）早有 `regionDef` 闸，读档侧原先漏了 —— 坏档塞三千个野 id 全留下。
+ * 野 id 不渲染也不影响兴衰判定（那边按 id 查），但它与 `regionWinsLife` 的**同键约束**会破：
+ * 重建世号时按 `regionDef` 跳过野 id，两张表键集就不一致了
+ * （`regionWinsLife` 的注释写着「与 regionWins 同键、须同步」）。
+ *
+ * 故障注入：去掉 `.filter(([id]) => !!regionDef(id))` → 本条红。
+ */
+describe('区域胜场 · 读档只认真实地界', () => {
+  it('野 id 清掉,真实胜场原样', () => {
+    const p = usePlayerStore()
+    const w: Record<string, number> = {}
+    for (let i = 0; i < 500; i += 1) w['wild_' + i] = 5
+    w.qingyun = 7
+    p.regionWins = w as never
+    p.sanitize()
+    expect(Object.keys(p.regionWins).length, '野 id 没清 —— 会撑大存档并破坏与 regionWinsLife 的同键约束').toBe(1)
+    expect(p.regionWins.qingyun, '真实胜场被误伤').toBe(7)
+  })
+})
+
+/**
+ * 道侣的「已完成事件」是集合，读档要去重。
+ *
+ * 消费方都按集合用（`daoluService` 的 `new Set(b.doneEvents)` 判「是否已走过」、
+ * `includes(ev.id)` 挡重播），故重复项不影响玩法，只白白撑大存档 ——
+ * 坏档塞五千条同一 id 实测全留。
+ *
+ * 写入侧（`pickBondEvent`）有 `includes` 闸，重复只可能来自坏档。
+ *
+ * 故障注入：去掉 `[...new Set(...)]` → 本条红。
+ */
+describe('道侣 · 已完成事件去重', () => {
+  it('重复项只留一条,顺序与唯一性保持', () => {
+    const p = usePlayerStore()
+    p.bond = {
+      daoluId: 'dl_qingli',
+      stage: 'met',
+      fate: 0,
+      trust: 0,
+      accord: 0,
+      shared: 0,
+      metAt: 1,
+      fallen: false,
+      departed: false,
+      doneEvents: ['ev_a', 'ev_b', 'ev_a', 'ev_a'],
+      opportunities: 0,
+      nextEventAt: 6,
+      pendingEventId: null,
+      lastKind: null
+    } as never
+    p.sanitize()
+    const b = p.bond as unknown as { doneEvents: string[] } | null
+    expect(b?.doneEvents, '重复项没去重').toEqual(['ev_a', 'ev_b'])
+  })
+})
+
+/**
+ * `reincarnation` 整块为 null 时,`sanitize` 不许抛。
+ *
+ * 道侣那段判据要读 `reincarnation.lives` 的末条(判旧世残留),而 `reincarnation`
+ * 的整体重建在这个函数**靠后**的位置。既有注释只兜住了 `lives` 是坏值
+ * (`asArray(...)`),没兜住整个对象是 null —— 实测 `reincarnation: null` 且身上有道侣时
+ * `Cannot read properties of null (reading 'lives')`,整条自愈路径中断,玩家启动即崩。
+ *
+ * 故障注入:把 `reincarnation.value?.lives` 改回 `reincarnation.value.lives` → 本条红。
+ */
+describe('轮回数据整块为 null · sanitize 不许抛', () => {
+  it('reincarnation=null 且有道侣时不抛,道侣与轮回数据都还在', () => {
+    const p = usePlayerStore() as unknown as Record<string, unknown>
+    p.bond = { daoluId: 'dl_qingli', metAt: 5 }
+    p.reincarnation = null
+    expect(() => (p.sanitize as () => void)(), 'sanitize 抛了 —— 玩家会启动即崩').not.toThrow()
+    expect(p.bond, '道侣被误删').toBeTruthy()
+    expect(p.reincarnation, 'reincarnation 没被重建').toBeTruthy()
   })
 })

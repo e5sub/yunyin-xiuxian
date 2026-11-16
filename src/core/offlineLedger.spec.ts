@@ -167,7 +167,9 @@ describe('离线总结 · 变动了多少就报多少', () => {
     const junk = Array.from({ length: BAG_CAPACITY }, (_, i) => ({ uid: `junk${i}`, templateId: 'b_mabu', quality: 'mortal' as const, tier: 1, level: 0, affixes: [] }))
     inventory.items = junk.map(j => ({ ...j }))
     acquired.length = 0
-    const stop = onAcquire((_inst, res) => acquired.push({ bagged: res.bagged, evicted: res.evicted, dust: res.dust }))
+    const stop = onAcquire((_inst, res) => {
+      acquired.push({ bagged: res.bagged, evicted: res.evicted, dust: res.dust })
+    })
     const summary = (await settleOffline(Date.now()))!
     stop()
     const removed = junk.filter(j => !inventory.findItem(j.uid))

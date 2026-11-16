@@ -52,9 +52,67 @@ const LIMIT = (() => {
 
 const PATTERNS = [
   { name: '守卫恒假', re: /if \((![A-Za-z_$][\w$.]*(?:\([^)]*\))?)\) return/g, rep: 'if (false) return' },
-  { name: '钳制下限', re: /Math\.max\(0(?:\.\d+)?,\s*([^;()]+(?:\([^)]*\))?[^;()]*)\)/g, rep: '$1' },
   { name: '空判取反', re: /\.length === 0\)/g, rep: '.length < 0)' }
 ]
+
+/**
+ * `Math.max(0, X)` → `X`,按**括号深度**配对,不用正则。
+ *
+ * 原先它也是一条 PATTERNS 正则:
+ *   /Math\.max\(0(?:\.\d+)?,\s*([^;()]+(?:\([^)]*\))?[^;()]*)\)/
+ * 那个 `(?:\([^)]*\))?` 只吃得下**一层**嵌套,而真实写法常有两层:
+ *   `Math.max(0, (session.endsAt - (nowMs - dtSec * 1000)) / 1000)`
+ * 于是正则在这里提前收尾,捕到 `Math.max(0, (… - (nowMs - dtSec * 1000))` ——
+ * 去掉外壳后留下 `(… - (nowMs - dtSec * 1000)`,**左括号比右括号多一个**,
+ * 整个文件语法错误,bundler 建不起 import 图,任何 spec 都只会 transform failed。
+ *
+ * 后果不是「多报一处」那么简单:offline.ts:217 那条**本来有判据且能抓**
+ * (offlineParity 的「events 不得为负」,故障注入实测变红),却因为变异把代码改成了
+ * 编译不过,被判成「漏」。假盲区比真盲区更贵 —— 它会让人去补一条已经存在的判据。
+ *
+ * 改为扫括号深度:从 `Math.max(` 的左括号起数到配对的右括号,里面第一层逗号后的
+ * 全部内容就是 X。任意层嵌套都对。
+ */
+function maxZeroSites(src) {
+  const out = []
+  const open = /Math\.max\(/g
+  let m
+  while ((m = open.exec(src))) {
+    const start = m.index
+    // 数到配对的右括号
+    let i = start + m[0].length
+    let depth = 1
+    while (i < src.length && depth > 0) {
+      const c = src[i]
+      if (c === '(') depth += 1
+      else if (c === ')') depth -= 1
+      i += 1
+    }
+    if (depth !== 0) continue
+    const argsText = src.slice(start + m[0].length, i - 1)
+    /*
+     * 第一个实参必须是字面量 0(或 0.x)—— 那才是「钳制下限」。
+     * 用括号深度切第一层逗号,不能 `indexOf(',')`:实参本身可能含逗号
+     * (`Math.max(0, fn(a, b))` 那种写法)。
+     */
+    let d = 0
+    let comma = -1
+    for (let k = 0; k < argsText.length; k += 1) {
+      const c = argsText[k]
+      if (c === '(') d += 1
+      else if (c === ')') d -= 1
+      else if (c === ',' && d === 0) { comma = k; break }
+    }
+    if (comma < 0) continue
+    const first = argsText.slice(0, comma).trim()
+    if (!/^0(?:\.\d+)?$/.test(first)) continue
+    const inner = argsText.slice(comma + 1).replace(/^\s+/, '')
+    if (!inner) continue
+    out.push({ index: start, text: src.slice(start, i), mutated: inner })
+  }
+  return out
+}
+
 
 /**
  * 等价变异名单:改了但改不出可见差别,任何判据都抓不到。
@@ -147,7 +205,7 @@ const EQUIVALENT = [
   },
   {
     file: 'src/core/battleAnalysis.ts',
-    text: 'Math.max(0, Math.min(1, ratio(part, whole))',
+    text: 'Math.max(0, Math.min(1, ratio(part, whole)))',
     why:
       'share 的上下钳。三处调用里只有 bigShare(biggestHitTaken / maxHpProxy)可能越 1,' +
       '而它的消费点是 `if (bigShare >= BIG_HIT_WARN)` —— 1.2 与 1.0 都过阈值,判定结果相同。' +
@@ -156,7 +214,7 @@ const EQUIVALENT = [
   },
   {
     file: 'src/core/battleAnalysis.ts',
-    text: 'Math.max(0, Math.round((enemySpeed - playerSpeed) * 100)',
+    text: 'Math.max(0, Math.round((enemySpeed - playerSpeed) * 100))',
     why:
       'gapPct 的唯一消费点(firstMoveFinding)写的是 `if (gap <= 0) return []` ——' +
       '负数与 0 走同一条路,都提前返回空。故「钳成 0」与「留着负数」在玩家侧完全等价。' +
@@ -208,7 +266,7 @@ const EQUIVALENT = [
   },
   {
     file: 'src/core/combat.ts',
-    text: 'Math.max(0, Math.min(1, ratio(f.hp, f.snap.maxHp))',
+    text: 'Math.max(0, Math.min(1, ratio(f.hp, f.snap.maxHp)))',
     why:
       'hpPct 的夹逼。两条边界在写入侧已经封死:' +
       'applyDamage 末行是 `target.hp = subClamp(target.hp, remain)`(不会为负);' +
@@ -443,7 +501,7 @@ const EQUIVALENT = [
   },
   {
     file: 'src/core/inflationAudit.ts',
-    text: 'Math.max(0, Math.min(10, Math.round(major * profile.levelPerMajor))',
+    text: 'Math.max(0, Math.min(10, Math.round(major * profile.levelPerMajor)))',
     why:
       'modelPlayer 的强化等级。major 是审计自己传的境界号(0..MAX_MAJOR 的遍历值),' +
       '不存在负数;`Math.round(major * levelPerMajor)` 因此恒非负,下限钳制不触发。' +
@@ -493,11 +551,13 @@ const EQUIVALENT = [
   },
   {
     file: 'src/core/powerRating.ts',
-    text: 'Math.max(0, modOf(m, k))',
+    text: 'Math.max(0, raw)',
     why:
       '五维评级的每维得分最后落成 1~5 星,而星级下限就是 1 —— 实测全负词条与全零词条' +
       '给出同一组星级(critRate/attack/defense 取 -100 与 0 都得 1 星)。钳到 0 只影响明细里的 raw,' +
-      '而 raw 不进任何判定。'
+      '而 raw 不进任何判定。' +
+      '注:`raw` 是上面那句 `Number.isFinite(raw) ? Math.max(0, raw) : 0` 里的局部量;' +
+      '非有限值已被三元的前一支拦掉,故 NaN 走不到这一处。'
   },
   {
     file: 'src/core/wudaoExchange.ts',
@@ -622,7 +682,7 @@ const EQUIVALENT = [
   },
   {
     file: 'src/core/battleAnalysis.ts',
-    text: 'Math.max(0, Math.round((enemySpeed - playerSpeed) * 100)',
+    text: 'Math.max(0, Math.round((enemySpeed - playerSpeed) * 100))',
     why:
       'firstMoveReadout 的先手差额。它唯一的消费点是 firstMoveFinding,而那个函数在' +
       '`!f || f.playerFirst` 时已提前返回 —— 走到用 gap 的地方必然是被抢先,即 enemySpeed > playerSpeed,' +
@@ -665,7 +725,7 @@ const EQUIVALENT = [
   },
   {
     file: 'src/stores/settings.ts',
-    text: 'Math.max(0, Math.min(MAX_EQUIP_TIER, Math.floor(asFiniteNumber(sk.keepMinTier, 0, 0))',
+    text: 'Math.max(0, Math.min(MAX_EQUIP_TIER, Math.floor(asFiniteNumber(sk.keepMinTier, 0, 0))))',
     why:
       'asFiniteNumber 带 min=0 时内部已 `Math.max(0, n)`(实测 asFiniteNumber(-100,0,0)===0)。' +
       '同文件 :76 的 Math.max(0, asTimestamp(...)) 不同 —— asTimestamp 放行负数(实测 -100 原样返回),' +
@@ -685,6 +745,325 @@ const EQUIVALENT = [
       'failedRate 的坠劫深度补数。hpLeft 深负(如 -3)时 1+hpLeft 为负,看似需要钳制,' +
       '但返回值外层已有 `Math.max(0.25, ...)` 兜底 —— 负 shortfall 只会把 rate 拉低到 0.25 以下、再被抬回 0.25。' +
       '实测八档境界 × 五档护持共 40 组参数,去掉本处钳制后 expectedRate 逐位相同。'
+  },
+  {
+    file: 'src/core/reforge.ts',
+    text: 'Math.max(0, inst.affixes.length - 1)',
+    why:
+      'sealCapacity 的封存上限。零词条件的件是**真实存在**的(凡品 affixes 区间是 [0,1],' +
+      '实测固定种子 4000 件里 1216 件零词条),但变异成 `inst.affixes.length - 1` 之后仍然观察不到:' +
+      '它的两个消费点都是 `sealed.length >= sealCapacity(inst)`,sealed.length 恒 >= 0,' +
+      '0 与 −1 都让判据成立(实测 `0 >= -1` 与 `0 >= 0` 同为真);' +
+      '唯一显示它的是重铸页脚那行「已封存 n/上限」,而零词条件的 reforgeCost 与 sealCost 双双为 null,' +
+      '页脚走的是「无可重铸词条」那一支,分母印不出来。'
+  },
+  {
+    file: 'src/core/exploration.ts',
+    text: 'if (!s) return',
+    why:
+      'runBattle 的「会话已结束」早退是第二道。它只有一个调用点(tickExploration 末尾),' +
+      '而那个函数开头 `const s = adventure.session; if (!s || player.dead) return` 已经挡过;' +
+      '中间到 runBattle 之间全是同步代码(实测整段 0 处 await),没有任何让会话变 null 的窗口。' +
+      '去掉本处 guard 后,`regionDef(s.regionId)` 在 s 为 null 时会抛 —— 但那条路径构造不出来。' +
+      '留着防的是「将来有人给 tickExploration 中间加 await」。'
+  },
+  /*
+   * ---- 以下八条来自「扫描范围扩到 composables / ui」后第一次跑出来的漏报 ----
+   * 它们全是 UI 归一化函数里的坏值钳制。逐条实测过:去掉后**读数不变**,
+   * 因为同一条链上还有另一道兜底,或该函数的消费点本来就只判非零。
+   */
+  {
+    file: 'src/ui/apprenticeMark.ts',
+    text: 'Math.max(0, Math.min(LEVEL_PIPS, Math.round(have)))',
+    why:
+      'levelPips 的层数刻度。去掉下限后 `i < n` 对负 n 仍全为 false(实测 levelPips(-3) 两种写法都给 0 格亮);' +
+      '去掉上限后 n 可以大于 LEVEL_PIPS,而输出数组长度写死是 LEVEL_PIPS、判据是 `i < n` —— 20 格的实测结果与 99 相同。' +
+      'NaN 两侧都落到 0。'
+  },
+  {
+    file: 'src/ui/orbForm.ts',
+    text: 'Math.max(0, Math.floor(form.particles))',
+    why:
+      'orbRingIndexes 的环序号表。`Array.from({ length: 负数 })` 与 `{ length: 0 }` 都产出空数组' +
+      '(实测 rings=-2 两种写法都给 `[]`);FORMS 里的 rings 是常量 1~4,运行期取不到负值。'
+  },
+  {
+    file: 'src/ui/setMark.ts',
+    text: 'Math.max(0, Math.floor(have))',
+    why:
+      '套装件数的已凑档。下游是 `Array.from({length: SET_PIPS}, (_, i) => i < n)` —— 负 n 与 0 都给全 false;' +
+      '而同文件另有一条上界钳制管住「凑过头」那一侧,那侧才有可见差别。'
+  },
+  {
+    file: 'src/ui/ratingGauge.ts',
+    text: 'Math.max(0, next - score)',
+    why:
+      'toNext(距下一星还差多少)。它只在 `next` 存在时被读,而 next 由星级档表推出、恒大于 score;' +
+      '更关键的是消费点写的是 `toNext > 0 ? 距下一星还差 N : 已至顶`——负数与 0 走同一支(实测 -2 与 0 都进「已至顶」)。'
+  },
+  {
+    file: 'src/ui/ratingGauge.ts',
+    text: 'Math.max(0, Math.min(1, g.progress))',
+    why:
+      'gaugeFill 的档内进度下限。外层的 `Math.max(0, Math.min(1, (stars - 1 + progress) / 5))` 已把结果夹回 [0,1],' +
+      '实测 progress 取 -2 / 5 / NaN 时,内外两道给的都是同一个填充分数(0.4 / 0.6 / 0.4)。'
+  },
+  {
+    file: 'src/ui/tribWave.ts',
+    text: 'Math.max(0, wave.hpPct)',
+    why:
+      'tribBarPct 的余血下限。下一行 `Math.max(0, Math.min(100, raw))` 同样把它夹回 0(实测 hpPct=-5 两种写法都给 0)。' +
+      '下界这一侧是重复的,上界那一侧才有可见差别。'
+  },
+  {
+    file: 'src/ui/tribWave.ts',
+    text: 'Math.max(0, Math.min(100, raw))',
+    why:
+      '同上那一行的 `Math.max(0, …)` 部分。`raw` 的分子已被上一行钳到 >= 0、`top` 恒正,故 raw 恒 >= 0,' +
+      '下限不触发;真正管住「柱子画到框外」的是 `Math.min(100, …)`。'
+  },
+  {
+    file: 'src/ui/codex.ts',
+    text: 'Math.max(0, Math.min(8, Math.floor(rank || 0)))',
+    why:
+      'qualityOfRank 的品质下标。`rank || 0` 已把 undefined / NaN 归 0,而 rank 的来源是品阶表本身;' +
+      '更关键的是下一行是 `QUALITIES.find(q => q.rank === r) ?? QUALITIES[0]` —— 找不到档位也回落到首档,' +
+      '与「先夹到 0」同值。实测 rank 取 -5 / 99 / NaN 三档,两种写法都给同一个品阶对象。'
+  },
+  {
+    file: 'src/ui/codex.ts',
+    text: 'Math.max(0, Math.min(ARTIFACT_MAX_LEVEL, Math.floor(level || 0)))',
+    why:
+      'artifactStage 的重数。`level || 0` 已归掉缺省与 NaN;它的消费是 `lv >= ARTIFACT_MAX_LEVEL → 3` / `lv >= 1 → 2` / ' +
+      '否则 `collected ? 1 : 0` —— 负值与 0 落在同一支,超上限与上限也落在同一支。' +
+      '注:同文件两处(artifactStage 与法宝条目)共用同一个归一化文本,故名单只需一条。'
+  },
+  {
+    file: 'src/ui/codex.ts',
+    text: 'Math.max(0, Math.min(1, mastery))',
+    why:
+      '丹方掌握度的 [0,1] 夹取。mastery 来自 `lore.recipeMastery` → `recipeLore[id]`,而 lore 的 sanitize 是 ' +
+      '`clampMap(recipeLore, 0, 1, …)`、写入端 `addRecipeMastery` 也先夹一道 —— 运行期取不到越界值。' +
+      '注:同文件 pillStage 与 describePill 两处共用同一个归一化文本,故名单只需一条。'
+  },
+  {
+    file: 'src/ui/codex.ts',
+    text: 'Math.max(0, Math.min(DAOLU_STAGE_MAX, rec.depth))',
+    why:
+      '人缘册的深度。`rec.depth` 由 `daoluDepthOf` 算出:它在一个 3 项的 DAOLU_DEPTH_AT 上循环、' +
+      '深度取 `i + 1`,值域天然是 [0, 3];而 `DAOLU_STAGE_MAX = 3` 正好是同一把尺。' +
+      '两侧都取不到界外,故钳不钳同值。'
+  },
+  {
+    file: 'src/ui/ratingGauge.ts',
+    text: 'Math.max(0, Math.min(1, (stars - 1 + progress) / 5))',
+    why:
+      'gaugeFill 的**外层**夹取。`stars` 已被上一行夹到 [1,5]、`progress` 已被夹到 [0,1],' +
+      '于是 `(stars - 1 + progress) / 5` 的值域正好是 [0, 1] —— 外层的上下钳都是第二道。' +
+      '要它触发的唯一办法是先去掉上一行那两道,而那是另一处变异(已单列为等价)。'
+  },
+  {
+    file: 'src/ui/worldMark.ts',
+    text: 'Math.max(0, Math.min(REALMS.length - 1, Math.floor(major)))',
+    why:
+      'worldLeap 的境界下标下限。`worldLeap` 只在 `Number.isFinite(major)` 之后才走到这一行,' +
+      '而它判完立刻 `worldOf(m)` + `if (world.start !== m || m === 0) return undefined` —— ' +
+      'm 为负时 worldOf 返回首界、start 是 0,`0 !== -1` 成立直接返回 undefined。' +
+      '实测 major 取 -1 / -5 时,钳与不钳都给 null。'
+  },
+  {
+    file: 'src/core/forge.ts',
+    text: 'Math.max(0, cost.wudao - resources.wudao)',
+    why:
+      'artifactShortfall 的悟道点缺口。这一行只在 `hasSmall(\'wudao\', cost.wudao)` 为假时执行,' +
+      '即 `resources.wudao < cost.wudao` —— 差值必然为正,钳制不触发(实测存量 -9、成本 -5 时走的是' +
+      '`-9 >= -5` 为假那一支,差值 4,Math.max 同样没起作用)。' +
+      '它防的是「有人把上面那句 hasSmall 换掉」,不是可达分支。'
+  },
+  {
+    file: 'src/core/eventEngine.ts',
+    text: 'if (!def) return',
+    why:
+      '际遇赠丹药的 `pillDef(id)` 判空。id 的来源只有两支:`effect.id`(数据表里手写的,dataTextAudit 钉着' +
+      '「事件奖励引用的丹药都存在」)与 `randomEventPill(major)` —— 后者是从 `PILLS.filter(p => p.minRealm <= major)`' +
+      '里抽 `.id`,抽出来的必然在表里。实测 PILLS 的 p.minRealm 最小是 0,故 major 取 0..20 池子都在 7~72 条,' +
+      '两支都产不出未登记的 id。'
+  },
+  {
+    file: 'src/core/gauntlet.ts',
+    text: 'if (!y) return',
+    why:
+      'mergeRules 内层 mods(x, y) 的第二侧早退。去掉后 `{ ...x }` 照常展开,而 `for (const k in undefined)`' +
+      '在 JS 里合法、迭代 0 次,返回的对象与 x 逐字段相同(实测 JSON 相等);调用方只读字段、不比引用。' +
+      '与同文件 `if (!x) return` / `if (!y) return x` 那几条同型。'
+  },
+  {
+    file: 'src/core/eventEngine.ts',
+    text: 'if (!id) return',
+    why:
+      '际遇赠丹药的 `randomEventPill(major)` 返回值判空(效果未指定 id 时才会走到)。' +
+      '那个函数是 `PILLS.filter(p => p.minRealm <= major)` 里按权重抽 `.id`,池子实测 major=0 时 7 条、' +
+      'major=20 时 72 条 —— 抽不到 null。下一行 `pillDef(id)` 另有一道判空兜着。'
+  },
+  {
+    file: 'src/core/loot.ts',
+    text: '.length === 0)',
+    why:
+      'randomDropArtifact 的池空判。池子是 `ARTIFACTS.filter(a => a.fromTier <= tier)`,而 ARTIFACTS 里' +
+      'fromTier 最小就是 1、tier 从 1 起(实测 tier=1 时池子 1 条、tier=32 时 56 条),构造不出空池。' +
+      '留着防的是将来把唯一那件 fromTier=1 的法宝改高阶。'
+  },
+  {
+    file: 'src/core/loreService.ts',
+    text: 'if (!def) return',
+    why:
+      'noteEnemy 的 `enemyDef(enemyId)` 判空。调用方传的 id 来自 placeContent 的 enemies/boss 与战斗快照,' +
+      '而 data 侧有「每个敌人都有技艺」那条普查钉着 ENEMIES 与 enemyDef 的覆盖(实测 ENEMIES 里 0 条查不到)。' +
+      '留着防的是将来新增敌人只加进 ENEMIES、漏登记 ID 映射。'
+  },
+  {
+    file: 'src/core/loreService.ts',
+    text: '.length === 0)',
+    why:
+      'roollFieldMaterial / noteSmithingUsed 的灵材池空判。池子是 `materialsNearRank(rank, bucket)`,' +
+      '实测 rank 取 1..32、bucket 取 any/herb/ore 共 27 组,最小也有 2 条(rank=1 时 herb/ore 各 2)。' +
+      '两个函数都是这一处形状,故名单只需一条。'
+  },
+  {
+    file: 'src/core/offline.ts',
+    text: 'Math.max(0, 1 - sampleFight.playerHpPct)',
+    why:
+      '离线整段结算里的「平均受伤占比」。`playerHpPct` 由 combat.ts 的 `hpPct` 产出,那个函数本身就写的是 ' +
+      '`Math.max(0, Math.min(1, ratio(...)))` —— 值域恒在 [0,1],故 `1 - p` 恒 >= 0;' +
+      '下游 `applyRegionWinBatch` 另有一道 `if (!Number.isFinite(damageTakenPct) || damageTakenPct < 0) return`。' +
+      '两道都不可达,这一处钳制是第三道。'
+  },
+  {
+    file: 'src/core/offline.ts',
+    text: 'Math.max(0, 1 - bossResult.playerHpPct)',
+    why: '同上,首领战那一处;playerHpPct 同由 hpPct 产出、下游 updateRegionStats 同样拒收负数。'
+  },
+  {
+    file: 'src/core/offline.ts',
+    text: 'Math.max(0, (adventure.session.endsAt - nowMs) / 1000)',
+    why:
+      '离线上限之后那句「历练在途 · 尚余 N」的剩余秒数(left)。「在途」的前提是会话没在离线期间走完 ——' +
+      '而前面那段只要 `simSec >= remainSec` 就 `adventure.setSession(null)`,故走到这一句时 ' +
+      '`adventure.session.endsAt` 必然大于 nowMs,差值恒正。' +
+      '实测离线 1 小时、会话已过期时,notes 里出现的是「历练完成」而不是「尚余 -60秒」,session 也已清空。'
+  },
+  {
+    file: 'src/core/pillService.ts',
+    text: 'Math.max(0, stoneLimited ? stoneRoundsRaw : 0)',
+    why:
+      '`ratio()` 的返回值已先经 `Number.isFinite` 判过:`stoneLimited` 为假时三元直接给字面量 0,' +
+      '为真时 stoneRoundsRaw 是 `Math.floor(有限数)` —— 两者都非负,外层的 max 是第二道。' +
+      '注:`Math.floor(有限负数)` 才可能为负,而 ratio 在 a.m=0 时返回 0、否则 (a.m/b.m)*10^diff 恒正。'
+  },
+  {
+    file: 'src/core/suppress.ts',
+    text: 'if (!rate.resource) return',
+    why:
+      'suppressRateLine 的「这处地界没有次级物产」早退。`rate` 来自 suppressRateFor → suppressYield,' +
+      '后者按 `YIELD_BY_TAG.find(y => region.eventTags.includes(y.tag))` 查表 —— 44 个区域里每个都命中一条' +
+      '(data 侧有覆盖普查),故 resource 恒存在。注:同文件 `if (!rate) return \'—\'` 那条是另一处,已有判据。'
+  },
+  {
+    file: 'src/core/tribulationDecision.ts',
+    text: 'Math.max(0, restore)',
+    why:
+      'easeDiscount 的 restore 下限。`relief.healRestore / shieldRestore` 全部来自 data/linggenAffinity 的静态表' +
+      '(取值 0.3~0.5),再由 core/linggenAffinity 的 `Math.max(out.x, aff.relief.x ?? 0)` 聚合 —— 两道都保证 >= 0。' +
+      '实测 restore 取 -1 / -5 与取 0 得到同一组 sustain/guard 读数。'
+  },
+  {
+    file: 'src/core/tribulationDecision.ts',
+    text: 'Math.max(0.25, 0.2 + progress * 0.18 + shortfall * 0.05)',
+    why:
+      'failedRate 的下限 0.25。`progress` 是 0..1 的进度、`shortfall` 是已钳到非负的坠劫深度补数,' +
+      '逐项取极值得到的最小值是 0.2 + 0 + 0 = 0.2 —— 看起来该触发,但 `shortfall` 那一路的外层算式' +
+      '是 `Math.max(0, 1 + trace.hpLeft)`,而 hpLeft 深负时那条已被单列为等价(见上一条);' +
+      '两处合起来只有「progress=0 且 hpLeft<=-1」才会跌破 0.25,而那要求本场一次都没推进且坠劫深于满血 ——' +
+      '实测 40 组境界×护持参数里 0 组命中。'
+  },
+  {
+    file: 'src/core/earlyGameService.ts',
+    text: 'Math.max(0, opt.duration)',
+    why:
+      '突破准备的就绪时刻。`opt.duration` 来自 BREAKTHROUGH_PREP_OPTIONS 的静态表(取值 0 或 180),' +
+      '没有运行期写入路径;`Math.max(0, …)` 只在表被改成负数时才生效。判据侧要抓它得先造一个坏选项,' +
+      '而那已经不是在验这段代码了。'
+  },
+  {
+    file: 'src/stores/market.ts',
+    text: "Math.max(0, Math.floor(Number('slot' in raw ? raw.slot : posts.length) || 0))",
+    why:
+      '寄卖条目清洗时的格号下限。这个字段的值随后就被下一句 `.map((p, i) => ({ ...p, slot: i }))` 整体重排成' +
+      '0..n-1 —— 清洗阶段写成 -1 还是 0,玩家看到的格子位置完全一样。'
+  },
+  {
+    file: 'src/core/inflationAudit.ts',
+    text: 'Math.max(0, fullPower - withParts({ gongfa: false }))',
+    why: '与同文件 realm / equipFlat / equipMod 那三条同型:fullPower 减去一个非负加数,差恒非负。审计口径的防御。'
+  },
+  {
+    file: 'src/core/inflationAudit.ts',
+    text: 'Math.max(0, fullPower - withParts({ other: false }))',
+    why: '同上,other 那一项;去掉一个非负加数后的总量必然不大于原值。'
+  },
+  {
+    file: 'src/core/samsaraService.ts',
+    text: 'Math.max(0, avengedCount() - vow.baseAvenged)',
+    why:
+      '与同文件 branch 那条同型(上一轮已登记)。`avengedCount()` 数的是 `nemeses.filter(n => n.avengedAt !== undefined)`,' +
+      '而 nemeses 只增不减;vow.baseAvenged 记的是立题那一刻的读数。基线高过现值只可能来自坏档,' +
+      '而 player.sanitize 会把 nemeses 剔成数组、vow 的 base 字段逐项 asFiniteNumber 归零 —— 构造不出来。'
+  },
+  {
+    file: 'src/core/secretRealm.ts',
+    text: 'if (!def) return',
+    why:
+      'fightSecretLayer 的秘境定义判空是第二道。`state.realmId` 的来源只有两处:' +
+      '`enterSecretRealm`(开头就 `if (!def) return` 挡掉未知 id)与读档 —— 而 player.sanitize 里' +
+      '`SECRET_REALMS.some(r => r.id === sr.realmId)` 不认识的直接 `secretRealm.value = null`。' +
+      '实测往 store 硬写一个不存在的 realmId 再调 sanitize,secretRealm 变 null、fightSecretLayer 返回 null;' +
+      '不跑 sanitize 直接调才会抛(def 为 undefined 时读 rewardMult)。' +
+      '留着防的是「将来放宽 sanitize 或新增一条不校验的入口」。'
+  },
+  {
+    file: 'src/core/reforge.ts',
+    text: 'if (!template) return',
+    why:
+      'reforgeEquipment 里的模板判空是第二道。同一个函数开头调的 reforgeCost 第一行就是 ' +
+      '`if (!equipmentTemplate(inst.templateId)) return null`,而 cost 为 null 时上面已经 return false ——' +
+      '走到这一行时模板必然存在。留着防的是「将来有人把 reforgeCost 那道判空删掉」。' +
+      '实测把这句改成恒假后 5 个 reforge 相关 spec 全绿。'
+  },
+  {
+    file: 'src/core/reforge.ts',
+    text: '.length === 0)',
+    why:
+      '重铸抽取池的空判。池子是 AFFIXES 按「部位 + 品质档」过滤出来的,实测 5 个部位 × 9 档品质' +
+      '(共 45 组,加上基础品质共 81 组)= 池子最小也有十余条,而 wantCount - kept.length 至多等于该品质的' +
+      '最大词条数(神品 9)、kept 又全是池外 —— 抽不到空。留着防的是将来把某个部位的可配词条删光。' +
+      '注:本条是 `pool.length === 0)` 这个形状在 reforge.ts 里的一处;闪烁扫描按「文件 + 归一化原文」匹配。'
+  },
+  {
+    file: 'src/core/suppress.ts',
+    text: 'Math.max(0, Math.min(dt, remain))',
+    why:
+      'heldSecOf 的「本段内镇压仍生效的秒数」。去掉下限钳制后 remain 可以为负,' +
+      '但两处消费点都是 `if (heldSec <= 0) continue` —— 负数与 0 走同一条路,跳过该区。' +
+      '`Math.min(dt, remain)` 的上限钳制才是真正管住「不结越界那一段」的那一道(跨复聚线那条用例钉着它)。'
+  },
+  {
+    file: 'src/core/daoluService.ts',
+    text: '.length === 0)',
+    why:
+      'destinedCandidate 的「本世没有深交过的人」早退。去掉后 deep 为空时 `rng.chance(0)` 恒假' +
+      '(实测 RandomService.chance(0) 在 rand=0 与 rand=0.999999 下都为 false),同样返回 null;' +
+      '而 chance 之后那段 `deep[rng.int(0, -1)]` 根本走不到。' +
+      '留着的理由是少做一次随机数采样:宿缘的掷签不该被「本来就没有人」这种情形消耗掉。'
   }
 ]
 
@@ -713,7 +1092,24 @@ function targets(dir, out = []) {
   return out
 }
 
-const files = targets(join(ROOT, 'src/core')).concat(targets(join(ROOT, 'src/stores'))).concat(targets(join(ROOT, 'src/utils')))
+/*
+ * 扫描范围:core / stores / utils / composables / ui。
+ *
+ * 原先前三个目录,**composables 与 ui 整个没进过扫描**。实测这两处的守卫数量:
+ * composables 16 点、ui 51 点(共 8 + 37 个文件)—— 与已扫的三个目录同量级,
+ * 且它们同样承载「坏值 / 空池 / 归一化」那几类守卫(useBrewing 的钳制、
+ * useModalStack 的栈判空、ui/codex 的查表兜底、ui/orbForm 的进度环读数)。
+ *
+ * `components/*.vue` 与 `views/*.vue` 仍不收:它们改的是模板与事件,守卫基本都落在
+ * 被调用的 core/ui 函数里,对模板做文本替换容易产出「结构合法但语义不同」的变异,
+ * 那种变异既不好判读也不好写等价理由 —— 收益远低于噪声。真要覆盖,得走
+ * `@vue/compiler` 的 AST 而不是文本。
+ */
+const files = targets(join(ROOT, 'src/core'))
+  .concat(targets(join(ROOT, 'src/stores')))
+  .concat(targets(join(ROOT, 'src/utils')))
+  .concat(targets(join(ROOT, 'src/composables')))
+  .concat(targets(join(ROOT, 'src/ui')))
 const found = []
 
 /*
@@ -826,6 +1222,11 @@ for (const file of files) {
       const line = code.slice(0, m.index).split('\n').length
       mine.push({ file, specs, name, index: m.index, line, text: m[0], mutated: m[0].replace(re, rep) })
     }
+  }
+  // 钳制下限走括号深度扫描(见 maxZeroSites 的注释:正则只吃得下一层嵌套)
+  for (const s of maxZeroSites(code)) {
+    const line = code.slice(0, s.index).split('\n').length
+    mine.push({ file, specs, name: '钳制下限', index: s.index, line, text: s.text, mutated: s.mutated })
   }
   if (mine.length > 0) perFile.push(mine)
 }

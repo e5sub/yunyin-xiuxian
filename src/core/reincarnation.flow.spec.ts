@@ -10,6 +10,8 @@ import { useInventoryStore } from '@/stores/inventory'
 import { useCultivationStore } from '@/stores/cultivation'
 import { useAdventureStore } from '@/stores/adventure'
 import { useUiStore } from '@/stores/ui'
+import { useBountyStore } from '@/stores/bounty'
+import { engine } from './engine'
 import { useEndgameStore } from '@/stores/endgame'
 import { useDongfuStore } from '@/stores/dongfu'
 import { useApprenticeStore } from '@/stores/apprentice'
@@ -373,4 +375,147 @@ describe('转世 · 天赋抽尽', () => {
     expect(v!.talentChoices, '池子空了,选项应为空').toEqual([])
     expect(v!.extraTalents, '池子空了,额外天赋应为空').toEqual([])
   })
+})
+
+/**
+ * 一次性弹窗随本世一起清掉。
+ *
+ * `ui.breakthrough`(突破结果)与 `ui.treasure`(得宝仪典)都是 `closable=false`,
+ * 看着像拦住了所有交互 —— 但死亡那条路从 `App.vue` 全局弹,压在上面并带自己的
+ * 「兵解转世」钮。实测两者同时打开时,玩家能在「寿元将尽」里点下去、转世照常完成,
+ * 而突破弹窗仍停在「金丹→元婴」—— 新世的第一屏在说自己刚破了上辈子的境。
+ *
+ * 故障注入:删掉 reincarnation.ts 里 `ui.breakthrough = null` 那一行 → 本条红。
+ */
+describe('转世 · 一次性弹窗随本世清空', () => {
+  it('突破结果与得宝仪典不跨世', async () => {
+    const player = usePlayerStore()
+    const ui = useUiStore()
+    player.initCharacter('探针', { roots: [] } as never)
+    player.major = 20
+    ui.breakthrough = {
+      success: true,
+      fromLabel: '金丹',
+      toLabel: '元婴',
+      isMajor: true,
+      tribulationLog: [],
+      message: '破境'
+    }
+    ui.treasure = { templateId: 'w_zhuqing', name: '测试之器' } as never
+    ui.offlineSummary = {
+      seconds: 3600,
+      cappedSeconds: 3600,
+      capped: false,
+      exp: { m: 1, e: 2 },
+      stone: { m: 5, e: 2 },
+      qi: 10,
+      herb: 2,
+      herbByGrade: [],
+      ore: 1,
+      wudao: 3,
+      ageYears: 0,
+      battles: 10,
+      wins: 8,
+      events: 2,
+      equipment: [],
+      recycledDust: 0,
+      evicted: 0,
+      notes: []
+    } as never
+
+    ui.reincarnation = prepareReincarnation()
+    await confirmReincarnation(null)
+
+    expect(ui.breakthrough, '突破弹窗跨世了 —— 新世第一屏还写着上辈子的境界').toBeNull()
+    expect(ui.treasure, '得宝仪典跨世了').toBeNull()
+    expect(ui.offlineSummary, '离线归来卷轴跨世了 —— 那笔账已经入过了,新世再摊旧世那份对不上').toBeNull()
+  }, 60000)
+})
+
+/**
+ * 悬赏单的赏格按**上货时的境界**冻结(`bountyMajor`),须随世换新。
+ *
+ * 原先转世不碰 bounty:实测上一世 major 20 上货的募矿单值 7.09e10 灵石,
+ * 转世后新世(major 0)照样能交、照样按 major 20 付钱 —— 新世从 0 起步,
+ * 这一单等于白送。
+ *
+ * 故障注入:删掉 `useBountyStore().resetForRebirth()` 那一行 → 本条红。
+ */
+describe('转世 · 悬赏单随世换新', () => {
+  it('新世的悬赏按新世境界计价', async () => {
+    const player = usePlayerStore()
+    const bounty = useBountyStore()
+    const ui = useUiStore()
+    player.initCharacter('探针', { roots: [] } as never)
+    player.major = 20
+    const t0 = 1_800_000_000_000
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(t0)
+    bounty.sync(t0)
+    expect(bounty.bountyMajor, '夹具没把赏格冻结在大境界').toBe(20)
+
+    ui.reincarnation = prepareReincarnation()
+    await confirmReincarnation(null)
+
+    // 转世后再 sync 一次(引擎进 tick 时会做)
+    bounty.sync(nowSpy.getMockImplementation()?.() ?? t0)
+    expect(bounty.bountyMajor, '悬赏还按上世境界计价 —— 新世能白领上世的赏').toBe(0)
+    nowSpy.mockRestore()
+  }, 60000)
+})
+
+/**
+ * 三个详情弹窗的 ID 随本世清空。
+ *
+ * 它们都是 `:open="def !== undefined"`,判断依据是**数据表里有无该 id**:
+ * - `gongfaDetailId` / `buffDetailId` 指向功法表与 buff 表,转世后表还在、id 还有效 ——
+ *   弹窗会在新世第一屏自动重开,写的是上辈子的功法/状态;
+ * - `equipDetailUid` 指向背包,转世后背包清空故自动关,但残留 uid 是悬空引用。
+ *
+ * 故障注入:删掉那三行 → 本条红。
+ */
+describe('转世 · 详情弹窗随本世清空', () => {
+  it('转世后三处详情 ID 都是 null', async () => {
+    const player = usePlayerStore()
+    const ui = useUiStore()
+    player.initCharacter('探针', { roots: [] } as never)
+    ui.equipDetailUid = 'e1'
+    ui.gongfaDetailId = 'gf_probe'
+    ui.buffDetailId = 'buff_probe'
+    ui.reincarnation = prepareReincarnation()
+    await confirmReincarnation(null)
+    expect(ui.equipDetailUid, '装备详情 ID 没清 —— 悬空引用').toBeNull()
+    expect(ui.gongfaDetailId, '功法弹窗会在新世第一屏自动重开').toBeNull()
+    expect(ui.buffDetailId, '状态弹窗会在新世第一屏自动重开').toBeNull()
+  }, 60000)
+})
+
+/**
+ * 死亡提示的「已播报」标记须随本世复位。
+ *
+ * `engine.checkDeath` 用 `if (!this.deathAnnounced)` 挡住重复弹窗,而
+ * `resetDeathFlag()` 写好了却**从无人调用** —— 转世后标记仍是 true:
+ * 新世再次寿尽时 `player.dead` 变 true、`ui.deathDialog` 却不弹,
+ * 轮回入口不出现,低境界软锁。
+ *
+ * 故障注入:删掉 `engine.resetDeathFlag()` 那一行 → 本条红。
+ */
+describe('转世 · 死亡提示标记复位', () => {
+  it('新世再次寿尽时轮回入口仍会弹出', async () => {
+    const player = usePlayerStore()
+    const ui = useUiStore()
+    player.initCharacter('探针', { roots: [] } as never)
+
+    // age 是可写 ref,lifespanMax 是 computed —— 把 age 顶到极大即可越过它
+    player.age = 99999
+    ;(engine as unknown as { checkDeath(): void }).checkDeath()
+    expect(ui.deathDialog, '夹具没把首次死亡弹出来').toBe(true)
+
+    ui.deathDialog = false
+    ui.reincarnation = prepareReincarnation()
+    await confirmReincarnation(null)
+
+    player.age = 99999
+    ;(engine as unknown as { checkDeath(): void }).checkDeath()
+    expect(ui.deathDialog, '新世死亡不弹窗 —— 轮回入口不出现,低境界软锁').toBe(true)
+  }, 60000)
 })

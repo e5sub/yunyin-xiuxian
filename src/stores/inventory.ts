@@ -2,7 +2,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type { ArtifactOwned, EquipmentInstance, EquipSlot, GNum, StatMods } from '@/types'
-import { add, gnZero } from '@/utils/gnum'
+import { add, cmp, gn, gnZero } from '@/utils/gnum'
 import { persistConfig } from '@/utils/storage'
 import { resolveEquipStats } from '@/core/equipGen'
 import { mergeMods } from '@/core/statsCalc'
@@ -16,6 +16,9 @@ import { pillDef } from '@/data/pills'
 import { QUALITIES, qualityDef } from '@/data/qualities'
 import { affixDef, affixFitBlock } from '@/data/affixes'
 import { asArray, asBoundedGNum, asFiniteNumber, asNumberRecord, asRecord, asStringArray, truncateCodePoints } from '@/utils/saveShape'
+
+/** 累计投入灵石的读档上界:满强化实测 5.32e11,取约 2.3 倍余量(dust 按同一比例) */
+const INVESTED_STONE_MAX = gn(1.2e12)
 
 export const useInventoryStore = defineStore(
   'inventory',
@@ -115,7 +118,20 @@ export const useInventoryStore = defineStore(
                     const v = Math.floor(asFiniteNumber((it.invested as { dust?: unknown }).dust, 0, 0))
                     return v > INVESTED_DUST_MAX ? 0 : v
                   })(),
-                  stone: asBoundedGNum((it.invested as { stone?: unknown }).stone)
+                  /*
+                   * 灵石同理:它也经 `enhanceInvested` 原样退还,而 `asBoundedGNum`
+                   * 的上界是 `SAVE_GNUM_MAX_EXP`(999)—— 坏档写 `9.99e900` 照样通过,
+                   * 等于白送一笔比 `Number.MAX_VALUE` 还大的灵石。实测塞 `9.99e900` 后
+                   * sanitize 不修,而同一个结构里的 `dust` 早被两万的上界挡住。
+                   *
+                   * 上界按真实最大投入算:满强化(15 级、最高层级、最高品质)累计
+                   * `5.32e11`,与 `dust` 同一条思路取约 2.3 倍余量。越界**归零**,
+                   * 理由与 `dust` 同:夹到上界仍是白送。
+                   */
+                  stone: (() => {
+                    const st = asBoundedGNum((it.invested as { stone?: unknown }).stone)
+                    return cmp(st, INVESTED_STONE_MAX) > 0 ? gnZero() : st
+                  })()
                 }
               }
             : {})
@@ -160,28 +176,53 @@ export const useInventoryStore = defineStore(
       }
       equipped.value = fixedEquipped
       // 丹匣只留认得且数量 > 0 的条目(同 spendPill 吃完即删):野 id 会被道童「寻药」缺口统计当成存量
+      /*
+       * 丹药存量须封顶。原先只滤「野 id 与 <=0」,没有上界 —— 而 `addPill` 也不设限,
+       * 坏档写 `1e300` 会原样留下,而 `InventoryView` 那两处是裸插值
+       * (`×{{ row.count }}`、`持有 ×{{ currentPill.count }}`),会印成「×1e+300」。
+       *
+       * 上界取 `EQUIP_COUNTER_MAX`(一亿):与「已重铸 / 已转移」同一把尺 ——
+       * 那里写着「取值不能凭够用定」,因为 `addPill` 同样没有天然上限。
+       * 一亿远低于 `1e21`(裸插值转科学计数法的门槛),又比任何真实存量都宽。
+       */
       pills.value = Object.fromEntries(
-        Object.entries(asNumberRecord(pills.value, 0)).filter(
-          ([id, n]) => !!pillDef(id) && Math.floor(n) > 0
-        )
+        Object.entries(asNumberRecord(pills.value, 0))
+          .map(([id, n]): [string, number] => [id, Math.min(EQUIP_COUNTER_MAX, Math.floor(n))])
+          .filter(([id, n]) => !!pillDef(id) && n > 0)
       )
-      // 法宝库:同 defId 只留一条;野 defId 清掉(法宝页 `artifactDef(a.defId)!` 取品质会抛错)
-      const seenDef = new Set<string>()
-      artifacts.value = asArray<ArtifactOwned>(
+      /*
+       * 法宝库:同 defId 只留一条;野 defId 清掉(法宝页 `artifactDef(a.defId)!` 取品质会抛错)。
+       *
+       * 去重与夹取重数的**先后**有讲究:先夹后并、并时取较大的重数。
+       * 反过来(先按出现顺序去重、再夹)会把坏档里的 `level: 1e300` 夹成满重 9 ——
+       * 同一件法宝若还另有一条真实记录(实测 level: 2),玩家白得七重。
+       * 先夹后取较大值,坏值那条仍然停在 9 但只影响它自己,好值那条不会被它顶掉。
+       *
+       * `addArtifact` 已保证正常路径不产生重复,这两条只对坏档生效。
+       */
+      const bestLevel = new Map<string, number>()
+      for (const a of asArray<ArtifactOwned>(
         artifacts.value,
         [],
-        a => !!a && typeof (a as ArtifactOwned).defId === 'string' && !!artifactDef((a as ArtifactOwned).defId)
-      )
-        .filter(a => {
-          if (seenDef.has(a.defId)) return false
-          seenDef.add(a.defId)
-          return true
-        })
-        // 坏重数会绕过满重判断,把祭炼价与悟道点算成 NaN
-        .map(a => ({
-          defId: a.defId,
-          level: Math.floor(asFiniteNumber(a.level, 0, 0, ARTIFACT_MAX_LEVEL))
-        }))
+        x => !!x && typeof (x as ArtifactOwned).defId === 'string' && !!artifactDef((x as ArtifactOwned).defId)
+      )) {
+        /*
+         * 重的三分法 —— 别把两类坏值混为一谈:
+         *   ① 不是有限数(`'x'` / NaN / Infinity):**归 0 并保留**该件法宝。
+         *      「拥有」与「重数」是两件事,重数读不出不该连法宝一起没收
+         *      (既有判据「法宝坏重数归一后,祭炼不会把悟道点写成 NaN」钉着这一条)。
+         *   ② 有限但越界(`1e300` / 负数):**整条丢掉**,不参与合并。
+         *      若先夹再比,`1e300` 会夹成满重 9 并顶掉同一件法宝的真实记录(例如 level: 2),
+         *      玩家白得七重。
+         */
+        const raw = a.level
+        const finite = typeof raw === 'number' && Number.isFinite(raw)
+        const level = finite ? Math.floor(raw as number) : 0
+        if (finite && (level < 0 || level > ARTIFACT_MAX_LEVEL)) continue
+        const prev = bestLevel.get(a.defId)
+        if (prev === undefined || level > prev) bestLevel.set(a.defId, level)
+      }
+      artifacts.value = [...bestLevel].map(([defId, level]) => ({ defId, level }))
       // 祭炼位:去重、只留在库的、裁到 ARTIFACT_MAX_SLOTS(与 toggleArtifact/applyLoadout 同尺)
       const ownedArtifactIds = new Set(artifacts.value.map(a => a.defId))
       equippedArtifacts.value = [...new Set(asStringArray(equippedArtifacts.value))]
@@ -253,12 +294,23 @@ export const useInventoryStore = defineStore(
      * 裁到 `ARTIFACT_MAX_SLOTS`(同 `sanitize`)而非境界槽位:境界那道由 `player.sanitize` 按 `artifactSlotsFor` 收紧,
      * store 之间不互相 import,免得 inventory 与 player 成环。
      */
-    const currentArtifacts = computed<ArtifactOwned[]>(() =>
-      equippedArtifacts.value
+    const currentArtifacts = computed<ArtifactOwned[]>(() => {
+      const live = equippedArtifacts.value
         .map(id => artifacts.value.find(a => a.defId === id))
         .filter((a): a is ArtifactOwned => a !== undefined)
-        .slice(0, ARTIFACT_MAX_SLOTS)
-    )
+      /*
+       * 超编时留**尾部**,与 `toggleArtifact` 的 `slice(-(slots - 1))` 同一侧。
+       *
+       * 列表可能超编(境界跌落、未经 sanitize),那时「哪几件生效」必须与
+       * 「再祭一件会替下谁」互补 —— 而 `artifactEvictedBy` 判的是**最早祭炼的先让位**
+       * (data/artifacts 头注释写明「最早祭炼的在前,替下判据与槽位排法同读这一份」)。
+       *
+       * 原先这里取 `slice(0, ARTIFACT_MAX_SLOTS)`,与让位一侧方向相反 ——
+       * 实测佩 [muyu, lihuo, xuantian]、槽位 2 时,`currentArtifacts` 与
+       * `artifactEvictedBy` **完全重叠**:同一件既在生效、又会在下次祭炼时让位。
+       */
+      return live.slice(-ARTIFACT_MAX_SLOTS)
+    })
 
     function findItem(uid: string): EquipmentInstance | undefined {
       return items.value.find(it => it.uid === uid)

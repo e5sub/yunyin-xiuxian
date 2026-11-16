@@ -131,21 +131,51 @@ describe('设置 · 智能收纳品质线坏档清洗', () => {
 })
 
 describe('设置 · reduceMotion 系统偏好播种', () => {
+  /*
+   * 本块四条用例原先各自在内部建 pinia,只有最后那条「负的时间戳被钳到 0」漏了一句 ——
+   * 它靠前一条用完的 pinia 跑。全量跑时一直是绿的,但
+   *   `vitest run src/stores/settings.spec.ts -t "负的时间戳被钳到 0"`
+   * 单跑立刻炸 `getActivePinia() was called but there was no active Pinia`。
+   * 统一提到 beforeEach:四条都读 store,没有理由让最后一条依赖别人。
+   */
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
   it('系统开了减少动效:首次创建的应用内默认值随之打开', () => {
     stubMatchMedia(true)
-    setActivePinia(createPinia())
     expect(useSettingsStore().reduceMotion).toBe(true)
   })
 
   it('系统没开:维持 false,行为不变', () => {
     stubMatchMedia(false)
-    setActivePinia(createPinia())
     expect(useSettingsStore().reduceMotion).toBe(false)
   })
 
   it('环境没有 window(node / 未来宿主):不抛,回落 false', () => {
     vi.stubGlobal('window', undefined)
-    setActivePinia(createPinia())
     expect(useSettingsStore().reduceMotion).toBe(false)
+  })
+})
+
+/**
+ * 版本号要截。
+ *
+ * 合法形是 `1.46.0` 这种（最长十来个字符），它不渲染，只进
+ * `compareVersions(APP_VERSION, lastSeenVersion)` —— 而那函数是 `split('.')`
+ * 后逐段 `parseInt`。坏档塞二十万字符会在**启动路径**上切出二十万个分段再逐个解析。
+ *
+ * 故障注入：去掉 `truncateCodePoints` → 第一条红。
+ */
+describe('设置 · 版本号长度上界', () => {
+  it('超长版本号截断,正常语义化版本原样', () => {
+    const s = useSettingsStore()
+    s.lastSeenVersion = '1.'.repeat(100_000)
+    s.sanitize()
+    expect(s.lastSeenVersion.length, '版本号没截 —— 启动路径会切出二十万个分段').toBeLessThanOrEqual(32)
+
+    s.lastSeenVersion = '1.46.0'
+    s.sanitize()
+    expect(s.lastSeenVersion, '正常版本号被误伤').toBe('1.46.0')
   })
 })

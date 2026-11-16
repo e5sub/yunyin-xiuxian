@@ -440,7 +440,21 @@ export function exploreDurationSec(mode: ExploreMode, petId: string | null): num
 
 /** 两场遭遇的间隔(秒);explorationSpeed 只收紧这一截,不缩短整程 */
 export function exploreBattleGapSec(explorationSpeed: number): number {
-  const speed = 1 + Math.max(0, explorationSpeed)
+  /*
+   * `Math.max(0, NaN)` 还是 NaN —— 它挡不住非有限值(AGENTS.md 明文点过)。
+   *
+   * 这条链的下游是 `nextBattleAt: now + gap * 1000`:gap 为 NaN 时它也是 NaN,
+   * 而 `adventure.setSession` 有一道 `Number.isFinite(s.nextBattleAt)` 的守卫 ——
+   * 会话被**静默拒绝**,`startExploration` 却照旧返回 true 并弹「前往…」。
+   * 玩家看到的是「已出发」,实际一条会话都没有。
+   *
+   * 实测:把 `finalStats.mods.explorationSpeed` 注入 NaN,
+   * `startExploration` 返回 true 而 `adventure.session === null`。
+   *
+   * 拿不到数时按「没有加速」处理,与 `capChance` 同一条取舍。
+   */
+  const raw = Number.isFinite(explorationSpeed) ? explorationSpeed : 0
+  const speed = 1 + Math.max(0, raw)
   return (EXPLORE_BATTLE_INTERVAL * 1000) / speed / 1000
 }
 
@@ -472,6 +486,22 @@ export function tickExploration(now: number): void | Promise<void> {
   const s = adventure.session
   if (!s || player.dead) return
 
+  /*
+   * 到期判定必须排在「待处理事件」之前。
+   *
+   * 事件分支末尾是无条件 `return`(它阻塞战斗),而到期判定原先在它后面 ——
+   * 于是「会话已到期 + 还挂着一个待处理事件」时,tick 走事件分支就返回了,
+   * 会话既不结束、也不再推进。
+   *
+   * 实测:会话 1800 秒,事件挂着不点,推进到 1860 秒时
+   * `adv.session` 仍在、剩余 **-60 秒**,而 `startExploration` 因为「已有会话在途」
+   * 拒绝开新的一程 —— 玩家看到「剩余 -60 秒」且开不了历练,直到事件 120 秒超时才解开。
+   */
+  if (now >= s.endsAt) {
+    stopExploration('complete')
+    return
+  }
+
   // 待处理事件:阻塞战斗;超时自动按默认选项处理
   if (adventure.pendingEventId) {
     /*
@@ -496,11 +526,6 @@ export function tickExploration(now: number): void | Promise<void> {
         else if (res?.outcomeText) useUiStore().toast(res.outcomeText, 'info')
       })
     }
-    return
-  }
-
-  if (now >= s.endsAt) {
-    stopExploration('complete')
     return
   }
 

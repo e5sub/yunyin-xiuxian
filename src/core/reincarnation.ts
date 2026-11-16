@@ -5,6 +5,7 @@ import { TALENT_DRAW_DIV } from '@/data/constants'
 import { lifeThemeDef } from '@/data/lifeThemes'
 import { nextStageAfter, stageAt } from '@/data/samsara'
 import { rollLinggen } from './linggenGen'
+import { resetEarlyGameEvents } from './earlyGameService'
 import { collect, track } from './progress'
 import { lifeForge } from './heritageForge'
 import { carriesAllLore, keepsAllGongfa, talentChoiceBonus } from './heritageEffects'
@@ -40,6 +41,7 @@ import { daoFruitGain } from './formulas'
 import { archiveLifeTrial } from './lifeTrialService'
 import { rerollMortalWorld } from './mortalWorldService'
 import { archiveBond } from './daoluService'
+import { engine } from './engine'
 
 function drawTalents(count: number, exclude: Set<string>): string[] {
   const out: string[] = []
@@ -254,12 +256,59 @@ export async function confirmReincarnation(chosenTalentId: string | null, chosen
   useGameStore().resetCreateDraft()
   // 道途归还,道源与道痕保留
   useEndgameStore().onRebirth()
+  // 本世的浮窗事件存在模块级变量里,不在任何 store 中 —— rebirth() 的归零碰不到它们
+  resetEarlyGameEvents()
+  /*
+   * 三个详情弹窗的 ID 也要清。
+   *
+   * 它们都是 `:open="def !== undefined"`,判断依据是**数据表里有无该 id**,不看背包/状态。
+   * 于是:
+   * - `gongfaDetailId` / `buffDetailId` 指向功法表与 buff 表,转世后表还在、id 还有效 ——
+   *   弹窗会在新世第一屏**自动重新打开**,写的是上辈子的功法/状态;
+   * - `equipDetailUid` 指向背包,转世后背包清空故 `inst` 为 undefined、弹窗自动关;
+   *   但残留的 uid 是个悬空引用,若之后 `uid()` 恰好复用同一串,弹窗会意外弹开。
+   */
+  ui.equipDetailUid = null
+  ui.gongfaDetailId = null
+  ui.buffDetailId = null
+  /*
+   * 死亡提示的「已播报」标记须复位。
+   *
+   * `engine.checkDeath` 用 `if (!this.deathAnnounced)` 挡住重复弹窗,而
+   * `resetDeathFlag()` 写好了却**从无人调用** —— 于是转世后标记仍是 true:
+   * 实测新世再次寿尽时 `player.dead` 变 true、而 `ui.deathDialog` 不弹,
+   * 轮回入口不出现。engine 的注释自己写着这条路的风险(「不重开则低境界软锁」)。
+   */
+  engine.resetDeathFlag()
   // 命题快照须在重置之后取
   beginLife(view.themeChoices.includes(chosenThemeId ?? '') ? chosenThemeId : null)
   recordMilestone('first_rebirth')
   track('reincarnations')
   ui.reincarnation = null
   ui.deathDialog = false
+  /*
+   * 这两个是「那一瞬」的一次性弹窗,也须随本世一起清掉。
+   *
+   * 它们不可关(closable=false),看着像拦住了所有交互 —— 但死亡那条路是从
+   * `App.vue` 全局弹的:实测 `ui.deathDialog` 与 `ui.breakthrough` 同时打开时,
+   * 「寿元将尽」压在上面并带着自己的「兵解转世」钮。玩家在那里点下去,
+   * 转世照常完成(major 变 0、境界变炼气一层),而突破弹窗仍停在
+   * 「金丹→元婴」—— 新世的第一屏在说自己刚破了上辈子的境。
+   */
+  ui.breakthrough = null
+  ui.treasure = null
+  /*
+   * 离线归来卷轴也一并收掉。
+   *
+   * 它的读数(灵石/修为/历练场次)是**上一世那一段离线**的账,而这笔账在
+   * `settleOffline` 里就已经入过了(卷轴只展示、不再入账,见 OfflineRewardDialog
+   * 没有任何 add/spend)。转世后新世从 0 起步,再摊着旧世那份卷轴只会对不上。
+   *
+   * 触发路径与突破弹窗同一条:两个都不可关,而「寿元将尽」从 App.vue 全局压上来,
+   * 带着自己的「兵解转世」钮。实测三扇能叠在一起:
+   * 离线归来结算 / 寿元将尽 / 此生已矣。
+   */
+  ui.offlineSummary = null
   ui.toast(`已转世 · 道号「${player.name}」`, 'rare')
   if (view.stageAdvanced) ui.toast(`境地已迁「${view.stageName}」`, 'rare')
   if (recognized > 0) ui.toast(`新认得 ${recognized} 味灵材`, 'info')

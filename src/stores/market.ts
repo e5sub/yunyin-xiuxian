@@ -5,6 +5,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { persistConfig } from '@/utils/storage'
+import { truncateCodePoints } from '@/utils/saveShape'
+import { NAME_MAX_LENGTH } from '@/data/constants'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useInventoryStore } from '@/stores/inventory'
@@ -18,6 +20,7 @@ import {
   MARKET_CONSIGN_SLOTS,
   MARKET_CONSIGN_SECONDS,
   MARKET_MAT_COUNT,
+  MARKET_SLOTS,
   type ConsignPost,
   type MarketSlot
 } from '@/data/market'
@@ -161,7 +164,17 @@ export const useMarketStore = defineStore(
         usedIdx.add(idx)
         clean.push(idx === slot.idx ? slot : { ...slot, idx })
       }
-      stock.value = clean
+      /*
+       * 货架条数封顶。
+       *
+       * `MARKET_SLOTS`(6)是 `marketService` 上货时的格数,而 `clean` 按存档里的条数
+       * 原样收 —— 坏档塞 500 条合法货品会被全吃下,而 `MarketShelfSection` 的
+       * `cards` 是对全量 `market.stock` 直接 `map`,页面就渲 500 张卡。
+       *
+       * 上界取 `MARKET_SLOTS`:货架本来只有 6 格,多出来的必然是坏档。按原顺序保留前
+       * `MARKET_SLOTS` 条,与「idx 从小到大」的摆放顺序一致。
+       */
+      stock.value = clean.slice(0, MARKET_SLOTS)
 
       const posts: ConsignPost[] = []
       for (const raw of asArray<unknown>(consign.value)) {
@@ -194,7 +207,13 @@ export const useMarketStore = defineStore(
           // 寄卖价是交货时定下的契约;只有价格或层级/品质坏掉时才按同一公式重建
           price: price.m > 0 && !badTier && !badQualityRank ? price : consignPrice(tier, qualityRank),
           finishAt,
-          name: 'name' in raw && typeof raw.name === 'string' ? raw.name : ''
+          /*
+           * 寄卖品名要截 —— 它渲染在寄卖格那一行(`{{ consignBySlot[s]!.name }}`)。
+           * 写入路径取的是 `equipmentTemplate(...).name`(数据表里最长四五个字),
+           * 坏档塞十万字符时那一行虽有 `truncate` 兜住视觉,文本节点与存档仍照大不误。
+           * 取 `NAME_MAX_LENGTH * 2`(16 码点)已极宽,与其余「物名」字段同一把尺。
+           */
+          name: 'name' in raw && typeof raw.name === 'string' ? truncateCodePoints(raw.name, NAME_MAX_LENGTH * 2) : ''
         })
       }
       // 寄卖格号重排成唯一的 0..n-1,不丢任何一条:界面按格号铺格子,

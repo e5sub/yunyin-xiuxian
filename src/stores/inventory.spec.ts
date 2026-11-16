@@ -3,15 +3,18 @@
  * 真值取 mergeMods(已装备件的 resolveEquipStats.mods) 深等,抓幻影来源/叠加错/漏撤三类回归。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ARTIFACTS } from '@/data/artifacts'
 import { createPinia, setActivePinia } from 'pinia'
 import { useInventoryStore } from '@/stores/inventory'
+import { toNum } from '@/utils/gnum'
+import type { GNum } from '@/types'
 import { mergeMods } from '@/core/statsCalc'
 import { BAG_CAPACITY, EQUIP_AFFIX_HARD_CAP } from '@/data/constants'
 import { AFFIXES, affixFitBlock } from '@/data/affixes'
 import { EQUIPMENT_TEMPLATES, equipmentTemplate } from '@/data/equipment'
 import { qualityDef } from '@/data/qualities'
 import { resolveEquipStats } from '@/core/equipGen'
-import { ARTIFACT_MAX_LEVEL, ARTIFACT_MAX_SLOTS, artifactDef, artifactEvictedBy, artifactValue } from '@/data/artifacts'
+import { ARTIFACT_MAX_LEVEL, ARTIFACT_MAX_SLOTS, artifactDef, artifactEvictedBy, artifactSlotViews, artifactValue } from '@/data/artifacts'
 import { artifactUpCost, upgradeArtifact } from '@/core/forge'
 import { useResourcesStore } from '@/stores/resources'
 import type { EquipmentInstance } from '@/types'
@@ -452,17 +455,24 @@ describe('法宝公共写入边界 · 目录、拥有、满重与祭炼槽', () 
       ],
       equippedArtifacts: ['af_muyu', 'af_bishui', 'af_xianding']
     })
-    expect(inv.currentArtifacts, '生效的只该是前 ARTIFACT_MAX_SLOTS 件').toHaveLength(ARTIFACT_MAX_SLOTS)
-    // 真值独立复算:前两件的被动合并
+    /*
+     * 超编时生效的是**最晚祭炼的那几件**,不是最早的那几件。
+     *
+     * 依据:`toggleArtifact` 的注释写着「槽满时替换最早佩戴的一件」,
+     * 而 `artifactEvictedBy` 也按「最早祭炼的在前」报会让位的 —— 二者都指向
+     * 「留最新的」。原先这里验的是前两件,与那条意图相反(见下一条判据)。
+     */
+    expect(inv.currentArtifacts, '生效的只该是尾部 ARTIFACT_MAX_SLOTS 件').toHaveLength(ARTIFACT_MAX_SLOTS)
+    // 真值独立复算:后两件的被动合并
     const expected = mergeMods([
-      artifactValue(artifactDef('af_muyu')!, 0).passive,
-      artifactValue(artifactDef('af_bishui')!, 0).passive
+      artifactValue(artifactDef('af_bishui')!, 0).passive,
+      artifactValue(artifactDef('af_xianding')!, 0).passive
     ])
-    expect(inv.equipMods, '超编那件的被动不该混进汇总').toEqual(expected)
-    const withoutThird = expected.maxHpPct ?? 0
-    const withThird = withoutThird + artifactValue(artifactDef('af_xianding')!, 0).passive.maxHpPct!
-    expect(inv.equipMods.maxHpPct, '第三件的 maxHp 不该进来').toBeCloseTo(withoutThird, 9)
-    expect(inv.equipMods.maxHpPct, '判据得真能分辨:带上第三件会是另一个数').not.toBeCloseTo(withThird, 3)
+    expect(inv.equipMods, '超编那件(最早祭炼的 af_muyu)的被动不该混进汇总').toEqual(expected)
+    const withoutFirst = expected.maxHpPct ?? 0
+    const withFirst = withoutFirst + artifactValue(artifactDef('af_muyu')!, 0).passive.maxHpPct!
+    expect(inv.equipMods.maxHpPct, '最早那件的 maxHp 不该进来').toBeCloseTo(withoutFirst, 9)
+    expect(inv.equipMods.maxHpPct, '判据得真能分辨:带上第一件会是另一个数').not.toBeCloseTo(withFirst, 3)
   })
 
 /**
@@ -740,5 +750,141 @@ describe('背包 · 满了就拒收新装备', () => {
     const before = inv.items.length
     expect(inv.addEquipment(extra as never), '满了还返回 true,调用方不会折算成尘').toBe(false)
     expect(inv.items.length, '满了还往包里塞').toBe(before)
+  })
+})
+
+/**
+ * 超编时,界面画的格子必须与真正作数的那几件是同一批。
+ *
+ * 列表可能超编(境界跌落、未经 sanitize 的旧档)。此前 `currentArtifacts` 取前
+ * `ARTIFACT_MAX_SLOTS` 件,而 `toggleArtifact` 替下**最早佩戴**的那件、保留尾部,
+ * 于是超编时界面显示的是最早祭炼的两件、真正生效的却是最晚的两件 ——
+ * 实测佩 [muyu, lihuo, xuantian]、槽位 2 时,`artifactEvictedBy` 报的两件
+ * 与 `currentArtifacts` 完全重叠:同一件既在生效、又会在下次祭炼时让位。
+ *
+ * 故障注入:把 `currentArtifacts` 的 `.slice(-ARTIFACT_MAX_SLOTS)` 改回
+ * `.slice(0, ARTIFACT_MAX_SLOTS)` → 本条红。
+ */
+describe('法宝槽位 · 超编时界面与生效同批', () => {
+  it('槽位画出来的就是身上作数的', () => {
+    const inv = useInventoryStore()
+    inv.artifacts = [
+      { defId: 'af_muyu', level: 0 },
+      { defId: 'af_bishui', level: 0 },
+      { defId: 'af_xianding', level: 0 }
+    ]
+    inv.equippedArtifacts = ['af_muyu', 'af_bishui', 'af_xianding'] // 超编 3 件
+
+    const activeIds = inv.currentArtifacts.map(a => a.defId)
+    const shownIds = artifactSlotViews(inv.equippedArtifacts, inv.artifacts, ARTIFACT_MAX_SLOTS)
+      .filter((v): v is NonNullable<typeof v> => v !== undefined)
+      .map(v => v.def.id)
+
+    expect(shownIds, '界面画的与身上作数的不是同一批').toEqual(activeIds)
+    // 再祭一件:保住的必须是那批正在生效的
+    inv.toggleArtifact('af_muyu', ARTIFACT_MAX_SLOTS)
+    inv.toggleArtifact('af_muyu', ARTIFACT_MAX_SLOTS)
+    const kept = inv.currentArtifacts.map(a => a.defId)
+    expect(kept.filter(id => activeIds.includes(id)).length, '祭炼后一件正在生效的都没保住').toBeGreaterThan(0)
+  })
+})
+
+/**
+ * 丹药存量须封顶。
+ *
+ * `addPill` 不设数量上限,而 `sanitize` 原先只滤「野 id 与 <=0」——
+ * 坏档写 `1e300` 会被原样留下,而 `InventoryView` 那两处是裸插值
+ * (`×{{ row.count }}`、`持有 ×{{ currentPill.count }}`),会印成「×1e+300」。
+ *
+ * 上界与「已重铸 / 已转移」同用 `EQUIP_COUNTER_MAX`(一亿):那里的注释写着
+ * 「取值不能凭够用定」,因为 `addPill` 同样没有天然上限。
+ *
+ * 故障注入:去掉 `Math.min(EQUIP_COUNTER_MAX, ...)` → 本条红。
+ */
+describe('丹药存量 · 读档封顶', () => {
+  it('坏档写 1e300,读档后夹到一亿', () => {
+    const inv = useInventoryStore()
+    inv.pills = { p_jvqisan: 1e300, p_jvqidan: 5 } as never
+    inv.sanitize()
+    expect(inv.pills['p_jvqisan'], '丹药存量没封顶 —— 界面会印出「×1e+300」').toBeLessThanOrEqual(1e9)
+    expect(inv.pills['p_jvqisan'], '夹得太狠,正常存量会被误伤').toBeGreaterThan(1e6)
+    expect(inv.pills['p_jvqidan'], '正常存量不该被动').toBe(5)
+  })
+})
+
+/**
+ * 累计投入灵石的读档上界。
+ *
+ * 它与 `invested.dust` 是同一个结构、同一个结局 —— 都会经 `enhanceInvested`
+ * **原样退还给玩家**。而 `dust` 早有 `INVESTED_DUST_MAX`(两万)挡着,
+ * `stone` 却只走 `asBoundedGNum`,上界是 `SAVE_GNUM_MAX_EXP`(999):
+ * 坏档写 `9.99e900` 照样通过,拆一件就白得比 `Number.MAX_VALUE` 还大的灵石。
+ *
+ * 上界按真实最大投入算:满强化累计 `5.32e11`,取约 2.3 倍余量(dust 同比例)。
+ * 越界归零 —— 夹到上界仍是白送。
+ *
+ * 故障注入:去掉 `cmp(st, INVESTED_STONE_MAX) > 0` 那一判 → 本条红。
+ */
+describe('装备投入 · 灵石上界', () => {
+  it('坏档写 9.99e900,读档后归零;真实投入原样保留', () => {
+    const inv = useInventoryStore()
+    const mk = (uid: string, stone: unknown) => ({
+      uid,
+      templateId: 'w_zhuqing',
+      quality: 'heaven',
+      tier: 5,
+      level: 0,
+      affixes: [],
+      invested: { dust: 100, stone }
+    })
+    inv.items = [mk('e1', { m: 9.99, e: 900 }), mk('e2', { m: 5, e: 11 })] as never
+    inv.sanitize()
+    const huge = inv.items[0] as unknown as { invested: { stone: GNum } }
+    const real = inv.items[1] as unknown as { invested: { stone: GNum } }
+    expect(toNum(huge.invested.stone), '巨额投入没归零 —— 拆一件白得一笔天量灵石').toBe(0)
+    expect(toNum(real.invested.stone), '真实投入被误伤').toBeCloseTo(5e11, -9)
+  })
+})
+
+/**
+ * 法宝库的越界重数整条丢,不先夹再比。
+ *
+ * `addArtifact` 已保证正常路径不产生重复,故「同 defId 多条」只来自坏档。
+ * 若先夹后并(坏值 `1e300` 夹成满重 9),那条会顶掉同一件法宝的真实记录(实测 level: 2),
+ * 玩家白得七重。判据取「合法整数且 ≤ 满重」,越界一律不参与合并。
+ *
+ * 故障注入:改回「先夹到 ARTIFACT_MAX_LEVEL 再取较大值」→ 第一条红(得 9 而非 2)。
+ */
+describe('法宝库 · 越界重数整条丢', () => {
+  it('坏值不顶掉真实重数,只有坏值的整条丢', () => {
+    const inv = useInventoryStore()
+    const a = ARTIFACTS[0]!.id
+    const b = ARTIFACTS[1]!.id
+    inv.artifacts = [
+      { defId: a, level: 1e300 },
+      { defId: a, level: 2 },
+      { defId: b, level: 1e300 },
+      { defId: 'wild', level: 5 }
+    ] as never
+    inv.sanitize()
+    const byId = Object.fromEntries(inv.artifacts.map(x => [x.defId, x.level]))
+    expect(byId[a], '坏值把真实重数顶成满重 —— 玩家白得七重').toBe(2)
+    expect(byId[b], '只有坏值的那件应整条丢').toBeUndefined()
+    expect(byId['wild'], '野 defId 没清').toBeUndefined()
+  })
+
+  it('正常存档(0/5/9 重)不受影响', () => {
+    const inv = useInventoryStore()
+    const ids = ARTIFACTS.slice(0, 3).map(x => x.id)
+    inv.artifacts = [
+      { defId: ids[0], level: 0 },
+      { defId: ids[1], level: 5 },
+      { defId: ids[2], level: 9 }
+    ] as never
+    inv.sanitize()
+    const byId = Object.fromEntries(inv.artifacts.map(x => [x.defId, x.level]))
+    expect(byId[ids[0]!], '0 重被误丢').toBe(0)
+    expect(byId[ids[1]!], '5 重被改').toBe(5)
+    expect(byId[ids[2]!], '满重 9 被改').toBe(9)
   })
 })

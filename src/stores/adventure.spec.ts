@@ -3,6 +3,7 @@ import { EVENTS, FORTUNE_EVENTS } from '@/data/events'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAdventureStore } from '@/stores/adventure'
+import type { GNum } from '@/types'
 import { tickExploration } from '@/core/exploration'
 import type { AdventureSession } from '@/types'
 import { gnZero } from '@/utils/gnum'
@@ -469,6 +470,95 @@ describe('历练会话 · 收益量级', () => {
     expect(formatGN(s!.stoneGain)).toBe('2万')
   })
 
+  /**
+   * 指数**在界内**但数值离谱的那一档。
+   *
+   * `asBoundedGNum` 只守卫 |e| ≤ 999,而 `9.99e900` 正好在界内 ——
+   * 原先它会原样留下,战报用 `formatGN` 裸插值印出「灵石 +9.99e900」。
+   * 上界按真实量级定:单场最高层级实测约 5.25e10,取 1e20。
+   *
+   * 故障注入:把 `clampGain` 换回 `asBoundedGNum` → 本条红。
+   */
+  it('指数在界内但量级离谱的收益也归零(不再印出 9.99e900)', () => {
+    const s = withGain({ m: 9.99, e: 900 })
+    expect(s, '坏收益不该让整个会话被丢掉').not.toBeNull()
+    expect(formatGN(s!.stoneGain), '战报会印出科学计数').toBe('0')
+    expect(formatGN(s!.expGain)).toBe('0')
+  })
+
+  it('真实量级的收益不被误伤', () => {
+    const s = withGain({ m: 5.25, e: 10 })
+    expect(s).not.toBeNull()
+    expect(s!.stoneGain.m).toBeCloseTo(5.25)
+    expect(s!.stoneGain.e).toBe(10)
+  })
+
+  /**
+   * 战报遥测(`result.stats.player`)与收益累加器同一类问题:只走 `asBoundedGNum`,
+   * 而 `9.99e900` 正在它守卫的 |e| ≤ 999 之内 —— 它会经 `battleAnalysis` 的
+   * `formatGN(p.dealt)` 直接印出「总输出 9.99e900」。计数类同理(1e300 闪避)。
+   *
+   * 故障注入:把 `clampGain` 换回 `asBoundedGNum`、去掉计数的 `Math.min` → 本条红。
+   */
+  it('战报遥测的坏值也不印科学计数', () => {
+    const a = useAdventureStore()
+    const side = (dealt: unknown, dodges: number) => ({
+      dealt,
+      taken: { m: 0, e: 0 },
+      pierceTaken: { m: 0, e: 0 },
+      biggestHitTaken: { m: 0, e: 0 },
+      healed: { m: 0, e: 0 },
+      shieldAbsorbed: { m: 0, e: 0 },
+      dodges,
+      missedHits: 0,
+      hitsLanded: 0,
+      counters: 0,
+      combos: 0,
+      crits: 0,
+      skillCasts: 0,
+      artifactProcs: 0,
+      stunnedTurns: 0
+    })
+    a.lastBattle = {
+      enemyName: '探针狼',
+      enemyIcon: 'x',
+      result: {
+        win: true,
+        log: ['一行'],
+        rounds: 3,
+        stats: { player: side({ m: 9.99, e: 900 }, 1e300), enemy: side({ m: 0, e: 0 }, 0) }
+      }
+    } as never
+    a.sanitize()
+    const st = (a.lastBattle as unknown as { result: { stats: { player: { dealt: GNum; dodges: number } } } })
+      .result.stats.player
+    expect(formatGN(st.dealt), '战报会印出「总输出 9.99e900」').not.toMatch(/e\+?\d{3,}/)
+    expect(String(st.dodges), '闪避次数会印出 1e+300').not.toMatch(/e\+\d/)
+  })
+
+  /**
+   * 战力栏同理。它是 `powerScore(攻击, 防御, 气血)` 的线性组合,三维受境界与层级
+   * 约束 —— 最高境界实测约 2.57e14,战力有明确的物理上限。而它只走
+   * `asBoundedGNum`(守卫 |e| ≤ 999),坏档写 `{ m: 1, e: 900 }` 正在界内,
+   * `CombatPanel` 是 `formatGN(battle.enemyPower)` 直接插值,会印出「敌力 1.00e900」。
+   *
+   * 故障注入:去掉 `cmp(g, POWER_SANITY_MAX) > 0` 那一判 → 本条红。
+   */
+  it('战力栏的坏值视为缺失,不印科学计数', () => {
+    const a = useAdventureStore()
+    a.lastBattle = {
+      enemyName: '探针狼',
+      enemyIcon: 'x',
+      enemyPower: { m: 1, e: 900 },
+      playerPower: { m: 2.57, e: 14 },
+      result: { win: true, log: ['一行'], rounds: 3 }
+    } as never
+    a.sanitize()
+    const lb = a.lastBattle as unknown as { enemyPower?: GNum; playerPower?: GNum }
+    expect(lb.enemyPower, '坏战力该当作缺失,而不是原样留下').toBeUndefined()
+    expect(formatGN(lb.playerPower ?? { m: 0, e: 0 }), '真实战力被误伤').not.toBe('0')
+  })
+
   it('收益归零后会话本身仍在(玩家还在历练,只是这一世的累计读数被修形)', () => {
     const s = withGain({ m: 1, e: 1e9 })
     expect(s!.regionId).toBe('qingyun')
@@ -531,4 +621,62 @@ describe('凡人界世界规则 · 坏档字段修形', () => {
     expect(rules?.perRounds?.enemyAtkGrowth).toBe(0)
   })
 })
+})
+
+/**
+ * 际遇记忆的读档守卫。
+ *
+ * ① `recordEvent` 的 key 一律是真实事件 id(见 worldMemory.ts),野 id 只可能来自坏档;
+ *    而 `lossRows`(LegacyView)会把它原样印成「际遇 N 次」。
+ * ② `times` 每次 +1,而 `fortuneEcho` 只按 `>= 2` / `>= 3` 分档 —— 上界取一千不影响分档,
+ *    却拦得住坏档的 `1e300`(界面会印成科学计数)。
+ *
+ * 故障注入:去掉 `if (!eventDef(id)) continue` → 第一条红;
+ * 去掉 `asFiniteNumber(..., EVENT_MEMORY_TIMES_MAX)` 的第四参 → 第二条红。
+ */
+describe('际遇记忆 · 读档守卫', () => {
+  it('认不出的 eventId 清掉', () => {
+    const a = useAdventureStore()
+    const mem: Record<string, unknown> = {}
+    for (let i = 0; i < 500; i++) {
+      mem['wild_' + i] = { eventId: 'wild_' + i, times: 5, lastAt: 1, lastChoiceIdx: 0 }
+    }
+    a.eventMemories = mem as never
+    a.sanitize()
+    expect(Object.keys(a.eventMemories).length, '野 eventId 没清 —— 会印成「际遇 N 次」').toBe(0)
+  })
+
+  it('times 夹到一千,正常事件记忆原样保留', () => {
+    const a = useAdventureStore()
+    const realId = EVENTS[0]!.id
+    a.eventMemories = {
+      [realId]: { eventId: realId, times: 1e300, lastAt: 1, lastChoiceIdx: 0 }
+    } as never
+    a.sanitize()
+    const m = a.eventMemories[realId]
+    expect(m, '正常事件记忆被误删').toBeTruthy()
+    expect(String(m!.times), '界面会印出科学计数').not.toMatch(/e\+\d/)
+    expect(m!.times, 'times 没夹到一千').toBeLessThanOrEqual(1000)
+  })
+})
+
+/**
+ * 待再靖表去重。
+ *
+ * 同段的 `unlocked` / `cleared` / `mortalCleared` 都用 `[...new Set(...)]`，
+ * 只有 `revived` 漏了 —— 坏档塞三条重复会让它与 `cleared` 的**互斥关系**对不上
+ * （同一地界不能既已靖又待再靖），也白白撑大存档。
+ *
+ * 写入侧（`markRevived`）有 `includes` 闸，故重复只可能来自坏档。
+ *
+ * 故障注入：去掉 `[...new Set(...)]` → 本条红（得三条）。
+ */
+describe('妖气复聚 · 待再靖表去重', () => {
+  it('重复项只留一条,正常项原样', () => {
+    const a = useAdventureStore()
+    a.cleared = [] as never
+    a.revived = ['qingyun', 'qingyun', 'qingyun'] as never
+    a.sanitize()
+    expect(a.revived, '重复项没去重').toEqual(['qingyun'])
+  })
 })

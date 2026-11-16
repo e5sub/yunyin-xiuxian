@@ -9,9 +9,9 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useEndgameStore, type WorldRunState } from './endgame'
-import { EXPEDITION_GUARDIAN_LAYER, EXPEDITION_ROUTE_LAYERS, celestialWorldDef } from '@/data/endgame'
+import { CELESTIAL_WORLDS, EXPEDITION_GUARDIAN_LAYER, EXPEDITION_ROUTE_LAYERS, celestialWorldDef } from '@/data/endgame'
 import { ARTIFACT_MAX_SLOTS } from '@/data/artifacts'
-import { SOUL_SLOTS, soulGradeDef } from '@/data/souls'
+import { SOUL_SLOTS, SOUL_TYPES, soulGradeDef } from '@/data/souls'
 import { rerollVoidWorld, VOID_REROLL_COST } from '@/core/expedition'
 import { usePlayerStore } from '@/stores/player'
 import type { GeneratedWorld } from '@/core/worldGen'
@@ -1147,4 +1147,273 @@ describe('远征规则修形 · 坏档里的 rules 字段', () => {
     expect(nodeRules?.maxRounds, '节点回合上界至少为 1').toBe(1)
   })
 })
+})
+
+/**
+ * 虚界的规则文案须封顶。
+ *
+ * `sanitizeVoidWorld` 里同一块把 `anchorTier` / `entryCost` / `fights` / `rewardDaoSource`
+ * 都按生成器的真实产出夹了上界,只有 `ruleText` 原样吃下 —— 而 `ExpeditionPanel`
+ * 是 `v-for` 逐条渲它(两处:世界规则与虚界规则),坏档写 5000 条就渲 5000 个 `<span>`。
+ * 生成器实际只产 2–3 条(`worldGen` 的 `mutCount = rng.int(2, 3)`)。
+ *
+ * 故障注入:把 `asStringArray(w.ruleText).slice(0, RULE_TEXT_CAP)` 改回裸
+ * `asStringArray(w.ruleText)` → 本条红。
+ */
+describe('虚界 · 规则文案读档封顶', () => {
+  it('坏档塞 5000 条规则,读档后只留一小段', () => {
+    const endgame = useEndgameStore()
+    endgame.$patch({
+      voidWorld: {
+        ...celestialWorldDef('chiyan')!,
+        id: 'void',
+        name: '虚界·封顶',
+        ruleText: Array.from({ length: 5000 }, (_, i) => `规则 ${i}`)
+      }
+    })
+    endgame.sanitize()
+    const n = endgame.voidWorld?.ruleText.length ?? -1
+    expect(n, '世界被整条作废了 —— 夹具没通过校验').toBeGreaterThan(0)
+    expect(n, '规则文案没封顶 —— 界面会逐条渲出来').toBeLessThanOrEqual(50)
+  })
+})
+
+/**
+ * 魂库条数封顶。
+ *
+ * `souls` 只增不减(每次凝魂追加一枚),而 `SoulsView` 有三处 `v-for` 逐条渲。
+ * 坏档塞 5000 枚合法器魂会被原样吃下 —— 上界与道痕同用 `MAX_MARKS`(60)。
+ *
+ * 故障注入:去掉 `souls.value.slice(0, MAX_MARKS)` → 本条红。
+ */
+describe('器魂 · 魂库条数封顶', () => {
+  it('坏档塞 5000 枚,读档后只留 60 枚且保留先得的', () => {
+    const e = useEndgameStore()
+    e.souls = Array.from({ length: 5000 }, (_, i) => ({
+      uid: `s${i}`,
+      type: 'fengmang',
+      grade: 3,
+      fromName: '探针'
+    })) as never
+    e.sanitize()
+    expect(e.souls.length, '魂库没封顶 —— SoulsView 三处 v-for 会渲 5000 行').toBeLessThanOrEqual(100)
+    expect(e.souls[0]?.uid, '该保留先得的那批').toBe('s0')
+  })
+
+  it('已装配的器魂不会被截断丢掉', () => {
+    const e = useEndgameStore()
+    // 装着靠后的第 70、80 枚 —— 单纯 slice(0, N) 会把它们连同装配引用一起丢掉
+    e.souls = Array.from({ length: 100 }, (_, i) => ({
+      uid: `s${i}`,
+      type: 'fengmang',
+      grade: 3,
+      fromName: '探针'
+    })) as never
+    e.equippedSouls = ['s70', 's80'] as never
+    e.sanitize()
+    expect(e.equippedSouls, '已装配的器魂被截掉 —— 玩家身上那几缕凭空消失').toEqual(['s70', 's80'])
+    expect(
+      e.souls.filter(s => ['s70', 's80'].includes(s.uid)).length,
+      '装配引用还在但魂库里没这条 —— 幽灵引用'
+    ).toBe(2)
+    expect(e.souls.length, '总条数仍须封顶').toBeLessThanOrEqual(100)
+  })
+})
+
+/**
+ * 道痕重演的三维也要有上界。
+ *
+ * `sanitizeMarkReplay` 早给 `speed` 补了 `REPLAY_SPEED_MAX`,理由是
+ * 「坏档写 1e300 时忆战重演里玩家永远后手」—— 三维是同一条路径：
+ * 快照直接进 `compareSnaps`,`attack: 1e900` 会让「彼时之你」永远赢,
+ * 「往世 vs 今世」的对比失去意义。
+ *
+ * 上界 1e18:最高境界实测 atk 4.45e13 / def 2.37e13 / hp 5.08e14。
+ *
+ * 故障注入:去掉 `cmp(attack, REPLAY_STAT_MAX) > 0` 那一判 → 本条红。
+ */
+describe('道痕重演 · 三维量级上界', () => {
+  it('天量三维丢弃重演,真实三维保留', () => {
+    const e = useEndgameStore()
+    const mk = (atk: unknown) => ({
+      targetId: 'chiyan',
+      targetName: '赤炎界',
+      life: 1,
+      daoPathId: null,
+      at: 1,
+      cleared: true,
+      rounds: 10,
+      buildName: '探针',
+      powerText: '1',
+      replay: {
+        attack: atk,
+        defense: { m: 1, e: 3 },
+        maxHp: { m: 1, e: 4 },
+        speed: 1,
+        mods: {},
+        skills: [],
+        artifacts: []
+      }
+    })
+    e.marks = [mk({ m: 1, e: 900 }), mk({ m: 4.45, e: 13 })] as never
+    e.sanitize()
+    expect(e.marks[0]?.replay, '天量三维留在重演里 —— 「彼时」会永远赢').toBeUndefined()
+    expect(e.marks[1]?.replay, '真实三维被误伤').toBeTruthy()
+  })
+})
+
+/**
+ * 道痕的构筑名要截到 `NAME_MAX_LENGTH`。
+ *
+ * `MarksPanel` 是 `{{ row.mark.buildName }}` 直接插值,而 sanitize 原先只判
+ * 「是不是非空字符串」—— 坏档塞 5 万字符会把道痕面板一行撑爆,存档跟着爆量。
+ * 与 `loadouts.name` / `records.note` 同一把尺。
+ *
+ * 故障注入:去掉 `truncateCodePoints(m.buildName.trim(), NAME_MAX_LENGTH)` → 本条红。
+ */
+describe('道痕 · 构筑名长度', () => {
+  it('超长构筑名截断,正常名保留', () => {
+    const e = useEndgameStore()
+    const mk = (life: number, buildName: string) => ({
+      targetId: 'chiyan',
+      targetName: '赤炎界',
+      life,
+      daoPathId: null,
+      at: life,
+      cleared: false,
+      rounds: 10,
+      buildName,
+      powerText: '1'
+    })
+    e.marks = [mk(1, 'x'.repeat(5000)), mk(2, '剑修')] as never
+    e.sanitize()
+    expect(e.marks[0]?.buildName.length, '构筑名没截断 —— 道痕面板一行被撑爆').toBeLessThanOrEqual(20)
+    expect(e.marks[1]?.buildName, '正常构筑名被误伤').toBe('剑修')
+  })
+})
+
+/**
+ * 词条数值的读档上界。
+ *
+ * `sanitizeMods` 原先只查 `Number.isFinite` —— `1e300` 是有限数,原样通过。
+ * 而 `mods` 有三条路:敌人快照、道痕重演、**远征封印**(`sealedMods`)。
+ * 最后一条经 `expedition.ts` 的 `stackedMods` 直接进 `resolveCombat`,
+ * `damageBonus: 1e300` 会让伤害倍率变成 1e300 倍 —— 不是显示问题,是改写战斗结果。
+ *
+ * 上界取一千:百分比词条硬顶在 1(`SOFT_CAPS` 已软限),加法词条满配到不了十倍。
+ *
+ * 故障注入:去掉 `Math.max(-MOD_VALUE_MAX, Math.min(MOD_VALUE_MAX, v))` → 本条红。
+ */
+describe('词条 · 读档数值上界', () => {
+  it('坏值夹到一千,正常值与野 key 各自处置', () => {
+    const e = useEndgameStore()
+    e.marks = [{
+      targetId: 'chiyan',
+      targetName: '赤炎界',
+      life: 1,
+      daoPathId: null,
+      at: 1,
+      cleared: true,
+      rounds: 10,
+      buildName: '探针',
+      powerText: '1',
+      replay: {
+        attack: { m: 1, e: 3 },
+        defense: { m: 1, e: 3 },
+        maxHp: { m: 1, e: 4 },
+        speed: 1,
+        mods: { damageBonus: 1e300, critRate: 0.2, evilKey: 5 },
+        skills: [],
+        artifacts: []
+      }
+    }] as never
+    e.sanitize()
+    const mods = e.marks[0]?.replay?.mods
+    expect(mods?.damageBonus, '词条坏值没夹住 —— 封印会把它叠进战斗').toBeLessThanOrEqual(1000)
+    expect(mods?.critRate, '正常词条被误伤').toBeCloseTo(0.2)
+    expect((mods as unknown as Record<string, unknown>)?.evilKey, '野 key 没清').toBeUndefined()
+  })
+})
+
+/**
+ * 极限纪录值要封顶。
+ *
+ * `LegacyView` 的 `recordRows` 是**裸插值**:`×${r.value}` / `${r.value} ${def.unit}`,
+ * 而 `asFiniteNumber(r.value, 0)` 只挡非有限值 —— 坏档写 `1e300` 是有限数,
+ * 原样通过,界面就印出「×1e+300」。
+ *
+ * 上界 1e12:最宽的一项是道源赏格(DAO_SOURCE_MAX = 1e9),再宽三个数量级。
+ *
+ * 故障注入:把 `RECORD_VALUE_MAX` 从 `asFiniteNumber` 里去掉 → 本条红。
+ */
+describe('极限纪录 · 数值上界', () => {
+  it('坏档写 1e300 夹到上界,真实纪录原样保留', () => {
+    const e = useEndgameStore()
+    e.records = {
+      fastest_world: { value: 1e300, life: 1, note: '探针' },
+      biggest_reward: { value: 5e8, life: 2, note: '探针' }
+    } as never
+    e.sanitize()
+    expect(String(e.records['fastest_world']?.value ?? 0), '界面会印出「×1e+300」').not.toMatch(/e\+\d/)
+    expect(e.records['biggest_reward']?.value, '真实道源赏格被误伤').toBe(5e8)
+  })
+})
+
+/**
+ * 分魂来源名要截。
+ *
+ * 它裸插值进魂库那一行（`凝自「{{ row.soul.fromName }}」`，见 SoulsView），
+ * 原先只判「是不是字符串」—— 坏档塞十万字符会把那行撑爆。
+ * 敌人名在数据表里最长四五个字，取 `NAME_MAX_LENGTH * 2`（16 码点）已极宽。
+ *
+ * 故障注入：去掉 `truncateCodePoints` → 本条红。
+ */
+describe('魂库 · 来源名长度上界', () => {
+  it('超长来源名截断,正常来源名原样', () => {
+    const e = useEndgameStore()
+    const t = SOUL_TYPES[0]!.id
+    e.souls = [
+      { uid: 'u1', type: t, grade: 1, fromName: 'x'.repeat(100_000) },
+      { uid: 'u2', type: t, grade: 2, fromName: '赤炎虎' }
+    ] as never
+    e.sanitize()
+    expect(e.souls[0]?.fromName.length, '来源名没截 —— 会把魂库那一行撑爆').toBeLessThanOrEqual(16)
+    expect(e.souls[1]?.fromName, '正常来源名被误伤').toBe('赤炎虎')
+  })
+})
+
+/**
+ * 远征战报的敌方名要截。
+ *
+ * 它裸插值进两处战报（`第{{ i + 1 }}战 {{ row.foeName }}`，见 ExpeditionPanel 与
+ * BattleReportDialog），原先只判「是不是字符串」—— 坏档塞十万字符会把那一行撑爆。
+ * 敌人名在数据表里最长四五个字，取 `NAME_MAX_LENGTH * 2`（16 码点）已极宽。
+ *
+ * 同段里 `rounds` 早被注释指出「也是裸插值」并夹了 `BATTLE_ROUNDS_CAP`，只有名字漏了。
+ *
+ * 故障注入：去掉 `truncateCodePoints` → 本条红。
+ */
+describe('远征战报 · 敌方名长度上界', () => {
+  it('超长敌方名截断,正常敌方名原样', () => {
+    const e = useEndgameStore()
+    const w = CELESTIAL_WORLDS[0]!
+    e.worldRun = {
+      worldId: w.id,
+      layer: 0,
+      bonus: 0,
+      carriedHpPct: 1,
+      totalRounds: 10,
+      winStacks: 0,
+      pactId: null,
+      gateId: null,
+      rows: [
+        { foeName: 'x'.repeat(100_000), win: true, rounds: 5, hpLeftPct: 0.5 },
+        { foeName: '赤炎虎', win: false, rounds: 3, hpLeftPct: 0 }
+      ]
+    } as never
+    e.sanitize()
+    const r = e.worldRun as unknown as { rows: { foeName: string }[] } | null
+    expect(r?.rows[0]?.foeName.length, '敌方名没截 —— 会把战报那一行撑爆').toBeLessThanOrEqual(16)
+    expect(r?.rows[1]?.foeName, '正常敌方名被误伤').toBe('赤炎虎')
+  })
 })

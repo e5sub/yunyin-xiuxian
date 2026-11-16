@@ -35,6 +35,16 @@ const REGION_WINS_MAX = 10_000
 const SECRET_FIGHT_CAP = 10_000
 
 /**
+ * 秘境战利清单的读档条数上界。
+ *
+ * 正常一趟至多 `SECRET_LAYERS + SECRET_MAX_LOSSES` 条(层数 + 败次各记一行),
+ * 取那个数的四倍作余量。原先这一项原样吃下 —— 坏档写 5000 条,
+ * `SecretRealmCard` 就渲 5000 个 `<span>`(`max-h-24 overflow-y-auto` 只管视觉高度)。
+ * 保留尾部:最新的战利在后面。
+ */
+const SPOILS_CAP = (SECRET_LAYERS + SECRET_MAX_LOSSES) * 4
+
+/**
  * 道侣机缘计数的读档上界。
  *
  * 触发判据是 `opportunities < nextEventAt`,而 `nextEventAt` 由
@@ -585,14 +595,23 @@ export const usePlayerStore = defineStore(
         const themeResult =
           l.themeResult === 'done' || l.themeResult === 'broken' || l.themeResult === 'unfinished' ? l.themeResult : null
         const bond = l.bond && typeof l.bond === 'object' ? l.bond : null
+        /*
+         * 履历这几项都要封顶 —— 它们**全部裸插值进「修行节点」下面那一页**
+         * (LegacyView 的 `寿 {{ l.age }} 载` / `宿慧 +{{ l.insight }}` / `{{ l.realmLabel }}`)。
+         *
+         * 原先只有下限 `Math.max(0, ...)`,而上限一个都没有:坏档写 `age: 1e300`
+         * 会印成「寿 1e+300 载」,`realmLabel` 塞十万字符会把那一行撑到不能看。
+         * `major` 不直接渲染(渲染的是 `realmLabel`),但它进 `worldOf()` 判界域,
+         * 同样夹到真实大境界。
+         */
         out.push({
-          index: Math.max(0, Math.floor(asFiniteNumber(l.index, 0, 0))),
-          major: Math.max(0, Math.floor(asFiniteNumber(l.major, 0, 0))),
-          realmLabel: typeof l.realmLabel === 'string' ? l.realmLabel : '',
-          age: Math.max(0, Math.floor(asFiniteNumber(l.age, 0, 0))),
+          index: Math.max(0, Math.floor(asFiniteNumber(l.index, 0, 0, LIFE_COUNTER_CAP))),
+          major: Math.max(0, Math.floor(asFiniteNumber(l.major, 0, 0, MAX_MAJOR))),
+          realmLabel: typeof l.realmLabel === 'string' ? truncateCodePoints(l.realmLabel, NAME_MAX_LENGTH * 3) : '',
+          age: Math.max(0, Math.floor(asFiniteNumber(l.age, 0, 0, LIFE_COUNTER_CAP))),
           themeId: typeof l.themeId === 'string' && lifeThemeDef(l.themeId) ? l.themeId : null,
           themeResult,
-          insight: Math.max(0, Math.floor(asFiniteNumber(l.insight, 0, 0))),
+          insight: Math.max(0, Math.floor(asFiniteNumber(l.insight, 0, 0, LIFE_COUNTER_CAP))),
           trialId: typeof l.trialId === 'string' && lifeTrialDef(l.trialId) ? l.trialId : null,
           bond: bond
             ? {
@@ -961,7 +980,14 @@ export const usePlayerStore = defineStore(
             // 秘境内胜场;不进判定也不显示,但同样不该是坏档的巨值
             wins: Math.floor(asFiniteNumber(sr.wins, 0, 0, SECRET_FIGHT_CAP)),
             losses: Math.min(SECRET_MAX_LOSSES, Math.floor(asFiniteNumber(sr.losses, 0, 0))),
-            spoils: asStringArray(sr.spoils),
+            /*
+             * 战利清单须封顶。同一块里 `layer` / `wins` / `losses` 都夹了上界,
+             * 只有这一项原先原样吃下 —— 坏档写 5000 条,`SecretRealmCard` 就会
+             * 渲 5000 个 `<span>`(它的 `max-h-24 overflow-y-auto` 只管视觉高度,
+             * 管不住 DOM 节点数)。正常一趟秘境至多 `SECRET_LAYERS + SECRET_MAX_LOSSES` 条,
+             * 上界取那个数再留一倍余量。与行囊 `BAG_CAPACITY` 那处同一类修法。
+             */
+            spoils: asStringArray(sr.spoils).slice(-SPOILS_CAP),
             // 旧说法归一为现行说法并去重
             rules: [...new Set(asStringArray(sr.rules).flatMap(t => secretRuleByText(t)?.text ?? []))],
             carriedHpPct: asCarriedHpPct(sr.carriedHpPct),
@@ -988,8 +1014,12 @@ export const usePlayerStore = defineStore(
          * 玩家看到的是启动即崩,而不是被修好的档。
          * 实测:`lives: undefined` 或 `null` 且身上有道侣时必抛。
          * 用 asArray 兜一下:非数组一律当「无履历」,判据不成立、道侣照常保留(与旧档同义)。
+         *
+         * 还要容忍 `reincarnation` 本身为 null —— 上面那条只兜住了 `lives` 是坏值,
+         * 而整个对象是 null 时 `.lives` 这一句就先抛了(实测 `reincarnation: null` +
+         * 身上有道侣即崩)。用可选链:对象缺失同样按「无履历」处理。
          */
-        const lives = asArray<{ at?: unknown }>(reincarnation.value.lives)
+        const lives = asArray<{ at?: unknown }>(reincarnation.value?.lives)
         const lastLifeAt = lives[lives.length - 1]?.at
         if (typeof lastLifeAt === 'number' && Number.isFinite(lastLifeAt) && bond.value.metAt < lastLifeAt) {
           bond.value = null
@@ -1013,7 +1043,13 @@ export const usePlayerStore = defineStore(
             metAt: asFiniteNumber(b.metAt, Date.now(), 0),
             fallen: b.fallen === true,
             departed: b.departed === true,
-            doneEvents: asStringArray(b.doneEvents),
+            /*
+             * 已完成事件是集合:去重。消费方都按集合用(`new Set(...)` 判「是否已走过」、
+             * `includes` 挡重播),故重复项不影响玩法,只白白撑大存档 ——
+             * 坏档塞五千条同一 id 实测全留。写入侧 `daoluService` 有 `includes` 闸,
+             * 重复只可能来自坏档。
+             */
+            doneEvents: [...new Set(asStringArray(b.doneEvents))],
             /*
              * 道侣机缘的触发判据是 `b.opportunities < b.nextEventAt`,
              * 而 `nextEventAt` 由 `opportunities + EVENT_GAP` 推出来(每 6 次重排一次)。
@@ -1062,7 +1098,19 @@ export const usePlayerStore = defineStore(
          * 判据取「最长时长」:超出它即不可能是正常事件,直接作废。
          */
         const endsRaw = asTimestamp(ev.endsAt, 0)
-        const endsAt = endsRaw > Date.now() + REGION_EVENT_MAX_MINUTES * 60_000 ? 0 : endsRaw
+        /*
+         * 上界须给「时钟回拨」留出余量 —— 155 轮 buff 那条同源。
+         *
+         * 只写 `now + MAX` 时,时钟往回拨会让 `now + MAX` 跟着缩小:
+         * 实测回拨 3 小时后,一个还剩 90 分钟的**合法事件被当场作废**。
+         *
+         * 坏档与「回拨后的合法值」在数值上无法区分(两者都远在 now 之后),
+         * 只能放宽判据:`now + 一天`。这仍能拦住真正的坏档
+         * (`endsAt` 在十天后、或坏档写的远期值),而回拨几小时的合法事件
+         * 不会被误伤 —— 事件最长 120 分钟,回拨到 6 小时以内都安全。
+         */
+        const slackMs = REGION_EVENT_MAX_MINUTES * 60_000 + 24 * 3600_000
+        const endsAt = endsRaw > Date.now() + slackMs ? 0 : endsRaw
         if (!regionOk || endsAt <= 0) regionEvent.value = null
         else regionEvent.value = { ...ev, endsAt }
       }
@@ -1185,11 +1233,18 @@ export const usePlayerStore = defineStore(
        * 坏档写 1e300 时该区域永久「兴盛」;胜场数本身也会印在区域卡上。
        * 上界取一万:一局里在同一区域打几百场已是极值,到不了这个数。
        */
+      /*
+       * 只认真实地界 —— 写入侧(`recordRegionWin`)早有 `regionDef` 闸,
+       * 而读档侧原先漏了:坏档塞三千个野 id 会全留下来。
+       *
+       * 野 id 不渲染、也不影响兴衰判定(那边按 id 查),但它与 `regionWinsLife`
+       * 的**同键约束**会破:下面重建世号时按 `regionDef` 跳过野 id,
+       * 于是两张表键集不一致(注释写着「与 regionWins 同键、须同步」)。
+       */
       regionWins.value = Object.fromEntries(
-        Object.entries(asNumberRecord(regionWins.value, 0)).map(([id, n]) => [
-          id,
-          Math.floor(asFiniteNumber(n, 0, 0, REGION_WINS_MAX))
-        ])
+        Object.entries(asNumberRecord(regionWins.value, 0))
+          .filter(([id]) => !!regionDef(id))
+          .map(([id, n]) => [id, Math.floor(asFiniteNumber(n, 0, 0, REGION_WINS_MAX))])
       )
       // 老档无世号按当前世认,同 regionStats.life 口径
       const rawWinsLife = asNumberRecord(regionWinsLife.value, Number.NaN)
@@ -1221,8 +1276,16 @@ export const usePlayerStore = defineStore(
         const lossCount = Math.floor(asFiniteNumber(n.lossCount, 0, 0, NEMESIS_LOSS_CAP))
         const lastLossAt = asFiniteNumber(n.lastLossAt, 0, 0)
         const avengedAt = typeof n.avengedAt === 'number' && Number.isFinite(n.avengedAt) ? n.avengedAt : undefined
-        const enemyName = typeof n.enemyName === 'string' && n.enemyName ? n.enemyName : n.enemyId
-        const regionId = typeof n.regionId === 'string' ? n.regionId : ''
+        /*
+         * `enemyName` 裸插值进「征战录」那一行(`{{ n.enemyName }}`),须封顶 ——
+         * 坏档塞十万字符会把那行撑到不能看。敌人名在数据表里最长四五个字,
+         * `NAME_MAX_LENGTH * 2`(16 码点)已极宽。空名退到 id(既有行为)。
+         */
+        const enemyName = truncateCodePoints(
+          typeof n.enemyName === 'string' && n.enemyName ? n.enemyName : n.enemyId,
+          NAME_MAX_LENGTH * 2
+        )
+        const regionId = truncateCodePoints(typeof n.regionId === 'string' ? n.regionId : '', NAME_MAX_LENGTH * 2)
         const prev = mergedNemeses.get(n.enemyId)
         if (!prev) {
           mergedNemeses.set(n.enemyId, {

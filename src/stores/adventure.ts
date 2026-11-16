@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type { AdventureSession, CombatResult, CombatSideStats, FoeOrigin, FoeOriginPart, GNum } from '@/types'
 import { persistConfig } from '@/utils/storage'
+import { cmp, gn, gnZero } from '@/utils/gnum'
 import { regionDef, unlockClosure } from '@/data/regions'
 
 /**
@@ -12,6 +13,16 @@ import { regionDef, unlockClosure } from '@/data/regions'
  * 一场历练的胜场不可能过亿 —— 上界宽到不误伤正常档,窄到拦得住 `1e300` 那种坏档。
  */
 const SESSION_COUNT_MAX = 1e8
+/** 战报累加器(灵石/修为)的读档上界:单场实测约 5.25e10,真实累计到不了 1e20 */
+const SESSION_GAIN_MAX = gn(1e20)
+
+/** 际遇记忆的「遇到次数」上界:fortuneEcho 只按 >=2 / >=3 分档,取一千不影响分档 */
+const EVENT_MEMORY_TIMES_MAX = 1000
+
+const clampGain = (v: unknown): GNum => {
+  const g = asBoundedGNum(v)
+  return cmp(g, SESSION_GAIN_MAX) > 0 ? gnZero() : g
+}
 
 /**
  * 敌人加成来源的读档上界(三维倍率 / 增伤减伤)。
@@ -125,8 +136,17 @@ function sanitizeSideStats(raw: unknown): CombatSideStats | null {
   const r = raw as Record<string, unknown>
   const out = {} as Record<string, GNum | number>
   // 读档的 GNum 一律走 asBoundedGNum:gn 不限 e,坏档会让战报印出「1.00e1000000000」
-  for (const key of SIDE_GNUM_KEYS) out[key] = asBoundedGNum(r[key])
-  for (const key of SIDE_COUNT_KEYS) out[key] = Math.max(0, Math.floor(asFiniteNumber(r[key], 0)))
+  /*
+   * 战报遥测也要有量级上界,不能只靠 `asBoundedGNum` 的指数守卫(999)。
+   * 这些数经 `battleAnalysis` 的 `formatGN(p.dealt)` 直接进界面 ——
+   * 坏档写 `9.99e900` 正在界内,原样留下就印出「总输出 9.99e900」。
+   * 上界与 `SESSION_GAIN_MAX` 同一把尺(单场最高层级实测约 5.25e10);
+   * 计数类同理,用 `SESSION_COUNT_MAX`(1e8),与 `wins` / `losses` 那几栏一致。
+   */
+  for (const key of SIDE_GNUM_KEYS) out[key] = clampGain(r[key])
+  for (const key of SIDE_COUNT_KEYS) {
+    out[key] = Math.min(SESSION_COUNT_MAX, Math.max(0, Math.floor(asFiniteNumber(r[key], 0))))
+  }
   return out as unknown as CombatSideStats
 }
 
@@ -241,9 +261,19 @@ export interface LastBattleView {
   loot?: string[]
 }
 
-/** 战力栏修形:gn() 归一,归零视为缺失(卡片 v-if 只渲染有值的 GNum) */
+/**
+ * 战力栏修形:归一,归零视为缺失(卡片 `v-if` 只渲染有值的 GNum)。
+ *
+ * 战力也要有**量级**上界,不能只靠 `asBoundedGNum` 的指数守卫(999)。它是
+ * `powerScore(攻击, 防御, 气血)` 的线性组合,三维受境界与层级约束 ——
+ * 最高境界实测约 2.57e14,所以战力有明确的物理上限。坏档写 `{ m: 1, e: 900 }`
+ * 正在 999 之内,而 `CombatPanel` 是 `formatGN(battle.enemyPower)` 直接插值,
+ * 会印出「敌力 1.00e900」。上界取 `1e18`,比最高境界宽四个数量级。
+ */
+const POWER_SANITY_MAX = gn(1e18)
 function gnStrict(v: unknown): GNum | undefined {
   const g = asBoundedGNum(v)
+  if (cmp(g, POWER_SANITY_MAX) > 0 || cmp(g, gnZero()) < 0) return undefined
   return g.m === 0 && g.e === 0 ? undefined : g
 }
 
@@ -285,7 +315,16 @@ export const useAdventureStore = defineStore(
       if (unlocked.value.length === 0) unlocked.value = ['qingyun']
       mortalCleared.value = [...new Set(asStringArray(mortalCleared.value))]
       cleared.value = [...new Set(asStringArray(cleared.value))].filter(id => !!regionDef(id))
-      revived.value = asStringArray(revived.value).filter(id => !!regionDef(id) && !cleared.value.includes(id))
+      /*
+       * 与同段其他三张表同一口径:先按目录过滤、再去重。
+       *
+       * 写入侧(`markRevived`)有 `includes` 闸,故重复只可能来自坏档;
+       * 而 `revived` 与 `cleared` 是**互斥**关系(同一地界不能既已靖又待再靖),
+       * 留着重复项会让两边条数对不上,也白白撑大存档。
+       */
+      revived.value = [...new Set(asStringArray(revived.value))].filter(
+        id => !!regionDef(id) && !cleared.value.includes(id)
+      )
       /*
        * 通关时刻要按**时间戳**修形,不能只保底。
        *
@@ -328,8 +367,16 @@ export const useAdventureStore = defineStore(
             itemGain: Math.min(SESSION_COUNT_MAX, Math.floor(asFiniteNumber(s.itemGain, 0, 0))),
             // 须经 asBoundedGNum 归一:坏 GNum 会让 exploration 的 add() 每场胜利都抛,历练永久卡死;
             // 它同时带指数上界,裸 gn() 不设界会让本世收益印出「1.00e1000000000」
-            stoneGain: asBoundedGNum(s.stoneGain),
-            expGain: asBoundedGNum(s.expGain)
+            /*
+             * 战报累加器也要有量级上界,不能只靠 `asBoundedGNum` 的指数守卫(999)。
+             * 它是**裸插值进 `formatGN` 再进战报文案**的(见 exploration 的 haul 行),
+             * 坏档写 `9.99e900` 会印出「灵石 +9.99e900」—— 实测 sanitize 不修。
+             * 上界取 `SESSION_GAIN_MAX`(1e20):单场最高层级实测约 5.25e10,
+             * 一场历练最多几十胜,1e20 比任何真实累计都宽。
+             * 这两个数只用于显示(真实入账在 afterWin),故越界归零不影响玩法。
+             */
+            stoneGain: clampGain(s.stoneGain),
+            expGain: clampGain(s.expGain)
           }
         }
       }
@@ -357,11 +404,22 @@ export const useAdventureStore = defineStore(
        */
       const SEEN_ONCE_CAP = (EVENTS.length + FORTUNE_EVENTS.length) * 2
       seenOnceEvents.value = [...new Set(asStringArray(seenOnceEvents.value))].slice(0, SEEN_ONCE_CAP)
+      /*
+       * 际遇记忆三条守卫。
+       *
+       * ① 认不出的 `eventId` 清掉:`recordEvent` 的 key 一律是 `def.id`(真实事件),
+       *    野 id 只可能来自坏档;而它会被 `lossRows` 原样印成「际遇 N 次」。
+       * ② `times` 封顶:`recordEvent` 每次 +1,而 `fortuneEcho` 只按 `>= 2` / `>= 3`
+       *    分档,上界取一千既不影响分档,又拦得住坏档的 `1e300`(会印成科学计数)。
+       * ③ 条数兜底:事件总数有限(见 EVENTS 与 FORTUNE_EVENTS),但坏档能塞任意多 key,
+       *    而 `lossRows` 是 `v-for` 逐条渲。
+       */
       const fixedMemories: Record<string, import('@/types').EventMemory> = {}
       for (const [id, raw] of Object.entries(asRecord<unknown>(eventMemories.value))) {
         if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
+        if (!eventDef(id)) continue
         const m = raw as Partial<import('@/types').EventMemory>
-        const times = Math.floor(asFiniteNumber(m.times, 0, 0))
+        const times = Math.floor(asFiniteNumber(m.times, 0, 0, EVENT_MEMORY_TIMES_MAX))
         if (times <= 0) continue
         const lastAt = asTimestamp(m.lastAt, 0)
         const choiceCount = eventDef(id)?.choices.length ?? 0

@@ -6,6 +6,8 @@ import { useCultivationStore } from '@/stores/cultivation'
 import { useAdventureStore } from '@/stores/adventure'
 import { gn, gnZero, toNum } from '@/utils/gnum'
 import { todayLocalNum } from '@/utils/time'
+import { useUiStore } from '@/stores/ui'
+import { prepareReincarnation, confirmReincarnation } from './reincarnation'
 import {
   dismissCaveEvent,
   dismissEnlightenment,
@@ -24,10 +26,12 @@ import {
   consumeBreakthroughPrep,
   startRetreat,
   isRetreating,
-  getRetreatRemainingSec
+  getRetreatRemainingSec,
+  resetEarlyGameEvents
 } from './earlyGameService'
 import { expFromSecs } from './formulas'
 import { INSTANT_EXP_LAYER_CAP } from '@/data/constants'
+import { CAVE_EVENT_POOL } from '@/data/earlyGame'
 import { BREAKTHROUGH_PREP_OPTIONS } from '@/data/earlyGame'
 
 /*
@@ -134,6 +138,33 @@ describe('洞府巡游(Phase 28)', () => {
     expect(gained, '即时修为不得填满当前这一层').toBeLessThanOrEqual(
       toNum(req) * INSTANT_EXP_LAYER_CAP + 1e-9
     )
+  })
+
+  /**
+   * 落点池为空时的守卫(变异扫描报「改坏了不会红」,现补判据)。
+   *
+   * 现状每个落点都配了事件,故这条分支正常玩法走不到;它防的是
+   * 「某天有人按建筑裁剪事件池、把最后一个删掉」—— 那种改法不会让任何别的用例变红,
+   * 而少了这句守卫,下一行 `pool[floor(random * 0)]` 取到 undefined,
+   * `{ ...undefined, location }` 得到一个没有 title/options 的 caveEvent,
+   * 弹窗随即在 `event.options.map` 上抛。故这里把灵田池临时清空,验它返回 null 且不留残窗。
+   */
+  it('落点的事件池空了:返回 null,不留半个巡游窗', () => {
+    const player = usePlayerStore()
+    vi.spyOn(Math, 'random').mockReturnValue(0.01)
+    const pool = CAVE_EVENT_POOL.field as unknown as unknown[]
+    const saved = [...pool]
+    try {
+      pool.length = 0
+      expect(mayTriggerCaveEvent(), '空池该返回 null,不该拼出一个没有选项的窗').toBeNull()
+      expect(getCurrentCaveEvent(), '没生成事件,不该留下可读的巡游窗').toBeNull()
+    } finally {
+      // 池子直接 push 回去(不换数组引用):同一份数据被别的 spec 共享
+      pool.push(...saved)
+    }
+    // 复原之后再掷,仍能正常出事件 —— 证明上面那条 null 是守卫给的,不是随机数掷败
+    expect(mayTriggerCaveEvent(), '复原事件池后应照常出事件').not.toBeNull()
+    expect(player.lastCaveEventDay, '这一条不是在验今日占用').toBe(0)
   })
 })
 
@@ -638,5 +669,45 @@ describe('闭关(Phase 28 · 接线后:buff 注册/互斥守卫/buff 到期)', (
     expect(cult.hasBuff('retreat')).toBe(false)
     expect(isRetreating()).toBe(false)
     expect(getRetreatRemainingSec()).toBe(0)
+  })
+})
+
+/**
+ * 转世时丢掉本世的浮窗事件。
+ *
+ * 悟道顿悟与洞府巡游存在**模块级变量**里,不在任何 Pinia store 中 ——
+ * `player.rebirth()` 里那一长串归零(道侣、洞府、道途各修过一次)碰不到它们。
+ *
+ * 实测:先掷出一个洞府巡游、再调 `player.rebirth()`,`getCurrentCaveEvent()` 返回的
+ * 仍是那道旧事件;悟道顿悟同样。
+ *
+ * 玩家看到的是:刚转世、道号都换了,上一世的「灵田异象」弹窗又浮上来,
+ * 选完还能拿到那一世的奖励 —— 而那一世的洞府建筑已经归零。
+ * 窗口不长(巡游 2 分钟、顿悟 1 分钟),但弹窗自己不会消失(每秒轮询把它读回来)。
+ *
+ * 判据走真入口 `reincarnation.rebirth`,不直接调 resetEarlyGameEvents ——
+ * 后者在本文件里当然能清,钉不出「转世那条路上有没有接上」。
+ */
+describe('转世 · 本世的浮窗事件不许跨世', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    resetEarlyGameEvents()
+    usePlayerStore().lastCaveEventDay = 0
+  })
+
+  it('掷出洞府巡游后转世:巡游窗不再残留', async () => {
+    const player = usePlayerStore()
+    const ui = useUiStore()
+    player.major = 2
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    expect(mayTriggerCaveEvent(), '夹具没掷出巡游').not.toBeNull()
+    vi.restoreAllMocks()
+    expect(getCurrentCaveEvent(), '转世前该能看到').not.toBeNull()
+
+    // 走真实入口:先备交割单,再确认转世 —— resetEarlyGameEvents 挂在 confirmReincarnation 里
+    ui.reincarnation = prepareReincarnation()
+    await confirmReincarnation(null)
+    expect(getCurrentCaveEvent(), '上一世的巡游窗跟着转世留下来了').toBeNull()
+    expect(getCurrentEnlightenment(), '上一世的顿悟窗也跟着留下来了').toBeNull()
   })
 })

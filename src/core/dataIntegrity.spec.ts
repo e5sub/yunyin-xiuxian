@@ -8,6 +8,9 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { MAX_MAJOR } from '@/data/realms'
+import { EQUIP_LEVEL_SANITIZE_CAP } from '@/data/buildings'
+import { EQUIP_MAX_LEVEL_BASE, FORGE_LEVEL_PER_CAP } from '@/data/constants'
+import { REGION_EVENTS } from '@/data/regionEvents'
 import { REGIONS } from '@/data/regions'
 import { QUALITIES } from '@/data/qualities'
 import { LIFE_THEMES } from '@/data/lifeThemes'
@@ -173,5 +176,50 @@ describe('数据完整性 · 内容门槛必须可达', () => {
     expect(MAX_REGION_TIER).toBeGreaterThan(0)
     expect(MAX_QUALITY_RANK).toBe(8)
     expect(MAX_MAJOR).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * 装备等级有两个上限,公式必须一致。
+ *
+ * `data/buildings.ts` 的 `EQUIP_LEVEL_SANITIZE_CAP`(读档修形用,取满级)
+ * 与 `core/forge.ts` 的 `equipLevelCap()`(执行侧用,取当前级)是同一个算式
+ * —— 但 data 层不能 import core 层,只能各写一份。
+ *
+ * 两份靠人工同步,改一处忘另一处就会分叉:修形比执行宽 → 坏档里超上限的装备能留下来;
+ * 修形比执行窄 → 合法装备被误伤到上限。
+ *
+ * 判据用**纯数据**算一遍(不经 store):满级炼器台的 `maxLevel` 代入
+ * `forgeCapBonus` 的同一个公式,结果须等于 `EQUIP_LEVEL_SANITIZE_CAP`。
+ */
+describe('数据完整性 · 装备等级上限两处同式', () => {
+  it('满级炼器台下,修形上限与执行上限用同一算式', () => {
+    const forge = BUILDINGS.find(b => b.id === 'forge')
+    expect(forge, '炼器台建筑不存在').toBeTruthy()
+    const execAtMax = EQUIP_MAX_LEVEL_BASE + Math.floor(forge!.maxLevel / FORGE_LEVEL_PER_CAP)
+    expect(execAtMax, '两处公式已分叉:改了一处忘另一处').toBe(EQUIP_LEVEL_SANITIZE_CAP)
+  })
+})
+
+/**
+ * 区域动态事件的倍率自洽。
+ *
+ * 这张表是唯一没有任何 spec 覆盖的数据表 —— 它的文案是定性的(「掉落更丰,也更凶险」),
+ * `dataTextAudit` 那套「文案数字 ↔ 数值」的对账用不上。补一条区间判据:
+ *
+ * 三个倍率都是**乘法因子**,小于 1 会把事件变成惩罚(与文案说的「更丰 / 大盛」相反),
+ * 上限取 2/3 —— 超过就是能把结算推高一倍以上,那已经不是「事件」而是翻倍外挂。
+ */
+describe('数据完整性 · 区域事件倍率', () => {
+  it('三个倍率都是区间内的乘法因子,描述非空', () => {
+    for (const e of REGION_EVENTS) {
+      expect(e.rewardMult, `${e.id} 掉落倍率 < 1 会变成惩罚`).toBeGreaterThanOrEqual(1)
+      expect(e.rewardMult, `${e.id} 掉落倍率 > 2 等于翻倍外挂`).toBeLessThanOrEqual(2)
+      expect(e.dangerMult, `${e.id} 危险倍率 < 1 会变成奖励`).toBeGreaterThanOrEqual(1)
+      expect(e.dangerMult, `${e.id} 危险倍率 > 2 会劝退`).toBeLessThanOrEqual(2)
+      expect(e.eventMult, `${e.id} 事件倍率必须为正`).toBeGreaterThan(0)
+      expect(e.eventMult, `${e.id} 事件倍率 > 3 会让事件刷屏`).toBeLessThanOrEqual(3)
+      expect(e.desc.trim().length, `${e.id} 描述为空`).toBeGreaterThan(0)
+    }
   })
 })

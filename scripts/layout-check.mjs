@@ -590,7 +590,7 @@ async function measurePage(page) {
             if (!parent) continue
             byParent.set(parent, [...(byParent.get(parent) ?? []), el])
           }
-          for (const [parent, els] of byParent) {
+          for (const els of byParent.values()) {
             if (els.length < 2) continue
             const on = els.filter(e => e.getAttribute(attr) === 'true').length
             // aria-pressed 允许 0(可取消的开关组);aria-selected 仍要求恰有一个

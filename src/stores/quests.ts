@@ -13,7 +13,7 @@ import { petDef } from '@/data/pets'
 import { eventDef } from '@/data/events'
 import { talentDef } from '@/data/talents'
 import { daoluDef } from '@/data/daolu'
-import { asFiniteNumber, asNumberRecord, asObjectOrNull, asRecord, asStringArray } from '@/utils/saveShape'
+import { asFiniteNumber, asNumberRecord, asObjectOrNull, asRecord, asStringArray, truncateCodePoints } from '@/utils/saveShape'
 
 /**
  * 计数器与日课基线的读档上界。
@@ -98,7 +98,12 @@ export const useQuestsStore = defineStore(
         Object.keys(base).length > 0 && !Object.values(base).some(v => v > COUNTER_MAX)
       const dailyTaskIds = new Set(DAILY_TASKS.map(t => t.id))
       daily.value = {
-        date: typeof d?.date === 'string' ? d.date : '',
+        /*
+         * 日期串也要截。它的合法形只有「YYYY-M-D」(最长 10 字符),而坏档能塞几十万字符 ——
+         * 存档爆量,而这条记录本就不参与任何展示(只经 `dayStrToNum` 的正则解析)。
+         * 截到 16 已宽:正则不匹配即按「没有记录」翻日,与坏值同一条退路。
+         */
+        date: typeof d?.date === 'string' ? truncateCodePoints(d.date, 16) : '',
         base: hasBase ? base : { ...counters.value },
         done: [...new Set(asStringArray(d?.done))].filter(id => dailyTaskIds.has(id))
       }

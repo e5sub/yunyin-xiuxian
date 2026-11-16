@@ -22,6 +22,8 @@ import { ARTIFACT_MAX_LEVEL, ARTIFACT_MAX_SLOTS, artifactDef } from '@/data/arti
 import { STAT_KEYS } from '@/data/statNames'
 import { MAX_MAJOR } from '@/data/realms'
 import { useAdventureStore } from '@/stores/adventure'
+import { useBountyStore } from '@/stores/bounty'
+import { cmp, gn } from '@/utils/gnum'
 import {
   asArray,
   asCarriedHpPct,
@@ -71,12 +73,26 @@ const MAX_MARKS = 60
  * 野键会被 `modDepth` 算进构筑厚度,坏值经 `stackedMods` 把攻防染成 NaN。
  */
 
+/*
+ * 词条数值的读档上界。
+ *
+ * 原先只查 `Number.isFinite` —— `1e300` 是有限数,原样通过。而 `mods` 有三条路:
+ * 敌人快照、道痕重演、**远征封印**(`sealedMods`,直接进 `resolveCombat`)。
+ * `damageBonus: 1e300` 会让伤害倍率变成 1e300 倍 —— 重演那边只是对比失真,
+ * 封印那边是真的改写战斗结果。
+ *
+ * 上界按真实满配算:百分比词条硬顶在 1(`critRate` 这类 `SOFT_CAPS` 已软限),
+ * 加法词条(伤害加成/减伤/属性点)满配到不了个位数的十倍,取一千已极宽。
+ */
+const MOD_VALUE_MAX = 1000
 function sanitizeMods(raw: unknown): StatMods | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const out: StatMods = {}
   for (const key of STAT_KEYS) {
     const v = (raw as StatMods)[key]
-    if (typeof v === 'number' && Number.isFinite(v) && v !== 0) out[key] = v
+    if (typeof v === 'number' && Number.isFinite(v) && v !== 0) {
+      out[key] = Math.max(-MOD_VALUE_MAX, Math.min(MOD_VALUE_MAX, v))
+    }
   }
   return Object.keys(out).length > 0 ? out : null
 }
@@ -90,6 +106,9 @@ function sanitizeMods(raw: unknown): StatMods | null {
  * 赏格被夹在 55–100、入场费恒 20、场数恒 6、锚点层级恒 32。
  */
 const VOID_ANCHOR_TIER_MAX = 64
+
+/** 世界规则文案的读档条数上界:生成器只产 2–3 条,取 16 作余量 */
+const RULE_TEXT_CAP = 16
 const VOID_REWARD_MAX = 200
 const VOID_ENTRY_COST_MAX = 500
 const VOID_FIGHTS_MAX = 20
@@ -111,6 +130,8 @@ const LIFE_COUNTER_CAP = 10_000_000
 
 /** 忆战快照的速度上界:真实量级在 1~3,取一百已极宽 */
 const REPLAY_SPEED_MAX = 100
+/** 道痕重演三维的读档上界:最高境界实测 atk 4.45e13 / def 2.37e13 / hp 5.08e14 */
+const REPLAY_STAT_MAX = gn(1e18)
 
 /**
  * 一趟远征的总回合上界(仅用于无战报行的旧档兜底)。
@@ -123,6 +144,8 @@ const WORLD_RUN_ROUNDS_MAX = 10_000
 const WORLD_CLEARS_MAX = 10_000
 const TRIAL_CLEARS_MAX = 10_000
 const BATTLE_ROUNDS_CAP = 10_000
+/** 极限纪录值的读档上界:最宽的一项是道源赏格(上限 1e9),取 1e12 再宽三个数量级 */
+const RECORD_VALUE_MAX = 1e12
 
 
 /**
@@ -205,7 +228,13 @@ function sanitizeVoidWorld(raw: unknown): CelestialWorldDef | null {
      */
     anchorTier: Math.floor(asFiniteNumber(w.anchorTier, 0, 0, VOID_ANCHOR_TIER_MAX)),
     desc: typeof w.desc === 'string' ? w.desc : '',
-    ruleText: asStringArray(w.ruleText),
+    /*
+     * 规则文案须封顶。同一块里 `anchorTier` / `entryCost` / `fights` / `rewardDaoSource`
+     * 都按生成器的真实产出夹了上界,只有这一项原样吃下 —— 而
+     * `ExpeditionPanel` 是 `v-for` 逐条渲它:坏档写 5000 条就渲 5000 个 `<span>`。
+     * 生成器实际只产 2–3 条(`worldGen` 的 `mutCount = rng.int(2, 3)`),取 16 作余量。
+     */
+    ruleText: asStringArray(w.ruleText).slice(0, RULE_TEXT_CAP),
     rules: asCombatRules(w.rules),
     entryCost: Math.floor(asFiniteNumber(w.entryCost, 0, 0, VOID_ENTRY_COST_MAX)),
     fights: Math.floor(asFiniteNumber(w.fights, 1, 1, VOID_FIGHTS_MAX)),
@@ -239,6 +268,20 @@ function sanitizeMarkReplay(raw: unknown): DaoMark['replay'] | undefined {
    * 正常量级:玩家侧是 `1 + modOf(speed)`,词缀与法宝各加零点几,到不了两位数。
    */
   const speed = asFiniteNumber(r.speed, 0, 0, REPLAY_SPEED_MAX)
+  /*
+   * 三维也要有上界 —— 原先只查非零(`attack.m === 0` 即丢弃)。
+   *
+   * 它们与 `speed` 是同一条路径:快照直接进 `compareSnaps` 重演,
+   * 坏档写 `1e900` 会让「彼时之你」永远赢,「往世 vs 今世」的对比失去意义
+   * (与上面 speed 那段同一个理由,只是 speed 早补了界)。
+   *
+   * 上界按真实最大境界算:最高境界实测 atk 4.45e13 / def 2.37e13 / hp 5.08e14,
+   * 装备与法宝再乘几倍也已包含在内。取 `REPLAY_STAT_MAX`(1e18)——
+   * 与 `POWER_SANITY_MAX` 同一把尺,比真实值宽三到四个数量级。
+   */
+  if (cmp(attack, REPLAY_STAT_MAX) > 0 || cmp(defense, REPLAY_STAT_MAX) > 0 || cmp(maxHp, REPLAY_STAT_MAX) > 0) {
+    return undefined
+  }
   if (attack.m === 0 || defense.m === 0 || maxHp.m === 0 || speed <= 0) return undefined
   const mods = sanitizeMods(r.mods) ?? {}
   const skills = asCombatSkills(r.skills)
@@ -307,7 +350,15 @@ function sanitizeMarks(raw: unknown): DaoMark[] {
       cleared: m.cleared === true,
       // 道痕面板印「{{ mark.rounds }} 回合」,是裸插值;坏档巨值会印成科学计数
       rounds: Math.floor(asFiniteNumber(m.rounds, 0, 0, BATTLE_ROUNDS_CAP)),
-      buildName: typeof m.buildName === 'string' && m.buildName ? m.buildName : '杂学',
+      /*
+       * 构筑名要截到 `NAME_MAX_LENGTH`,与 `loadouts.name` / `records.note` 同一把尺。
+       * `MarksPanel` 是 `{{ row.mark.buildName }}` 直接插值,坏档能塞几十万字符 ——
+       * 道痕面板一行被撑爆,存档也跟着爆量。
+       */
+      buildName:
+        typeof m.buildName === 'string' && m.buildName
+          ? truncateCodePoints(m.buildName.trim(), NAME_MAX_LENGTH) || '杂学'
+          : '杂学',
       powerText: typeof m.powerText === 'string' ? m.powerText : '',
       at: Math.floor(asTimestamp(m.at, 0)),
       ...(typeof m.ruleset === 'string' ? { ruleset: m.ruleset } : {}),
@@ -449,7 +500,12 @@ export const useEndgameStore = defineStore(
             [],
             r => !!r && typeof (r as { foeName?: unknown }).foeName === 'string'
           ).map(r => ({
-            foeName: r.foeName,
+            /*
+             * 敌方名要截 —— 它裸插值进两处战报(`第{{ i + 1 }}战 {{ row.foeName }}`,
+             * 见 ExpeditionPanel 与 BattleReportDialog)。敌人名在数据表里最长四五个字,
+             * `NAME_MAX_LENGTH * 2`(16 码点)已极宽;坏档塞十万字符会把那一行撑爆。
+             */
+            foeName: truncateCodePoints(r.foeName, NAME_MAX_LENGTH * 2),
             win: r.win === true,
             // 战报行里的回合数也是裸插值
             rounds: Math.floor(asFiniteNumber(r.rounds, 0, 0, BATTLE_ROUNDS_CAP)),
@@ -540,7 +596,16 @@ export const useEndgameStore = defineStore(
       )) {
         if (!recordDef(id)) continue
         const r = raw as Partial<{ value: number; life: number; note: string }>
-        const value = asFiniteNumber(r.value, 0)
+        /*
+         * 纪录值要有上界。它是**裸插值进界面**的(见 LegacyView 的 recordRows:
+         * `×${r.value}` / `${r.value} ${def.unit}`),而 `asFiniteNumber(r.value, 0)`
+         * 只挡非有限值 —— 坏档写 `1e300` 是有限数,原样通过,界面就印出「×1e+300」。
+         *
+         * 上界按各条目的真实量级取最宽的一档:道源赏格(上限 1e9)、
+         * 层级倍数(个位)、回合数(1e4)。取 `RECORD_VALUE_MAX`(1e12)——
+         * 比最宽的 1e9 再宽三个数量级,越过的必定是坏档。
+         */
+        const value = asFiniteNumber(r.value, 0, 0, RECORD_VALUE_MAX)
         // 纪录值以正数为语义:0 回合的破界、0 道源的赏格不算成绩
         if (value <= 0) continue
         fixedRecords[id] = {
@@ -580,9 +645,35 @@ export const useEndgameStore = defineStore(
           uid: s.uid,
           type: s.type,
           grade: Math.min(maxSoulGrade, Math.floor(asFiniteNumber(s.grade, 0, 0))),
-          fromName: typeof s.fromName === 'string' ? s.fromName : ''
+          /*
+           * 分魂来源名要截 —— 它裸插值进魂库那一行(`凝自「{{ row.soul.fromName }}」`)。
+           * 敌人名在数据表里最长四五个字,取 `NAME_MAX_LENGTH * 2`(16 码点)已极宽;
+           * 坏档塞十万字符会把那行撑爆(同 `nemeses.enemyName` 的处理)。
+           */
+          fromName: typeof s.fromName === 'string' ? truncateCodePoints(s.fromName, NAME_MAX_LENGTH * 2) : ''
         }))
-      equippedSouls.value = [...new Set(asStringArray(equippedSouls.value))]
+      /*
+       * 魂库条数封顶。
+       *
+       * `souls` 只增不减(每次凝魂追加一枚,散去才减),而 `SoulsView` 有三处
+       * `v-for` 逐条渲(`slotRows` / `idleSouls` / `refinable`)。坏档塞 5000 枚
+       * 合法器魂会被原样吃下,页面渲 5000 行。
+       *
+       * 上界取 `MAX_MARKS`(60):与道痕同为「只增不减的收藏」,而道痕那边已按 60 封过。
+       * 器魂的产出来自分解装备,比道痕更慢,60 对真实玩法绰绰有余。
+       * **无玩法读全量**:`soulService` 只用 `find` 查单个,`SoulsView` 只用它渲染 ——
+       * 故可在此截数据,不必像 `lives` / `bonds` 那样挪到渲染侧。
+       * 截断时**已装配的那几枚必须留住** —— 单纯 `slice(0, MAX_MARKS)` 会把它们连同
+       * 后面的幽灵过滤一起丢掉:实测 100 枚魂、装着第 70 枚时,截完 `souls` 只剩前 60,
+       * 而 `equippedSouls` 随后被 `soulUids` 过滤成空 —— 玩家已装的三缕凭空消失。
+       * 故先装配后其余的,再各自截。
+       */
+      const equippedNow = [...new Set(asStringArray(equippedSouls.value))]
+      const kept = new Set(equippedNow)
+      const pinned = souls.value.filter(s => kept.has(s.uid))
+      const rest = souls.value.filter(s => !kept.has(s.uid)).slice(0, Math.max(0, MAX_MARKS - pinned.length))
+      souls.value = [...pinned, ...rest]
+      equippedSouls.value = equippedNow
       // 清掉已不存在的 uid:否则幽灵占槽,再装配静默失败
       const soulUids = new Set(souls.value.map(s => s.uid))
       // 截到 SOUL_SLOTS,与 equipSoul 的硬闸同尺;保留先装的,与「槽满即拒」同序
@@ -752,10 +843,29 @@ export const useEndgameStore = defineStore(
       return true
     }
 
-    /** 转世:道途与进行中的远征清空,道源与道痕保留 */
+    /**
+     * 转世:道途、进行中的远征、窥探出的虚界一并清空;道源与道痕保留。
+     *
+     * `voidWorld` 原先漏了。它是「上一世窥探出来的那座临时世界」——
+     * 道途一经归还就没有再进去的路由(《道途》页要 `daoPath` 才给入口),
+     * 留着它只在 `celestialWorldDef('void')` 那一支还有效:
+     * 实测转世后 `endgame.voidWorld` 仍是那一座,任何按 id 取「虚界」的世界解析
+     * 都会拿到上一世的它 —— 而那一世的 void 远征早已随 `worldRun` 清掉。
+     *
+     * 更要紧的是**窥探途中转世**那条时序:扣费与 `voidRerolling` 置位都在
+     * `await generateApprovedWorldAsync(...)` 之前,而写 `voidWorld` 在它之后。
+     * 于是转世发生在这段 await 里时,生成照样完成、照样写进去 ——
+     * 玩家转世后会凭空多出一座上一世的虚界。实测(把生成层 mock 成必成功):
+     * `窥探返回 true` / `转世后 voidWorld 有「假虚界」` / `daoPath 为 null`。
+     *
+     * 清在这里是第二道兜底:第一道是 `rerollVoidWorld` 自己回来时复验道途(见那里)。
+     */
     function onRebirth(): void {
       daoPath.value = null
       worldRun.value = null
+      voidWorld.value = null
+      // 悬赏单的赏格按上货时的境界冻结,须随世换新(见 bounty.resetForRebirth)
+      useBountyStore().resetForRebirth()
     }
 
     return {
