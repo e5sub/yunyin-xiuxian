@@ -15,7 +15,15 @@
  */
 import { all, get, run } from './db.js'
 
-export type LevelKind = 'gongfa' | 'building'
+/**
+ * 台账记账的三类:
+ *  - gongfa / building:1.59.1 起(功法学到手与建筑等级)
+ *  - artifact:1.67.0 起(法宝祭炼重数,itemId 是 defId)—— 此前 artifacts[] 完全没有台账,
+ *    改档把重数写成满重就能白拿永久被动
+ *  - vein:1.67.0 起(灵脉投点,itemId 是 VeinId)—— 点数既进服务端算价(悟道点折扣),
+ *    又是采集加成与祭炼折扣的底数,此前可改档写满 100 点
+ */
+export type LevelKind = 'gongfa' | 'building' | 'artifact' | 'vein'
 
 interface StateRow {
   kind: string
@@ -50,7 +58,7 @@ export async function levelHoldings(userId: number): Promise<LevelHoldings> {
   const rows = await all<StateRow>('SELECT kind, item_id, level FROM level_state WHERE user_id = ?', [userId])
   const levels = new Map<string, number>()
   for (const r of rows) {
-    if (r.kind !== 'gongfa' && r.kind !== 'building') continue
+    if (r.kind !== 'gongfa' && r.kind !== 'building' && r.kind !== 'artifact' && r.kind !== 'vein') continue
     levels.set(`${r.kind}:${r.item_id}`, r.level)
   }
   return { seeded: true, levels }
@@ -60,7 +68,11 @@ export async function levelHoldings(userId: number): Promise<LevelHoldings> {
 export async function recordLevelStates(userId: number, entries: readonly LevelEntry[]): Promise<void> {
   const now = Date.now()
   for (const e of entries) {
-    if ((e.kind !== 'gongfa' && e.kind !== 'building') || !idOk(e.itemId)) continue
+    if (
+      (e.kind !== 'gongfa' && e.kind !== 'building' && e.kind !== 'artifact' && e.kind !== 'vein') ||
+      !idOk(e.itemId)
+    )
+      continue
     const level = numOr(e.level, 0)
     if (level < 0) continue
     const prev = await get<{ level: number }>(
@@ -110,6 +122,28 @@ export async function resetLevelStatesFromData(userId: number, data: unknown): P
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
     return raw as Record<string, unknown>
   }
+  const pickVeins = (): Record<string, unknown> => {
+    const slice = root.dongfu
+    if (typeof slice !== 'object' || slice === null || Array.isArray(slice)) return {}
+    const raw = (slice as Record<string, unknown>).veinPoints
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
+    return raw as Record<string, unknown>
+  }
+  const pickArtifacts = (): { defId: string; level: number }[] => {
+    const slice = root.inventory
+    if (typeof slice !== 'object' || slice === null || Array.isArray(slice)) return []
+    const list = (slice as Record<string, unknown>).artifacts
+    if (!Array.isArray(list)) return []
+    const out: { defId: string; level: number }[] = []
+    for (const raw of list) {
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) continue
+      const o = raw as Record<string, unknown>
+      const defId = typeof o.defId === 'string' ? o.defId : ''
+      if (!idOk(defId)) continue
+      out.push({ defId, level: Math.max(0, Math.trunc(numOr(o.level, 0))) })
+    }
+    return out
+  }
   const now = Date.now()
   await run('DELETE FROM level_state WHERE user_id = ?', [userId])
   for (const [id, lv] of Object.entries(pickLearned())) {
@@ -134,20 +168,56 @@ export async function resetLevelStatesFromData(userId: number, data: unknown): P
       now
     ])
   }
+  for (const [id, pts] of Object.entries(pickVeins())) {
+    if (!idOk(id)) continue
+    await run('REPLACE INTO level_state (user_id, kind, item_id, level, updated_at) VALUES (?, ?, ?, ?, ?)', [
+      userId,
+      'vein',
+      id,
+      Math.max(0, Math.trunc(numOr(pts, 0))),
+      now
+    ])
+  }
+  for (const art of pickArtifacts()) {
+    if (!idOk(art.defId)) continue
+    await run('REPLACE INTO level_state (user_id, kind, item_id, level, updated_at) VALUES (?, ?, ?, ?, ?)', [
+      userId,
+      'artifact',
+      art.defId,
+      art.level,
+      now
+    ])
+  }
 }
 
 /**
  * 上传时按台账压回等级。
- * 已播种的档:台账有的条目超出台账的按台账压;台账没有的功法按「至多 1 级」补登(参悟是客户端动作),
+ * 已播种的档:台账有的条目超出台账的按台账压;台账没有的功法分三种(1.67.0):
+ *   · 上次的档里已有 → 历史既成(事件/开局送的),按「至多 1 级」保留;
+ *   · 上次没有、本次新出现 → 每次上传至多 1 部(正常只会是参悟或际遇,一次一部),
+ *     多出来的直接删条目 —— 否则「一次塞满 79 门功法」就等于每门白拿 1 级被动;
+ *   · 参悟本身已上服务端(POST /api/progress/op 的 gongfaLearn),走台账,不占上面这条。
  * 建筑缺行按 0 压(建筑 id 固定,首传已全量入账,缺行只可能是异常)。
  * 未播种的档:把当时的等级一次性入账 —— 存量档唯一一次「采信客户端」。
  * 返回被压回的条目(留痕用);模块抛错由调用方兜底(加固环节不能变成拒收存档)。
  */
-export async function enforceLevelStates(userId: number, data: unknown): Promise<string[]> {
+export async function enforceLevelStates(userId: number, data: unknown, prev?: unknown): Promise<string[]> {
   const root = typeof data === 'object' && data !== null && !Array.isArray(data) ? (data as Record<string, unknown>) : null
   if (root === null) return []
   const corrected: string[] = []
   const entries: LevelEntry[] = []
+  /** 上次落库档里已学的功法:用来区分「既成历史」与「本次新塞」 */
+  const prevRoot = typeof prev === 'object' && prev !== null && !Array.isArray(prev) ? (prev as Record<string, unknown>) : null
+  const prevCult = prevRoot !== null && typeof prevRoot.cultivation === 'object' && prevRoot.cultivation !== null
+    ? (prevRoot.cultivation as Record<string, unknown>)
+    : null
+  const prevLearned = new Set(
+    prevCult !== null && typeof prevCult.learned === 'object' && prevCult.learned !== null
+      ? Object.keys(prevCult.learned as Record<string, unknown>)
+      : []
+  )
+  /** 本次新出现(台账外)的功法计数:一次上传只放行一部 */
+  let newlySeen = 0
 
   const readLevels = (sliceName: string): Record<string, unknown> => {
     const slice = root[sliceName]
@@ -163,9 +233,42 @@ export async function enforceLevelStates(userId: number, data: unknown): Promise
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
     return raw as Record<string, unknown>
   }
+  /** 灵脉点数:dongfu.veinPoints(1.67.0) */
+  const readVeins = (): { id: string; points: number }[] => {
+    const slice = root.dongfu
+    if (typeof slice !== 'object' || slice === null || Array.isArray(slice)) return []
+    const raw = (slice as Record<string, unknown>).veinPoints
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return []
+    const out: { id: string; points: number }[] = []
+    for (const [id, pts] of Object.entries(raw as Record<string, unknown>)) {
+      if (!idOk(id)) continue
+      out.push({ id, points: Math.max(0, Math.trunc(numOr(pts, 0))) })
+    }
+    return out
+  }
+  /** 法宝重数:inventory.artifacts(1.67.0) */
+  const readArtifacts = (): { defId: string; level: number }[] => {
+    const slice = root.inventory
+    if (typeof slice !== 'object' || slice === null || Array.isArray(slice)) return []
+    const list = (slice as Record<string, unknown>).artifacts
+    if (!Array.isArray(list)) return []
+    const out: { defId: string; level: number }[] = []
+    for (const raw of list) {
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) continue
+      const o = raw as Record<string, unknown>
+      const defId = typeof o.defId === 'string' ? o.defId : ''
+      if (!idOk(defId)) continue
+      out.push({ defId, level: Math.max(0, Math.trunc(numOr(o.level, 0))) })
+    }
+    return out
+  }
   const setLevel = (sliceName: 'cultivation' | 'dongfu', key: 'learned' | 'levels', id: string, level: number): void => {
     const slice = root[sliceName] as Record<string, unknown>
-    slice[key] = { ...(slice[key] as Record<string, unknown>), [id]: level }
+    const map = { ...((slice[key] as Record<string, unknown>) ?? {}) }
+    // 0 级等于「没学」:直接删条目而不是写 0,免得存档里留下一条空壳(客户端 sanitize 会删,但落库也该干净)
+    if (level > 0) map[id] = level
+    else delete map[id]
+    slice[key] = map
   }
 
   const holdings = await levelHoldings(userId)
@@ -180,6 +283,12 @@ export async function enforceLevelStates(userId: number, data: unknown): Promise
       if (!idOk(id)) continue
       entries.push({ kind: 'building', itemId: id, level: Math.max(0, Math.trunc(numOr(lv, 0))) })
     }
+    for (const art of readArtifacts()) {
+      entries.push({ kind: 'artifact', itemId: art.defId, level: art.level })
+    }
+    for (const v of readVeins()) {
+      entries.push({ kind: 'vein', itemId: v.id, level: v.points })
+    }
     await recordLevelStates(userId, entries)
     await markLevelsSeeded(userId)
     return []
@@ -190,12 +299,25 @@ export async function enforceLevelStates(userId: number, data: unknown): Promise
     const level = Math.max(0, Math.trunc(numOr(lv, 0)))
     if (level <= 0) continue
     const ledger = holdings.levels.get(`gongfa:${id}`)
-    // 台账没有的功法:参悟合法到手是 1 级,超出的部分压回(1.59.0 前的存量档已随播种入账)
-    const allowed = ledger ?? 1
-    if (level > allowed) {
+    let allowed: number
+    if (ledger !== undefined) {
+      allowed = ledger
+    } else if (prevLearned.has(id)) {
+      // 上次的档里已经学过:历史既成(际遇/开局所授),只压到「参悟到手的 1 级」,
+      // 不删 —— 老档若在校验上线前把等级练高了,这里也不会把人家的功法连根拔掉
+      allowed = Math.min(1, level)
+    } else if (newlySeen < 1) {
+      // 本次新出现且台账里没有:正常只可能是「际遇刚送了一部」,一次上传放行一部
+      allowed = Math.min(1, level)
+      newlySeen += 1
+    } else {
+      // 一次塞进来的第二部起:删条目(0 级 = 没学),它没有任何出处
+      allowed = 0
+    }
+    if (level !== allowed) {
       setLevel('cultivation', 'learned', id, allowed)
       corrected.push(`功法 ${id} 等级 ${level}→${allowed}`)
-      if (ledger === undefined) entries.push({ kind: 'gongfa', itemId: id, level: allowed })
+      if (allowed === 1 && ledger === undefined) entries.push({ kind: 'gongfa', itemId: id, level: 1 })
     }
   }
   for (const [id, lv] of Object.entries(readLevels('dongfu'))) {
@@ -207,6 +329,48 @@ export async function enforceLevelStates(userId: number, data: unknown): Promise
       setLevel('dongfu', 'levels', id, allowed)
       corrected.push(`建筑 ${id} 等级 ${level}→${allowed}`)
     }
+  }
+  /*
+   * 法宝重数(1.67.0):台账没有这件的一律压到 0 —— 与功法不同,法宝是 loot_ledger 逐件签发的
+   * (defId 有出处),所以「台账里没有」只可能是「签发之后改重数」或旧版补登;
+   * 前者该压,后者由播种或下一次祭炼 op 补上。压回时把整条 artifacts 重写,不留半个字段。
+   */
+  /*
+   * 灵脉点数(1.67.0):台账没有的脉压到 0,超出台账的压回台账值。与建筑同规 ——
+   * 投点是单调的(没有退还路径),台账「只升不降」在这里天然成立。
+   */
+  const veins = readVeins()
+  if (veins.length > 0) {
+    const slice = root.dongfu as Record<string, unknown>
+    const map = { ...((slice.veinPoints as Record<string, unknown>) ?? {}) }
+    let touched = false
+    for (const v of veins) {
+      const allowed = holdings.levels.get(`vein:${v.id}`) ?? 0
+      if (v.points > allowed) {
+        map[v.id] = allowed
+        touched = true
+        corrected.push(`灵脉 ${v.id} 点数 ${v.points}→${allowed}`)
+      }
+    }
+    if (touched) slice.veinPoints = map
+  }
+  const arts = readArtifacts()
+  if (arts.length > 0) {
+    const inv = root.inventory as Record<string, unknown>
+    const fixed = arts.map(a => {
+      const allowed = holdings.levels.get(`artifact:${a.defId}`) ?? 0
+      if (a.level > allowed) corrected.push(`法宝 ${a.defId} 重数 ${a.level}→${allowed}`)
+      return { defId: a.defId, level: Math.min(a.level, allowed) }
+    })
+    // 只改 level:artifacts 里可能还有别的版本字段,整条替换会丢
+    const rawList = inv.artifacts as unknown[]
+    inv.artifacts = rawList.map(raw => {
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return raw
+      const o = raw as Record<string, unknown>
+      const defId = typeof o.defId === 'string' ? o.defId : ''
+      const hit = fixed.find(f => f.defId === defId)
+      return hit === undefined ? raw : { ...o, level: hit.level }
+    })
   }
   if (entries.length > 0) await recordLevelStates(userId, entries)
   return corrected

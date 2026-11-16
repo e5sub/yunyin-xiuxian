@@ -11,6 +11,7 @@ import { enforceSaveAuthority } from '@/core/saveAuthority'
 import { expRequirement } from '@/core/formulas'
 import { maxTierForMajor } from '@/data/regions'
 import { MAX_MAJOR } from '@/data/realms'
+import { TALENTS } from '@/data/talents'
 import { toNum } from '@/utils/gnum'
 import type { GNum } from '@/types'
 
@@ -44,6 +45,7 @@ function run(
     prevRebirths?: number
     realmAuthoritative?: boolean
     pendingSpend?: { m: number; e: number }
+    seenBefore?: boolean
   } = {}
 ) {
   const report = enforceSaveAuthority({
@@ -53,7 +55,8 @@ function run(
     elapsedMs: opts.elapsedMs ?? ONE_TICK_MS,
     prevRebirths: opts.prevRebirths,
     realmAuthoritative: opts.realmAuthoritative,
-    pendingSpend: opts.pendingSpend
+    pendingSpend: opts.pendingSpend,
+    seenBefore: opts.seenBefore
   })
   if (report === null) throw new Error('裁决返回 null')
   return report
@@ -358,14 +361,25 @@ describe('数值权威化 · 转世乘区与时间账', () => {
 
   it('天赋数超世号支撑:截断(保留最早的)', () => {
     const next = baseSave()
-    const talents = Array.from({ length: 33 }, (_, i) => `t_${i}`)
+    // 用真实池 id:池外/重复 id 会被另一条判据先剥掉,这条用例只测「数量超世号」
+    const talents = TALENTS.map(t => t.id)
     ;(next.player as Record<string, unknown>).reincarnation = { count: 1, daoFruit: 0, talents }
     const report = run(next, { prev: baseSave(), prevRealmIndex: 0, prevRebirths: 1 })
     const reinc = (report.data.player as Record<string, unknown>).reincarnation as Record<string, unknown>
     // 一世至多 1 + floor(MAX_MAJOR / TALENT_DRAW_DIV) 个
-    expect((reinc.talents as unknown[]).length).toBeLessThan(33)
-    expect((reinc.talents as unknown[])[0]).toBe('t_0')
+    expect((reinc.talents as unknown[]).length).toBeLessThan(TALENTS.length)
+    expect((reinc.talents as unknown[])[0]).toBe(TALENTS[0]!.id)
     expect(report.notes.join(' ')).toContain('天赋数超世号所支撑')
+  })
+
+  it('天赋含池外 id 或重复项:剥掉(1.67.0)', () => {
+    const next = baseSave()
+    const talents = [TALENTS[0]!.id, TALENTS[1]!.id, TALENTS[0]!.id, 't_not_a_talent', 42]
+    ;(next.player as Record<string, unknown>).reincarnation = { count: 3, daoFruit: 0, talents }
+    const report = run(next, { prev: baseSave(), prevRealmIndex: 0, prevRebirths: 3 })
+    const reinc = (report.data.player as Record<string, unknown>).reincarnation as Record<string, unknown>
+    expect(reinc.talents).toEqual([TALENTS[0]!.id, TALENTS[1]!.id])
+    expect(report.notes.join(' ')).toContain('池外 id 或重复项')
   })
 
   it('寿元加算写天文数字:压回绝对上限', () => {
@@ -488,5 +502,82 @@ describe('数值权威化 · 成就与称号(1.59.1)', () => {
     expect(quests.achieved).toEqual(['a_k300'])
     // ti_slayer 是 a_k300 的奖励 → 可兑现;ti_wanfa 没有对应成就 → 剥
     expect(quests.titlesOwned).toEqual(['ti_slayer'])
+  })
+})
+
+/*
+ * 缺片洗基线(1.67.0):云端已有上次的档、这次却少了 resources 分片,只可能是「删片重传」。
+ * 若按「没基线 = 首传」放行,删一次片就能把资源顶到持有上限,花完再来一遍 —— 无限刷。
+ * 判据必须能区分:真首传按上限收(存量档兼容),已上传过则从零起算。
+ */
+describe('数值权威化 · 缺片不能洗基线', () => {
+  function prevWithoutStone(): Record<string, unknown> {
+    const prev = baseSave()
+    delete (prev.resources as Record<string, unknown>).spiritStone
+    return prev
+  }
+  function nextAstronomic(): Record<string, unknown> {
+    const next = baseSave()
+    ;(next.resources as Record<string, unknown>).spiritStone = { m: 9.99, e: 30 }
+    return next
+  }
+
+  it('已上传过却缺灵石栏:只给成批进项的余量,远低于持有上限', () => {
+    const report = run(nextAstronomic(), { prev: prevWithoutStone(), prevRealmIndex: 0, seenBefore: true })
+    const res = report.data.resources as Record<string, unknown>
+    expect(num(res.spiritStone)).toBeLessThan(1e6)
+    expect(report.notes.join(' ')).toContain('灵石超本窗口可增长量')
+  })
+
+  it('真首传(seenBefore 未置)仍按持有上限收 —— 存量档不打回', () => {
+    const fresh = run(nextAstronomic(), { prev: prevWithoutStone(), prevRealmIndex: 0 })
+    const seen = run(nextAstronomic(), { prev: prevWithoutStone(), prevRealmIndex: 0, seenBefore: true })
+    const freshStone = num((fresh.data.resources as Record<string, unknown>).spiritStone)
+    const seenStone = num((seen.data.resources as Record<string, unknown>).spiritStone)
+    expect(freshStone).toBeGreaterThan(seenStone)
+  })
+
+  it('正常档(上次有灵石)不受新判据影响', () => {
+    const prev = baseSave()
+    const next = baseSave()
+    const report = run(next, { prev, prevRealmIndex: 0, seenBefore: true })
+    expect(report.corrections).toEqual([])
+  })
+})
+
+/*
+ * 道源(1.67.0):界外货币,此前只有「>1e9 归零」这一道。它是秘境/挑战/器魂/试炼/远征的门票,
+ * 界内没有熔炉模型时跳过(不拿 0 当上限),界外按同一把 holdCapOf 与 catchUp 裁决。
+ */
+describe('数值权威化 · 道源', () => {
+  const WORLD_INDEX = MAX_MAJOR * 100
+
+  function endgameSave(daoSource: number): Record<string, unknown> {
+    const save = baseSave()
+    ;(save.player as Record<string, unknown>).major = MAX_MAJOR
+    ;(save.player as Record<string, unknown>).sub = 0
+    ;(save.player as Record<string, unknown>).exp = { m: 1, e: 0 }
+    save.endgame = { daoSource }
+    return save
+  }
+
+  it('界外境界写天文道源:压回本窗口可增长量', () => {
+    const report = run(endgameSave(1e6), { prev: endgameSave(0), prevRealmIndex: WORLD_INDEX, seenBefore: true })
+    const eg = report.data.endgame as Record<string, unknown>
+    expect(Number(eg.daoSource)).toBeLessThan(1e6)
+    expect(report.notes.join(' ')).toContain('道源超本窗口可增长量')
+  })
+
+  it('界外境界:不动道源的档原样通过', () => {
+    const report = run(endgameSave(500), { prev: endgameSave(500), prevRealmIndex: WORLD_INDEX, seenBefore: true })
+    expect(report.corrections).toEqual([])
+  })
+
+  it('界内(无熔炉模型)不裁道源 —— 宁可宽,不拿 0 当上限', () => {
+    const next = baseSave()
+    next.endgame = { daoSource: 999 }
+    const report = run(next, { prev: baseSave(), prevRealmIndex: 0, seenBefore: true })
+    expect((report.data.endgame as Record<string, unknown>).daoSource).toBe(999)
+    expect(report.corrections).toEqual([])
   })
 })

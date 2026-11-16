@@ -329,6 +329,23 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
     }
     const now = Date.now()
     /*
+     * 上次落库的档先读出来:验源 / 状态台账 / 等级台账 / 数值裁决都要用它当基线
+     * (1.67.0 起等级台账也要看「上次档里学过什么」,故整段提前到归一化之前)。
+     */
+    const old = await get<{ version: number; data: string; updated_at: number }>(
+      'SELECT version, data, updated_at FROM saves WHERE user_id = ?',
+      [req.user!.id]
+    )
+    let prevData: Record<string, unknown> | null = null
+    if (old !== undefined) {
+      try {
+        const parsed = JSON.parse(old.data) as unknown
+        prevData = typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null
+      } catch {
+        prevData = null
+      }
+    }
+    /*
      * 落库前归一化:野装备 id、超品阶、超词条数、超强化等级、超满级功法、坏大数指数、
      * 境界越界 —— 全部按客户端读档自愈的同一套判据修平再进库。
      * 归一化失败(模块加载不了/分片畸形到链路抛错)按原样落库:加固环节不能变成拒收存档。
@@ -369,15 +386,11 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
      */
     let levelCorrected: string[] = []
     try {
-      levelCorrected = await enforceLevelStates(req.user!.id, normalizedData)
+      levelCorrected = await enforceLevelStates(req.user!.id, normalizedData, prevData)
     } catch {
       levelCorrected = []
     }
 
-    const old = await get<{ version: number; data: string; updated_at: number }>(
-      'SELECT version, data, updated_at FROM saves WHERE user_id = ?',
-      [req.user!.id]
-    )
     /*
      * 数值权威化:客户端上报的数值只是「提议」,落库的是服务端裁决后的结果。
      * 依次裁「境界 → 修为 → 资源 → 装备」,判据全部取自游戏自己的模型
@@ -390,15 +403,6 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       'SELECT realm_index, rebirths FROM profiles WHERE user_id = ?',
       [req.user!.id]
     )
-    let prevData: Record<string, unknown> | null = null
-    if (old !== undefined) {
-      try {
-        const parsed = JSON.parse(old.data) as unknown
-        prevData = typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null
-      } catch {
-        prevData = null
-      }
-    }
     /*
      * 世号基线:profiles.rebirths。
      * 列刚加上时老档一律是 0 —— 若直接当基线,多世玩家的 count/道果/天赋会被一次性砍到「一世」的量
@@ -421,6 +425,12 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       next: normalizedData,
       prevRealmIndex: prevProfileRow?.realm_index ?? 0,
       elapsedMs: old === undefined ? 0 : Math.max(0, now - old.updated_at),
+      /*
+       * 1.67.0:云端**已有**上次的档时,「上次的档里没有某一栏」不能按「没基线」放行 ——
+       * 那是删片洗基线的形状(删掉 resources 传一次,再传满值就能每次顶满上限)。
+       * 真首传(old 不存在)仍按持有上限收,存量档兼容。
+       */
+      seenBefore: old !== undefined,
       // 1.57.0+ 客户端标记:境界只认 profiles(唯一写入口是突破 API),上传里的 major/sub 不采信。
       // 老客户端不带标记,沿用「付得起」预算判据 —— 存量客户端与自建部署的兼容口。
       realmAuthoritative: body.realmAuth === 2,

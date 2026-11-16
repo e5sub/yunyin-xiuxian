@@ -163,13 +163,13 @@ describe('功法参悟边界(comprehendGongfa)', () => {
     setActivePinia(createPinia())
   })
 
-  it('残页不足(page=0):拒绝、不习得、残页不动', () => {
+  it('残页不足(page=0):拒绝、不习得、残页不动', async () => {
     const cul = useCultivationStore()
     const res = useResourcesStore()
     cul.learned = {}
     res.page = 0
     const before = Object.keys(cul.learned).length
-    expect(comprehendGongfa()).toBe(false)
+    expect(await comprehendGongfa()).toBe(false)
     expect(res.page).toBe(0)
     expect(Object.keys(cul.learned).length).toBe(before)
     expect(useUiStore().toasts.at(-1)?.text, '参悟拒因要报实际残页差').toContain(
@@ -177,13 +177,13 @@ describe('功法参悟边界(comprehendGongfa)', () => {
     )
   })
 
-  it('残页足够:成功习得一部,精确扣 COMPREHEND_PAGE_COST 残页,新增份在池内且此前未学', () => {
+  it('残页足够:成功习得一部,精确扣 COMPREHEND_PAGE_COST 残页,新增份在池内且此前未学', async () => {
     const cul = useCultivationStore()
     const res = useResourcesStore()
     cul.learned = {}
     res.page = 1_000_000
     const before = Object.keys(cul.learned)
-    expect(comprehendGongfa()).toBe(true)
+    expect(await comprehendGongfa()).toBe(true)
     expect(res.page).toBe(1_000_000 - COMPREHEND_PAGE_COST)
     const after = Object.keys(cul.learned)
     expect(after.length).toBe(before.length + 1)
@@ -192,13 +192,13 @@ describe('功法参悟边界(comprehendGongfa)', () => {
     expect(before.includes(newId)).toBe(false)
   })
 
-  it('全学(池已空):拒绝、不习得、残页不动', () => {
+  it('全学(池已空):拒绝、不习得、残页不动', async () => {
     const cul = useCultivationStore()
     const res = useResourcesStore()
     // 学满参悟池(minRealm ≤ major(0)+1)
     cul.learned = Object.fromEntries(GONGFA.filter(g => g.minRealm <= 1).map(g => [g.id, 1]))
     res.page = 1000
-    expect(comprehendGongfa()).toBe(false)
+    expect(await comprehendGongfa()).toBe(false)
     expect(res.page).toBe(1000)
   })
 })

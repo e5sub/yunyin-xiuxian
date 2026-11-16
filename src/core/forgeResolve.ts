@@ -456,9 +456,11 @@ export function resolveForgeFromSlices(
 
 /*
  * 一件装备的「权威状态」为 level / affixes / sealedAffixIds / reforgeCount / transferCount /
- * invested / quality 这七个字段。模板与阶数由签发时确定且无处可改,不重复保管;
- * 品质同样是签发时确定的,但它决定词条数上限与成色乘区,自 1.66.2 起一并入账 ——
+ * invested / quality / templateId / tier 这九个字段。
+ * 品质是签发时确定的,但它决定词条数上限与成色乘区,自 1.66.2 起入账 ——
  * 不入账的话,签发到首次上传之间把件改成最高品质,台账照单全收(旧档台账行缺 quality 时不覆盖)。
+ * 模板与阶数同属签发时确定,自 1.67.0 起也入账:上传分片里这两个字段本就没有路径校验,
+ * 而属性是按 tier 乘 powerScale 的 —— 不记账就等于允许把一件兵刃改成「低阶模板 + 本境界最高阶」。
  * 装备/卸下、上锁这类不改变强度的操作也不走台账。
  * 服务端按这组字段写 equip_state(签发 /loot/claim 与 forge op 两处即记)、
  * 上传时按同一组字段覆盖(见 server/src/equipLedger.ts)。

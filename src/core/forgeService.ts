@@ -14,6 +14,7 @@
  */
 import type { EquipmentInstance, EquipSlot, GNum } from '@/types'
 import { EQUIP_SLOT_NAMES, equipmentTemplate } from '@/data/equipment'
+import { artifactDef } from '@/data/artifacts'
 import { formatGN, formatGap } from '@/utils/format'
 import { gnZero, subClamp } from '@/utils/gnum'
 import { useAuthStore } from '@/stores/auth'
@@ -21,12 +22,17 @@ import { useInventoryStore } from '@/stores/inventory'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useUiStore } from '@/stores/ui'
-import { cloudApi, type ForgeOpResponse } from '@/services/cloud'
+import { cloudApi, type ForgeOpResponse, type LevelOpResponse } from '@/services/cloud'
 import { playSfx } from './audio'
 import {
+  artifactBatchPlan,
+  artifactShortfall,
+  artifactUpCost,
   equipSweepPlan,
   equipUpgradeQuote,
   noteUpgrade,
+  upgradeArtifact,
+  upgradeArtifactBatch,
   showUpgradeFeedback,
   upgradeBatchPlan,
   upgradeEquipment,
@@ -55,7 +61,11 @@ import {
   type TransferRun
 } from './affixTransfer'
 import type { ForgeOp, ForgeSpend } from './forgeResolve'
+import { applyLevelSlices, type LevelOp } from './levelResolve'
 import {
+  artifactCapToast,
+  artifactDoneToast,
+  artifactShortToast,
   upgradeBatchBrokenToast,
   upgradeBatchDoneToast,
   upgradeCapToast,
@@ -388,3 +398,98 @@ export async function requestTransfer(req: TransferRequest): Promise<boolean> {
 }
 
 export type { TransferRequest } from './affixTransfer'
+
+/* ---------------- 法宝祭炼(1.67.0 收进服务端) ---------------- */
+
+/**
+ * 祭炼一重 / 连炼。登录走 POST /api/progress/op 的 artifactUpgrade(服务端算价、扣款、改重数,
+ * 并把新重数记进 level_state);未登录走本地同一份纯账层(core/forge 的 upgradeArtifact)。
+ *
+ * 为什么必须走服务端:artifacts[] 此前没有任何台账,equip_state 只管行囊里的 items ——
+ * 改档把重数写成满重,被动就全额进 finalStats,而九重祭炼本该烧掉大量悟道点。
+ */
+async function askLevel(op: LevelOp): Promise<LevelOpResponse | null> {
+  const resources = useResourcesStore()
+  try {
+    return await cloudApi.progressOp({
+      op,
+      wudao: resources.wudao,
+      page: resources.page,
+      ore: resources.ore,
+      stone: resources.spiritStone
+    })
+  } catch {
+    return null
+  }
+}
+
+/** 服务端拒因 → 本地那套文案(与未登录链同一份缺口计算) */
+function artifactFailToast(defId: string, reason: string | undefined): void {
+  const ui = useUiStore()
+  playSfx('warn')
+  if (reason === 'cap') {
+    ui.toast(artifactCapToast(), 'warn')
+    return
+  }
+  const cost = artifactUpCost(defId)
+  if (cost === null) return
+  const gap = artifactShortfall(cost)
+  ui.toast(
+    artifactShortToast(gap.short ?? 'wudao', { wudao: gap.wudao, stone: formatGap(gap.stone) }),
+    'warn'
+  )
+}
+
+export async function requestArtifactUp(defId: string, opts: { quiet?: boolean } = {}): Promise<boolean> {
+  if (!isRemote()) return upgradeArtifact(defId, opts)
+  const res = await askLevel({ op: 'artifactUpgrade', defId, steps: 1 })
+  if (res === null) {
+    if (!opts.quiet) notSettled()
+    return false
+  }
+  if (!res.ok) {
+    if (!opts.quiet) artifactFailToast(defId, res.reason)
+    return false
+  }
+  applyLevelSlices(res.slices)
+  if (!opts.quiet) {
+    const name = artifactName(defId)
+    playSfx('success')
+    useUiStore().toast(artifactDoneToast(name), 'success')
+  }
+  return true
+}
+
+export async function requestArtifactBatch(defId: string): Promise<number> {
+  const plan = artifactBatchPlan(defId)
+  if (plan.levels === 0) {
+    if (plan.atCap) {
+      playSfx('warn')
+      useUiStore().toast(artifactCapToast(), 'warn')
+    } else {
+      artifactFailToast(defId, undefined)
+    }
+    return 0
+  }
+  if (!isRemote()) return upgradeArtifactBatch(defId)
+  // 一次请求炼完(服务端循环与本地同规:缺料即停),只报一次结果
+  const res = await askLevel({ op: 'artifactUpgrade', defId, steps: plan.levels })
+  if (res === null) {
+    notSettled()
+    return 0
+  }
+  applyLevelSlices(res.slices)
+  const done = res.ok ? res.detail?.levels ?? 0 : 0
+  if (done > 0) {
+    playSfx('success')
+    useUiStore().toast(artifactDoneToast(artifactName(defId)), 'success')
+  } else {
+    artifactFailToast(defId, res.reason)
+  }
+  return done
+}
+
+/** 法宝名(提示用);认不出时给一个中性词 */
+function artifactName(defId: string): string {
+  return artifactDef(defId)?.name ?? '此法宝'
+}

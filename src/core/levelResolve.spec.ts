@@ -12,7 +12,11 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { toNum } from '@/utils/gnum'
 import { buildingDef } from '@/data/buildings'
-import { gongfaDef, gongfaMaxLevel } from '@/data/gongfa'
+import { GONGFA, gongfaDef, gongfaMaxLevel } from '@/data/gongfa'
+import { COMPREHEND_PAGE_COST, VEIN_UNLOCK_MAJOR } from '@/data/constants'
+import { ARTIFACTS, ARTIFACT_MAX_LEVEL } from '@/data/artifacts'
+import { useInventoryStore } from '@/stores/inventory'
+import { usePlayerStore } from '@/stores/player'
 import { holdCapOf } from './saveAuthority'
 import { useResourcesStore } from '@/stores/resources'
 import { useCultivationStore } from '@/stores/cultivation'
@@ -138,6 +142,110 @@ describe('升级裁决 · 功法进修', () => {
     const discounted = gongfaUpgradeQuote(G)!.wudao
     expect(discounted).toBeLessThan(full)
     expect(discounted).toBeGreaterThanOrEqual(Math.ceil(full * 0.5))
+  })
+})
+
+describe('升级裁决 · 参悟(1.67.0 收进服务端)', () => {
+  it('成功:扣残页、学一部、detail 报出学的是哪门', () => {
+    const res = useResourcesStore()
+    res.page = 500
+    const out = resolveLevelOnStores({ op: 'gongfaLearn' })
+    expect(out.ok).toBe(true)
+    // 与价签同源:COMPREHEND_PAGE_COST(非 VIP 全价)
+    expect(out.spend.page).toBe(COMPREHEND_PAGE_COST)
+    expect(res.page).toBe(500 - COMPREHEND_PAGE_COST)
+    expect(out.detail.kind).toBe('gongfa')
+    expect(useCultivationStore().learned[out.detail.id]).toBe(1)
+  })
+
+  it('残页不足:拒绝、一笔未扣', () => {
+    const res = useResourcesStore()
+    res.page = COMPREHEND_PAGE_COST - 1
+    const out = resolveLevelOnStores({ op: 'gongfaLearn' })
+    expect(out.ok).toBe(false)
+    expect(out.reason).toBe('page')
+    expect(out.spend.page).toBe(0)
+    expect(res.page).toBe(COMPREHEND_PAGE_COST - 1)
+  })
+
+  it('参悟池已空(minRealm ≤ 当前+1 全学会):拒绝,不动残页', () => {
+    const res = useResourcesStore()
+    res.page = 500
+    useCultivationStore().learned = Object.fromEntries(
+      GONGFA.filter(g => g.minRealm <= 1).map(g => [g.id, 1])
+    )
+    const out = resolveLevelOnStores({ op: 'gongfaLearn' })
+    expect(out.ok).toBe(false)
+    expect(out.reason).toBe('learned')
+    expect(res.page).toBe(500)
+  })
+})
+
+describe('升级裁决 · 法宝祭炼(1.67.0 收进服务端)', () => {
+  const def = ARTIFACTS[0]!
+
+  it('单炼一重:重数 +1,账目对得上,detail 报出前后重数', () => {
+    const inv = useInventoryStore()
+    inv.artifacts = [{ defId: def.id, level: 0 }]
+    const out = resolveLevelOnStores({ op: 'artifactUpgrade', defId: def.id, steps: 1 })
+    expect(out.ok).toBe(true)
+    expect(inv.artifacts[0]!.level).toBe(1)
+    expect(out.spend.wudao).toBeGreaterThan(0)
+    expect(out.detail).toMatchObject({ kind: 'artifact', id: def.id, from: 0, to: 1, levels: 1 })
+  })
+
+  it('连炼到付不起:steps=0 一直炼到余额不足,不越满重', () => {
+    const inv = useInventoryStore()
+    inv.artifacts = [{ defId: def.id, level: 0 }]
+    const out = resolveLevelOnStores({ op: 'artifactUpgrade', defId: def.id, steps: 0 })
+    expect(out.ok).toBe(true)
+    const lv = inv.artifacts[0]!.level
+    expect(lv).toBeGreaterThan(1)
+    expect(lv).toBeLessThanOrEqual(ARTIFACT_MAX_LEVEL)
+    expect(out.detail.levels).toBe(lv)
+  })
+
+  it('满重再炼:拒绝(cap),不扣料', () => {
+    const inv = useInventoryStore()
+    inv.artifacts = [{ defId: def.id, level: ARTIFACT_MAX_LEVEL }]
+    const out = resolveLevelOnStores({ op: 'artifactUpgrade', defId: def.id, steps: 1 })
+    expect(out.ok).toBe(false)
+    expect(out.reason).toBe('cap')
+    expect(out.spend.wudao).toBe(0)
+  })
+
+  it('库里没有这件:拒绝(gone)', () => {
+    useInventoryStore().artifacts = []
+    const out = resolveLevelOnStores({ op: 'artifactUpgrade', defId: def.id, steps: 1 })
+    expect(out.ok).toBe(false)
+    expect(out.reason).toBe('gone')
+  })
+})
+
+describe('升级裁决 · 灵脉投点(1.67.0 收进服务端)', () => {
+  it('单投一点:扣一份灵石、点数 +1、首投立主脉', () => {
+    usePlayerStore().major = VEIN_UNLOCK_MAJOR
+    const res = useResourcesStore()
+    const dongfu = useDongfuStore()
+    dongfu.veinMain = null
+    dongfu.veinPoints = { gather: 0, craft: 0, alchemy: 0, insight: 0 }
+    const out = resolveLevelOnStores({ op: 'veinInvest', id: 'insight', points: 1 })
+    expect(out.ok).toBe(true)
+    expect(dongfu.veinPoints.insight).toBe(1)
+    expect(dongfu.veinMain).toBe('insight')
+    // 单价 = stoneByTier(层级, VEIN_POINT_STONE),非 VIP 全价;投一点即一份
+    expect(toNum(out.spend.stone)).toBeGreaterThan(0)
+    expect(res.spiritStone.e).toBeGreaterThan(0)
+  })
+
+  it('未到解锁境界:拒绝(realm),一点不投', () => {
+    usePlayerStore().major = 0
+    const dongfu = useDongfuStore()
+    dongfu.veinPoints = { gather: 0, craft: 0, alchemy: 0, insight: 0 }
+    const out = resolveLevelOnStores({ op: 'veinInvest', id: 'insight', points: 1 })
+    expect(out.ok).toBe(false)
+    expect(out.reason).toBe('realm')
+    expect(dongfu.veinPoints.insight).toBe(0)
   })
 })
 

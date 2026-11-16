@@ -36,6 +36,11 @@ interface AuthorityInput {
   prevRebirths?: number
   /** 上次存档后成交、尚未兑现的支出(坊市/炼器/升级:石+尘+玄铁+悟道点+残页),从各自可增长量里扣 */
   pendingSpend?: { m: number; e: number; dust?: number; ore?: number; wudao?: number; page?: number }
+  /**
+   * 云端已有上次落库的档。用于区分「真首传」与「上次的档里没有这一栏」(删片洗基线,1.67.0):
+   * 前者按持有上限收(存量档兼容),后者按从零起算(只给成批进项余量)。
+   */
+  seenBefore?: boolean
 }
 
 type AuthorityFn = (input: AuthorityInput) => AuthorityReport | null

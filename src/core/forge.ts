@@ -1,10 +1,11 @@
 /** 炼器服务:强化 / 分解 / 法宝升阶 */
-import type { ArtifactDef, EquipmentInstance, EquipSlot, GNum } from '@/types'
+import type { EquipmentInstance, EquipSlot, GNum } from '@/types'
 import { qualityDef } from '@/data/qualities'
 import { EQUIP_SLOTS, equipmentTemplate } from '@/data/equipment'
-import { artifactDef, ARTIFACT_MAX_LEVEL, ARTIFACT_UP_STONE_TIER, ARTIFACT_UP_WUDAO_BASE } from '@/data/artifacts'
+import { artifactDef, ARTIFACT_MAX_LEVEL } from '@/data/artifacts'
 import { EQUIP_MAX_LEVEL_BASE, UPGRADE_SAFE_STEP } from '@/data/constants'
-import { stoneByTier, upgradeCost, upgradeFailLevel, upgradeSuccessRate } from './formulas'
+import { upgradeCost, upgradeFailLevel, upgradeSuccessRate } from './formulas'
+import { artifactUpCostAt } from './artifactCost'
 import { add, gnZero, isZero, subClamp } from '@/utils/gnum'
 import { formatGN, formatGap } from '@/utils/format'
 import {
@@ -403,20 +404,10 @@ export function decomposeByRanks(ranks: readonly number[]): number {
 }
 
 /**
- * 法宝某一重的单次炼化代价;level ≥ 满重 → null。
- * level 须收成有限整数:内存直塞、$patch 后立刻渲染不经 inventory.sanitize,
- * NaN 会让炼化不扣悟道点、重数涨到顶。
+ * 法宝某一重的单次炼化代价(实现在 core/artifactCost —— 服务端无头结算读同一份)。
+ * 导出照旧从这里走,调用方不必知道价目搬了家。
  */
-export function artifactUpCostAt(def: ArtifactDef, level: number): { wudao: number; stone: GNum } | null {
-  const lv = Number.isFinite(level) ? Math.max(0, Math.floor(level)) : 0
-  if (lv >= ARTIFACT_MAX_LEVEL) return null
-  return {
-    wudao: cutCount(
-      Math.ceil(ARTIFACT_UP_WUDAO_BASE * Math.pow(1.6, lv) * (1 + qualityDef(def.quality).rank * 0.3))
-    ),
-    stone: cutGNum(stoneByTier(def.fromTier, ARTIFACT_UP_STONE_TIER * (1 + lv)))
-  }
-}
+export { artifactUpCostAt }
 
 export function artifactUpCost(defId: string): { wudao: number; stone: GNum } | null {
   const inventory = useInventoryStore()

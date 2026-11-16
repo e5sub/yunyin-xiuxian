@@ -9,6 +9,9 @@ import { playerTier } from './progress'
 import { formatGN, formatGap } from '@/utils/format'
 import { gnZero, mulN, ratio, subClamp } from '@/utils/gnum'
 import { playSfx } from './audio'
+import { useAuthStore } from '@/stores/auth'
+import { cloudApi, type LevelOpResponse } from '@/services/cloud'
+import { applyLevelSlices } from './levelResolve'
 import { usePlayerStore } from '@/stores/player'
 import { useDongfuStore } from '@/stores/dongfu'
 import { useResourcesStore } from '@/stores/resources'
@@ -157,4 +160,83 @@ export function switchMainVein(id: VeinId): boolean {
   playSfx('success')
   ui.toast(veinSwitchDoneToast(veinDef(id).name), 'success')
   return true
+}
+
+/* ---------------- 登录态入口(1.67.0 收进服务端) ---------------- */
+
+/*
+ * 为什么投点也要上服务端:veinPoints 既进服务端算价(levelResolve 的 gongfaUpgradeQuote 读
+ * dongfu.insightDiscount 折悟道点),又是采集加成与祭炼折扣的底数 —— 此前没有任何台账,
+ * 改档把 100 点写满就不必花那 100 份灵石,而且服务端还会按折扣价记账。
+ * 现在点数记进 level_state(kind='vein'),上传时按台账压回;价目与上限判据两端共用本文件的函数。
+ */
+function veinRejectToast(id: VeinId, reason: string | undefined): void {
+  const dongfu = useDongfuStore()
+  const ui = useUiStore()
+  playSfx('warn')
+  if (reason === 'max') {
+    // 「满却」与「总容量尽」是两句不同的话:前者这条脉到顶,后者是 100 点都投完了
+    if ((dongfu.veinPoints[id] ?? 0) >= veinCap(id)) ui.toast(veinPeakToast(dongfu.veinMain === id), 'warn')
+    else ui.toast(veinFullToast(), 'warn')
+    return
+  }
+  if (reason === 'realm') return
+  ui.toast(veinShortToast(formatGap(veinPointShortfall())), 'warn')
+}
+
+/** 投一点;成功不噪(面板数字自己会动),失败照本地链那套文案 */
+export async function requestVeinInvest(id: VeinId): Promise<boolean> {
+  if (!useAuthStore().loggedIn) return investVein(id)
+  const resources = useResourcesStore()
+  let res: LevelOpResponse | null = null
+  try {
+    res = await cloudApi.progressOp({
+      op: { op: 'veinInvest', id, points: 1 },
+      stone: resources.spiritStone
+    })
+  } catch {
+    res = null
+  }
+  if (res === null) {
+    playSfx('warn')
+    useUiStore().toast('未能结算', 'warn')
+    return false
+  }
+  if (!res.ok) {
+    veinRejectToast(id, res.reason)
+    return false
+  }
+  applyLevelSlices(res.slices)
+  return true
+}
+
+/** 连投;返回实际投出的点数(0 = 一注未成) */
+export async function requestVeinBatch(id: VeinId): Promise<number> {
+  if (!useAuthStore().loggedIn) return investVeinBatch(id)
+  const resources = useResourcesStore()
+  let res: LevelOpResponse | null = null
+  try {
+    res = await cloudApi.progressOp({
+      op: { op: 'veinInvest', id, points: 0 },
+      stone: resources.spiritStone
+    })
+  } catch {
+    res = null
+  }
+  const ui = useUiStore()
+  if (res === null) {
+    playSfx('warn')
+    ui.toast('未能结算', 'warn')
+    return 0
+  }
+  if (!res.ok) {
+    veinRejectToast(id, res.reason)
+    return 0
+  }
+  applyLevelSlices(res.slices)
+  const points = res.detail?.levels ?? 0
+  const stone = res.spend?.stone
+  playSfx('success')
+  ui.toast(veinBatchDoneToast(veinDef(id).name, points, formatGN(stone ?? gnZero())), 'success')
+  return points
 }

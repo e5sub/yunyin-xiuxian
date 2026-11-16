@@ -47,12 +47,45 @@ export function learnRandomGongfa(specificId?: string): string | null {
   return picked.name
 }
 
-/** 藏经阁参悟:消耗残页随机习得 */
-export function comprehendGongfa(): boolean {
+/**
+ * 藏经阁参悟:消耗残页随机习得。
+ *
+ * 登录态走服务端裁决(POST /api/progress/op 的 gongfaLearn,见 core/levelResolve):
+ * 算价、扣残页、从池里挑哪一部都在服务端跑,并把「学到了哪门」记进 level_state 台账 ——
+ * 此前整条链在客户端,改档就能把 79 门功法直接写进 learned(每门白拿 1 级被动)。
+ * 未登录(单机)仍走本地同一份纯账层,权重与池条件一致。
+ */
+export async function comprehendGongfa(): Promise<boolean> {
   const resources = useResourcesStore()
   const ui = useUiStore()
-  // VIP 有效期内九折:判据、缺口提示与扣款用同一个数
+  // VIP 有效期内九折:判据、缺口提示与扣款用同一个数(服务端读同一处 cutCount)
   const cost = cutCount(COMPREHEND_PAGE_COST)
+  if (useAuthStore().loggedIn) {
+    let res: LevelOpResponse | null = null
+    try {
+      res = await cloudApi.progressOp({ op: { op: 'gongfaLearn' }, wudao: resources.wudao, page: resources.page })
+    } catch {
+      res = null
+    }
+    if (res === null) {
+      playSfx('warn')
+      ui.toast('未能结算', 'warn')
+      return false
+    }
+    if (!res.ok) {
+      if (res.reason === 'learned') ui.toast(gongfaAllLearnedToast(), 'info')
+      else if (res.reason === 'page') ui.toast(gongfaPageShortToast(Math.max(0, cost - resources.page)), 'warn')
+      else playSfx('warn')
+      return false
+    }
+    applyLevelSlices(res.slices)
+    const def = gongfaDef(res.detail?.id ?? '')
+    if (def) {
+      ui.toast(gongfaComprehendToast(def.name), 'rare')
+      celebrateTreasure({ kind: 'gongfa', gongfa: def })
+    }
+    return true
+  }
   if (!resources.hasSmall('page', cost)) {
     ui.toast(gongfaPageShortToast(Math.max(0, cost - resources.page)), 'warn')
     return false

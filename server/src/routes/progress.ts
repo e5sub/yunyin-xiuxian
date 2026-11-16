@@ -164,11 +164,19 @@ progressRouter.post('/progress/op', requireAuth, (req: Request, res: Response) =
     } catch {
       /* 记不上只是这一次不扣,不影响本次结算 */
     }
-    // 等级入账(1.59.1):新等级进了台账,上传存档时才能按台账压回直注的等级
+    // 等级入账(1.59.1:功法/建筑,1.67.0:法宝重数):新等级进了台账,上传存档时才能按台账压回直注的等级
     try {
+      const kind =
+        result.detail.kind === 'gongfa'
+          ? 'gongfa'
+          : result.detail.kind === 'artifact'
+            ? 'artifact'
+            : result.detail.kind === 'vein'
+              ? 'vein'
+              : 'building'
       await recordLevelStates(userId, [
         {
-          kind: result.detail.kind === 'gongfa' ? ('gongfa' as const) : ('building' as const),
+          kind,
           itemId: result.detail.id,
           level: result.detail.to
         }

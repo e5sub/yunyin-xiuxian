@@ -7,11 +7,16 @@
  *   「不超过上限」,钳不住「上限之内凭空得来」。现在强化/重铸/词条转移的唯一写入口是
  *   POST /api/forge/op,签发后把该件的新状态记在这里;上传存档时按台账覆盖客户端自报的值。
  *
- * 只管「原地改件」的七个字段:level / affixes / sealedAffixIds / reforgeCount / transferCount /
- * invested / quality。模板与阶数由签发时确定且无处可改,不重复保管;品质同样是签发时确定的,
- * 但它决定词条数上限与成色乘区 —— 不入账的话,改包把每件都写成最高品质就能白拿一整轮词条,
- * 故 1.66.2 起一并入账(旧行缺 quality 时不覆盖,随下一次 op/补登自然补上);
- * 装备/卸下、上锁这类不改变强度的操作也不走台账。
+ * 只管「原地改件」的九个字段:level / affixes / sealedAffixIds / reforgeCount / transferCount /
+ * invested / quality / templateId / tier。
+ * 模板与阶数在 1.67.0 前不入账(理由是「签发时已确定且无处可改」),但上传分片里的这两个字段
+ * 并没有任何路径校验:客户端把一件练气期的兵刃改成「低阶模板 + 本境界最高 tier」,
+ * 形状完全合法(sanitize 只钳 tier ≤ maxTierForMajor,不问模板阶与实例阶是否一致),
+ * 而 resolveEquipStats 是按 inst.tier 乘 powerScale 的 —— 等于白拿本境界最强件的属性。
+ * 故一并入账:签发与播种时都是服务端自己算出的整件,记下来就是权威值。
+ * 品质同样是签发时确定的,但它决定词条数上限与成色乘区 —— 不入账的话,改包把每件都写成
+ * 最高品质就能白拿一整轮词条,故 1.66.2 起一并入账(旧行缺 quality 时不覆盖,随下一次
+ * op/补登自然补上);装备/卸下、上锁这类不改变强度的操作也不走台账。
  *
  * 播种只此一次:存量档首次过账时把当时持有的件按当时状态入账(旧物来源无从考证,不追溯),
  * 标记落在 equip_seed 表 —— 删档重传不重播,否则「造一件 → 删档 → 重播」就是作弊环
@@ -54,7 +59,10 @@ function stateOf(item: Record<string, unknown>): Record<string, unknown> {
     invested: isPlainObject(item.invested) ? item.invested : { dust: 0, stone: { m: 0, e: 0 } },
     // 品质是签发时确定的权威值(掉落后无任何合法改动路径),入账后在覆盖时一并按台账回写;
     // 空串表示「这件入账时拿不到品质」(旧版补登),applyRow 见空串不覆盖
-    quality: typeof item.quality === 'string' ? item.quality.slice(0, 24) : ''
+    quality: typeof item.quality === 'string' ? item.quality.slice(0, 24) : '',
+    // 模板与阶数同属签发时确定(1.67.0):空串/0 表示旧版补登,applyRow 见之不动
+    templateId: typeof item.templateId === 'string' ? item.templateId.slice(0, 64) : '',
+    tier: Math.max(0, Math.trunc(numOr(item.tier, 0)))
   }
 }
 
@@ -166,7 +174,9 @@ function applyRow(item: Record<string, unknown>, row: { level: number; state: Re
     o.reforgeCount,
     o.transferCount,
     o.invested,
-    o.quality
+    o.quality,
+    o.templateId,
+    o.tier
   ]
   const before = JSON.stringify(pick(item))
   item.level = row.level
@@ -178,6 +188,14 @@ function applyRow(item: Record<string, unknown>, row: { level: number; state: Re
   // 品质按台账回写;旧行(1.66.2 前入账)没有 quality 字段时不动,留待下一次 op 补上
   if (typeof row.state.quality === 'string' && row.state.quality !== '') {
     item.quality = row.state.quality
+  }
+  // 模板与阶数(1.67.0)同理:旧行没这两个字段时不动 —— 宁可这一件按上传值走,
+  // 也不要把它的模板洗成空串/阶洗成 0(那会让一件真装备变成无属性旧物)
+  if (typeof row.state.templateId === 'string' && row.state.templateId !== '') {
+    item.templateId = row.state.templateId
+  }
+  if (typeof row.state.tier === 'number' && Number.isFinite(row.state.tier) && row.state.tier > 0) {
+    item.tier = row.state.tier
   }
   return before !== JSON.stringify(pick(item))
 }

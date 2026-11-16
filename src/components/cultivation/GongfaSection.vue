@@ -195,7 +195,7 @@
         <p v-if="activeGongfaItems.length === 0" class="px-2.5 py-5 text-center text-[10px] text-ink-faint">暂无功法</p>
       </div>
 
-      <button class="btn-ghost w-full" :disabled="!canComprehend" @click="comprehendGongfa()">
+      <button class="btn-ghost w-full" :disabled="!canComprehend" @click="void comprehendGongfa()">
         参悟功法(残页×{{ comprehendCost }})
         <span v-if="comprehendLeft === 0" class="ml-1 text-[10px] text-ink-faint">· {{ gongfaAllLearnedToast() }}</span>
         <span v-else-if="pageShort > 0" class="ml-1 text-[10px] text-ink-faint">· 尚差 {{ pageShort }} 页</span>

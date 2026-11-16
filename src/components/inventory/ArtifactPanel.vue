@@ -122,7 +122,7 @@
           class="btn-ghost w-full !py-1.5 !text-[12px] tabular"
           :disabled="!row.upCost || row.short?.short != null"
           :title="row.upCost ? undefined : artifactCapToast()"
-          @click="upgradeArtifact(row.def.id)"
+          @click="void requestArtifactUp(row.def.id)"
         >
           <!-- 两种代价都须写出:炼化扣悟道点与灵石(见 forge.artifactUpCost) -->
           <template v-if="row.upCost">炼化(悟道 {{ row.upCost.wudao }} · 灵石 {{ formatGN(row.upCost.stone) }})</template>
@@ -184,7 +184,8 @@ import {
   ARTIFACT_SLOT_UNLOCK_MAJOR,
   artifactSlotsFor
 } from '@/data/artifacts'
-import { artifactBatchPlan, artifactShortfall, artifactUpCost, upgradeArtifact, upgradeArtifactBatch } from '@/core/forge'
+import { artifactBatchPlan, artifactShortfall, artifactUpCost } from '@/core/forge'
+import { requestArtifactBatch, requestArtifactUp } from '@/core/forgeService'
 import { STAT_NAMES, statCaveat, statModPhrase } from '@/data/statNames'
 import { artifactSlotReplacedToast, artifactToggleToast } from '@/ui/inventoryText'
 import { artifactCapToast } from '@/ui/forgeText'
@@ -270,7 +271,7 @@ function toggleArtifact(defId: string): void {
 const batchArtConfirm = ref<string | null>(null)
 function runArtifactBatch(defId: string): void {
   batchArtConfirm.value = null
-  upgradeArtifactBatch(defId) // toast 由服务报
+  void requestArtifactBatch(defId) // toast 由服务报
 }
 
 function artifactShortText(short: NonNullable<(typeof artifactRows.value)[number]['short']>): string {

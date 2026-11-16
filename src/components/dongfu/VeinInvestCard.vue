@@ -169,7 +169,7 @@
   import { VEINS, veinDef, type VeinId } from '@/data/veins'
   import { veinEffectText, veinFullToast, veinPeakToast } from '@/ui/veinText'
   import { axisPct, veinBudget } from '@/ui/veinShape'
-  import { investVein, investVeinBatch, veinCap, veinInvestPlan, veinPointCost, veinPointShortfall, veinSwitchCost, veinSwitchShortfall, switchMainVein, type VeinInvestPlan } from '@/core/veinService'
+  import { requestVeinBatch, requestVeinInvest, veinCap, veinInvestPlan, veinPointCost, veinPointShortfall, veinSwitchCost, veinSwitchShortfall, switchMainVein, type VeinInvestPlan } from '@/core/veinService'
   import { VEIN_MAIN_CAPACITY, VEIN_SIDE_CAP, VEIN_TOTAL_CAPACITY, VEIN_UNLOCK_MAJOR } from '@/data/constants'
   import { formatGN, formatGap } from '@/utils/format'
 
@@ -306,7 +306,7 @@
   const batchArm = ref<VeinId | null>(null)
   function runBatch(veinId: VeinId): void {
     batchArm.value = null
-    investVeinBatch(veinId) // toast 由服务报
+    void requestVeinBatch(veinId) // toast 由服务报
   }
 
   /** 改立主脉二步确认态 */
@@ -323,6 +323,6 @@
   }
 
   function doInvest(veinId: VeinId): void {
-    investVein(veinId)
+    void requestVeinInvest(veinId)
   }
 </script>

@@ -32,6 +32,7 @@ import { AGE_YEARS_PER_HOUR, QI_BANK_MULT, SUB_LEVELS, TALENT_DRAW_DIV } from '@
 import { ACHIEVEMENTS, titleIdsFromAchieved } from '@/data/achievements'
 import { MAX_MAJOR } from '@/data/realms'
 import { maxTierForMajor } from '@/data/regions'
+import { TALENTS } from '@/data/talents'
 import { auditEra } from '@/core/economySim'
 
 /** 资源持有上限按「满产出多少小时」折算:720 小时(30 天),远超任何正常囤积习惯 */
@@ -102,6 +103,13 @@ export interface AuthorityInput {
    * 各键缺省按 0(1.58.3 起炼器记账,1.59.0 起功法进修/建筑升级也记账,老调用方不传不会误伤)。
    */
   pendingSpend?: { m: number; e: number; dust?: number; ore?: number; wudao?: number; page?: number }
+  /**
+   * 云端**已有**上次落库的档(老调用方不传按 true 处理,与 1.66 及以前行为一致)。
+   *
+   * 只用来区分「真首传」与「上次的档里没有这一栏」:前者要给存量档兼容(只按持有上限收),
+   * 后者只可能是把分片删掉重传 —— 基线被洗成「无」之后再传满值,就能每次顶满上限(1.67.0)。
+   */
+  seenBefore?: boolean
 }
 
 export interface AuthorityCorrection {
@@ -378,27 +386,40 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
       notes.push(`佩戴的称号无可兑现的成就(${worn})`)
     }
 
+    /*
+     * ---------- 资源 / 道源的共同尺 ----------
+     * 取「上次与本次境界的较大者」的产出模型:玩家在这一段里升过境就按高境界算,不误伤。
+     * 产出模型给的是「每小时」:统一换成小时再乘,别拿秒数直接乘(差 3600 倍)。
+     * 资源与道源(界外货币)共用 elapsedHours / capMajor / catchUpCeil,不出现第二套窗口口径。
+     */
+    const capMajor = Math.max(prevRealm.major, nextMajor)
+    const elapsedHours = Math.max(0, input.elapsedMs) / 3_600_000
+    const prevRes = objOf(input.prev?.resources)
+    /*
+     * 「上次的档里没有这一栏」的两种处境(1.67.0):
+     *   · 真首传(云端根本没有旧档):存量档兼容,只按持有上限收 —— 老玩家不该被打回。
+     *   · 已经上传过、这一栏却不在上次的档里:只可能是「删片洗基线」。
+     *     若也按上限放行,「删掉 resources 传一次 → 再传满值」就是每次顶满 cap 的无限刷,
+     *     与「本窗口只能涨 5% 上限」的设计正好相反。这里按**从零起**算,只给成批进项的余量。
+     */
+    const freshUpload = input.seenBefore !== true
+    /**
+     * 一次上传允许的资源**增量**(1.58.1):只看「持有上限」时,把数值一次写到上限就等于
+     * 永远满仓(上限本身是 720 小时满产出的量)。这里再叠一层「追赶速度」——
+     * 本窗口最多长到 `上次值 + max(产速 × 窗口 × 4, 上限 × 0.3)`。
+     * 4 倍覆盖离线段的各种加成叠加,0.3 是「卖一背包、领一批奖励」这类成批进项的余量。
+     *
+     * 说明:这是「不许一步到位」,不是「严格按产速记账」—— 游戏里卖件、领奖都是即时的成批进项,
+     * 真按产速记账会把正常玩家误判成作弊;要彻底收口得把经济动作本身搬上服务端。
+     */
+    const catchUpCeil = (prevValue: number | null, produced: number, cap: number): number => {
+      const burst = Math.max(produced * RESOURCE_CATCHUP_MULT, cap * RESOURCE_BURST_FRACTION)
+      if (prevValue === null) return freshUpload ? cap : Math.min(cap, burst)
+      return Math.min(cap, prevValue + burst)
+    }
+
     // ---------- 资源 ----------
     if (nextRes !== null) {
-      // 取「上次与本次境界的较大者」的产出模型:玩家在这一段里升过境就按高境界算,不误伤
-      const capMajor = Math.max(prevRealm.major, nextMajor)
-      // 产出模型给的是「每小时」:统一换成小时再乘,别拿秒数直接乘(差 3600 倍)
-      const elapsedHours = Math.max(0, input.elapsedMs) / 3_600_000
-      const prevRes = objOf(input.prev?.resources)
-      /**
-       * 一次上传允许的资源**增量**(1.58.1):只看「持有上限」时,把数值一次写到上限就等于
-       * 永远满仓(上限本身是 720 小时满产出的量)。这里再叠一层「追赶速度」——
-       * 本窗口最多长到 `上次值 + max(产速 × 窗口 × 4, 上限 × 0.3)`。
-       * 4 倍覆盖离线段的各种加成叠加,0.3 是「卖一背包、领一批奖励」这类成批进项的余量。
-       * 没有上次基线(首传/删档重传)时不套这一层,只按持有上限收。
-       *
-       * 说明:这是「不许一步到位」,不是「严格按产速记账」—— 游戏里卖件、领奖都是即时的成批进项,
-       * 真按产速记账会把正常玩家误判成作弊;要彻底收口得把经济动作本身搬上服务端。
-       */
-      const catchUpCeil = (prevValue: number | null, produced: number, cap: number): number => {
-        if (prevValue === null) return cap
-        return Math.min(cap, prevValue + Math.max(produced * RESOURCE_CATCHUP_MULT, cap * RESOURCE_BURST_FRACTION))
-      }
       const stoneCap = holdCapOf(capMajor, 'stone')
       const curStone = gnumOf(nextRes.spiritStone)
       if (stoneCap > 0 && curStone !== null) {
@@ -466,6 +487,33 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
         corrections.push({ path: 'resources.qi', before: nextRes.qi, after: Math.floor(qiCeil) })
         nextRes.qi = Math.floor(qiCeil)
         notes.push('灵气超积余上限')
+      }
+    }
+
+    // ---------- 道源:界外货币(1.67.0)----------
+    /*
+     * 道源是秘境 / 挑战 / 器魂凝炼 / 试炼 / 远征入场 / 虚界重掷的通用门票,此前只有
+     * stores/endgame 的「越界归零」(>1e9 才作废,界内任取)。改包填一笔就能无限入场,
+     * 而入场换来的掉落、器魂各有签发账,钱本身却没有出处。
+     *
+     * 判据不另设:界外境界的 `auditEra` 里已有一条 'daoSource' 流(furnace.potential),
+     * 与灵石/灵草用同一把 holdCapOf 与同一套 catchUp 窗口。
+     * 界内没有熔炉模型(cap 恒 0)时跳过 —— 那条境界的道源来源本就不由熔炉给出,
+     * 拿 0 当上限会把「秘境攒下的几百道源」清零(违反本模块「模型给不出产出就不裁」的边界)。
+     */
+    const nextEndgame = objOf(next.endgame)
+    if (nextEndgame !== null) {
+      const daoCap = holdCapOf(capMajor, 'daoSource')
+      if (daoCap > 0) {
+        const prevDao = finiteNum(objOf(prevData.endgame)?.daoSource)
+        const producedDao = (incomeOf(capMajor).daoSource ?? 0) * elapsedHours
+        const ceil = catchUpCeil(prevDao, producedDao, daoCap)
+        const curDao = numOf(nextEndgame.daoSource)
+        if (curDao > ceil) {
+          corrections.push({ path: 'endgame.daoSource', before: nextEndgame.daoSource, after: Math.floor(ceil) })
+          nextEndgame.daoSource = Math.floor(ceil)
+          notes.push(`道源超本窗口可增长量(${Math.floor(ceil)})`)
+        }
       }
     }
 
@@ -539,12 +587,31 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
       }
       const talentCeil = count * (1 + Math.floor(MAX_MAJOR / TALENT_DRAW_DIV))
       const talents = nextReinc.talents
-      if (Array.isArray(talents) && talents.length > talentCeil) {
+      if (Array.isArray(talents)) {
+        /*
+         * 内容也要验(1.67.0):只裁数量时,单世能止步于 `count × 每世抽取数` 条,
+         * 但挑哪几条由客户端说了算 —— 33 个天赋里把三条最强的塞进来,形状完全合法。
+         * 判据只有池内与去重两条(天赋没有第二次抽取的历史,重复 id 是改包才会出现的形状);
+         * 「该抽到几品」验不了(掷点在客户端且无留痕),这条边界与计数型成就同源。
+         */
+        const seenTalent = new Set<string>()
+        const fixedTalents = talents.filter((id): id is string => {
+          if (typeof id !== 'string' || seenTalent.has(id)) return false
+          if (!TALENTS.some(t => t.id === id)) return false
+          seenTalent.add(id)
+          return true
+        })
         // 顺序即获得顺序:保留最早的,砍掉后塞进来的
-        const kept = talents.slice(0, talentCeil)
-        corrections.push({ path: 'player.reincarnation.talents', before: talents, after: kept })
-        nextReinc.talents = kept
-        notes.push(`天赋数超世号所支撑(${count} 世 × 每世抽取数)`)
+        const kept = fixedTalents.slice(0, talentCeil)
+        if (kept.length !== talents.length) {
+          corrections.push({ path: 'player.reincarnation.talents', before: talents, after: kept })
+          nextReinc.talents = kept
+          notes.push(
+            kept.length < fixedTalents.length
+              ? `天赋数超世号所支撑(${count} 世 × 每世抽取数)`
+              : '天赋含池外 id 或重复项'
+          )
+        }
       }
     }
 
