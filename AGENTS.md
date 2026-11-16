@@ -77,7 +77,6 @@ tsconfig paths `@/* → ./src/*`，开启 `strict` + `noUncheckedIndexedAccess` 
 - `bun run edge-check` — `scripts/edge-states.mjs`：造出十档**异常路径**（坏档 / 道童满员 / 资源归零 / 行囊塞满 / 存档写不进去 / 导入版本过新 / 闭关中不许历练 / 未拜师 / 欢迎页 / 建号页 / **首启全流程**），逐档检查界面有没有把状态解释清楚。「首启全流程」那一档验的是**流程能否走通**（欢迎页 → 勾同意 → 「同意并开始」→ 传送动画 → 建号页），不只是页面画得对不对。**传送动画有 2500ms**（`confirmStart` 的 `enterTimer`），判据等 3.2s；等短了会停在 `#/welcome` 上，看起来像「点了没反应」—— 实测踩过这回误判，`edgeStatesShape.spec` 钉着等待时长。后两档是唯二能进到 `/welcome` 与 `/create` 的检查 —— 其余脚本的 ROUTES 都不含它们,因为路由守卫 `if (game.started) return { name: home }` 会把已有存档弹回首页。巡页与弹窗巡逻拿的都是好人存档，这些 UI 根本不出现 —— 前几轮修的三处触控缺陷里有两处就是这么漏掉的。**坏值扫描要扫整页、且认五类**:`NaN/Infinity/undefined` 只认得「非有限」那一类,而 `Number.isFinite` 挡不住**有限的超范围值** —— 坏档写 `age: MAX_VALUE` / `lastAt: 8640000000000001`,分别印成 `1.7976931348623157e+308` 与英文 `Invalid Date`/`NaN月NaN日`(三者都是真浏览器实测)。科学计数要盖住两种写法:裸插值的 `1e+308` 与 formatGN 兜底的 `1.80e308`(后者指数无符号,只写 `e\+` 会漏)。夹具也必须灌**有限巨值**而不是 NaN:NaN 走的是另一条修复分支(实测只拆 age 上界、夹具仍灌 NaN 时照样全绿;换成 MAX_VALUE 后 18 个路由立刻全红)
 - `bun run build:android` / `build:apk` — 安卓客户端打包
 - `bun run build:electron --win` — Windows 桌面客户端打包，产物在 `pkg/`（完整包 + 增量包）
-- `bun run build:android` / `build:apk` — 安卓客户端打包
 - 楷体打包：`uv run scripts/fonts/build-kai-font.py`
 
 ## 网游后端（server/）
