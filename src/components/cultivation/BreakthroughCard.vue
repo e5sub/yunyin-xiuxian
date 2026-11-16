@@ -80,6 +80,7 @@
   import { signedPercent } from '@/data/statNames'
   import { BREAKTHROUGH_PREP_OPTIONS } from '@/data/earlyGame'
   import { breakthroughRateView, prepPillDisabledLabel, prepPillShortToast } from '@/ui/cultivationText'
+  import { cutCount } from '@/core/spendRate'
   import { useNow } from '@/composables/useNow'
   import TribulationCard from './TribulationCard.vue'
   import TribulationDetail from './TribulationDetail.vue'
@@ -97,7 +98,8 @@
 
   const prepMeditate = BREAKTHROUGH_PREP_OPTIONS.find(o => o.id === 'meditate')!
   const prepPill = BREAKTHROUGH_PREP_OPTIONS.find(o => o.id === 'pill')!
-  const prepPillCost = prepPill.cost?.stone ?? 0
+  // VIP 有效期内九折:与 prepareBreakthrough 的扣款同口径
+  const prepPillCost = cutCount(prepPill.cost?.stone ?? 0)
   const prepPillShort = computed(() => breakthroughPrepShortfall('pill') ?? gnZero())
   const prepCanPill = computed(() => prepPillShort.value.m === 0)
 

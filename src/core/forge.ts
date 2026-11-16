@@ -25,6 +25,7 @@ import {
 import { salvageOf, salvageRefundPhrase } from './salvage'
 import { playSfx } from './audio'
 import { modOf } from './statsCalc'
+import { cutCount, cutGNum } from './spendRate'
 import { track } from './progress'
 import { noteSmithingUsed } from './loreService'
 import { usePlayerStore } from '@/stores/player'
@@ -51,6 +52,16 @@ export interface UpgradeQuote {
   safe: boolean
 }
 
+/**
+ * 强化价的三样一并折 VIP 减免。
+ *
+ * 价签(equipUpgradeQuote)、批量预览(upgradeBatchPlan)、结算(upgradeOnce 读 quote)
+ * 与 invested 记账都从这里出 —— 只折一次,不会「显示九折、扣全款」或反过来。
+ */
+function vipCutCost(c: { dust: number; stone: GNum; exp: GNum }): { dust: number; stone: GNum; exp: GNum } {
+  return { dust: cutCount(c.dust), stone: cutGNum(c.stone), exp: cutGNum(c.exp) }
+}
+
 /** 本件下一级的强化报价;已满级或查无此件返回 null */
 export function equipUpgradeQuote(uid: string): UpgradeQuote | null {
   const inventory = useInventoryStore()
@@ -58,7 +69,7 @@ export function equipUpgradeQuote(uid: string): UpgradeQuote | null {
   const inst = inventory.findItem(uid)
   if (!inst || inst.level >= equipLevelCap()) return null
   const q = qualityDef(inst.quality)
-  const cost = upgradeCost(inst.level, inst.tier, q.rank, modOf(player.finalStats.mods, 'forgeDiscount'))
+  const cost = vipCutCost(upgradeCost(inst.level, inst.tier, q.rank, modOf(player.finalStats.mods, 'forgeDiscount')))
   const failLevel = upgradeFailLevel(inst.level, UPGRADE_SAFE_STEP)
   return { ...cost, rate: upgradeSuccessRate(inst.level), failLevel, safe: failLevel === inst.level }
 }
@@ -219,7 +230,7 @@ export function upgradeBatchPlan(uid: string): UpgradeBatchPlan {
   let stone = gnZero()
   let exp = gnZero()
   while (lv < cap) {
-    const c = upgradeCost(lv, inst.tier, q.rank, discount)
+    const c = vipCutCost(upgradeCost(lv, inst.tier, q.rank, discount))
     if (!resources.hasSmall('dust', dust + c.dust)) break
     if (!resources.hasStone(add(stone, c.stone))) break
     if (!player.spendableExp(add(exp, c.exp))) break
@@ -400,8 +411,10 @@ export function artifactUpCostAt(def: ArtifactDef, level: number): { wudao: numb
   const lv = Number.isFinite(level) ? Math.max(0, Math.floor(level)) : 0
   if (lv >= ARTIFACT_MAX_LEVEL) return null
   return {
-    wudao: Math.ceil(ARTIFACT_UP_WUDAO_BASE * Math.pow(1.6, lv) * (1 + qualityDef(def.quality).rank * 0.3)),
-    stone: stoneByTier(def.fromTier, ARTIFACT_UP_STONE_TIER * (1 + lv))
+    wudao: cutCount(
+      Math.ceil(ARTIFACT_UP_WUDAO_BASE * Math.pow(1.6, lv) * (1 + qualityDef(def.quality).rank * 0.3))
+    ),
+    stone: cutGNum(stoneByTier(def.fromTier, ARTIFACT_UP_STONE_TIER * (1 + lv)))
   }
 }
 

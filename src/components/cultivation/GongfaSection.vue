@@ -196,7 +196,7 @@
       </div>
 
       <button class="btn-ghost w-full" :disabled="!canComprehend" @click="comprehendGongfa()">
-        参悟功法(残页×{{ COMPREHEND_PAGE_COST }})
+        参悟功法(残页×{{ comprehendCost }})
         <span v-if="comprehendLeft === 0" class="ml-1 text-[10px] text-ink-faint">· {{ gongfaAllLearnedToast() }}</span>
         <span v-else-if="pageShort > 0" class="ml-1 text-[10px] text-ink-faint">· 尚差 {{ pageShort }} 页</span>
         <span v-else class="ml-1 text-[10px] text-ink-faint">· 尚余 {{ comprehendLeft }} 部</span>
@@ -224,6 +224,7 @@
   } from '@/data/constants'
   import { formatGN, formatGap } from '@/utils/format'
   import { mulN } from '@/utils/gnum'
+  import { cutCount } from '@/core/spendRate'
   import { gongfaAllLearnedToast } from '@/ui/gongfaText'
   import { exchangeOkToast, exchangeFailText } from '@/ui/cultivationText'
   import { qualityDef, qualityTextColor } from '@/data/qualities'
@@ -359,8 +360,10 @@
     () => GONGFA.filter(g => g.type === gongfaCat.value && g.minRealm <= player.major + 1 && !cultivation.learned[g.id]).length
   )
 
+  /** 参悟一部的残页开销(VIP 有效期内九折);与 core 的 comprehendGongfa 同读 cutCount */
+  const comprehendCost = cutCount(COMPREHEND_PAGE_COST)
   /** 参悟还差几页残页,与 comprehendGongfa 的消耗同源 */
-  const pageShort = computed(() => Math.max(0, COMPREHEND_PAGE_COST - resources.page))
+  const pageShort = computed(() => Math.max(0, comprehendCost - resources.page))
 
   const canComprehend = computed(() => comprehendLeft.value > 0 && pageShort.value === 0)
 

@@ -5,6 +5,7 @@
 import type { EquipmentInstance, GNum } from '@/types'
 import { gn, gnZero, mulN } from '@/utils/gnum'
 import { stoneByTier } from './formulas'
+import { cutGNum } from './spendRate'
 import { maxTierForMajor } from '@/data/regions'
 import { PILLS, pillDef } from '@/data/pills'
 import { pillStoneCost } from './pillService'
@@ -205,4 +206,15 @@ export function herbSellPrice(grade: HerbGrade, major: number): number {
 /** 一批(单位数同货架)任意品灵草的即时售价 */
 export function herbSellBatch(grade: HerbGrade, major: number): GNum {
   return mulN(gn(herbSellPrice(grade, major)), MARKET_MAT_COUNT)
+}
+
+/**
+ * 货架实付价:VIP 有效期内九折。
+ *
+ * 只乘在**买入**这一侧:卖出(回收)价另有一套档位(材料 6 买 3 卖、丹药 2.5 买 1.2 卖),
+ * 两侧一起折就是「九折买、原价卖」的套利。价签(货架卡)、置灰判据与扣款同读这一处,
+ * 不会出现「标价九折、扣全款」。
+ */
+export function marketPayPrice(price: GNum): GNum {
+  return cutGNum(price)
 }

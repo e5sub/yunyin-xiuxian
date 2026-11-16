@@ -20,6 +20,7 @@ import { DIMINISH_KEYS, REFORGE_DUST_BASE, REFORGE_SEAL_LOAD, REFORGE_STONE_BASE
 import { add, gnZero } from '@/utils/gnum'
 import { formatGap } from '@/utils/format'
 import { stoneByTier } from './formulas'
+import { cutCount, cutGNum } from './spendRate'
 import { playSfx } from './audio'
 import { expectedRollsToHit, sealCost } from './reforge'
 import { sortAffixLines } from './equipGen'
@@ -159,8 +160,9 @@ export function planTransfer(
 
   const keptIds = affixes.filter(a => a.id !== affixId).map(a => a.id)
   const times = priceTimes(target, affixId, keptIds)
-  const transferStone = stoneByTier(target.tier, REFORGE_STONE_BASE * times)
-  const sealStone = sealMode === 'paid' ? sealFee : null
+  // VIP 有效期内九折:转移费与封存费分项折后相加,plan.cost 就是实扣,不漏不重
+  const transferStone = cutGNum(stoneByTier(target.tier, REFORGE_STONE_BASE * times))
+  const sealStone = sealMode === 'paid' && sealFee !== null ? cutGNum(sealFee) : null
   return {
     ok: true,
     plan: {
@@ -180,7 +182,7 @@ export function planTransfer(
       canSeal: sealFee !== null,
       cost: {
         stone: sealStone ? add(transferStone, sealStone) : transferStone,
-        dust: Math.round(REFORGE_DUST_BASE * times),
+        dust: cutCount(Math.round(REFORGE_DUST_BASE * times)),
         sealStone
       }
     }

@@ -18,6 +18,7 @@ import { buildPlayerSnap } from './playerSnap'
 import { currentDaoRules } from './endgameService'
 import { BUSY_REASON } from './endgameActivity'
 import { stoneByTier } from './formulas'
+import { cutCount, cutGNum } from './spendRate'
 import { mintDrops } from './lootClaim'
 import { acquireEquipment } from './loot'
 import { harvestMaterials } from './loreService'
@@ -69,9 +70,10 @@ export function tierOfMajor(major: number): number {
 
 /** 入口代价:凡境按当前层级折算灵石;天界是道源定额 */
 export function entryCostOf(def: SecretRealmDef, major: number): { kind: 'stone'; stone: GNum } | { kind: 'daoSource'; daoSource: number } {
+  // VIP 有效期内九折:价签(entryCostText)、缺口判据与扣款同读这一处
   return 'stone' in def.cost
-    ? { kind: 'stone', stone: stoneByTier(tierOfMajor(major), def.cost.stone) }
-    : { kind: 'daoSource', daoSource: def.cost.daoSource }
+    ? { kind: 'stone', stone: cutGNum(stoneByTier(tierOfMajor(major), def.cost.stone)) }
+    : { kind: 'daoSource', daoSource: cutCount(def.cost.daoSource) }
 }
 
 /** 代价可读文案;界面直接用,不另写 */

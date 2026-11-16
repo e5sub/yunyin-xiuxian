@@ -26,6 +26,7 @@ import { add, gn, gnZero, gt } from '@/utils/gnum'
 import { MAX_MAJOR } from '@/data/realms'
 import { SUB_LEVELS } from '@/data/constants'
 import { affixDef } from '@/data/affixes'
+import { getVipResolver, setVipResolver } from './spendRate'
 import { upgradeOnce, upgradeShort, equipUpgradeQuote, equipSweepPlan, type UpgradeOutcome } from './forge'
 import { autoReforge, autoReforgeBudget, reforgeOnce, type AutoReforgeOutcome, type ReforgeTarget } from './reforge'
 import { transferOnce, type TransferRequest } from './affixTransfer'
@@ -375,8 +376,16 @@ const HYDRATED_SLICES = ['inventory', 'resources', 'cultivation', 'dongfu', 'lor
  * 从云档分片无头结算一次炼器(服务端走这条):
  * 临时 pinia 水合 → 采信不低于云档的上报余额 → 同一套裁决代码掷点 → 返回变更件与应扣账。
  * 形状门槛(game 未开局 / uid 非法)返回 null,调用方拒绝结算。
+ *
+ * @param vip 本单是不是 VIP(服务端读 users.vip_until 传进来)。九折只影响 spend 与台账金额,
+ *   不改「能不能付得起」的裁决口径 —— 结算全程同步,注入器在同一 tick 内设/还原,不会串到别的请求。
  */
-export function resolveForgeFromSlices(data: unknown, rawOp: unknown, claims: ForgeClaims = {}): ForgeResult | null {
+export function resolveForgeFromSlices(
+  data: unknown,
+  rawOp: unknown,
+  claims: ForgeClaims = {},
+  vip = false
+): ForgeResult | null {
   if (!isPlainObject(data)) return null
   const game = isPlainObject(data.game) ? data.game : {}
   if (game.started !== true) return null
@@ -385,6 +394,8 @@ export function resolveForgeFromSlices(data: unknown, rawOp: unknown, claims: Fo
 
   const pinia = createPinia()
   setActivePinia(pinia)
+  const prevVip = getVipResolver()
+  setVipResolver(() => vip)
   try {
     const stores: Record<string, { $patch: (p: unknown) => void }> = {
       inventory: useInventoryStore() as never,
@@ -439,6 +450,7 @@ export function resolveForgeFromSlices(data: unknown, rawOp: unknown, claims: Fo
     return null
   } finally {
     setActivePinia(undefined)
+    setVipResolver(prevVip)
   }
 }
 

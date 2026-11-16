@@ -17,6 +17,7 @@ import {
   SEAL_STONE_BASE
 } from '@/data/constants'
 import { stoneByTier } from './formulas'
+import { cutCount, cutGNum } from './spendRate'
 import { twoPartShortfall } from './costShortfall'
 import { track } from './progress'
 import { noteSmithingUsed } from './loreService'
@@ -89,9 +90,10 @@ export function reforgeCost(inst: EquipmentInstance): ReforgeCost | null {
   if (reforgeableAffixIds(inst).length === 0) return null
   const sealed = (inst.sealedAffixIds ?? []).length
   const load = 1 + sealed * REFORGE_SEAL_LOAD
+  // VIP 有效期内九折:价签(reforgeCost 的读者)与结算(reforgeOnce)同读这一处
   return {
-    stone: stoneByTier(inst.tier, REFORGE_STONE_BASE * load),
-    dust: Math.round(REFORGE_DUST_BASE * load)
+    stone: cutGNum(stoneByTier(inst.tier, REFORGE_STONE_BASE * load)),
+    dust: cutCount(Math.round(REFORGE_DUST_BASE * load))
   }
 }
 
@@ -224,7 +226,7 @@ export function reforgeEquipment(uid: string, quiet = false): boolean {
 export function sealCost(inst: EquipmentInstance): GNum | null {
   const sealed = inst.sealedAffixIds ?? []
   if (sealed.length >= sealCapacity(inst)) return null
-  return stoneByTier(inst.tier, SEAL_STONE_BASE * (sealed.length + 1))
+  return cutGNum(stoneByTier(inst.tier, SEAL_STONE_BASE * (sealed.length + 1)))
 }
 
 /** 封存还差多少灵石:封满(无价)为 null,付得起为 0;封存钮、页脚价签与服务拒因同读这一处 */

@@ -21,7 +21,14 @@ import {
   type ConsignPost,
   type MarketSlot
 } from '@/data/market'
-import { consignPrice, generateMarketStock, herbSellBatch, materialSellPrice, pillSellPrice } from '@/core/marketService'
+import {
+  consignPrice,
+  generateMarketStock,
+  herbSellBatch,
+  marketPayPrice,
+  materialSellPrice,
+  pillSellPrice
+} from '@/core/marketService'
 import { mintDrops } from '@/core/lootClaim'
 import { useAuthStore } from '@/stores/auth'
 import { cloudApi } from '@/services/cloud'
@@ -254,8 +261,10 @@ export const useMarketStore = defineStore(
       const inventory = useInventoryStore()
       if (slot.kind === 'equipment' && inventory.bagFull) return 'bagfull'
       const resources = useResourcesStore()
+      // VIP 有效期内九折:价签、缺口判据与扣款同读 marketPayPrice
+      const pay = marketPayPrice(slot.price)
       // 先验灵石再让服务端记账:记账没有撤销接口,钱不够却记了账 = 上传时白扣一笔(1.63.0)
-      if (!resources.hasStone(slot.price)) return 'poor'
+      if (!resources.hasStone(pay)) return 'poor'
       // 装备由签发侧按同一把货架锚再生:预览与购得同一物,uid 换成服务端签发并入台账。
       // 签发放在记账之前:签发失败(网络/服务端)时不记账也不扣钱;记账失败至多丢这件签发物,
       // 反过来「先记账再签发」失败会让玩家白扣灵石且无货可拿
@@ -266,7 +275,7 @@ export const useMarketStore = defineStore(
       }
       // 登录玩家先让服务端记这笔账(它按同一把货架锚复算价格);记不上就不成交
       if (!(await quotePurchase(stockedAt.value, idx))) return 'expired'
-      if (!resources.spendStone(slot.price)) return 'poor'
+      if (!resources.spendStone(pay)) return 'poor'
       if (slot.kind === 'pill') {
         inventory.addPill(slot.pillId, slot.count)
       } else if (slot.kind === 'material') {

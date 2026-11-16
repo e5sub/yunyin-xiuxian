@@ -12,6 +12,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { cloudApi, type LevelOpResponse } from '@/services/cloud'
 import { playSfx } from './audio'
+import { cutCount } from './spendRate'
 import { applyLevelSlices, gongfaUpgradeQuote } from './levelResolve'
 import { celebrateTreasure } from './loot'
 import {
@@ -50,8 +51,10 @@ export function learnRandomGongfa(specificId?: string): string | null {
 export function comprehendGongfa(): boolean {
   const resources = useResourcesStore()
   const ui = useUiStore()
-  if (!resources.hasSmall('page', COMPREHEND_PAGE_COST)) {
-    ui.toast(gongfaPageShortToast(Math.max(0, COMPREHEND_PAGE_COST - resources.page)), 'warn')
+  // VIP 有效期内九折:判据、缺口提示与扣款用同一个数
+  const cost = cutCount(COMPREHEND_PAGE_COST)
+  if (!resources.hasSmall('page', cost)) {
+    ui.toast(gongfaPageShortToast(Math.max(0, cost - resources.page)), 'warn')
     return false
   }
   const player = usePlayerStore()
@@ -61,7 +64,7 @@ export function comprehendGongfa(): boolean {
     ui.toast(gongfaAllLearnedToast(), 'info')
     return false
   }
-  resources.spendSmall('page', COMPREHEND_PAGE_COST)
+  resources.spendSmall('page', cost)
   const name = learnRandomGongfa()
   if (name) {
     ui.toast(gongfaComprehendToast(name), 'rare')

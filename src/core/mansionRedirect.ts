@@ -3,6 +3,7 @@
  * 独立成模块:stores/player 若为复用判据 import astronomy(后者又读 player store),会形成运行时环。
  */
 import { MANSION_REDIRECT_COST, MANSION_REDIRECT_MAX } from '@/data/constants'
+import { cutGNum } from './spendRate'
 import { formatGap } from '@/utils/format'
 import { gn, gnZero, gte, subClamp } from '@/utils/gnum'
 import type { GNum, WorldId } from '@/types'
@@ -44,7 +45,8 @@ export function mansionRedirectCheck(
       return { blocked: 'limit', stoneShort: gnZero(), reason: '今日已用尽' }
     }
   }
-  const cost = gn(MANSION_REDIRECT_COST)
+  // VIP 有效期内九折:缺口判据(星象页报价)与扣款同读这一处
+  const cost = cutGNum(gn(MANSION_REDIRECT_COST))
   if (!gte(stone, cost)) {
     const stoneShort = subClamp(cost, stone)
     return { blocked: 'stone', stoneShort, reason: `灵石尚差 ${formatGap(stoneShort)}` }

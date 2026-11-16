@@ -30,6 +30,7 @@ import { qualityDef } from '@/data/qualities'
 import { buildingDef } from '@/data/buildings'
 import { INSIGHT_DISCOUNT_CAP } from '@/data/veins'
 import { buildingCost, gongfaUpCost } from './formulas'
+import { cutCount, cutGNum, getVipResolver, setVipResolver } from './spendRate'
 // 采信余额的天花板沿用上传裁决那把尺(1.66.1):持有上限只有一份定义,不在这里另设常数
 import { holdCapOf } from './saveAuthority'
 import { usePlayerStore } from '@/stores/player'
@@ -138,7 +139,10 @@ export function gongfaUpgradeQuote(id: string): { wudao: number; page: number } 
   const q = qualityDef(def.quality)
   const dongfu = useDongfuStore()
   const discount = Math.min(INSIGHT_DISCOUNT_CAP, dongfu.insightDiscount)
-  return { wudao: Math.max(1, Math.ceil(gongfaUpCost(q.rank, lv) * (1 - discount))), page: Math.ceil(lv * (1 + q.rank * 0.5)) }
+  return {
+    wudao: cutCount(Math.max(1, Math.ceil(gongfaUpCost(q.rank, lv) * (1 - discount)))),
+    page: cutCount(Math.ceil(lv * (1 + q.rank * 0.5)))
+  }
 }
 
 /** 建筑单升的门槛与代价;can=false 时 block 说明被什么拦住 */
@@ -159,8 +163,10 @@ export function buildingUpgradeQuote(id: BuildingId): BuildingQuote {
   const def = buildingDef(id)
   if (!def) return { can: false, block: 'realm', from: 0, nextLevel: 0, stone: gnZero(), ore: 0 }
   const lv = dongfu.levels[id] ?? 0
-  const stone = buildingCost(def.costBase, lv)
-  const ore = def.costOre * (lv + 1)
+  // VIP 有效期内九折:价签(buildingUpgradeQuote / buildingBatchQuote)、
+  // 客户端本地结算与服务端无头结算读的是同一处
+  const stone = cutGNum(buildingCost(def.costBase, lv))
+  const ore = cutCount(def.costOre * (lv + 1))
   const base: BuildingQuote = { can: false, block: 'realm', from: lv, nextLevel: lv + 1, stone, ore }
   if (player.major < def.unlockRealm) return base
   if (lv >= def.maxLevel) return { ...base, block: 'max' }
@@ -343,8 +349,15 @@ const HYDRATED_SLICES = ['player', 'resources', 'cultivation', 'dongfu'] as cons
  * 从云档分片无头结算一次升级(服务端走这条):
  * 临时 pinia 水合 → 采信不低于云档的上报余额 → 同一套裁决代码算价扣款 → 返回变更分片与应扣账。
  * 形状门槛(game 未开局 / op 非法)返回 null,调用方拒绝结算。
+ *
+ * @param vip 本单是不是 VIP(服务端读 users.vip_until 传进来)。结算全程同步,注入器在同一 tick 内设/还原。
  */
-export function resolveLevelFromSlices(data: unknown, rawOp: unknown, claims: LevelClaims = {}): LevelResult | null {
+export function resolveLevelFromSlices(
+  data: unknown,
+  rawOp: unknown,
+  claims: LevelClaims = {},
+  vip = false
+): LevelResult | null {
   if (!isPlainObject(data)) return null
   const game = isPlainObject(data.game) ? data.game : {}
   if (game.started !== true) return null
@@ -353,6 +366,8 @@ export function resolveLevelFromSlices(data: unknown, rawOp: unknown, claims: Le
 
   const pinia = createPinia()
   setActivePinia(pinia)
+  const prevVip = getVipResolver()
+  setVipResolver(() => vip)
   try {
     const playerSlice = isPlainObject(data.player) ? data.player : null
     if (playerSlice === null || !Number.isFinite(playerSlice.major)) return null
@@ -409,6 +424,7 @@ export function resolveLevelFromSlices(data: unknown, rawOp: unknown, claims: Le
     return null
   } finally {
     setActivePinia(undefined)
+    setVipResolver(prevVip)
   }
 }
 

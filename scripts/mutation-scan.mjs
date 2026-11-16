@@ -320,10 +320,10 @@ const EQUIVALENT = [
   },
   {
     file: 'src/core/gongfaService.ts',
-    text: 'Math.max(0, COMPREHEND_PAGE_COST - resources.page)',
+    text: 'Math.max(0, cost - resources.page)',
     why:
-      '这一行只在 `hasSmall(\'page\', COMPREHEND_PAGE_COST)` 为假时执行 —— 那正是' +
-      'resources.page < COMPREHEND_PAGE_COST,差值必然为正,钳制不触发。'
+      '这一行只在 `hasSmall(\'page\', cost)` 为假时执行 —— 那正是' +
+      'resources.page < cost,差值必然为正,钳制不触发。'
   },
   {
     file: 'src/core/mortalIdentity.ts',

@@ -18,6 +18,7 @@ import { loadClientModule } from '../clientVendor.js'
 import { recordEquipStatesFromItems } from '../equipLedger.js'
 import { recordForgeSpend } from '../forgeLedger.js'
 import { withKeyLock } from '../mutex.js'
+import { vipActive } from '../vip.js'
 
 const SOURCE_MODULE = '../../../src/core/forgeResolve'
 const VENDOR_FILE = 'forgeResolve'
@@ -38,7 +39,12 @@ interface ForgeResultDto {
 }
 
 interface ClientForgeModule {
-  resolveForgeFromSlices: (data: unknown, rawOp: unknown, claims: unknown) => ForgeResultDto | null
+  resolveForgeFromSlices: (
+    data: unknown,
+    rawOp: unknown,
+    claims: unknown,
+    vip?: boolean
+  ) => ForgeResultDto | null
 }
 
 let cached: Promise<ClientForgeModule> | null = null
@@ -126,11 +132,14 @@ forgeRouter.post('/forge/op', requireAuth, (req: Request, res: Response) => {
     }
 
     const mod = await clientForge()
+    // VIP 有效期内修行开销九折:强化/重铸/转移的价目只由服务端算,客户端那侧是预览
+    const vip = await vipActive(req.user!.id)
     // 无头结算:水合 → 采信不低于云档的上报余额 → 同一套纯账层掷点 → 变更件与应扣账
     const result = mod.resolveForgeFromSlices(
       data,
       body.op,
-      { exp: body.exp, dust: body.dust, stone: body.stone }
+      { exp: body.exp, dust: body.dust, stone: body.stone },
+      vip
     )
     if (result === null) {
       res.status(400).json({ error: '炼器申请无效' })

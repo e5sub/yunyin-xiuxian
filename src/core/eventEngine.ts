@@ -12,6 +12,7 @@ import { buffDef } from '@/data/buffs'
 import { GONGFA } from '@/data/gongfa'
 import { petDef, genericPetPool } from '@/data/pets'
 import { expFromSecs, stoneByTier } from './formulas'
+import { cutGNum } from './spendRate'
 import { acquireArtifact, acquireEquipment, celebrateTreasure, randomDropArtifact } from './loot'
 import { mintDrops } from './lootClaim'
 import { mintArtifacts } from './lootClaim'
@@ -166,9 +167,11 @@ async function applyEffect(effect: EventEffect, tier: number, opts: EventApplyOp
         foldSession(v)
         return `灵石 +${formatGN(v)}`
       }
+      // VIP 有效期内九折:文案报的也是实扣数,不报标价
+      const pay = cutGNum(v)
       // 余额不足即拒绝;传余额拷贝会让 gte 恒真、余额清零
-      if (!resources.spendStone(v)) return null
-      return `灵石 -${formatGN(v)}`
+      if (!resources.spendStone(pay)) return null
+      return `灵石 -${formatGN(pay)}`
     }
     case 'exp': {
       // 与丹药、遭遇同口径:等效闭关时长,封顶不满一层(formulas.expFromSecs)

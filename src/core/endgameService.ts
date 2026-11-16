@@ -22,6 +22,7 @@ import {
 import { MAX_MAJOR, WORLD_BREAK_MAJOR } from '@/data/realms'
 import { maxTierForMajor } from '@/data/regions'
 import { stoneByTier } from './formulas'
+import { cutGNum } from './spendRate'
 import { buildPlayerSnap } from './playerSnap'
 import { detectBuild } from './buildDetect'
 import { perWinModsOf } from './daoDepth'
@@ -107,7 +108,8 @@ export function furnaceConvert(rate: FurnaceRate): number {
 /** 灵石熔铸价:按玩家当前层级折算,与强化/重铸同口径(灵石收入按 1.9^层级 涨);写死层级会使道果价相对收入塌掉 */
 export function furnaceStoneCost(): ReturnType<typeof stoneByTier> {
   const player = usePlayerStore()
-  return stoneByTier(maxTierForMajor(player.major), FURNACE_STONE_TIER_AMOUNT)
+  // VIP 有效期内九折:价签(furnaceStoneCost 的读者)与熔铸扣款同读这一处
+  return cutGNum(stoneByTier(maxTierForMajor(player.major), FURNACE_STONE_TIER_AMOUNT))
 }
 
 /**

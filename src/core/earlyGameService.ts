@@ -26,6 +26,7 @@ import { caveOptionText } from '@/ui/caveText'
 import { streakRewardText } from '@/ui/streakText'
 import { todayLocalNum } from '@/utils/time'
 import { gameNow } from './enginePause'
+import { cutGNum } from './spendRate'
 
 function telemetry(): ReturnType<typeof usePacingTelemetry> {
   return usePacingTelemetry()
@@ -163,7 +164,8 @@ export function prepareBreakthrough(optionId: string): boolean {
   if (usePlayerStore().breakthroughPrep !== null) return false
 
   const resources = useResourcesStore()
-  if (opt.cost?.stone && !resources.spendStone(gn(opt.cost.stone))) return false
+  // VIP 有效期内九折:静坐/服丹的费用
+  if (opt.cost?.stone && !resources.spendStone(cutGNum(gn(opt.cost.stone)))) return false
   // duration 单位:秒,=0 表示支付即就绪(聚气丹)。`breakthroughPrep.readyAt` 由 `player.shiftTimedState` 顺延
   usePlayerStore().setBreakthroughPrep({
     bonus: opt.bonusRate,

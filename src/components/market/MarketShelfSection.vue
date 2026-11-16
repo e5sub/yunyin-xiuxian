@@ -107,7 +107,7 @@
   import { lusterByRank, lusterOf } from '@/ui/luster'
   import { herbQualityLuster, herbQualityRank, herbQualityTextColor, herbQualityTier, herbQualityTone } from '@/ui/herbQuality'
   import { tint } from '@/utils/colorToken'
-  import { focusHerbSlot, marketEquipInstance } from '@/core/marketService'
+  import { focusHerbSlot, marketEquipInstance, marketPayPrice } from '@/core/marketService'
   import { celebrateTreasure } from '@/core/loot'
   import { cmp, gnZero, subClamp } from '@/utils/gnum'
   import { formatGN, formatGap } from '@/utils/format'
@@ -192,7 +192,9 @@
 
   /** 装备实例按货架时刻确定性生成,预览即购得同一件 */
   function renderSlot(slot: MarketSlot): CardView {
-    const afford = !slot.sold && cmp(resources.spiritStone, slot.price) >= 0
+    // VIP 有效期内九折:价签、置灰判据与扣款同读 core 的 marketPayPrice
+    const pay = marketPayPrice(slot.price)
+    const afford = !slot.sold && cmp(resources.spiritStone, pay) >= 0
     const base = {
       idx: slot.idx,
       tag: slot.kind === 'pill' ? '丹' : slot.kind === 'material' ? '材' : '器',
@@ -204,9 +206,9 @@
       plaque: false,
       // 丹药格走 rank 入口(道品 rank 9 在这里也要享有质感层)
       luster: slot.kind === 'pill' ? lusterByRank(pillRank(pillDef(slot.pillId)!)) : null,
-      stoneShort: afford ? gnZero() : subClamp(slot.price, resources.spiritStone),
+      stoneShort: afford ? gnZero() : subClamp(pay, resources.spiritStone),
       // 卡面正文与 title 各写一遍同一个表达式,改词时容易只改一处;这里算一次
-      shortText: shortageText('灵石', formatGap(afford ? gnZero() : subClamp(slot.price, resources.spiritStone)))
+      shortText: shortageText('灵石', formatGap(afford ? gnZero() : subClamp(pay, resources.spiritStone)))
     }
     if (slot.kind === 'pill') {
       const def = pillDef(slot.pillId)!
@@ -215,7 +217,7 @@
         name: def.name,
         nameCls: { color: pillQualityTextColor(def) },
         sub: `${pillQualityName(def)} · ×${slot.count}`,
-        price: slot.price
+        price: pay
       }
     }
     if (slot.kind === 'material') {
@@ -229,7 +231,7 @@
           name: meta.name,
           nameCls: {},
           sub: `×${slot.count}`,
-          price: slot.price
+          price: pay
         }
       }
       // 灵草走品阶形制(见 ui/herbQuality):同一套光环/角章/浓淡,与丹药格并排时读得通
@@ -252,7 +254,7 @@
          * 判据见 palette.spec「货架价签在品阶淡底上也要过线」。
          */
         tierStyle: { borderColor: tint(herbQualityTone(grade), herbTier.border), background: tint(herbQualityTone(grade), 0.06) },
-        price: slot.price
+        price: pay
       }
     }
     const inst = marketEquipInstance(slot, market.stockedAt)
@@ -270,7 +272,7 @@
     luster: lusterOf(inst.quality),
       // 密卡底色固定弱晕染,品阶浓淡交给边框与角章
       tierStyle: { borderColor: tint(quality.color, tier.border), background: tint(quality.color, 0.06) },
-      price: slot.price
+      price: pay
     }
   }
 

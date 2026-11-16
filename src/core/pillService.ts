@@ -24,6 +24,7 @@ import { playSfx } from './audio'
 import { craftOkToast, craftShortToast, craftUnknownToast, pillGoneToast, pillTakenToast } from '@/ui/pillText'
 import { treasureOf } from '@/ui/treasureCeremony'
 import type { GNum } from '@/types'
+import { cutCount, cutGNum } from './spendRate'
 
 /** 服用一枚丹药。quiet=true 供批量服丹:逐枚结算照旧,提示与音效由批量层合为一条。 */
 export function usePill(id: string, quiet = false): boolean {
@@ -116,8 +117,12 @@ export function pillCraftCost(id: string): { herb: number; stone: GNum; grade: H
   if (!def?.recipe) return null
   // 灵草品阶取方子准入境界:低阶草进不了高阶方子
   const grade = herbGradeOfMajor(def.minRealm)
-  // 灵石按准入境界能拿到的最高层级折算;层级单一事实源:区域表
-  return { herb: def.recipe.herb, stone: pillStoneCost(def), grade }
+  /*
+   * 灵石按准入境界能拿到的最高层级折算;层级单一事实源:区域表。
+   * VIP 九折只乘在「炼丹」这一处,不乘进 pillStoneCost —— 那个价还被坊市丹药买卖与悬赏募丹
+   * 借用,买卖两侧一起折就是「九折买、原价卖」的套利。
+   */
+  return { herb: cutCount(def.recipe.herb), stone: cutGNum(pillStoneCost(def)), grade }
 }
 
 // 「炼制石耗」唯一事实源(定义在 core/formulas);re-export 保持公开 API,坊市买/售、悬赏募丹从 ./pillService 引入

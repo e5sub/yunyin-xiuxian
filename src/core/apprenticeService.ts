@@ -6,6 +6,7 @@
 import type { GNum, QualityId } from '@/types'
 import { mulN, subClamp } from '@/utils/gnum'
 import { stoneByTier } from './formulas'
+import { cutGNum } from './spendRate'
 import { PILLS } from '@/data/pills'
 import { maxTierForMajor } from '@/data/regions'
 import { qualityDef } from '@/data/qualities'
@@ -22,7 +23,8 @@ import {
 
 /** 收一名道童的灵石价;卡面报价、服务扣款与缺口共用 */
 export function apprenticeRecruitCost(major: number): GNum {
-  return stoneByTier(maxTierForMajor(major), RECRUIT_COST_TIER_AMOUNT)
+  // VIP 有效期内九折:卡面报价、缺口判据与招募扣款同读这一处
+  return cutGNum(stoneByTier(maxTierForMajor(major), RECRUIT_COST_TIER_AMOUNT))
 }
 
 /** 收道童还差多少灵石;卡面置灰、报价行与拒因共用 */

@@ -4,6 +4,7 @@ import type { VeinId } from '@/data/veins'
 import { veinDef } from '@/data/veins'
 import { VEIN_MAIN_CAPACITY, VEIN_POINT_STONE, VEIN_SIDE_CAP, VEIN_TOTAL_CAPACITY, VEIN_UNLOCK_MAJOR } from '@/data/constants'
 import { stoneByTier } from './formulas'
+import { cutGNum } from './spendRate'
 import { playerTier } from './progress'
 import { formatGN, formatGap } from '@/utils/format'
 import { gnZero, mulN, ratio, subClamp } from '@/utils/gnum'
@@ -35,11 +36,12 @@ export function veinCap(id: VeinId): number {
 
 /** 单点投资成本(按玩家当前层级) */
 export function veinPointCost(): GNum {
-  return stoneByTier(playerTier(), VEIN_POINT_STONE)
+  // VIP 有效期内九折:单投、连投(veinInvestPlan 以它为单价)与服务端价签同读这一处
+  return cutGNum(stoneByTier(playerTier(), VEIN_POINT_STONE))
 }
 
 export function veinSwitchCost(): GNum {
-  return stoneByTier(playerTier(), VEIN_POINT_STONE * 20)
+  return cutGNum(stoneByTier(playerTier(), VEIN_POINT_STONE * 20))
 }
 
 /** 改立主脉还差多少灵石(付得起为 0);入口、确认钮与服务拒因同读此处 */

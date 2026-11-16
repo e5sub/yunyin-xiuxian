@@ -10,8 +10,26 @@
       </div>
       <span
         class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-kai tracking-widest"
-        :class="auth.isVip ? 'bg-amber-ink/15 text-amber-ink' : 'bg-ink/10 text-ink-faint'"
+        :class="auth.isVip ? 'bg-ink/10 text-ink' : 'bg-ink/10 text-ink-faint'"
       >VIP</span>
+    </div>
+
+    <!-- 修行开销九折:口径与 core/spendRate 一致(坊市买卖与任务上交不折) -->
+    <div class="flex items-center justify-between py-3">
+      <div class="min-w-0">
+        <span class="text-[13px] text-ink-soft">修行开销</span>
+        <p class="mt-0.5 text-[10px] leading-relaxed text-ink-faint">
+          {{
+            auth.isVip
+              ? '有效期内一律九折:强化/重铸/词条转移、建筑、功法、炼丹、灵脉、秘境、推演、弟子、点星与悟道兑换'
+              : '有效期内修行开销一律九折;坊市买卖与任务上交不折(那是物物交换)'
+          }}
+        </p>
+      </div>
+      <span
+        class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-kai tracking-widest"
+        :class="auth.isVip ? 'bg-amber-ink/15 text-amber-ink' : 'bg-ink/10 text-ink-faint'"
+      >{{ auth.isVip ? '九折' : '未享' }}</span>
     </div>
 
     <!-- 到期后开关与去处保留、只是暂停:续费即恢复,不必回设置页逐个重开 -->

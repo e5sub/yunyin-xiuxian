@@ -20,6 +20,7 @@ import { loadClientModule } from '../clientVendor.js'
 import { recordProgressSpend } from '../progressLedger.js'
 import { recordLevelStates } from '../levelLedger.js'
 import { withKeyLock } from '../mutex.js'
+import { vipActive } from '../vip.js'
 
 const SOURCE_MODULE = '../../../src/core/levelResolve'
 const VENDOR_FILE = 'levelResolve'
@@ -37,7 +38,8 @@ interface ClientLevelModule {
   resolveLevelFromSlices: (
     data: unknown,
     rawOp: unknown,
-    claims: Record<string, unknown>
+    claims: Record<string, unknown>,
+    vip?: boolean
   ) => LevelResultDto | null
 }
 
@@ -118,11 +120,14 @@ progressRouter.post('/progress/op', requireAuth, (req: Request, res: Response) =
     }
 
     const mod = await clientLevel()
+    // VIP 有效期内修行开销九折:价目只由服务端算,客户端那侧的价签是预览
+    const vip = await vipActive(req.user!.id)
     // 无头结算:水合 → 采信不低于云档的上报余额 → 同一套纯账层算价扣款 → 变更分片与应扣账
     const result = mod.resolveLevelFromSlices(
       data,
       body.op,
-      { wudao: body.wudao, page: body.page, ore: body.ore, stone: body.stone }
+      { wudao: body.wudao, page: body.page, ore: body.ore, stone: body.stone },
+      vip
     )
     if (result === null) {
       res.status(400).json({ error: '升级申请无效' })

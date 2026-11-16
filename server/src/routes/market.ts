@@ -14,6 +14,8 @@ import { get } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { quoteMarket } from '../lootGrant.js'
 import { recordPurchase } from '../marketLedger.js'
+import { geMulN } from '../gnum.js'
+import { VIP_SPEND_RATE, vipActive } from '../vip.js'
 
 export const marketRouter = express.Router()
 
@@ -63,7 +65,9 @@ marketRouter.post('/market/buy', requireAuth, (req: Request, res: Response) => {
       res.json({ ok: false, recorded: false })
       return
     }
-    await recordPurchase(userId, { m: price.m, e: price.e })
+    // VIP 有效期内九折:与客户端实扣(core/marketService 的 marketPayPrice)同一个系数
+    const pay = (await vipActive(userId)) ? geMulN(price, VIP_SPEND_RATE) : price
+    await recordPurchase(userId, { m: pay.m, e: pay.e })
     res.json({ ok: true, recorded: true })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })

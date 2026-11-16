@@ -11,6 +11,7 @@ import {
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { gameNow } from './enginePause'
+import { cutCount } from './spendRate'
 
 export interface DivinationOutcome {
   ok: boolean
@@ -29,10 +30,12 @@ export function askDivination(rand: RandomService = rng): DivinationOutcome {
   if (divinationActiveAt(player.divination, now)) {
     return { ok: false, reason: '卦在身' }
   }
-  if (!resources.hasSmall('wudao', DIVINATION_COST)) {
+  // VIP 有效期内九折:判据与扣款用同一个数,不各算一遍
+  const cost = cutCount(DIVINATION_COST)
+  if (!resources.hasSmall('wudao', cost)) {
     return { ok: false, reason: '悟道点不足' }
   }
-  resources.spendSmall('wudao', DIVINATION_COST)
+  resources.spendSmall('wudao', cost)
   const reading = drawHexagram(rand)
   player.setDivination({
     hexagram: reading.hexagram.name,

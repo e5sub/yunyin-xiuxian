@@ -49,6 +49,7 @@
   import { pageTitle } from '@/ui/pageTitle'
   import { engine } from '@/core/engine'
   import { startAutoOps, stopAutoOps, prepOfflineAutoOps, collectOfflineBossLedger } from '@/core/autoOps'
+  import { setVipResolver } from '@/core/spendRate'
   import { connectCloudWs, disconnectCloudWs, onSessionEnd } from '@/services/cloud'
   import { autoRestoreIfNewer, probeCloudNewer, pushCloudSave, restoreFromCloud, startCloudSync, stopCloudSync, syncNotice } from '@/core/cloudSave'
   import { applyTheme, initTheme } from '@/core/theme'
@@ -72,6 +73,11 @@
   // 登出不重置 game.started(内存态仍属本账号,落盘不串),顶栏/底栏须另看登录态,
   // 否则退出后登录页仍顶着上一位道友的道号与资源,底栏点了还会被守卫弹回
   const auth = useAuthStore()
+  /*
+   * VIP 修行开销九折的判据:惰性读,不缓存布尔 —— 到期那一刻就该恢复全价。
+   * 计价层(core/spendRate)不直接 import store:服务端跑同一份文件,那边没有 auth。
+   */
+  setVipResolver(() => auth.isVip)
   const ui = useUiStore()
   const settings = useSettingsStore()
   const route = useRoute()

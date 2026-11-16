@@ -32,7 +32,7 @@ export const TEST_CATEGORIES: readonly TestCategory[] = [
     name: 'Decision    决策质量',
     match: [
       'decisionAudit', 'synergyScan', 'worldGen', 'ruleUniverse', 'ecosystemHealth', 'playerLab', 'legacy', 'identity', 'samsara.spec',
-      'autoAdventure', 'autoOpsDaily', 'autoOpsOffline',
+      'autoAdventure', 'autoOpsDaily', 'autoOpsOffline', 'spendRate',
       'fortune', 'worldEcho', 'regionEvent', 'core/eventTier', 'eventEngine', 'explorationDnd', 'weather.spec', 'boundaryTribulation', 'tribulation', 'secretRealm', 'petPersonality', 'goal.spec', 'divination', 'fate.spec', 'astronomy', 'artShu', 'mansionRedirect'
     ]
   },

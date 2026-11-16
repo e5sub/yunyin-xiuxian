@@ -6,6 +6,7 @@
  */
 import express, { type Request, type Response } from 'express'
 import { all, get, run, upsertByPk } from './db.js'
+import { vipActive } from './vip.js'
 import { requireAuth } from './auth.js'
 import { isOnline } from './ws.js'
 import { getConfigNumber } from './config.js'
@@ -165,11 +166,6 @@ autoOpsRouter.post('/collect', requireAuth, (req: Request, res: Response) => {
 })
 
 /* ---------------- 离线托管任务 ---------------- */
-
-async function vipActive(userId: number): Promise<boolean> {
-  const row = await get<{ vip_until: number }>('SELECT vip_until FROM users WHERE id = ?', [userId])
-  return (row?.vip_until ?? 0) > Date.now()
-}
 
 /** 最近是否还在写档(REST/在线判定之外的第二条在场证据,见 ACTIVE_WINDOW_MS) */
 async function recentlySynced(userId: number): Promise<boolean> {

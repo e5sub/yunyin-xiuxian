@@ -15,6 +15,25 @@ import { alipayConfig, tradePrecreate, tradeQuery } from './alipay.js'
 /** 永久 VIP 的落库到期时间:2100-01-01 00:00:00 UTC(远大于任何常规时长) */
 export const PERMANENT_TS = 4102444800000
 
+/**
+ * VIP 修行开销九折的系数。与客户端 core/spendRate 的 VIP_SPEND_RATE 必须一致
+ * (那边管算价,这边管无头结算与坊市记账;两边不齐就会出现「客户端扣九折、台账记全价」)。
+ * 判据:src/core/spendRate.spec.ts 跨端读这一行。
+ */
+export const VIP_SPEND_RATE = 0.9
+
+/**
+ * 这一号此刻是不是 VIP。
+ *
+ * 三处共用:托管巡检(server/src/autoOps.ts)、炼器结算、升级结算 —— 后两条要在
+ * 无头算价前把「九折」告诉 vendor 的计价层(core/spendRate 的注入器)。
+ * 只认库里的 vip_until,不信客户端自报。
+ */
+export async function vipActive(userId: number): Promise<boolean> {
+  const row = await get<{ vip_until: number }>('SELECT vip_until FROM users WHERE id = ?', [userId])
+  return (row?.vip_until ?? 0) > Date.now()
+}
+
 export type CodeType = 'month' | 'half' | 'year' | 'forever'
 
 /** 激活码类型 → 天数(0 = 永久) */

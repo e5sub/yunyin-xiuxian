@@ -1214,7 +1214,7 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
   it('坊市买不起时按钮写出实际差额,不把总价或笼统「灵石不足」当答案', () => {
     const market = src('../components/market/MarketShelfSection.vue')
     expect(market, '卡面要有实际缺口字段').toContain('stoneShort:')
-    expect(market, '卡面缺口用指数感知减法').toContain('subClamp(slot.price, resources.spiritStone)')
+    expect(market, '卡面缺口用指数感知减法').toContain('subClamp(pay, resources.spiritStone)')
     // 主语要与 title 一致:光写「尚差 8」时同屏还挂着道源/器灵尘,玩家得回头猜是哪一种
     // 卡面正文与 title 共用一个字段(shortText),不再各拼一遍模板
     expect(market, '按钮直接写出尚差多少(带资源名)').toContain("shortageText('灵石', formatGap(")
@@ -1506,7 +1506,7 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     const dialog = src('../components/cultivation/GongfaDialog.vue')
     const text = src('../ui/gongfaText.ts')
     expect(service, '参悟拒因写实际残页差').toContain(
-      'gongfaPageShortToast(Math.max(0, COMPREHEND_PAGE_COST - resources.page))',
+      'gongfaPageShortToast(Math.max(0, cost - resources.page))',
     )
     expect(service, '进修短差单源').toContain('export function gongfaUpgradeShortfall(')
     expect(service, '进修回执传实际短差').toContain('gongfaUpShortToast(short, gongfaUpgradeShortfall(cost))')

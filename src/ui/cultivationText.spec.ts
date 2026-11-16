@@ -131,7 +131,7 @@ describe('修行页 · 主修可升层信号', () => {
   it('参悟按钮按残页实付能力置灰,并写出还差几页', () => {
     expect(section, '付不起就置灰').toContain(':disabled="!canComprehend"')
     expect(section, '可参悟 = 池里还有货且残页够').toContain('comprehendLeft.value > 0 && pageShort.value === 0')
-    expect(section, '差额与 comprehendGongfa 的消耗同源').toContain('COMPREHEND_PAGE_COST - resources.page')
+    expect(section, '差额与 comprehendGongfa 的消耗同源').toContain('comprehendCost - resources.page')
     expect(section, '差额要写出来').toContain('尚差 {{ pageShort }} 页')
   })
 

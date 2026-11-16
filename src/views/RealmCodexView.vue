@@ -453,6 +453,7 @@
   import { REALMS, WORLDS } from '@/data/realms'
   import { shortageText } from '@/ui/resourceShortText'
   import { worldPips, worldProgress } from '@/ui/worldProgress'
+  import { cutCount, cutGNum } from '@/core/spendRate'
   import WorldSeal from '@/components/common/WorldSeal.vue'
   import { mansionGroups, mansionOrdinal } from '@/ui/mansionBoard'
   import { CLASSICS, PLANNED_SCHOOLS, type ClassicSchool } from '@/data/classics'
@@ -557,13 +558,15 @@
     return state ? formatCountdown(Math.max(0, Math.ceil((state.expiresAt - now.value) / 1000))) : ''
   })
 
+  /** 问卦一签的悟道点开销(VIP 有效期内九折);判据与 askDivination 合读同一处 */
+  const askCost = cutCount(DIVINATION_COST)
   /** 判据与 askDivination 的 hasSmall 同一本账 */
-  const askShort = computed(() => Math.max(0, DIVINATION_COST - resources.wudao))
+  const askShort = computed(() => Math.max(0, askCost - resources.wudao))
   const askDisabled = computed(() => !!currentState.value || askShort.value > 0)
   const askLabel = computed(() => {
     if (currentState.value) return '卦在身'
     if (askShort.value > 0) return `问卦 · ${shortageText('悟道点', askShort.value)}`
-    return `问 卦(悟道点 ${DIVINATION_COST})`
+    return `问 卦(悟道点 ${askCost})`
   })
 
   function ask(): void {
@@ -580,8 +583,8 @@
   const fateLordLineText = computed(() => fateLordLine(player.fateChart))
   const fateModsText = computed(() => modsText(player.fateMods))
 
-  /** 点化主星的灵石单价,文案与扣费同源 */
-  const focusCost = gn(STAR_FOCUS_COST_BASE)
+  /** 点化主星的灵石单价(VIP 有效期内九折),文案与扣费同源 */
+  const focusCost = cutGNum(gn(STAR_FOCUS_COST_BASE))
   const focusCostText = formatGN(focusCost)
   /** 点化尚差灵石,付得起为 0;指数感知减法,跨数量级不会报错差额 */
   const focusShortGN = computed(() => (resources.hasStone(focusCost) ? gnZero() : subClamp(focusCost, resources.spiritStone)))

@@ -7,6 +7,7 @@
 import type { GNum } from '@/types'
 import { gnZero, gte, mulN, subClamp } from '@/utils/gnum'
 import { stoneByTier } from './formulas'
+import { cutGNum } from './spendRate'
 import { maxTierForMajor } from '@/data/regions'
 import { WUDAO_EXCHANGE_MIN_MAJOR, WUDAO_EXCHANGE_PER_DAY, WUDAO_EXCHANGE_TIER_AMOUNT } from '@/data/constants'
 
@@ -22,7 +23,8 @@ export interface WudaoExchangeState {
 
 /** 该境界一次的兑换价;界面报价与扣费同读这一份 */
 export function wudaoExchangeCost(major: number): GNum {
-  return stoneByTier(maxTierForMajor(major), WUDAO_EXCHANGE_TIER_AMOUNT)
+  // VIP 有效期内九折:报价(wudaoExchangeState.cost)与扣款同读这一处
+  return cutGNum(stoneByTier(maxTierForMajor(major), WUDAO_EXCHANGE_TIER_AMOUNT))
 }
 
 /**

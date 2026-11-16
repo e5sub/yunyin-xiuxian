@@ -145,6 +145,7 @@
   import { useEndgameStore } from '@/stores/endgame'
   import { MANSION_REDIRECT_COST, MANSION_REDIRECT_MAX } from '@/data/constants'
   import { exploreEventChance, startExploration } from '@/core/exploration'
+  import { cutGNum } from '@/core/spendRate'
   import { EVENT_TIERS, tierChances, tierOddsText } from '@/core/eventTier'
   import { dominantTier, rarityRatio, tierSegments } from '@/ui/eventTierBar'
   import { pendingChainStages } from '@/core/eventEngine'
@@ -202,7 +203,8 @@
   const mansionLuckPct = computed(() => mansionLuckPercent())
 
   const mansionRedirectOpen = ref(false)
-  const redirectCostText = formatGN(gn(MANSION_REDIRECT_COST))
+  // VIP 有效期内九折:价签与 mansionRedirectCheck 的缺口判据同口径
+  const redirectCostText = formatGN(cutGNum(gn(MANSION_REDIRECT_COST)))
   const mansionRedirectMax = MANSION_REDIRECT_MAX
   const redirectActiveText = computed(() => {
     const mr = player.mansionRedirect

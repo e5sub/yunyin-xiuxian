@@ -116,6 +116,7 @@ import {
   wudaoExchangeState as evaluateWudaoExchange,
   type WudaoExchangeState
 } from '@/core/wudaoExchange'
+import { cutGNum } from '@/core/spendRate'
 import type { FortuneChoice } from '@/core/fortuneChain'
 import { useInventoryStore } from './inventory'
 import { useCultivationStore } from './cultivation'
@@ -1522,7 +1523,8 @@ export const usePlayerStore = defineStore(
     function focusFateStar(starId: string): boolean {
       const star = STARS.find(s => s.id === starId)
       if (!star || fateFocus.value === starId) return false
-      const cost = gn(STAR_FOCUS_COST_BASE)
+      // VIP 有效期内九折
+      const cost = cutGNum(gn(STAR_FOCUS_COST_BASE))
       if (!resources.spendStone(cost)) return false
       fateFocus.value = starId
       return true
@@ -1538,7 +1540,8 @@ export const usePlayerStore = defineStore(
       const day = gameDay(useGameStore().totalPlaySec)
       const cur = mansionRedirect.value
       if (mansionRedirectCheck(day, cur, worldId, resources.spiritStone).blocked) return false
-      const cost = gn(MANSION_REDIRECT_COST)
+      // 与 mansionRedirectCheck 的报价同口径(VIP 九折)
+      const cost = cutGNum(gn(MANSION_REDIRECT_COST))
       if (!resources.spendStone(cost)) return false
       mansionRedirect.value = cur && cur.gameDay === day ? { gameDay: day, worldId, count: cur.count + 1 } : { gameDay: day, worldId, count: 1 }
       return true
