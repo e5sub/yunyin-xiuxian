@@ -102,6 +102,22 @@ describe('坊市 · 买卖', () => {
     expect(market.stock[0]!.sold).toBe(false)
   })
 
+  /*
+   * 格号不在货架上 —— 界面上的行可能来自过期快照(换货窗口刚过、另一页已买走)。
+   * 变异扫描报 `if (!slot) return 'missing'` 改坏不红:去掉它下一句 `slot.sold`
+   * 会直接抛 TypeError。`claimEquip` 那一路早就有同型判据,buy 这一路此前没有。
+   */
+  it('买下:格号不在货架上则拒绝,不扣钱也不抛', async () => {
+    const market = useMarketStore()
+    const resources = useResourcesStore()
+    seedStock([pillSlot(0)])
+    resources.spiritStone = gn(1e6)
+
+    await expect(market.buy(9), '过期快照点买不该抛').resolves.toBe('missing')
+    expect(toNum(resources.spiritStone), '没成交不扣钱').toBe(1e6)
+    expect(market.stock[0]!.sold, '别的格不动').toBe(false)
+  })
+
   it('行囊满:装不下兵刃就不收钱(先验满、再扣款)', async () => {
     const market = useMarketStore()
     const resources = useResourcesStore()
@@ -794,4 +810,21 @@ describe('坊市 · 坏档格号挤掉好货', () => {
     expect(inventory.items, '该入账一件').toHaveLength(1)
     expect(() => qualityDef(inventory.items[0]!.quality), '品质须是合法档').not.toThrow()
   })
+  /*
+   * 寄卖列表的坏档清洗:`qualityRank` 与 `slot` 都是界面直接读的数,
+   * 负值会让 `consignPrice(tier, qualityRank)` 算出差额、slot 排到列表外。
+   * 两处 `Math.max(0, ...)` 去掉任一,这里就会读到负数。
+   */
+  it('寄卖条目的负 qualityRank / slot 被钳到 0', () => {
+    const market = useMarketStore()
+    market.$patch({
+      consign: [{ finishAt: Date.now() + 1e6, tier: 3, qualityRank: -5, slot: -2, price: { m: 1, e: 3 } }] as never
+    })
+    market.sanitize()
+    const post = (market as unknown as { consign: { qualityRank: number; slot: number }[] }).consign[0]
+    expect(post, '夹具没留下条目').toBeDefined()
+    expect(post!.qualityRank, '品质档不得为负').toBeGreaterThanOrEqual(0)
+    expect(post!.slot, '槽位不得为负').toBeGreaterThanOrEqual(0)
+  })
+
 })

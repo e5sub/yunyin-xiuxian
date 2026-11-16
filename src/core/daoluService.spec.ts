@@ -24,6 +24,7 @@ import {
 import { DAOLU_STAGE_MAX, DAOLU_STAGE_NAMES, daoluCodex, daoluDepthOf, describeDaolu } from '@/ui/codex'
 import { usePlayerStore } from '@/stores/player'
 import { useQuestsStore } from '@/stores/quests'
+import type { BondRecord } from './daoluService'
 
 const SRC = readFileSync(resolve(__dirname, 'daoluService.ts'), 'utf-8')
 /** 只看代码,不看注释:注释里写着这些名字 */
@@ -44,6 +45,20 @@ describe('道侣 · 一:不进入效率链', () => {
     expect(CODE).not.toMatch(/addDaoFruit|addInsight|spendDaoFruit/)
     expect(CODE).not.toMatch(/useResourcesStore|spiritStone|addHerb|addOre|wudao|pills/)
     console.log('\n服务层无属性写入、无资源发放、无道果宿慧 —— 五条通路一条都没开')
+  })
+
+  /*
+   * 未知 id 不许落库。
+   *
+   * 变异扫描报 `if (!def) return false` 改坏不红:去掉它 `setBond({ daoluId: 'bogus_id', ... })`
+   * 会先把一个数据表里没有的道侣写进存档,再在下一句 `def.name` 上抛 TypeError ——
+   * 存档已被污染,而这一步是「相遇」,玩家并没有做错什么。实测破守卫后 bond 里确实多出 bogus_id。
+   */
+  it('相遇:未知 id 不落库、不抛,也不占掉道侣位', () => {
+    const player = usePlayerStore()
+    expect(() => meet('bogus_id'), '未知 id 不该抛').not.toThrow()
+    expect(meet('bogus_id')).toBe(false)
+    expect(player.bond, '没相遇成功不该写出道侣').toBeFalsy()
   })
 
   it('数据层结构上就不给属性留位置', () => {
@@ -184,6 +199,26 @@ describe('道侣 · 三:改变的是关系,不是战力', () => {
       `\n缘分 ${b.fate}、信任 ${b.trust}、契合 ${b.accord} → 止于「${STAGE_NAMES[b.stage]}」` +
         `\n差的是:${hint.lacking.join('、')} —— 两个人可以很亲近,却走不到一条道上`
     )
+  })
+
+  /*
+   * 已到最高阶段时没有「下一阶」。
+   *
+   * 变异扫描报 `if (!next) return null` 改坏不红:去掉它 `next.fate` 会直接抛
+   * TypeError。而这不是边角 —— 结为道侣之后它一直是 null,而 BondDialog 每开一次
+   * 就要读一遍 nextGateHint()(见第 158 行的 computed)。玩家结契之后再点开道侣面板即撞上。
+   */
+  it('已结为道侣(最高阶)时不再有下一步提示,也不抛', () => {
+    meet('dl_qingli')
+    // 一级一推:每调一次最多进一阶,推到没有下一阶为止
+    for (let i = 0; i < 6; i += 1) {
+      advanceBond({ fate: 100, trust: 100, accord: 100, shared: true })
+      if (currentBond()!.stage === 'daolv') break
+    }
+    const b = currentBond()!
+    expect(b.stage, '这一组数值应当推到最高阶').toBe('daolv')
+    expect(() => nextGateHint(), '最高阶不该抛').not.toThrow()
+    expect(nextGateHint(), '没有下一阶就没有提示').toBeNull()
   })
 
   it('契合够了才结得成契', () => {
@@ -544,4 +579,20 @@ describe('人缘册 · 深度从关系现算', () => {
     expect(cat.done).toBe(cat.entries.filter(e => e.stage >= 1).length)
     expect(cat.source).toMatch(/^来源:/)
   })
+  /*
+   * `pick.daoluId` 来自存档里的 BondRecord,而 `sanitizeBonds` 只查它是不是字符串、
+   * 不查它在不在 DAOLU 里 —— 坏档写个已下线的 id 就能一路走到 `daoluDef` 返回 undefined。
+   * 缺了 `if (!def) return null`,下一行的 `def.id` 会抛 TypeError。
+   * 命中与否由 rng 决定,故这里循环若干次把两条分支都走到。
+   */
+  it('履历里的道侣 id 已不存在:返回 null,不抛', () => {
+    const history: BondRecord[] = [
+      { daoluId: 'no_such_daolu', name: '旧人', stage: 'pledged', ending: 'missed', shared: 1 }
+    ]
+    for (let i = 0; i < 40; i += 1) {
+      expect(() => destinedCandidate(history, ['林泽', '山岳', '幽谷'])).not.toThrow()
+    }
+    expect(destinedCandidate(history, ['林泽', '山岳', '幽谷'])).toBeNull()
+  })
+
 })

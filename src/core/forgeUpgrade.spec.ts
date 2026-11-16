@@ -155,6 +155,21 @@ describe('强化连升 · 批量账', () => {
     expect(upgradeBatchPlan('c2').attempts).toBe(0)
   })
 
+  /*
+   * uid 不在行囊里 —— 界面上的行可能来自过期快照(另一页把装备卖了 / 分解了)。
+   * 变异扫描报 `if (!inst) return {...}` 改坏不红:去掉它下一句 `inst.level`
+   * 会直接抛 TypeError。同型的判据在 bounty / market 那两路都已经有了。
+   */
+  it('计划:uid 不在行囊里则给中性计划,不抛也不报「已至上限」', () => {
+    seat(mk('only', 0))
+    expect(() => upgradeBatchPlan('ghost'), '过期快照算计划不该抛').not.toThrow()
+    const plan = upgradeBatchPlan('ghost')
+    expect(plan.attempts).toBe(0)
+    expect(plan.atCap, '不在行囊不是「已至上限」').toBe(false)
+    expect(plan.dust).toBe(0)
+    expect(plan.stone).toEqual(gn(0))
+  })
+
   it('已至上限:attempts=0 且 atCap=true(不是钱不够)', () => {
     seat(mk('d', equipLevelCap()))
     rich()
@@ -341,5 +356,19 @@ describe('炼器 · 单步强化(upgradeEquipment)边界', () => {
     expect(r.spiritStone).toEqual(s0)
     expect(usePlayerStore().exp).toEqual(e0)
     expect(useUiStore().toasts.at(-1)?.text).toContain('修为')
+  })
+})
+
+describe('强化 · 材料差额钳制', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  /*
+   * 差额必须钳到 0:器灵尘多过所需时,负差额会一路印成「器灵尘尚差 -900」。
+   */
+  it('器灵尘多于所需:差额为 0,不出负数', () => {
+    const r = useResourcesStore()
+    r.dust = 100
+    expect(upgradeShortfall({ dust: 50, stone: { m: 1, e: 0 }, exp: gnZero() }).dust, '多于所需应为 0').toBe(0)
+    expect(upgradeShortfall({ dust: 500, stone: { m: 1, e: 0 }, exp: gnZero() }).dust, '少于所需应为差值').toBe(400)
   })
 })

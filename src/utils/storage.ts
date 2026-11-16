@@ -362,6 +362,36 @@ function markAlive(): void {
   }
 }
 
+/**
+ * 丢掉本页的心跳键。
+ *
+ * 心跳只记「最后写下的时刻」,分不出「还开着但没来得及再写」与「这一份页面已经没了」:
+ * 两者都表现为一个越来越旧的时间戳。过期窗口是 12 秒,于是**单页刷新**之后,
+ * 上一份页面留下的那个键在窗口内仍被算成另一个活页 —— 新页面开局 4 秒就报
+ * 「存档已在另一页打开」。实测:刷新一次即误报,设置页那条常驻提示跟着亮 12 秒;
+ * 关掉页签再 12 秒内重开同样中招。
+ *
+ * 卸载时自己把键删掉,对面收到 storage 事件即刻重算,不必等过期窗口走完。
+ * 进程被杀/断电这类没能卸载的情形仍由过期窗口兜底。
+ */
+function dropAlive(): void {
+  try {
+    localStorage.removeItem(MY_LIVE_KEY)
+  } catch {
+    // 存储不可用时忽略
+  }
+}
+
+/*
+ * 卸载时删键:pagehide 在手机上更可靠,桌面上 beforeunload 也发 —— 两个都挂,幂等。
+ * 注册在模块内而非 watchOtherTabSave 里:心跳是否在跑由调用方按「是否在玩」开关,
+ * 而「本页已经没了」这件事与开局状态无关。
+ */
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', dropAlive)
+  window.addEventListener('beforeunload', dropAlive)
+}
+
 /** 除本页之外还有几页活着 */
 function livePeerCount(): number {
   const now = Date.now()
@@ -398,6 +428,33 @@ function isSaveSliceKey(key: string): boolean {
 }
 
 /**
+ * 「对面还活着」的第二条证据:它还在写存档分片。
+ *
+ * 心跳只在本页**可见**时才发 —— 另一页切到后台(手机锁屏、切去别的应用)后心跳就停了,
+ * 可它仍在按 5 秒一次的节奏写档,而且写的正是同一份存档。只认心跳的话,对面明明还开着、
+ * 也仍在改写进度,本页却在 12 秒后判定「对面没了」:常驻提示熄灭 → 下一次写档事件又把它
+ * 点亮 → 4 秒后再熄灭。
+ *
+ * 实测(另一页钉在 hidden 且持续写档 40 秒):提示 true/false 交替 8 次,
+ * 每次点亮还会重弹一条 toast,玩家看到的是提示条不停闪、提示音不停响。
+ *
+ * 故「活页」算两条证据:心跳新鲜,或最近一次见到对面写档。两者都过期才算对面没了。
+ * 窗口取 30 秒 ≈ 存档刷盘间隔的 6 倍:后台页在这段里必有一次写档。
+ *
+ * 已知边界:后台超过 5 分钟会被浏览器按「每秒一次」重度节流到约每分钟一写,
+ * 那时 30 秒窗口拦不住,提示仍会掉一次。把窗口拉长能盖住它,代价是崩溃/被系统回收的
+ * 页面留下的心跳会让玩家重开时看到假警报 —— 后者更常见,故宁可让这里短一些。
+ */
+let lastPeerWriteAt = 0
+const PEER_WRITE_STALE_MS = 30000
+
+/** 除本页之外是否还有活页:心跳新鲜,或最近见到它写档 */
+function peerAlive(): boolean {
+  if (livePeerCount() > 0) return true
+  return lastPeerWriteAt > 0 && Date.now() - lastPeerWriteAt <= PEER_WRITE_STALE_MS
+}
+
+/**
  * storage 事件只在「别的标签页」写入时触发,本页自己的写入不会回调 —— 正合用来判重。
  *
  * 只认**存档分片**;心跳单独比时间戳,免得把心跳当成写档。
@@ -409,10 +466,21 @@ if (typeof window !== 'undefined') {
   window.addEventListener('storage', e => {
     if (e.key === null) return
     if (e.key.startsWith(LIVE_PREFIX)) {
-      setOtherTab(livePeerCount() > 0)
+      /*
+       * 心跳键被**删掉**是「那一页真的没了」的硬证据:卸载时会主动删(见 dropAlive)。
+       * 这时写档证据要一并作废 —— 否则它还会把提示多撑一整个窗口,
+       * 而玩家刚关掉另一页、正看着那条提示不该留着。
+       * 删键与「过期」要分开看:过期只说明对面不在前台,删键说明它已经不在了。
+       */
+      if (e.newValue === null && livePeerCount() === 0) lastPeerWriteAt = 0
+      setOtherTab(peerAlive())
       return
     }
-    if (isSaveSliceKey(e.key)) setOtherTab(true)
+    if (isSaveSliceKey(e.key)) {
+      // 见到对面写档就是它此刻还开着的硬证据,记下来给心跳停摆的那段时间兜底
+      lastPeerWriteAt = Date.now()
+      setOtherTab(true)
+    }
   })
 }
 
@@ -437,11 +505,9 @@ export function watchOtherTabSave(enabled: boolean): void {
       document.removeEventListener('visibilitychange', pingOnVisible)
       pingOnVisible = undefined
     }
-    try {
-      localStorage.removeItem(MY_LIVE_KEY)
-    } catch {
-      // 存储不可用时忽略
-    }
+    dropAlive()
+    // 这条证据只对「这一次同开」有效:停表后本页不再关心对面,留着重开时会变成假警报
+    lastPeerWriteAt = 0
     setOtherTab(false)
     return
   }
@@ -455,8 +521,11 @@ export function watchOtherTabSave(enabled: boolean): void {
      * setOtherTab(false) 原先只在「收到对面心跳且已过期」时发生 —— 而对面**关掉之后
      * 就不再发心跳**,本页收不到任何 storage 事件,otherTabActive 便永远挂着。
      * 实测:开两页再关掉一页,13 秒后警告仍在。每 4 秒扫一次全部心跳键即可复位。
+     *
+     * 走 peerAlive() 而不是直接数心跳:对面在后台时心跳停摆,但它仍在写档,
+     * 只认心跳会把「还开着」判成「已关掉」—— 提示于是一亮一灭地闪,见 peerAlive 的注释。
      */
-    setOtherTab(livePeerCount() > 0)
+    setOtherTab(peerAlive())
   }
   pingOnVisible = ping
   // 切回前台立刻补一次,避免判定滞后
@@ -753,7 +822,18 @@ export function validateImportPayload(obj: unknown): string | null {
   if (typeof obj !== 'object' || obj === null) return '存档格式无效'
   const p = obj as Partial<ExportPayload>
   if (p.game !== 'yunyin-xiuxian') return '非本游戏存档'
-  if (typeof p.version !== 'number') return '存档缺少版本号'
+  /*
+   * `typeof === 'number'` 挡不住 NaN —— 而 NaN 比出来恒 false:
+   * `NaN > SAVE_VERSION` 是 false,于是它一路通过闸门。实测 `version: NaN` 与
+   * `version: -Infinity` 都能进来,`1.5` / `-1` 这种非整数、负数的版本号同样放行。
+   *
+   * 版本号是「这份档来自哪一代」的唯一凭据:放进来一个说不清年代的档,玩家看到的是
+   * 自己的进度被一份来历不明的东西覆盖,而事后无从判断它本该走哪条升级链。
+   * 与同文件其余数字守卫(asFiniteNumber / Number.isFinite)一道,这里也要求有限正整数。
+   */
+  if (typeof p.version !== 'number' || !Number.isFinite(p.version) || !Number.isInteger(p.version) || p.version < 0) {
+    return '存档缺少版本号'
+  }
   if (p.version > SAVE_VERSION) return '存档版本过高'
   if (typeof p.data !== 'object' || p.data === null) return '存档数据段缺失'
   const data = p.data as Record<string, unknown>

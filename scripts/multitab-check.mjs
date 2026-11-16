@@ -106,7 +106,46 @@ try {
   const soloWarned = await solo.evaluate(w => window.__toasts.some(t => t.includes(w)), WARN)
   if (soloWarned) failures.push('只开一页也报了「存档已在另一页打开」—— 误报')
   console.log(`  ${soloWarned ? '✗' : '✓'} 单页无误报`)
+
+  /*
+   * 同一个页面刷新一次:上一份页面留下的心跳键在 12 秒过期窗口内仍会被算成另一个活页,
+   * 于是刷新后新页面开局 4 秒就对自己报「存档已在另一页打开」,设置页那条常驻提示跟着亮 12 秒。
+   * 关掉页签再 12 秒内重开同样中招。判据走 toast,是因为它由状态翻转触发 ——
+   * 常驻提示读的是同一个状态,toast 报了就说明状态置真了。
+   */
+  await solo.evaluate(() => {
+    window.__toasts.length = 0
+  })
+  await solo.reload({ waitUntil: 'domcontentloaded' })
+  await watchToasts(solo)
+  await solo.waitForSelector('nav', { timeout: 15000 })
+  await solo.waitForTimeout(9000)
+  const reloadWarned = await solo.evaluate(w => window.__toasts.some(t => t.includes(w)), WARN)
+  if (reloadWarned) failures.push('单页刷新后报了「存档已在另一页打开」—— 上一份页面的心跳被当成了对面')
+  console.log(`  ${reloadWarned ? '✗' : '✓'} 单页刷新无误报`)
   await solo.close()
+
+  /*
+   * 关掉页签再 12 秒内重开:同上一条,只是这次上一份页面连卸载都没有 ——
+   * 页面被直接丢弃,只能靠 pagehide 删掉自己的心跳键。
+   */
+  {
+    const gone = await ctx.newPage()
+    await gone.goto(BASE + '#/', { waitUntil: 'domcontentloaded' })
+    await gone.waitForSelector('nav', { timeout: 15000 })
+    await gone.waitForTimeout(500)
+    await gone.close()
+    await new Promise(r => setTimeout(r, 2000))
+    const reopened = await ctx.newPage()
+    await reopened.goto(BASE + '#/', { waitUntil: 'domcontentloaded' })
+    await watchToasts(reopened)
+    await reopened.waitForSelector('nav', { timeout: 15000 })
+    await reopened.waitForTimeout(9000)
+    const reopenWarned = await reopened.evaluate(w => window.__toasts.some(t => t.includes(w)), WARN)
+    if (reopenWarned) failures.push('关掉页签再重开报了「存档已在另一页打开」—— 已关掉的那份心跳还被算成活页')
+    console.log(`  ${reopenWarned ? '✗' : '✓'} 关页签重开无误报`)
+    await reopened.close()
+  }
 
   // 两页:第二页起来后第一页须收到
   const first = await ctx.newPage()
@@ -137,6 +176,44 @@ try {
   const warned = await first.evaluate(w => window.__toasts.some(t => t.includes(w)), WARN)
   if (!warned) failures.push('开了第二页,第一页没收到「存档已在另一页打开」')
   console.log(`  ${warned ? '✓' : '✗'} 两页同开时提示已给出`)
+
+  /*
+   * 第二页切到后台:提示不许闪。
+   *
+   * 心跳只在本页可见时才发,后台那页心跳就停了 —— 但它仍在按 5 秒一次的节奏写档,
+   * 写的正是同一份存档。只认心跳的话,第一页 12 秒后判定「对面没了」把提示熄掉,
+   * 下一次写档事件又点亮,4 秒后再熄:玩家看到的是提示条不停闪、toast 不停重弹。
+   * 实测(第二页钉在 hidden 且持续写档 40 秒):提示 true/false 交替 9 次、toast 14 条。
+   *
+   * 判据落在**常驻提示**上而不是 toast:toast 会去重、会自己散,数它不稳;
+   * 常驻那条直接读的是状态,翻转一次就是一次闪。
+   */
+  {
+    await first.evaluate(() => {
+      location.hash = '#/settings'
+    })
+    await first.waitForTimeout(600)
+    const bannerOn = () => first.evaluate(w => document.body.innerText.includes(w), WARN)
+    if (!(await bannerOn())) failures.push('第二页还开着,第一页设置页却没有常驻提示')
+
+    await second.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    const samples = []
+    // 30 秒 ≈ 7 个心跳周期:够跨过旧的 12 秒过期窗口两轮以上
+    for (let i = 0; i < 15; i += 1) {
+      await first.waitForTimeout(2000)
+      samples.push(await bannerOn())
+    }
+    const flips = samples.filter((v, i) => i > 0 && v !== samples[i - 1]).length
+    if (flips > 0) failures.push(`第二页切到后台后,第一页的提示翻转了 ${flips} 次(采样 ${JSON.stringify(samples)})`)
+    console.log(`  ${flips === 0 ? '✓' : '✗'} 对面在后台时提示不闪(采样 30 秒,翻转 ${flips} 次)`)
+    await first.evaluate(() => {
+      location.hash = '#/'
+    })
+    await first.waitForTimeout(300)
+  }
 } finally {
   await browser?.close()
   await server.httpServer.close()

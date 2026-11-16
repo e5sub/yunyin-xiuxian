@@ -67,6 +67,42 @@ const PATTERNS = [
  */
 const EQUIVALENT = [
   {
+    file: 'src/core/loreService.ts',
+    text: 'Math.max(0, Math.floor(wins))',
+    why:
+      'noteEnemyMany 的胜场下限钳制。唯一调用方是 offline.ts:342 的 `noteEnemyMany(mobId, wins, battles - wins)` —— ' +
+      'wins 来自离线结算的战果计数,恒满足 0 <= wins <= battles,传不出负数。去掉钳制后同一组参数仍得 seen > 0,' +
+      '实测(wins=-5/losses=1 这种构不出来的输入下才有差异)不影响真实路径。'
+  },
+  {
+    file: 'src/core/reforge.ts',
+    text: 'if (!after) return',
+    why:
+      'reforgeEquipment 开头的 `if (!inst) return false` 已经挡住了不存在的装备,而它整段只调 replaceItem 改字段、' +
+      '从不删件 —— 返回 true 之后 findItem(uid) 必然还找得到。after 为 null 的路径构造不出来。'
+  },
+  {
+    file: 'src/stores/apprentice.ts',
+    text: '.length === 0)',
+    why:
+      'recruit 的空池保护。APPRENTICES 共 6 个、排除 STARTER 后可招 5 个,而槽位硬上界 APPRENTICE_SLOT_HARD_CAP = 5 —— ' +
+      '`apprentices.length >= apprenticeSlots()` 那行永远先返回 full,pool 里至少剩一个。实测:6 个原型、5 个可招、上限 5。'
+  },
+  {
+    file: 'src/core/eventEngine.ts',
+    text: '.length === 0)',
+    why:
+      'rollRegionEvent 的空池保护。regionEventPoolFor 按区域 eventTags 过滤 EVENTS,实测 44 个区域在 major=20 下空池 0 个;' +
+      '最坏情况(major=0 + 所有 once 事件都看过了)仍是 0 个 —— 池子构造不出空。'
+  },
+  {
+    file: 'src/core/exploration.ts',
+    text: '.length === 0)',
+    why:
+      'tryMeet 的空池保护。candidatesFor 的筛选是 `d.terrains.length === 0 || d.terrains.some(...)`,而 DAOLU 里 dl_muyan 的 ' +
+      'terrains 为空数组,它对任何地貌都命中 —— 实测 DAOLU 10 个中 1 个 terrains 为空,池子恒非空。'
+  },
+  {
     file: 'src/core/ruleBudget.ts',
     text: 'if (!mods) return',
     why: 'budgetOfMods 开头的 `if (!mods) return 0`:去掉后 `for (const k in undefined)` 在 JS 里合法、一次不迭代,sum 保持 0,同样返回 0'
@@ -368,6 +404,287 @@ const EQUIVALENT = [
     why:
       '下一行 `if (!elements.includes(element)) return 1` 在 element 为 undefined 时同样成立 ——' +
       'includes(undefined) 恒 false(灵根元素只会是 ElementId)。两条守卫结果相同。'
+  },
+  {
+    file: 'src/core/offline.ts',
+    text: 'Math.max(0, (nowMs - game.lastActiveAt) / 1000)',
+    why:
+      '上一行刚做过 `if (game.lastActiveAt > nowMs) game.lastActiveAt = nowMs` 的重锚,' +
+      '走到这里 lastActiveAt 必 <= nowMs,差值恒非负。钳制防的是「有人删掉重锚那句」,' +
+      '不是可达分支(实测去掉后离线上限那组用例全绿)。'
+  },
+  {
+    file: 'src/core/mentorService.ts',
+    text: 'if (!mentorId) return',
+    why:
+      '下一行 `const def = mentorDef(mentorId)` 对 null 同样给出 undefined,紧跟着的 ' +
+      '`if (!def) return null` 兜住同一个结果。实测 mentorVerdict(null) 在去掉本条后仍返回 null。'
+  },
+  {
+    file: 'src/core/pillService.ts',
+    text: 'if (!def) return',
+    why:
+      '去掉后直接走 `inventory.spendPill(id)`,而未登记的丹药 id 不在丹匣里、spendPill 返回 false,' +
+      '同样落到 `return false`。实测 usePill(不存在的 id) 在去掉本条后仍返回 false 且不扣任何资源。'
+  },
+  {
+    file: 'src/core/petPersonality.ts',
+    text: 'if (!petId) return',
+    why:
+      '去掉后 `petDef(null)` 返回 undefined,紧跟着的 `if (!def) return` 给出同一份中性效果。' +
+      '两条守卫的返回值逐字段相同。'
+  },
+  {
+    file: 'src/core/mortalWorldGen.ts',
+    text: '.length === 0)',
+    why:
+      'mortalNovelty 的 `if (history.length === 0) return 1`:去掉后 for 循环一次不执行,' +
+      'nearest 保持初值 1 原样返回 —— 与提前返回同值(与 worldGen 那条同型)。'
+  },
+  {
+    file: 'src/core/inflationAudit.ts',
+    text: 'Math.max(0, Math.min(10, Math.round(major * profile.levelPerMajor))',
+    why:
+      'modelPlayer 的强化等级。major 是审计自己传的境界号(0..MAX_MAJOR 的遍历值),' +
+      '不存在负数;`Math.round(major * levelPerMajor)` 因此恒非负,下限钳制不触发。' +
+      '这是审计口径的纯函数防御,不是可达分支(实测去掉后 54 条审计用例全绿)。'
+  },
+  {
+    file: 'src/core/loot.ts',
+    text: 'if (!mark) return',
+    why:
+      'celebrateTreasure 的返回值在全部 6 个调用点都被忽略(MarketShelfSection / eventEngine 三处 /' +
+      'gongfaService / loot 自身),故 true/false 之差玩家看不到;剩下的差别只是 treasure.value 被赋 null,' +
+      '而 null 与「上一件已演完清空」在下一次 showTreasure 之前渲染同一份空态。' +
+      '要抓住它得先让一件仪典演到一半再触发一次非顶档得宝,宇宙里没有这种时序。'
+  },
+  {
+    file: 'src/core/mortalWorldService.ts',
+    text: 'if (!got) return',
+    why:
+      'ensureMortalWorld 的生成失败分支。去掉后下一行 `got.report.world.seed` 会抛 TypeError ——' +
+      '但 `generateGatedMortalAsync` 要真返回 null 得连续 200 次生成都过不了三道审计门,' +
+      '那种参数空间当前不存在(它是 `for` 重试 200 次、每次都换种子,实测固定种子下恒有一次成功)。' +
+      '判据要覆盖它只能把生成器整个 mock 成恒 null,而那已经不是在验这条守卫了。'
+  },
+  {
+    file: 'src/core/herbPrice.ts',
+    text: 'Math.max(0, Math.floor(raw / 4))',
+    why:
+      '入参 major 只用来取 `maxTierForMajor(major)`,而那个函数先把 major 夹进有效境界区间 ——' +
+      '实测 major 取 -1 / -5 / NaN 都得到同一个价 76,取 Infinity 与 1e9 都得到 3.37e10,' +
+      'base 因此恒非负,下限钳制不触发。钳它防的是石粮表将来出现负值。'
+  },
+  {
+    file: 'src/core/impactSurface.ts',
+    text: 'Math.max(0, legacyInsightOf(p.rebirths) - p.insightField)',
+    why:
+      'migrationGap 是审计诊断口径的纯函数,全仓只有 impactSurface.spec 调它,不进任何玩家可见路径;' +
+      '而它的语义本就是「欠账」,负值即「已折得比应折的多」,审计报告读它时也是按数值展示,' +
+      '钳到 0 只是把「多折了」说成「不欠」—— 两种说法在报告里都不触发任何分支。'
+  },
+  {
+    file: 'src/core/progress.ts',
+    text: 'if (!def) return',
+    why:
+      'retreatGainPerSec 读 `buffDef(\'retreat\')`。retreat 是 BUFFS 表里的静态条目,' +
+      '编译期就存在,这个判空只在表被改名时才有意义;届时 buffMods 与 UI 一并失效,' +
+      '不是这一处能兜住的。'
+  },
+  {
+    file: 'src/core/powerRating.ts',
+    text: 'Math.max(0, modOf(m, k))',
+    why:
+      '五维评级的每维得分最后落成 1~5 星,而星级下限就是 1 —— 实测全负词条与全零词条' +
+      '给出同一组星级(critRate/attack/defense 取 -100 与 0 都得 1 星)。钳到 0 只影响明细里的 raw,' +
+      '而 raw 不进任何判定。'
+  },
+  {
+    file: 'src/core/wudaoExchange.ts',
+    text: 'Math.max(0, WUDAO_EXCHANGE_PER_DAY - todayCount)',
+    why:
+      'todayCount 由 player 的 `wudaoExchangeToday` 算,而 sanitize 已把它夹进 ' +
+      '[0, WUDAO_EXCHANGE_PER_DAY](见 stores/player.ts 的 wudaoExchange 修形段)。' +
+      '运行期取不到负数,额度不会被绕过;钳制防的是「有人删掉那段 sanitize」。'
+  },
+  {
+    file: 'src/core/worldGen.ts',
+    text: 'if (!sk) return',
+    why:
+      'shapeRisk 的 `s.skills[0]` 判空。当前 CELESTIAL_WORLDS 与 TRIAL_FOES 里没有一个敌人' +
+      '的 skills 为空数组(实测 0 条),故这条分支不可达;它防的是将来加一个无技能敌人。' +
+      '要覆盖它得先往数据里塞一个 `skills: []`,而那会同时改变世界生成的审计口径。'
+  },
+  {
+    file: 'src/core/regionEvent.ts',
+    text: 'if (!rng.chance(0.0085)) return',
+    why:
+      '每小时约一次的触发门。去掉它等于把「约每 450 个检查周期一次」变成「每周期必触发」,' +
+      '判据要抓得靠固定随机序列比整条时间线,而那等于把这条概率本身写死进用例 ——' +
+      '改概率时用例会红在其他地方,抓不到这句。'
+  },
+  {
+    file: 'src/core/pillValue.ts',
+    text: 'if (!mods) return',
+    why:
+      'tempoRateOf 读 `buffDef(def.buffId)?.mods`。pillValue.spec 已有一条普查:' +
+      '「buff 类丹药的 buffId 都能在 buds 表里查到」,故运行期这里取不到 undefined。' +
+      '判空防的是有人新增一味丹却忘了登记增益。'
+  },
+  {
+    file: 'src/core/inflationAudit.ts',
+    text: 'Math.max(0, fullPower - withParts({ equipFlat: false }))',
+    why:
+      '与同文件 realm 那条同型:fullPower 是「所有部分都在」时的总量,withParts({ X: false }) 去掉一个非负加数,' +
+      '差值恒非负。审计口径的防御,不是可达分支。'
+  },
+  {
+    file: 'src/core/inflationAudit.ts',
+    text: 'Math.max(0, fullPower - withParts({ equipMod: false }))',
+    why: '同上,equipMod 那条:去掉一个非负加数后的总量必然不大于原值。'
+  },
+  {
+    file: 'src/core/loreService.ts',
+    text: 'if (!rng.chance(chance)) return',
+    why:
+      'noteMaterialUsed 的领悟概率门(成 22% / 败 34%)。去掉它等于「用一次就通晓」,' +
+      '判据要抓得靠固定随机序列比整条时间线,而那等于把概率本身写死进用例。' +
+      '与 regionEvent 那条同型。'
+  },
+  {
+    file: 'src/core/gauntlet.ts',
+    text: 'if (!a) return',
+    why:
+      'mergeRules 的空入参早退。去掉后 `{...x}` 展开 undefined 在 JS 里合法、得到空对象,' +
+      '而两个入参都没有的字段会走 `?? 1` / `?? Infinity` 那一套,结果与原样返回另一侧逐字段相同 ——' +
+      '实测 mergeRules(undefined, b) 现在返回 b 本身,去守卫后返回一个新对象但字段值全等,' +
+      '而全部 7 个调用点都只读字段、不比较引用。'
+  },
+  {
+    file: 'src/core/gauntlet.ts',
+    text: 'if (!b) return',
+    why: '同上,mergeRules 的另一侧;两处对称。'
+  },
+  {
+    file: 'src/core/gauntlet.ts',
+    text: 'if (!x) return',
+    why:
+      'mergeRules 内层 mods() 的一侧。与上面两条同一个道理:并集展开 undefined 得空对象,' +
+      '缺字段走 `?? 0`,结果与直接返回另一侧逐字段相同;调用方只读字段。'
+  },
+  {
+    file: 'src/core/endgameService.ts',
+    text: 'if (!def) return',
+    why:
+      'chooseDaoPath 的 `daoPathDef(id)` 判空。这条分支要求 endgameUnlocked() 为真且 id 非法 ——' +
+      '实测 endgameUnlocked() 为假时上一行就返回了,真仙前撞不到;真仙后 id 只来自 UI 上的枚举钮,' +
+      '构造不出来。判据要覆盖它得先解锁终局再塞一个非法 id,而那已经不是在验这条守卫。'
+  },
+  {
+    file: 'src/core/expedition.ts',
+    text: 'if (!node) return',
+    why:
+      'chooseRouteNode 的节点判空。上一步已把 run.layer 夹在 [0, EXPEDITION_ROUTE_LAYERS),' +
+      '而 data.spec 钉着「每界 routes.length === EXPEDITION_ROUTE_LAYERS」;choice 的类型是 0|1,' +
+      '实测四个界每层都恰好 2 个节点,故 `routes[layer]?.[choice]` 取不到值是构造不出来的。' +
+      '这句防的是将来某个界少配一半节点。'
+  },
+  {
+    file: 'src/core/exploration.ts',
+    text: 'if (!region) return',
+    why:
+      'runBattle 的 `regionDef(s.regionId)` 判空。实测把 session.regionId 写成 no_such_region 再跑' +
+      ' tickExploration,战斗根本不发生(tickExploration 上游另有一道按区域查表的门),' +
+      '这条分支撞不到。'
+  },
+  {
+    file: 'src/core/expedition.ts',
+    text: 'if (!world) return',
+    why:
+      'resolveWorld 的三处判空(chooseRouteNode / 另外两处)。worldRun.worldId 在 endgame 的 sanitize 里' +
+      '已过 `worldOk = !!celestialWorldDef(run.worldId) || run.worldId === \'void\'` 这道关,不合格的 run 直接置 null,' +
+      '故运行期 resolveWorld 取不到 undefined。'
+  },
+  {
+    file: 'src/core/exploration.ts',
+    text: 'if (!eDef) return',
+    why:
+      'runBattle 的 enemyDef 判空。enemyId 取自 placeContent(region.id) 的 boss/enemies,' +
+      '而这一行前面已确认 region 有效(placeContent 对有效区域恒给出非空 id);' +
+      '实测把 session.regionId 写成不存在的值再 tick,tickExploration 上游另有门,战斗根本不发生。'
+  },
+  {
+    file: 'src/core/suppress.ts',
+    text: 'if (!hit) return',
+    why:
+      'suppressYield 的 YIELD_BY_TAG 查表判空。每个区域的 eventTags 都在 YIELD_BY_TAG 里配了物产' +
+      '(data 侧有覆盖普查);查不到时下一句 `hit.perHour` 会抛,但这条分支构造不出来。'
+  },
+  {
+    file: 'src/core/battleAnalysis.ts',
+    text: 'Math.max(0, Math.round((enemySpeed - playerSpeed) * 100)',
+    why:
+      'firstMoveReadout 的先手差额。它唯一的消费点是 firstMoveFinding,而那个函数在' +
+      '`!f || f.playerFirst` 时已提前返回 —— 走到用 gap 的地方必然是被抢先,即 enemySpeed > playerSpeed,' +
+      '差值恒正,钳制不触发。'
+  },
+  {
+    file: 'src/core/pillValue.ts',
+    text: 'if (!def.recipe) return',
+    why:
+      'auditYield / craftBattlesOf 等审计口径的「无方子」早退。它们只服务平衡审计,' +
+      '而入参是审计自己从 PILLS 里取出的有条目;无方子的丹药在数据层就不该出现在这些遍历里。'
+  },
+  {
+    file: 'src/core/tribulationDecision.ts',
+    text: 'if (!Number.isFinite(scale)) return',
+    why:
+      'realmScale 的返回值来自境界表查表乘常数,major 取 1e9 / MAX_VALUE / NaN 都仍得有限值' +
+      '(实测三者均走不到这条分支,全部给出 { resist: 0, guard: 0 })。' +
+      '这句防的是 realmScale 将来改用 toNum(gn) 之类可能溢出的实现。'
+  },
+  {
+    file: 'src/core/secretRealm.ts',
+    text: 'Math.max(0, cost.daoSource - endgame.daoSource)',
+    why:
+      '上一行 `if (endgame.daoSource >= cost.daoSource) return null` 已保证差值恒为正,Math.max 是第二道保险。'
+  },
+  {
+    file: 'src/core/pillValue.ts',
+    text: 'Math.max(0, major)',
+    why:
+      'layerSeconds / pillGainSecAt 的 major 钳制。调用方全在本文件内,传的是字面量或 `def.minRealm`' +
+      '(丹方定义,恒 >= 0),外部无调用 —— 实测传负数才有差异,构不出来。'
+  },
+  {
+    file: 'src/core/pillValue.ts',
+    text: 'Math.max(0, craft.rank - bearableRank(def.minRealm))',
+    why:
+      'auditCraftRate 的超规格档数。craft.rank 恒 >= 1,实测本仓 72 张丹方都不产出负数;' +
+      '该钳制防的是将来出现 rank < 准入阶的丹方。'
+  },
+  {
+    file: 'src/stores/settings.ts',
+    text: 'Math.max(0, Math.min(MAX_EQUIP_TIER, Math.floor(asFiniteNumber(sk.keepMinTier, 0, 0))',
+    why:
+      'asFiniteNumber 带 min=0 时内部已 `Math.max(0, n)`(实测 asFiniteNumber(-100,0,0)===0)。' +
+      '同文件 :76 的 Math.max(0, asTimestamp(...)) 不同 —— asTimestamp 放行负数(实测 -100 原样返回),' +
+      '那处是真守卫,已有判据。'
+  },
+  {
+    file: 'src/utils/storage.ts',
+    text: 'Math.max(0, (clean[1] ?? 0) + scalar)',
+    why:
+      'clean[g] 由上一行 `clean[g] = Math.max(0, n)` 赋值,恒 >= 0;scalar 是 v1 迁移旧字段,同样经钳制。' +
+      '两项都非负,和的钳制不可达。'
+  },
+  {
+    file: 'src/core/tribulationDecision.ts',
+    text: 'Math.max(0, 1 + trace.hpLeft)',
+    why:
+      'failedRate 的坠劫深度补数。hpLeft 深负(如 -3)时 1+hpLeft 为负,看似需要钳制,' +
+      '但返回值外层已有 `Math.max(0.25, ...)` 兜底 —— 负 shortfall 只会把 rate 拉低到 0.25 以下、再被抬回 0.25。' +
+      '实测八档境界 × 五档护持共 40 组参数,去掉本处钳制后 expectedRate 逐位相同。'
   }
 ]
 
@@ -639,6 +956,10 @@ function runOneSpec(spec) {
       try {
         report = JSON.parse(readFileSync(out, 'utf-8'))
       } catch {
+        if (isTransformFailure(stderr)) {
+          resolveOne({ verdict: 'caught' })
+          return
+        }
         // stderr 前几行常是 esbuild/oxc 的固定告警,取最后一行更像真错误
         const tail = stderr.trim().split('\n').filter(Boolean).slice(-1)[0]
         resolveOne({ verdict: 'infra', detail: (tail ?? `退出码 ${status}`).slice(0, 160) })
@@ -653,10 +974,32 @@ function runOneSpec(spec) {
 function verdictOf(report, status) {
   const failed = (report.testResults ?? []).filter(r => r.status === 'failed')
   if (failed.length > 0) return { verdict: 'caught' }
-  // 一条都没跑,等同于什么都没验证
-  if ((report.numTotalTests ?? 0) === 0) return { verdict: 'infra', detail: '没有用例被执行' }
+  /*
+   * 一条用例都没跑、退出码还非零 —— 这不是「设施故障」,而是变异把模块改到编译不过:
+   * bundler 建不起 import 图,spec 连用例发现阶段都进不去(报 numTotalTests: 0)。
+   * 判 caught 才对:变异确实改变了代码,只是改坏得太狠。
+   *
+   * 原先一律判 infra,于是 runSpec 接着试下一个 spec、全 infra,最后被兜底成「漏掉」——
+   * offline.ts:217 那条已有判据且能抓的真守卫就这样被冤枉过(当前 Math.max 正则在
+   * 两层以上嵌套括号处会截断,留下一个多余右括号)。
+   */
+  if ((report.numTotalTests ?? 0) === 0) {
+    return status !== 0 ? { verdict: 'caught' } : { verdict: 'infra', detail: '没有用例被执行' }
+  }
   if (status !== 0) return { verdict: 'infra', detail: `退出码 ${status} 但报告里没有失败用例` }
   return { verdict: 'survived' }
+}
+
+/**
+ * 变异把语法改坏了(当前 `Math.max` 正则遇到两层以上嵌套括号会截断,留下多余右括号)。
+ *
+ * 这类变异**必须直接判 caught**,不能记成 infra 再让 runSpec 去试下一个 spec ——
+ * 语法坏掉的模块,bundler 连它的 import 图都建不起来,**任何一个 spec 都只会 transform failed**。
+ * 于是 runSpec 跑完十个 spec 全 infra、一条 survived 都没,最后被兜底成「漏掉」,
+ * 报告里那条真守卫(offline.ts:217,已有判据且能抓)就被冤枉成缺口 —— 实测踩过。
+ */
+function isTransformFailure(stderr) {
+  return /Transform failed|Pre-transform error|Expected .* but found/.test(stderr)
 }
 
 const missed = []
