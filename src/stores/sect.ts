@@ -32,6 +32,7 @@ import {
   memberCap,
   normalizeSectState,
   sectMods,
+  skillLevelCap,
   type SectState
 } from '@/core/sectRules'
 
@@ -49,6 +50,8 @@ const REASON_TEXT: Record<string, string> = {
   pool: '门派库不足',
   personal: '个人贡献不足',
   locked: '上一层尚未练到二重',
+  /** 技能到顶:不是「练满」,而是山门还没垒到那一档 */
+  skillcap: '山门未及此重',
   gone: '查无此物',
   joined: '此人已入他门',
   notdone: '工程未竟',
@@ -68,8 +71,17 @@ function dayKeyNow(now = Date.now()): string {
 
 export const useSectStore = defineStore('sect', () => {
   const state = ref<SectState>(emptySectState())
-  /** 门人一览(在门中时由服务端下发) */
-  const members = ref<SectMemberView[]>([])
+  /**
+   * 门册只取一页:山门不封顶,门人可能上百,整本读进来既费流量也没处放。
+   * 搜索词与页码留在 store 里,关掉弹窗再开还是刚才那一页。
+   */
+  const memberRows = ref<SectMemberView[]>([])
+  const memberTotal = ref(0)
+  const memberPage = ref(1)
+  const memberPageSize = ref(12)
+  const memberQuery = ref('')
+  /** 门册请求在途(翻页/搜索时界面据此禁用,防连点把页码打乱) */
+  const membersPending = ref(false)
   /** 门外候着的申请(只有掌门拿得到) */
   const applies = ref<SectApplyView[]>([])
   /** 我挂着的申请(未入派时) */
@@ -105,6 +117,10 @@ export const useSectStore = defineStore('sect', () => {
   const memberCount = computed(() => state.value.memberCount)
   /** 门人上限:山门定员(初始 10,每级 +1;山门不封顶) */
   const capacity = computed(() => memberCap(state.value.buildings.hall ?? 0))
+  /** 技能等级上限:基础五重,山门每 20 级再开五重(与服务端 skillLevelCap 同源) */
+  const skillCap = computed(() => skillLevelCap(state.value.buildings.hall ?? 0))
+  /** 门册共几页(搜索之后按命中数算) */
+  const memberPages = computed(() => Math.max(1, Math.ceil(memberTotal.value / memberPageSize.value)))
   /** 门外候着几份申请(掌门才拿得到) */
   const applyCount = computed(() => applies.value.length)
 
@@ -129,7 +145,6 @@ export const useSectStore = defineStore('sect', () => {
       return false
     }
     state.value = res.state
-    members.value = res.members ?? []
     applies.value = res.applies ?? []
     appliedTo.value = res.appliedTo ?? null
     sectList.value = res.list ?? []
@@ -151,6 +166,29 @@ export const useSectStore = defineStore('sect', () => {
       return absorb(await cloudApi.sectState())
     } catch {
       return false
+    }
+  }
+
+  /**
+   * 读一页门册(带搜索词)。与 load 分开:门册只在弹窗里用得上,
+   * 不必每次读门派都顺带拉一遍;动作之后弹窗自己重取,不必服务端在每个动作里塞全表。
+   */
+  async function loadMembers(q = memberQuery.value, page = memberPage.value): Promise<boolean> {
+    if (membersPending.value) return false
+    membersPending.value = true
+    try {
+      const res = await cloudApi.sectMembers(q, page)
+      memberRows.value = res.members
+      memberTotal.value = res.total
+      memberPage.value = res.page
+      memberPageSize.value = res.pageSize
+      memberQuery.value = q
+      return true
+    } catch {
+      useUiStore().toast(REASON_TEXT.error ?? '未能结算', 'warn')
+      return false
+    } finally {
+      membersPending.value = false
     }
   }
 
@@ -269,7 +307,11 @@ export const useSectStore = defineStore('sect', () => {
   /** 登出/切号:清空,免得下一号看见上一号的门派 */
   function reset(): void {
     state.value = emptySectState()
-    members.value = []
+    memberRows.value = []
+    memberTotal.value = 0
+    memberPage.value = 1
+    memberPageSize.value = 12
+    memberQuery.value = ''
     applies.value = []
     appliedTo.value = null
     sectList.value = []
@@ -279,7 +321,13 @@ export const useSectStore = defineStore('sect', () => {
 
   return {
     state,
-    members,
+    memberRows,
+    memberTotal,
+    memberPage,
+    memberPageSize,
+    memberPages,
+    memberQuery,
+    membersPending,
     applies,
     appliedTo,
     sectList,
@@ -297,6 +345,7 @@ export const useSectStore = defineStore('sect', () => {
     donationsLeft,
     memberCount,
     capacity,
+    skillCap,
     applyCount,
     skillLevel,
     buildingLevel,
@@ -305,6 +354,7 @@ export const useSectStore = defineStore('sect', () => {
     remainingMs,
     hydrate,
     load,
+    loadMembers,
     found,
     join,
     cancelApply,

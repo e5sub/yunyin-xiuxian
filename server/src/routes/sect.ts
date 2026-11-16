@@ -47,7 +47,6 @@ import {
   type SectApplyView,
   type SectBriefView,
   type SectMemberRow,
-  type SectMemberView,
   type SectSpend,
   type SectState
 } from '../sectState.js'
@@ -70,7 +69,9 @@ interface SectRules {
   buildingCost: (id: string, level: number, rate?: number) => number | null
   buildingDurationMs: (id: string, level: number) => number | null
   buildingLevelCap: (id: string, hallLevel: number) => number
-  skillCost: (id: string, level: number, rate?: number) => number | null
+  /** 技能等级上限:基础五重,山门每 20 级再开五重(百级封顶三十重) */
+  skillLevelCap: (hallLevel: number) => number
+  skillCost: (id: string, level: number, rate?: number, hallLevel?: number) => number | null
   /** 某门技能现在能不能修(上一层三脉任一门到二重) */
   skillUnlocked: (skills: Record<string, number>, id: string) => boolean
   canFound: (major: number) => boolean
@@ -159,11 +160,10 @@ function vipRate(vip: boolean): number {
   return vip ? VIP_SPEND_RATE : 1
 }
 
-/** 客户端要看到的全貌:状态 + 门人 + 待审申请 + 我的申请 + 可投的门派 */
+/** 客户端要看到的全貌:状态 + 待审申请 + 我的申请 + 可投的门派 */
 interface SectView {
   state: SectState
   done: string | null
-  members: SectMemberView[]
   applies: SectApplyView[]
   appliedTo: { id: number; name: string } | null
   list: SectBriefView[]
@@ -179,12 +179,11 @@ async function viewOf(userId: number, now: number): Promise<SectView> {
       // 门派已散(掌门的档删了而申请还挂着):给 null,界面显示「未申请」
       if (row !== null) appliedTo = { id: row.id, name: row.name }
     }
-    return { state, done, members: [], applies: [], appliedTo, list: await listSects() }
+    return { state, done, applies: [], appliedTo, list: await listSects() }
   }
   return {
     state,
     done,
-    members: await listMembers(sectRow),
     // 待审申请只有掌门看得到:门人拿到的是空表,免得界面把「门外还有几个人等着」当成自己的事
     applies: member.role === 'leader' ? await listApplies(sectRow) : [],
     appliedTo: null,
@@ -293,6 +292,32 @@ sectRouter.get('/sect', requireAuth, (req: Request, res: Response) => {
     res.json({ ok: true, now, ...(await viewOf(req.user!.id, now)) })
   })().catch(() => {
     res.status(500).json({ error: '门派读取失败' })
+  })
+})
+
+/**
+ * 读门册(分页 + 按道号搜):门人可能上百,整本下发既费流量也让客户端自己切页。
+ * 只读、不加锁 —— 手上的名单旧一页不算大事,动作后界面会重取。
+ */
+const MEMBER_PAGE_SIZE = 12
+sectRouter.get('/sect/members', requireAuth, (req: Request, res: Response) => {
+  void (async () => {
+    const member = await readMember(req.user!.id)
+    if (member === null) {
+      res.json({ ok: true, members: [], total: 0, page: 1, pageSize: MEMBER_PAGE_SIZE })
+      return
+    }
+    const q = typeof req.query.q === 'string' ? req.query.q : ''
+    const asked = Number(req.query.p)
+    const page = Number.isFinite(asked) && asked >= 1 ? Math.trunc(asked) : 1
+    const { items, total } = await listMembers(member.sect_row, {
+      q,
+      offset: (page - 1) * MEMBER_PAGE_SIZE,
+      limit: MEMBER_PAGE_SIZE
+    })
+    res.json({ ok: true, members: items, total, page, pageSize: MEMBER_PAGE_SIZE })
+  })().catch(() => {
+    res.status(500).json({ error: '门册读取失败' })
   })
 })
 
@@ -513,8 +538,11 @@ sectRouter.post(
   act('skill', async ({ userId, body, state, member, sectRow, rules, vip }) => {
     if (member === null) return { ok: false, reason: 'nosect' }
     const id = typeof body.id === 'string' ? body.id : ''
+    const hall = state.buildings.hall ?? 0
     const cur = state.skills[id] ?? 0
-    const cost = rules.skillCost(id, cur, vipRate(vip))
+    // 上限由山门定(基础五重,每 20 级再开五重):到顶时说清是「山门未及」,不是「练满了」
+    if (cur >= rules.skillLevelCap(hall)) return { ok: false, reason: 'skillcap' }
+    const cost = rules.skillCost(id, cur, vipRate(vip), hall)
     if (cost === null) return { ok: false, reason: 'gone' }
     if (!rules.skillUnlocked(state.skills, id)) return { ok: false, reason: 'locked' }
     if (member.personal < cost) return { ok: false, reason: 'personal' }

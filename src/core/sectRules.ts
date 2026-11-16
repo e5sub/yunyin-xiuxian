@@ -26,8 +26,13 @@ import {
   SECT_NAME_MIN,
   SECT_POOL_SHARE,
   SECT_SKILLS,
+  SECT_SKILL_CAP_HALL_STEP,
+  SECT_SKILL_CAP_STEP,
+  SECT_SKILL_CAP_STEPS,
   SECT_SKILL_COST_BASE,
   SECT_SKILL_COST_GROWTH,
+  SECT_SKILL_COST_TAIL_GROWTH,
+  SECT_SKILL_LEVEL_HARD_MAX,
   SECT_SKILL_MAX_LEVEL,
   sectBuildingDef,
   sectSkillDef,
@@ -71,7 +76,7 @@ export interface SectState {
   personal: number
   /** 门派库:升建筑用(全门共用) */
   pool: number
-  /** 技能 id → 等级(1~5) */
+  /** 技能 id → 等级(1~30;上限由山门定,见 skillLevelCap) */
   skills: Record<string, number>
   /** 建筑 id → 等级(0~上限) */
   buildings: Record<string, number>
@@ -165,14 +170,42 @@ function priceRate(rate: number): number {
   return Number.isFinite(rate) && rate > 0 && rate <= 1 ? rate : 1
 }
 
+/**
+ * 技能的等级上限:基础五重,山门每 20 级再开五重(20/40/60/80/100 级各一次,封顶三十重)。
+ * 与建筑闸门同一思路 —— 主建筑定余地,只是这里定的是「能练到第几重」。
+ */
+export function skillLevelCap(hallLevel: number): number {
+  const hall = intIn(hallLevel, 0, SECT_LEVEL_HARD_MAX)
+  const steps = Math.min(SECT_SKILL_CAP_STEPS, Math.floor(hall / SECT_SKILL_CAP_HALL_STEP))
+  return SECT_SKILL_MAX_LEVEL + steps * SECT_SKILL_CAP_STEP
+}
+
+/** 再开一重的山门等级;已到最后一档 → null(界面用它写「山门 N 级可续修」) */
+export function skillCapNextHall(hallLevel: number): number | null {
+  const hall = intIn(hallLevel, 0, SECT_LEVEL_HARD_MAX)
+  const steps = Math.floor(hall / SECT_SKILL_CAP_HALL_STEP)
+  if (steps >= SECT_SKILL_CAP_STEPS) return null
+  return (steps + 1) * SECT_SKILL_CAP_HALL_STEP
+}
+
 /** 某门技能从 level 升到 level+1 的个人贡献价;满级/认不出 → null */
-export function skillCost(skillId: string, level: number, rate = 1): number | null {
+export function skillCost(skillId: string, level: number, rate = 1, hallLevel = 0): number | null {
   const def = sectSkillDef(skillId)
   if (def === undefined) return null
-  const lv = intIn(level, 0, SECT_SKILL_MAX_LEVEL)
-  if (lv >= SECT_SKILL_MAX_LEVEL) return null
+  const cap = skillLevelCap(hallLevel)
+  const lv = intIn(level, 0, SECT_SKILL_LEVEL_HARD_MAX)
+  if (lv >= cap) return null
   const base = SECT_SKILL_COST_BASE[Math.min(def.row, SECT_SKILL_COST_BASE.length) - 1] ?? SECT_SKILL_COST_BASE[0]
-  return Math.ceil(base * Math.pow(SECT_SKILL_COST_GROWTH, lv) * priceRate(rate))
+  /*
+   * 分段价目:前五重按 1.9 陡涨(与旧版逐分相同,不改既有手感),
+   * 五重之后转 1.15 缓涨(理由见 SECT_SKILL_COST_TAIL_GROWTH)。
+   * head/tail 拆开而不是一路乘:换斜率的那一重不该再吃一次 1.9。
+   */
+  const head = Math.min(lv, SECT_SKILL_MAX_LEVEL - 1)
+  const tail = Math.max(0, lv - (SECT_SKILL_MAX_LEVEL - 1))
+  const cost =
+    base * Math.pow(SECT_SKILL_COST_GROWTH, head) * Math.pow(SECT_SKILL_COST_TAIL_GROWTH, tail)
+  return Math.ceil(cost * priceRate(rate))
 }
 
 /** 开宗立派的一次性开销(灵石/玄铁/悟道点),VIP 有效期内同样九折 */
@@ -272,8 +305,10 @@ export function donationHerbGrade(major: number): HerbGrade {
 /** 门派给的属性:十五门技能各按现值 + 建筑各按现值,合成一份(与洞府 buildingMods 同规) */
 export function sectMods(skills: Record<string, number>, buildings: Record<string, number>): StatMods {
   const sources: StatMods[] = []
+  // 技能等级按山门定的上限夹:与 skillCost 同一把尺,少了这一道就凭坏数多算几重
+  const cap = skillLevelCap(intIn(buildings.hall, 0, SECT_LEVEL_HARD_MAX))
   for (const def of SECT_SKILLS) {
-    const lv = intIn(skills[def.id], 0, SECT_SKILL_MAX_LEVEL)
+    const lv = intIn(skills[def.id], 0, cap)
     if (lv > 0) sources.push(def.mods(lv))
   }
   for (const def of SECT_BUILDINGS) {
@@ -318,6 +353,7 @@ export function settleBuild(state: SectState, now: number): { state: SectState; 
  *  · 认不出的技能/建筑一律丢弃(技能只认三脉十五门那几门);
  *  · 贡献取整并夹到 [0, SECT_POINT_MAX];
  *  · 建筑等级按山门闸门夹(山门自身只受硬夹 —— 门派建筑没有品类满级);
+ *  · 技能等级按山门开的档位夹(五重起,山门每 20 级再开五重,至多三十重);
  *  · 营造任务的 `to` 只能是「当前等级 + 1」,时长不得超出该级合法耗时 —— 坏行直接清空,
  *    不修正成「还能顺手完工一次」;
  *  · 完成时刻已经过去的任务,交给 settleBuild(它按 now 判),这里只保证形状合法。
@@ -339,15 +375,10 @@ export function normalizeSectState(raw: unknown, now = Date.now()): SectState {
   out.role = founded && (src.role === 'leader' || src.role === 'member') ? src.role : null
   out.memberCount = founded ? intIn(src.memberCount, 0, 5000) : 0
 
-  if (founded) {
-    const rawSkills = typeof src.skills === 'object' && src.skills !== null ? (src.skills as Record<string, unknown>) : {}
-    for (const def of SECT_SKILLS) {
-      const lv = intIn(rawSkills[def.id], 0, SECT_SKILL_MAX_LEVEL)
-      if (lv > 0) out.skills[def.id] = lv
-    }
-  }
-
-  // 未立派就没有建筑与工程可谈:名字坏了整份归零,别留下一座无人认领的空门
+  /*
+   * 未立派就没有建筑、工程与技能可谈:名字坏了整份归零,别留下一座无人认领的空门。
+   * **建筑先落、技能后落**:技能上限由山门定(见 skillLevelCap),顺序反了就会按未落地的山门算上限。
+   */
   if (founded) {
     const rawBuildings =
       typeof src.buildings === 'object' && src.buildings !== null ? (src.buildings as Record<string, unknown>) : {}
@@ -357,6 +388,13 @@ export function normalizeSectState(raw: unknown, now = Date.now()): SectState {
       if (def.id === 'hall') continue
       const cap = buildingLevelCap(def.id, out.buildings.hall ?? 0)
       out.buildings[def.id] = intIn(rawBuildings[def.id], 0, cap)
+    }
+
+    const rawSkills = typeof src.skills === 'object' && src.skills !== null ? (src.skills as Record<string, unknown>) : {}
+    const skillCap = skillLevelCap(out.buildings.hall ?? 0)
+    for (const def of SECT_SKILLS) {
+      const lv = intIn(rawSkills[def.id], 0, skillCap)
+      if (lv > 0) out.skills[def.id] = lv
     }
 
     const rawBuild = typeof src.build === 'object' && src.build !== null ? (src.build as Record<string, unknown>) : null

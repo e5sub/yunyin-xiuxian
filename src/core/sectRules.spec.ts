@@ -27,7 +27,9 @@ import {
   sectMods,
   sectNameOk,
   settleBuild,
+  skillCapNextHall,
   skillCost,
+  skillLevelCap,
   skillPrevRow,
   skillUnlocked,
   type SectState
@@ -188,6 +190,66 @@ describe('门派属性', () => {
   })
 })
 
+describe('技能上限随山门', () => {
+  it('基础五重,山门 20/40/60/80/100 级各开五重,百级封顶三十重', () => {
+    expect(skillLevelCap(0)).toBe(5)
+    expect(skillLevelCap(19)).toBe(5)
+    expect(skillLevelCap(20)).toBe(10)
+    expect(skillLevelCap(39)).toBe(10)
+    expect(skillLevelCap(40)).toBe(15)
+    expect(skillLevelCap(60)).toBe(20)
+    expect(skillLevelCap(80)).toBe(25)
+    expect(skillLevelCap(100)).toBe(30)
+    expect(skillLevelCap(999)).toBe(30)
+    // 坏数不当真:负级按零级算,天文数字按百级算
+    expect(skillLevelCap(-5)).toBe(5)
+    expect(skillLevelCap(1e9)).toBe(30)
+  })
+
+  it('再开一重的山门等级;开尽之后回 null', () => {
+    expect(skillCapNextHall(0)).toBe(20)
+    expect(skillCapNextHall(19)).toBe(20)
+    expect(skillCapNextHall(20)).toBe(40)
+    expect(skillCapNextHall(99)).toBe(100)
+    expect(skillCapNextHall(100)).toBeNull()
+    expect(skillCapNextHall(999)).toBeNull()
+  })
+
+  it('山门未及那一档:下一重的价目是 null;到了就有价', () => {
+    expect(skillCost(skill1.id, 9, 1, 20)).not.toBeNull()
+    expect(skillCost(skill1.id, 10, 1, 20)).toBeNull()
+    // 同一个等级,山门只到 19 级时还不能修
+    expect(skillCost(skill1.id, 9, 1, 19)).toBeNull()
+    // 不给山门即按基础五重算(旧调用点的语义不变)
+    expect(skillCost(skill1.id, 5)).toBeNull()
+  })
+
+  it('等级越高越贵:五重之内每重约 ×1.9,续修每重 ×1.15,逐重严格递增', () => {
+    let prev = 0
+    for (let lv = 0; lv < 30; lv += 1) {
+      const c = skillCost(skill5.id, lv, 1, 100)
+      expect(c).not.toBeNull()
+      expect(c!).toBeGreaterThan(prev)
+      if (lv > 0) {
+        const ratio = c! / prev
+        // 前五重陡涨,五重之后转缓;两条斜率都必须是「越往上越贵」,不许出现平段
+        if (lv <= 4) expect(ratio, `第 ${lv + 1} 重该按 ×1.9`).toBeGreaterThan(1.85)
+        else expect(ratio, `第 ${lv + 1} 重该按 ×1.15`).toBeGreaterThan(1.14)
+        expect(ratio).toBeLessThan(1.95)
+      }
+      prev = c!
+    }
+    // 第五层第三十重的单次价:六位数 —— 既不白送,也没贵到亿级
+    expect(prev).toBeGreaterThan(1e5)
+    expect(prev).toBeLessThan(1e6)
+  })
+
+  it('属性也按山门定的上限夹:同一份技能,山门 20 级才吃十重', () => {
+    expect(sectMods({ [skill1.id]: 10 }, { hall: 0 }).attackPct).toBeCloseTo(5 * 0.02, 6)
+    expect(sectMods({ [skill1.id]: 10 }, { hall: 20 }).attackPct).toBeCloseTo(10 * 0.02, 6)
+  })
+})
+
 describe('计时结算', () => {
   const base = (over: Partial<SectState> = {}): SectState => ({ ...emptySectState(), ...over })
 
@@ -250,6 +312,17 @@ describe('状态修形', () => {
     const tall = normalizeSectState({ ...founded, buildings: { hall: 8, arena: 99 } }, now)
     expect(tall.buildings.arena).toBe(18)
     expect(tall.buildings.hall).toBe(8)
+  })
+
+  it('技能等级按山门档位压回:先落山门,再按它夹技能', () => {
+    const low = normalizeSectState({ ...founded, buildings: { hall: 0 }, skills: { taixu_sword: 9 } }, now)
+    expect(low.skills.taixu_sword).toBe(5)
+    const mid = normalizeSectState({ ...founded, buildings: { hall: 20 }, skills: { taixu_sword: 9 } }, now)
+    expect(mid.skills.taixu_sword).toBe(9)
+    const over = normalizeSectState({ ...founded, buildings: { hall: 20 }, skills: { taixu_sword: 30 } }, now)
+    expect(over.skills.taixu_sword).toBe(10)
+    const top = normalizeSectState({ ...founded, buildings: { hall: 100 }, skills: { taixu_sword: 30 } }, now)
+    expect(top.skills.taixu_sword).toBe(30)
   })
 
   it('工期被写短的营造任务直接作废(不修正成可完工)', () => {

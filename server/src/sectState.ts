@@ -157,8 +157,26 @@ export async function countApplies(sectRow: number): Promise<number> {
   return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0
 }
 
-/** 门人一览:掌门在最前,其余按入门先后 */
-export async function listMembers(sectRow: number): Promise<SectMemberView[]> {
+/**
+ * 门人一览:掌门在最前,其余按入门先后。
+ *
+ * 山门不封顶,门人也就可能上百 —— **一页只取一截**,按道号查时在库里过滤,
+ * 不把整本名册读进内存再切(客户端翻页只看得到一页,却要为整册付流量)。
+ */
+export async function listMembers(
+  sectRow: number,
+  opts: { q?: string; offset?: number; limit?: number } = {}
+): Promise<{ items: SectMemberView[]; total: number }> {
+  // LIKE 的通配符与转义符从玩家输入里剔掉:搜「%」不该等于「全部」
+  const q = (opts.q ?? '').replace(/[%_\\]/g, '').trim().slice(0, 20)
+  const limit = Math.min(50, Math.max(1, Math.trunc(opts.limit ?? 12)))
+  const offset = Math.max(0, Math.trunc(opts.offset ?? 0))
+  const inner = `SELECT m.user_id, m.role, m.personal, m.total_donated, m.joined_at,
+                        COALESCE(p.name, u.username) AS name
+                   FROM sect_members m
+                   LEFT JOIN profiles p ON p.user_id = m.user_id
+                   LEFT JOIN users u ON u.id = m.user_id
+                  WHERE m.sect_row = ?`
   const rows = await all<{
     user_id: number
     role: string
@@ -167,23 +185,28 @@ export async function listMembers(sectRow: number): Promise<SectMemberView[]> {
     joined_at: number
     name: string | null
   }>(
-    `SELECT m.user_id, m.role, m.personal, m.total_donated, m.joined_at,
-            COALESCE(p.name, u.username) AS name
-       FROM sect_members m
-       LEFT JOIN profiles p ON p.user_id = m.user_id
-       LEFT JOIN users u ON u.id = m.user_id
-      WHERE m.sect_row = ?
-      ORDER BY CASE WHEN m.role = 'leader' THEN 0 ELSE 1 END, m.joined_at ASC`,
-    [sectRow]
+    `SELECT * FROM (${inner}) t
+      WHERE (? = '' OR t.name LIKE ?)
+      ORDER BY CASE WHEN t.role = 'leader' THEN 0 ELSE 1 END, t.joined_at ASC
+      LIMIT ? OFFSET ?`,
+    [sectRow, q, `%${q}%`, limit, offset]
   )
-  return rows.map(r => ({
-    userId: Number(r.user_id),
-    name: typeof r.name === 'string' && r.name !== '' ? r.name : `道友${Number(r.user_id)}`,
-    role: r.role === 'leader' ? 'leader' : 'member',
-    personal: Number.isFinite(r.personal) ? Math.max(0, Math.trunc(r.personal)) : 0,
-    totalDonated: Number.isFinite(r.total_donated) ? Math.max(0, Math.trunc(r.total_donated)) : 0,
-    joinedAt: Number.isFinite(r.joined_at) ? Math.trunc(r.joined_at) : 0
-  }))
+  const counted = await get<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM (${inner}) t WHERE (? = '' OR t.name LIKE ?)`,
+    [sectRow, q, `%${q}%`]
+  )
+  const total = counted === undefined ? 0 : Math.max(0, Math.trunc(Number(counted.n)))
+  return {
+    total,
+    items: rows.map(r => ({
+      userId: Number(r.user_id),
+      name: typeof r.name === 'string' && r.name !== '' ? r.name : `道友${Number(r.user_id)}`,
+      role: r.role === 'leader' ? 'leader' : 'member',
+      personal: Number.isFinite(r.personal) ? Math.max(0, Math.trunc(r.personal)) : 0,
+      totalDonated: Number.isFinite(r.total_donated) ? Math.max(0, Math.trunc(r.total_donated)) : 0,
+      joinedAt: Number.isFinite(r.joined_at) ? Math.trunc(r.joined_at) : 0
+    }))
+  }
 }
 
 /** 待审申请:先到先审 */

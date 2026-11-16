@@ -500,8 +500,6 @@ export interface SectStateResp {
   now: number
   /** 本次请求顺手结算掉的完工建筑 id */
   done?: string | null
-  /** 门人一览(在门中时才有;未入派为空表) */
-  members?: SectMemberView[]
   /** 待审申请(只有掌门拿得到) */
   applies?: SectApplyView[]
   /** 我挂着的申请(未入派时才可能非 null) */
@@ -515,6 +513,15 @@ export interface SectStateResp {
   spend?:
     | { stone?: number; ore?: number; wudao?: number }
     | { kind: 'stone' | 'ore' | 'herb'; amount: number; grade: number }
+}
+
+/** 一页门册:服务端分页 + 按道号搜(总页数按 total / pageSize 算) */
+export interface SectMembersResp {
+  ok: boolean
+  members: SectMemberView[]
+  total: number
+  page: number
+  pageSize: number
 }
 
 export interface EmailCodeResp {
@@ -731,8 +738,11 @@ export const cloudApi = {
     stone?: { m: number; e: number }
   }): Promise<LevelOpResponse> => request('POST', '/progress/op', payload),
   /* ---- 门派(1.68.0):状态只住服务端,这里只提交动作 ---- */
-  /** 读门派:状态 + 门人 + 我的申请 + 可投的门派 + 服务端此刻 */
+  /** 读门派:状态 + 我的申请 + 可投的门派 + 服务端此刻(门册另走 sectMembers) */
   sectState: (): Promise<SectStateResp> => request('GET', '/sect'),
+  /** 读一页门册:q 为空即全册,按入门先后;掌门在最前 */
+  sectMembers: (q: string, page: number): Promise<SectMembersResp> =>
+    request('GET', `/sect/members?q=${encodeURIComponent(q)}&p=${page}`),
   /** 开宗立派:只取名(门中三脉之法皆可修),服务端校验境界、门派名唯一与建派开销 */
   sectFound: (name: string): Promise<SectStateResp> => request('POST', '/sect/found', { name }),
   /** 投师:给某一家递一份申请(一人同时只挂一份) */

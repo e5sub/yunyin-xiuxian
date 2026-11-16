@@ -65,7 +65,10 @@
       </section>
 
       <section>
-        <SectionTitle title="门派技能" :hint="`个人贡献 ${sect.personal}`" />
+        <SectionTitle title="门派技能" :hint="`个人贡献 ${sect.personal} · 至多 ${sect.skillCap} 重`" />
+        <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
+          每门基础五重;山门每 20 级再开五重(20、40、60、80、100 级各一次,百级至三十重)。
+        </p>
         <div v-for="[row, defs] in skillRows" :key="row" class="mt-2.5">
           <p class="text-[10px] leading-none text-ink-faint">第 {{ row }} 层 · 三脉各一门</p>
           <div class="mt-1.5 grid grid-cols-1 gap-2.5 min-[320px]:grid-cols-2">

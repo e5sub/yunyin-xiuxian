@@ -59,6 +59,9 @@ const EXPECTED = {
     'memberCap',
     'applyCap',
     'skillUnlocked',
+    // 技能上限随山门涨:路由用它挡「到顶再点」,skillCost 也要吃这个档位
+    'skillLevelCap',
+    'skillCost',
     'normalizeSectState'
   ]
 }
