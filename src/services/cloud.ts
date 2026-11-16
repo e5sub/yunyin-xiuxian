@@ -544,6 +544,7 @@ export const cloudApi = {
       bossDifficulty: 'calm' | 'normal' | 'peril'
     }
     pending: { stoneM: number; stoneE: number; herb: number; strikes: number; tier: number }
+    skip?: { reason: string; at: number } | null
   }> => request('GET', '/vip/autoops'),
   /** 同步托管设置到服务端(离线托管按此代打) */
   putVipAutoOps: (s: {
@@ -554,9 +555,15 @@ export const cloudApi = {
     mode: string
     bossDifficulty: 'calm' | 'normal' | 'peril'
   }): Promise<{ ok: boolean }> => request('PUT', '/vip/autoops', s),
-  /** 领取离线讨伐所得(领取即清零) */
-  collectVipAutoOps: (): Promise<{ collected: { stoneM: number; stoneE: number; herb: number; strikes: number; tier: number } }> =>
-    request('POST', '/vip/autoops/collect'),
+  /**
+   * 领取离线讨伐所得(领取即清零)。
+   * 出剑无资粮,stoneM/stoneE/herb 三列恒为 0(老字段,留着兼容);真正的所得是击杀赏,
+   * 走 bossClaim 另领。skip 是「最近一次没出剑」的原因(hold/capped/boss-dead/no-profile)。
+   */
+  collectVipAutoOps: (): Promise<{
+    collected: { stoneM: number; stoneE: number; herb: number; strikes: number; tier: number }
+    skip?: { reason: string; at: number } | null
+  }> => request('POST', '/vip/autoops/collect'),
   emailCode: (email: string, purpose: 'register' | 'reset' | 'bind', turnstileToken = ''): Promise<EmailCodeResp> =>
     request('POST', '/auth/email-code', { email, purpose, turnstileToken }),
   /** 修改口令:成功后返回新 token(换上,否则本会话作废) */

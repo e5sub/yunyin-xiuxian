@@ -104,7 +104,7 @@ const CORE_STORE_SITES = 246;
  * 1.66.3 的 forgeServiceCharge.spec +1:在线炼器的料耗落账要真扣 store
  * (服务端只回「该付多少」,扣款在客户端 —— 不打桩测不出漏扣)。
  */
-const CORE_PINIA_SPECS = 129;
+const CORE_PINIA_SPECS = 130;
 
 function sources(dir: string): { name: string; text: string }[] {
   return readdirSync(dir)

@@ -452,6 +452,10 @@ CREATE TABLE IF NOT EXISTS autoops_state (
   ledger_herb INTEGER NOT NULL DEFAULT 0,
   ledger_strikes INTEGER NOT NULL DEFAULT 0,
   ledger_tier INTEGER NOT NULL DEFAULT 0,
+  -- 最近一次没打成的原因(hold/capped/boss-dead/no-profile);'' = 最近一次出剑成功。
+  -- 玩家归来只看到「出剑 0 次」时,靠它说清是打不过、次数用尽还是妖王未生。
+  last_skip TEXT NOT NULL DEFAULT '',
+  last_skip_at INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(id DESC);
@@ -483,7 +487,9 @@ CREATE INDEX IF NOT EXISTS idx_progress_spend_user ON progress_spend(user_id, se
       'ALTER TABLE boss_state ADD COLUMN period_start INTEGER NOT NULL DEFAULT 0',
       "ALTER TABLE dungeon_teams ADD COLUMN difficulty TEXT NOT NULL DEFAULT 'normal'",
       "ALTER TABLE boss_damage ADD COLUMN difficulty TEXT NOT NULL DEFAULT 'normal'",
-      "ALTER TABLE autoops_state ADD COLUMN boss_difficulty TEXT NOT NULL DEFAULT 'normal'"
+      "ALTER TABLE autoops_state ADD COLUMN boss_difficulty TEXT NOT NULL DEFAULT 'normal'",
+      "ALTER TABLE autoops_state ADD COLUMN last_skip TEXT NOT NULL DEFAULT ''",
+      'ALTER TABLE autoops_state ADD COLUMN last_skip_at INTEGER NOT NULL DEFAULT 0'
     ]) {
       try {
         d.exec(stmt)
@@ -814,6 +820,8 @@ CREATE TABLE IF NOT EXISTS autoops_state (
   ledger_herb INT NOT NULL DEFAULT 0,
   ledger_strikes INT NOT NULL DEFAULT 0,
   ledger_tier INT NOT NULL DEFAULT 0,
+  last_skip VARCHAR(24) NOT NULL DEFAULT '',
+  last_skip_at BIGINT NOT NULL DEFAULT 0,
   updated_at BIGINT NOT NULL,
   CONSTRAINT fk_autoops_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -840,7 +848,9 @@ CREATE TABLE IF NOT EXISTS autoops_state (
     'ALTER TABLE boss_state ADD COLUMN period_start BIGINT NOT NULL DEFAULT 0',
     "ALTER TABLE dungeon_teams ADD COLUMN difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'",
     "ALTER TABLE boss_damage ADD COLUMN difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'",
-    "ALTER TABLE autoops_state ADD COLUMN boss_difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'"
+    "ALTER TABLE autoops_state ADD COLUMN boss_difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'",
+    "ALTER TABLE autoops_state ADD COLUMN last_skip VARCHAR(24) NOT NULL DEFAULT ''",
+    'ALTER TABLE autoops_state ADD COLUMN last_skip_at BIGINT NOT NULL DEFAULT 0'
   ]) {
     try {
       await d.query(stmt)

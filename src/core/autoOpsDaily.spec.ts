@@ -104,11 +104,11 @@ describe('每日活动托管的边界', () => {
     expect(cloud.eventToday).not.toHaveBeenCalled()
   })
 
-  it('非 VIP 不动手,开关到期自动关停', async () => {
+  it('非 VIP 不动手,开关原样保留(到期只暂停,续费即恢复)', async () => {
     signIn(false)
     await autoDailyTick()
     expect(cloud.eventToday).not.toHaveBeenCalled()
-    expect(useSettingsStore().autoDailyEvent).toBe(false)
+    expect(useSettingsStore().autoDailyEvent).toBe(true)
   })
 
   it('没开这个开关就只当没这回事', async () => {

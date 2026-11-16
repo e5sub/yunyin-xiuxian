@@ -62,14 +62,6 @@ let dailyWarmup: ReturnType<typeof setTimeout> | undefined
 /** 到期提示只报一次:置位后不再重复 toast,直到重新成为 VIP */
 let expiryNotified = false
 
-function stopAllToggles(): void {
-  const settings = useSettingsStore()
-  settings.autoBoss = false
-  settings.autoRetreat = false
-  settings.autoAdventure = false
-  settings.autoDailyEvent = false
-}
-
 /** 通用前置:游戏已开局、已登录、有任一托管开关;返回 null 表示本次 tick 无事可做 */
 function gate(): { auth: ReturnType<typeof useAuthStore>; settings: ReturnType<typeof useSettingsStore> } | null {
   const game = useGameStore()
@@ -77,11 +69,17 @@ function gate(): { auth: ReturnType<typeof useAuthStore>; settings: ReturnType<t
   const settings = useSettingsStore()
   if (!game.started || !auth.loggedIn) return null
   if (!settings.autoBoss && !settings.autoRetreat && !settings.autoAdventure && !settings.autoDailyEvent) return null
+  /*
+   * 到期只暂停,不把开关清掉。
+   *
+   * 原先这里调 stopAllToggles() 把四项置 false —— 玩家续费后得回设置页逐个重开,
+   * 而且「他本来想开的是什么」已经没了。设置留在原处更好:服务端那侧的离线代打另有
+   * vipActive 把关,开关留着不会白跑;客户端这边 gate 返回 null 即一步不做。
+   */
   if (!auth.isVip) {
     if (!expiryNotified) {
       expiryNotified = true
-      stopAllToggles()
-      useUiStore().toast('VIP 已到期,托管已停止', 'warn')
+      useUiStore().toast('VIP 已到期,托管暂停(续费即恢复)', 'warn')
     }
     return null
   }
@@ -468,7 +466,16 @@ export async function prepOfflineAutoOps(): Promise<void> {
   }
   const game = useGameStore()
   if (!game.started || game.lastActiveAt <= 0) return
-  if (!auth.isVip) return
+  /*
+   * 判据是「离开时是不是 VIP」,不是「现在还是不是」。
+   *
+   * 回来那一刻的 isVip 只说明当下,而这一段离线托管该不该结,取决于那段时间他有没有付过:
+   * 月卡还剩 3 小时、玩家下线 8 小时 —— 归来时已到期,原先整段历练补推被一句 isVip 挡掉,
+   * 基础修为照结、战斗收益一分不给,等于剩下 3 小时的托管白买。
+   * vipUntil > lastActiveAt 即「离开时还没到期」,已付时间覆盖的窗口按托管结;
+   * 到期之后的那一段本就在洞府离线上限之内,不额外放宽收益。
+   */
+  if (!auth.isVip && !(auth.vipUntil > game.lastActiveAt)) return
   const settings = useSettingsStore()
   const wantAdventure = syncedAutoOps !== null ? syncedAutoOps.autoAdventure : settings.autoAdventure
   const wantRetreat = syncedAutoOps !== null ? syncedAutoOps.autoRetreat : settings.autoRetreat
@@ -524,19 +531,41 @@ export async function prepOfflineAutoOps(): Promise<void> {
 const COLLECT_MAX_RETRIES = 5
 let collectRetries = 0
 
-/** 领取离线讨伐所得:与在线出剑同一条入账路径(按妖王境界折灵石),领后报一笔总账 */
+/** 服务端记的「最近一次没出剑」的原因 → 一句话(只报最近一次,不逐日翻账) */
+function skipText(reason: string): string | null {
+  if (reason === 'hold') return '力有不及,蓄势留剑'
+  if (reason === 'capped') return '当日剑数已尽'
+  if (reason === 'boss-dead') return '妖王已陨落,静候重生'
+  if (reason === 'no-profile') return '尚无档案'
+  return null
+}
+
+/**
+ * 领取离线讨伐所得。
+ *
+ * 两处口径要按玩法来:
+ *   一 领的是**已经发生**的事,与此刻还是不是 VIP 无关 —— 原先这里也要 isVip,
+ *      月卡在离线途中到期就领不出来,得等续费;台账不清零,看着像吞了东西。
+ *   二 出剑自 1.62.0 起就无资粮,所得全在击杀赏。原本文案按台账折「灵石 +0」报给玩家,
+ *      是一笔假账;现只报剑数,顺手把击杀赏领掉(与在线巡检、围妖页同一条入账路)。
+ */
 export async function collectOfflineBossLedger(): Promise<void> {
   const auth = useAuthStore()
-  if (!auth.loggedIn || !auth.isVip) return
+  if (!auth.loggedIn) return
   try {
-    const c = (await cloudApi.collectVipAutoOps()).collected
+    const res = await cloudApi.collectVipAutoOps()
     collectRetries = 0
-    if (c.strikes <= 0) return
-    const resources = useResourcesStore()
-    const stone = stoneByTier(tierOfMajor(Math.max(0, c.tier)), c.stoneM)
-    resources.addStone(stone)
-    resources.addSmall('herb', c.herb)
-    useUiStore().toast(`托管离线讨伐:出剑 ${c.strikes} 次 · 灵石 +${formatGN(stone)}`, 'success')
+    const c = res.collected
+    if (c.strikes <= 0) {
+      // 一剑没打也要说清缘由,否则玩家只看到「托管开着却什么都没有」
+      const why = skipText(res.skip?.reason ?? '')
+      if (why !== null) useUiStore().toast(`托管离线代打:未出剑(${why})`, 'warn')
+      return
+    }
+    const got = await claimBossLoot()
+    const tail = got !== null ? ` · 击杀赏 灵石 ${got.stoneText}${got.equipLine !== null ? ' + 装备' : ''}` : ''
+    useUiStore().toast(`托管离线代打:出剑 ${c.strikes} 次${tail}`, 'success')
+    if (got?.equipLine != null) useUiStore().toast(`击杀赏装备:${got.equipLine}`, 'rare')
   } catch {
     // 网络抖动:稍候重试,次数用尽则等下次登录再领(台账在服务端不清零)
     if (collectRetries < COLLECT_MAX_RETRIES) {

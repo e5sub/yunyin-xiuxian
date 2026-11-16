@@ -14,6 +14,11 @@
       >VIP</span>
     </div>
 
+    <!-- 到期后开关与去处保留、只是暂停:续费即恢复,不必回设置页逐个重开 -->
+    <p v-if="!auth.isVip && keptToggles > 0" class="pb-3 text-[10px] leading-relaxed text-ink-faint">
+      已有 {{ keptToggles }} 项托管开关(连同历练去处与围妖难度)保留在原处,开通或续费后立即恢复,不必重设
+    </p>
+
     <!-- 激活码兑换(开通/续期皆可,永久卡直接补足到永久;已是永久则无需再兑) -->
     <div v-if="!auth.vipForever" class="py-3">
       <label class="flex items-center justify-between">
@@ -100,6 +105,11 @@
           打 BOSS 量力而行:能补刀先补刀,站得住便出剑;力有不及则蓄势,临期兜底出手。
           出剑无资粮,妖王被推倒时凡出过剑者按功均分击杀赏
         </p>
+        <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
+          离线托管:妖王按日代出剑,归来时把剑数与击杀赏一并结给你;历练与闭关按
+          <span class="text-ink">洞府离线上限</span>整段结算,上限几小时就结几小时。
+          中途到期不白挂 —— 只要离开时还没到期,这一段照托管算
+        </p>
         <label class="mt-2 flex items-center justify-between gap-2">
           <span class="shrink-0 text-[11px] text-ink-faint">围妖难度</span>
           <select v-model="settings.bossDifficulty" aria-label="围妖出剑强度" class="min-w-0 grow rounded border border-ink/20 bg-transparent px-1.5 py-1 text-[12px] text-ink">
@@ -169,9 +179,15 @@
   const ui = useUiStore()
 
   const statusText = computed(() => {
-    if (!auth.isVip) return '未开通 · 扫码/激活码自助开通,或联系仙官(GM)'
+    if (!auth.isVip) return '未开通 · 扫码/激活码自助开通,或联系仙官(GM);到期只暂停托管,开关与去处保留'
     if (auth.vipForever) return '永久 VIP · 尊享全部托管特权'
     return `剩余 ${auth.vipDaysLeft} 天(至 ${expireText.value})`
+  })
+
+  /** 到期仍留在原处的托管项数:只作「没有白设」的告知,不参与 gate */
+  const keptToggles = computed(() => {
+    const s = settings
+    return [s.autoBoss, s.autoRetreat, s.autoAdventure, s.autoDailyEvent].filter(Boolean).length
   })
 
   const codeInput = ref('')
