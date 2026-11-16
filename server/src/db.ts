@@ -298,12 +298,44 @@ CREATE TABLE IF NOT EXISTS level_state (
 );
 -- 门派(1.68.0):整份状态存服务端,不进存档分片。
 -- 贡献是服务端签发的货币,又能换永久属性(mods)—— 放进存档就等于「本地可写」,
--- 所以 sect_state 的 data 只由 routes/sect.ts 写;上传存档时服务端**不读**客户端对门派的任何声明。
--- data 为 JSON:SectState(道统/门派名/个人贡献/门派库/技能/建筑/营造任务/日限次),见 core/sectRules
+-- 所以这份 data 只由 routes/sect.ts 写;上传存档时服务端**不读**客户端对门派的任何声明。
+--
+-- 1.69.0:一人一派 → 门派成了独立实体(见下 sects / sect_members)。本表只留作**旧档迁移**:
+-- 启动时 migrateLegacySects() 把有门派的行搬进新两表,搬完即删行;新代码不再读写它。
 CREATE TABLE IF NOT EXISTS sect_state (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   data TEXT NOT NULL,
   updated_at INTEGER NOT NULL
+);
+-- 门派本体(1.69.0):一个门派一行,掌门由 leader_uid 持有(唯一 —— 一人只能开一家)。
+-- 不再有「道统」列:三脉十五门技能同在一门,建派只取名(见 src/data/sect.ts 的 SECT_SKILLS)。
+-- data 为 JSON:门派公账(门派库/技能/建筑/营造任务),形状同 core/sectRules 的 SectState;
+-- 个人贡献与日限次不住这里,住 sect_members(一人一笔,退出即清)。
+CREATE TABLE IF NOT EXISTS sects (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  leader_uid INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  data TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+-- 门人(1.69.0):user_id 主键 —— 一人同时只能在一家;role 为 leader/member。
+-- personal/day/donations_today 是**这个人在本门**的账,退门或逐出即随行删除(防跨门搬运贡献)。
+CREATE TABLE IF NOT EXISTS sect_members (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  sect_row INTEGER NOT NULL REFERENCES sects(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'member',
+  personal INTEGER NOT NULL DEFAULT 0,
+  day TEXT NOT NULL DEFAULT '',
+  donations_today INTEGER NOT NULL DEFAULT 0,
+  total_donated INTEGER NOT NULL DEFAULT 0,
+  joined_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sect_members_sect ON sect_members(sect_row);
+-- 入派申请(1.69.0):一人同时只挂一份;掌门准许即转成 sect_members,拒绝或撤回即删行。
+CREATE TABLE IF NOT EXISTS sect_apply (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  sect_row INTEGER NOT NULL REFERENCES sects(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL
 );
 -- 建派与捐献的支出账(1.68.0):与 forge_spend / progress_spend 同一套机制 ——
 -- 扣款写在客户端,这里记「该扣多少」,上传时从资源可增长量里扣掉(见 core/saveAuthority 的 pendingSpend)。
@@ -655,6 +687,37 @@ CREATE TABLE IF NOT EXISTS sect_state (
   data LONGTEXT NOT NULL,
   updated_at BIGINT NOT NULL,
   CONSTRAINT fk_sect_state_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS sects (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(32) NOT NULL,
+  leader_uid BIGINT NOT NULL,
+  data LONGTEXT NOT NULL,
+  created_at BIGINT NOT NULL,
+  UNIQUE KEY uk_sects_name (name),
+  UNIQUE KEY uk_sects_leader (leader_uid),
+  CONSTRAINT fk_sects_leader FOREIGN KEY (leader_uid) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS sect_members (
+  user_id BIGINT PRIMARY KEY,
+  sect_row BIGINT NOT NULL,
+  role VARCHAR(16) NOT NULL DEFAULT 'member',
+  personal BIGINT NOT NULL DEFAULT 0,
+  day VARCHAR(16) NOT NULL DEFAULT '',
+  donations_today INT NOT NULL DEFAULT 0,
+  total_donated BIGINT NOT NULL DEFAULT 0,
+  joined_at BIGINT NOT NULL,
+  KEY idx_sect_members_sect (sect_row),
+  CONSTRAINT fk_sect_members_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_sect_members_sect FOREIGN KEY (sect_row) REFERENCES sects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS sect_apply (
+  user_id BIGINT PRIMARY KEY,
+  sect_row BIGINT NOT NULL,
+  created_at BIGINT NOT NULL,
+  KEY idx_sect_apply_sect (sect_row),
+  CONSTRAINT fk_sect_apply_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_sect_apply_sect FOREIGN KEY (sect_row) REFERENCES sects(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS sect_spend (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,

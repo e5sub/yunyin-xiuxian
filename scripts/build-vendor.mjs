@@ -45,7 +45,22 @@ const EXPECTED = {
   'lootGrant.mjs': ['grantEquips', 'validateExtraGains', 'marketPriceAt', 'expectedSoulGrade'],
   'forgeResolve.mjs': ['resolveForgeFromSlices'],
   'levelResolve.mjs': ['resolveLevelFromSlices'],
-  'sectRules.mjs': ['sectNameOk', 'foundCost', 'donationDef', 'donationSplit', 'buildingCost', 'settleBuild', 'canFound']
+  'sectRules.mjs': [
+    'sectNameOk',
+    'foundCost',
+    'donationDef',
+    'donationSplit',
+    'buildingCost',
+    'buildingDurationMs',
+    'buildingLevelCap',
+    'settleBuild',
+    'canFound',
+    'canJoin',
+    'memberCap',
+    'applyCap',
+    'skillUnlocked',
+    'normalizeSectState'
+  ]
 }
 
 let failed = false

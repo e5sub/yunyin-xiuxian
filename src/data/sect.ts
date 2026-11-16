@@ -36,8 +36,11 @@ export interface SectBuildingDef {
   name: string
   desc: string
   icon: string
-  maxLevel: number
-  /** 门派贡献基数(随等级指数增长) */
+  /*
+   * 门派建筑**不设等级上限**(1.69.0):山门能一直往上垒,其余建筑的上限由山门抬
+   * (见 SECT_BUILDING_GATE_MULT)。所以这里没有 maxLevel —— 一世的经营不该有「到顶」那一天。
+   */
+  /** 门派贡献基数(随等级增长,曲线见 core/sectRules 的 buildingCost) */
   costBase: number
   /** 升一级的基础耗时(分钟,随等级增长) */
   timeBaseMin: number
@@ -64,6 +67,15 @@ export interface SectDonationDef {
 export const SECT_FOUND_MAJOR = 3
 /** 建派的一次性开销(服务端复算并记 sect_spend 台账,客户端只作预览) */
 export const SECT_FOUND_COST = { stone: 60_000, ore: 300, wudao: 2_000 } as const
+
+/**
+ * 投师的境界门槛:筑基(major 1)。
+ * 比开宗立派(元婴)低两个大境界 —— 前期玩家本来就没有开派的余力,
+ * 让他们先入一家的门、借门中已有的技能树修行,才是「投他山门」这条路的意义。
+ */
+export const SECT_JOIN_MAJOR = 1
+/** 一家门派同时挂着的待审申请上限:掌门一屏能审完,也挡「拿小号刷申请」 */
+export const SECT_APPLY_MAX = 20
 /** 门派名长度:二字至七字(留出「太虚剑宗」这类四字与「XX 门」这类短名) */
 export const SECT_NAME_MIN = 2
 export const SECT_NAME_MAX = 7
@@ -80,11 +92,18 @@ export const SECT_DONATE_VIP_CAP = 5
 
 /**
  * 门人:山门定人数上限 —— 初始 10 人,山门每升一级 +1 人。
- * 这是**容量**(门人自动补足到上限),不改数值;面板上按「门人 N / N」显示,
- * 让山门除了当闸门之外还有一层看得见的经营感。
+ * 门人是**真成员**(1.69.0 起):掌门一个、其余靠申请与审批进门,人数由 sect_members 实算;
+ * 上限只在审批那一刻卡(满员即拒),不做「自动补足」。
  */
 export const SECT_MEMBERS_BASE = 10
 export const SECT_MEMBERS_PER_LEVEL = 1
+
+/**
+ * 门派建筑的等级**没有游戏上限**:山门能一直垒,门人的名额与其余建筑的余地也跟着一直开。
+ * 999 只是「坏数硬夹」—— 存档里被写成 1e9 级时按它截断,别让面板与价目算到溢出。
+ * 它不是天花板:按 core/sectRules 的曲线,50 级山门要三万多门派库,一百级已经是一年以上的事。
+ */
+export const SECT_LEVEL_HARD_MAX = 999
 
 /** 山门定其余建筑等级上限的系数:上限 = (山门等级 + 1) × 2 */
 export const SECT_BUILDING_GATE_MULT = 2
@@ -250,20 +269,20 @@ export const SECTS: SectDef[] = [
 ]
 
 /**
- * 五座建筑。山门是闸门:其余建筑的等级上限 = (山门等级 + 1) × 2,满 10 级须先把山门升到 4。
- * 与洞府同一套「主闸」思路,但闸门更紧 —— 门派是一世一建,不该一上来就把演武场拉满。
+ * 五座建筑。山门是闸门:其余建筑的等级上限 = (山门等级 + 1) × 2 —— 山门不封顶,
+ * 这份「余地」也就一直有得开;想升丹房,先垫山门。
+ * 与洞府同一套「主闸」思路,但门派是多人共造,所以没有品类满级这一说(1.69.0)。
  */
 export const SECT_BUILDINGS: SectBuildingDef[] = [
   {
     id: 'hall',
     name: '山门',
-    desc: '门派根本。山门愈高,其余营造的余地愈大',
+    desc: '门派根本。山门愈高,门人愈众,其余营造的余地愈大',
     icon: 'mountain',
-    maxLevel: 8,
     costBase: 60,
     timeBaseMin: 6,
     effectText: lv =>
-      `门人 ${SECT_MEMBERS_BASE + lv * SECT_MEMBERS_PER_LEVEL} 人;其余建筑上限 ${Math.min(10, (lv + 1) * SECT_BUILDING_GATE_MULT)} 级;修炼 +${(lv * 1.5).toFixed(1)}%`,
+      `门人 ${SECT_MEMBERS_BASE + lv * SECT_MEMBERS_PER_LEVEL} 人;其余建筑上限 ${(lv + 1) * SECT_BUILDING_GATE_MULT} 级;修炼 +${(lv * 1.5).toFixed(1)}%`,
     mods: lv => ({ cultivationSpeed: lv * 0.015 })
   },
   {
@@ -271,7 +290,6 @@ export const SECT_BUILDINGS: SectBuildingDef[] = [
     name: '藏经殿',
     desc: '门中典籍所藏,传功解惑之地',
     icon: 'book',
-    maxLevel: 10,
     costBase: 40,
     timeBaseMin: 5,
     effectText: lv => `突破成功率 +${lv.toFixed(0)}%`,
@@ -282,7 +300,6 @@ export const SECT_BUILDINGS: SectBuildingDef[] = [
     name: '演武场',
     desc: '同门切磋之所,日日不辍',
     icon: 'swords',
-    maxLevel: 10,
     costBase: 40,
     timeBaseMin: 5,
     effectText: lv => `攻击 +${(lv * 1.2).toFixed(1)}%`,
@@ -293,7 +310,6 @@ export const SECT_BUILDINGS: SectBuildingDef[] = [
     name: '丹房',
     desc: '合药之所,炉火常年不熄',
     icon: 'flame',
-    maxLevel: 10,
     costBase: 40,
     timeBaseMin: 5,
     effectText: lv => `成丹 +${(lv * 3).toFixed(0)}%`,
@@ -304,7 +320,6 @@ export const SECT_BUILDINGS: SectBuildingDef[] = [
     name: '聚宝阁',
     desc: '门中产业所出,皆聚于此',
     icon: 'gem',
-    maxLevel: 10,
     costBase: 48,
     timeBaseMin: 6,
     effectText: lv => `灵石所得 +${(lv * 2).toFixed(0)}%,机缘 +${(lv * 0.5).toFixed(1)}%`,
@@ -340,24 +355,23 @@ export const SECT_DONATIONS: SectDonationDef[] = [
   }
 ]
 
-export function sectDef(id: string): SectDef | undefined {
-  return SECTS.find(s => s.id === id)
-}
-
 export function sectBuildingDef(id: string): SectBuildingDef | undefined {
   return SECT_BUILDINGS.find(b => b.id === id)
 }
 
-/** 某宗门的技能;技能 id 全局唯一,认不出宗门时回空表 */
-export function sectSkillsOf(id: string): SectSkillDef[] {
-  return sectDef(id)?.skills ?? []
+/**
+ * 三脉十五门技能,按层排:每层三脉各一门。
+ * 门派**不分道统**(1.69.0):开宗立派只取名,门中三脉之法皆可修习 ——
+ * 太虚的剑、丹霞的丹、万象的阵同藏一门,谁出贡献谁推进,想走哪条路由自己挑。
+ */
+export const SECT_SKILLS: SectSkillDef[] = SECTS.flatMap(s => s.skills).sort((a, b) => a.row - b.row)
+
+/** 某门技能出自哪一脉(界面上标一行小字);认不出 → undefined */
+export function sectOfSkill(skillId: string): SectDef | undefined {
+  return SECTS.find(s => s.skills.some(k => k.id === skillId))
 }
 
 /** 按技能 id 反查(跨宗门也认得出,便于台账与提示) */
 export function sectSkillDef(skillId: string): SectSkillDef | undefined {
-  for (const sect of SECTS) {
-    const hit = sect.skills.find(s => s.id === skillId)
-    if (hit !== undefined) return hit
-  }
-  return undefined
+  return SECT_SKILLS.find(s => s.id === skillId)
 }

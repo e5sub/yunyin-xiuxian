@@ -9,7 +9,7 @@
           {{ def.name }}
         </p>
         <p class="mt-0.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
-          <span class="shrink-0 text-[10px] tabular text-ink-faint">第 {{ def.row }} 层 · {{ level }}/{{ SECT_SKILL_MAX_LEVEL }} 重</span>
+          <span class="shrink-0 text-[10px] tabular text-ink-faint">{{ veinName }} · {{ level }}/{{ SECT_SKILL_MAX_LEVEL }} 重</span>
           <span v-if="level >= SECT_SKILL_MAX_LEVEL" class="shrink-0 rounded border border-gold-ink/40 bg-gold-ink/10 px-1.5 py-0.5 text-[10px] leading-none text-ink">圆满</span>
           <span v-else-if="locked" class="shrink-0 rounded bg-ink/6 px-1.5 py-0.5 text-[10px] leading-none text-ink-faint">未启</span>
         </p>
@@ -41,21 +41,19 @@
 <script setup lang="ts">
   import { computed } from 'vue'
   import GameIcon from '@/components/common/GameIcon.vue'
-  import { SECT_SKILL_MAX_LEVEL, type SectSkillDef } from '@/data/sect'
-  import { skillCost, skillUnlockNeed } from '@/core/sectRules'
+  import { SECT_SKILL_MAX_LEVEL, sectOfSkill, type SectSkillDef } from '@/data/sect'
+  import { skillCost, skillUnlocked } from '@/core/sectRules'
   import { useSectStore } from '@/stores/sect'
 
   const props = defineProps<{ def: SectSkillDef }>()
 
   const sect = useSectStore()
   const level = computed(() => sect.skillLevel(props.def.id))
+  /** 出自哪一脉:三脉合在一门里,标一行小字,好让玩家知道自己在练哪家的东西 */
+  const veinName = computed(() => sectOfSkill(props.def.id)?.name ?? '')
 
-  /** 上一层须到二重;第一层无条件 */
-  const need = computed(() => skillUnlockNeed(props.def.id))
-  const locked = computed(() => {
-    const n = need.value
-    return n !== null && sect.skillLevel(n.id) < n.level
-  })
+  /** 同层三选一:上一层三脉任一门到二重即开下一层 */
+  const locked = computed(() => !skillUnlocked(sect.state.skills, props.def.id))
 
   const cost = computed(() => skillCost(props.def.id, level.value, sect.rate) ?? 0)
   const atMax = computed(() => level.value >= SECT_SKILL_MAX_LEVEL)
@@ -63,10 +61,7 @@
 
   const blockLine = computed(() => {
     if (atMax.value) return '已圆满'
-    if (locked.value) {
-      const n = need.value!
-      return `须先将上一层练到 ${n.level} 重`
-    }
+    if (locked.value) return '上一层任一门须到二重'
     return `个人贡献不足 · 差 ${Math.max(0, cost.value - sect.personal)}`
   })
 

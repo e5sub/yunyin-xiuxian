@@ -114,9 +114,9 @@
       <RouterLink to="/sect" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
         <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ink/5 text-ink-soft"><GameIcon name="landmark" :size="18" /></span>
         <span class="font-kai text-[13px] tracking-widest text-ink">门派</span>
-        <!-- 未立派时给一句可做的事;立了派报门人,门人由山门定员(初始 10,每级 +1) -->
+        <!-- 未入派时给一句可做的事;入派后报门人与名额(山门定员,初始 10,每级 +1) -->
         <span class="text-[9px] leading-snug tabular" :class="sect.founded ? 'text-ink-faint' : 'text-cinnabar'">
-          {{ sect.founded ? `门人 ${sect.members}` : '可开宗立派' }}
+          {{ sect.founded ? `门人 ${sect.memberCount}/${sect.capacity}` : '可投师 · 可开派' }}
         </span>
       </RouterLink>
 

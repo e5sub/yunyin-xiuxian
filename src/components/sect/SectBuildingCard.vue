@@ -9,9 +9,9 @@
           {{ def.name }}
         </p>
         <p class="mt-0.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
-          <span class="shrink-0 text-[10px] tabular text-ink-faint">{{ level }}/{{ cap }} 级</span>
-          <span v-if="atMax" class="shrink-0 rounded border border-gold-ink/40 bg-gold-ink/10 px-1.5 py-0.5 text-[10px] leading-none text-ink">圆满</span>
-          <span v-else-if="gateLimited" class="shrink-0 rounded border border-amber-ink/40 bg-amber-ink/10 px-1.5 py-0.5 text-[10px] leading-none text-ink">辖于山门</span>
+          <!-- 山门不封顶,只报当前级;其余按山门给的余地报「N/上限」 -->
+          <span class="shrink-0 text-[10px] tabular text-ink-faint">{{ isHall ? `${level} 级` : `${level}/${cap} 级` }}</span>
+          <span v-if="gateLimited" class="shrink-0 rounded border border-amber-ink/40 bg-amber-ink/10 px-1.5 py-0.5 text-[10px] leading-none text-ink">辖于山门</span>
         </p>
       </div>
     </div>
@@ -71,10 +71,11 @@
   const now = useWallNow()
 
   const level = computed(() => sect.buildingLevel(props.def.id))
+  /** 山门自己无上限;其余建筑的上限由山门抬(见 core/sectRules 的 buildingLevelCap) */
+  const isHall = computed(() => props.def.id === 'hall')
   const cap = computed(() => sect.levelCap(props.def.id))
-  const atMax = computed(() => level.value >= props.def.maxLevel)
-  /** 未到品类满级,却被山门闸住 */
-  const gateLimited = computed(() => !atMax.value && level.value >= cap.value)
+  /** 未到品类上限却被山门闸住 —— 门派建筑没有品类满级,所以只有这一种「暂时升不动」 */
+  const gateLimited = computed(() => !isHall.value && level.value >= cap.value)
 
   const building = computed(() => (sect.state.build?.id === props.def.id ? sect.state.build : null))
   const remainSec = computed(() => {
@@ -95,10 +96,9 @@
   const timeLine = computed(() => formatDuration(Math.ceil(durationMs.value / 1000)))
 
   const canStart = computed(
-    () => !atMax.value && !gateLimited.value && !building.value && sect.pool >= cost.value && !sect.pending
+    () => !gateLimited.value && !building.value && sect.pool >= cost.value && !sect.pending
   )
   const blockLine = computed(() => {
-    if (atMax.value) return '已圆满'
     // 上限 = (山门+1)×2 → 要再升一级,山门须到 floor(当前等级 / 2)
     if (gateLimited.value) return `需山门 ${Math.floor(level.value / 2)} 级`
     if (building.value) return '尚在营造'

@@ -1,29 +1,35 @@
-/** 门派规则:价目曲线、山门闸门、捐献拆分、计时结算与状态修形 */
+/** 门派规则:价目曲线、山门闸门、捐献拆分、计时结算、成员名额与状态修形 */
 import { describe, expect, it } from 'vitest'
 import {
   SECTS,
   SECT_BUILDINGS,
   SECT_DONATIONS,
+  SECT_LEVEL_HARD_MAX,
   SECT_POOL_SHARE,
+  SECT_SKILLS,
   SECT_SKILL_COST_BASE,
   SECT_SKILL_MAX_LEVEL,
-  sectBuildingDef
+  sectBuildingDef,
+  sectOfSkill
 } from '@/data/sect'
 import {
+  applyCap,
   buildingCost,
   buildingDurationMs,
   buildingLevelCap,
+  canJoin,
   donationDef,
   donationQuota,
   donationSplit,
-  memberCap,
   emptySectState,
+  memberCap,
   normalizeSectState,
   sectMods,
   sectNameOk,
   settleBuild,
   skillCost,
-  skillUnlockNeed,
+  skillPrevRow,
+  skillUnlocked,
   type SectState
 } from './sectRules'
 
@@ -32,16 +38,24 @@ const skill1 = sect.skills[0]!
 const skill5 = sect.skills[4]!
 
 describe('门派数据', () => {
-  it('三门宗门各有五层技能,层次 1~5 不重不漏', () => {
+  it('三脉各有五层技能,层次 1~5 不重不漏', () => {
+    expect(SECTS).toHaveLength(3)
     for (const s of SECTS) {
       expect(s.skills).toHaveLength(5)
       expect(s.skills.map(k => k.row)).toEqual([1, 2, 3, 4, 5])
     }
   })
 
-  it('技能 id 全站唯一(台账按 id 记等级,重号会串宗门)', () => {
-    const ids = SECTS.flatMap(s => s.skills.map(k => k.id))
+  it('三脉合成一棵树:十五门,每层三脉各一门,id 全站唯一', () => {
+    expect(SECT_SKILLS).toHaveLength(15)
+    const ids = SECT_SKILLS.map(k => k.id)
     expect(new Set(ids).size).toBe(ids.length)
+    for (let row = 1; row <= 5; row += 1) {
+      expect(SECT_SKILLS.filter(k => k.row === row), `第 ${row} 层不是三门`).toHaveLength(3)
+    }
+    // 每门都认得出来自哪一脉(界面按它标小字)
+    for (const k of SECT_SKILLS) expect(sectOfSkill(k.id)).toBeDefined()
+    expect(sectOfSkill('nope')).toBeUndefined()
   })
 
   it('五座建筑,山门是唯一闸门;贡献与耗时基数都为正', () => {
@@ -50,7 +64,8 @@ describe('门派数据', () => {
     for (const b of SECT_BUILDINGS) {
       expect(b.costBase).toBeGreaterThan(0)
       expect(b.timeBaseMin).toBeGreaterThan(0)
-      expect(b.maxLevel).toBeGreaterThan(0)
+      // 门派建筑没有品类满级(1.69.0):数据里不该再有 maxLevel
+      expect('maxLevel' in b).toBe(false)
     }
   })
 
@@ -83,43 +98,55 @@ describe('技能价目', () => {
     expect(skillCost(skill5.id, 0)!).toBeGreaterThan(skillCost(skill1.id, 0)!)
   })
 
-  it('解锁:第一层无条件,其后每层要上一层到 2 级', () => {
-    expect(skillUnlockNeed(skill1.id)).toBeNull()
-    for (let i = 1; i < 5; i += 1) {
-      const need = skillUnlockNeed(sect.skills[i]!.id)
-      expect(need).toEqual({ id: sect.skills[i - 1]!.id, level: 2 })
+  it('同层三选一:第一层无条件,其后每层要上一层任一门到二重', () => {
+    for (const k of SECT_SKILLS.filter(s => s.row === 1)) expect(skillUnlocked({}, k.id)).toBe(true)
+    expect(skillPrevRow(skill1.id)).toEqual([])
+
+    for (const k of SECT_SKILLS.filter(s => s.row === 2)) {
+      const prev = skillPrevRow(k.id)
+      expect(prev).toHaveLength(3)
+      expect(skillUnlocked({}, k.id)).toBe(false)
+      // 上一层三脉,修哪一门都算入门
+      for (const p of prev) {
+        expect(skillUnlocked({ [p]: 2 }, k.id), `${k.id} 未吃到 ${p} 的二重`).toBe(true)
+      }
+      expect(skillUnlocked({ [prev[0]!]: 1 }, k.id)).toBe(false)
     }
-    expect(skillUnlockNeed('nope')).toBeNull()
   })
 })
 
 describe('建筑价目与工期', () => {
-  it('等级越高,贡献与耗时都越高(逐级严格递增)', () => {
+  it('没有满级:任何等级都有价目,且逐级严格递增', () => {
     for (const b of SECT_BUILDINGS) {
-      for (let lv = 0; lv < b.maxLevel - 1; lv += 1) {
+      for (const lv of [0, 1, 9, 19, 49, 99]) {
+        expect(buildingCost(b.id, lv)!).toBeGreaterThan(0)
         expect(buildingCost(b.id, lv + 1)!).toBeGreaterThan(buildingCost(b.id, lv)!)
         expect(buildingDurationMs(b.id, lv + 1)!).toBeGreaterThan(buildingDurationMs(b.id, lv)!)
       }
-      expect(buildingCost(b.id, b.maxLevel)).toBeNull()
-      expect(buildingDurationMs(b.id, b.maxLevel)).toBeNull()
     }
+    expect(buildingCost('nope', 0)).toBeNull()
+    expect(buildingDurationMs('nope', 0)).toBeNull()
   })
 
-  it('一级工期就是基数,十级要按小时算', () => {
+  it('工期只缓涨:一级几分钟,十级半小时上下,百级仍在半天之内', () => {
     const hall = sectBuildingDef('hall')!
     expect(buildingDurationMs('hall', 0)).toBe(hall.timeBaseMin * 60_000)
-    // 十级的演武场:五档基数 × 10^1.45 ≈ 两小时以上(不是几十秒的玩具)
-    expect(buildingDurationMs('arena', 9)!).toBeGreaterThan(2 * 3_600_000)
-    expect(buildingCost('arena', 9)!).toBeGreaterThan(buildingCost('arena', 0)! * 10)
+    // 十级的演武场:五档基数 × 10^0.75 ≈ 半小时(不是几十秒的玩具,也不是几小时的罚站)
+    const ten = buildingDurationMs('arena', 9)! / 60_000
+    expect(ten).toBeGreaterThan(20)
+    expect(ten).toBeLessThan(60)
+    // 一百级也不该把人锁在门外
+    expect(buildingDurationMs('arena', 99)! / 3_600_000).toBeLessThan(6)
   })
 
-  it('山门闸门:其余建筑上限 = (山门+1)×2,并受自身满级所限', () => {
-    expect(buildingLevelCap('hall', 0)).toBe(8)
+  it('山门闸门:山门自身只受硬夹,其余 = (山门+1)×2 且不再有品类满级', () => {
+    expect(buildingLevelCap('hall', 0)).toBe(SECT_LEVEL_HARD_MAX)
     expect(buildingLevelCap('arena', 0)).toBe(2)
     expect(buildingLevelCap('arena', 1)).toBe(4)
     expect(buildingLevelCap('arena', 4)).toBe(10)
-    // 山门再高也不会越过自身满级
-    expect(buildingLevelCap('arena', 8)).toBe(10)
+    // 山门升到 8 级:演武场能到 18 级(旧版被自身满级卡在 10)
+    expect(buildingLevelCap('arena', 8)).toBe(18)
+    expect(buildingLevelCap('arena', 49)).toBe(100)
     expect(buildingLevelCap('nope', 8)).toBe(0)
   })
 })
@@ -139,25 +166,25 @@ describe('捐献拆分', () => {
 })
 
 describe('门派属性', () => {
-  it('无宗门、无等级 → 无加成', () => {
-    expect(sectMods(null, {}, {})).toEqual({})
-    expect(sectMods(sect.id, {}, {})).toEqual({})
+  it('无等级 → 无加成', () => {
+    expect(sectMods({}, {})).toEqual({})
   })
 
   it('技能与建筑各自按等级累加', () => {
-    const mods = sectMods(sect.id, { [skill1.id]: 3 }, { arena: 5 })
+    const mods = sectMods({ [skill1.id]: 3 }, { arena: 5 })
     expect(mods.attackPct).toBeCloseTo(3 * 0.02 + 5 * 0.012, 6)
   })
 
-  it('别的宗门的技能不计入(技能须属于本宗)', () => {
+  it('三脉技能都算:不再按宗门过滤', () => {
     const other = SECTS[1]!.skills[0]!
-    expect(sectMods(sect.id, { [other.id]: 5 }, {})).toEqual({})
+    const mods = sectMods({ [other.id]: 5 }, {})
+    expect(mods.alchemyYield).toBeCloseTo(5 * 0.04, 6)
   })
 
   it('等级越界按上限计,不会凭坏数翻倍', () => {
-    const mods = sectMods(sect.id, { [skill1.id]: 999 }, { hall: 999 })
+    const mods = sectMods({ [skill1.id]: 999 }, { hall: 4 })
     expect(mods.attackPct).toBeCloseTo(SECT_SKILL_MAX_LEVEL * 0.02, 6)
-    expect(mods.cultivationSpeed).toBeCloseTo(8 * 0.015, 6)
+    expect(mods.cultivationSpeed).toBeCloseTo(4 * 0.015, 6)
   })
 })
 
@@ -175,68 +202,88 @@ describe('计时结算', () => {
     expect(state.buildings.arena).toBeUndefined()
   })
 
-  it('目标等级被写到上限之外:只清任务,不白送等级', () => {
+  it('目标等级被写到闸门之外:只按闸门落级,不白送多余等级', () => {
     const state = base({ build: { id: 'arena', to: 99, startAt: 1_000, finishAt: 2_000 } })
     const after = settleBuild(state, 3_000)
     expect(after.state.build).toBeNull()
     // 山门 0 级时演武场只能到 2 级
     expect(after.state.buildings.arena).toBe(2)
   })
+
+  it('山门自己不受闸门限制:写多高就落多高(只受硬夹)', () => {
+    const state = base({ build: { id: 'hall', to: 30, startAt: 1_000, finishAt: 2_000 } })
+    expect(settleBuild(state, 3_000).state.buildings.hall).toBe(30)
+  })
 })
 
 describe('状态修形', () => {
   const now = 1_700_000_000_000
+  /** 名字是「已立派」的唯一凭据 —— 修形用例都带一个合法名 */
+  const founded = { name: '青冥剑宗' }
 
-  it('坏宗门与跨宗门技能被丢掉,合法技能留下', () => {
+  it('名字不合法 → 整份按未立派处理(技能与建筑一并丢弃)', () => {
+    const s = normalizeSectState({ name: 'x', skills: { taixu_sword: 3 }, buildings: { hall: 5 } }, now)
+    expect(s.name).toBe('')
+    expect(s.skills).toEqual({})
+    expect(s.buildings).toEqual({})
+    expect(s.role).toBeNull()
+  })
+
+  it('三脉技能都留,认不出的丢,越界夹到五重', () => {
     const s = normalizeSectState(
-      { sectId: 'taixu', skills: { taixu_sword: 3, danxia_fire: 4, taixu_break: 99 } },
+      { ...founded, skills: { taixu_sword: 3, danxia_fire: 4, taixu_break: 99, nope: 2 } },
       now
     )
-    expect(s.sectId).toBe('taixu')
-    expect(s.skills).toEqual({ taixu_sword: 3, taixu_break: 5 })
+    expect(s.skills).toEqual({ taixu_sword: 3, danxia_fire: 4, taixu_break: 5 })
   })
 
   it('贡献取整并夹到上限,负数归零', () => {
-    const s = normalizeSectState({ personal: -3, pool: 1e12, totalDonated: 12.9 }, now)
+    const s = normalizeSectState({ ...founded, personal: -3, pool: 1e12, totalDonated: 12.9 }, now)
     expect(s.personal).toBe(0)
     expect(s.pool).toBe(1e9)
     expect(s.totalDonated).toBe(12)
   })
 
-  it('建筑等级按山门闸门压回', () => {
-    const s = normalizeSectState({ sectId: 'taixu', buildings: { hall: 0, arena: 9 } }, now)
+  it('建筑等级按山门闸门压回(山门自身只受硬夹)', () => {
+    const s = normalizeSectState({ ...founded, buildings: { hall: 0, arena: 9 } }, now)
     expect(s.buildings.arena).toBe(2)
+    const tall = normalizeSectState({ ...founded, buildings: { hall: 8, arena: 99 } }, now)
+    expect(tall.buildings.arena).toBe(18)
+    expect(tall.buildings.hall).toBe(8)
   })
 
   it('工期被写短的营造任务直接作废(不修正成可完工)', () => {
-    const def = sectBuildingDef('arena')!
     const full = buildingDurationMs('arena', 0)!
     // 合法:起点在过去,完工时刻 = 起点 + 合法工期
     const ok = normalizeSectState(
-      { sectId: 'taixu', build: { id: 'arena', to: 1, startAt: now - 1000, finishAt: now - 1000 + full } },
+      { ...founded, build: { id: 'arena', to: 1, startAt: now - 1000, finishAt: now - 1000 + full } },
       now
     )
     expect(ok.build).not.toBeNull()
     // 坏:工期只有一毫秒
     const bad = normalizeSectState(
-      { sectId: 'taixu', build: { id: 'arena', to: 1, startAt: now - 1000, finishAt: now - 999 } },
+      { ...founded, build: { id: 'arena', to: 1, startAt: now - 1000, finishAt: now - 999 } },
       now
     )
     expect(bad.build).toBeNull()
-    expect(def.id).toBe('arena')
   })
 
   it('目标不是「下一级」的任务作废', () => {
-    const s = normalizeSectState(
-      { sectId: 'taixu', build: { id: 'arena', to: 5, startAt: now - 1, finishAt: now + 60_000 } },
-      now
-    )
+    const s = normalizeSectState({ ...founded, build: { id: 'arena', to: 5, startAt: now - 1, finishAt: now + 60_000 } }, now)
     expect(s.build).toBeNull()
+  })
+
+  it('身份与门人数只在已立派时成立', () => {
+    expect(normalizeSectState({ ...founded, role: 'leader', memberCount: 3 }, now).role).toBe('leader')
+    expect(normalizeSectState({ ...founded, role: 'leader' }, now).memberCount).toBe(0)
+    // 认不出的身份当门人之外的「无」——界面按 null 处理
+    expect(normalizeSectState({ ...founded, role: 'boss' }, now).role).toBeNull()
+    expect(normalizeSectState({ name: '', role: 'leader', memberCount: 3 }, now).role).toBeNull()
   })
 
   it('初始状态全零且可枚举', () => {
     const s = emptySectState()
-    expect(s).toMatchObject({ sectId: null, personal: 0, pool: 0, build: null, donationsToday: 0 })
+    expect(s).toMatchObject({ name: '', personal: 0, pool: 0, build: null, donationsToday: 0, role: null, memberCount: 0 })
     expect(s.skills).toEqual({})
     expect(s.buildings).toEqual({})
   })
@@ -254,24 +301,35 @@ describe('门派名', () => {
   })
 
   it('修形:坏名置空,好名保留', () => {
-    expect(normalizeSectState({ sectId: 'taixu', name: '青冥' }).name).toBe('青冥')
-    expect(normalizeSectState({ sectId: 'taixu', name: 'x' }).name).toBe('')
+    expect(normalizeSectState({ name: '青冥' }).name).toBe('青冥')
+    expect(normalizeSectState({ name: 'x' }).name).toBe('')
   })
 })
 
-describe('每日次数与门人', () => {
+describe('每日次数、名额与投师门槛', () => {
   it('捐献次数:常驻三次,VIP 五次', () => {
     expect(donationQuota()).toBe(3)
     expect(donationQuota(true)).toBe(5)
     expect(donationQuota(false)).toBe(3)
   })
 
-  it('门人上限:初始十人,山门每升一级 +1', () => {
+  it('门人上限:初始十人,山门每升一级 +1(山门不封顶,名额也不封顶)', () => {
     expect(memberCap(0)).toBe(10)
     expect(memberCap(1)).toBe(11)
     expect(memberCap(8)).toBe(18)
-    // 坏数按零级算,不会把人数撑爆
-    expect(memberCap(999)).toBe(18)
+    expect(memberCap(30)).toBe(40)
+    // 坏数按硬上界与零级算
+    expect(memberCap(1e9)).toBe(10 + SECT_LEVEL_HARD_MAX)
     expect(memberCap(-3)).toBe(10)
+  })
+
+  it('投师门槛低于开派:筑基可投,元婴可开', () => {
+    expect(canJoin(0)).toBe(false)
+    expect(canJoin(1)).toBe(true)
+    expect(canJoin(3)).toBe(true)
+  })
+
+  it('门外候着的申请有上限(挡刷申请)', () => {
+    expect(applyCap()).toBeGreaterThan(0)
   })
 })

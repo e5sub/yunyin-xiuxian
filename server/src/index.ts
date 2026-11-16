@@ -21,6 +21,7 @@ import { dungeonRouter } from './routes/dungeon.js'
 import { eventRouter } from './routes/event.js'
 import { leisureRouter } from './routes/leisure.js'
 import { initDb, run } from './db.js'
+import { migrateLegacySects } from './sectState.js'
 import { gmPath, gmRouter } from './admin.js'
 import { initWsServer, isOnline, KICK_WAIT_MS, kickUserSockets, notifyUser, registerChatPersist, WS_MAX_PAYLOAD, wsProtocolHandler } from './ws.js'
 import { getConfigNumber } from './config.js'
@@ -45,6 +46,14 @@ async function cleanupExpired(): Promise<void> {
 
 async function main(): Promise<void> {
   await initDb()
+
+  // 一人一派的旧行(sect_state)搬成「门派 + 掌门」两表;搬完删旧行,失败也不挡启动
+  try {
+    const moved = await migrateLegacySects()
+    if (moved > 0) console.log('[yunyin-server] 门派旧档迁移:', moved, '家')
+  } catch (e) {
+    console.error('[yunyin-server] 门派旧档迁移失败:', e instanceof Error ? e.message : e)
+  }
 
   // GM 账号可由 env 引导:GM_USER 必填,GM_PASS 给出则同步重置口令(.env 一处控制,重启即生效)
   const gmUser = (process.env.GM_USER ?? '').trim()

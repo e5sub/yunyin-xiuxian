@@ -462,6 +462,35 @@ export interface AuthConfig {
   turnstileSiteKey?: string
 }
 
+/** 门人一览(服务端按成员表实算,客户端只显示) */
+export interface SectMemberView {
+  userId: number
+  name: string
+  role: 'leader' | 'member'
+  personal: number
+  totalDonated: number
+  joinedAt: number
+}
+
+/** 门外候着的申请(只有掌门拿得到) */
+export interface SectApplyView {
+  userId: number
+  name: string
+  realmLabel: string
+  realmIndex: number
+  at: number
+}
+
+/** 可投师的门派(未入派时才下发) */
+export interface SectBriefView {
+  id: number
+  name: string
+  leader: string
+  members: number
+  cap: number
+  hall: number
+}
+
 /** 门派响应:ok=false 时 reason 为拒因(nosect/realm/insufficient/daily/busy/cap/pool/personal/locked...) */
 export interface SectStateResp {
   ok: boolean
@@ -471,6 +500,14 @@ export interface SectStateResp {
   now: number
   /** 本次请求顺手结算掉的完工建筑 id */
   done?: string | null
+  /** 门人一览(在门中时才有;未入派为空表) */
+  members?: SectMemberView[]
+  /** 待审申请(只有掌门拿得到) */
+  applies?: SectApplyView[]
+  /** 我挂着的申请(未入派时才可能非 null) */
+  appliedTo?: { id: number; name: string } | null
+  /** 可投师的门派(未入派时下发;在门中为空表) */
+  list?: SectBriefView[]
   /**
    * 本次实扣(建派为灵石/玄铁/悟道点三项,捐献为一份实物)。
    * 客户端必须按它扣本地,不自行按 VIP 状态重算 —— 两边 vip 判据可能差一次到期。
@@ -694,14 +731,26 @@ export const cloudApi = {
     stone?: { m: number; e: number }
   }): Promise<LevelOpResponse> => request('POST', '/progress/op', payload),
   /* ---- 门派(1.68.0):状态只住服务端,这里只提交动作 ---- */
-  /** 读门派:状态 + 服务端此刻(客户端按它校正倒计时,不用本机时钟) */
+  /** 读门派:状态 + 门人 + 我的申请 + 可投的门派 + 服务端此刻 */
   sectState: (): Promise<SectStateResp> => request('GET', '/sect'),
-  /** 开宗立派:道统三选一 + 门派名(服务端校验境界、扣建派开销) */
-  sectFound: (sectId: string, name: string): Promise<SectStateResp> =>
-    request('POST', '/sect/found', { sectId, name }),
+  /** 开宗立派:只取名(门中三脉之法皆可修),服务端校验境界、门派名唯一与建派开销 */
+  sectFound: (name: string): Promise<SectStateResp> => request('POST', '/sect/found', { name }),
+  /** 投师:给某一家递一份申请(一人同时只挂一份) */
+  sectJoin: (sect: number): Promise<SectStateResp> => request('POST', '/sect/join', { sect }),
+  /** 撤回申请 */
+  sectJoinCancel: (): Promise<SectStateResp> => request('POST', '/sect/join/cancel', {}),
+  /** 掌门审批:approve 为真即入册,为假即删申请 */
+  sectReview: (user: number, approve: boolean): Promise<SectStateResp> =>
+    request('POST', '/sect/review', { user, approve }),
+  /** 逐出门人(掌门) */
+  sectKick: (user: number): Promise<SectStateResp> => request('POST', '/sect/kick', { user }),
+  /** 退出山门(门人;掌门得先解散) */
+  sectLeave: (): Promise<SectStateResp> => request('POST', '/sect/leave', {}),
+  /** 解散门派(掌门):门人与公账一并散 */
+  sectDissolve: (): Promise<SectStateResp> => request('POST', '/sect/dissolve', {}),
   /** 捐献:灵石/玄铁/灵草三档,服务端按云档余额判够不够 */
   sectDonate: (kind: string): Promise<SectStateResp> => request('POST', '/sect/donate', { kind }),
-  /** 开工营造:扣门派库、写服务端时间(同一时刻只能有一座) */
+  /** 开工营造:扣门派库、写服务端时间(同一时刻只能有一座;山门不封顶) */
   sectBuildStart: (id: string): Promise<SectStateResp> => request('POST', '/sect/build/start', { id }),
   /** 收取完工:服务端时钟到点才落级 */
   sectBuildClaim: (): Promise<SectStateResp> => request('POST', '/sect/build/claim', {}),

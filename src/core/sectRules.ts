@@ -10,27 +10,28 @@
  */
 import type { StatMods } from '@/types'
 import {
-  SECTS,
   SECT_BUILDINGS,
+  SECT_APPLY_MAX,
   SECT_BUILDING_GATE_MULT,
   SECT_DONATIONS,
   SECT_DONATE_DAILY_CAP,
   SECT_DONATE_VIP_CAP,
   SECT_FOUND_COST,
   SECT_FOUND_MAJOR,
+  SECT_JOIN_MAJOR,
+  SECT_LEVEL_HARD_MAX,
   SECT_MEMBERS_BASE,
   SECT_MEMBERS_PER_LEVEL,
   SECT_NAME_MAX,
   SECT_NAME_MIN,
   SECT_POOL_SHARE,
+  SECT_SKILLS,
   SECT_SKILL_COST_BASE,
   SECT_SKILL_COST_GROWTH,
   SECT_SKILL_MAX_LEVEL,
   sectBuildingDef,
-  sectDef,
   sectSkillDef,
-  type SectBuildingId,
-  type SectId
+  type SectBuildingId
 } from '@/data/sect'
 import { herbGradeOfMajor, type HerbGrade } from '@/data/herbGrades'
 import { mergeMods } from './statsCalc'
@@ -47,17 +48,28 @@ export interface SectBuildTask {
 }
 
 /**
+ * 我在门中的身份。掌门可审批、逐人、解散;门人可捐献、修习、参与营造、自行退出。
+ * 上限只有一人:建派者。掌门离开只有两条路 —— 解散门派,或删档(删档时掌门之位转给先入门者)。
+ */
+export type SectRole = 'leader' | 'member'
+
+/**
  * 门派状态。`day`/`donationsToday` 是服务端按 UTC+8 日界维护的捐献限次,
  * 客户端仅用于显示「今日还剩几次」。
+ *
+ * 一个玩家看到的这份形状 = 「门派本体的公共账」+「我自己的个人账」:
+ * 服务端把 sects 里的 pool/skills/buildings/build 与 sect_members 里的
+ * personal/day/donationsToday/totalDonated 拼成一份下发,客户端不必知道分了几张表。
  */
 export interface SectState {
-  /** 道统(决定技能树):开宗立派时三选一,定后不再改 */
-  sectId: SectId | null
-  /** 门派名:玩家自取,二字至七字 */
+  /**
+   * 门派名:玩家自取,二字至七字。**也是「有没有门派」的唯一凭据** ——
+   * 建派才写名,退门/逐出/解散即清空(1.69.0 起门派不再分道统,原有 sectId 字段已废)。
+   */
   name: string
-  /** 个人贡献:学技能用 */
+  /** 个人贡献:学技能用(只属于我,退出即清零) */
   personal: number
-  /** 门派库:升建筑用 */
+  /** 门派库:升建筑用(全门共用) */
   pool: number
   /** 技能 id → 等级(1~5) */
   skills: Record<string, number>
@@ -70,11 +82,14 @@ export interface SectState {
   donationsToday: number
   /** 累计捐献贡献(展示用,不影响数值) */
   totalDonated: number
+  /** 我的身份;未入门派 → null */
+  role: SectRole | null
+  /** 门中现有几人(含掌门);由服务端按成员表实算,客户端只显示 */
+  memberCount: number
 }
 
 export function emptySectState(): SectState {
   return {
-    sectId: null,
     name: '',
     personal: 0,
     pool: 0,
@@ -83,7 +98,9 @@ export function emptySectState(): SectState {
     build: null,
     day: '',
     donationsToday: 0,
-    totalDonated: 0
+    totalDonated: 0,
+    role: null,
+    memberCount: 0
   }
 }
 
@@ -98,17 +115,17 @@ function intIn(v: unknown, min: number, max: number): number {
 
 /* ---------------- 价目与耗时 ---------------- */
 
-/**
- * 宗门是否存在(三选一的数据源;不另维护一份 id 清单 —— 门槛改一次就四处不同步,
- * 是这套代码反复吃过的亏)。
- */
-export function sectExists(id: string): boolean {
-  return sectDef(id) !== undefined
-}
-
 /** 到没到开宗立派的境界(元婴起) */
 export function canFound(major: number): boolean {
   return Number.isFinite(major) && major >= SECT_FOUND_MAJOR
+}
+
+/**
+ * 够不够投师的境界(筑基起)。比开派低两个大境界 ——
+ * 前期玩家开不起派,但可以入一家的门借道统修行。
+ */
+export function canJoin(major: number): boolean {
+  return Number.isFinite(major) && major >= SECT_JOIN_MAJOR
 }
 
 /**
@@ -119,9 +136,14 @@ export function donationQuota(vip = false): number {
   return vip ? SECT_DONATE_VIP_CAP : SECT_DONATE_DAILY_CAP
 }
 
-/** 门人上限:山门定员,初始 10 人,山门每升一级 +1 人 */
+/** 门人上限:山门定员,初始 10 人,山门每升一级 +1 人(山门不封顶,名额也就不封顶) */
 export function memberCap(hallLevel: number): number {
-  return SECT_MEMBERS_BASE + intIn(hallLevel, 0, 8) * SECT_MEMBERS_PER_LEVEL
+  return SECT_MEMBERS_BASE + intIn(hallLevel, 0, SECT_LEVEL_HARD_MAX) * SECT_MEMBERS_PER_LEVEL
+}
+
+/** 一家门派能同时挂着几份待审申请(服务端审批前按它挡刷申请;客户端不显示这个数) */
+export function applyCap(): number {
+  return SECT_APPLY_MAX
 }
 
 /**
@@ -164,46 +186,63 @@ export function foundCost(rate = 1): { stone: number; ore: number; wudao: number
 }
 
 /**
- * 同层解锁条件:第 n 层(n ≥ 2)须先把 n-1 层那门练到 2 级。
- * 第 1 层无条件。返回的是「需要达到 2 级的那门技能」,不是本门。
+ * 同层解锁:第 n 层(n ≥ 2)须先在本门把第 n-1 层的**任意一门**练到二重。
+ * 第 1 层无条件。返回上一层三门的 id(第 1 层 → 空表)。
+ *
+ * 三脉合一之后没有「本宗门的上一层」这一说 —— 上一层三脉任修一门即算入门,
+ * 于是「先修太虚剑意、再转万象阵理」这种混修是可行的,专精与兼修自己权衡。
  */
-export function skillUnlockNeed(skillId: string): { id: string; level: number } | null {
+export function skillPrevRow(skillId: string): string[] {
   const def = sectSkillDef(skillId)
-  if (def === undefined || def.row <= 1) return null
-  for (const sect of SECTS) {
-    const prev = sect.skills.find(s => s.row === def.row - 1)
-    if (prev !== undefined && sect.skills.some(s => s.id === skillId)) return { id: prev.id, level: 2 }
-  }
-  return null
+  if (def === undefined || def.row <= 1) return []
+  return SECT_SKILLS.filter(s => s.row === def.row - 1).map(s => s.id)
 }
 
-/** 建筑从 level 升到 level+1 的门派贡献价;满级/认不出 → null */
-export function buildingCost(id: string, level: number, rate = 1): number | null {
-  const def = sectBuildingDef(id)
-  if (def === undefined) return null
-  const lv = intIn(level, 0, def.maxLevel)
-  if (lv >= def.maxLevel) return null
-  return Math.ceil(def.costBase * Math.pow(lv + 1, 1.55) * priceRate(rate))
-}
-
-/** 建筑从 level 升到 level+1 的等待时长(毫秒);满级/认不出 → null */
-export function buildingDurationMs(id: string, level: number): number | null {
-  const def = sectBuildingDef(id)
-  if (def === undefined) return null
-  const lv = intIn(level, 0, def.maxLevel)
-  if (lv >= def.maxLevel) return null
-  return Math.ceil(def.timeBaseMin * 60_000 * Math.pow(lv + 1, 1.45))
+/** 某门技能现在能不能修(上一层已有一门到二重) */
+export function skillUnlocked(skills: Record<string, number>, skillId: string): boolean {
+  const prev = skillPrevRow(skillId)
+  if (prev.length === 0) return true
+  return prev.some(id => (skills[id] ?? 0) >= 2)
 }
 
 /**
- * 建筑等级上限:山门是闸门,其余 = (山门等级 + 1) × 2,再与各自 maxLevel 取小。
- * 洞府(gongfaSeats 那套)与这里都是「主闸限副」,但门派闸更紧 —— 一世只建一遍。
+ * 建筑从 level 升到 level+1 的门派贡献价 —— **没有满级**,只有认不出的 id 才回 null。
+ *
+ * 曲线 `costBase × (lv+1)^1.15 × 1.04^lv`:幂律管前段手感(山门 1 级 60、10 级约 1200),
+ * 缓增的几何项管后段(20 级约 4000、50 级约 3.7 万、100 级约 58 万)。
+ * 对照门派库的来路:单人每日三捐入 540,十人同捐 5400 ——
+ * 二十级前一人一日可升一两级,五十级要全门攒上一周,百级就是长线经营了。
+ * 不设天花板,但也不会有「一夜垒到百级」这种曲线。
+ */
+export function buildingCost(id: string, level: number, rate = 1): number | null {
+  const def = sectBuildingDef(id)
+  if (def === undefined) return null
+  const lv = intIn(level, 0, SECT_LEVEL_HARD_MAX)
+  return Math.ceil(def.costBase * Math.pow(lv + 1, 1.15) * Math.pow(1.04, lv) * priceRate(rate))
+}
+
+/**
+ * 建筑从 level 升到 level+1 的等待时长(毫秒)—— 同样没有满级。
+ * 曲线 `timeBaseMin × (lv+1)^0.75`:1 级六分钟,10 级约半小时,50 级约两小时,100 级约三小时。
+ * 时间只随等级缓涨而不指数爆炸 —— 否则高等级一升就是等几天,经营感会变成罚站。
+ */
+export function buildingDurationMs(id: string, level: number): number | null {
+  const def = sectBuildingDef(id)
+  if (def === undefined) return null
+  const lv = intIn(level, 0, SECT_LEVEL_HARD_MAX)
+  return Math.ceil(def.timeBaseMin * 60_000 * Math.pow(lv + 1, 0.75))
+}
+
+/**
+ * 建筑等级上限:山门本身无上限(只受硬夹),其余 = (山门等级 + 1) × 2。
+ * 山门是闸门 —— 副建筑想再往上,先垫山门一级;山门不封顶,这份余地也就一直有得开。
+ * 与洞府(gongfaSeats 那套)都是「主闸限副」,区别是门派没有品类满级。
  */
 export function buildingLevelCap(id: string, hallLevel: number): number {
   const def = sectBuildingDef(id)
   if (def === undefined) return 0
-  if (def.id === 'hall') return def.maxLevel
-  return Math.min(def.maxLevel, (intIn(hallLevel, 0, 8) + 1) * SECT_BUILDING_GATE_MULT)
+  if (def.id === 'hall') return SECT_LEVEL_HARD_MAX
+  return Math.min(SECT_LEVEL_HARD_MAX, (intIn(hallLevel, 0, SECT_LEVEL_HARD_MAX) + 1) * SECT_BUILDING_GATE_MULT)
 }
 
 /* ---------------- 捐献 ---------------- */
@@ -230,21 +269,15 @@ export function donationHerbGrade(major: number): HerbGrade {
 
 /* ---------------- 属性 ---------------- */
 
-/** 门派给的属性:技能各按现值 + 建筑各按现值,合成一份(与洞府 buildingMods 同规) */
-export function sectMods(
-  sectId: string | null,
-  skills: Record<string, number>,
-  buildings: Record<string, number>
-): StatMods {
+/** 门派给的属性:十五门技能各按现值 + 建筑各按现值,合成一份(与洞府 buildingMods 同规) */
+export function sectMods(skills: Record<string, number>, buildings: Record<string, number>): StatMods {
   const sources: StatMods[] = []
-  if (sectId !== null) {
-    for (const def of sectDef(sectId)?.skills ?? []) {
-      const lv = intIn(skills[def.id], 0, SECT_SKILL_MAX_LEVEL)
-      if (lv > 0) sources.push(def.mods(lv))
-    }
+  for (const def of SECT_SKILLS) {
+    const lv = intIn(skills[def.id], 0, SECT_SKILL_MAX_LEVEL)
+    if (lv > 0) sources.push(def.mods(lv))
   }
   for (const def of SECT_BUILDINGS) {
-    const lv = intIn(buildings[def.id], 0, def.maxLevel)
+    const lv = intIn(buildings[def.id], 0, SECT_LEVEL_HARD_MAX)
     if (lv > 0) sources.push(def.mods(lv))
   }
   return mergeMods(sources)
@@ -263,10 +296,10 @@ export function settleBuild(state: SectState, now: number): { state: SectState; 
   if (!isNum(now) || now < task.finishAt) return { state, done: null }
   const def = sectBuildingDef(task.id)
   if (def === undefined) return { state: { ...state, build: null }, done: null }
-  // 目标等级不该越过上限:坏行只清任务,不白送等级
+  // 目标等级不该越过上限:坏行只清任务,不白送等级(山门无上限,闸门只管副建筑)
   const cap = buildingLevelCap(task.id, state.buildings.hall ?? 0)
-  const to = Math.min(task.to, cap, def.maxLevel)
-  const cur = intIn(state.buildings[task.id], 0, def.maxLevel)
+  const to = Math.min(task.to, cap)
+  const cur = intIn(state.buildings[task.id], 0, SECT_LEVEL_HARD_MAX)
   const next = Math.max(cur, to)
   return {
     state: { ...state, buildings: { ...state.buildings, [task.id]: next }, build: null },
@@ -281,69 +314,76 @@ export function settleBuild(state: SectState, now: number): { state: SectState; 
  * 客户端拿到响应也过一遍 —— 两处同一份判据,不做第二套。
  *
  * 收口的东西:
- *  · 认不出的宗门/技能/建筑一律丢弃(技能还须属于该宗门,跨宗门的技能不认);
+ *  · 门派名合法即视为已立派(名字是唯一凭据);名字坏掉 → 整份按未立派处理;
+ *  · 认不出的技能/建筑一律丢弃(技能只认三脉十五门那几门);
  *  · 贡献取整并夹到 [0, SECT_POINT_MAX];
- *  · 建筑等级按山门闸门与自身满级夹;
+ *  · 建筑等级按山门闸门夹(山门自身只受硬夹 —— 门派建筑没有品类满级);
  *  · 营造任务的 `to` 只能是「当前等级 + 1」,时长不得超出该级合法耗时 —— 坏行直接清空,
  *    不修正成「还能顺手完工一次」;
  *  · 完成时刻已经过去的任务,交给 settleBuild(它按 now 判),这里只保证形状合法。
  */
 export function normalizeSectState(raw: unknown, now = Date.now()): SectState {
   const src = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}
-  const sectId = typeof src.sectId === 'string' && sectDef(src.sectId) !== undefined ? (src.sectId as SectId) : null
   const out = emptySectState()
-  out.sectId = sectId
   out.name = sectNameOk(src.name) ? src.name.trim() : ''
+  const founded = out.name !== ''
   out.personal = intIn(src.personal, 0, SECT_POINT_MAX)
   out.pool = intIn(src.pool, 0, SECT_POINT_MAX)
   out.totalDonated = intIn(src.totalDonated, 0, SECT_POINT_MAX)
   out.day = typeof src.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(src.day) ? src.day : ''
   out.donationsToday = intIn(src.donationsToday, 0, 10_000)
+  /*
+   * 身份与门人数只认服务端下发的形状:没门派的角色一律空。
+   * 门人数按 [0, 5000] 夹 —— 上界只防坏数把面板撑破(山门不封顶,名额也不封顶)。
+   */
+  out.role = founded && (src.role === 'leader' || src.role === 'member') ? src.role : null
+  out.memberCount = founded ? intIn(src.memberCount, 0, 5000) : 0
 
-  if (sectId !== null) {
+  if (founded) {
     const rawSkills = typeof src.skills === 'object' && src.skills !== null ? (src.skills as Record<string, unknown>) : {}
-    for (const def of sectDef(sectId)?.skills ?? []) {
+    for (const def of SECT_SKILLS) {
       const lv = intIn(rawSkills[def.id], 0, SECT_SKILL_MAX_LEVEL)
       if (lv > 0) out.skills[def.id] = lv
     }
   }
 
-  const rawBuildings =
-    typeof src.buildings === 'object' && src.buildings !== null ? (src.buildings as Record<string, unknown>) : {}
-  // 先落山门,再用它算其余建筑的闸门(顺序不能反)
-  const hall = intIn(rawBuildings.hall, 0, 8)
-  out.buildings.hall = Math.min(hall, sectBuildingDef('hall')?.maxLevel ?? 8)
-  for (const def of SECT_BUILDINGS) {
-    if (def.id === 'hall') continue
-    const cap = buildingLevelCap(def.id, out.buildings.hall ?? 0)
-    const lv = intIn(rawBuildings[def.id], 0, def.maxLevel)
-    out.buildings[def.id] = Math.min(lv, cap)
-  }
+  // 未立派就没有建筑与工程可谈:名字坏了整份归零,别留下一座无人认领的空门
+  if (founded) {
+    const rawBuildings =
+      typeof src.buildings === 'object' && src.buildings !== null ? (src.buildings as Record<string, unknown>) : {}
+    // 先落山门,再用它算其余建筑的闸门(顺序不能反)。山门无上限,只受硬夹。
+    out.buildings.hall = intIn(rawBuildings.hall, 0, SECT_LEVEL_HARD_MAX)
+    for (const def of SECT_BUILDINGS) {
+      if (def.id === 'hall') continue
+      const cap = buildingLevelCap(def.id, out.buildings.hall ?? 0)
+      out.buildings[def.id] = intIn(rawBuildings[def.id], 0, cap)
+    }
 
-  const rawBuild = typeof src.build === 'object' && src.build !== null ? (src.build as Record<string, unknown>) : null
-  if (rawBuild !== null) {
-    const id = typeof rawBuild.id === 'string' ? rawBuild.id : ''
-    const def = sectBuildingDef(id)
-    if (def !== undefined) {
-      const cur = intIn(out.buildings[def.id], 0, def.maxLevel)
-      const to = intIn(rawBuild.to, 0, def.maxLevel)
-      const startAt = intIn(rawBuild.startAt, 0, Number.MAX_SAFE_INTEGER)
-      const finishAt = intIn(rawBuild.finishAt, 0, Number.MAX_SAFE_INTEGER)
-      const duration = buildingDurationMs(def.id, cur)
-      /*
-       * 目标必须正是「下一级」;工期给一个宽容带而不是等号:价目表调过一次(balance 改基数)
-       * 之后,旧行就与当前表对不上了 —— 等号会把在造的工程一并作废。带子取 0.5~2 倍,
-       * 只拦「把工期写成几毫秒」这类明显伪造;真正的写入口是服务端,这条是防手工改库的兜底。
-       */
-      const delta = finishAt - startAt
-      const ok =
-        to === cur + 1 &&
-        startAt > 0 &&
-        duration !== null &&
-        delta >= duration * 0.5 &&
-        delta <= duration * 2 + 60_000 &&
-        startAt <= now + 60_000
-      if (ok) out.build = { id: def.id, to, startAt, finishAt }
+    const rawBuild = typeof src.build === 'object' && src.build !== null ? (src.build as Record<string, unknown>) : null
+    if (rawBuild !== null) {
+      const id = typeof rawBuild.id === 'string' ? rawBuild.id : ''
+      const def = sectBuildingDef(id)
+      if (def !== undefined) {
+        const cur = intIn(out.buildings[def.id], 0, SECT_LEVEL_HARD_MAX)
+        const to = intIn(rawBuild.to, 0, SECT_LEVEL_HARD_MAX)
+        const startAt = intIn(rawBuild.startAt, 0, Number.MAX_SAFE_INTEGER)
+        const finishAt = intIn(rawBuild.finishAt, 0, Number.MAX_SAFE_INTEGER)
+        const duration = buildingDurationMs(def.id, cur)
+        /*
+         * 目标必须正是「下一级」;工期给一个宽容带而不是等号:价目表调过一次(balance 改基数)
+         * 之后,旧行就与当前表对不上了 —— 等号会把在造的工程一并作废。带子取 0.5~2 倍,
+         * 只拦「把工期写成几毫秒」这类明显伪造;真正的写入口是服务端,这条是防手工改库的兜底。
+         */
+        const delta = finishAt - startAt
+        const ok =
+          to === cur + 1 &&
+          startAt > 0 &&
+          duration !== null &&
+          delta >= duration * 0.5 &&
+          delta <= duration * 2 + 60_000 &&
+          startAt <= now + 60_000
+        if (ok) out.build = { id: def.id, to, startAt, finishAt }
+      }
     }
   }
   return out

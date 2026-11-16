@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-3">
-    <!-- 门槛与开销:先说清「凭什么能立派、要付什么」,再让人挑道统 -->
+    <!-- 门槛与开销:先说清「凭什么能立派、要付什么」 -->
     <div class="rounded-md border border-ink/10 bg-paper-deep/50 px-3 py-2.5">
       <div class="flex items-center justify-between gap-2">
         <span class="font-kai text-[12px] tracking-wider text-ink-soft">开宗立派</span>
@@ -10,40 +10,23 @@
       </div>
       <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
         立派须一次付清开山之资(灵石 {{ formatGN(gn(cost.stone)) }} · 玄铁 {{ cost.ore }} · 悟道 {{ cost.wudao }}),
-        道统一经择定,此世不改。
+        名字一经定下,此世不改。
       </p>
       <p v-if="shortLine" class="mt-1 text-[10px] leading-relaxed text-cinnabar">{{ shortLine }}</p>
     </div>
 
-    <!-- 道统三选一 -->
-    <div class="space-y-2">
-      <button
-        v-for="s in SECTS"
-        :key="s.id"
-        type="button"
-        class="card-ink w-full px-3 py-2.5 text-left transition-colors"
-        :class="pick === s.id ? 'ring-1 ring-inset ring-cinnabar/40' : ''"
-        :aria-pressed="pick === s.id"
-        @click="pick = s.id"
-      >
-        <div class="flex items-start gap-2.5">
-          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-md" :class="pick === s.id ? 'bg-cinnabar/10 text-ink' : 'bg-ink/5 text-ink-faint'">
-            <GameIcon :name="s.icon" :size="18" />
-          </span>
-          <div class="min-w-0 grow">
-            <p class="font-kai text-[14px] tracking-wider" :class="pick === s.id ? 'text-ink' : 'text-ink-soft'">{{ s.name }}</p>
-            <p class="mt-0.5 text-[10px] leading-snug text-ink-faint">{{ s.motto }} · {{ s.desc }}</p>
-          </div>
-          <GameIcon v-if="pick === s.id" name="shield-check" :size="14" class="mt-0.5 shrink-0 text-cinnabar" />
-        </div>
-        <!-- 技能一览:只说每层给什么,不列价 -->
-        <ul class="mt-1.5 space-y-0.5">
-          <li v-for="k in s.skills" :key="k.id" class="flex items-baseline gap-1.5 text-[10px] leading-snug text-ink-faint">
-            <span class="shrink-0 text-ink-soft">{{ k.name }}</span>
-            <span class="truncate">{{ k.effectText(1) }}(每重)</span>
-          </li>
-        </ul>
-      </button>
+    <!-- 门中所藏:三脉十五门,不再选道统 -->
+    <div class="rounded-md border border-ink/10 bg-paper-deep/40 px-3 py-2.5">
+      <p class="font-kai text-[12px] tracking-wider text-ink-soft">门中所藏</p>
+      <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
+        三脉之法同在一门 —— 剑、丹、阵皆可修习,不看开派人的出身。每层三选一,上一层任一门练到二重即开下一层。
+      </p>
+      <ul class="mt-1.5 space-y-0.5">
+        <li v-for="[row, names] in rows" :key="row" class="flex items-baseline gap-1.5 text-[10px] leading-snug text-ink-faint">
+          <span class="shrink-0 text-ink-soft">第 {{ row }} 层</span>
+          <span class="truncate">{{ names.join(' · ') }}</span>
+        </li>
+      </ul>
     </div>
 
     <!-- 门派名 -->
@@ -59,15 +42,14 @@
     </label>
 
     <button class="btn-seal w-full" :disabled="!ready" @click="submit()">
-      {{ ready ? `立派 · ${pickName}` : blockLine }}
+      {{ ready ? `立派 · ${name.trim()}` : blockLine }}
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
   import { computed, ref } from 'vue'
-  import GameIcon from '@/components/common/GameIcon.vue'
-  import { SECTS, SECT_NAME_MAX, SECT_NAME_MIN, type SectId } from '@/data/sect'
+  import { SECT_NAME_MAX, SECT_NAME_MIN, SECT_SKILLS } from '@/data/sect'
   import { REALMS } from '@/data/realms'
   import { SECT_FOUND_MAJOR } from '@/data/sect'
   import { canFound, foundCost, sectNameOk } from '@/core/sectRules'
@@ -81,13 +63,22 @@
   const resources = useResourcesStore()
   const sect = useSectStore()
 
-  const pick = ref<SectId>('taixu')
   const name = ref('')
 
   const cost = computed(() => foundCost(sect.rate))
   const realmOk = computed(() => canFound(player.major))
   const gateName = computed(() => REALMS[SECT_FOUND_MAJOR]?.name ?? '元婴')
-  const pickName = computed(() => SECTS.find(s => s.id === pick.value)?.name ?? '')
+
+  /** 每层三门的名字:五层各一行,让人一眼看清「门里有什么」 */
+  const rows = computed<[number, string[]][]>(() => {
+    const map = new Map<number, string[]>()
+    for (const def of SECT_SKILLS) {
+      const list = map.get(def.row) ?? []
+      list.push(def.name)
+      map.set(def.row, list)
+    }
+    return [...map.entries()].sort((a, b) => a[0] - b[0])
+  })
 
   const stoneShort = computed(() => {
     const need = gn(cost.value.stone)
@@ -118,6 +109,6 @@
 
   function submit(): void {
     if (!ready.value) return
-    void sect.found(pick.value, name.value)
+    void sect.found(name.value)
   }
 </script>

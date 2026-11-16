@@ -76,12 +76,12 @@ describe('档案快照复算 · 属性只认重推,不认存档自述', () => {
     const plain = snapshotFromSlices(slices)
     expect(plain).not.toBeNull()
     // 太虚剑意五重 = 攻击 +10%
-    const withSect = snapshotFromSlices(slices, { sectId: 'taixu', skills: { taixu_sword: 5 }, buildings: {} })
+    const withSect = snapshotFromSlices(slices, { name: '青冥剑宗', skills: { taixu_sword: 5 }, buildings: {} })
     expect(withSect).not.toBeNull()
     const attackOf = (s: { atkM: number; atkE: number }): number => s.atkM * Math.pow(1000, s.atkE)
     expect(attackOf(withSect!)).toBeGreaterThan(attackOf(plain!))
-    // 认不出的宗门/跨宗门的技能一律丢弃(修形在 store 里跑),快照回到未立派的值
-    const bogus = snapshotFromSlices(slices, { sectId: '无此宗门', skills: { taixu_sword: 5 }, buildings: {} })
+    // 名字不合法 = 未立派(修形在 store 里跑),技能一并丢弃 → 快照回到未立派的值
+    const bogus = snapshotFromSlices(slices, { name: 'x', skills: { taixu_sword: 5 }, buildings: {} })
     expect(bogus).toEqual(plain)
   })
 })

@@ -20,9 +20,7 @@ const ALLOWLIST: Record<string, string> = {
   marketPriceAt:
     '服务端坊市定价:server/src/routes/market.ts 经 server/src/lootGrant.ts 动态加载本模块,按 (major, stockedAt) 确定性复算货格价格,不让客户端自报成交价(1.58.1);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径',
   expectedSoulGrade:
-    '服务端器魂品阶复算:server/src/routes/loot.ts 经 server/src/lootGrant.ts 动态加载本模块,按云档里被烧装备的品质复算签发品阶,不让客户端自报 grade(1.66.3);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径',
-  sectExists:
-    '宗门存在性校验:server/src/routes/sect.ts 建派时验道统 id(客户端挑选处只遍历 SECTS),消费方在 src 之外,审计扫不到;sectRules.spec 守三门齐备'
+    '服务端器魂品阶复算:server/src/routes/loot.ts 经 server/src/lootGrant.ts 动态加载本模块,按云档里被烧装备的品质复算签发品阶,不让客户端自报 grade(1.66.3);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径'
 }
 
 /**
@@ -282,7 +280,9 @@ describe('死导出审计', () => {
     donationSplit:
       '捐献折算(三成入门派库):由 server/src/routes/sect.ts 结算,客户端只显示总额;sectRules.spec 守拆分与余数不丢',
     donationDef:
-      '捐献档位查表:server/src/routes/sect.ts 按 kind 取份数与贡献;客户端渲染直接遍历 SECT_DONATIONS,消费方在 src 之外'
+      '捐献档位查表:server/src/routes/sect.ts 按 kind 取份数与贡献;客户端渲染直接遍历 SECT_DONATIONS,消费方在 src 之外',
+    applyCap:
+      '门外申请上限:server/src/routes/sect.ts 收申请前按它挡刷屏(1.69.0);客户端不显示这个数,消费方在 src 之外'
   }
 
   it('运行时模块里的导出,不能只被 spec 用到 —— 那是骨架空转的样子', () => {
