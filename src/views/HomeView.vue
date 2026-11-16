@@ -38,8 +38,8 @@
       </div>
     </div>
 
-    <!-- 入口宫格:三列,内容顶对齐;不到 320px(200% 缩放)改两列,图标放得下 -->
-    <div class="stagger-in grid grid-cols-2 gap-2.5 min-[320px]:grid-cols-3">
+    <!-- 入口宫格:三列,内容顶对齐;不到 320px(200% 缩放)改两列,图标放得下;PC 五列 -->
+    <div class="stagger-in grid grid-cols-2 gap-2.5 min-[320px]:grid-cols-3 lg:grid-cols-5">
       <RouterLink v-if="firstStep" :to="firstStep.to" class="card-ink flex flex-col items-center gap-1.5 px-1.5 py-3 text-center active:scale-98">
         <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-cinnabar/10 text-cinnabar"><GameIcon name="footprints" :size="18" /></span>
         <span class="font-kai text-[13px] tracking-widest text-ink">第一步</span>

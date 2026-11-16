@@ -3957,3 +3957,108 @@ select option {
   height: 42%;
   background: linear-gradient(180deg, rgb(255 255 255 / 0.16), transparent);
 }
+
+/* ================= PC 布局（≥1024px） =================
+   换布局只看宽度,不判设备:同一次构建里窗口拖宽即刻换成长相,拖窄就回去。
+   断点与 Tailwind 的 lg 同一档(1024),两处改一处必红 —— 判据在 src/ui/desktopShell.spec.ts。
+
+   一 外壳:左栏 216 + 内容列,合计最宽 1240。
+     只在有外壳时(已开局)加宽:登录 / 欢迎 / 建号三页没有左栏,铺满 1240 会成一间空屋。
+   二 正文 960 上限:PC 上一行一千多像素的长句,回行会串行。
+   三 字号:移动端字号是 px 手写的(text-[11px] 之类),不吃 html 的 font-size,
+     单靠加宽解决不了「字小」。这里按档位整体放大 —— 单点控制,新增档位只改这里。
+   四 悬停:竖屏的点按态(active:scale)在鼠标下不出现,给按钮与卡片补一层 hover。
+*/
+@media (min-width: 1024px) {
+  .app-shell.app-shell-chrome {
+    flex-direction: row;
+    max-width: 1240px;
+  }
+
+  main > .stagger-in {
+    max-width: 960px;
+    margin-inline: auto;
+  }
+
+  /* 正文正文档:8~16px 逐档 +2。17px 以上是标题与大数字,原样 */
+  .text-\[8px\] {
+    font-size: 10px;
+  }
+  .text-\[9px\] {
+    font-size: 11px;
+  }
+  .text-\[10px\] {
+    font-size: 12px;
+  }
+  .text-\[11px\] {
+    font-size: 13px;
+  }
+  .text-\[12px\] {
+    font-size: 14px;
+  }
+  .text-\[13px\] {
+    font-size: 15px;
+  }
+  .text-\[14px\] {
+    font-size: 16px;
+  }
+  .text-\[15px\] {
+    font-size: 17px;
+  }
+  .text-\[16px\] {
+    font-size: 18px;
+  }
+  /* 胶囊的字号写在组件层(不跟 text-[Npx] 走),同样补一档 */
+  .chip-ink {
+    font-size: 12px;
+  }
+
+  /* 弹窗:手机上 360/400 的窄卷轴,PC 上留出更宽的行;正文放大后尤其需要 */
+  .modal-panel {
+    max-width: 28rem;
+  }
+  .modal-panel.max-w-100 {
+    max-width: 36rem;
+  }
+
+  /* 滚动条:default 那条太粗,压在纸色上像一道铁灰 */
+  main {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--color-ink-rgb) / 0.22) transparent;
+  }
+  main::-webkit-scrollbar {
+    width: 10px;
+  }
+  main::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  main::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background: rgb(var(--color-ink-rgb) / 0.22);
+    background-clip: content-box;
+  }
+  main::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--color-ink-rgb) / 0.36);
+    background-clip: content-box;
+  }
+}
+
+@media (hover: hover) and (min-width: 1024px) {
+  .btn-seal:hover:not(:disabled) {
+    background: var(--color-cinnabar-deep);
+  }
+  .btn-ink:hover:not(:disabled) {
+    background: rgb(var(--color-ink-rgb) / 0.13);
+    border-color: rgb(var(--color-ink-rgb) / 0.55);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: rgb(var(--color-ink-rgb) / 0.06);
+    border-color: rgb(var(--color-ink-rgb) / 0.42);
+  }
+  /* 只给可点的卡片:静态信息卡跟着亮一下,反而像坏掉的链接 */
+  a.card-ink:hover,
+  button.card-ink:hover {
+    border-color: rgb(var(--color-ink-rgb) / 0.3);
+  }
+}

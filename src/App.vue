@@ -1,25 +1,37 @@
 <template>
-  <!-- 桌面端外框:居中手机区域 -->
+  <!--
+    外框。手机上一栏到底;≥1024px 且已开局时换成「左栏 + 内容列」(见 style.css 的 PC 布局一节)。
+    换布局只靠 CSS:同一次构建,窗口宽度决定长相,不判设备、不读 UA。
+  -->
   <div
     class="app-shell mx-auto flex max-w-107.5 flex-col overflow-hidden bg-paper shadow-[0_0_60px_rgba(0,0,0,0.45)] relative paper-grain"
+    :class="showChrome ? 'app-shell-chrome' : ''"
   >
-    <TopStatusBar v-if="auth.loggedIn && game.started && route.name !== 'create'" />
+    <SideNavigation v-if="showChrome" />
 
-    <main ref="scrollHost" tabindex="-1" class="relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden outline-none">
-      <!--
-        读屏的页面名。底栏五页里只有首页自带视觉隐藏 h1,其余十二页第一层标题直接是 h2 ——
-        无障碍树里没有 h1,用标题跳转会落在二级标题上,页面本身没有名字。
-        这里补一处,内容随路由走;认不出名字的路由(欢迎页/建号页有自己的 h1)不渲染。
-      -->
-      <h1 v-if="pageTitle(route.name)" class="sr-only">{{ pageTitle(route.name) }}</h1>
-      <RouterView v-slot="{ Component }">
-        <Transition name="page-fade" mode="out-in" @before-enter="resetScroll" @after-enter="focusContent">
-          <component :is="Component" />
-        </Transition>
-      </RouterView>
-    </main>
+    <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <TopStatusBar v-if="showChrome" />
 
-    <BottomNavigation v-if="auth.loggedIn && game.started && route.name !== 'create'" />
+      <main
+        ref="scrollHost"
+        tabindex="-1"
+        class="relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden outline-none"
+      >
+        <!--
+          读屏的页面名。底栏五页里只有首页自带视觉隐藏 h1,其余十二页第一层标题直接是 h2 ——
+          无障碍树里没有 h1,用标题跳转会落在二级标题上,页面本身没有名字。
+          这里补一处,内容随路由走;认不出名字的路由(欢迎页/建号页有自己的 h1)不渲染。
+        -->
+        <h1 v-if="pageTitle(route.name)" class="sr-only">{{ pageTitle(route.name) }}</h1>
+        <RouterView v-slot="{ Component }">
+          <Transition name="page-fade" mode="out-in" @before-enter="resetScroll" @after-enter="focusContent">
+            <component :is="Component" />
+          </Transition>
+        </RouterView>
+      </main>
+
+      <BottomNavigation v-if="showChrome" class="lg:hidden" />
+    </div>
 
     <!-- 全局浮层 -->
     <ToastHost />
@@ -39,7 +51,7 @@
 </template>
 
 <script setup lang="ts">
-  import { onMounted, onUnmounted, ref, watch } from 'vue'
+  import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
   import { useGameStore } from '@/stores/game'
   import { useUiStore } from '@/stores/ui'
@@ -58,6 +70,7 @@
   import { configureAudio, disposeAudio, playSfx, unlockAudio } from '@/core/audio'
   import TopStatusBar from '@/components/common/TopStatusBar.vue'
   import BottomNavigation from '@/components/common/BottomNavigation.vue'
+  import SideNavigation from '@/components/common/SideNavigation.vue'
   import ToastHost from '@/components/common/ToastHost.vue'
   import TreasureCeremony from '@/components/common/TreasureCeremony.vue'
   import UpdatePrompt from '@/components/common/UpdatePrompt.vue'
@@ -85,6 +98,13 @@
   const sect = useSectStore()
   const route = useRoute()
   const router = useRouter()
+
+  /*
+   * 外壳(顶栏 / 左栏 / 底栏)的出现条件。
+   * 建号页整页是一张立轴,套着顶栏会被 <Transition> 的翻页位移带歪,故排除。
+   * 登出后 game.started 仍是 true(内存态属本账号),须连 auth 一起看,否则登录页会顶着上一位道友的道号。
+   */
+  const showChrome = computed(() => auth.loggedIn && game.started && route.name !== 'create')
 
   /** 内容区滚动宿主:滚动条在常驻的 main 上,不在 window */
   const scrollHost = ref<HTMLElement | null>(null)

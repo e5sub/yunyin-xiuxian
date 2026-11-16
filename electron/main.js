@@ -164,8 +164,9 @@ const createWindow = () => {
   win = new BrowserWindow({
     title: APP_TITLE,
     icon: path.join(publicPath, 'favicon.ico'),
-    width: 1024,
-    height: 768,
+    // 1024 起 PC 版面才生效(左栏换底栏):默认窗就开在这一档之上,首启即见 PC 版
+    width: 1280,
+    height: 800,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
