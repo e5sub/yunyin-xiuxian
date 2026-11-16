@@ -89,17 +89,35 @@
         <!--
           一键强化:身上已装备的按部位顺序各掷一次(+1);料只够几件就强几件,不预支、不借。
           与「连强」分开:这里是「每件各一次」,不追求把某一件顶到上限。
+
+          两段确认:`sweepArm` 与详情页「连强」同款。队列按部位排序,武器排头 ——
+          身上若有一件高阶件,一次点击就在它身上抽走数百亿,而钮上只写「N 件 +1」,
+          玩家看不到钱花在哪。故石耗超过余额一成时先列出总额,再让玩家落手。
         -->
-        <button
-          class="btn-ghost w-full !px-2 !py-1.5 !text-[11px]"
-          :disabled="sweepPlan.queue.length === 0"
-          :title="sweepPlan.queue.length === 0 ? '无可强化件或材料不足' : undefined"
-          @click="onUpgradeEquipped"
-        >一键强化{{ sweepHint }}</button>
-        <button
-          class="btn-ghost w-full !px-2 !py-1.5 !text-[11px] !text-ink-faint"
-          @click="onUnequipAll"
-        >卸下 {{ equippedCount }}/{{ SLOTS.length }} 格</button>
+        <template v-if="sweepArm">
+          <button class="btn-ghost w-full !px-2 !py-1.5 !text-[11px]" @click="sweepArm = false">再想想</button>
+          <button class="btn-seal w-full !px-2 !py-1.5 !text-[11px]" @click="confirmUpgradeEquipped">确认强化</button>
+        </template>
+        <template v-else>
+          <button
+            class="btn-ghost w-full !px-2 !py-1.5 !text-[11px]"
+            :disabled="sweepPlan.queue.length === 0"
+            :title="sweepTitle"
+            :aria-label="sweepTitle"
+            @click="onUpgradeEquipped"
+          >一键强化{{ sweepHint }}</button>
+          <button
+            class="btn-ghost w-full !px-2 !py-1.5 !text-[11px] !text-ink-faint"
+            @click="onUnequipAll"
+          >卸下 {{ equippedCount }}/{{ SLOTS.length }} 格</button>
+        </template>
+      </div>
+      <!-- 确认态的总额:与下手同一把 sweepPlan;失手即停,实扣只会更少 -->
+      <div v-if="sweepArm" class="mt-1 space-y-0.5 text-[10px] leading-relaxed tabular text-cinnabar">
+        <p>将耗 灵石 {{ formatGN(sweepPlan.stone) }} · 器灵尘 {{ sweepPlan.dust }}</p>
+        <p v-if="sweepPriciest">
+          最大一笔:{{ EQUIP_SLOT_NAMES[sweepPriciest.slot] }} {{ sweepPriciest.tier }} 阶 · 灵石 {{ formatGN(sweepPriciest.stone) }}(失手即停,实扣更少)
+        </p>
       </div>
 
       <!-- hint「满包掉落化尘」:不可逆后果(见 core/loot),事前只此一处 -->
@@ -370,16 +388,17 @@
   import { allEquipSets, setCounts } from '@/core/equipSet'
   import { setMark } from '@/ui/setMark'
   import { bestEquipFor, equipAllBest, equipSetCombo, equipSetPreview, unequipAllEquipped } from '@/core/equipBest'
-  import { equipSweepPlan } from '@/core/forge'
+  import { equipSweepPlan, equipUpgradeQuote } from '@/core/forge'
   import { upgradeEquippedOnce } from '@/core/forgeService'
   import { upgradeShortToast } from '@/ui/forgeText'
   import { useLoreStore } from '@/stores/lore'
   import { useBrewing } from '@/composables/useBrewing'
 
   import { formatGN, formatNum } from '@/utils/format'
+  import { gt, mulN } from '@/utils/gnum'
   import { tint } from '@/utils/colorToken'
   import { isRareRank, qualityTierByRank } from '@/ui/qualityTier'
-  import type { EquipSlot } from '@/types'
+  import type { EquipSlot, GNum } from '@/types'
   import SectionTitle from '@/components/common/SectionTitle.vue'
   import InkTabs from '@/components/common/InkTabs.vue'
   import GameIcon from '@/components/common/GameIcon.vue'
@@ -709,10 +728,64 @@
     if (plan.short !== null) return `(${upgradeShortToast(plan.short)})`
     return '(皆已满级)'
   })
+  /**
+   * 钮的读屏/悬停文字。队列按部位排,武器打头 —— 身上有一件高阶件时,
+   * 一次点击就在它身上抽走数百亿,而钮上只写「N 件 +1」。总额写在这里,
+   * 让「钱花在哪一件」在落手之前就有出处。
+   */
+  const sweepTitle = computed(() => {
+    const plan = sweepPlan.value
+    if (plan.queue.length === 0) return '无可强化件或材料不足'
+    return `将耗 灵石 ${formatGN(plan.stone)} · 器灵尘 ${plan.dust}(失手即停,实扣更少)`
+  })
+  /** 一键强化二段确认态:钱多到「一掷半仓」时先摊开总额,不让它黑箱扣走 */
+  const sweepArm = ref(false)
+
+  /**
+   * 这一击要不要先确认:石耗超过余额一成即算「大额」。
+   * 比例法而非绝对值 —— 灵石随层级按 1.9^阶 膨胀,绝对值在不同境界没有可比性。
+   */
+  function sweepNeedsConfirm(): boolean {
+    const plan = sweepPlan.value
+    if (plan.queue.length === 0) return false
+    return gt(plan.stone, mulN(resources.spiritStone, 0.1))
+  }
+
+  /**
+   * 队列里最贵的那一件 —— 确认态把它点出来。
+   * 队列按部位排(武器打头),钱多半就花在排头那件高阶器上;不写出来,
+   * 玩家看到「N 件 +1」会以为是八件平分,实际是第一件吃掉了九成。
+   */
+  const sweepPriciest = computed(() => {
+    let best: { slot: EquipSlot; tier: number; stone: GNum } | null = null
+    for (const slot of sweepPlan.value.queue) {
+      const uid = inventory.equipped[slot]
+      const inst = uid ? inventory.findItem(uid) : undefined
+      if (!inst) continue
+      const q = equipUpgradeQuote(inst.uid)
+      if (!q) continue
+      if (best === null || gt(q.stone, best.stone)) best = { slot, tier: inst.tier, stone: q.stone }
+    }
+    return best
+  })
 
   function onUpgradeEquipped(): void {
+    if (sweepNeedsConfirm()) {
+      sweepArm.value = true
+      return
+    }
     void upgradeEquippedOnce()
   }
+
+  function confirmUpgradeEquipped(): void {
+    sweepArm.value = false
+    void upgradeEquippedOnce()
+  }
+
+  /** 换装/满级/料变都会换掉队列:确认态只对「刚才那一份计划」负责,计划一动就收起 */
+  watch(sweepPlan, () => {
+    sweepArm.value = false
+  })
 
   function onEquipSet(setId: string): void {
     const changed = equipSetCombo(setId)

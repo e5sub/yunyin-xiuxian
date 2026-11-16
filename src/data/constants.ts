@@ -321,7 +321,17 @@ export const FORGE_LEVEL_PER_CAP = 2
 /** 强化成本:灵尘 */
 export const UPGRADE_DUST_BASE = 4
 export const UPGRADE_DUST_GROWTH = 1.5
-/** 强化成本:灵石(按层级换算) */
+/**
+ * 强化成本:灵石(按层级换算)。
+ *
+ * **口径**:`stoneByTier(tier, 本值)` 折成同阶历练的场次 —— 同阶一场胜利按 amount=10 掉灵石,
+ * 故本值 ÷ 10 就是「一次强化等于几场的掉落」(此处一场半)。
+ *
+ * **为什么刻意不再往下调**:34 阶一件的单价被 1.9^阶 抬到 284 亿,体感确实贵;
+ * 但灵石在人间界第 10 境起就长期闲置(收支比 16~19),把本值降到 10 时,
+ * economyAudit 的 stoneRatio ceiling 被顶到 28、中期 23.6 —— 那是「灵石失去意义」,
+ * 不是省钱。贵的那一半改在界面收口:一键强化先摊开总额并要求确认(见 InventoryView)。
+ */
 export const UPGRADE_STONE_TIER_BASE = 15
 /** 分解所得灵尘(按品质序号) */
 export const DECOMPOSE_DUST = [1, 2, 4, 8, 16, 32, 64, 128, 256] as const
