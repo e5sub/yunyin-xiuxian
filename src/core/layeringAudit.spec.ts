@@ -101,8 +101,10 @@ const CORE_STORE_SITES = 246;
  * 1.59.0 的 levelResolve.spec 同理 +1(升级裁决的同一份水合)。
  * 1.62.0 的 cloudSave.spec 再 +1:corrections 回传的回归判据必须真 $patch store
  * (三段路径毁档修复,合并逻辑以现对象为底,不动真 store 测不出来)。
+ * 1.66.3 的 forgeServiceCharge.spec +1:在线炼器的料耗落账要真扣 store
+ * (服务端只回「该付多少」,扣款在客户端 —— 不打桩测不出漏扣)。
  */
-const CORE_PINIA_SPECS = 128;
+const CORE_PINIA_SPECS = 129;
 
 function sources(dir: string): { name: string; text: string }[] {
   return readdirSync(dir)

@@ -15,7 +15,7 @@
 import type { EquipmentInstance, EquipSlot, GNum } from '@/types'
 import { EQUIP_SLOT_NAMES, equipmentTemplate } from '@/data/equipment'
 import { formatGN, formatGap } from '@/utils/format'
-import { gnZero } from '@/utils/gnum'
+import { gnZero, subClamp } from '@/utils/gnum'
 import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
 import { usePlayerStore } from '@/stores/player'
@@ -54,7 +54,7 @@ import {
   type TransferRequest,
   type TransferRun
 } from './affixTransfer'
-import type { ForgeOp } from './forgeResolve'
+import type { ForgeOp, ForgeSpend } from './forgeResolve'
 import {
   upgradeBatchBrokenToast,
   upgradeBatchDoneToast,
@@ -79,6 +79,28 @@ function applyItems(items: readonly EquipmentInstance[] | undefined): void {
   if (items === undefined) return
   const inventory = useInventoryStore()
   for (const it of items) inventory.replaceItem(it)
+}
+
+/**
+ * 在线链的料耗落账。
+ *
+ * 服务端只把「该付多少」记进 forge_spend,上传时从资源可增长量里压回 —— 而那条压回线是
+ * `上次值 + max(产速×4, 上限×30%)`,正常玩家的余额远在其下,单靠它**一笔都扣不到**:
+ * 强化完灵石纹丝不动(= 白强化)。所以与坊市买入同一套做法:客户端按服务端裁定的 spend 实扣,
+ * 服务端那本账只作上传时的安全网(客户端漏扣/旧客户端时兜底)。
+ *
+ * 服务端已按「云档与上报余额的较大者」验过付得起;本地余额偶尔更旧(刚花掉还没同步),
+ * 此时也照扣到 0,不让这一笔凭空消失 —— 差额由下一次上传的云档值收敛。
+ */
+function chargeRemoteSpend(spend: ForgeSpend | undefined): void {
+  if (spend === undefined) return
+  const resources = useResourcesStore()
+  const player = usePlayerStore()
+  if (!resources.spendStone(spend.stone)) resources.spiritStone = subClamp(resources.spiritStone, spend.stone)
+  if (spend.dust > 0 && !resources.spendSmall('dust', spend.dust)) {
+    resources.dust = Math.max(0, resources.dust - spend.dust)
+  }
+  if (!player.spendExp(spend.exp)) player.exp = subClamp(player.exp, spend.exp)
 }
 
 /**
@@ -146,6 +168,7 @@ export async function requestUpgrade(uid: string, opts: { quiet?: boolean } = {}
     return 'blocked'
   }
   applyItems(res.items)
+  chargeRemoteSpend(res.spend)
   const run = upgradeRunOf(uid, res)
   if (run.after !== null) noteUpgrade(run.after, run.outcome)
   if (!opts.quiet) showUpgradeFeedback(uid, run)
@@ -190,11 +213,13 @@ export async function upgradeEquipmentBatch(uid: string): Promise<number> {
     return 0
   }
   applyItems(res.items)
+  chargeRemoteSpend(res.spend)
   const d = res.detail?.kind === 'upgrade' ? res.detail : null
   if (d === null) return 0
   // 「成功提升几级」:全成时等于掷了几次,最后一次失手则少一次
   const up = d.outcome === 'up' ? d.tries : Math.max(0, d.tries - 1)
-  return reportBatch(uid, up, d.tries, plan.stone, plan.dust)
+  // 报实扣不报估算:plan 是「一路全成」的总额,失手即停时实付更少 —— 提示要与账上一致
+  return reportBatch(uid, up, d.tries, res.spend?.stone ?? plan.stone, res.spend?.dust ?? plan.dust)
 }
 
 /** 批量强化的总账提示(本地链与服务端链共用) */
@@ -239,6 +264,7 @@ export async function upgradeEquippedOnce(): Promise<EquipSweep> {
     return out
   }
   applyItems(res.items)
+  chargeRemoteSpend(res.spend)
   const d = res.detail?.kind === 'sweep' ? res.detail : null
   if (d !== null) {
     out.tried = d.tried
@@ -281,6 +307,7 @@ export async function requestReforge(uid: string, quiet = false): Promise<boolea
     return false
   }
   if (res.ok) applyItems(res.items)
+  if (res.ok) chargeRemoteSpend(res.spend)
   const d = res.detail?.kind === 'reforge' ? res.detail : null
   const after = res.items?.[0] ?? null
   if (after !== null) noteReforge(after)
@@ -314,6 +341,7 @@ export async function requestAutoReforge(
     return empty
   }
   if (res.ok) applyItems(res.items)
+  if (res.ok) chargeRemoteSpend(res.spend)
   const auto = res.detail?.kind === 'autoReforge' ? res.detail.auto : null
   if (auto === null) return empty
   // 簿记照旧按「洗了几次」补记:服务端那侧跑的是临时 store,计数落不到玩家身上
@@ -334,6 +362,7 @@ export async function requestTransfer(req: TransferRequest): Promise<boolean> {
     return false
   }
   if (res.ok) applyItems(res.items)
+  if (res.ok) chargeRemoteSpend(res.spend)
   const d = res.detail?.kind === 'transfer' ? res.detail : null
   const source = res.items?.find(it => it.uid === req.sourceUid)
   const target = res.items?.find(it => it.uid === req.targetUid)
