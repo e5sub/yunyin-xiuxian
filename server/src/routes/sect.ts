@@ -241,8 +241,10 @@ sectRouter.post('/sect/found', requireAuth, (req: Request, res: Response) => {
       ...state,
       sectId,
       name: name.trim(),
-      // 建派即有山门一级:没有山门的门派不叫门派,也给「其余建筑上限」一个起点
-      buildings: { ...state.buildings, hall: Math.max(state.buildings.hall ?? 0, 1) },
+      /*
+       * 建派**不送**山门等级:门人上限(初始十人)与其余建筑的余地都得自己营建出来 ——
+       * 开派即十一人会让「初始十人」这句话在第一次进面板时就不成立。
+       */
       day: state.day === '' ? dayKeyOf(now) : state.day
     })
     return { ok: true, extra: { spend: cost } }
