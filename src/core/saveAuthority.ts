@@ -129,6 +129,14 @@ export interface AuthorityInput {
    * 其余资源没有这条通道,窗口钳制照旧。
    */
   creditDust?: number
+  /**
+   * 通关道源额度(1.74.1):本次上传里新增的通关道痕折出的道源,由服务端按世界/试炼的
+   * 结算公式上界复算(见 server/src/daoCredit 与 core/daoCredit)。
+   *
+   * 道源的进项同理是有出处的(关真通了),所以直接加在道源上限之上,不受持有上限夹;
+   * 没有出处的那部分照旧按窗口压回。
+   */
+  creditDao?: number
 }
 
 export interface AuthorityCorrection {
@@ -525,7 +533,9 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
       if (daoCap > 0) {
         const prevDao = finiteNum(objOf(prevData.endgame)?.daoSource)
         const producedDao = (incomeOf(capMajor).daoSource ?? 0) * elapsedHours
-        const ceil = catchUpCeil(prevDao, producedDao, daoCap)
+        // 通关额度(1.74.1)只加在道源上:关真通了,这份道源有出处,不该被窗口线夹
+        const credit = Math.max(0, numOf(input.creditDao))
+        const ceil = catchUpCeil(prevDao, producedDao, daoCap) + credit
         const curDao = numOf(nextEndgame.daoSource)
         if (curDao > ceil) {
           corrections.push({ path: 'endgame.daoSource', before: nextEndgame.daoSource, after: Math.floor(ceil) })

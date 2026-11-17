@@ -13,6 +13,7 @@ import { clearForgeSpend, pendingForgeSpend, settleForgeSpend } from '../forgeLe
 import { clearProgressSpend, pendingProgressSpend, settleProgressSpend } from '../progressLedger.js'
 import { enforceLevelStates, resetLevelStatesFromData } from '../levelLedger.js'
 import { pendingSalvageCredit } from '../salvageCredit.js'
+import { pendingDaoCredit } from '../daoCredit.js'
 import { clearSect, pendingSectSpend, readSectState, settleSectSpend } from '../sectState.js'
 import { withKeyLock } from '../mutex.js'
 
@@ -241,15 +242,20 @@ export function metricsOf(json: string): { started: boolean; realmIndex: number 
 /** 从存档 JSON 里取世号(转世次数);缺栏按 0 */
 export function rebirthsOf(json: string): number {
   try {
-    const data = JSON.parse(json) as Record<string, unknown>
-    const player = typeof data.player === 'object' && data.player !== null ? (data.player as Record<string, unknown>) : {}
-    const reinc = typeof player.reincarnation === 'object' && player.reincarnation !== null
-      ? (player.reincarnation as Record<string, unknown>)
-      : {}
-    return finite(reinc.count) ? Math.max(0, Math.trunc(reinc.count)) : 0
+    return rebirthsIn(JSON.parse(json) as unknown)
   } catch {
     return 0
   }
+}
+
+/** 世号的对象版:上传链路手里就是对象,不必再序列化一遍 */
+function rebirthsIn(data: unknown): number {
+  const root = typeof data === 'object' && data !== null && !Array.isArray(data) ? (data as Record<string, unknown>) : {}
+  const player = typeof root.player === 'object' && root.player !== null ? (root.player as Record<string, unknown>) : {}
+  const reinc = typeof player.reincarnation === 'object' && player.reincarnation !== null
+    ? (player.reincarnation as Record<string, unknown>)
+    : {}
+  return finite(reinc.count) ? Math.max(0, Math.trunc(reinc.count)) : 0
 }
 
 /** 覆盖前留一份旧档:同份不重存、按间隔抽稀、突破(境界提升)必存,并顺手清理超量/超期 */
@@ -387,6 +393,21 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
      * 拦的是「不调接口、直接在存档里塞等级」。首传播种存量(唯一一次采信客户端),删档重传不重播。
      * 台账模块不可用时按上一层结果落库:加固环节不能变成拒收存档。
      */
+    /*
+     * 转世时台账随档下降(1.74.1)。
+     * 「只升不降」是防直注,可转世是客户端自己把灵脉点数清空、法宝重数清零、功法层数压回一层:
+     * 台账不跟着降,改包只要把上一世的数值写回档里,服务端就一路放行 —— 这一世的修行等于免单。
+     * 按新档原值重写台账(与回档同一条路),此后缺行/超行一律按新档压回。
+     * 边界:同一次上传里「转世 + 把等级注满」仍会被采信一次(要堵它得让服务端复算 carry 规则);
+     * 但下一次上传起,台账就钉在注满后的值上,不会再有反复利用的窗口。
+     */
+    if (prevData !== null && rebirthsIn(normalizedData) > rebirthsIn(prevData)) {
+      try {
+        await resetLevelStatesFromData(req.user!.id, normalizedData)
+      } catch {
+        // 台账重写失败不拦存档:下一次上传仍会按台账压回,只是这一次多放一档
+      }
+    }
     let levelCorrected: string[] = []
     try {
       levelCorrected = await enforceLevelStates(req.user!.id, normalizedData, prevData)
@@ -438,6 +459,17 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
     } catch {
       salvageDust = 0
     }
+    /*
+     * 通关道源(1.74.1):上一次档里没有、这次多出来的「通关道痕」,按该世界/试炼的结算
+     * 公式上界折成道源额度。与分解尘同一条思路 —— 有出处的那部分不受窗口线夹,
+     * 否则打赢一场破界的几百道源会被道源的持有上限当改包压回。
+     */
+    let daoCredit = 0
+    try {
+      daoCredit = await pendingDaoCredit(req.user!.id, prevData, normalizedData)
+    } catch {
+      daoCredit = 0
+    }
     const authority = await enforceAuthority({
       prev: prevData,
       next: normalizedData,
@@ -456,6 +488,8 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       prevRebirths,
       // 分解返还的尘(1.74.1):这几件在上次档里有、这次没有,服务端按台账里的投入复算过一次
       creditDust: salvageDust,
+      // 通关道源(1.74.1):本次新增的通关道痕折出的额度,见 server/src/daoCredit
+      creditDao: daoCredit,
       pendingSpend: {
         m: spend.m + forgeSpend.stone.m + progressSpend.stone.m + sectSpend.stone.m,
         e: spend.e + forgeSpend.stone.e + progressSpend.stone.e + sectSpend.stone.e,

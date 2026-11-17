@@ -276,6 +276,17 @@ CREATE TABLE IF NOT EXISTS salvage_credit (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, uid)
 );
+-- 道源进项账(1.74.1):道源(界外货币)的进项全在客户端结算,服务端只看到「道源多了」——
+-- 道源上限按熔炉产出估,一次破界的几百道源必然越过 5% 的窗口线,超出被当改包压回。
+-- 现按「上次档里没有、这次多出来的通关道痕」记额度(每条按该世界/试炼的结算公式上界),
+-- 上传时全额放进可增长量;每条痕只计一次(回档/档来回倒都能让同一条痕重新出现)。
+CREATE TABLE IF NOT EXISTS dao_credit (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  mark_key TEXT NOT NULL,
+  credit INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, mark_key)
+);
 -- 装备状态台账(1.58.3):强化/重铸/词条转移的唯一写入口是 POST /api/forge/op,
 -- 签发后把该件的等级与词条记在此处;上传存档时以台账为准 —— 客户端自报的等级/词条不作数。
 -- 只管「原地改件」的那几个字段(level/affixes/sealed/reforgeCount/transferCount/invested),
@@ -719,6 +730,15 @@ CREATE TABLE IF NOT EXISTS salvage_credit (
   created_at BIGINT NOT NULL,
   PRIMARY KEY (user_id, uid),
   CONSTRAINT fk_salvage_credit_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- 道源进项账(1.74.1):见 SQLite 侧同名表注释
+CREATE TABLE IF NOT EXISTS dao_credit (
+  user_id BIGINT NOT NULL,
+  mark_key VARCHAR(160) NOT NULL,
+  credit INT NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, mark_key),
+  CONSTRAINT fk_dao_credit_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS equip_state (
   user_id BIGINT NOT NULL,

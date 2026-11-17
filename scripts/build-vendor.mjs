@@ -19,7 +19,8 @@ const ENTRY_POINTS = [
   'src/core/levelResolve.ts',
   'src/core/sectRules.ts',
   'src/core/apprenticeService.ts',
-  'src/core/salvage.ts'
+  'src/core/salvage.ts',
+  'src/core/daoCredit.ts'
 ]
 
 await build({
@@ -43,6 +44,8 @@ const EXPECTED = {
   'apprenticeService.mjs': ['isApprenticeArch', 'apprenticeSpoils', 'apprenticeTaskSeconds'],
   // 分解进项账(1.74.1):server/src/salvageCredit 用它复算「消失的件」应得多少尘
   'salvage.mjs': ['salvageOf'],
+  // 道源进项账(1.74.1):server/src/daoCredit 用它按世界/试炼的结算上界折算每条通关道痕
+  'daoCredit.mjs': ['daoMarkCeil'],
   'saveSanitize.mjs': ['sanitizeSaveSlices'],
   'saveAuthority.mjs': ['enforceSaveAuthority'],
   'profileRecompute.mjs': ['snapshotFromSlices', 'lootEnvFromSlices'],

@@ -48,6 +48,7 @@ function run(
     pendingSpend?: { m: number; e: number }
     seenBefore?: boolean
     creditDust?: number
+    creditDao?: number
   } = {}
 ) {
   const report = enforceSaveAuthority({
@@ -59,7 +60,8 @@ function run(
     realmAuthoritative: opts.realmAuthoritative,
     pendingSpend: opts.pendingSpend,
     seenBefore: opts.seenBefore,
-    creditDust: opts.creditDust
+    creditDust: opts.creditDust,
+    creditDao: opts.creditDao
   })
   if (report === null) throw new Error('裁决返回 null')
   return report
@@ -607,5 +609,36 @@ describe('数值权威化 · 道源', () => {
     const report = run(next, { prev: baseSave(), prevRealmIndex: 0, seenBefore: true })
     expect((report.data.endgame as Record<string, unknown>).daoSource).toBe(999)
     expect(report.corrections).toEqual([])
+  })
+
+  /*
+   * 通关额度(1.74.1):破界是纯客户端结算,一次几百道源必然越过「满产 720 小时 × 5%」那条线。
+   * 服务端按新增的通关道痕复算额度(见 server/src/daoCredit),这份额度加在上限之上、不受夹。
+   */
+  it('有通关出处的道源越过窗口上限也放行', () => {
+    const report = run(endgameSave(3000), {
+      prev: endgameSave(0),
+      prevRealmIndex: WORLD_INDEX,
+      seenBefore: true,
+      creditDao: 3000
+    })
+    const eg = report.data.endgame as Record<string, unknown>
+    expect(Number(eg.daoSource)).toBe(3000)
+    expect(report.corrections).toEqual([])
+  })
+
+  it('没有通关出处的道源照旧被窗口压回', () => {
+    const withCredit = run(endgameSave(1e6), {
+      prev: endgameSave(0),
+      prevRealmIndex: WORLD_INDEX,
+      seenBefore: true,
+      creditDao: 400
+    })
+    const withoutCredit = run(endgameSave(1e6), { prev: endgameSave(0), prevRealmIndex: WORLD_INDEX, seenBefore: true })
+    expect(Number((withCredit.data.endgame as Record<string, unknown>).daoSource)).toBeLessThan(1e6)
+    // 额度只把上限抬高该额度那么多,不是「有没有额度」的二值开关
+    expect(Number((withCredit.data.endgame as Record<string, unknown>).daoSource)).toBeGreaterThan(
+      Number((withoutCredit.data.endgame as Record<string, unknown>).daoSource)
+    )
   })
 })
