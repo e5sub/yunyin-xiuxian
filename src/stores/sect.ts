@@ -27,8 +27,10 @@ import type { SectBuildingId, SectDonateKind } from '@/data/sect'
 import type { HerbGrade } from '@/data/herbGrades'
 import {
   buildingLevelCap,
+  canBuildSect,
   canKickSect,
   canReviewSect,
+  buildQueueCap,
   donationQuota,
   emptySectState,
   memberCap,
@@ -48,7 +50,7 @@ const REASON_TEXT: Record<string, string> = {
   nameused: '此名已有门派取了',
   insufficient: '所捐之物不足',
   daily: '今日捐献已尽',
-  busy: '已有工程在造',
+  busy: '营造队列已满或此座已在造',
   cap: '山门未及,先垫山门',
   pool: '门派库不足',
   personal: '个人贡献不足',
@@ -58,6 +60,8 @@ const REASON_TEXT: Record<string, string> = {
   gone: '查无此物',
   joined: '此人已入他门',
   notdone: '工程未竟',
+  /** 营造须有职者(掌门/副掌门/长老),门人不开工 */
+  notauth: '此事须有职者为之',
   full: '门人已满,先升山门',
   fullapply: '门外候着的人太多',
   notleader: '此事须掌门定夺',
@@ -114,6 +118,10 @@ export const useSectStore = defineStore('sect', () => {
   /** 我能不能逐掉某个身份的门人(与 /sect/kick 的授权矩阵同源) */
   const canKick = (targetRole: SectRole): boolean =>
     state.value.role !== null && canKickSect(state.value.role, targetRole)
+  /** 能不能操持营造(开工与收取):掌门/副掌门/长老(与 /sect/build 的判权同源) */
+  const canBuild = computed(() => canBuildSect(state.value.role))
+  /** 营造队列容量:山门 20/40/60/80 级各再开一位(初始一位) */
+  const queueCap = computed(() => buildQueueCap(state.value.buildings.hall ?? 0))
   const name = computed(() => state.value.name)
   const personal = computed(() => state.value.personal)
   const pool = computed(() => state.value.pool)
@@ -144,11 +152,14 @@ export const useSectStore = defineStore('sect', () => {
     return Date.now() + skew.value
   }
 
-  /** 在造工程还剩多久(毫秒);无工程 → 0 */
+  /** 最近一座完工还剩多久(毫秒);队列空 → 0(界面逐卡倒计时,这里只作汇总口径) */
   function remainingMs(): number {
-    const task = state.value.build
-    if (task === null) return 0
-    return Math.max(0, task.finishAt - serverNow())
+    let min = 0
+    for (const task of state.value.build) {
+      const left = Math.max(0, task.finishAt - serverNow())
+      if (min === 0 || left < min) min = left
+    }
+    return min
   }
 
   /** 把一份响应收进本地:状态、门人、申请、时钟一并刷新;ok=false 时只报原因 */
@@ -364,6 +375,8 @@ export const useSectStore = defineStore('sect', () => {
     isLeader,
     canReview,
     canKick,
+    canBuild,
+    queueCap,
     roleLabel,
     name,
     personal,

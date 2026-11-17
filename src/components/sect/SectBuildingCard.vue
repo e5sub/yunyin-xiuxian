@@ -24,7 +24,7 @@
       下一级:<span class="text-ink-soft">{{ def.effectText(level + 1) }}</span>
     </p>
 
-    <!-- 在造:倒计时 + 收取;完成前不显示升级按钮 -->
+    <!-- 在造:倒计时;收取是有职者的事,门人只看得见进度 -->
     <div v-if="building" class="mt-2 rounded-md border border-ink/10 bg-paper-deep/50 px-2.5 py-2">
       <p class="flex items-baseline justify-between gap-2 text-[10px] text-ink-faint">
         <span>营造至 {{ building.to }} 级</span>
@@ -33,9 +33,15 @@
         </span>
       </p>
       <ProgressBar class="mt-1.5 px-0" :value="progress" :height="2" />
-      <button class="btn-ghost mt-2 w-full !py-1.5 !text-[12px]" :disabled="remainSec > 0 || sect.pending" @click="claim()">
+      <button
+        v-if="sect.canBuild"
+        class="btn-ghost mt-2 w-full !py-1.5 !text-[12px]"
+        :disabled="remainSec > 0 || sect.pending"
+        @click="claim()"
+      >
         {{ remainSec > 0 ? '尚在营造' : '收 取' }}
       </button>
+      <p v-else class="mt-2 text-center text-[10px] text-ink-faint">完工后由掌门、副掌门或长老收取</p>
     </div>
 
     <button
@@ -78,7 +84,8 @@
   /** 未到品类上限却被山门闸住 —— 门派建筑没有品类满级,所以只有这一种「暂时升不动」 */
   const gateLimited = computed(() => !isHall.value && level.value >= cap.value)
 
-  const building = computed(() => (sect.state.build?.id === props.def.id ? sect.state.build : null))
+  /** 队列里属于这座的那一份(1.72.0 起可多座并行) */
+  const building = computed(() => sect.state.build.find(t => t.id === props.def.id) ?? null)
   const remainSec = computed(() => {
     const task = building.value
     if (!task) return 0
@@ -100,13 +107,24 @@
   /** 山门已省下的工期百分比:0 时不提,免得每张卡都挂一句「-0%」 */
   const timeCut = computed(() => Math.round((1 - hallTimeRate(hallLevel.value)) * 100))
 
+  /** 队列满没满(容量随山门 20/40/60/80 级各开一位);同座重复开工由服务端挡,客户端只管容量 */
+  const queueFull = computed(() => sect.state.build.length >= sect.queueCap)
   const canStart = computed(
-    () => !gateLimited.value && !building.value && sect.pool >= cost.value && !sect.pending
+    () =>
+      sect.canBuild &&
+      !gateLimited.value &&
+      !building.value &&
+      !queueFull.value &&
+      sect.pool >= cost.value &&
+      !sect.pending
   )
   const blockLine = computed(() => {
+    // 门人不开工:营造是有职者(掌门/副掌门/长老)的事
+    if (!sect.canBuild) return '有职者方可营造'
     // 上限 = (山门+1)×2 → 要再升一级,山门须到 floor(当前等级 / 2)
     if (gateLimited.value) return `需山门 ${Math.floor(level.value / 2)} 级`
     if (building.value) return '尚在营造'
+    if (queueFull.value) return '营造队列已满 · 山门 20/40/60/80 级各增一位'
     return `门派库不足 · 差 ${Math.max(0, cost.value - sect.pool)}`
   })
 

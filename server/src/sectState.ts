@@ -51,7 +51,7 @@ export interface SectState {
   pool: number
   skills: Record<string, number>
   buildings: Record<string, number>
-  build: { id: string; to: number; startAt: number; finishAt: number } | null
+  build: { id: string; to: number; startAt: number; finishAt: number }[]
   day: string
   donationsToday: number
   totalDonated: number
@@ -61,7 +61,7 @@ export interface SectState {
 
 interface SectRulesModule {
   normalizeSectState: (raw: unknown, now: number) => SectState
-  settleBuild: (state: SectState, now: number) => { state: SectState; done: string | null }
+  settleBuild: (state: SectState, now: number) => { state: SectState; done: string[] }
   emptySectState: () => SectState
 }
 
@@ -312,14 +312,14 @@ export function composeState(body: SectState, member: SectMemberRow, members: nu
 export async function readSettledSectState(
   userId: number,
   now = Date.now()
-): Promise<{ state: SectState; done: string | null; exists: boolean; member: SectMemberRow | null; sectRow: number }> {
+): Promise<{ state: SectState; done: string[]; exists: boolean; member: SectMemberRow | null; sectRow: number }> {
   const member = await readMember(userId)
-  if (member === null) return { state: await emptyState(), done: null, exists: false, member: null, sectRow: 0 }
+  if (member === null) return { state: await emptyState(), done: [], exists: false, member: null, sectRow: 0 }
   const body = await readBody(member.sect_row)
   if (body === null) {
     // 门派行没了(手工删库/回档):关系一并清掉,别让玩家挂着一家不存在的门派
     await removeMember(userId)
-    return { state: await emptyState(), done: null, exists: false, member: null, sectRow: 0 }
+    return { state: await emptyState(), done: [], exists: false, member: null, sectRow: 0 }
   }
   const mod = await rules()
   let state: SectState
@@ -329,7 +329,7 @@ export async function readSettledSectState(
     state = await emptyState()
   }
   const settled = mod.settleBuild(state, now)
-  if (settled.done !== null) await writeBody(body.id, settled.state)
+  if (settled.done.length > 0) await writeBody(body.id, settled.state)
   const members = await countMembers(body.id)
   return {
     state: composeState(settled.state, member, members),

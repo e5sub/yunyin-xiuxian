@@ -87,6 +87,9 @@ interface SectRules {
   canReviewSect: (role: SectRole | null) => boolean
   canKickSect: (actor: SectRole, target: SectRole) => boolean
   roleCap: (role: SectRole) => number | null
+  /** 营造(1.72.0):有职者方可开工与收取;队列容量随山门 20/40/60/80 级各开一位 */
+  canBuildSect: (role: SectRole | null) => boolean
+  buildQueueCap: (hallLevel: number) => number
 }
 
 let cached: Promise<SectRules> | null = null
@@ -170,7 +173,7 @@ function vipRate(vip: boolean): number {
 /** 客户端要看到的全貌:状态 + 待审申请 + 我的申请 + 可投的门派 */
 interface SectView {
   state: SectState
-  done: string | null
+  done: string[]
   applies: SectApplyView[]
   appliedTo: { id: number; name: string } | null
   list: SectBriefView[]
@@ -607,20 +610,25 @@ sectRouter.post(
   requireAuth,
   act('build', async ({ now, body, state, member, sectRow, rules, vip }) => {
     if (member === null) return { ok: false, reason: 'nosect' }
+    // 有职者方可营造(掌门/副掌门/长老);门人只捐贡献,不开工
+    if (!isSectRole(member.role) || !rules.canBuildSect(member.role)) return { ok: false, reason: 'notauth' }
     const id = typeof body.id === 'string' ? body.id : ''
-    if (state.build !== null) return { ok: false, reason: 'busy' }
+    const hall = state.buildings.hall ?? 0
+    // 队列容量随山门(20/40/60/80 级各开一位);同座建筑不能同时往两处升
+    if (state.build.length >= rules.buildQueueCap(hall)) return { ok: false, reason: 'busy' }
+    if (state.build.some(t => t.id === id)) return { ok: false, reason: 'busy' }
     const cur = state.buildings[id] ?? 0
-    const cap = rules.buildingLevelCap(id, state.buildings.hall ?? 0)
+    const cap = rules.buildingLevelCap(id, hall)
     const cost = rules.buildingCost(id, cur, vipRate(vip))
     // 工期也吃山门减免(每级 -1%,封顶 -60%):与服务端同一把尺,见 core/sectRules 的 hallTimeRate
-    const duration = rules.buildingDurationMs(id, cur, state.buildings.hall ?? 0)
+    const duration = rules.buildingDurationMs(id, cur, hall)
     if (cost === null || duration === null) return { ok: false, reason: 'gone' }
     if (cur + 1 > cap) return { ok: false, reason: 'cap' }
     if (state.pool < cost) return { ok: false, reason: 'pool' }
     await writeBody(sectRow, {
       ...state,
       pool: state.pool - cost,
-      build: { id, to: cur + 1, startAt: now, finishAt: now + duration }
+      build: [...state.build, { id, to: cur + 1, startAt: now, finishAt: now + duration }]
     })
     return { ok: true }
   })
@@ -630,10 +638,10 @@ sectRouter.post(
 sectRouter.post(
   '/sect/build/claim',
   requireAuth,
-  act('claim', async ({ member, state }) => {
+  act('claim', async ({ member, rules }) => {
     if (member === null) return { ok: false, reason: 'nosect' }
-    if (state.build !== null) return { ok: false, reason: 'notdone' }
-    // 没有在造的工程时:上一步已经落过级,这里只回 ok(重复领取不产生任何变化)
+    // 收取也是有职者的事(结算在读取时已完成;这里只判权后回全貌)
+    if (!isSectRole(member.role) || !rules.canBuildSect(member.role)) return { ok: false, reason: 'notauth' }
     return { ok: true }
   })
 )

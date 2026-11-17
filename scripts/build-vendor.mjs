@@ -66,6 +66,9 @@ const EXPECTED = {
     'canReviewSect',
     'canKickSect',
     'roleCap',
+    // 营造(1.72.0):有职者判权 + 队列容量
+    'canBuildSect',
+    'buildQueueCap',
     'normalizeSectState'
   ]
 }

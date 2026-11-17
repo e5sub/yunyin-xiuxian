@@ -57,7 +57,7 @@
       <SectMemberCard />
 
       <section>
-        <SectionTitle title="营造" :hint="`山门 ${hallLevel} 级 · 不设上限`" />
+        <SectionTitle title="营造" :hint="`山门 ${hallLevel} 级 · 队列 ${sect.state.build.length}/${sect.queueCap} · 有职者为之`" />
         <SectBuildingCard :def="hallDef" class="mt-2" />
         <div class="mt-2.5 grid grid-cols-1 gap-2.5 min-[320px]:grid-cols-2">
           <SectBuildingCard v-for="def in otherBuildings" :key="def.id" :def="def" />

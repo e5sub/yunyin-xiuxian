@@ -107,6 +107,13 @@ export const SECT_DEPUTY_MAX = 1
 export const SECT_ELDER_MAX = 4
 
 /**
+ * 营造队列:同时能在造几座。初始一位,山门每过 20 级(20/40/60/80)再开一位,百级至多五位。
+ * 与技能上限同一思路:队列是山门给的,不是钱能买的 —— 想几座一起开工,先把山门垒上去。
+ */
+export const SECT_BUILD_QUEUE_STEP = 20
+export const SECT_BUILD_QUEUE_STEPS = 4
+
+/**
  * 门派建筑的等级**没有游戏上限**:山门能一直垒,门人的名额与其余建筑的余地也跟着一直开。
  * 999 只是「坏数硬夹」—— 存档里被写成 1e9 级时按它截断,别让面板与价目算到溢出。
  * 它不是天花板:按 core/sectRules 的曲线,50 级山门要三万多门派库,一百级已经是一年以上的事。

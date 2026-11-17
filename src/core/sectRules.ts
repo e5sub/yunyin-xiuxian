@@ -12,6 +12,8 @@ import type { StatMods } from '@/types'
 import {
   SECT_BUILDINGS,
   SECT_APPLY_MAX,
+  SECT_BUILD_QUEUE_STEPS,
+  SECT_BUILD_QUEUE_STEP,
   SECT_BUILDING_GATE_MULT,
   SECT_DONATIONS,
   SECT_DONATE_DAILY_CAP,
@@ -63,8 +65,8 @@ export interface SectBuildTask {
  *   掌门   —— 审批、逐人、任职罢免、解散;离开只有两条路(解散,或删档传位);
  *   副掌门 —— 审批、逐人(掌门与副掌门除外),每门一位;
  *   长老   —— 审批,每门至多四位;
- *   门人   —— 捐献、修习、参与营造、自行退出。
- */
+   *   门人   —— 捐献、修习、自行退出(营造须有职者)。
+   */
 export type SectRole = 'leader' | 'deputy' | 'elder' | 'member'
 
 /**
@@ -89,8 +91,11 @@ export interface SectState {
   skills: Record<string, number>
   /** 建筑 id → 等级(0~上限) */
   buildings: Record<string, number>
-  /** 正在营造的那一座;null 表示空闲 */
-  build: SectBuildTask | null
+  /**
+   * 营造中的工程队列(1.72.0 起可多座并行):山门 20/40/60/80 级各再开一位,
+   * 容量见 buildQueueCap;空数组表示空闲。旧档的单座对象在 normalize 里收进数组。
+   */
+  build: SectBuildTask[]
   /** 捐献日号 YYYY-MM-DD(UTC+8) */
   day: string
   donationsToday: number
@@ -109,7 +114,7 @@ export function emptySectState(): SectState {
     pool: 0,
     skills: {},
     buildings: {},
-    build: null,
+    build: [],
     day: '',
     donationsToday: 0,
     totalDonated: 0,
@@ -160,6 +165,16 @@ export function applyCap(): number {
   return SECT_APPLY_MAX
 }
 
+/** 营造队列容量:初始一位,山门 20/40/60/80 级各再开一位(至多五位) */
+export function buildQueueCap(hallLevel: number): number {
+  const hall = intIn(hallLevel, 0, SECT_LEVEL_HARD_MAX)
+  let cap = 1
+  for (let i = 1; i <= SECT_BUILD_QUEUE_STEPS; i++) {
+    if (hall >= i * SECT_BUILD_QUEUE_STEP) cap++
+  }
+  return cap
+}
+
 /* ---------------- 职位(1.71.0) ---------------- */
 
 /** 全部合法身份(与 normalizeSectState / 服务端成员表同源) */
@@ -174,6 +189,11 @@ export function roleCap(role: SectRole): number | null {
 
 /** 能不能审批申请:副掌门与长老替掌门分担,门人不能 */
 export function canReviewSect(role: SectRole | null): boolean {
+  return role === 'leader' || role === 'deputy' || role === 'elder'
+}
+
+/** 能不能操持营造(开工与收取):有职者为之,门人只捐贡献不掌工程 */
+export function canBuildSect(role: SectRole | null): boolean {
   return role === 'leader' || role === 'deputy' || role === 'elder'
 }
 
@@ -376,25 +396,30 @@ export function sectMods(skills: Record<string, number>, buildings: Record<strin
 /* ---------------- 计时结算 ---------------- */
 
 /**
- * 到点就完工:把 build 落到 buildings 上并清空。**用服务端时钟**调用(routes/sect.ts),
- * 客户端的倒计时只用于显示,不参与结算。
- * 返回完工的建筑 id(没完工 → null),不修改入参。
+ * 到点就完工:队列里所有过了 finishAt 的工程逐一落级,未到点的留在队列里。
+ * **用服务端时钟**调用(routes/sect.ts),客户端的倒计时只用于显示,不参与结算。
+ * 返回完工的建筑 id 列表(没完工 → 空表),不修改入参。
+ * 山门先落级会抬高后续任务的闸门 —— 按落级后的 buildings 逐个算上限。
  */
-export function settleBuild(state: SectState, now: number): { state: SectState; done: SectBuildingId | null } {
-  const task = state.build
-  if (task === null) return { state, done: null }
-  if (!isNum(now) || now < task.finishAt) return { state, done: null }
-  const def = sectBuildingDef(task.id)
-  if (def === undefined) return { state: { ...state, build: null }, done: null }
-  // 目标等级不该越过上限:坏行只清任务,不白送等级(山门无上限,闸门只管副建筑)
-  const cap = buildingLevelCap(task.id, state.buildings.hall ?? 0)
-  const to = Math.min(task.to, cap)
-  const cur = intIn(state.buildings[task.id], 0, SECT_LEVEL_HARD_MAX)
-  const next = Math.max(cur, to)
-  return {
-    state: { ...state, buildings: { ...state.buildings, [task.id]: next }, build: null },
-    done: task.id
+export function settleBuild(state: SectState, now: number): { state: SectState; done: SectBuildingId[] } {
+  if (!isNum(now) || state.build.length === 0) return { state, done: [] }
+  const buildings = { ...state.buildings }
+  const rest: SectBuildTask[] = []
+  const done: SectBuildingId[] = []
+  for (const task of state.build) {
+    if (now < task.finishAt) {
+      rest.push(task)
+      continue
+    }
+    // 目标等级不该越过上限:坏行只清任务,不白送等级(山门无上限,闸门只管副建筑)
+    const cap = buildingLevelCap(task.id, buildings.hall ?? 0)
+    const to = Math.min(task.to, cap)
+    const cur = intIn(buildings[task.id], 0, SECT_LEVEL_HARD_MAX)
+    buildings[task.id] = Math.max(cur, to)
+    done.push(task.id)
   }
+  if (done.length === 0) return { state, done }
+  return { state: { ...state, buildings, build: rest }, done }
 }
 
 /* ---------------- 修形 ---------------- */
@@ -452,30 +477,45 @@ export function normalizeSectState(raw: unknown, now = Date.now()): SectState {
       if (lv > 0) out.skills[def.id] = lv
     }
 
-    const rawBuild = typeof src.build === 'object' && src.build !== null ? (src.build as Record<string, unknown>) : null
-    if (rawBuild !== null) {
+    /*
+     * 营造队列(1.72.0 起多座并行):旧档的单座对象包成一项收进来,坏项直接丢。
+     * 容量按山门算(buildQueueCap);同座两份在造只留先来的一份 —— 一座建筑不能同时往两处升。
+     */
+    const rawBuildList: unknown[] = Array.isArray(src.build)
+      ? src.build
+      : src.build !== null && typeof src.build === 'object'
+        ? [src.build]
+        : []
+    const queueCap = buildQueueCap(out.buildings.hall ?? 0)
+    const queued = new Set<string>()
+    for (const item of rawBuildList) {
+      if (out.build.length >= queueCap) break
+      if (typeof item !== 'object' || item === null || Array.isArray(item)) continue
+      const rawBuild = item as Record<string, unknown>
       const id = typeof rawBuild.id === 'string' ? rawBuild.id : ''
       const def = sectBuildingDef(id)
-      if (def !== undefined) {
-        const cur = intIn(out.buildings[def.id], 0, SECT_LEVEL_HARD_MAX)
-        const to = intIn(rawBuild.to, 0, SECT_LEVEL_HARD_MAX)
-        const startAt = intIn(rawBuild.startAt, 0, Number.MAX_SAFE_INTEGER)
-        const finishAt = intIn(rawBuild.finishAt, 0, Number.MAX_SAFE_INTEGER)
-        const duration = buildingDurationMs(def.id, cur)
-        /*
-         * 目标必须正是「下一级」;工期给一个宽容带而不是等号:价目表调过一次(balance 改基数)
-         * 之后,旧行就与当前表对不上了 —— 等号会把在造的工程一并作废。带子取 0.5~2 倍,
-         * 只拦「把工期写成几毫秒」这类明显伪造;真正的写入口是服务端,这条是防手工改库的兜底。
-         */
-        const delta = finishAt - startAt
-        const ok =
-          to === cur + 1 &&
-          startAt > 0 &&
-          duration !== null &&
-          delta >= duration * 0.5 &&
-          delta <= duration * 2 + 60_000 &&
-          startAt <= now + 60_000
-        if (ok) out.build = { id: def.id, to, startAt, finishAt }
+      if (def === undefined || queued.has(def.id)) continue
+      const cur = intIn(out.buildings[def.id], 0, SECT_LEVEL_HARD_MAX)
+      const to = intIn(rawBuild.to, 0, SECT_LEVEL_HARD_MAX)
+      const startAt = intIn(rawBuild.startAt, 0, Number.MAX_SAFE_INTEGER)
+      const finishAt = intIn(rawBuild.finishAt, 0, Number.MAX_SAFE_INTEGER)
+      const duration = buildingDurationMs(def.id, cur)
+      /*
+       * 目标必须正是「下一级」;工期给一个宽容带而不是等号:价目表调过一次(balance 改基数)
+       * 之后,旧行就与当前表对不上了 —— 等号会把在造的工程一并作废。带子取 0.5~2 倍,
+       * 只拦「把工期写成几毫秒」这类明显伪造;真正的写入口是服务端,这条是防手工改库的兜底。
+       */
+      const delta = finishAt - startAt
+      const ok =
+        to === cur + 1 &&
+        startAt > 0 &&
+        duration !== null &&
+        delta >= duration * 0.5 &&
+        delta <= duration * 2 + 60_000 &&
+        startAt <= now + 60_000
+      if (ok) {
+        out.build.push({ id: def.id, to, startAt, finishAt })
+        queued.add(def.id)
       }
     }
   }

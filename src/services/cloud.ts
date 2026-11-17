@@ -498,8 +498,8 @@ export interface SectStateResp {
   state: SectState
   /** 服务端此刻(毫秒),客户端据此校正倒计时 */
   now: number
-  /** 本次请求顺手结算掉的完工建筑 id */
-  done?: string | null
+  /** 本次请求顺手结算掉的完工建筑 id(1.72.0 起队列可多座,完工可多座) */
+  done?: string[]
   /** 待审申请(只有掌门拿得到) */
   applies?: SectApplyView[]
   /** 我挂着的申请(未入派时才可能非 null) */

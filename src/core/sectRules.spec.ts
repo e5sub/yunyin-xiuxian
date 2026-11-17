@@ -14,9 +14,11 @@ import {
 } from '@/data/sect'
 import {
   applyCap,
+  buildQueueCap,
   buildingCost,
   buildingDurationMs,
   buildingLevelCap,
+  canBuildSect,
   canJoin,
   canKickSect,
   canReviewSect,
@@ -305,27 +307,45 @@ describe('技能上限随山门', () => {
 describe('计时结算', () => {
   const base = (over: Partial<SectState> = {}): SectState => ({ ...emptySectState(), ...over })
 
-  it('未到点不完工,到点即落级并清空任务', () => {
-    const state = base({ build: { id: 'arena', to: 1, startAt: 1_000, finishAt: 61_000 } })
-    expect(settleBuild(state, 60_999).done).toBeNull()
+  it('未到点不完工,到点即落级并清出队列', () => {
+    const state = base({ build: [{ id: 'arena', to: 1, startAt: 1_000, finishAt: 61_000 }] })
+    expect(settleBuild(state, 60_999).done).toEqual([])
     const after = settleBuild(state, 61_000)
-    expect(after.done).toBe('arena')
+    expect(after.done).toEqual(['arena'])
     expect(after.state.buildings.arena).toBe(1)
-    expect(after.state.build).toBeNull()
+    expect(after.state.build).toEqual([])
     // 不改入参
     expect(state.buildings.arena).toBeUndefined()
   })
 
+  it('多座并行:各自结算,未到点的留在队列里', () => {
+    const state = base({
+      buildings: { hall: 40 },
+      build: [
+        { id: 'arena', to: 1, startAt: 1_000, finishAt: 61_000 },
+        { id: 'scripture', to: 1, startAt: 2_000, finishAt: 121_000 }
+      ]
+    })
+    const mid = settleBuild(state, 90_000)
+    expect(mid.done).toEqual(['arena'])
+    expect(mid.state.buildings.arena).toBe(1)
+    expect(mid.state.build).toHaveLength(1)
+    expect(mid.state.build[0]?.id).toBe('scripture')
+    const end = settleBuild(mid.state, 121_000)
+    expect(end.done).toEqual(['scripture'])
+    expect(end.state.build).toEqual([])
+  })
+
   it('目标等级被写到闸门之外:只按闸门落级,不白送多余等级', () => {
-    const state = base({ build: { id: 'arena', to: 99, startAt: 1_000, finishAt: 2_000 } })
+    const state = base({ build: [{ id: 'arena', to: 99, startAt: 1_000, finishAt: 2_000 }] })
     const after = settleBuild(state, 3_000)
-    expect(after.state.build).toBeNull()
+    expect(after.state.build).toEqual([])
     // 山门 0 级时演武场只能到 2 级
     expect(after.state.buildings.arena).toBe(2)
   })
 
   it('山门自己不受闸门限制:写多高就落多高(只受硬夹)', () => {
-    const state = base({ build: { id: 'hall', to: 30, startAt: 1_000, finishAt: 2_000 } })
+    const state = base({ build: [{ id: 'hall', to: 30, startAt: 1_000, finishAt: 2_000 }] })
     expect(settleBuild(state, 3_000).state.buildings.hall).toBe(30)
   })
 })
@@ -384,18 +404,18 @@ describe('状态修形', () => {
       { ...founded, build: { id: 'arena', to: 1, startAt: now - 1000, finishAt: now - 1000 + full } },
       now
     )
-    expect(ok.build).not.toBeNull()
+    expect(ok.build).toHaveLength(1)
     // 坏:工期只有一毫秒
     const bad = normalizeSectState(
       { ...founded, build: { id: 'arena', to: 1, startAt: now - 1000, finishAt: now - 999 } },
       now
     )
-    expect(bad.build).toBeNull()
+    expect(bad.build).toEqual([])
   })
 
-  it('目标不是「下一级」的任务作废', () => {
+  it('目标不是「下一级」的任务作废;旧档的单座对象收进队列', () => {
     const s = normalizeSectState({ ...founded, build: { id: 'arena', to: 5, startAt: now - 1, finishAt: now + 60_000 } }, now)
-    expect(s.build).toBeNull()
+    expect(s.build).toEqual([])
   })
 
   it('身份与门人数只在已立派时成立', () => {
@@ -408,7 +428,7 @@ describe('状态修形', () => {
 
   it('初始状态全零且可枚举', () => {
     const s = emptySectState()
-    expect(s).toMatchObject({ name: '', personal: 0, pool: 0, build: null, donationsToday: 0, role: null, memberCount: 0 })
+    expect(s).toMatchObject({ name: '', personal: 0, pool: 0, build: [], donationsToday: 0, role: null, memberCount: 0 })
     expect(s.skills).toEqual({})
     expect(s.buildings).toEqual({})
   })
@@ -493,5 +513,50 @@ describe('职位授权(1.71.0)', () => {
     expect(normalizeSectState({ name: '青冥', role: 'elder' }).role).toBe('elder')
     expect(normalizeSectState({ name: '青冥', role: 'grandmaster' }).role).toBeNull()
     expect(normalizeSectState({ name: '', role: 'leader' }).role).toBeNull()
+  })
+})
+
+describe('营造队列与权限(1.72.0)', () => {
+  it('队列容量:初始一位,山门 20/40/60/80 级各再开一位,至多五位', () => {
+    expect(buildQueueCap(0)).toBe(1)
+    expect(buildQueueCap(19)).toBe(1)
+    expect(buildQueueCap(20)).toBe(2)
+    expect(buildQueueCap(40)).toBe(3)
+    expect(buildQueueCap(60)).toBe(4)
+    expect(buildQueueCap(80)).toBe(5)
+    expect(buildQueueCap(100)).toBe(5)
+    expect(buildQueueCap(1e9)).toBe(5)
+    expect(buildQueueCap(-1)).toBe(1)
+  })
+
+  it('营造权:掌门/副掌门/长老可开工与收取,门人与未入门不可', () => {
+    expect(canBuildSect('leader')).toBe(true)
+    expect(canBuildSect('deputy')).toBe(true)
+    expect(canBuildSect('elder')).toBe(true)
+    expect(canBuildSect('member')).toBe(false)
+    expect(canBuildSect(null)).toBe(false)
+  })
+
+  it('修形:队列按容量截断,同座两份只留先来的那份', () => {
+    const now = 1_700_000_000_000
+    const founded = { name: '青冥剑宗' }
+    // 山门 0 级 → 容量一位:第二份(不同座)直接丢
+    const task = (id: string, to: number) => ({ id, to, startAt: now - 1000, finishAt: now - 1000 + buildingDurationMs(id, to - 1)! })
+    const one = normalizeSectState({ ...founded, build: [task('arena', 1), task('scripture', 1)] }, now)
+    expect(one.build).toHaveLength(1)
+    expect(one.build[0]?.id).toBe('arena')
+    // 山门 40 级 → 容量三位:两座都留;同座重复只留第一份
+    const two = normalizeSectState(
+      { ...founded, buildings: { hall: 40 }, build: [task('arena', 1), task('scripture', 1), task('arena', 2)] },
+      now
+    )
+    expect(two.build).toHaveLength(2)
+    expect(two.build.map(t => t.id)).toEqual(['arena', 'scripture'])
+    // 第三座在容量内照收
+    const three = normalizeSectState(
+      { ...founded, buildings: { hall: 40 }, build: [task('arena', 1), task('scripture', 1), task('alchemy', 1)] },
+      now
+    )
+    expect(three.build).toHaveLength(3)
   })
 })
