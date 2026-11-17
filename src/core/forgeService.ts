@@ -171,8 +171,23 @@ async function askInner(op: ForgeOp): Promise<ForgeOpResponse | null> {
      * 只重试一次:仍查无此件说明另有原因(比如已被分解),交给提示如实说。
      */
     if (res.ok === false && res.reason === 'gone') {
-      await pushCloudSave(true)
-      return await send()
+      /*
+       * 补传也可能推不出去(1.74.1):自动上传正在途时 pushCloudSave 直接回
+       * 'skipped-busy' 不推,断网回 'failed',冲突回 'conflict' —— 原先一概
+       * 无视,然后照旧掷第二发,结果还是 gone,玩家看到「已补传存档,请再点
+       * 一次」却怎么点都一样。现正忙就等一拍再补传一次;推送确实没成的,
+       * 把机读原因改成 'unsynced',文案如实说「存档尚未同步」,不再谎报「已补传」。
+       */
+      let outcome = await pushCloudSave(true)
+      if (outcome === 'skipped-busy') {
+        await new Promise(resolve => setTimeout(resolve, 600))
+        outcome = await pushCloudSave(true)
+      }
+      const retry = await send()
+      if (retry.ok === false && retry.reason === 'gone' && outcome !== 'ok') {
+        return { ...retry, reason: 'unsynced' }
+      }
+      return retry
     }
     return res
   } catch {
@@ -185,7 +200,7 @@ function upgradeRunOf(uid: string, res: ForgeOpResponse): UpgradeRun {
   const d = res.detail?.kind === 'upgrade' ? res.detail : null
   if (d === null) {
     // 没有 detail 时按机读原因分:查无此件不是满级,别让它冒充「已至上限」
-    const block = res.reason === 'gone' ? 'gone' : 'cap'
+    const block = res.reason === 'gone' ? 'gone' : res.reason === 'unsynced' ? 'unsynced' : 'cap'
     return { outcome: 'blocked', after: null, spent: null, block, levelBefore: 0 }
   }
   const run: UpgradeRun = {

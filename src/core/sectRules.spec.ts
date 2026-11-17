@@ -10,7 +10,9 @@ import {
   SECT_SKILL_COST_BASE,
   SECT_SKILL_MAX_LEVEL,
   sectBuildingDef,
-  sectOfSkill
+  sectOfSkill,
+  SECT_ARTS,
+  SECT_ART_MAX_LEVEL
 } from '@/data/sect'
 import {
   applyCap,
@@ -39,6 +41,7 @@ import {
   skillLevelCap,
   skillPrevRow,
   skillUnlocked,
+  artCost,
   type SectState
 } from './sectRules'
 
@@ -558,5 +561,52 @@ describe('营造队列与权限(1.72.0)', () => {
       now
     )
     expect(three.build).toHaveLength(3)
+  })
+})
+
+describe('门派绝学(1.74.1)', () => {
+  const founded = { name: '测试门', personal: 0, pool: 0, skills: {}, buildings: {}, build: [], day: '', donationsToday: 0, totalDonated: 0, role: 'leader', memberCount: 1 }
+
+  it('五门绝学每层一门,与技能层号对齐;价目随层递增', () => {
+    for (let row = 1; row <= 5; row += 1) {
+      const arts = SECT_ARTS.filter(a => a.row === row)
+      expect(arts, `第 ${row} 层恰有一门绝学`).toHaveLength(1)
+    }
+    for (let i = 1; i < SECT_ARTS.length; i += 1) {
+      expect(SECT_ARTS[i]!.costPool, '层次越高研究越贵').toBeGreaterThan(SECT_ARTS[i - 1]!.costPool)
+    }
+  })
+
+  it('artCost:每升一重 ×1.9、吃山门减免;认不出的绝学与越界重数返回 null', () => {
+    const id = SECT_ARTS[0]!
+    expect(artCost(id.id, 1)).toBe(id.costPool)
+    expect(artCost(id.id, 2)).toBe(Math.round(id.costPool * 1.9))
+    // 山门减免(hallSkillRate):百级 -50%
+    expect(artCost(id.id, 1, 100)).toBe(Math.round(id.costPool * 0.5))
+    // 越界重数与野 id 都不签
+    expect(artCost(id.id, 6)).toBeNull()
+    expect(artCost('art_nope', 1)).toBeNull()
+  })
+
+  it('normalize:绝学重数按上限夹,野 id 不入账;未立派整份清空', () => {
+    const now = Date.now()
+    const ok = normalizeSectState(
+      { ...founded, arts: { [SECT_ARTS[0]!.id]: 3, art_nope: 1, [SECT_ARTS[1]!.id]: 99 } },
+      now
+    )
+    expect(ok.arts).toEqual({ [SECT_ARTS[0]!.id]: 3, [SECT_ARTS[1]!.id]: SECT_ART_MAX_LEVEL })
+    const noSect = normalizeSectState({ ...founded, name: '', arts: { [SECT_ARTS[0]!.id]: 1 } }, now)
+    expect(noSect.arts).toEqual({})
+  })
+
+  it('sectMods:按重数生效且随重递增;未研究的门不给加成(故障注入:去掉 arts 入参即红)', () => {
+    const def = SECT_ARTS[0]!
+    const one = sectMods({}, {}, { [def.id]: 1 })
+    expect(one.damageBonus).toBeCloseTo(def.mods(1).damageBonus!)
+    const three = sectMods({}, {}, { [def.id]: 3 })
+    expect(three.damageBonus!).toBeGreaterThan(one.damageBonus!)
+    // 未研究:与空档同值
+    const none = sectMods({}, {}, {})
+    expect(none.damageBonus ?? 0).toBe(0)
   })
 })

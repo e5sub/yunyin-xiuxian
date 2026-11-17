@@ -21,15 +21,15 @@
         <p class="mt-0.5 text-[10px] leading-relaxed text-ink-faint">
           {{
             auth.isVip
-              ? '有效期内一律九折:强化/重铸/词条转移、建筑、功法、炼丹、灵脉、秘境、推演、弟子、点星与悟道兑换'
-              : '有效期内修行开销一律九折;坊市买卖与任务上交不折(那是物物交换)'
+              ? '有效期内一律 VIP -10%:强化/重铸/词条转移、建筑、功法、炼丹、灵脉、秘境、推演、弟子、点星与悟道兑换'
+              : '有效期内修行开销一律 VIP -10%;坊市买卖与任务上交不折(那是物物交换)'
           }}
         </p>
       </div>
       <span
         class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-kai tracking-widest"
         :class="auth.isVip ? 'bg-amber-ink/15 text-amber-ink' : 'bg-ink/10 text-ink-faint'"
-      >{{ auth.isVip ? '九折' : '未享' }}</span>
+      >{{ auth.isVip ? 'VIP -10%' : '未享' }}</span>
     </div>
 
     <!-- 到期后开关与去处保留、只是暂停:续费即恢复,不必回设置页逐个重开 -->

@@ -43,6 +43,7 @@ import {
   readMember,
   readSettledSectState,
   recordSectSpend,
+  writeMemberSkills,
   removeApply,
   removeMember,
   writeBody,
@@ -90,6 +91,10 @@ interface SectRules {
   /** 营造(1.72.0):有职者方可开工与收取;队列容量随山门 20/40/60/80 级各开一位 */
   canBuildSect: (role: SectRole | null) => boolean
   buildQueueCap: (hallLevel: number) => number
+  /** 门派绝学(1.74.1):升到 toLevel 重所需门派库价(吃山门减免,不吃 VIP);认不出返回 null */
+  artCost: (id: string, toLevel: number, hallLevel?: number) => number | null
+  /** 绝学重数上限 */
+  artMaxLevel: () => number
 }
 
 let cached: Promise<SectRules> | null = null
@@ -646,23 +651,52 @@ sectRouter.post(
   })
 )
 
-/** 修习技能:个人贡献;同层须上一层到 2 级。技能是门派共有的,谁出贡献谁推进 */
+/**
+ * 修习技能(1.74.1 运营定则):等级归**个人所有** —— 扣个人贡献,写 sect_member_skills,
+ * 换门派等级跟着人走;门派公账里不再有「共有等级」。解锁与上限仍按本门的山门定。
+ */
 sectRouter.post(
   '/sect/skill/learn',
   requireAuth,
-  act('skill', async ({ userId, body, state, member, sectRow, rules, vip }) => {
+  act('skill', async ({ userId, body, state, member, rules, vip }) => {
     if (member === null) return { ok: false, reason: 'nosect' }
     const id = typeof body.id === 'string' ? body.id : ''
     const hall = state.buildings.hall ?? 0
-    const cur = state.skills[id] ?? 0
+    // state.skills 已由 readSettledSectState 覆盖成我自己的等级
+    const mine = state.skills
+    const cur = mine[id] ?? 0
     // 上限由山门定(基础五重,每 20 级再开五重):到顶时说清是「山门未及」,不是「练满了」
     if (cur >= rules.skillLevelCap(hall)) return { ok: false, reason: 'skillcap' }
     const cost = rules.skillCost(id, cur, vipRate(vip), hall)
     if (cost === null) return { ok: false, reason: 'gone' }
-    if (!rules.skillUnlocked(state.skills, id)) return { ok: false, reason: 'locked' }
+    if (!rules.skillUnlocked(mine, id)) return { ok: false, reason: 'locked' }
     if (member.personal < cost) return { ok: false, reason: 'personal' }
     await patchMember(userId, { personal: member.personal - cost })
-    await writeBody(sectRow, { ...state, skills: { ...state.skills, [id]: cur + 1 } })
+    await writeMemberSkills(userId, { ...mine, [id]: cur + 1 })
+    return { ok: true }
+  })
+)
+
+/** 研究门派绝学(1.74.1):有职者出门派库付账,等级越高越贵(见 core/sectRules 的 artCost) */
+sectRouter.post(
+  '/sect/art/research',
+  requireAuth,
+  act('art', async ({ body, state, member, sectRow, rules }) => {
+    if (member === null) return { ok: false, reason: 'nosect' }
+    if (!isSectRole(member.role) || !rules.canBuildSect(member.role)) return { ok: false, reason: 'notauth' }
+    const id = typeof body.id === 'string' ? body.id : ''
+    // artCost 吃山门减免、不吃 VIP:这是门派公账,不是「人」的修行开销(1.74.1 运营定则)
+    const hall = state.buildings.hall ?? 0
+    const to = (state.arts[id] ?? 0) + 1
+    const cost = rules.artCost(id, to, hall)
+    if (cost === null) return { ok: false, reason: 'gone' }
+    if (to > rules.artMaxLevel()) return { ok: false, reason: 'artcap' }
+    if (state.pool < cost) return { ok: false, reason: 'pool' }
+    await writeBody(sectRow, {
+      ...state,
+      pool: state.pool - cost,
+      arts: { ...state.arts, [id]: to }
+    })
     return { ok: true }
   })
 )

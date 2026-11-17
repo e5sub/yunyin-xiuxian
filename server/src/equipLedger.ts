@@ -181,7 +181,14 @@ function applyRow(item: Record<string, unknown>, row: { level: number; state: Re
   const before = JSON.stringify(pick(item))
   item.level = row.level
   item.affixes = row.state.affixes
-  item.sealedAffixIds = Array.isArray(row.state.sealedAffixIds) ? row.state.sealedAffixIds : []
+  /*
+   * sealedAffixIds 不按台账套回(1.74.1):封存/解封是纯客户端动作(不进 forge op,
+   * 也没有自己的服务端写入口),台账行落笔在上一次 op,永远比封存动作旧 ——
+   * 按台账套回会把玩家刚封存的词条悄悄解封,下次重铸照样把它掷掉
+   * (「封存了,重铸的时候也能重铸」的真因)。封存不加战力,只影响重铸保留
+   * 哪几条,放行上传值没有作弊面;affixes/level 等战力字段仍按台账压回。
+   */
+  item.sealedAffixIds = Array.isArray(item.sealedAffixIds) ? item.sealedAffixIds : []
   item.reforgeCount = numOr(row.state.reforgeCount, 0)
   item.transferCount = numOr(row.state.transferCount, 0)
   item.invested = isPlainObject(row.state.invested) ? row.state.invested : { dust: 0, stone: { m: 0, e: 0 } }

@@ -57,6 +57,8 @@ const REASON_TEXT: Record<string, string> = {
   locked: '上一层尚未练到二重',
   /** 技能到顶:不是「练满」,而是山门还没垒到那一档 */
   skillcap: '山门未及此重',
+  /** 绝学到顶:五重圆满 */
+  artcap: '此门绝学已臻圆满',
   gone: '查无此物',
   joined: '此人已入他门',
   notdone: '工程未竟',
@@ -125,8 +127,8 @@ export const useSectStore = defineStore('sect', () => {
   const name = computed(() => state.value.name)
   const personal = computed(() => state.value.personal)
   const pool = computed(() => state.value.pool)
-  /** 门派给的属性:三脉十五门技能 + 五座建筑,与洞府 buildingMods 同一套写法 */
-  const mods = computed(() => sectMods(state.value.skills, state.value.buildings))
+  /** 门派给的属性:三脉十五门技能 + 五座建筑 + 五门绝学,与洞府 buildingMods 同一套写法 */
+  const mods = computed(() => sectMods(state.value.skills, state.value.buildings, state.value.arts))
   const skillLevel = (id: string): number => state.value.skills[id] ?? 0
   const buildingLevel = (id: SectBuildingId): number => state.value.buildings[id] ?? 0
   /** 建筑可达上限(山门闸门;山门自身无上限) */
@@ -339,6 +341,13 @@ export const useSectStore = defineStore('sect', () => {
     return absorb(res)
   }
 
+  /** 研究门派绝学(1.74.1):有职者出门派库一次性付清,研究成全门同享 */
+  async function researchArt(artId: string): Promise<boolean> {
+    const res = await run(() => cloudApi.sectArtResearch(artId))
+    if (res === null) return false
+    return absorb(res)
+  }
+
   /** 登出/切号:清空,免得下一号看见上一号的门派 */
   function reset(): void {
     state.value = emptySectState()
@@ -407,6 +416,7 @@ export const useSectStore = defineStore('sect', () => {
     startBuild,
     claimBuild,
     learn,
+    researchArt,
     reset
   }
 })

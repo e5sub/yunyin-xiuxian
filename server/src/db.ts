@@ -243,6 +243,28 @@ CREATE TABLE IF NOT EXISTS soul_burns (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, uid)
 );
+-- 掉落件数账(1.74.1):镇压/离线结算的装备件数原是客户端自报,只有单次钳制兜着 ——
+-- 改包高频报满额 count,一小时能签几百件。现记「上次同类结算时刻」,件数上限按
+-- 距上次的真实时长推算(镇压 0.4 件/时,离线 ~65 件/时),首次采信一次。
+CREATE TABLE IF NOT EXISTS loot_budgets (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  src TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, src)
+);
+-- 弟子差事账(1.74.1):派遣/收割原是纯客户端(本地墙钟判定完工、产出自发自记)——
+-- 改本地时间就能把差事秒完刷产出。现记每名在途弟子的差事:开工时刻以服务端为准,
+-- 收割须过「真实经过 ≥ 工期」这关,产出由服务端复算回传,客户端只管入账与播报。
+CREATE TABLE IF NOT EXISTS apprentice_tasks (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  uid TEXT NOT NULL,
+  arch_id TEXT NOT NULL,
+  spec TEXT NOT NULL,
+  level INTEGER NOT NULL,
+  major INTEGER NOT NULL,
+  started_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, uid)
+);
 -- 装备状态台账(1.58.3):强化/重铸/词条转移的唯一写入口是 POST /api/forge/op,
 -- 签发后把该件的等级与词条记在此处;上传存档时以台账为准 —— 客户端自报的等级/词条不作数。
 -- 只管「原地改件」的那几个字段(level/affixes/sealed/reforgeCount/transferCount/invested),
@@ -331,6 +353,15 @@ CREATE TABLE IF NOT EXISTS sect_members (
   joined_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sect_members_sect ON sect_members(sect_row);
+-- 门人个人的技能修为(1.74.1 运营定则):技能等级从「门派共有」改为「个人所有」——
+-- 换门派时等级跟着人走(这是它不挂在 sect_members 上的原因:退门/逐出会随行删表,
+-- 而技能要带进下一家)。扣的是个人贡献,修的也是自己的等级;门派里没有「公共等级」。
+-- 旧档迁移:首次读到无此行的成员时,按门派旧的共有等级播种一次(sect data.skills 随即清空)。
+CREATE TABLE IF NOT EXISTS sect_member_skills (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  skills TEXT NOT NULL DEFAULT '{}',
+  updated_at INTEGER NOT NULL
+);
 -- 入派申请(1.69.0):一人同时只挂一份;掌门准许即转成 sect_members,拒绝或撤回即删行。
 CREATE TABLE IF NOT EXISTS sect_apply (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -649,6 +680,26 @@ CREATE TABLE IF NOT EXISTS soul_burns (
   PRIMARY KEY (user_id, uid),
   CONSTRAINT fk_soul_burns_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- 掉落件数账(1.74.1):见 SQLite 侧同名表注释
+CREATE TABLE IF NOT EXISTS loot_budgets (
+  user_id BIGINT NOT NULL,
+  src VARCHAR(16) NOT NULL,
+  updated_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, src),
+  CONSTRAINT fk_loot_budgets_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- 弟子差事账(1.74.1):见 SQLite 侧同名表注释
+CREATE TABLE IF NOT EXISTS apprentice_tasks (
+  user_id BIGINT NOT NULL,
+  uid VARCHAR(64) NOT NULL,
+  arch_id VARCHAR(64) NOT NULL,
+  spec VARCHAR(16) NOT NULL,
+  level INT NOT NULL,
+  major INT NOT NULL,
+  started_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, uid),
+  CONSTRAINT fk_apprentice_tasks_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS equip_state (
   user_id BIGINT NOT NULL,
   uid VARCHAR(64) NOT NULL,
@@ -713,6 +764,13 @@ CREATE TABLE IF NOT EXISTS sect_members (
   KEY idx_sect_members_sect (sect_row),
   CONSTRAINT fk_sect_members_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_sect_members_sect FOREIGN KEY (sect_row) REFERENCES sects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- 门人个人的技能修为(1.74.1):见 SQLite 侧同名表注释
+CREATE TABLE IF NOT EXISTS sect_member_skills (
+  user_id BIGINT PRIMARY KEY,
+  skills TEXT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  CONSTRAINT fk_sect_member_skills_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS sect_apply (
   user_id BIGINT PRIMARY KEY,

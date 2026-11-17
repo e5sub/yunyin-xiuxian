@@ -92,3 +92,21 @@ export async function quoteMarket(major: number, stockedAt: number, idx: number)
     return null
   }
 }
+
+/** 单次签发件数钳制(与 core/lootGrant 同源):件数账本(1.74.1)推配额时用 */
+export interface LootCountCaps {
+  SUPPRESS_COUNT_CAP: number
+  OFFLINE_COUNT_CAP: number
+}
+
+export async function lootCountCaps(): Promise<LootCountCaps | null> {
+  try {
+    const mod = await loadClientModule<Record<string, unknown>>(SOURCE_MODULE, VENDOR_FILE)
+    const s = Number(mod.SUPPRESS_COUNT_CAP)
+    const o = Number(mod.OFFLINE_COUNT_CAP)
+    if (!Number.isFinite(s) || !Number.isFinite(o)) return null
+    return { SUPPRESS_COUNT_CAP: s, OFFLINE_COUNT_CAP: o }
+  } catch {
+    return null
+  }
+}

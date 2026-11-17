@@ -195,7 +195,7 @@ async function settleOfflineInner(nowMs: number): Promise<OfflineSummary | null>
   if (goneBuffNames.length > 0) notes.push(`「${goneBuffNames.join('、')}」已到期`)
 
   // 收割离线完工的道童(与道童页同走 collectFinished);漏收则归来先转世时 resetForRebirth() 连资材清空
-  const reapedApprentices = useApprenticeStore().collectFinished(nowMs, player.major)
+  const reapedApprentices = await useApprenticeStore().collectFinished(nowMs, player.major)
   if (reapedApprentices.length > 0) notes.push(apprenticeReturnText(reapedApprentices, player.major))
 
   const expBefore = { ...player.exp }

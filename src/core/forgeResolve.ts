@@ -243,7 +243,8 @@ export function resolveForgeOnStores(op: ForgeOp): ForgeResult {
     for (let i = 0; i < op.times; i += 1) {
       const run = upgradeOnce(op.uid)
       if (run.spent === null) {
-        block = run.block
+        // 'unsynced' 只在 forgeService 的补传失败映射里出现,本地链不会有;窄化回 DTO 的联合
+        if (run.block !== 'unsynced') block = run.block
         break
       }
       tries += 1

@@ -17,7 +17,8 @@ const ENTRY_POINTS = [
   'src/core/lootGrant.ts',
   'src/core/forgeResolve.ts',
   'src/core/levelResolve.ts',
-  'src/core/sectRules.ts'
+  'src/core/sectRules.ts',
+  'src/core/apprenticeService.ts'
 ]
 
 await build({
@@ -38,6 +39,7 @@ console.log(`[build-vendor] ${ENTRY_POINTS.length} 个模块 -> server/vendor/`)
 // vendor 的传递依赖图极深(一层打包牵进 17 个 store),任何一层新增浏览器专属顶层代码
 // (window/document/import.meta.env 直读)都只有线上首次调用才会炸 —— 必须在这里拦住。
 const EXPECTED = {
+  'apprenticeService.mjs': ['isApprenticeArch', 'apprenticeSpoils', 'apprenticeTaskSeconds'],
   'saveSanitize.mjs': ['sanitizeSaveSlices'],
   'saveAuthority.mjs': ['enforceSaveAuthority'],
   'profileRecompute.mjs': ['snapshotFromSlices', 'lootEnvFromSlices'],

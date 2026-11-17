@@ -420,9 +420,85 @@ export function sectBuildingDef(id: string): SectBuildingDef | undefined {
 }
 
 /**
+ * 门派绝学(1.74.1):每层一门、共五门,与三脉技能同层并排(每层凑齐四门)。
+ * 与技能的分别:技能人人可修(个人贡献,等级堆叠),绝学是**全门共修**——
+ * 有职者(掌门/副掌门/长老)出**门派库**一次性研究,研究成后全门同享加成,
+ * 不分等级、不做个人。价目按「十人日捐」的口径标定,见各 costPool 注。
+ */
+export interface SectArtDef {
+  id: string
+  name: string
+  desc: string
+  /** 层次 1~5,与技能同层并排 */
+  row: number
+  /** 一重的门派库价;每升一重 ×1.9(见 core/sectRules 的 artCost) */
+  costPool: number
+  /** 每重加成;0 重即 0(与技能同形) */
+  mods: (lv: number) => StatMods
+  effectText: (lv: number) => string
+}
+
+export const SECT_ARTS: SectArtDef[] = [
+  {
+    id: 'art_guizong',
+    name: '万法归宗',
+    desc: '三脉之法同炉共冶,攻守兼资',
+    row: 1,
+    // 一重的门派库价;再往上每重 ×1.9(与技能同一条陡峭曲线,见 artCost)
+    costPool: 3000,
+    mods: lv => ({ damageBonus: lv * 0.012, damageReduction: lv * 0.008 }),
+    effectText: lv => `伤害 +${(lv * 1.2).toFixed(1)}%,减伤 +${(lv * 0.8).toFixed(1)}%`
+  },
+  {
+    id: 'art_xuangang',
+    name: '百炼玄纲',
+    desc: '合门之力炼就一条玄纲,锋锐破坚',
+    row: 2,
+    costPool: 8000,
+    mods: lv => ({ armorPen: lv * 0.008, critRate: lv * 0.006 }),
+    effectText: lv => `破甲 +${(lv * 0.8).toFixed(1)}%,暴击 +${(lv * 0.6).toFixed(1)}%`
+  },
+  {
+    id: 'art_zhoutian',
+    name: '周天吐纳',
+    desc: '门中阵眼引气周天,修行事半功倍',
+    row: 3,
+    costPool: 16000,
+    mods: lv => ({ cultivationSpeed: lv * 0.016, qiRegen: lv * 0.008 }),
+    effectText: lv => `修速 +${(lv * 1.6).toFixed(1)}%,灵气恢复 +${(lv * 0.8).toFixed(1)}%`
+  },
+  {
+    id: 'art_zaohua',
+    name: '天工造化',
+    desc: '聚宝阁藏天地造化之气,泽被门人',
+    row: 4,
+    costPool: 30000,
+    mods: lv => ({ dropRate: lv * 0.012, doubleDropRate: lv * 0.008 }),
+    effectText: lv => `装备掉落 +${(lv * 1.2).toFixed(1)}%,双倍战利 +${(lv * 0.8).toFixed(1)}%`
+  },
+  {
+    id: 'art_zhenpai',
+    name: '镇派大阵',
+    desc: '开山祖师留下的护门大阵,全门同沐其威',
+    row: 5,
+    costPool: 50000,
+    mods: lv => ({ attackPct: lv * 0.012, maxHpPct: lv * 0.012, firstStrike: lv * 0.02 }),
+    effectText: lv => `攻击 +${(lv * 1.2).toFixed(1)}%,生命上限 +${(lv * 1.2).toFixed(1)}%,首回合伤害 +${(lv * 2).toFixed(0)}%`
+  }
+]
+
+/** 绝学的重数上限:每门五重(与技能的基础五重同量级;续修不开,这是门派的底蕴) */
+export const SECT_ART_MAX_LEVEL = 5
+
+/** 按绝学 id 反查 */
+export function sectArtDef(id: string): SectArtDef | undefined {
+  return SECT_ARTS.find(a => a.id === id)
+}
+
+/**
  * 三脉十五门技能,按层排:每层三脉各一门。
  * 门派**不分道统**(1.69.0):开宗立派只取名,门中三脉之法皆可修习 ——
- * 太虚的剑、丹霞的丹、万象的阵同藏一门,谁出贡献谁推进,想走哪条路由自己挑。
+ * 太虚的剑、丹霞的丹、万象的阵同藏一门,想走哪条路由自己挑(等级归个人,换门随行)。
  */
 export const SECT_SKILLS: SectSkillDef[] = SECTS.flatMap(s => s.skills).sort((a, b) => a.row - b.row)
 

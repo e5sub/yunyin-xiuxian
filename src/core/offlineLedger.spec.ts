@@ -120,7 +120,7 @@ describe('离线总结 · 变动了多少就报多少', () => {
     expect(apprentice.apprentices[0]!.task, '归来结算后任务应已收割').toBeNull()
     expect(resources.herbOf(grade) - before, '道童带回的灵草应已入账').toBe(expected)
     expect(summary.notes.some(n => n.includes('道童归来')), '归来卷轴应报出道童回执').toBe(true)
-    expect(apprentice.collectFinished(now, player.major), '同一趟不该被二次收割').toEqual([])
+    expect(await apprentice.collectFinished(now, player.major), '同一趟不该被二次收割').toEqual([])
   })
 
   it('装备清单如实标注可看性:入包件带真实 uid,已化尘的不带', async () => {

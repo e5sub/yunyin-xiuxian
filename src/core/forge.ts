@@ -19,6 +19,7 @@ import {
   salvageYieldText,
   upgradeCapToast,
   upgradeMissingToast,
+  upgradeUnsyncedToast,
   upgradeDoneToast,
   upgradeShortToast,
   upgradeSafeToast,
@@ -104,8 +105,8 @@ export interface UpgradeRun {
   after: EquipmentInstance | null
   /** 实扣的料;一件未动为 null */
   spent: { dust: number; stone: GNum; exp: GNum } | null
-  /** 未动的原因:缺料(三样之一)、已至上限,或云端尚无此件('gone') */
-  block?: 'dust' | 'exp' | 'stone' | 'cap' | 'gone'
+  /** 未动的原因:缺料(三样之一)、已至上限、云端尚无此件('gone'),或补传没推出去('unsynced') */
+  block?: 'dust' | 'exp' | 'stone' | 'cap' | 'gone' | 'unsynced'
   /** 掷点前的等级(提示要报「跌了几级」) */
   levelBefore: number
 }
@@ -162,6 +163,8 @@ function upgradeToastOf(uid: string, run: UpgradeRun): { text: string; tone: 'su
   if (run.outcome === 'blocked') {
     // 云端查无此件 ≠ 满级:前者补传后重按即可,后者才是真的到头了
     if (run.block === 'gone') return { text: upgradeMissingToast(), tone: 'warn' }
+    // 补传自身没推出去(断网/冲突/正忙):如实说同步没到,别谎称「已补传」
+    if (run.block === 'unsynced') return { text: upgradeUnsyncedToast(), tone: 'warn' }
     const quote = equipUpgradeQuote(uid)
     if (run.block === 'cap' || quote === null) return { text: upgradeCapToast(), tone: 'warn' }
     const gap = upgradeShortfall(quote)

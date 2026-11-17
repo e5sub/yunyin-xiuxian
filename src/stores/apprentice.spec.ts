@@ -25,32 +25,32 @@ describe('收徒 · 派发与收割', () => {
     expect(a.apprentices[0]!.task).toBeNull()
   })
 
-  it('派活:闲置弟子被派,忙着的派不动', () => {
+  it('派活:闲置弟子被派,忙着的派不动', async () => {
     const a = useApprenticeStore()
     a.$patch({ apprentices: [make()] })
-    expect(a.dispatch('u1', 'study', 1000)).toBe(true)
+    expect(await a.dispatch('u1', 'study', 1000)).toBe(true)
     expect(a.apprentices[0]!.task!.spec).toBe('study')
     expect(a.apprentices[0]!.task!.finishAt).toBeGreaterThan(1000)
-    expect(a.dispatch('u1', 'herb', 2000), '忙中不可再派').toBe(false)
+    expect(await a.dispatch('u1', 'herb', 2000), '忙中不可再派').toBe(false)
   })
 
-  it('坏派工:野门类与坏时钟都不写任务,也不抛错', () => {
+  it('坏派工:野门类与坏时钟都不写任务,也不抛错', async () => {
     const a = useApprenticeStore()
     a.$patch({ apprentices: [make()] })
-    expect(a.dispatch('u1', 'nope' as never, 1000), '野门类派不动').toBe(false)
+    expect(await a.dispatch('u1', 'nope' as never, 1000), '野门类派不动').toBe(false)
     expect(a.apprentices[0]!.task).toBeNull()
     for (const now of [NaN, Infinity, -1]) {
-      expect(a.dispatch('u1', 'study', now), `坏时钟 ${now} 派不动`).toBe(false)
+      expect(await a.dispatch('u1', 'study', now), `坏时钟 ${now} 派不动`).toBe(false)
       expect(a.apprentices[0]!.task).toBeNull()
     }
   })
 
-  it('完工:入账资材、弟子进阶一层、清空任务、返回尾账', () => {
+  it('完工:入账资材、弟子进阶一层、清空任务、返回尾账', async () => {
     const a = useApprenticeStore()
     const res = useResourcesStore()
     // ap_luanniao 天赋 herb: 采药 = (4 + 3*2) * 1.25 = 12.5 → 12
     a.$patch({ apprentices: [make('ap_luanniao', { task: { spec: 'herb', startAt: 0, finishAt: 1 } })] })
-    const reaped = a.collectFinished(9999, 0)
+    const reaped = await a.collectFinished(9999, 0)
     expect(reaped).toHaveLength(1)
     expect(res.herbOf(herbGradeOfMajor(0)), '天赋加成采一摞灵草').toBe(12)
     expect(a.apprentices[0]!.level).toBe(4)
@@ -58,30 +58,30 @@ describe('收徒 · 派发与收割', () => {
     expect(a.apprentices[0]!.task).toBeNull()
   })
 
-  it('没完工:不收割、不进阶、不报尾账', () => {
+  it('没完工:不收割、不进阶、不报尾账', async () => {
     const a = useApprenticeStore()
     const res = useResourcesStore()
     a.$patch({ apprentices: [make('ap_luanniao', { task: { spec: 'herb', startAt: 0, finishAt: 99999 } })] })
-    expect(a.collectFinished(100, 0)).toEqual([])
+    expect(await a.collectFinished(100, 0)).toEqual([])
     expect(res.herbOf(herbGradeOfMajor(0))).toBe(0)
     expect(a.apprentices[0]!.level).toBe(3)
   })
 
-  it('坏收割时钟不入账,任务不被白吞', () => {
+  it('坏收割时钟不入账,任务不被白吞', async () => {
     const a = useApprenticeStore()
     const res = useResourcesStore()
     a.$patch({ apprentices: [make('ap_luanniao', { task: { spec: 'herb', startAt: 0, finishAt: 1 } })] })
     for (const now of [NaN, Infinity, -1]) {
-      expect(a.collectFinished(now, 0), `坏时钟 ${now} 不收割`).toEqual([])
+      expect(await a.collectFinished(now, 0), `坏时钟 ${now} 不收割`).toEqual([])
     }
     expect(a.apprentices[0]!.task, '任务仍在,没有白吞').not.toBeNull()
     expect(res.herb, '没有入账').toBe(0)
 
-    expect(a.collectFinished(2, NaN), '好时钟仍可正常收割').toHaveLength(1)
+    expect(await a.collectFinished(2, NaN), '好时钟仍可正常收割').toHaveLength(1)
     expect(res.herbOf(herbGradeOfMajor(0)), '坏境界经品阶换算仍落凡品').toBeGreaterThan(0)
   })
 
-  it('位阶(羁绊)纯叙事:不同位阶的道童完成同一任务,产出逐项相同', () => {
+  it('位阶(羁绊)纯叙事:不同位阶的道童完成同一任务,产出逐项相同', async () => {
     const a = useApprenticeStore()
     a.$patch({
       apprentices: [
@@ -89,7 +89,7 @@ describe('收徒 · 派发与收割', () => {
         { uid: 'hi', archId: 'ap_luanniao', level: 3, bond: 100, task: { spec: 'herb', startAt: 0, finishAt: 1 } }
       ]
     } as never)
-    const reaped = a.collectFinished(9999, 0)
+    const reaped = await a.collectFinished(9999, 0)
     expect(reaped, '两人都完工').toHaveLength(2)
     expect(reaped[1], '真传不该比道童多产出').toEqual(reaped[0])
     expect(a.apprentices.find(x => x.uid === 'low')!.bond).toBe(1)
@@ -108,12 +108,12 @@ describe('收徒 · 派发与收割', () => {
     expect(res.herbByGrade[1], '采药不该按凡品/地界入账').toBe(0)
   })
 
-  it('历练回的是灵石(走 stoneByTier 那条经济)', () => {
+  it('历练回的是灵石(走 stoneByTier 那条经济)', async () => {
     const a = useApprenticeStore()
     a.$patch({ apprentices: [make('ap_youxia', { level: 1 })] }) // 天赋 adventure
-    a.dispatch('u1', 'adventure', 0)
+    await a.dispatch('u1', 'adventure', 0)
     a.apprentices[0]!.task!.finishAt = 1
-    const reaped = a.collectFinished(2, 5)
+    const reaped = await a.collectFinished(2, 5)
     expect(reaped[0]!.stone, '历练该给灵石').toBeDefined()
     expect(toNum(reaped[0]!.stone!)).toBeGreaterThan(0)
   })
@@ -328,7 +328,7 @@ describe('收徒 · 派发与收割', () => {
     expect(a.apprentices[0]!.task, 'finishAt<startAt 应置闲,不许开局即收割').toBeNull()
   })
 
-  it('sanitize:弟子 uid 重复时重排,两位都派得动、互不串账', () => {
+  it('sanitize:弟子 uid 重复时重排,两位都派得动、互不串账', async () => {
     const a = useApprenticeStore()
     a.$patch({
       apprentices: [
@@ -342,13 +342,13 @@ describe('收徒 · 派发与收割', () => {
     expect(new Set(uids).size, '号必须唯一').toBe(2)
 
     const [first, second] = uids
-    expect(a.dispatch(first!, 'herb', 0)).toBe(true)
-    expect(a.dispatch(second!, 'ore', 0)).toBe(true)
+    expect(await a.dispatch(first!, 'herb', 0)).toBe(true)
+    expect(await a.dispatch(second!, 'ore', 0)).toBe(true)
     expect(a.apprentices[0]!.task!.spec).toBe('herb')
     expect(a.apprentices[1]!.task!.spec).toBe('ore')
   })
 
-  it('各尽其长一键:缺灵草时闲置道童全体去采药,忙的不动', () => {
+  it('各尽其长一键:缺灵草时闲置道童全体去采药,忙的不动', async () => {
     const a = useApprenticeStore()
     const player = usePlayerStore()
     player.major = 0 // 灵草品阶 1;herb 缺、其余 0 也不及 herb 短缺分
@@ -359,13 +359,13 @@ describe('收徒 · 派发与收割', () => {
         { uid: 'z', archId: 'ap_luanniao', level: 1, bond: 0, task: { spec: 'ore', startAt: 0, finishAt: 99999 } }
       ] as OwnedApprentice[]
     })
-    expect(a.dispatchAll(Date.now())).toBe(2)
+    expect(await a.dispatchAll(Date.now())).toBe(2)
     expect(a.apprentices.find(x => x.uid === 'x')!.task!.spec).toBe('herb')
     expect(a.apprentices.find(x => x.uid === 'y')!.task!.spec).toBe('herb')
     expect(a.apprentices.find(x => x.uid === 'z')!.task!.spec, '忙的道童不动').toBe('ore')
   })
 
-  it('各尽其长坏时钟:一名都不派,也不写坏完工时刻', () => {
+  it('各尽其长坏时钟:一名都不派,也不写坏完工时刻', async () => {
     const a = useApprenticeStore()
     a.$patch({
       apprentices: [
@@ -373,7 +373,7 @@ describe('收徒 · 派发与收割', () => {
         { uid: 'y', archId: 'ap_daotong', level: 1, bond: 0, task: null }
       ] as OwnedApprentice[]
     })
-    expect(a.dispatchAll(NaN)).toBe(0)
+    expect(await a.dispatchAll(NaN)).toBe(0)
     expect(a.apprentices.every(x => x.task === null), '全员仍闲置').toBe(true)
   })
 

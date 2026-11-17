@@ -9,6 +9,8 @@ import { rng } from '@/utils/random'
 import { useResourcesStore } from '@/stores/resources'
 import { useInventoryStore } from '@/stores/inventory'
 import { usePlayerStore } from '@/stores/player'
+import { useAuthStore } from '@/stores/auth'
+import { cloudApi } from '@/services/cloud'
 import { herbGradeOfMajor } from '@/data/herbGrades'
 import { MAX_MAJOR } from '@/data/realms'
 import {
@@ -175,14 +177,32 @@ export const useApprenticeStore = defineStore(
       }
     }
 
-    /** 收割已完工弟子,返回尾账供界面播报 */
-    function collectFinished(now: number, major: number): TaskSpoils[] {
+    /**
+     * 收割已完工弟子,返回尾账供界面播报。
+     * 登录走服务端差事账(1.74.1):开工时刻以服务端为准,收割须过「真实经过 ≥ 工期」
+     * 这关,产出以服务端复算回传为准 —— 改本地时钟把差事秒完不再有用。服务端拒了
+     * (时钟慢/账丢了)就不收:差事留着,下次再点;未登录单机走原来的本地路径。
+     */
+    async function collectFinished(now: number, major: number): Promise<TaskSpoils[]> {
       if (!validNow(now)) return []
+      const auth = useAuthStore()
       const reaped: TaskSpoils[] = []
       for (const appr of apprentices.value) {
         if (!taskDone(appr, now)) continue
         const spec = appr.task!.spec
-        const spoils = apprenticeSpoils(appr.archId, spec, major, appr.level)
+        let spoils: TaskSpoils
+        if (auth.loggedIn) {
+          try {
+            const r = await cloudApi.apprenticeTaskClaim(appr.uid)
+            if (!r.ok || !r.spoils) continue
+            spoils = r.spoils
+          } catch {
+            /* 网络/服务异常:不收,差事留着下次再点 */
+            continue
+          }
+        } else {
+          spoils = apprenticeSpoils(appr.archId, spec, major, appr.level)
+        }
         applySpoils(spoils, major)
         appr.level = Math.min(APPRENTICE_MAX_LEVEL, appr.level + 1)
         appr.bond += 1
@@ -192,11 +212,24 @@ export const useApprenticeStore = defineStore(
       return reaped
     }
 
-    /** 派一名闲置弟子跑一趟 */
-    function dispatch(uid: string, spec: ApprenticeSpec, now: number): boolean {
+    /** 派一名闲置弟子跑一趟;登录先入服务端差事账,入账不成不派(宁可白点一次) */
+    async function dispatch(uid: string, spec: ApprenticeSpec, now: number): Promise<boolean> {
       if (!isSpec(spec) || !validNow(now)) return false
       const appr = apprentices.value.find(x => x.uid === uid)
       if (!appr || appr.task) return false
+      if (useAuthStore().loggedIn) {
+        try {
+          await cloudApi.apprenticeTaskStart({
+            uid,
+            archId: appr.archId,
+            spec,
+            level: appr.level,
+            major: usePlayerStore().major
+          })
+        } catch {
+          return false
+        }
+      }
       appr.task = { spec, startAt: now, finishAt: now + apprenticeTaskSeconds(spec) * 1000 }
       return true
     }
@@ -215,7 +248,7 @@ export const useApprenticeStore = defineStore(
     }
 
     /** 一键「各尽其长」:闲置道童派往当前最缺的门;返回派出人数 */
-    function dispatchAll(now: number): number {
+    async function dispatchAll(now: number): Promise<number> {
       if (!validNow(now)) return 0
       const idle = apprentices.value
         .filter(a => !a.task)
@@ -230,13 +263,11 @@ export const useApprenticeStore = defineStore(
         dust: resources.dust,
         seek: Object.values(useInventoryStore().pills).reduce((a, b) => a + b, 0)
       })
+      let sent = 0
       for (const t of targets) {
-        const appr = apprentices.value.find(x => x.uid === t.uid)
-        if (appr && !appr.task) {
-          appr.task = { spec: t.spec, startAt: now, finishAt: now + apprenticeTaskSeconds(t.spec) * 1000 }
-        }
+        if (await dispatch(t.uid, t.spec, now)) sent += 1
       }
-      return targets.length
+      return sent
     }
 
     /** 转世清零,新世由 sync() 补送 starter;最高羁绊达真传者凝成跨世之缘(封顶真传阈值) */

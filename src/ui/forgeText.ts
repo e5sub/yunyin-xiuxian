@@ -16,6 +16,11 @@ export function upgradeMissingToast(): string {
   return '此器尚未入册,已补传存档,请再点一次'
 }
 
+/** 补传自身没推出去(断网/冲突/上一发还在推):如实说没同步,别谎报「已补传」(1.74.1) */
+export function upgradeUnsyncedToast(): string {
+  return '存档尚未同步到云端,请稍候再点一次'
+}
+
 /**
  * 强化缺料:缺哪一样就说哪一样,不用一句「或」。
  *

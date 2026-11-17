@@ -88,6 +88,11 @@ function qualityYieldOf(quality: QualityId): number {
  * 品阶此前只决定名字颜色与角章,不参与产出 —— 同名天赋的两名道童(悟道道童 精品 /
  * 仙门慧童 灵品)一趟产出分毫不差,而收徒成本一样、抽到谁纯看运气。
  */
+/** 服务端差事记账(1.74.1)用:archId 是不是真门派(防改包塞野 archetype 白吃产出) */
+export function isApprenticeArch(archId: string): boolean {
+  return apprenticeDef(archId) !== undefined
+}
+
 export function apprenticeSpoils(archId: string, spec: ApprenticeSpec, major: number, level: number): TaskSpoils {
   const def = apprenticeDef(archId)
   const base = baseSpoils(major, level)[spec]!

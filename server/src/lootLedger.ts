@@ -288,3 +288,43 @@ export async function enforceLootProvenance(
     return { data, stripped: 0 }
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * 掉落件数账(1.74.1):镇压/离线的装备件数原是客户端自报,只有单次钳制
+ * (SUPPRESS_COUNT_CAP/OFFLINE_COUNT_CAP)兜着 —— 改包每 300ms 报一次满额
+ * count,单次钳形同虚设,一小时能签几百件(正常期望 ~10 件/时)。
+ * 现记「上次同类结算时刻」,件数上限按距上次的真实时长推算;没有历史行的
+ * 首次采信一次(种子),此后全按真实间隔。
+ * ------------------------------------------------------------------ */
+
+export interface LootBudgetLimit {
+  /** 每小时可签发件数(与客户端的期望产速同源) */
+  ratePerHour: number
+  /** 积攒封顶(长离线后一次结算的天花板) */
+  cap: number
+}
+
+/** 取走本次配额:返回实际允许签发的件数(≤ want),并把「上次结算」推到 now */
+export async function takeLootBudget(
+  userId: number,
+  src: string,
+  want: number,
+  now: number,
+  lim: LootBudgetLimit
+): Promise<number> {
+  if (want <= 0) return 0
+  const row = await get<{ updated_at: number }>(
+    'SELECT updated_at FROM loot_budgets WHERE user_id = ? AND src = ?',
+    [userId, src]
+  )
+  let allow: number
+  if (row === undefined) {
+    // 首次采信:只此一次,之后全按真实间隔推
+    allow = Math.min(want, lim.cap)
+  } else {
+    const gapHours = Math.max(0, (now - row.updated_at) / 3_600_000)
+    allow = Math.min(Math.floor(lim.ratePerHour * gapHours), lim.cap, want)
+  }
+  await run('REPLACE INTO loot_budgets (user_id, src, updated_at) VALUES (?, ?, ?)', [userId, src, now])
+  return allow
+}

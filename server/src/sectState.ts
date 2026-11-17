@@ -50,6 +50,8 @@ export interface SectState {
   personal: number
   pool: number
   skills: Record<string, number>
+  /** 门派绝学(1.74.1):id → 重数(0~5);归一化在 core/sectRules.normalizeSectState */
+  arts: Record<string, number>
   buildings: Record<string, number>
   build: { id: string; to: number; startAt: number; finishAt: number }[]
   day: string
@@ -290,6 +292,49 @@ export function hallOfData(data: string): number {
   }
 }
 
+
+/* ---------------- 个人技能(1.74.1 运营定则) ---------------- */
+
+/**
+ * 门人的技能修为住 `sect_member_skills`(一人一行,**跨门派保留** —— 换门带入)。
+ * 旧档迁移:成员还没有个人行时,按门派 data.skills 里那份「共有等级」播种一次,
+ * 播完即把共有等级清空(消费掉,后来入门的人从零修起)。
+ */
+async function readMemberSkills(userId: number, legacy: Record<string, number>): Promise<{ skills: Record<string, number>; seeded: boolean }> {
+  const row = await get<{ skills: string }>('SELECT skills FROM sect_member_skills WHERE user_id = ?', [userId])
+  if (row !== undefined) {
+    try {
+      const parsed = JSON.parse(row.skills) as unknown
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        return { skills: parsed as Record<string, number>, seeded: false }
+      }
+    } catch {
+      /* 行坏了按无修为走,等下一次修习重写 */
+    }
+    return { skills: {}, seeded: false }
+  }
+  // 播种:旧共有等级全数转成个人等级;公账里的共有等级由调用方清掉(消费掉,后来者从零修起)
+  const skills: Record<string, number> = {}
+  for (const [id, lv] of Object.entries(legacy)) {
+    const n = Math.trunc(Number(lv))
+    if (Number.isFinite(n) && n > 0) skills[id] = Math.min(30, n)
+  }
+  await run('REPLACE INTO sect_member_skills (user_id, skills, updated_at) VALUES (?, ?, ?)', [
+    userId,
+    JSON.stringify(skills),
+    Date.now()
+  ])
+  return { skills, seeded: true }
+}
+
+export async function writeMemberSkills(userId: number, skills: Record<string, number>): Promise<void> {
+  await run('REPLACE INTO sect_member_skills (user_id, skills, updated_at) VALUES (?, ?, ?)', [
+    userId,
+    JSON.stringify(skills),
+    Date.now()
+  ])
+}
+
 /* ---------------- 组合与写入 ---------------- */
 
 /** 门派公账 + 我的私账 = 客户端看到的形状 */
@@ -330,6 +375,10 @@ export async function readSettledSectState(
   }
   const settled = mod.settleBuild(state, now)
   if (settled.done.length > 0) await writeBody(body.id, settled.state)
+  // 技能归个人(1.74.1):state.skills 覆盖成我自己的等级;旧共有等级播种进个人行后清掉
+  const mine = await readMemberSkills(userId, settled.state.skills)
+  if (mine.seeded) await writeBody(body.id, { ...settled.state, skills: {} })
+  settled.state.skills = mine.skills
   const members = await countMembers(body.id)
   return {
     state: composeState(settled.state, member, members),

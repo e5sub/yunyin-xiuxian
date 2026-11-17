@@ -50,11 +50,17 @@
           <span>累计捐献贡献</span>
           <span class="tabular text-ink-soft">{{ sect.state.totalDonated }}</span>
         </p>
+        <!-- 门人入口并进概览(1.74.1):门册/候批/去留都在弹窗里,概览卡点一下即达,不再单独占一张卡 -->
+        <button class="btn-ghost mt-2 w-full !py-1.5 !text-[12px]" @click="memberOpen = true">
+          <span class="whitespace-nowrap">查看门人</span>
+          <span v-if="sect.canReview && sect.applyCount > 0" class="whitespace-nowrap text-cinnabar">
+            · 候批 {{ sect.applyCount }}
+          </span>
+        </button>
+        <SectMemberDialog v-model:open="memberOpen" />
       </div>
 
       <SectDonateCard />
-
-      <SectMemberCard />
 
       <section>
         <SectionTitle title="营造" :hint="`山门 ${hallLevel} 级 · 队列 ${sect.state.build.length}/${sect.queueCap} · 有职者为之`" />
@@ -70,9 +76,10 @@
           每门基础五重;山门每 20 级再开五重(20、40、60、80、100 级各一次,百级至三十重)。
         </p>
         <div v-for="[row, defs] in skillRows" :key="row" class="mt-2.5">
-          <p class="text-[10px] leading-none text-ink-faint">第 {{ row }} 层 · 三脉各一门</p>
+          <p class="text-[10px] leading-none text-ink-faint">第 {{ row }} 层 · 三脉各一门 + 门派绝学</p>
           <div class="mt-1.5 grid grid-cols-1 gap-2.5 min-[320px]:grid-cols-2">
             <SectSkillCard v-for="def in defs" :key="def.id" :def="def" />
+            <SectArtCard :def="artOfRow(row)!" />
           </div>
         </div>
       </section>
@@ -84,7 +91,7 @@
   import { computed, onMounted, ref } from 'vue'
   import { useRouter } from 'vue-router'
   import { goBack } from '@/router/goBack'
-  import { SECT_BUILDINGS, SECT_SKILLS, sectBuildingDef, type SectSkillDef } from '@/data/sect'
+  import { SECT_ARTS, SECT_BUILDINGS, SECT_SKILLS, sectBuildingDef, type SectSkillDef } from '@/data/sect'
   import { donationQuota } from '@/core/sectRules'
   import { useAuthStore } from '@/stores/auth'
   import { useSectStore } from '@/stores/sect'
@@ -95,11 +102,15 @@
   import SectDonateCard from '@/components/sect/SectDonateCard.vue'
   import SectBuildingCard from '@/components/sect/SectBuildingCard.vue'
   import SectSkillCard from '@/components/sect/SectSkillCard.vue'
-  import SectMemberCard from '@/components/sect/SectMemberCard.vue'
+  import SectArtCard from '@/components/sect/SectArtCard.vue'
+  import SectMemberDialog from '@/components/sect/SectMemberDialog.vue'
 
   const router = useRouter()
   const auth = useAuthStore()
   const sect = useSectStore()
+
+  /** 门人册弹窗(入口在概览卡内) */
+  const memberOpen = ref(false)
 
   /** 未入派时的两条路:先看别人开的门,再考虑自己开 */
   const TABS = [
@@ -110,6 +121,9 @@
 
   /** 每日捐献上限:常驻 3、VIP 5(与服务端限次同源) */
   const quota = computed(() => donationQuota(auth.isVip))
+
+  /** 门派绝学:每层一门,与三脉技能同层并排(每层凑齐四门) */
+  const artOfRow = (row: number) => SECT_ARTS.find(a => a.row === row)
 
   /** 三脉十五门按层分组:每层三门并排,看得清同层三选一 */
   const skillRows = computed<[number, SectSkillDef[]][]>(() => {

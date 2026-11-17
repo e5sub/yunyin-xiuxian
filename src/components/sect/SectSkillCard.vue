@@ -29,7 +29,7 @@
     -->
     <p v-if="saved > 0" class="mt-1 flex flex-wrap items-center gap-x-2 text-[10px] leading-relaxed text-ink-faint">
       <span>原价 <span class="tabular line-through">{{ baseCost }}</span></span>
-      <span v-if="sect.rate < 1" class="text-gold-ink">VIP 九折</span>
+      <span v-if="sect.rate < 1" class="text-gold-ink">VIP -10%</span>
       <span v-if="hallCut > 0" class="text-jade">山门 -{{ hallCut }}%</span>
     </p>
 

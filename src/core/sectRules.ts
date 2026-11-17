@@ -42,6 +42,9 @@ import {
   SECT_SKILL_COST_TAIL_GROWTH,
   SECT_SKILL_LEVEL_HARD_MAX,
   SECT_SKILL_MAX_LEVEL,
+  SECT_ART_MAX_LEVEL,
+  SECT_ARTS,
+  sectArtDef,
   sectBuildingDef,
   sectSkillDef,
   type SectBuildingId
@@ -89,6 +92,8 @@ export interface SectState {
   pool: number
   /** 技能 id → 等级(1~30;上限由山门定,见 skillLevelCap) */
   skills: Record<string, number>
+  /** 门派绝学(1.74.1):有职者出门派库研究,全门同享;id → 重数(0~SECT_ART_MAX_LEVEL) */
+  arts: Record<string, number>
   /** 建筑 id → 等级(0~上限) */
   buildings: Record<string, number>
   /**
@@ -113,6 +118,7 @@ export function emptySectState(): SectState {
     personal: 0,
     pool: 0,
     skills: {},
+    arts: {},
     buildings: {},
     build: [],
     day: '',
@@ -378,7 +384,7 @@ export function donationHerbGrade(major: number): HerbGrade {
 /* ---------------- 属性 ---------------- */
 
 /** 门派给的属性:十五门技能各按现值 + 建筑各按现值,合成一份(与洞府 buildingMods 同规) */
-export function sectMods(skills: Record<string, number>, buildings: Record<string, number>): StatMods {
+export function sectMods(skills: Record<string, number>, buildings: Record<string, number>, arts: Record<string, number> = {}): StatMods {
   const sources: StatMods[] = []
   // 技能等级按山门定的上限夹:与 skillCost 同一把尺,少了这一道就凭坏数多算几重
   const cap = skillLevelCap(intIn(buildings.hall, 0, SECT_LEVEL_HARD_MAX))
@@ -390,7 +396,36 @@ export function sectMods(skills: Record<string, number>, buildings: Record<strin
     const lv = intIn(buildings[def.id], 0, SECT_LEVEL_HARD_MAX)
     if (lv > 0) sources.push(def.mods(lv))
   }
+  // 门派绝学(1.74.1):研究成即全门生效,重数按上限夹,只认 normalize 过的真 id
+  for (const def of SECT_ARTS) {
+    const lv = intIn(arts[def.id], 0, SECT_ART_MAX_LEVEL)
+    if (lv > 0) sources.push(def.mods(lv))
+  }
   return mergeMods(sources)
+}
+
+/* ---------------- 门派绝学 ---------------- */
+
+/**
+ * 绝学升到 toLevel 重所需的山派库价(1.74.1 运营定则):
+ *  · 从门派库扣,不走个人贡献;
+ *  · **不吃 VIP 折扣** —— 这是门派的公账,不是「人」的修行开销;
+ *  · **吃山门减免** —— 与修习同读 hallSkillRate(每级 -0.5%,百级 -50%);
+ *  · 每升一重 ×1.9(与技能前五重同一条陡峭曲线):等级越高,贡献消耗越高。
+ * toLevel 从 1 起;认不出这门绝学或 toLevel 越界返回 null。
+ */
+/** 绝学重数上限(服务端经 vendor 同读这一把尺) */
+export function artMaxLevel(): number {
+  return SECT_ART_MAX_LEVEL
+}
+
+export function artCost(id: string, toLevel: number, hallLevel = 0): number | null {
+  const def = sectArtDef(id)
+  if (def === undefined) return null
+  const to = Math.trunc(toLevel)
+  // 越界重数不签:夹到界内会把「研第六重」的请求悄悄按第五重收钱,宁拒勿错
+  if (!Number.isFinite(to) || to < 1 || to > SECT_ART_MAX_LEVEL) return null
+  return Math.max(1, Math.round(def.costPool * Math.pow(1.9, to - 1) * hallSkillRate(hallLevel)))
 }
 
 /* ---------------- 计时结算 ---------------- */
@@ -475,6 +510,13 @@ export function normalizeSectState(raw: unknown, now = Date.now()): SectState {
     for (const def of SECT_SKILLS) {
       const lv = intIn(rawSkills[def.id], 0, skillCap)
       if (lv > 0) out.skills[def.id] = lv
+    }
+
+    // 门派绝学(1.74.1):只认真有这门绝学的条目,野 id 与坏值一律不入账;重数按上限夹
+    const rawArts = typeof src.arts === 'object' && src.arts !== null ? (src.arts as Record<string, unknown>) : {}
+    for (const def of SECT_ARTS) {
+      const lv = intIn(rawArts[def.id], 0, SECT_ART_MAX_LEVEL)
+      if (lv > 0) out.arts[def.id] = lv
     }
 
     /*

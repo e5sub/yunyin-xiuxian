@@ -198,8 +198,8 @@
     })
   )
 
-  function dispatcher(uid: string, spec: ApprenticeSpec): void {
-    if (appr.dispatch(uid, spec, Date.now())) {
+  async function dispatcher(uid: string, spec: ApprenticeSpec): Promise<void> {
+    if (await appr.dispatch(uid, spec, Date.now())) {
       ui.toast('已派出', 'info')
     }
   }
@@ -225,9 +225,9 @@
     taskTap.value = key
   }
 
-  function doDispatchAll(): void {
+  async function doDispatchAll(): Promise<void> {
     // 按钮在无闲置道童时禁用,dispatchAll 恒派 ≥1 名
-    const n = appr.dispatchAll(now.value)
+    const n = await appr.dispatchAll(now.value)
     if (n > 0) ui.toast(`已派出 ${n} 名`, 'info')
   }
 
@@ -239,8 +239,8 @@
   }
 
   /** 收割所有已完工道童并报带回什么 */
-  function reap(): void {
-    const reaped = appr.collectFinished(now.value, player.major)
+  async function reap(): Promise<void> {
+    const reaped = await appr.collectFinished(now.value, player.major)
     if (reaped.length === 0) return
     // 合成一条汇总:ui.toast 按「同文 + 同级」去重,逐条报会漏报
     ui.toast(apprenticeReturnText(reaped, player.major), 'success')

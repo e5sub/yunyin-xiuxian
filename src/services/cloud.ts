@@ -8,6 +8,7 @@ import type { EquipmentInstance } from '@/types'
 import type { SectRole, SectState } from '@/core/sectRules'
 import type { ForgeDetail, ForgeOp, ForgeSpend } from '@/core/forgeResolve'
 import type { LevelDetail, LevelOp, LevelSpend } from '@/core/levelResolve'
+import type { TaskSpoils } from '@/core/apprenticeService'
 
 export const DEFAULT_API_BASE = 'https://yy.071717.xyz'
 
@@ -726,6 +727,16 @@ export const cloudApi = {
    */
   claimLoot: (payload: { claims: readonly unknown[] }): Promise<{ equips: EquipmentInstance[] }> =>
     request('POST', '/loot/claim', payload),
+  /** 弟子差事记账(1.74.1):开工时刻入账;收割过工期关并由服务端复算产出 */
+  apprenticeTaskStart: (payload: {
+    uid: string
+    archId: string
+    spec: string
+    level: number
+    major: number
+  }): Promise<{ ok: true }> => request('POST', '/apprentice/task/start', payload),
+  apprenticeTaskClaim: (uid: string): Promise<{ ok: boolean; reason?: string; spoils?: TaskSpoils }> =>
+    request('POST', '/apprentice/task/claim', { uid }),
   /** 坊市成交记账(1.58.1):服务端按货架复算价并落账,上传时把这笔钱从增量里扣掉 */
   marketBuy: (payload: { stockedAt: number; idx: number }): Promise<{ ok: boolean; recorded: boolean }> =>
     request('POST', '/market/buy', payload),
@@ -786,6 +797,8 @@ export const cloudApi = {
   sectBuildClaim: (): Promise<SectStateResp> => request('POST', '/sect/build/claim', {}),
   /** 修习技能:扣个人贡献 */
   sectSkillLearn: (id: string): Promise<SectStateResp> => request('POST', '/sect/skill/learn', { id }),
+  /** 研究门派绝学(1.74.1):有职者出门派库一次性付清,研究成全门同享 */
+  sectArtResearch: (id: string): Promise<SectStateResp> => request('POST', '/sect/art/research', { id }),
   dungeonOverview: (): Promise<DungeonOverview> => request('GET', '/dungeon'),
   dungeonRoom: (): Promise<{ room: DungeonRoom | null }> => request('GET', '/dungeon/room'),
   dungeonRoomCreate: (dungeon: DungeonKey, difficulty: DungeonDifficulty = 'normal'): Promise<{ room: DungeonRoom }> =>

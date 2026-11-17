@@ -19,6 +19,7 @@ import { metricsOf, backupBeforeOverwrite, syncProfileFromData } from './save.js
 import { loadClientModule } from '../clientVendor.js'
 import { recordProgressSpend } from '../progressLedger.js'
 import { recordLevelStates } from '../levelLedger.js'
+import { lootProvenance } from '../lootLedger.js'
 import { withKeyLock } from '../mutex.js'
 import { vipActive } from '../vip.js'
 
@@ -120,6 +121,20 @@ progressRouter.post('/progress/op', requireAuth, (req: Request, res: Response) =
     }
 
     const mod = await clientLevel()
+    /*
+     * 法宝祭炼先验出处(1.74.1):结算采信上报行囊里的 artifacts,原先不问这件法宝
+     * 是不是服务端签发过 —— 改包塞一件顶阶法宝再祭炼,结算后等级还会被记进
+     * level_state 台账,上传压回就永远压不掉了。loot_ledger 按 defId 记着每件
+     * 签发过的法宝(kind='artifact'):台账里没有的一律拒 —— 宁可白点一次,不发无据之炼。
+     */
+    const opObj = isPlainObject(body.op) ? body.op : null
+    if (opObj !== null && opObj.op === 'artifactUpgrade' && typeof opObj.defId === 'string') {
+      const prov = await lootProvenance(userId)
+      if (prov.seeded && !prov.known.artifact.has(opObj.defId)) {
+        res.json({ ok: false, reason: '未见此宝,无从祭炼', op: 'artifactUpgrade' })
+        return
+      }
+    }
     // VIP 有效期内修行开销九折:价目只由服务端算,客户端那侧的价签是预览
     const vip = await vipActive(req.user!.id)
     // 无头结算:水合 → 采信上报余额(1.73.0 起以上报为准,不拿云档垫付) → 同一套纯账层算价扣款

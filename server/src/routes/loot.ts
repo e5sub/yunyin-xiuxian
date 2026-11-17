@@ -11,8 +11,8 @@ import { get } from '../db.js'
 import { getConfig } from '../config.js'
 import { requireAuth } from '../auth.js'
 import { lootEnv } from '../recompute.js'
-import { grantLoot, verifyExtraGains, expectedSoulGradeOf } from '../lootGrant.js'
-import { recordLoot, burnedSoulUids, recordSoulBurns } from '../lootLedger.js'
+import { grantLoot, verifyExtraGains, expectedSoulGradeOf, lootCountCaps } from '../lootGrant.js'
+import { recordLoot, burnedSoulUids, recordSoulBurns, takeLootBudget } from '../lootLedger.js'
 import { recordEquipStatesFromItems } from '../equipLedger.js'
 import { readSectState } from '../sectState.js'
 import { withKeyLock } from '../mutex.js'
@@ -83,8 +83,48 @@ lootRouter.post('/loot/claim', requireAuth, (req: Request, res: Response) => {
 
     const grantedBatches: Array<{ src: string; batch: Array<Record<string, unknown>> }> = []
     let want = 0
-    for (const ctx of rawClaims) {
-      if (!isPlainObject(ctx)) continue
+    /*
+     * 件数账本收回服务端(1.74.1):suppress/offline 的 count 原是客户端自报,单次钳制
+     * (SUPPRESS_COUNT_CAP/OFFLINE_COUNT_CAP)挡不住高频满额 —— 改包每 300ms 一次、
+     * 一小时能签 600 件(正常期望 ~10 件/时)。现按「距上次同类结算的真实时长」推
+     * 件数上限:镇压 0.4 件/时(SUPPRESS_YIELD_PER_HOUR.equipmentChance,封顶 12),
+     * 离线 ~65 件/时(0.3 掉率 × ~216 胜场/时,积攒封顶 48);没有历史行的首次采信一次。
+     * 一批里同 src 的多个 ctx(离线按场次拆条)共用同一份配额,按申请顺序消耗。
+     */
+    const caps = await lootCountCaps()
+    if (caps === null) {
+      res.status(500).json({ error: '签发模块不可用' })
+      return
+    }
+    const BUDGET_LIMITS = {
+      suppress: { ratePerHour: 0.4, cap: caps.SUPPRESS_COUNT_CAP },
+      offline: { ratePerHour: 65, cap: 48 }
+    } as const
+    type BudgetSrc = keyof typeof BUDGET_LIMITS
+    const ctxs = rawClaims.filter(isPlainObject)
+    const clampCount = (ctx: Record<string, unknown>, cap: number): number =>
+      Math.min(Math.max(Math.trunc(typeof ctx.count === 'number' && Number.isFinite(ctx.count) ? ctx.count : 0), 0), cap)
+    const remaining = new Map<BudgetSrc, number>()
+    for (const src of Object.keys(BUDGET_LIMITS) as BudgetSrc[]) {
+      const cap = src === 'suppress' ? caps.SUPPRESS_COUNT_CAP : caps.OFFLINE_COUNT_CAP
+      const total = ctxs
+        .filter(c => c.src === src)
+        .reduce((a, c) => a + clampCount(c, cap), 0)
+      if (total > 0) {
+        remaining.set(src, await takeLootBudget(userId, src, total, now, BUDGET_LIMITS[src]))
+      }
+    }
+    for (const ctx of ctxs) {
+      const srcKey = typeof ctx.src === 'string' && ctx.src in BUDGET_LIMITS ? (ctx.src as BudgetSrc) : null
+      if (srcKey !== null) {
+        const cap = srcKey === 'suppress' ? caps.SUPPRESS_COUNT_CAP : caps.OFFLINE_COUNT_CAP
+        const req = clampCount(ctx, cap)
+        const allow = remaining.get(srcKey) ?? 0
+        const grant = Math.min(req, allow)
+        remaining.set(srcKey, allow - grant)
+        ctx.count = grant
+        if (grant === 0) continue
+      }
       const granted = await grantLoot(ctx, env)
       if (granted === null) continue
       const batch: Array<Record<string, unknown>> = []

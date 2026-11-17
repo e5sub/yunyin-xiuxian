@@ -1,0 +1,108 @@
+/**
+ * 弟子差事记账(1.74.1):派遣与收割的服务端账。
+ *
+ * 为什么:差事完工判定原是纯客户端(本地墙钟 + 产出自发自记)—— 改本地时间就能
+ * 把一趟差事秒完,产出(草/铁/尘/悟道/灵石/丹药)白拿。现在开工时刻以服务端为
+ * 准(POST /task/start),收割(POST /task/claim)须过「真实经过 ≥ 工期」这关,
+ * 产出由服务端按开工时存下的 archId/spec/major/level 复算回传 —— 客户端只管入账
+ * 与播报。未登录单机不受影响:store 走原来的本地路径。
+ *
+ * 账只记「在途」:开工 REPLACE(同 uid 重派覆盖),收割 DELETE(兑现即删,与
+ * sect_spend/forge_spend 同思路)。转世清空弟子(resetForRebirth)时旧账行随下次
+ * 重派覆盖或永远不被收割,不构成刷点 —— 收割必须 uid 对得上且在途。
+ */
+import express, { type Request, type Response } from 'express'
+import { get, run } from '../db.js'
+import { requireAuth } from '../auth.js'
+import { withKeyLock } from '../mutex.js'
+import { isApprenticeArch, apprenticeTaskSeconds, computeApprenticeSpoils } from '../apprenticeCore.js'
+
+export const apprenticeRouter = express.Router()
+
+/** 同账号差事动作最小间隔:点按类动作,300ms 不伤正常节奏 */
+const OP_MIN_GAP_MS = 300
+const lastOpAt = new Map<number, number>()
+
+const MAX_MAJOR_CLAMP = 40
+const MAX_LEVEL_CLAMP = 30
+
+function clampInt(v: unknown, lo: number, hi: number): number {
+  const n = Math.trunc(Number(v))
+  if (!Number.isFinite(n)) return lo
+  return Math.min(Math.max(n, lo), hi)
+}
+
+/** 派差:开工时刻入账。同 uid 重派覆盖旧行(本地判过「忙中不可再派」,服务端兜一层) */
+apprenticeRouter.post('/apprentice/task/start', requireAuth, (req: Request, res: Response) => {
+  void (async () => {
+    const userId = req.user!.id
+    const now = Date.now()
+    if (now - (lastOpAt.get(userId) ?? 0) < OP_MIN_GAP_MS) {
+      res.status(429).json({ error: '操作太快,稍候再试' })
+      return
+    }
+    lastOpAt.set(userId, now)
+
+    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
+    const uid = typeof body.uid === 'string' ? body.uid.slice(0, 64) : ''
+    const archId = typeof body.archId === 'string' ? body.archId.slice(0, 64) : ''
+    const spec = typeof body.spec === 'string' ? body.spec.slice(0, 16) : ''
+    if (uid === '' || !(await isApprenticeArch(archId))) {
+      res.status(400).json({ error: '差事申请无效' })
+      return
+    }
+    const seconds = await apprenticeTaskSeconds(spec)
+    if (seconds < 0) {
+      res.status(400).json({ error: '差事申请无效' })
+      return
+    }
+    const level = clampInt(body.level, 1, MAX_LEVEL_CLAMP)
+    const major = clampInt(body.major, 0, MAX_MAJOR_CLAMP)
+    await run(
+      'REPLACE INTO apprentice_tasks (user_id, uid, arch_id, spec, level, major, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [userId, uid, archId, spec, level, major, now]
+    )
+    res.json({ ok: true })
+  })().catch(() => res.status(500).json({ error: '服务器异常' }))
+})
+
+/** 收割:过工期关 → 复算产出 → 删行。并发双击由锁串行,先到者兑现,后者查无此账 */
+apprenticeRouter.post('/apprentice/task/claim', requireAuth, (req: Request, res: Response) => {
+  void withKeyLock(`apprentice:${req.user!.id}`, async () => {
+    const userId = req.user!.id
+    const now = Date.now()
+    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
+    const uid = typeof body.uid === 'string' ? body.uid.slice(0, 64) : ''
+    if (uid === '') {
+      res.status(400).json({ error: '差事申请无效' })
+      return
+    }
+    const row = await get<{ arch_id: string; spec: string; level: number; major: number; started_at: number }>(
+      'SELECT arch_id, spec, level, major, started_at FROM apprentice_tasks WHERE user_id = ? AND uid = ?',
+      [userId, uid]
+    )
+    if (row === undefined) {
+      res.json({ ok: false, reason: '没有在途的差事' })
+      return
+    }
+    const seconds = await apprenticeTaskSeconds(row.spec)
+    if (seconds < 0) {
+      res.json({ ok: false, reason: '差事账不可复算' })
+      return
+    }
+    // 工期按服务端时钟:开工到现在的真实经过。本机时钟偏快也提前不了 —— 开工时刻就是服务端记的
+    if (now - row.started_at < seconds * 1000) {
+      res.json({ ok: false, reason: '尚在差中' })
+      return
+    }
+    const spoils = await computeApprenticeSpoils(row.arch_id, row.spec, row.major, row.level)
+    if (spoils === null) {
+      res.json({ ok: false, reason: '差事产出不可复算' })
+      return
+    }
+    await run('DELETE FROM apprentice_tasks WHERE user_id = ? AND uid = ?', [userId, uid])
+    res.json({ ok: true, spoils })
+  }).catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})

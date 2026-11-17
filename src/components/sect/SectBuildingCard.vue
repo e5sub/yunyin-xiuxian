@@ -124,7 +124,7 @@
     // 上限 = (山门+1)×2 → 要再升一级,山门须到 floor(当前等级 / 2)
     if (gateLimited.value) return `需山门 ${Math.floor(level.value / 2)} 级`
     if (building.value) return '尚在营造'
-    if (queueFull.value) return '营造队列已满 · 山门 20/40/60/80 级各增一位'
+    if (queueFull.value) return '营造队列已满'
     return `门派库不足 · 差 ${Math.max(0, cost.value - sect.pool)}`
   })
 

@@ -20,6 +20,7 @@ import { autoOpsRouter, startAutoOpsJob } from './autoOps.js'
 import { dungeonRouter } from './routes/dungeon.js'
 import { eventRouter } from './routes/event.js'
 import { leisureRouter } from './routes/leisure.js'
+import { apprenticeRouter } from './routes/apprentice.js'
 import { initDb, run } from './db.js'
 import { migrateLegacySects } from './sectState.js'
 import { gmPath, gmRouter } from './admin.js'
@@ -137,6 +138,7 @@ async function main(): Promise<void> {
   app.use('/api', jsonSmall, marketRouter)
   app.use('/api', jsonSmall, saveRouter)
   app.use('/api', jsonSmall, socialRouter)
+  app.use('/api', jsonSmall, apprenticeRouter)
 
   // GM 后台:路径可自定义;管理 API 在 <path>/api,页面托管同一前缀
   const gm = gmPath()
