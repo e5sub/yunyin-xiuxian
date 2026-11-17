@@ -4021,26 +4021,35 @@ select option {
     max-width: 36rem;
   }
 
-  /* 滚动条:default 那条太粗,压在纸色上像一道铁灰 */
-  main {
-    scrollbar-width: thin;
-    scrollbar-color: rgb(var(--color-ink-rgb) / 0.22) transparent;
-  }
-  main::-webkit-scrollbar {
+  /* 滚动条:移动端那 3px 细线在 PC 上几乎看不见。页面里会滚的不止 main
+     (门派/榜单等页有自己的内滚容器),所以按全局容器统一改;
+     只写 ::-webkit-scrollbar,不碰 scrollbar-width/color ——
+     新版 Chromium 里标准属性一生效,整条 webkit 自定义就被禁用,两条会打架 */
+  *::-webkit-scrollbar {
     width: 10px;
+    height: 10px;
   }
-  main::-webkit-scrollbar-track {
+  *::-webkit-scrollbar-track,
+  *::-webkit-scrollbar-corner {
     background: transparent;
   }
-  main::-webkit-scrollbar-thumb {
+  *::-webkit-scrollbar-thumb {
     border: 3px solid transparent;
     border-radius: 999px;
     background: rgb(var(--color-ink-rgb) / 0.22);
     background-clip: content-box;
   }
-  main::-webkit-scrollbar-thumb:hover {
+  *::-webkit-scrollbar-thumb:hover {
     background: rgb(var(--color-ink-rgb) / 0.36);
     background-clip: content-box;
+  }
+
+  /* 不认 webkit 伪元素的(Firefox)退回标准属性 */
+  @supports not selector(*::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: rgb(var(--color-ink-rgb) / 0.22) transparent;
+    }
   }
 }
 

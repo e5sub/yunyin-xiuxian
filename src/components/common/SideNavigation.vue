@@ -17,7 +17,7 @@
     </div>
     <div class="ink-divider mx-4 shrink-0" />
 
-    <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3 [scrollbar-width:thin]">
+    <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3">
       <template v-for="group in groups" :key="group.title">
         <p class="px-2 pb-1 pt-3 text-[10px] tracking-[0.2em] text-ink-faint">{{ group.title }}</p>
         <RouterLink
