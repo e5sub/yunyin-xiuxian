@@ -46,7 +46,8 @@
           <button class="-my-1.5 rounded px-2 py-1.5 text-[11px] text-cinnabar ring-1 ring-inset ring-cinnabar/30 active:opacity-60" @click="decomposeOpen = true">分解</button>
         </span>
       </div>
-      <div class="mt-2 grid grid-cols-3 gap-2">
+      <!-- inv-slots/inv-items/inv-pills/inv-materials:PC 上加密列数,见 style.css「PC 布局」 -->
+      <div class="inv-slots mt-2 grid grid-cols-3 gap-2">
         <button
           v-for="row in slotRows"
           :key="row.slot"
@@ -109,7 +110,7 @@
       <!-- hint「满包掉落化尘」:不可逆后果(见 core/loot),事前只此一处 -->
       <div v-if="allItems.length" class="mt-4">
         <SectionTitle title="全部藏品" :hint="`${allItems.length} 件 · 行囊 ${inventory.bagItems.length}/${inventory.capacity} · 满包掉落化尘`" />
-        <div class="mt-2 grid grid-cols-5 gap-1.5">
+        <div class="inv-items mt-2 grid grid-cols-5 gap-1.5">
           <EquipmentCard v-for="row in shownItems" :key="row.item.uid" :item="row.item" :equipped="row.equipped" @open="openDetail" />
         </div>
         <!-- 满包 120 件时全量渲染是 2286 个节点,实测进页独占主线程 276ms;先渲染一批,其余按需铺开 -->
@@ -144,7 +145,7 @@
         <span class="shrink-0 text-[12px] text-ink-faint">›</span>
       </button>
 
-      <div v-if="pillRows.length" class="mt-3 grid grid-cols-4 gap-1.5">
+      <div v-if="pillRows.length" class="inv-pills mt-3 grid grid-cols-4 gap-1.5">
         <button
           v-for="row in pillRows"
           :key="row.def.id"
@@ -188,7 +189,7 @@
     </template>
 
     <template v-else-if="tab === 'material'">
-      <div class="mt-3 grid grid-cols-4 gap-1.5">
+      <div class="inv-materials mt-3 grid grid-cols-4 gap-1.5">
         <button
           v-for="m in materialGrid"
           :key="m.key"

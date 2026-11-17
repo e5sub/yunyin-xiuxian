@@ -4021,6 +4021,21 @@ select option {
     max-width: 36rem;
   }
 
+  /* 背包的格子图(InventoryView):正文 960 上限是给长句的,不是给格子图的 ——
+     手机上 3/4/5 列的格子搬到 PC 会被撑成一间房(装备槽约 316px 宽、丹药 236px 见方)。
+     按手机上格子两边长度(装备槽约百像素、丹药七八十见方)加密列数;
+     这四个 class 只有背包页在用,加规则不会外溢到别的页。 */
+  .inv-slots {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .inv-items {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+  }
+  .inv-pills,
+  .inv-materials {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+  }
+
   /* 滚动条:移动端那 3px 细线在 PC 上几乎看不见。页面里会滚的不止 main
      (门派/榜单等页有自己的内滚容器),所以按全局容器统一改;
      只写 ::-webkit-scrollbar,不碰 scrollbar-width/color ——
