@@ -18,7 +18,8 @@ const ENTRY_POINTS = [
   'src/core/forgeResolve.ts',
   'src/core/levelResolve.ts',
   'src/core/sectRules.ts',
-  'src/core/apprenticeService.ts'
+  'src/core/apprenticeService.ts',
+  'src/core/salvage.ts'
 ]
 
 await build({
@@ -40,6 +41,8 @@ console.log(`[build-vendor] ${ENTRY_POINTS.length} 个模块 -> server/vendor/`)
 // (window/document/import.meta.env 直读)都只有线上首次调用才会炸 —— 必须在这里拦住。
 const EXPECTED = {
   'apprenticeService.mjs': ['isApprenticeArch', 'apprenticeSpoils', 'apprenticeTaskSeconds'],
+  // 分解进项账(1.74.1):server/src/salvageCredit 用它复算「消失的件」应得多少尘
+  'salvage.mjs': ['salvageOf'],
   'saveSanitize.mjs': ['sanitizeSaveSlices'],
   'saveAuthority.mjs': ['enforceSaveAuthority'],
   'profileRecompute.mjs': ['snapshotFromSlices', 'lootEnvFromSlices'],

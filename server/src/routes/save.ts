@@ -12,6 +12,7 @@ import { clearPurchases, pendingSpend, settlePurchases } from '../marketLedger.j
 import { clearForgeSpend, pendingForgeSpend, settleForgeSpend } from '../forgeLedger.js'
 import { clearProgressSpend, pendingProgressSpend, settleProgressSpend } from '../progressLedger.js'
 import { enforceLevelStates, resetLevelStatesFromData } from '../levelLedger.js'
+import { pendingSalvageCredit } from '../salvageCredit.js'
 import { clearSect, pendingSectSpend, readSectState, settleSectSpend } from '../sectState.js'
 import { withKeyLock } from '../mutex.js'
 
@@ -425,6 +426,18 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
     // 门派捐献与建派(1.68.0):门派状态不进存档,但捐献的实物是资源 —— 这笔账一样要在这里兑现,
     // 否则「捐了不扣」可以反复刷贡献。灵草按品阶分别扣(herbByGrade)。
     const sectSpend = await pendingSectSpend(req.user!.id)
+    /*
+     * 分解进项(1.74.1):件在上次档里有、这次的档里没有,就把它的分解返还折成尘的额度。
+     * 分解是纯客户端动作,服务端只看得见「件少了、尘多了」;不给这份额度,拆一批强化件
+     * 得到的尘会被尘的窗口上限当成改包压回(与 1.74.0 灵石那个 bug 同源)。
+     * 放在这里(装备台账覆盖之后、数值裁决之前):台账行还在,复算用的是权威投入。
+     */
+    let salvageDust = 0
+    try {
+      salvageDust = await pendingSalvageCredit(req.user!.id, prevData, normalizedData)
+    } catch {
+      salvageDust = 0
+    }
     const authority = await enforceAuthority({
       prev: prevData,
       next: normalizedData,
@@ -441,6 +454,8 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       realmAuthoritative: body.realmAuth === 2,
       // 1.58.1:道果/天赋/年龄/游玩时长的乘数基线(见 core/saveAuthority 的「转世乘区」一节)
       prevRebirths,
+      // 分解返还的尘(1.74.1):这几件在上次档里有、这次没有,服务端按台账里的投入复算过一次
+      creditDust: salvageDust,
       pendingSpend: {
         m: spend.m + forgeSpend.stone.m + progressSpend.stone.m + sectSpend.stone.m,
         e: spend.e + forgeSpend.stone.e + progressSpend.stone.e + sectSpend.stone.e,

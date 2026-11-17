@@ -47,6 +47,7 @@ function run(
     realmAuthoritative?: boolean
     pendingSpend?: { m: number; e: number }
     seenBefore?: boolean
+    creditDust?: number
   } = {}
 ) {
   const report = enforceSaveAuthority({
@@ -57,7 +58,8 @@ function run(
     prevRebirths: opts.prevRebirths,
     realmAuthoritative: opts.realmAuthoritative,
     pendingSpend: opts.pendingSpend,
-    seenBefore: opts.seenBefore
+    seenBefore: opts.seenBefore,
+    creditDust: opts.creditDust
   })
   if (report === null) throw new Error('裁决返回 null')
   return report
@@ -222,8 +224,30 @@ describe('数值权威化 · 修为与资源上限', () => {
     expect(report.corrections.some(c => c.path === 'resources.spiritStone')).toBe(false)
   })
 
-  it('灵气超积余上限被压回', () => {
+  it('分解返还的尘不按窗口压回:creditDust 全额放行(1.74.1)', () => {
+    // 故障注入:把 saveAuthority 里 `+ credit` 去掉,本用例红 —— 拆一批强化过的件,
+    // 返还量远超「满产 720h × 5%」的成批余量,没有这笔额度就会被当成改包抹掉
+    const prev = baseSave()
+    ;(prev.resources as Record<string, unknown>).dust = 0
     const next = baseSave()
+    ;(next.resources as Record<string, unknown>).dust = 100_000
+    const report = run(next, { prev, prevRealmIndex: 0, elapsedMs: ONE_TICK_MS, creditDust: 100_000 })
+    expect(Number((report.data.resources as Record<string, unknown>).dust)).toBe(100_000)
+    expect(report.corrections.some(c => c.path === 'resources.dust')).toBe(false)
+  })
+
+  it('没有出处的尘照样按窗口压回(credit 只认服务端复算的那一份)', () => {
+    const prev = baseSave()
+    ;(prev.resources as Record<string, unknown>).dust = 0
+    const next = baseSave()
+    ;(next.resources as Record<string, unknown>).dust = 100_000
+    const report = run(next, { prev, prevRealmIndex: 0, elapsedMs: ONE_TICK_MS, creditDust: 1_000 })
+    const dust = Number((report.data.resources as Record<string, unknown>).dust)
+    expect(dust).toBeLessThan(100_000)
+    expect(report.corrections.some(c => c.path === 'resources.dust')).toBe(true)
+  })
+
+  it('灵气超积余上限被压回', () => {    const next = baseSave()
     ;(next.resources as Record<string, unknown>).qi = 1e12
     const report = run(next, { prev: baseSave(), prevRealmIndex: 0 })
     expect(Number((report.data.resources as Record<string, unknown>).qi)).toBeLessThan(1e12)

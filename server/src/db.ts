@@ -265,6 +265,17 @@ CREATE TABLE IF NOT EXISTS apprentice_tasks (
   started_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, uid)
 );
+-- 分解进项账(1.74.1):分解/化尘是纯客户端动作,服务端只看到「件不见了、尘多了一截」——
+-- 尘的上限本就按产速估(满产 720 小时 × 5%),一口气拆掉一批强化过的件必然越过,
+-- 超出部分被当改包压回。现按「上次档里有、这次档里没有」的件复算分解返还(用 equip_state
+-- 里的权威投入),把这份尘记在这里、上传时全额放进可增长量;每件只计一次(挂单取回不算两次)。
+CREATE TABLE IF NOT EXISTS salvage_credit (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  uid TEXT NOT NULL,
+  dust REAL NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, uid)
+);
 -- 装备状态台账(1.58.3):强化/重铸/词条转移的唯一写入口是 POST /api/forge/op,
 -- 签发后把该件的等级与词条记在此处;上传存档时以台账为准 —— 客户端自报的等级/词条不作数。
 -- 只管「原地改件」的那几个字段(level/affixes/sealed/reforgeCount/transferCount/invested),
@@ -699,6 +710,15 @@ CREATE TABLE IF NOT EXISTS apprentice_tasks (
   started_at BIGINT NOT NULL,
   PRIMARY KEY (user_id, uid),
   CONSTRAINT fk_apprentice_tasks_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- 分解进项账(1.74.1):见 SQLite 侧同名表注释
+CREATE TABLE IF NOT EXISTS salvage_credit (
+  user_id BIGINT NOT NULL,
+  uid VARCHAR(64) NOT NULL,
+  dust DOUBLE NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, uid),
+  CONSTRAINT fk_salvage_credit_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS equip_state (
   user_id BIGINT NOT NULL,

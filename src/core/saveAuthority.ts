@@ -119,6 +119,16 @@ export interface AuthorityInput {
    * 后者只可能是把分片删掉重传 —— 基线被洗成「无」之后再传满值,就能每次顶满上限(1.67.0)。
    */
   seenBefore?: boolean
+  /**
+   * 分解返还的尘(1.74.1):上次的档里有、这次的档里没有的装备,由服务端按台账里的
+   * 权威投入复算过一次分解返还(见 server/src/salvageCredit)。
+   *
+   * 分解是纯客户端动作,尘又没有自己的进项账 —— 一次拆掉一批强化过的件,返还量必然
+   * 越过「满产 720 小时 × 5%」这条窗口线,超出部分会被当改包压回。这笔额度是**有出处**的
+   * (件真的存在过、投入真的付过),所以直接加在尘的上限之上,不受持有上限夹;
+   * 其余资源没有这条通道,窗口钳制照旧。
+   */
+  creditDust?: number
 }
 
 export interface AuthorityCorrection {
@@ -455,7 +465,10 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
         const cur = numOf(nextRes[field])
         const prevVal = prevRes !== null ? finiteNum(prevRes[field]) : null
         const catchUp = catchUpCeil(prevVal, (incomeOf(capMajor)[field] ?? 0) * elapsedHours, cap)
-        const ceil = smallSpend[field] > 0 ? Math.max(0, catchUp - smallSpend[field]) : catchUp
+        // 分解返还(1.74.1)只加在尘上:件真的存在过,这份尘有出处,不该被窗口线夹
+        const credit = field === 'dust' ? Math.max(0, numOf(input.creditDust)) : 0
+        const ceil =
+          (smallSpend[field] > 0 ? Math.max(0, catchUp - smallSpend[field]) : catchUp) + credit
         if (cur > ceil) {
           corrections.push({ path: `resources.${field}`, before: nextRes[field], after: Math.floor(ceil) })
           nextRes[field] = Math.floor(ceil)
