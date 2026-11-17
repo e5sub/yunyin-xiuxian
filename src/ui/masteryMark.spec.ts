@@ -137,9 +137,9 @@ describe('满级标记 · 玩家挣来的状态要有形状', () => {
     const DETAIL = readFileSync(resolve(ROOT, 'src/components/equipment/EquipmentDetailDialog.vue'), 'utf-8')
     const PANEL = readFileSync(resolve(ROOT, 'src/components/equipment/UpgradePanel.vue'), 'utf-8')
 
-    // 装备详情:按钮常驻,代价为 null 时禁用
+    // 装备详情:按钮常驻,代价为 null 时禁用(1.74.0 起另有「结算在途」一道禁下,见 settleQueue)
     expect(DETAIL, '装备强化钮不该写 v-if="upQuote"').not.toMatch(/<button[^>]*\bv-if="upQuote"/)
-    expect(DETAIL, '装备满级时按钮禁用').toContain(':disabled="upCost ? upShort !== null : true"')
+    expect(DETAIL, '装备满级时按钮禁用').toContain(':disabled="busy || !upCost || upShort !== null"')
     expect(DETAIL, '装备满级时按钮写短状态').toContain("!upCost ? '已至上限' : '强 化'")
 
     // 强化面板:整块不整块消失,留一条状态行
