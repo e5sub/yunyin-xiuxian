@@ -134,7 +134,7 @@ forgeRouter.post('/forge/op', requireAuth, (req: Request, res: Response) => {
     const mod = await clientForge()
     // VIP 有效期内修行开销九折:强化/重铸/转移的价目只由服务端算,客户端那侧是预览
     const vip = await vipActive(req.user!.id)
-    // 无头结算:水合 → 采信不低于云档的上报余额 → 同一套纯账层掷点 → 变更件与应扣账
+    // 无头结算:水合 → 采信上报余额(1.73.0 起以上报为准,不拿云档垫付) → 同一套纯账层掷点
     const result = mod.resolveForgeFromSlices(
       data,
       body.op,

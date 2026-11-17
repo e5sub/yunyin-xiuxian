@@ -416,13 +416,13 @@ export function resolveForgeFromSlices(
     }
 
     /*
-     * 余额只采「不低于云档」的上报值:
-     * 客户端本地往往比云档新(刚拾到的器灵尘还没上传),不采信就会误报「缺料」。
-     * 但采信必须有天花板(1.66.1):此前只验「是有限数」,改包填个 1e30 就能拿根本不存在的
-     * 资源炼器 —— 花费只记进 pendingSpend,到下次上传才从资源增量里扣,扣不满等于部分免费。
-     * 天花板取上传裁决那把尺(core/saveAuthority 的持有上限):正常玩家的余额本来就压在这条线以下,
-     * 不误伤;而「未来资源」最多也就预支一档持有上限,与存档裁决同口径。
-     * 只压上报值,不回压云档 —— 云档超限是上传裁决的活,这里再改一次会让两条链互相拆台。
+     * 余额以上报值为准(1.73.0 修「强化清空灵石」):
+     * 钱是客户端本地付的(chargeRemoteSpend),服务端排计划就只能用客户端**此刻真实持有**的余额。
+     * 此前只升不降(取 max(云档, 上报)),而云档 20 秒才推一次 —— 两次上传之间本地花过钱
+     * (坊市/捐献/上一击强化),云档就比本地高;服务端拿旧的高余额把强化队列排得更长、按它收全额,
+     * 本地那点钱被钳到 0,这就是「强化有时候把灵石清空」的来历。
+     * 上报偏低也不吃亏:计划按低余额排、扣得少,云档的钱分文不少,下一次上传照常收敛。
+     * 天花板仍取持有上限(1.66.1):改包填 1e30 预支未来资源的路照旧堵死 —— 只压上报值,不回压云档。
      */
     const player = usePlayerStore()
     const resources = useResourcesStore()
@@ -431,21 +431,18 @@ export function resolveForgeFromSlices(
     const expCeil = expHoldCap(major, sub)
     const claimExp = gnumOf(claims.exp)
     if (claimExp !== null) {
-      const claim = gt(claimExp, expCeil) ? expCeil : claimExp
-      if (gt(claim, player.exp)) player.exp = { ...claim }
+      player.exp = { ...(gt(claimExp, expCeil) ? expCeil : claimExp) }
     }
     const dustCeil = holdCapOf(major, 'dust')
     if (typeof claims.dust === 'number' && Number.isFinite(claims.dust)) {
       const raw = Math.max(0, Math.trunc(claims.dust))
       // 上限为 0 表示「模型给不出产出」:此时不设限(与上传裁决同一处理,不拿 0 把余额清零)
-      const claim = dustCeil > 0 ? Math.min(raw, Math.floor(dustCeil)) : raw
-      if (claim > resources.dust) resources.dust = claim
+      resources.dust = dustCeil > 0 ? Math.min(raw, Math.floor(dustCeil)) : raw
     }
     const stoneCeil = holdCapOf(major, 'stone')
     const claimStone = gnumOf(claims.stone)
     if (claimStone !== null) {
-      const claim = stoneCeil > 0 && gt(claimStone, gn(stoneCeil)) ? gn(stoneCeil) : claimStone
-      if (gt(claim, resources.spiritStone)) resources.spiritStone = { ...claim }
+      resources.spiritStone = { ...(stoneCeil > 0 && gt(claimStone, gn(stoneCeil)) ? gn(stoneCeil) : claimStone) }
     }
 
     return resolveForgeOnStores(op)

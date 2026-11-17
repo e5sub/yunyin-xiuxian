@@ -562,18 +562,18 @@ export function resolveLevelFromSlices(
     }
 
     /*
-     * 余额只采「不低于云档」的上报值(与炼器同规):
-     * 客户端本地往往比云档新,不采信就会误报「缺料」。
-     * 但采信必须有天花板(1.66.1):此前只验「是有限数」,改包填个天文数字就能拿不存在的
-     * 悟道点/残页/玄铁/灵石升级 —— 花费只记进 progress_spend,到下次上传才从资源增量里扣,
-     * 扣不满等于部分免费。天花板取上传裁决那把尺(core/saveAuthority 的持有上限):
-     * 正常玩家的余额本来就压在这条线以下,不误伤;「未来资源」最多预支一档持有上限。
+     * 余额以上报值为准(1.73.0 与炼器同修「清空资源」):
+     * 钱是客户端本地付的,服务端排计划就只能用客户端此刻真实持有的余额。
+     * 此前只升不降(取 max(云档, 上报)),云档 20 秒一推,两次上传之间本地花过钱,
+     * 云档就比本地高 —— 服务端拿旧的高余额排单、按它收全额,本地被钳到 0。
+     * 上报偏低也不吃亏:计划按低余额排、扣得少,云档的钱分文不少。
+     * 天花板仍取持有上限(1.66.1):改包填天文数字预支未来资源的路照旧堵死。
      * 只压上报值,不回压云档 —— 云档超限是上传裁决的活,这里再改一次会让两条链互相拆台。
      */
     const player = usePlayerStore()
     const resources = useResourcesStore()
     const major = Math.trunc(Math.min(Math.max(numOr(player.major, 0), 0), MAX_MAJOR))
-    /** 小资源(整数)的采信值:先截到本境界上限,再交给调用方与云档取大 */
+    /** 小资源(整数)的采信值:截到本境界上限;上报偏低照采 —— 服务端只花真实持有的钱 */
     const claimSmall = (raw: unknown, field: string): number | null => {
       if (typeof raw !== 'number' || !Number.isFinite(raw)) return null
       const cap = holdCapOf(major, field)
@@ -582,19 +582,18 @@ export function resolveLevelFromSlices(
       return cap > 0 ? Math.min(claim, Math.floor(cap)) : claim
     }
     const wudaoClaim = claimSmall(claims.wudao, 'wudao')
-    if (wudaoClaim !== null && wudaoClaim > resources.wudao) resources.wudao = wudaoClaim
+    if (wudaoClaim !== null) resources.wudao = wudaoClaim
     const pageClaim = claimSmall(claims.page, 'page')
-    if (pageClaim !== null && pageClaim > resources.page) resources.page = pageClaim
+    if (pageClaim !== null) resources.page = pageClaim
     const oreClaim = claimSmall(claims.ore, 'ore')
-    if (oreClaim !== null && oreClaim > resources.ore) resources.ore = oreClaim
+    if (oreClaim !== null) resources.ore = oreClaim
     const stoneCeil = holdCapOf(major, 'stone')
     const stoneClaim = isPlainObject(claims.stone) ? claims.stone : null
     const claimM = stoneClaim !== null ? numOr(stoneClaim.m, Number.NaN) : Number.NaN
     const claimE = stoneClaim !== null ? numOr(stoneClaim.e, Number.NaN) : Number.NaN
     if (Number.isFinite(claimM) && Number.isFinite(claimE)) {
       const claim = { m: claimM, e: claimE }
-      const capped = stoneCeil > 0 && gt(claim, gn(stoneCeil)) ? gn(stoneCeil) : claim
-      if (gt(capped, resources.spiritStone)) resources.spiritStone = { ...capped }
+      resources.spiritStone = { ...(stoneCeil > 0 && gt(claim, gn(stoneCeil)) ? gn(stoneCeil) : claim) }
     }
 
     return resolveLevelOnStores(op)

@@ -186,7 +186,7 @@ describe('炼器裁决 · 强化', () => {
     expect(res.detail.kind === 'upgrade' && res.detail.tries).toBeLessThan(200)
   })
 
-  it('云档余额本身就高于上限时,不因采信上限被回压(压不压是上传裁决的活)', () => {
+  it('上报为 0 时照拒:服务端只花客户端真实持有的钱,云档再富也不替垫(1.73.0)', () => {
     const data = saveWith([mk('e1')])
     data.resources = { spiritStone: { m: 1, e: 40 }, dust: 1e12, qi: 0 }
     const res = resolveForgeFromSlices(
@@ -194,7 +194,32 @@ describe('炼器裁决 · 强化', () => {
       { op: 'upgrade', uid: 'e1' },
       { dust: 0, stone: { m: 0, e: 0 }, exp: { m: 0, e: 0 } }
     )!
-    expect(res.ok).toBe(true)
+    expect(res.ok).toBe(false)
+    expect(res.items).toEqual([])
+    expect(res.spend.dust).toBe(0)
+  })
+
+  it('上报低于云档时按上报算:本地花过的钱不该被云档垫付(1.73.0 清空灵石)', () => {
+    /*
+     * 现场还原:云档 20 秒一推,两次上传之间本地花过钱(坊市/捐献/上一击强化),
+     * 云档就比本地高。旧口径取 max(云档, 上报),服务端拿旧的高余额把强化队列排长、
+     * 按它收全额,客户端本地只有少一截的钱 —— chargeRemoteSpend 钳到 0,灵石清空。
+     * 新口径:余额以上报为准,计划与扣款都不得超过它。
+     */
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const data = saveWith([mk('w1'), mk('h1')], { weapon: 'w1', head: 'h1' })
+    const rich = resolveForgeFromSlices(data, { op: 'sweep' })!
+    expect(rich.ok).toBe(true)
+    expect(rich.detail.kind === 'sweep' && rich.detail.tried).toBe(2)
+    const poor = resolveForgeFromSlices(
+      data,
+      { op: 'sweep' },
+      { dust: 1_000_000, stone: { m: 1, e: 5 }, exp: { m: 1, e: 9 } }
+    )!
+    // 云档每件 1e9、上报只 1e5:连一件都付不起,一分不扣
+    expect(poor.ok).toBe(false)
+    expect(poor.items).toEqual([])
+    expect(toNum(poor.spend.stone)).toBe(0)
   })
 })
 

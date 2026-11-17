@@ -339,10 +339,13 @@ describe('升级裁决 · 无头水合', () => {
     expect(remote!.slices.dongfu).toBeUndefined()
   })
 
-  it('余额采「不低于云档」的上报值:本地多报可以,少报按云档', () => {
-    // 云档 wudao 5 万,上报 1 万(少报):按云档算,照样付得起
-    const a = resolveLevelFromSlices(saveWith(), { op: 'gongfaUpgrade', id: G }, { wudao: 10_000 })
-    expect(a!.ok).toBe(true)
+  it('余额以上报值为准(1.73.0):上报偏低照采,服务端不拿云档垫付;多报采信', () => {
+    // 云档 wudao 5 万,上报 0(少报):本地真实持有 0,一分不扣、缺料被拒 ——
+    // 旧口径取 max(云档, 上报),云档 20 秒一推,本地花过钱后云档偏高,
+    // 服务端按旧高余额收全额,本地被钳到 0 ——「升级清空资源」就是它
+    const a = resolveLevelFromSlices(saveWith(), { op: 'gongfaUpgrade', id: G }, { wudao: 0 })
+    expect(a!.ok).toBe(false)
+    expect(a!.reason).toBe('wudao')
     // 云档 wudao 0,上报 10 万(多报):采信上报,也付得起 —— 花多少由服务端算
     const b = resolveLevelFromSlices(
       saveWith({ resources: { spiritStone: { m: 1, e: 9 }, wudao: 0, page: 10_000, ore: 0, dust: 0, qi: 0 } }),

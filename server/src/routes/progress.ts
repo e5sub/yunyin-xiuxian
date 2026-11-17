@@ -122,7 +122,7 @@ progressRouter.post('/progress/op', requireAuth, (req: Request, res: Response) =
     const mod = await clientLevel()
     // VIP 有效期内修行开销九折:价目只由服务端算,客户端那侧的价签是预览
     const vip = await vipActive(req.user!.id)
-    // 无头结算:水合 → 采信不低于云档的上报余额 → 同一套纯账层算价扣款 → 变更分片与应扣账
+    // 无头结算:水合 → 采信上报余额(1.73.0 起以上报为准,不拿云档垫付) → 同一套纯账层算价扣款
     const result = mod.resolveLevelFromSlices(
       data,
       body.op,
