@@ -26,10 +26,12 @@ import {
   addApply,
   addMember,
   countApplies,
+  countByRole,
   countMembers,
   createSect,
   deleteSect,
   hallOfData,
+  isSectRole,
   listApplies,
   listMembers,
   listSects,
@@ -47,6 +49,7 @@ import {
   type SectApplyView,
   type SectBriefView,
   type SectMemberRow,
+  type SectRole,
   type SectSpend,
   type SectState
 } from '../sectState.js'
@@ -80,6 +83,10 @@ interface SectRules {
   memberCap: (hallLevel: number) => number
   /** 一家门派同时能挂几份待审申请(data/sect 的 SECT_APPLY_MAX) */
   applyCap: () => number
+  /** 职位(1.71.0):审批授权 / 逐人授权矩阵 / 副掌门与长老的名额 */
+  canReviewSect: (role: SectRole | null) => boolean
+  canKickSect: (actor: SectRole, target: SectRole) => boolean
+  roleCap: (role: SectRole) => number | null
 }
 
 let cached: Promise<SectRules> | null = null
@@ -170,6 +177,7 @@ interface SectView {
 }
 
 async function viewOf(userId: number, now: number): Promise<SectView> {
+  const rules = await clientRules()
   const { state, done, member, sectRow } = await readSettledSectState(userId, now)
   if (member === null) {
     const apply = await readApply(userId)
@@ -184,8 +192,9 @@ async function viewOf(userId: number, now: number): Promise<SectView> {
   return {
     state,
     done,
-    // 待审申请只有掌门看得到:门人拿到的是空表,免得界面把「门外还有几个人等着」当成自己的事
-    applies: member.role === 'leader' ? await listApplies(sectRow) : [],
+    // 待审申请发给有审批权的人(掌门/副掌门/长老):门人拿到的是空表,
+    // 免得界面把「门外还有几个人等着」当成自己的事
+    applies: isSectRole(member.role) && rules.canReviewSect(member.role) ? await listApplies(sectRow) : [],
     appliedTo: null,
     list: []
   }
@@ -383,12 +392,14 @@ sectRouter.post(
   })
 )
 
-/** 掌门审批:准许 → 入册;拒绝 → 删申请 */
+/** 掌门审批:准许 → 入册;拒绝 → 删申请(副掌门与长老也可审) */
 sectRouter.post(
   '/sect/review',
   requireAuth,
   act('review', async ({ now, body, member, sectRow, state, rules }) => {
-    if (member === null || member.role !== 'leader') return { ok: false, reason: 'notleader' }
+    if (member === null || !isSectRole(member.role) || !rules.canReviewSect(member.role)) {
+      return { ok: false, reason: 'notleader' }
+    }
     const target = posInt(body.user)
     if (target === 0 || target === member.user_id) return { ok: false, reason: 'gone' }
     const apply = await readApply(target)
@@ -411,17 +422,43 @@ sectRouter.post(
   })
 )
 
-/** 逐出门人(掌门) */
+/** 逐出门人(掌门与副掌门;授权矩阵见 core/sectRules 的 canKickSect) */
 sectRouter.post(
   '/sect/kick',
   requireAuth,
-  act('kick', async ({ body, member, sectRow }) => {
-    if (member === null || member.role !== 'leader') return { ok: false, reason: 'notleader' }
+  act('kick', async ({ body, member, sectRow, rules }) => {
+    if (member === null) return { ok: false, reason: 'notleader' }
     const target = posInt(body.user)
     if (target === 0 || target === member.user_id) return { ok: false, reason: 'gone' }
     const row = await readMember(target)
     if (row === null || row.sect_row !== sectRow) return { ok: false, reason: 'gone' }
+    const actorRole = isSectRole(member.role) ? member.role : 'member'
+    const targetRole = isSectRole(row.role) ? row.role : 'member'
+    if (!rules.canKickSect(actorRole, targetRole)) return { ok: false, reason: 'notleader' }
     await removeMember(target)
+    return { ok: true }
+  })
+)
+
+/** 任职罢免(仅掌门):把某位门人设为副掌门/长老,或罢为门人 */
+sectRouter.post(
+  '/sect/role',
+  requireAuth,
+  act('role', async ({ body, member, sectRow, rules }) => {
+    if (member === null || member.role !== 'leader') return { ok: false, reason: 'notleader' }
+    const target = posInt(body.user)
+    if (target === 0 || target === member.user_id) return { ok: false, reason: 'gone' }
+    const want = typeof body.role === 'string' ? body.role : ''
+    if (want !== 'deputy' && want !== 'elder' && want !== 'member') return { ok: false, reason: 'gone' }
+    const row = await readMember(target)
+    if (row === null || row.sect_row !== sectRow) return { ok: false, reason: 'gone' }
+    if (row.role === want) return { ok: true } // 已是此职:幂等,不算错
+    // 名额表挡超编:副掌门一位、长老四位;现任此职的这位不算在自己头上
+    const cap = rules.roleCap(want as SectRole)
+    if (cap !== null && (await countByRole(sectRow, want as SectRole, target)) >= cap) {
+      return { ok: false, reason: 'fullrole' }
+    }
+    await patchMember(target, { role: want as SectRole })
     return { ok: true }
   })
 )

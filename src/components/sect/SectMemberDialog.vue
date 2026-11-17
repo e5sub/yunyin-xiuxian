@@ -3,13 +3,13 @@
     <div class="space-y-3">
       <div class="flex items-baseline justify-between gap-2">
         <span class="font-kai text-[12px] tracking-wider text-ink-soft">
-          {{ sect.isLeader ? '掌门' : '门人' }} · 三脉同门
+          {{ ROLE_LABEL[myRole] }} · 三脉同门
         </span>
         <span class="shrink-0 text-[10px] tabular text-ink-faint">门中 {{ sect.memberCount }}/{{ sect.capacity }} 人</span>
       </div>
 
-      <!-- 掌门才看得到候批;门人只有一页门册 -->
-      <InkTabs v-if="sect.isLeader" v-model="tab" :tabs="tabs" />
+      <!-- 有审批权(掌门/副掌门/长老)才看得到候批;门人只有一页门册 -->
+      <InkTabs v-if="sect.canReview" v-model="tab" :tabs="tabs" />
 
       <template v-if="tab === 'member'">
         <div class="flex items-stretch gap-1.5">
@@ -35,7 +35,7 @@
         </div>
 
         <p class="text-[10px] leading-relaxed text-ink-faint">
-          共 {{ sect.memberTotal }} 人<span v-if="sect.memberQuery !== ''">,命中「{{ sect.memberQuery }}」</span>。按入门先后,掌门在首。
+          共 {{ sect.memberTotal }} 人<span v-if="sect.memberQuery !== ''">,命中「{{ sect.memberQuery }}」</span>。职位高者在首,其余按入门先后。
         </p>
 
         <p v-if="sect.memberRows.length === 0" class="rounded-md border border-ink/10 bg-paper-deep/40 px-3 py-4 text-center text-[11px] leading-relaxed text-ink-faint">
@@ -43,26 +43,60 @@
         </p>
 
         <ul v-else class="space-y-1.5">
-          <li v-for="m in sect.memberRows" :key="m.userId" class="flex items-center gap-2 rounded-md bg-paper-deep/40 px-2 py-1.5">
-            <span class="grid h-6 w-6 shrink-0 place-items-center rounded" :class="m.role === 'leader' ? 'bg-ink/10 text-ink' : 'bg-ink/5 text-ink-faint'">
-              <GameIcon :name="ROLE_ICON[m.role]" :size="12" />
-            </span>
-            <span class="min-w-0 grow truncate text-[12px]" :class="m.userId === myId ? 'text-ink' : 'text-ink-soft'">
-              {{ m.name }}<span v-if="m.userId === myId" class="ml-1 text-[10px] text-ink-faint">(我)</span>
-            </span>
-            <span class="shrink-0 text-[10px] tabular text-ink-faint">
-              {{ m.role === 'leader' ? '掌门' : `贡献 ${m.personal}` }}
-            </span>
-            <button
-              v-if="sect.isLeader && m.userId !== myId"
-              class="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-ink-faint ring-1 ring-inset ring-ink/20 active:text-cinnabar"
-              :aria-label="`逐出 ${m.name}`"
-              :disabled="sect.pending"
-              :title="sect.pending ? '结算中' : undefined"
-              @click="kick(m.userId)"
-            >
-              逐 出
-            </button>
+          <li v-for="m in sect.memberRows" :key="m.userId" class="rounded-md bg-paper-deep/40 px-2 py-1.5">
+            <div class="flex items-center gap-2">
+              <span
+                class="grid h-6 w-6 shrink-0 place-items-center rounded"
+                :class="m.role === 'leader' ? 'bg-ink/10 text-ink' : 'bg-ink/5 text-ink-faint'"
+              >
+                <GameIcon :name="ROLE_ICON[m.role]" :size="12" />
+              </span>
+              <span class="min-w-0 grow truncate text-[12px]" :class="m.userId === myId ? 'text-ink' : 'text-ink-soft'">
+                {{ m.name }}<span v-if="m.userId === myId" class="ml-1 text-[10px] text-ink-faint">(我)</span>
+              </span>
+              <span class="shrink-0 text-[10px] tabular text-ink-faint">
+                {{ ROLE_LABEL[m.role] }} · 贡献 {{ m.personal }}
+              </span>
+            </div>
+            <!-- 掌门管职位;有逐人权(掌门/副掌门)再多个逐出 -->
+            <div v-if="canManage(m)" class="mt-1.5 flex flex-wrap gap-1.5">
+              <button
+                v-if="sect.isLeader && m.role !== 'deputy'"
+                class="rounded px-1.5 py-0.5 text-[10px] text-ink-faint ring-1 ring-inset ring-ink/20 active:text-cinnabar"
+                :disabled="sect.pending"
+                :aria-label="sect.pending ? '结算中' : `任 ${m.name} 为副掌门`"
+                @click="setRole(m.userId, 'deputy')"
+              >
+                任副掌门
+              </button>
+              <button
+                v-if="sect.isLeader && m.role === 'member'"
+                class="rounded px-1.5 py-0.5 text-[10px] text-ink-faint ring-1 ring-inset ring-ink/20 active:text-cinnabar"
+                :disabled="sect.pending"
+                :aria-label="sect.pending ? '结算中' : `任 ${m.name} 为长老`"
+                @click="setRole(m.userId, 'elder')"
+              >
+                任长老
+              </button>
+              <button
+                v-if="sect.isLeader && m.role !== 'member'"
+                class="rounded px-1.5 py-0.5 text-[10px] text-ink-faint ring-1 ring-inset ring-ink/20 active:text-cinnabar"
+                :disabled="sect.pending"
+                :aria-label="sect.pending ? '结算中' : `罢 ${m.name} 为门人`"
+                @click="setRole(m.userId, 'member')"
+              >
+                罢为门人
+              </button>
+              <button
+                class="rounded px-1.5 py-0.5 text-[10px] text-ink-faint ring-1 ring-inset ring-ink/20 active:text-cinnabar"
+                :aria-label="`逐出 ${m.name}`"
+                :disabled="sect.pending"
+                :title="sect.pending ? '结算中' : undefined"
+                @click="kick(m.userId)"
+              >
+                逐 出
+              </button>
+            </div>
           </li>
         </ul>
 
@@ -89,7 +123,7 @@
         </div>
       </template>
 
-      <!-- 门外候着:只有掌门看得到(服务端也只发给他) -->
+      <!-- 门外候着:有审批权的人看得到(服务端也只发给他们) -->
       <template v-else>
         <p v-if="sect.applies.length === 0" class="rounded-md border border-ink/10 bg-paper-deep/40 px-3 py-4 text-center text-[11px] leading-relaxed text-ink-faint">
           还没有人来投。门人名额随山门涨,升一级多一人。
@@ -162,16 +196,28 @@
   import InkTabs from '@/components/common/InkTabs.vue'
   import { useAuthStore } from '@/stores/auth'
   import { useSectStore } from '@/stores/sect'
+  import type { SectRole } from '@/core/sectRules'
 
   const open = defineModel<boolean>('open', { required: true })
 
   const auth = useAuthStore()
   const sect = useSectStore()
 
-  /** 门册上的小像:掌门戴冠,门人用普通人像(写成查表,别在模板里塞条件表达式) */
-  const ROLE_ICON: Record<'leader' | 'member', string> = { leader: 'crown', member: 'user' }
+  /** 门册上的小像:掌门戴冠、副掌门佩玉、长老执卷,门人用普通人像(写成查表,别在模板里塞条件表达式) */
+  const ROLE_ICON: Record<SectRole, string> = { leader: 'crown', deputy: 'gem', elder: 'scroll', member: 'user' }
 
+  /** 职位名(门册行用;页首走 store 的 roleLabel,同一份四个词) */
+  const ROLE_LABEL: Record<SectRole, string> = { leader: '掌门', deputy: '副掌门', elder: '长老', member: '门人' }
+
+  const myRole = computed<SectRole>(() => sect.state.role ?? 'member')
   const myId = computed(() => auth.userId)
+
+  /** 这一行要不要摆出管理钮:掌门管职位;副掌门只对可逐之人亮逐出 */
+  function canManage(m: { userId: number; role: SectRole }): boolean {
+    if (m.userId === myId.value) return false
+    return sect.isLeader || sect.canKick(m.role)
+  }
+
   /** 门已满:审批按钮直接改成「先升山门」 */
   const full = computed(() => sect.memberCount >= sect.capacity)
 
@@ -221,6 +267,11 @@
   function kick(user: number): void {
     if (sect.pending) return
     void sect.kick(user)
+  }
+
+  function setRole(user: number, role: SectRole): void {
+    if (sect.pending) return
+    void sect.setRole(user, role)
   }
 
   function pressLeave(): void {

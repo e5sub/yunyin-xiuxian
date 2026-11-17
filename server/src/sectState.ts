@@ -30,7 +30,15 @@ import { loadClientModule } from './clientVendor.js'
 const SOURCE_MODULE = '../../src/core/sectRules'
 const VENDOR_FILE = 'sectRules'
 
-export type SectRole = 'leader' | 'member'
+export type SectRole = 'leader' | 'deputy' | 'elder' | 'member'
+
+/** 合法身份表(与 core/sectRules 的 SECT_ROLES 同一份清单,服务端另写一份不 import) */
+export const SECT_ROLES: readonly SectRole[] = ['leader', 'deputy', 'elder', 'member']
+
+/** 库里的 role 字段是否认识(手工改库/旧行兜底) */
+export function isSectRole(v: unknown): v is SectRole {
+  return (SECT_ROLES as readonly unknown[]).includes(v)
+}
 
 /**
  * 状态的线上形状(core/sectRules 的 SectState)。这里另写一份而不是 import:
@@ -187,7 +195,7 @@ export async function listMembers(
   }>(
     `SELECT * FROM (${inner}) t
       WHERE (? = '' OR t.name LIKE ?)
-      ORDER BY CASE WHEN t.role = 'leader' THEN 0 ELSE 1 END, t.joined_at ASC
+      ORDER BY CASE t.role WHEN 'leader' THEN 0 WHEN 'deputy' THEN 1 WHEN 'elder' THEN 2 ELSE 3 END, t.joined_at ASC
       LIMIT ? OFFSET ?`,
     [sectRow, q, `%${q}%`, limit, offset]
   )
@@ -201,7 +209,7 @@ export async function listMembers(
     items: rows.map(r => ({
       userId: Number(r.user_id),
       name: typeof r.name === 'string' && r.name !== '' ? r.name : `道友${Number(r.user_id)}`,
-      role: r.role === 'leader' ? 'leader' : 'member',
+      role: isSectRole(r.role) ? r.role : 'member',
       personal: Number.isFinite(r.personal) ? Math.max(0, Math.trunc(r.personal)) : 0,
       totalDonated: Number.isFinite(r.total_donated) ? Math.max(0, Math.trunc(r.total_donated)) : 0,
       joinedAt: Number.isFinite(r.joined_at) ? Math.trunc(r.joined_at) : 0
@@ -292,7 +300,7 @@ export function composeState(body: SectState, member: SectMemberRow, members: nu
     day: member.day,
     donationsToday: Math.max(0, Math.trunc(member.donations_today)),
     totalDonated: Math.max(0, Math.trunc(member.total_donated)),
-    role: member.role === 'leader' ? 'leader' : 'member',
+    role: isSectRole(member.role) ? member.role : 'member',
     memberCount: Math.max(0, members)
   }
 }
@@ -395,6 +403,15 @@ export async function addMember(
 
 export async function removeMember(userId: number): Promise<void> {
   await run('DELETE FROM sect_members WHERE user_id = ?', [userId])
+}
+
+/** 某门里挂着某职位的有几人(任职前按名额表挡;不算 target 本人,由调用方剔除) */
+export async function countByRole(sectRow: number, role: SectRole, excludeUser = 0): Promise<number> {
+  const row = await get<{ n: number }>(
+    'SELECT COUNT(*) AS n FROM sect_members WHERE sect_row = ? AND role = ? AND user_id <> ?',
+    [sectRow, role, excludeUser]
+  )
+  return row === undefined ? 0 : Math.max(0, Math.trunc(Number(row.n)))
 }
 
 /** 改某个门人的私账(不存在即什么也不做) */

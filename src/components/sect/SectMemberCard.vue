@@ -10,12 +10,12 @@
       几十行门人铺在中间,营造与技能得翻半天。这里只留一行计数与一个入口。
     -->
     <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
-      门册可查可翻;掌门还能在此审候批、逐人,或解散门派。
+      门册可查可翻;有职者还能审候批、逐人,掌门另可任职罢免与解散门派。
     </p>
 
     <button class="btn-ghost mt-2 w-full !py-1.5 !text-[12px]" @click="open = true">
       <span class="whitespace-nowrap">查看门人</span>
-      <span v-if="sect.isLeader && sect.applyCount > 0" class="whitespace-nowrap text-cinnabar">
+      <span v-if="sect.canReview && sect.applyCount > 0" class="whitespace-nowrap text-cinnabar">
         · 候批 {{ sect.applyCount }}
       </span>
     </button>

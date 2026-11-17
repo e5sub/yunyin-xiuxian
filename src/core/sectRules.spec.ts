@@ -18,6 +18,8 @@ import {
   buildingDurationMs,
   buildingLevelCap,
   canJoin,
+  canKickSect,
+  canReviewSect,
   donationDef,
   donationQuota,
   donationSplit,
@@ -26,6 +28,7 @@ import {
   hallTimeRate,
   memberCap,
   normalizeSectState,
+  roleCap,
   sectMods,
   sectNameOk,
   settleBuild,
@@ -453,5 +456,42 @@ describe('每日次数、名额与投师门槛', () => {
 
   it('门外候着的申请有上限(挡刷申请)', () => {
     expect(applyCap()).toBeGreaterThan(0)
+  })
+})
+
+describe('职位授权(1.71.0)', () => {
+  it('名额表:副掌门一位、长老四位,掌门与门人不走名额', () => {
+    expect(roleCap('deputy')).toBe(1)
+    expect(roleCap('elder')).toBe(4)
+    expect(roleCap('leader')).toBeNull()
+    expect(roleCap('member')).toBeNull()
+  })
+
+  it('审批权:掌门/副掌门/长老可审,门人与未入门不可审', () => {
+    expect(canReviewSect('leader')).toBe(true)
+    expect(canReviewSect('deputy')).toBe(true)
+    expect(canReviewSect('elder')).toBe(true)
+    expect(canReviewSect('member')).toBe(false)
+    expect(canReviewSect(null)).toBe(false)
+  })
+
+  it('逐人授权矩阵:掌门逐掌门以外的一切人;副掌门逐长老与门人;其余无权', () => {
+    for (const target of ['deputy', 'elder', 'member'] as const) {
+      expect(canKickSect('leader', target)).toBe(true)
+    }
+    expect(canKickSect('leader', 'leader')).toBe(false)
+    expect(canKickSect('deputy', 'elder')).toBe(true)
+    expect(canKickSect('deputy', 'member')).toBe(true)
+    expect(canKickSect('deputy', 'leader')).toBe(false)
+    expect(canKickSect('deputy', 'deputy')).toBe(false)
+    expect(canKickSect('elder', 'member')).toBe(false)
+    expect(canKickSect('member', 'member')).toBe(false)
+  })
+
+  it('修形认得四个身份:副掌门与长老原样留下,坏值落回空', () => {
+    expect(normalizeSectState({ name: '青冥', role: 'deputy' }).role).toBe('deputy')
+    expect(normalizeSectState({ name: '青冥', role: 'elder' }).role).toBe('elder')
+    expect(normalizeSectState({ name: '青冥', role: 'grandmaster' }).role).toBeNull()
+    expect(normalizeSectState({ name: '', role: 'leader' }).role).toBeNull()
   })
 })

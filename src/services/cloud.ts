@@ -5,7 +5,7 @@
  */
 import { useAuthStore } from '@/stores/auth'
 import type { EquipmentInstance } from '@/types'
-import type { SectState } from '@/core/sectRules'
+import type { SectRole, SectState } from '@/core/sectRules'
 import type { ForgeDetail, ForgeOp, ForgeSpend } from '@/core/forgeResolve'
 import type { LevelDetail, LevelOp, LevelSpend } from '@/core/levelResolve'
 
@@ -466,7 +466,7 @@ export interface AuthConfig {
 export interface SectMemberView {
   userId: number
   name: string
-  role: 'leader' | 'member'
+  role: SectRole
   personal: number
   totalDonated: number
   joinedAt: number
@@ -756,8 +756,10 @@ export const cloudApi = {
   /** 掌门审批:approve 为真即入册,为假即删申请 */
   sectReview: (user: number, approve: boolean): Promise<SectStateResp> =>
     request('POST', '/sect/review', { user, approve }),
-  /** 逐出门人(掌门) */
+  /** 逐出门人(掌门与副掌门) */
   sectKick: (user: number): Promise<SectStateResp> => request('POST', '/sect/kick', { user }),
+  /** 任职罢免(仅掌门):role ∈ deputy/elder/member */
+  sectRole: (user: number, role: string): Promise<SectStateResp> => request('POST', '/sect/role', { user, role }),
   /** 退出山门(门人;掌门得先解散) */
   sectLeave: (): Promise<SectStateResp> => request('POST', '/sect/leave', {}),
   /** 解散门派(掌门):门人与公账一并散 */

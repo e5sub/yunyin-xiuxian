@@ -99,6 +99,14 @@ export const SECT_MEMBERS_BASE = 10
 export const SECT_MEMBERS_PER_LEVEL = 1
 
 /**
+ * 职位名额(1.71.0):副掌门一位、长老四位,门人不限(名额随山门)。
+ * 职位是「授权」不是「人上人」—— 副掌门与长老替掌门分担审批,副掌门还可逐人;
+ * 任职与罢免只有掌门能做(见 core/sectRules 的 canKickSect / roleCap 与 /sect/role 路由)。
+ */
+export const SECT_DEPUTY_MAX = 1
+export const SECT_ELDER_MAX = 4
+
+/**
  * 门派建筑的等级**没有游戏上限**:山门能一直垒,门人的名额与其余建筑的余地也跟着一直开。
  * 999 只是「坏数硬夹」—— 存档里被写成 1e9 级时按它截断,别让面板与价目算到溢出。
  * 它不是天花板:按 core/sectRules 的曲线,50 级山门要三万多门派库,一百级已经是一年以上的事。

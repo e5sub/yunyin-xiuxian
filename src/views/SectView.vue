@@ -6,7 +6,7 @@
         {{ sect.founded ? sect.name : '门派' }}
       </p>
       <span v-if="sect.founded" class="shrink-0 rounded px-1.5 py-0.5 text-[10px] leading-none ring-1 ring-inset ring-ink/20" :class="sect.isLeader ? 'text-cinnabar' : 'text-ink-faint'">
-        {{ sect.isLeader ? '掌门' : '门人' }}
+        {{ sect.roleLabel }}
       </span>
     </div>
 
@@ -24,7 +24,7 @@
       <!-- 概览 -->
       <div class="rounded-md border border-ink/10 bg-paper-deep/50 px-3 py-2.5">
         <div class="flex items-center justify-between gap-2">
-          <span class="font-kai text-[12px] tracking-wider text-ink-soft">{{ sect.isLeader ? '掌门' : '门人' }} · 三脉同门</span>
+          <span class="font-kai text-[12px] tracking-wider text-ink-soft">{{ sect.roleLabel }} · 三脉同门</span>
           <span class="shrink-0 text-[10px] tabular" :class="sect.donationsLeft > 0 ? 'text-jade' : 'text-ink-faint'">
             今日捐献 {{ sect.donationsLeft }}/{{ quota }} 次
           </span>

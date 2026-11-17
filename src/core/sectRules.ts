@@ -17,6 +17,8 @@ import {
   SECT_DONATE_DAILY_CAP,
   SECT_DONATE_VIP_CAP,
   SECT_FOUND_COST,
+  SECT_ELDER_MAX,
+  SECT_DEPUTY_MAX,
   SECT_FOUND_MAJOR,
   SECT_HALL_SKILL_CUT,
   SECT_HALL_SKILL_CUT_MAX,
@@ -57,10 +59,13 @@ export interface SectBuildTask {
 }
 
 /**
- * 我在门中的身份。掌门可审批、逐人、解散;门人可捐献、修习、参与营造、自行退出。
- * 上限只有一人:建派者。掌门离开只有两条路 —— 解散门派,或删档(删档时掌门之位转给先入门者)。
+ * 我在门中的身份(1.71.0 起四级):
+ *   掌门   —— 审批、逐人、任职罢免、解散;离开只有两条路(解散,或删档传位);
+ *   副掌门 —— 审批、逐人(掌门与副掌门除外),每门一位;
+ *   长老   —— 审批,每门至多四位;
+ *   门人   —— 捐献、修习、参与营造、自行退出。
  */
-export type SectRole = 'leader' | 'member'
+export type SectRole = 'leader' | 'deputy' | 'elder' | 'member'
 
 /**
  * 门派状态。`day`/`donationsToday` 是服务端按 UTC+8 日界维护的捐献限次,
@@ -153,6 +158,33 @@ export function memberCap(hallLevel: number): number {
 /** 一家门派能同时挂着几份待审申请(服务端审批前按它挡刷申请;客户端不显示这个数) */
 export function applyCap(): number {
   return SECT_APPLY_MAX
+}
+
+/* ---------------- 职位(1.71.0) ---------------- */
+
+/** 全部合法身份(与 normalizeSectState / 服务端成员表同源) */
+const SECT_ROLES: readonly SectRole[] = ['leader', 'deputy', 'elder', 'member']
+
+/** 名额表:副掌门一位、长老四位;掌门与门人不走这张表(掌门唯一靠 leader_uid,门人随山门) */
+export function roleCap(role: SectRole): number | null {
+  if (role === 'deputy') return SECT_DEPUTY_MAX
+  if (role === 'elder') return SECT_ELDER_MAX
+  return null
+}
+
+/** 能不能审批申请:副掌门与长老替掌门分担,门人不能 */
+export function canReviewSect(role: SectRole | null): boolean {
+  return role === 'leader' || role === 'deputy' || role === 'elder'
+}
+
+/**
+ * 能不能逐人。掌门可逐除自己外任何人;副掌门可逐长老与门人;长老与门人不能逐人。
+ * 目标与发起者是同一人时一律 false(想走请走退门,贡献清零那条路)。
+ */
+export function canKickSect(actor: SectRole, target: SectRole): boolean {
+  if (actor === 'leader') return target !== 'leader'
+  if (actor === 'deputy') return target === 'elder' || target === 'member'
+  return false
 }
 
 /**
@@ -395,7 +427,7 @@ export function normalizeSectState(raw: unknown, now = Date.now()): SectState {
    * 身份与门人数只认服务端下发的形状:没门派的角色一律空。
    * 门人数按 [0, 5000] 夹 —— 上界只防坏数把面板撑破(山门不封顶,名额也不封顶)。
    */
-  out.role = founded && (src.role === 'leader' || src.role === 'member') ? src.role : null
+  out.role = founded && (SECT_ROLES as readonly unknown[]).includes(src.role) ? (src.role as SectRole) : null
   out.memberCount = founded ? intIn(src.memberCount, 0, 5000) : 0
 
   /*

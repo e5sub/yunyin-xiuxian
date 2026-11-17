@@ -62,6 +62,10 @@ const EXPECTED = {
     // 技能上限随山门涨:路由用它挡「到顶再点」,skillCost 也要吃这个档位
     'skillLevelCap',
     'skillCost',
+    // 职位(1.71.0):审批/逐人授权与名额表,路由用它判权
+    'canReviewSect',
+    'canKickSect',
+    'roleCap',
     'normalizeSectState'
   ]
 }

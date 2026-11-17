@@ -27,12 +27,15 @@ import type { SectBuildingId, SectDonateKind } from '@/data/sect'
 import type { HerbGrade } from '@/data/herbGrades'
 import {
   buildingLevelCap,
+  canKickSect,
+  canReviewSect,
   donationQuota,
   emptySectState,
   memberCap,
   normalizeSectState,
   sectMods,
   skillLevelCap,
+  type SectRole,
   type SectState
 } from '@/core/sectRules'
 
@@ -58,6 +61,8 @@ const REASON_TEXT: Record<string, string> = {
   full: '门人已满,先升山门',
   fullapply: '门外候着的人太多',
   notleader: '此事须掌门定夺',
+  /** 任职名额满了:副掌门一位、长老四位 */
+  fullrole: '此职已有人担任',
   isleader: '掌门须先解散门派',
   nosave: '云端还没有存档',
   retry: '门派有变 · 再试一次',
@@ -68,6 +73,9 @@ const REASON_TEXT: Record<string, string> = {
 function dayKeyNow(now = Date.now()): string {
   return new Date(now + 8 * 3_600_000).toISOString().slice(0, 10)
 }
+
+/** 职位名(界面文案;与服务端成员表的四个枚举值一一对应) */
+const ROLE_LABEL: Record<SectRole, string> = { leader: '掌门', deputy: '副掌门', elder: '长老', member: '门人' }
 
 export const useSectStore = defineStore('sect', () => {
   const state = ref<SectState>(emptySectState())
@@ -99,6 +107,13 @@ export const useSectStore = defineStore('sect', () => {
   /** 有门派:门派名是唯一凭据(建派才写名) */
   const founded = computed(() => state.value.name !== '')
   const isLeader = computed(() => state.value.role === 'leader')
+  /** 我的职位名(门派页徽标与门册页首共用;未入门 → 空串) */
+  const roleLabel = computed(() => (state.value.role === null ? '' : ROLE_LABEL[state.value.role]))
+  /** 有审批权:掌门、副掌门、长老(候批页签与红点跟它走) */
+  const canReview = computed(() => canReviewSect(state.value.role))
+  /** 我能不能逐掉某个身份的门人(与 /sect/kick 的授权矩阵同源) */
+  const canKick = (targetRole: SectRole): boolean =>
+    state.value.role !== null && canKickSect(state.value.role, targetRole)
   const name = computed(() => state.value.name)
   const personal = computed(() => state.value.personal)
   const pool = computed(() => state.value.pool)
@@ -247,11 +262,20 @@ export const useSectStore = defineStore('sect', () => {
     return ok
   }
 
-  /** 逐出门人(掌门) */
+  /** 逐出门人(掌门与副掌门) */
   async function kick(user: number): Promise<boolean> {
     const res = await run(() => cloudApi.sectKick(user))
     if (res === null) return false
     return absorb(res)
+  }
+
+  /** 任职罢免(仅掌门):设为副掌门/长老,或罢为门人 */
+  async function setRole(user: number, role: SectRole): Promise<boolean> {
+    const res = await run(() => cloudApi.sectRole(user, role))
+    if (res === null) return false
+    const ok = absorb(res)
+    if (ok) useUiStore().toast('门中职位已定', 'info')
+    return ok
   }
 
   /** 退出山门(门人;个人贡献随之清零) */
@@ -338,6 +362,9 @@ export const useSectStore = defineStore('sect', () => {
     rate,
     founded,
     isLeader,
+    canReview,
+    canKick,
+    roleLabel,
     name,
     personal,
     pool,
@@ -360,6 +387,7 @@ export const useSectStore = defineStore('sect', () => {
     cancelApply,
     review,
     kick,
+    setRole,
     leave,
     dissolve,
     donate,
