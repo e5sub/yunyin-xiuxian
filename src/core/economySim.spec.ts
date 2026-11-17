@@ -1,6 +1,6 @@
 /* eslint-disable no-console -- 体检报告输出,bun run test:report 依赖 */
 import { describe, expect, it } from 'vitest'
-import { auditEra, avgQualityRank, fullEconomyAudit, qiFillSeconds } from './economySim'
+import { auditEra, avgQualityRank, fullEconomyAudit, qiFillSeconds, stoneHoldRate } from './economySim'
 import { BT_QI_COST_RATIO } from '@/data/constants'
 import { MAX_MAJOR, worldOf } from '@/data/realms'
 import { maxTierForMajor } from '@/data/regions'
@@ -182,5 +182,20 @@ describe('经济闭环审计(Phase 19 · Phase 40 补界外与修为)', () => {
     const r2 = avgQualityRank(2)
     expect(r2, '炼气层级(2)掉落平均品阶应低于玄品').toBeLessThan(3)
     expect(avgQualityRank(maxTierForMajor(MAX_MAJOR)), '终局层级平均品阶应不低于凡品').toBeGreaterThanOrEqual(1)
+  })
+
+  it('持有上限的灵石口径含成批进项:严格大于纯战斗流,且随境界不减(1.74.0)', () => {
+    // 故障注入:把 stoneHoldRate 改回只算战斗掉落(incomeOf 的 stone 流),第一个断言即红 ——
+    // holdCap 拿纯战斗流当天花板,把卖装备/灵草攒出来的合法余额反复打压回去。
+    for (let m = 0; m <= MAX_MAJOR; m += 1) {
+      const battle = auditEra(m).flows.find(f => f.resource === 'stone')!.incomePerHour
+      const hold = stoneHoldRate(m)
+      expect(hold, `第${m}境持有口径应计入卖出等成批进项`).toBeGreaterThan(battle)
+      // 保守上界:含进项也不许超过纯战斗流的 5 倍(口径失控的哨)
+      expect(hold / battle, `第${m}境进项折算不许失控`).toBeLessThanOrEqual(5)
+    }
+    for (let m = 1; m <= MAX_MAJOR; m += 1) {
+      expect(stoneHoldRate(m), `第${m}境应不低于上一境`).toBeGreaterThanOrEqual(stoneHoldRate(m - 1))
+    }
   })
 })

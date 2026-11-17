@@ -33,7 +33,7 @@ import { ACHIEVEMENTS, titleIdsFromAchieved } from '@/data/achievements'
 import { MAX_MAJOR } from '@/data/realms'
 import { maxTierForMajor } from '@/data/regions'
 import { TALENTS } from '@/data/talents'
-import { auditEra } from '@/core/economySim'
+import { auditEra, stoneHoldRate } from '@/core/economySim'
 
 /** 资源持有上限按「满产出多少小时」折算:720 小时(30 天),远超任何正常囤积习惯 */
 const HOLD_HOURS = 720
@@ -188,9 +188,11 @@ function incomeOf(major: number): Record<string, number> {
 /**
  * 该境界「满产出 HOLD_HOURS 小时」的量;没有模型返回 0(调用方据此跳过)。
  * 导出给炼器采信余额用(1.66.1):同一把尺,不出现第二套持有上限口径。
+ * stone 用 stoneHoldRate(含卖出等成批进项,economySim):纯战斗流会把合法攒到的
+ * 余额反复打压回去 —— 见 economySim.stoneHoldRate 的注释;其余资源仍走健康审计流。
  */
 export function holdCapOf(major: number, resource: string): number {
-  const perHour = incomeOf(major)[resource] ?? 0
+  const perHour = resource === 'stone' ? stoneHoldRate(major) : (incomeOf(major)[resource] ?? 0)
   return perHour > 0 ? perHour * HOLD_HOURS : 0
 }
 

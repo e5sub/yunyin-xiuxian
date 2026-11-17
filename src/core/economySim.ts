@@ -33,6 +33,8 @@ import {
 import { buildingCost, gongfaUpCost, qiCap, baseQiRegen, pillStoneCost, stoneByTier, upgradeCost } from './formulas'
 import { generateEquipment } from './equipGen'
 import { STONE_AMT_PER_BATTLE } from './pillValue'
+import { herbBuyPrice } from './herbPrice'
+import { MARKET_CONSIGN_STONE_BASE, MARKET_CONSIGN_STONE_PER_RANK, MARKET_MAT_STONE_UNITS, MARKET_SELL_MAT_STONE_UNITS } from '@/data/market'
 import { secondsForMajor } from './progressionSim'
 import { tripExpSecsPerHour, winsPerHour } from './expIncome'
 
@@ -101,11 +103,24 @@ export function avgQualityRank(tier: number, samples = 200): number {
   return total / samples
 }
 
-/** 单个境界时期的资源流审计 */
-export function auditEra(major: number): EraAudit {
+/**
+ * 单个境界时期的掉落与生产速率 —— auditEra(健康审计)与 stoneHoldRate(持有上限口径)共用,
+ * 只此一处,不另立第二把尺。
+ */
+interface DropRates {
+  tier: number
+  winsThisHour: number
+  dropsPerHour: number
+  stoneIncome: number
+  herbIncome: number
+  oreIncome: number
+  pageIncome: number
+  dustIncome: number
+  wudaoIncome: number
+}
+
+function dropRates(major: number): DropRates {
   const tier = maxTierForMajor(major)
-  const eraHours = (secondsForMajor(major, 0) / 3600) * REAL_TIME_FACTOR || 0.1
-  const amortizeHours = Math.max(eraHours, MIN_AMORTIZE_HOURS)
   // 遭遇速率唯一口径:core/expIncome;此处另算会出现两套「全时历练 = ×N」读数
   const winsThisHour = winsPerHour()
   const dropsPerHour = winsThisHour * EQUIP_DROP_CHANCE
@@ -113,13 +128,64 @@ export function auditEra(major: number): EraAudit {
   const fieldLv = buildingLevel(major, 15, 0) // 灵田
   const libLv = buildingLevel(major, 12, 1) // 藏经阁:筑基(境 1)起
 
-  // ---- 生产 ----
   const stoneIncome = winsThisHour * toNum(stoneByTier(tier, STONE_AMT_PER_BATTLE))
   const herbIncome = winsThisHour * HERB_DROP_CHANCE * 2 + fieldLv * FIELD_HERB_PER_HOUR
   const oreIncome = winsThisHour * ORE_DROP_CHANCE * 1.5 + fieldLv * FIELD_ORE_PER_HOUR
   const pageIncome = winsThisHour * PAGE_DROP_CHANCE * 1.5
   const dustIncome = dropsPerHour * avgDustPerDrop(tier)
   const wudaoIncome = libLv * LIBRARY_WUDAO_PER_HOUR
+  return { tier, winsThisHour, dropsPerHour, stoneIncome, herbIncome, oreIncome, pageIncome, dustIncome, wudaoIncome }
+}
+
+/** 玩家不会把掉落全部卖掉:材料/灵草/装备按半数折回收价保守计入持有上限口径 */
+const SELL_SHARE = 0.5
+
+/**
+ * 持有上限的灵石产速口径(saveAuthority.holdCapOf 对 stone 用它,不用 auditEra 的战斗流)。
+ *
+ * 为什么不能只用战斗掉落:真实玩家还有成批进项 —— 掉落的玄铁/灵草折价卖给坊市
+ * (回收档 3,恒低于购入 6 不成环)、掉落装备寄卖。卖出是把别样资源换成灵石,
+ * 不是凭空生产,所以不进 auditEra 的生产流(那是「挂机收支比」的健康审计);
+ * 但玩家实际攒得到的灵石由此多出一截 —— holdCap 拿纯战斗流当天花板,就会把
+ * 合法余额反复打压回去(「几亿灵石点几下被扣到 0」的次生真因)。
+ *
+ * 口径:战斗掉落 + 半数掉落按回收价折算(灵草取凡品株价,高品草价更高,取最低品是下界)。
+ * 悬赏交货与任务奖励仍是模型外的进项,由上传裁决 catchUp 的 burst 余量兜底。
+ */
+export function stoneHoldRate(major: number): number {
+  const hit = holdRateCache.get(major)
+  if (hit !== undefined) return hit
+  const value = computeHoldRate(major)
+  holdRateCache.set(major, value)
+  return value
+}
+
+const holdRateCache = new Map<number, number>()
+
+function computeHoldRate(major: number): number {
+  try {
+    const r = dropRates(major)
+    // 玄铁每单位回收价:materialSellPrice 是一批 MARKET_MAT_COUNT 件 stoneByTier(tier,3),摊到每件同值
+    const oreUnit = toNum(stoneByTier(r.tier, MARKET_SELL_MAT_STONE_UNITS))
+    // 灵草凡品株价折半(herbSellPrice = herbBuyPrice × 回收档/购入档)
+    const herbUnit = herbBuyPrice(1, major) * (MARKET_SELL_MAT_STONE_UNITS / MARKET_MAT_STONE_UNITS)
+    // 掉落装备按本层平均品质阶折寄卖价
+    const consignEach = toNum(stoneByTier(r.tier, MARKET_CONSIGN_STONE_BASE + avgQualityRank(r.tier) * MARKET_CONSIGN_STONE_PER_RANK))
+    const sold = r.oreIncome * oreUnit + r.herbIncome * herbUnit + r.dropsPerHour * consignEach
+    return r.stoneIncome + SELL_SHARE * sold
+  } catch {
+    // 模型抛错就当作「没有产出模型」:调用方(holdCapOf)据此跳过上限,宁可宽
+    return 0
+  }
+}
+
+/** 单个境界时期的资源流审计 */
+export function auditEra(major: number): EraAudit {
+  const rates = dropRates(major)
+  const { tier, stoneIncome, herbIncome, oreIncome, pageIncome, dustIncome, wudaoIncome } = rates
+  const eraHours = (secondsForMajor(major, 0) / 3600) * REAL_TIME_FACTOR || 0.1
+  const amortizeHours = Math.max(eraHours, MIN_AMORTIZE_HOURS)
+
   /**
    * 修为收入(单位:等效闭关秒/小时)= 挂机 3600(1.0× 修速)+ 历练;速率与时长取自 core/expIncome。
    * 两条线都随修速缩放,本行比值须各境恒定。
