@@ -46,8 +46,8 @@ async function historyKeep(): Promise<number> {
   return Math.min(Math.max(Math.trunc(n), 1), HISTORY_KEEP_MAX)
 }
 
-/** 每账号留痕条数上限与抽稀间隔:自动上传最快 3 秒一推,不留抽稀会把表刷爆 */
-const FLAG_KEEP = 20
+/** 每账号审计留痕默认只保留最近 10 条(写入后即修剪,见 auditSave 末尾)与抽稀间隔:自动上传最快 3 秒一推,不留抽稀会把表刷爆 */
+const FLAG_KEEP = 10
 const FLAG_MIN_GAP_MS = 10 * 60_000
 /** 单次上传内境界跳这么多(一个大境界)就留痕:合法玩家升级是渐进的,GM 据此复核 */
 const REALM_JUMP_FLAG = 100

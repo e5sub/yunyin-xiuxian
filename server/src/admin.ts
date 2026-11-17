@@ -627,8 +627,9 @@ gmRouter.get('/saves/:userId/flags', requireAdmin, (req: Request, res: Response)
       res.status(400).json({ error: '参数无效' })
       return
     }
+    // 与写入侧的保留数(save.ts FLAG_KEEP)同值:库里每号本就只留最近 10 条
     const rows = await all<Record<string, unknown>>(
-      'SELECT kind, detail, realm_index, created_at FROM save_flags WHERE user_id = ? ORDER BY id DESC LIMIT 20',
+      'SELECT kind, detail, realm_index, created_at FROM save_flags WHERE user_id = ? ORDER BY id DESC LIMIT 10',
       [userId]
     )
     res.json({
