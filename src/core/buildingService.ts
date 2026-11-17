@@ -9,8 +9,9 @@ import { useResourcesStore } from '@/stores/resources'
 import { useDongfuStore } from '@/stores/dongfu'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
-import { cloudApi, type LevelOpResponse } from '@/services/cloud'
-import { applyLevelSlices, buildingBatchQuote, buildingUpgradeQuote } from './levelResolve'
+import { cloudApi } from '@/services/cloud'
+import { buildingBatchQuote, buildingUpgradeQuote } from './levelResolve'
+import { settleLevelRequest } from './settleQueue'
 import {
   buildingBatchDoneToast,
   buildingDoneToast,
@@ -129,16 +130,14 @@ export async function upgradeBuilding(id: BuildingId): Promise<boolean> {
   const ui = useUiStore()
   const def = buildingDef(id)!
   if (useAuthStore().loggedIn) {
-    let res: LevelOpResponse | null = null
-    try {
-      res = await cloudApi.progressOp({
+    // 余额在闸内读、分片在闸内覆盖(1.74.0):否则两笔结算会按同一份没扣过的余额各要一次额度
+    const res = await settleLevelRequest(() =>
+      cloudApi.progressOp({
         op: { op: 'buildingUpgrade', id, steps: 1 },
         ore: resources.ore,
         stone: resources.spiritStone
       })
-    } catch {
-      res = null
-    }
+    )
     if (res === null) {
       playSfx('warn')
       ui.toast('未能结算', 'warn')
@@ -148,7 +147,6 @@ export async function upgradeBuilding(id: BuildingId): Promise<boolean> {
       ui.toast(buildingBlockText(id, res.reason ?? ''), 'warn')
       return false
     }
-    applyLevelSlices(res.slices)
     track('buildingUpgrades')
     ui.toast(buildingDoneToast(def.name, dongfu.levels[id] ?? 0), 'success')
     return true
@@ -227,16 +225,13 @@ export async function upgradeBuildingBatch(id: BuildingId): Promise<number> {
     return 0
   }
   if (useAuthStore().loggedIn) {
-    let res: LevelOpResponse | null = null
-    try {
-      res = await cloudApi.progressOp({
+    const res = await settleLevelRequest(() =>
+      cloudApi.progressOp({
         op: { op: 'buildingUpgrade', id, steps: 0 },
         ore: resources.ore,
         stone: resources.spiritStone
       })
-    } catch {
-      res = null
-    }
+    )
     if (res === null) {
       playSfx('warn')
       ui.toast('未能结算', 'warn')
@@ -247,7 +242,6 @@ export async function upgradeBuildingBatch(id: BuildingId): Promise<number> {
       ui.toast('未能结算', 'warn')
       return 0
     }
-    applyLevelSlices(res.slices)
     track('buildingUpgrades', res.detail.levels)
     playSfx('success')
     ui.toast(

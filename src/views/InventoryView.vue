@@ -729,10 +729,19 @@
   /** 一键强化消耗一览:点下即弹,确认才落手(1.73.0) */
   const sweepOpen = ref(false)
 
-  /** 弹窗里点了确认:收起并下手,与预览同一把 equipSweepPlan,不会「看一套、扣另一套」 */
+  /**
+   * 弹窗里点了确认:**弹窗不关**,这一轮回来了还能接着点下一轮(1.74.0)。
+   * 一览页的价目与队列由 equipSweepPlan 现算,强化成功一件就少一件,数字自己会走。
+   * 上锁到这一笔回来为止:一键强化一次是全身的价,双击双发就是双扣 —— 而钮面同时是禁用态,
+   * 两处都在,不靠「关窗比点击快」这种时序巧合。
+   */
+  let sweepRunning = false
   function onSweepConfirm(): void {
-    sweepOpen.value = false
-    void upgradeEquippedOnce()
+    if (sweepRunning) return
+    sweepRunning = true
+    void upgradeEquippedOnce().finally(() => {
+      sweepRunning = false
+    })
   }
 
   function onEquipSet(setId: string): void {

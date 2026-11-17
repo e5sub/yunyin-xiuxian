@@ -62,7 +62,8 @@ import {
   type TransferRun
 } from './affixTransfer'
 import type { ForgeOp, ForgeSpend } from './forgeResolve'
-import { applyLevelSlices, type LevelOp } from './levelResolve'
+import type { LevelOp } from './levelResolve'
+import { runSettlement, settleLevelRequest } from './settleQueue'
 import {
   artifactCapToast,
   artifactDoneToast,
@@ -100,8 +101,9 @@ function applyItems(items: readonly EquipmentInstance[] | undefined): void {
  * 强化完灵石纹丝不动(= 白强化)。所以与坊市买入同一套做法:客户端按服务端裁定的 spend 实扣,
  * 服务端那本账只作上传时的安全网(客户端漏扣/旧客户端时兜底)。
  *
- * 服务端已按「云档与上报余额的较大者」验过付得起;本地余额偶尔更旧(刚花掉还没同步),
- * 此时也照扣到 0,不让这一笔凭空消失 —— 差额由下一次上传的云档值收敛。
+ * **只能由 ask 里的 settleForge 调用一次**(1.74.0):落账放在各个 request* 里时,
+ * 多个调用方共用同一个在途 promise 会各扣一遍 —— 服务端只结算一笔,本地扣了 N 笔,
+ * 余额不够时 subClamp 压到 0,这就是「强化有时候清空灵石」。
  */
 function chargeRemoteSpend(spend: ForgeSpend | undefined): void {
   if (spend === undefined) return
@@ -115,21 +117,43 @@ function chargeRemoteSpend(spend: ForgeSpend | undefined): void {
 }
 
 /**
- * 同一份炼器请求在途时复用同一个 Promise。
- * 服务端只挡 80ms 间隔,一次网络 RTT 内的第二击必然放行 —— 连点「强化 / 重铸 / 连强」
- * 会让同一次操作掷两遍:词条被第二次洗掉、器灵尘与灵石双扣。
- * 键取「操作 + 目标 + 次数」,不同的件仍可并行(服务端另有存档锁保证不互相覆盖)。
+ * 同一辆结算车的排队与落账(1.74.0)。
+ *
+ * 原先这里用「同 key 的在途 promise 复用」挡连点,只挡住了**重复发起**,没挡住**重复落账**:
+ * 两个调用方 await 同一个 promise,回来后各自 `chargeRemoteSpend(res.spend)` ——
+ * 服务端结算一笔(强化一次),本地扣两笔,余额不够就扣到 0。
+ * 一键强化一次是全身上下的价,双扣足以清零,这正是玩家反复遇到的「强化清空灵石」。
+ *
+ * 现在的分工:
+ *   · **落账只在这里做一次**(settleForge),谁等结果都不影响扣款次数;
+ *   · 同一个 op 在途时仍复用同一个 promise(重复点击不该真的强化两次),
+ *     但复用的是「已落账」的那一笔 —— 扣款与结算同住任务内,复用才安全;
+ *   · 不同的 op 之间由 settleQueue 串行,后一笔读到的余额已经扣过。
  */
-let inflightForge: { key: string; p: Promise<ForgeOpResponse | null> } | null = null
+let inflight: { key: string; p: Promise<ForgeOpResponse | null> } | null = null
 
 async function ask(op: ForgeOp): Promise<ForgeOpResponse | null> {
   const key = JSON.stringify(op)
-  if (inflightForge !== null && inflightForge.key === key) return inflightForge.p
-  const p = askInner(op).finally(() => {
-    if (inflightForge !== null && inflightForge.p === p) inflightForge = null
+  if (inflight !== null && inflight.key === key) return inflight.p
+  const p = runSettlement(async () => {
+    const res = await askInner(op)
+    settleForge(res)
+    return res
   })
-  inflightForge = { key, p }
+  const mine = { key, p }
+  inflight = mine
+  const release = (): void => {
+    if (inflight === mine) inflight = null
+  }
+  void p.then(release, release)
   return p
+}
+
+/** 唯一落账点:成功即把回传的整件覆盖到本地、按回传的 spend 实扣三样 */
+function settleForge(res: ForgeOpResponse | null): void {
+  if (res === null || !res.ok) return
+  applyItems(res.items)
+  chargeRemoteSpend(res.spend)
 }
 
 async function askInner(op: ForgeOp): Promise<ForgeOpResponse | null> {
@@ -189,8 +213,6 @@ export async function requestUpgrade(uid: string, opts: { quiet?: boolean } = {}
     if (!opts.quiet) showUpgradeFeedback(uid, upgradeRunOf(uid, res))
     return 'blocked'
   }
-  applyItems(res.items)
-  chargeRemoteSpend(res.spend)
   const run = upgradeRunOf(uid, res)
   if (run.after !== null) noteUpgrade(run.after, run.outcome)
   if (!opts.quiet) showUpgradeFeedback(uid, run)
@@ -234,8 +256,6 @@ export async function upgradeEquipmentBatch(uid: string): Promise<number> {
     showUpgradeFeedback(uid, upgradeRunOf(uid, res))
     return 0
   }
-  applyItems(res.items)
-  chargeRemoteSpend(res.spend)
   const d = res.detail?.kind === 'upgrade' ? res.detail : null
   if (d === null) return 0
   // 「成功提升几级」:全成时等于掷了几次,最后一次失手则少一次
@@ -285,8 +305,6 @@ export async function upgradeEquippedOnce(): Promise<EquipSweep> {
     notSettled()
     return out
   }
-  applyItems(res.items)
-  chargeRemoteSpend(res.spend)
   const d = res.detail?.kind === 'sweep' ? res.detail : null
   if (d !== null) {
     out.tried = d.tried
@@ -328,8 +346,6 @@ export async function requestReforge(uid: string, quiet = false): Promise<boolea
     if (!quiet) notSettled()
     return false
   }
-  if (res.ok) applyItems(res.items)
-  if (res.ok) chargeRemoteSpend(res.spend)
   const d = res.detail?.kind === 'reforge' ? res.detail : null
   const after = res.items?.[0] ?? null
   if (after !== null) noteReforge(after)
@@ -362,8 +378,6 @@ export async function requestAutoReforge(
     notSettled()
     return empty
   }
-  if (res.ok) applyItems(res.items)
-  if (res.ok) chargeRemoteSpend(res.spend)
   const auto = res.detail?.kind === 'autoReforge' ? res.detail.auto : null
   if (auto === null) return empty
   // 簿记照旧按「洗了几次」补记:服务端那侧跑的是临时 store,计数落不到玩家身上
@@ -383,8 +397,6 @@ export async function requestTransfer(req: TransferRequest): Promise<boolean> {
     notSettled()
     return false
   }
-  if (res.ok) applyItems(res.items)
-  if (res.ok) chargeRemoteSpend(res.spend)
   const d = res.detail?.kind === 'transfer' ? res.detail : null
   const source = res.items?.find(it => it.uid === req.sourceUid)
   const target = res.items?.find(it => it.uid === req.targetUid)
@@ -421,18 +433,21 @@ export type { TransferRequest } from './affixTransfer'
  * 改档把重数写成满重,被动就全额进 finalStats,而九重祭炼本该烧掉大量悟道点。
  */
 async function askLevel(op: LevelOp): Promise<LevelOpResponse | null> {
-  const resources = useResourcesStore()
-  try {
-    return await cloudApi.progressOp({
+  /*
+   * 与炼器共用同一条结算闸(1.74.0):上报的余额必须在**轮到自己时**才读 ——
+   * 在闸外先读好再排队,排到的可能已经是别笔结算扣过之前的旧数,服务端据此多给额度。
+   * 成功分片(含 resources)由 settleLevelRequest 在闸内覆盖,下一笔读到的就是扣过的数。
+   */
+  return settleLevelRequest(() => {
+    const resources = useResourcesStore()
+    return cloudApi.progressOp({
       op,
       wudao: resources.wudao,
       page: resources.page,
       ore: resources.ore,
       stone: resources.spiritStone
     })
-  } catch {
-    return null
-  }
+  })
 }
 
 /** 服务端拒因 → 本地那套文案(与未登录链同一份缺口计算) */
@@ -463,7 +478,6 @@ export async function requestArtifactUp(defId: string, opts: { quiet?: boolean }
     if (!opts.quiet) artifactFailToast(defId, res.reason)
     return false
   }
-  applyLevelSlices(res.slices)
   if (!opts.quiet) {
     const name = artifactName(defId)
     playSfx('success')
@@ -490,7 +504,6 @@ export async function requestArtifactBatch(defId: string): Promise<number> {
     notSettled()
     return 0
   }
-  applyLevelSlices(res.slices)
   const done = res.ok ? res.detail?.levels ?? 0 : 0
   if (done > 0) {
     playSfx('success')

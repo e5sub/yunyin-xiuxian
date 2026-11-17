@@ -42,7 +42,13 @@
         </p>
       </li>
     </ul>
-    <p v-else class="mt-2 text-[11px] text-ink-faint">这一掷付不起任何一件 —— 见下。</p>
+    <!--
+      弹窗不再一点即关(1.74.0):强化成功一件,队列就少一件,这一段跟着换话。
+      「皆已满级 / 未装备」与「料不够」是两件不同的事,原先共用一句「付不起任何一件」。
+    -->
+    <p v-else class="mt-2 text-[11px] text-ink-faint">
+      {{ plan.short !== null ? '料不够上任何一件 —— 见下方缺料。' : '身上已无可强化之物(皆已满级,或未装备)。' }}
+    </p>
 
     <!-- 计划外的两句话:满级跳过的与缺料停手的 -->
     <p v-if="plan.capped > 0" class="mt-1.5 text-[10px] text-ink-faint">另有 {{ plan.capped }} 件已至强化上限,本轮跳过。</p>
@@ -55,8 +61,8 @@
         <button class="btn-ghost flex-1 !py-2 !text-[12px]" @click="emit('close')">再想想</button>
         <button
           class="btn-seal flex-1 !py-2 !text-[12px]"
-          :disabled="plan.queue.length === 0"
-          :title="plan.queue.length === 0 ? '无可强化件' : undefined"
+          :disabled="busy || plan.queue.length === 0"
+          :title="busy ? '正在结算' : plan.queue.length === 0 ? '无可强化件' : undefined"
           @click="emit('confirm')"
         >
           确认强化
@@ -72,6 +78,7 @@
   import { equipSweepPlan, equipUpgradeQuote, type EquipSweepPlan } from '@/core/forge'
   import { EQUIP_SLOT_NAMES } from '@/data/equipment'
   import { upgradeShortToast } from '@/ui/forgeText'
+  import { settling } from '@/core/settleQueue'
   import { useInventoryStore } from '@/stores/inventory'
   import { useResourcesStore } from '@/stores/resources'
   import { usePlayerStore } from '@/stores/player'
@@ -85,6 +92,9 @@
   const inventory = useInventoryStore()
   const resources = useResourcesStore()
   const player = usePlayerStore()
+
+  /** 结算在途时禁掉「确认强化」:一键强化一次就是全身的价,双发等于双扣(1.74.0) */
+  const busy = computed(() => settling.value > 0)
 
   /** 与下手同一份计划:预览即执行,不会「弹窗一套、扣款另一套」 */
   const plan = computed<EquipSweepPlan>(() => equipSweepPlan())

@@ -55,7 +55,12 @@
     <p v-if="studyStatusLine" class="mt-1 flex items-center gap-1 text-[10px] text-gold-ink">
       <GameIcon name="book" :size="11" />{{ studyStatusLine }}
     </p>
-    <button class="btn-ghost mt-2 w-full !py-1.5 !text-[12px]" :disabled="!info.canUpgrade" @click="void upgradeBuilding(props.def.id)">
+    <button
+      class="btn-ghost mt-2 w-full !py-1.5 !text-[12px]"
+      :disabled="busy || !info.canUpgrade"
+      :title="busy ? '正在结算' : undefined"
+      @click="upgradeOnce"
+    >
       <!--
         每个「数 + 量词」各自 nowrap,只在分隔符处换行(窄屏会在数字与「石」之间断行)。
         外层 span 不可去:btn-ghost 是 flex 容器,散落的文本节点会各成 flex item 竖着堆。
@@ -104,8 +109,20 @@
       -->
       <div class="flex w-full shrink-0 justify-end gap-1.5">
         <button v-if="batchArm" class="btn-ghost shrink-0 !px-2.5 !py-2 !text-[11px]" @click="batchArm = false">再想想</button>
-        <button v-if="batchArm" class="btn-seal shrink-0 !px-2.5 !py-2 !text-[11px]" @click="runBatch()">连 升</button>
-        <button v-else class="btn-ghost shrink-0 !px-3 !py-2 !text-[11px]" @click="batchArm = true">连 升</button>
+        <button
+          v-if="batchArm"
+          class="btn-seal shrink-0 !px-2.5 !py-2 !text-[11px]"
+          :disabled="busy"
+          :title="busy ? '正在结算' : undefined"
+          @click="runBatch()"
+        >连 升</button>
+        <button
+          v-else
+          class="btn-ghost shrink-0 !px-3 !py-2 !text-[11px]"
+          :disabled="busy"
+          :title="busy ? '正在结算' : undefined"
+          @click="batchArm = true"
+        >连 升</button>
       </div>
     </div>
   </div>
@@ -126,6 +143,7 @@
     upgradeBuilding,
     upgradeBuildingBatch
   } from '@/core/buildingService'
+  import { settling } from '@/core/settleQueue'
   import { studyEta } from '@/core/loreService'
   import { modsText } from '@/data/statNames'
   import { buildingActLabel, buildingGateRealmName } from '@/ui/buildingText'
@@ -148,8 +166,18 @@
   )
   /** 连升二步确认态;升级落成自动复位(见下方 watch) */
   const batchArm = ref(false)
+  /**
+   * 结算在途时钮一律禁掉(1.74.0):服务端按请求里的余额判「付得起」,
+   * 同一份余额被两笔结算同时采信时,后一笔在本地会扣到 0(玩家说的「清空灵石」)。
+   */
+  const busy = computed(() => settling.value > 0)
+  function upgradeOnce(): void {
+    if (busy.value) return
+    void upgradeBuilding(props.def.id) // toast 由服务报
+  }
   function runBatch(): void {
     batchArm.value = false
+    if (busy.value) return
     void upgradeBuildingBatch(props.def.id) // toast 由服务报
   }
   /** 未建且被境界闸门锁着(资源不足另走缺口句,不算锁) */

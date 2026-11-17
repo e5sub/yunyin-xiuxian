@@ -48,7 +48,13 @@
       </div>
       <div class="flex w-full shrink-0 justify-end gap-1.5">
         <button v-if="batchConfirm === inst.uid" class="btn-ghost shrink-0 !px-2.5 !py-2 !text-[11px]" @click="batchConfirm = null">再想想</button>
-        <button v-if="batchConfirm === inst.uid" class="btn-seal shrink-0 !px-2.5 !py-2 !text-[11px]" @click="runBatchUpgrade">连 强</button>
+        <button
+          v-if="batchConfirm === inst.uid"
+          class="btn-seal shrink-0 !px-2.5 !py-2 !text-[11px]"
+          :disabled="busy"
+          :title="busy ? '正在结算' : undefined"
+          @click="runBatchUpgrade"
+        >连 强</button>
         <button v-else class="btn-ghost shrink-0 !px-3 !py-2 !text-[11px]" @click="batchConfirm = inst.uid">连 强</button>
       </div>
     </div>
@@ -77,6 +83,7 @@
   import { useInventoryStore } from '@/stores/inventory'
   import { equipLevelCap, equipUpgradeQuote, upgradeBatchPlan, upgradeShort, upgradeShortfall, type UpgradeBatchPlan } from '@/core/forge'
   import { upgradeEquipmentBatch } from '@/core/forgeService'
+  import { settling } from '@/core/settleQueue'
   import { upgradeMark, upgradePips } from '@/ui/masteryMark'
   import { formatGN, formatGap } from '@/utils/format'
   import { gnZero } from '@/utils/gnum'
@@ -124,8 +131,11 @@
     return `${Math.round(rate * 100)}%`
   }
 
+  /** 结算在途时禁掉「连 强」:连点会真的连花几笔(1.74.0) */
+  const busy = computed(() => settling.value > 0)
+
   function runBatchUpgrade(): void {
-    if (!inst.value) return
+    if (!inst.value || busy.value) return
     batchConfirm.value = null
     void upgradeEquipmentBatch(inst.value.uid)
   }

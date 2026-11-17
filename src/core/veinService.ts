@@ -10,8 +10,8 @@ import { formatGN, formatGap } from '@/utils/format'
 import { gnZero, mulN, ratio, subClamp } from '@/utils/gnum'
 import { playSfx } from './audio'
 import { useAuthStore } from '@/stores/auth'
-import { cloudApi, type LevelOpResponse } from '@/services/cloud'
-import { applyLevelSlices } from './levelResolve'
+import { cloudApi } from '@/services/cloud'
+import { settleLevelRequest } from './settleQueue'
 import { usePlayerStore } from '@/stores/player'
 import { useDongfuStore } from '@/stores/dongfu'
 import { useResourcesStore } from '@/stores/resources'
@@ -188,15 +188,13 @@ function veinRejectToast(id: VeinId, reason: string | undefined): void {
 export async function requestVeinInvest(id: VeinId): Promise<boolean> {
   if (!useAuthStore().loggedIn) return investVein(id)
   const resources = useResourcesStore()
-  let res: LevelOpResponse | null = null
-  try {
-    res = await cloudApi.progressOp({
+  // 余额在闸内读、分片在闸内覆盖(1.74.0):连投与炼器撞在一起时不会按同一份旧余额各要额度
+  const res = await settleLevelRequest(() =>
+    cloudApi.progressOp({
       op: { op: 'veinInvest', id, points: 1 },
       stone: resources.spiritStone
     })
-  } catch {
-    res = null
-  }
+  )
   if (res === null) {
     playSfx('warn')
     useUiStore().toast('未能结算', 'warn')
@@ -206,7 +204,6 @@ export async function requestVeinInvest(id: VeinId): Promise<boolean> {
     veinRejectToast(id, res.reason)
     return false
   }
-  applyLevelSlices(res.slices)
   return true
 }
 
@@ -214,15 +211,12 @@ export async function requestVeinInvest(id: VeinId): Promise<boolean> {
 export async function requestVeinBatch(id: VeinId): Promise<number> {
   if (!useAuthStore().loggedIn) return investVeinBatch(id)
   const resources = useResourcesStore()
-  let res: LevelOpResponse | null = null
-  try {
-    res = await cloudApi.progressOp({
+  const res = await settleLevelRequest(() =>
+    cloudApi.progressOp({
       op: { op: 'veinInvest', id, points: 0 },
       stone: resources.spiritStone
     })
-  } catch {
-    res = null
-  }
+  )
   const ui = useUiStore()
   if (res === null) {
     playSfx('warn')
@@ -233,7 +227,6 @@ export async function requestVeinBatch(id: VeinId): Promise<number> {
     veinRejectToast(id, res.reason)
     return 0
   }
-  applyLevelSlices(res.slices)
   const points = res.detail?.levels ?? 0
   const stone = res.spend?.stone
   playSfx('success')

@@ -10,10 +10,11 @@ import { useResourcesStore } from '@/stores/resources'
 import { useCultivationStore } from '@/stores/cultivation'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
-import { cloudApi, type LevelOpResponse } from '@/services/cloud'
+import { cloudApi } from '@/services/cloud'
 import { playSfx } from './audio'
 import { cutCount } from './spendRate'
-import { applyLevelSlices, gongfaUpgradeQuote } from './levelResolve'
+import { gongfaUpgradeQuote } from './levelResolve'
+import { settleLevelRequest } from './settleQueue'
 import { celebrateTreasure } from './loot'
 import {
   gongfaAllLearnedToast,
@@ -61,12 +62,10 @@ export async function comprehendGongfa(): Promise<boolean> {
   // VIP 有效期内九折:判据、缺口提示与扣款用同一个数(服务端读同一处 cutCount)
   const cost = cutCount(COMPREHEND_PAGE_COST)
   if (useAuthStore().loggedIn) {
-    let res: LevelOpResponse | null = null
-    try {
-      res = await cloudApi.progressOp({ op: { op: 'gongfaLearn' }, wudao: resources.wudao, page: resources.page })
-    } catch {
-      res = null
-    }
+    // 余额在闸内读(1.74.0):连点参悟不会两笔都按扣之前的残页数要额度
+    const res = await settleLevelRequest(() =>
+      cloudApi.progressOp({ op: { op: 'gongfaLearn' }, wudao: resources.wudao, page: resources.page })
+    )
     if (res === null) {
       playSfx('warn')
       ui.toast('未能结算', 'warn')
@@ -78,7 +77,6 @@ export async function comprehendGongfa(): Promise<boolean> {
       else playSfx('warn')
       return false
     }
-    applyLevelSlices(res.slices)
     const def = gongfaDef(res.detail?.id ?? '')
     if (def) {
       ui.toast(gongfaComprehendToast(def.name), 'rare')
@@ -144,16 +142,13 @@ export async function upgradeGongfa(id: string): Promise<boolean> {
   const cultivation = useCultivationStore()
   const ui = useUiStore()
   if (useAuthStore().loggedIn) {
-    let res: LevelOpResponse | null = null
-    try {
-      res = await cloudApi.progressOp({
+    const res = await settleLevelRequest(() =>
+      cloudApi.progressOp({
         op: { op: 'gongfaUpgrade', id },
         wudao: resources.wudao,
         page: resources.page
       })
-    } catch {
-      res = null
-    }
+    )
     if (res === null) {
       playSfx('warn')
       ui.toast('未能结算', 'warn')
@@ -171,7 +166,6 @@ export async function upgradeGongfa(id: string): Promise<boolean> {
       }
       return false
     }
-    applyLevelSlices(res.slices)
     const def = gongfaDef(id)
     ui.toast(gongfaUpDoneToast(def?.name ?? '此功', cultivation.learned[id] ?? 0), 'success')
     return true

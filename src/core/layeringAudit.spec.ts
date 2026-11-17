@@ -113,8 +113,10 @@ const CORE_STORE_SITES = 249;
  * 1.68.0(+1,131 → 132):上游这批带来的 voidRerollRebirth.spec —— `rerollVoidWorld` 读
  * endgame/ui 两个 store、`onRebirth` 本身也是 store 方法,这条「await 窗口里转世」的
  * 时序判据绕不开 Pinia(上游自己在同一处把它的基线从 121 调到 122,理由相同)。
+ * 1.74.0(+1,132 → 133):settleQueue.spec —— 乱序落账是**跨 store 的余额**问题,
+ * 断言本身就是「连点两下之后灵石还剩多少」,不打真 store 测不出来(与 forgeServiceCharge 同因)。
  */
-const CORE_PINIA_SPECS = 132;
+const CORE_PINIA_SPECS = 133;
 
 function sources(dir: string): { name: string; text: string }[] {
   return readdirSync(dir)

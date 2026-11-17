@@ -223,7 +223,7 @@
           -->
           <button
             class="btn-ghost min-h-11 w-full"
-            :disabled="upCost ? upShort !== null : true"
+            :disabled="busy || !upCost || upShort !== null"
             :aria-label="!upCost ? upgradeCapToast() : upShort === 'stone' ? `强 化,灵石尚差 ${formatGap(upGap?.stone ?? { m: 0, e: 0 })}` : upShort === 'dust' ? `强 化,器灵尘尚差 ${upGap?.dust ?? 0}` : upShort === 'exp' ? `强 化,修为尚差 ${formatGap(upGap?.exp ?? { m: 0, e: 0 })}` : '强 化'"
             :title="upCost ? (upShort === 'stone' ? `灵石尚差 ${formatGap(upGap?.stone ?? { m: 0, e: 0 })}` : upShort === 'dust' ? `器灵尘尚差 ${upGap?.dust ?? 0}` : upShort === 'exp' ? `修为尚差 ${formatGap(upGap?.exp ?? { m: 0, e: 0 })}` : undefined) : upgradeCapToast()"
             @click="doUpgrade"
@@ -262,6 +262,7 @@
   import { equippablePower } from '@/core/equipBest'
   import { decomposeEquipment, equipLevelCap, equipUpgradeQuote, upgradeShort, upgradeShortfall } from '@/core/forge'
   import { requestUpgrade } from '@/core/forgeService'
+  import { settling } from '@/core/settleQueue'
   import { upgradeCapToast } from '@/ui/forgeText'
   import { equipMastery } from '@/ui/masteryMark'
   import { salvageOf, salvageRefundPhrase } from '@/core/salvage'
@@ -499,8 +500,14 @@
     }
   }
 
+  /**
+   * 结算在途时钮一律禁掉(1.74.0):连点的第二下会排进结算队列、按当时余额再花一次钱 ——
+   * 玩家以为「没反应」多点几下,余额就被一连串真实强化吃光。
+   */
+  const busy = computed(() => settling.value > 0)
+
   function doUpgrade(): void {
-    if (inst.value) void requestUpgrade(inst.value.uid)
+    if (inst.value && !busy.value) void requestUpgrade(inst.value.uid)
   }
 
   const decomposeArm = ref<string | null>(null)

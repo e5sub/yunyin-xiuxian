@@ -530,6 +530,13 @@ export interface EmailCodeResp {
   devCode?: string
 }
 
+/**
+ * 单次请求的上限。移动网络半开连接时 fetch 可以挂上几分钟不返回,
+ * 而结算链在客户端是**排队**的(见 core/settleQueue):挂住一笔就把后面的强化全堵死。
+ * 二十秒对 36KB 的存档上传也足够宽。
+ */
+const REQUEST_TIMEOUT_MS = 20_000
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const auth = useAuthStore()
   // 记下本次请求实际带的 token:改密/重登会换 token,在途旧请求回来时 401 只代表
@@ -537,22 +544,29 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const sentToken = auth.token
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (sentToken !== '') headers.Authorization = `Bearer ${sentToken}`
+  // 超时用一个可清掉的定时器,不依赖 AbortSignal.timeout(老 WebView 没有)
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS)
   let res: Response
   try {
     res = await fetch(`${API_BASE}/api${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body)
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: abort.signal
     })
   } catch {
+    clearTimeout(timer)
     throw new CloudError('网络不通')
   }
   let json: unknown = null
   try {
+    // 响应头到了、正文迟迟不来也算超时:定时器要留到这一步才清
     json = await res.json()
   } catch {
-    // 非 JSON 响应按空处理
+    // 非 JSON 响应 / 正文中途被超时掐断:按空处理
   }
+  clearTimeout(timer)
   if (!res.ok) {
     const obj = typeof json === 'object' && json !== null ? (json as { error?: unknown; code?: unknown }) : {}
     const msg = typeof obj.error === 'string' ? obj.error : '请求失败'
