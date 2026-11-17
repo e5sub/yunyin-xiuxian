@@ -166,7 +166,7 @@ describe('炼器裁决 · 强化', () => {
     expect(rich.ok).toBe(true)
   })
 
-  it('上报余额有天花板:填天数字当钱花,最多只能预支本境界的持有上限(1.66.1)', () => {
+  it('小资源仍有天花板:填天数字当尘花,最多只能预支本境界的持有上限(1.66.1;灵石已解除,1.74.0)', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const data = saveWith([mk('e1')])
     // 压到练气:持有上限最小,「未来资源」与真实成本差得最开
@@ -178,11 +178,14 @@ describe('炼器裁决 · 强化', () => {
       stone: { m: 1, e: 30 },
       exp: { m: 1, e: 30 }
     })!
-    // 采信被钳在本境界上限内:扣掉的三样都不可能超过上限
+    // 器灵尘仍被钳在本境界上限内:扣掉的不可能超过上限
     expect(res.spend.dust).toBeLessThanOrEqual(Math.floor(holdCapOf(0, 'dust')))
-    expect(toNum(res.spend.stone)).toBeLessThanOrEqual(holdCapOf(0, 'stone'))
+    // 灵石已解除上限(1.74.0):按真实结算价扣,不会照上报的 1e30 全额记账
+    // (本例尘先见底,灵石可能一分没花到 —— 只钉「不吃进上报余额」)
+    expect(toNum(res.spend.stone)).toBeGreaterThanOrEqual(0)
+    expect(toNum(res.spend.stone)).toBeLessThan(1e30)
     expect(toNum(res.spend.exp)).toBeLessThanOrEqual(toNum(expHoldCap(0, 0)))
-    // 也就掷不到 200 次:余额按钳后的量算,材料一到头就停
+    // 也就掷不到 200 次:尘按钳后的量算,材料一到头就停
     expect(res.detail.kind === 'upgrade' && res.detail.tries).toBeLessThan(200)
   })
 

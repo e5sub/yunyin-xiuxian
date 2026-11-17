@@ -2,7 +2,8 @@
  * 数值权威化判据 —— 服务端说了算的那些线,在这里钉住。
  *
  * 用例分两类,缺一不可:
- *  - 作弊侧:改境界、改修为、改灵石、改装备阶数、塞丹药,都必须被压回。
+ *  - 作弊侧:改境界、改修为、改装备阶数、塞丹药,都必须被压回。
+ *    (灵石已解除持有上限钳制,1.74.0 运营决定:模型外的成批进项屡屡误伤合法玩家。)
  *  - 正常侧:按玩法该有的增长一律放行 —— 防作弊最容易犯的错是把真人误伤成作弊,
  *    所以每条判据都要有一条「合法档原样通过」的对照。
  */
@@ -153,14 +154,15 @@ describe('数值权威化 · 修为与资源上限', () => {
     expect(report.corrections.some(c => c.path === 'player.exp')).toBe(true)
   })
 
-  it('灵石写 e100 被压回该境界持有上限', () => {
+  it('灵石写 e100 原样通过:持有上限钳制已解除(1.74.0)', () => {
+    // 故障注入:把 saveAuthority 资源段里对 spiritStone 的跳过改回 holdCapOf 窗口钳制,本用例红
     const next = baseSave()
     ;(next.resources as Record<string, unknown>).spiritStone = { m: 1, e: 100 }
     const report = run(next, { prev: baseSave(), prevRealmIndex: 0 })
     const stone = (report.data.resources as Record<string, unknown>).spiritStone as GNum
-    // 炼气期满产 30 天也不到 1e8(实测 ≈3.5e6),e100 必须被砍下来
-    expect(num(stone)).toBeLessThan(1e8)
-    expect(report.corrections.some(c => c.path === 'resources.spiritStone')).toBe(true)
+    expect(num(stone)).toBe(1e100)
+    expect(report.corrections.some(c => c.path === 'resources.spiritStone')).toBe(false)
+    expect(report.notes.join(' ')).not.toContain('灵石')
   })
 
   it('灵草与杂项资源同步收口', () => {
@@ -174,18 +176,19 @@ describe('数值权威化 · 修为与资源上限', () => {
     expect(Number(after.ore)).toBeLessThan(1e12)
   })
 
-  it('资源一次拉到持有上限被拦:增量受本窗口可增长量约束(1.58.1)', () => {
+  it('灵石一次拉到 1e7 原样通过:窗口约束对灵石不再适用(1.74.0)', () => {
     const prev = baseSave()
     ;(prev.resources as Record<string, unknown>).spiritStone = { m: 1, e: 3 } // 1000
     const next = baseSave()
     ;(next.resources as Record<string, unknown>).spiritStone = { m: 1, e: 7 } // 1e7:远超一窗口的产出
     const report = run(next, { prev, prevRealmIndex: 0, elapsedMs: ONE_TICK_MS })
     const stone = (report.data.resources as Record<string, unknown>).spiritStone as GNum
-    expect(num(stone)).toBeLessThan(1e7)
-    expect(report.notes.join(' ')).toContain('灵石超本窗口可增长量')
+    expect(num(stone)).toBe(1e7)
+    expect(report.corrections.some(c => c.path === 'resources.spiritStone')).toBe(false)
+    expect(report.notes.join(' ')).not.toContain('灵石')
   })
 
-  it('坊市支出未在档里体现:灵石被压到「付得起」的位置(1.58.1)', () => {
+  it('坊市支出未在档里体现:灵石不再被压回(支出账只兜小资源,1.74.0)', () => {
     const prev = baseSave()
     ;(prev.resources as Record<string, unknown>).spiritStone = { m: 2, e: 6 } // 200 万
     const next = baseSave()
@@ -197,8 +200,8 @@ describe('数值权威化 · 修为与资源上限', () => {
       pendingSpend: { m: 1, e: 6 } // 花了一百万:远超「成批进项」余量
     })
     const stone = (report.data.resources as Record<string, unknown>).spiritStone as GNum
-    expect(num(stone)).toBeLessThan(2e6)
-    expect(report.corrections.some(c => c.path === 'resources.spiritStone')).toBe(true)
+    expect(num(stone)).toBe(2e6)
+    expect(report.corrections.some(c => c.path === 'resources.spiritStone')).toBe(false)
   })
 
   it('坊市支出已兑现(灵石确实少了 8000):零修正通过', () => {
@@ -509,35 +512,36 @@ describe('数值权威化 · 成就与称号(1.59.1)', () => {
  * 缺片洗基线(1.67.0):云端已有上次的档、这次却少了 resources 分片,只可能是「删片重传」。
  * 若按「没基线 = 首传」放行,删一次片就能把资源顶到持有上限,花完再来一遍 —— 无限刷。
  * 判据必须能区分:真首传按上限收(存量档兼容),已上传过则从零起算。
+ * (1.74.0 灵石解除钳制后,本组改用玄铁钉住同一机制 —— 它对小资源照旧生效。)
  */
 describe('数值权威化 · 缺片不能洗基线', () => {
-  function prevWithoutStone(): Record<string, unknown> {
+  function prevWithoutOre(): Record<string, unknown> {
     const prev = baseSave()
-    delete (prev.resources as Record<string, unknown>).spiritStone
+    delete (prev.resources as Record<string, unknown>).ore
     return prev
   }
   function nextAstronomic(): Record<string, unknown> {
     const next = baseSave()
-    ;(next.resources as Record<string, unknown>).spiritStone = { m: 9.99, e: 30 }
+    ;(next.resources as Record<string, unknown>).ore = 1e12
     return next
   }
 
-  it('已上传过却缺灵石栏:只给成批进项的余量,远低于持有上限', () => {
-    const report = run(nextAstronomic(), { prev: prevWithoutStone(), prevRealmIndex: 0, seenBefore: true })
+  it('已上传过却缺玄铁栏:只给成批进项的余量,远低于持有上限', () => {
+    const report = run(nextAstronomic(), { prev: prevWithoutOre(), prevRealmIndex: 0, seenBefore: true })
     const res = report.data.resources as Record<string, unknown>
-    expect(num(res.spiritStone)).toBeLessThan(1e6)
-    expect(report.notes.join(' ')).toContain('灵石超本窗口可增长量')
+    expect(Number(res.ore)).toBeLessThan(1e6)
+    expect(report.notes.join(' ')).toContain('ore 超本窗口可增长量')
   })
 
   it('真首传(seenBefore 未置)仍按持有上限收 —— 存量档不打回', () => {
-    const fresh = run(nextAstronomic(), { prev: prevWithoutStone(), prevRealmIndex: 0 })
-    const seen = run(nextAstronomic(), { prev: prevWithoutStone(), prevRealmIndex: 0, seenBefore: true })
-    const freshStone = num((fresh.data.resources as Record<string, unknown>).spiritStone)
-    const seenStone = num((seen.data.resources as Record<string, unknown>).spiritStone)
-    expect(freshStone).toBeGreaterThan(seenStone)
+    const fresh = run(nextAstronomic(), { prev: prevWithoutOre(), prevRealmIndex: 0 })
+    const seen = run(nextAstronomic(), { prev: prevWithoutOre(), prevRealmIndex: 0, seenBefore: true })
+    const freshOre = Number((fresh.data.resources as Record<string, unknown>).ore)
+    const seenOre = Number((seen.data.resources as Record<string, unknown>).ore)
+    expect(freshOre).toBeGreaterThan(seenOre)
   })
 
-  it('正常档(上次有灵石)不受新判据影响', () => {
+  it('正常档(上次有玄铁)不受新判据影响', () => {
     const prev = baseSave()
     const next = baseSave()
     const report = run(next, { prev, prevRealmIndex: 0, seenBefore: true })

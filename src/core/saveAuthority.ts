@@ -25,7 +25,7 @@
  *   - 只降不升:本模块从不「给」玩家东西,只把超出的部分压回合法区间。
  *   - 转世(世号增加)视为新世:境界重置与资源归零都放行,但新世的增长照旧受上一条约束。
  */
-import { add, gn, gnZero, gt, mulN, sub, toNum } from '@/utils/gnum'
+import { add, gn, gnZero, gt, mulN, sub } from '@/utils/gnum'
 import type { GNum } from '@/types'
 import { baseCultPerSec, daoFruitGain, expRequirement, qiCap } from '@/core/formulas'
 import { AGE_YEARS_PER_HOUR, QI_BANK_MULT, SUB_LEVELS, TALENT_DRAW_DIV } from '@/data/constants'
@@ -33,7 +33,7 @@ import { ACHIEVEMENTS, titleIdsFromAchieved } from '@/data/achievements'
 import { MAX_MAJOR } from '@/data/realms'
 import { maxTierForMajor } from '@/data/regions'
 import { TALENTS } from '@/data/talents'
-import { auditEra, stoneHoldRate } from '@/core/economySim'
+import { auditEra } from '@/core/economySim'
 
 /** 资源持有上限按「满产出多少小时」折算:720 小时(30 天),远超任何正常囤积习惯 */
 const HOLD_HOURS = 720
@@ -188,11 +188,12 @@ function incomeOf(major: number): Record<string, number> {
 /**
  * 该境界「满产出 HOLD_HOURS 小时」的量;没有模型返回 0(调用方据此跳过)。
  * 导出给炼器采信余额用(1.66.1):同一把尺,不出现第二套持有上限口径。
- * stone 用 stoneHoldRate(含卖出等成批进项,economySim):纯战斗流会把合法攒到的
- * 余额反复打压回去 —— 见 economySim.stoneHoldRate 的注释;其余资源仍走健康审计流。
+ * 灵石已解除钳制(1.74.0):holdCapOf('stone') 现恒返回 0,调用方按「cap=0 不设限」跳过;
+ * 其余资源仍走 economySim 的健康审计产速。
  */
 export function holdCapOf(major: number, resource: string): number {
-  const perHour = resource === 'stone' ? stoneHoldRate(major) : (incomeOf(major)[resource] ?? 0)
+  if (resource === 'stone') return 0
+  const perHour = incomeOf(major)[resource] ?? 0
   return perHour > 0 ? perHour * HOLD_HOURS : 0
 }
 
@@ -431,22 +432,13 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
 
     // ---------- 资源 ----------
     if (nextRes !== null) {
-      const stoneCap = holdCapOf(capMajor, 'stone')
-      const curStone = gnumOf(nextRes.spiritStone)
-      if (stoneCap > 0 && curStone !== null) {
-        const prevStone = gnumOf(prevRes?.spiritStone)
-        const producedStone = (incomeOf(capMajor).stone ?? 0) * elapsedHours
-        const spend = input.pendingSpend
-        const spendOf = spend !== undefined ? toNum({ m: numOf(spend.m), e: numOf(spend.e) }) : 0
-        const catchUp = catchUpCeil(prevStone === null ? null : toNum(prevStone), producedStone, stoneCap)
-        // 未兑现的坊市支出从可增长量里扣:付不起就压到付得起的位置(Infinity 也按「付不起」算)
-        const ceil = Number.isNaN(spendOf) ? catchUp : Math.max(0, catchUp - spendOf)
-        if (gt(curStone, gn(ceil))) {
-          corrections.push({ path: 'resources.spiritStone', before: nextRes.spiritStone, after: gn(ceil) })
-          nextRes.spiritStone = gn(ceil)
-          notes.push(`灵石超本窗口可增长量(${ceil.toExponential(2)})`)
-        }
-      }
+      /*
+       * 灵石不再受持有上限钳制(1.74.0,运营决定):卖装备/卖灵草/悬赏这些模型外的成批进项
+       * 攒出来的合法余额,会被「满产速 720 小时」的天花板反复裁回去 —— 玩家看到的就是
+       * 「点几下强化,几亿灵石只剩零头」,GM 审计里成片的「灵石超本窗口可增长量」。
+       * 改包填天文数字在灵石上从此拦不住,换取的是合法玩家余额永不被误伤;
+       * 其余小资源(尘/铁/页/悟道)的窗口钳制照旧。
+       */
       const smallFields = ['ore', 'page', 'dust', 'wudao'] as const
       // 未兑现的账面支出从小资源可增长量里扣(1.58.3 炼器的器灵尘;1.59.0 起建筑玄铁、
       // 功法进修的悟道点与残页也走台账):扣款写在客户端,不记账就白烧

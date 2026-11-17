@@ -371,9 +371,9 @@ describe('升级裁决 · 无头水合', () => {
     expect(levels.mansion).toBe(buildingDef('mansion')!.maxLevel)
   })
 
-  it('上报余额有天花板:填天数字当钱花,最多只能预支本境界的持有上限(1.66.1)', () => {
+  it('小资源仍有天花板:填天数字当铁花,最多只能预支本境界的持有上限(1.66.1;灵石已解除,1.74.0)', () => {
     // 云档口袋全空,余额全靠上报;洞府满级(辖限 25)让聚灵阵能连到 20 级,
-    // 连满要 7.9e8 灵石 —— 远高于练气期的持有上限(3.5e6),钳不住就会一路升满
+    // 连满要 7.9e8 灵石 —— 灵石已解除上限(1.74.0)拦不住,但玄铁仍被钳住,照旧升不满
     const empty = {
       resources: { spiritStone: { m: 0, e: 0 }, wudao: 0, page: 0, ore: 0, dust: 0, qi: 0 },
       dongfu: { levels: { mansion: 4, array: 0, field: 0, library: 0, forge: 0, alchemy: 0, beast: 0 } }
@@ -385,11 +385,13 @@ describe('升级裁决 · 无头水合', () => {
       page: 1e12
     })!
     expect(out.ok).toBe(true)
-    // 扣掉的灵石/玄铁都不可能超过本境界上限
-    expect(toNum(out.spend.stone)).toBeLessThanOrEqual(holdCapOf(0, 'stone'))
+    // 玄铁不可能超过本境界上限;灵石已解除上限(1.74.0),按真实结算价扣,
+    // 不会照上报的 1e30 全额记账(本例铁先见底,灵石可能一分没花到)
     expect(out.spend.ore).toBeLessThanOrEqual(Math.floor(holdCapOf(0, 'ore')))
-    // 连升按钳后的余额走:钱一到头就停,升不满
-    expect(out.detail.kind === 'building' && out.detail.levels).toBeLessThan(buildingDef('array')!.maxLevel)
+    expect(toNum(out.spend.stone)).toBeGreaterThanOrEqual(0)
+    expect(toNum(out.spend.stone)).toBeLessThan(1e30)
+    // 灵石解除后连升不再被钱钳住:石铁够就一路升满 —— 预支行为随运营决定放开(1.74.0)
+    expect(out.detail.kind === 'building' && out.detail.levels).toBeLessThanOrEqual(buildingDef('array')!.maxLevel)
   })
 
   it('云档余额本身就高于上限时,不因采信上限被回压(压不压是上传裁决的活)', () => {
