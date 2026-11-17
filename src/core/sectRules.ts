@@ -406,19 +406,19 @@ export function sectMods(skills: Record<string, number>, buildings: Record<strin
 
 /* ---------------- 门派绝学 ---------------- */
 
+// 绝学重数上限(服务端经 vendor 同读这一把尺)
+export function artMaxLevel(): number {
+  return SECT_ART_MAX_LEVEL
+}
+
 /**
- * 绝学升到 toLevel 重所需的山派库价(1.74.1 运营定则):
+ * 绝学升到 toLevel 重所需的山门库价(1.74.1 运营定则):
  *  · 从门派库扣,不走个人贡献;
  *  · **不吃 VIP 折扣** —— 这是门派的公账,不是「人」的修行开销;
  *  · **吃山门减免** —— 与修习同读 hallSkillRate(每级 -0.5%,百级 -50%);
  *  · 每升一重 ×1.9(与技能前五重同一条陡峭曲线):等级越高,贡献消耗越高。
  * toLevel 从 1 起;认不出这门绝学或 toLevel 越界返回 null。
  */
-/** 绝学重数上限(服务端经 vendor 同读这一把尺) */
-export function artMaxLevel(): number {
-  return SECT_ART_MAX_LEVEL
-}
-
 export function artCost(id: string, toLevel: number, hallLevel = 0): number | null {
   const def = sectArtDef(id)
   if (def === undefined) return null

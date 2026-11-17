@@ -82,17 +82,16 @@ function qualityYieldOf(quality: QualityId): number {
   return 1 + qualityDef(quality).rank * APPRENTICE_QUALITY_YIELD_STEP
 }
 
-/**
- * 结算一趟任务:取基础账 × 天赋加成 × 品阶倍率;与门派/装备互不相干。
- *
- * 品阶此前只决定名字颜色与角章,不参与产出 —— 同名天赋的两名道童(悟道道童 精品 /
- * 仙门慧童 灵品)一趟产出分毫不差,而收徒成本一样、抽到谁纯看运气。
- */
-/** 服务端差事记账(1.74.1)用:archId 是不是真门派(防改包塞野 archetype 白吃产出) */
+// 服务端差事记账(1.74.1)用:archId 是不是真门派(防改包塞野 archetype 白吃产出)
 export function isApprenticeArch(archId: string): boolean {
   return apprenticeDef(archId) !== undefined
 }
 
+/**
+ * 结算一趟任务:取基础账 × 天赋加成 × 品阶倍率;与门派/装备互不相干。
+ * 品阶不只决定名字颜色与角章(此前如此,同名天赋的两名道童一趟产出分毫不差),
+ * 现在按 rank 逐档加成产出。
+ */
 export function apprenticeSpoils(archId: string, spec: ApprenticeSpec, major: number, level: number): TaskSpoils {
   const def = apprenticeDef(archId)
   const base = baseSpoils(major, level)[spec]!

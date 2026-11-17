@@ -20,7 +20,9 @@ const ALLOWLIST: Record<string, string> = {
   marketPriceAt:
     '服务端坊市定价:server/src/routes/market.ts 经 server/src/lootGrant.ts 动态加载本模块,按 (major, stockedAt) 确定性复算货格价格,不让客户端自报成交价(1.58.1);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径',
   expectedSoulGrade:
-    '服务端器魂品阶复算:server/src/routes/loot.ts 经 server/src/lootGrant.ts 动态加载本模块,按云档里被烧装备的品质复算签发品阶,不让客户端自报 grade(1.66.3);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径'
+    '服务端器魂品阶复算:server/src/routes/loot.ts 经 server/src/lootGrant.ts 动态加载本模块,按云档里被烧装备的品质复算签发品阶,不让客户端自报 grade(1.66.3);消费方在 src 之外,审计扫不到;lootGrant.spec 守其口径',
+  isApprenticeArch:
+    '服务端差事记账的 archId 校验:server/src/routes/apprentice.ts 经 server/src/apprenticeCore.ts 动态加载本模块,拒掉野 archetype(1.74.1);消费方在 src 之外,审计扫不到'
 }
 
 /**
