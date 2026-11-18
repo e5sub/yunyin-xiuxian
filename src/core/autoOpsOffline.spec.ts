@@ -2,7 +2,7 @@
  * VIP 离线挂机的三条口径(与 gameplay 对齐的那三处):
  *   一 归来领的是「已经发生」的事:VIP 在离线途中到期,台账照领不误(原先要 isVip 才给);
  *   二 出剑无资粮,所得全在击杀赏:领的时候顺手把赏领掉,不再报一笔「灵石 +0」的假账;
- *   三 到期只暂停、不清开关,且离线补推按「离开时是否 VIP」判 —— 已付时间覆盖的那段照算。
+ *   三 到期即全关:七枚托管开关自动关闭、vipUntil 落 0;离线补推仍按「离开时是否 VIP」判 —— 已付时间覆盖的那段照算。
  * 云接口整体替身:托管只认「服务端怎么回」,不认界面怎么显示。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -131,17 +131,23 @@ describe('离线补推的 VIP 判据', () => {
   })
 })
 
-describe('到期只暂停', () => {
-  it('非 VIP 时托管不动手,但开关原样保留', async () => {
+describe('到期全关(1.74.4)', () => {
+  it('到期那一刻托管不动手,七枚托管开关一并自动关闭、vipUntil 落 0', async () => {
     const now = Date.now()
     offlineFor(0)
-    signIn(now - HOUR)
+    signIn(now - HOUR) // 一小时前就到期
     const settings = useSettingsStore()
+    const auth = useAuthStore()
     settings.autoDailyEvent = true
+    settings.autoEquipBest = true
+    settings.autoSalvageWorse = true
 
     await autoDailyTick()
 
     expect(cloud.eventToday, '非 VIP 不该动手').not.toHaveBeenCalled()
-    expect(settings.autoDailyEvent, '开关不该被清掉 —— 续费即恢复').toBe(true)
+    expect(settings.autoDailyEvent, '托管到期即关,不留隐性档').toBe(false)
+    expect(settings.autoEquipBest).toBe(false)
+    expect(settings.autoSalvageWorse).toBe(false)
+    expect(auth.vipUntil, '过期时间戳落 0,触发全站隐藏').toBe(0)
   })
 })

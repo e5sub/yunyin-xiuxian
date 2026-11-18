@@ -68,7 +68,7 @@ beforeEach(() => {
 })
 
 describe('装备托管的边界', () => {
-  it('非 VIP 概不动手:行囊满了也不换不化,开关原样保留', () => {
+  it('非 VIP 概不动手:行囊满了也不换不化,两枚开关一并自动关闭', () => {
     signIn(false)
     const inv = useInventoryStore()
     const worn = head(6)
@@ -81,6 +81,30 @@ describe('装备托管的边界', () => {
     s.autoSalvageWorse = true
     autoEquipTick()
     expect(inv.findItem(weak.uid), '弱件还在').toBeDefined()
+    expect(useUiStore().toasts).toHaveLength(0)
+    expect(s.autoEquipBest, '到期全关,不留隐性档').toBe(false)
+    expect(s.autoSalvageWorse).toBe(false)
+  })
+
+  it('VIP 到期那一刻:墙钟直查把 vipUntil 落 0,开关自动关闭,行囊满也不动手', () => {
+    // signIn(true) 播的是「未到期」;这里把有效期拨到一小时前,模拟在线期间自然过期
+    const auth = useAuthStore()
+    auth.vipUntil = Date.now() - 3_600_000
+    const inv = useInventoryStore()
+    const worn = head(6)
+    const weak = head(1)
+    inv.items = [worn, weak]
+    inv.equip(worn.uid, 'head')
+    fillBag(inv)
+    const s = useSettingsStore()
+    s.autoEquipBest = true
+    s.autoSalvageWorse = true
+    autoEquipTick()
+    expect(auth.vipUntil, '过期时间戳落 0,isVip 全站翻 false').toBe(0)
+    expect(auth.isVip).toBe(false)
+    expect(s.autoEquipBest).toBe(false)
+    expect(s.autoSalvageWorse).toBe(false)
+    expect(inv.findItem(weak.uid), '失格后概不动手').toBeDefined()
     expect(useUiStore().toasts).toHaveLength(0)
   })
 

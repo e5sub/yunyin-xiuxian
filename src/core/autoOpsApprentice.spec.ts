@@ -66,11 +66,11 @@ describe('道童差事托管的边界', () => {
     expect(cloud.apprenticeTaskStart).not.toHaveBeenCalled()
   })
 
-  it('非 VIP 不动手,开关原样保留(到期只暂停,续费即恢复)', async () => {
+  it('非 VIP 不动手,托管开关一并自动关闭(到期全关,续费后重新打开)', async () => {
     signIn(false)
     await autoApprenticeTick()
     expect(cloud.apprenticeTaskClaim).not.toHaveBeenCalled()
-    expect(useSettingsStore().autoAdventure).toBe(true)
+    expect(useSettingsStore().autoAdventure).toBe(false)
   })
 
   it('没开自动历练就只当没这回事(差事随历练开关)', async () => {

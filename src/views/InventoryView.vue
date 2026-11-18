@@ -24,16 +24,16 @@
           <span class="min-w-0 grow text-[10px] leading-relaxed text-ink-faint">{{ s.def.effectDesc }}</span>
           <!--
             触控靶面:负外边距配正内边距,盒高 31px 过 layout-check(≥28),流中仍占 15px 行高;同页收纳/分解同法。
-            无可换时置灰,不让人点一颗什么都不会发生的钮(AGENTS.md「禁用即给原因」);
-            置灰态的字色自己写:btn-ghost 的禁用底色这里没有,继承下来会是可点态的 azure。
-            禁用态只压字色不压透明度 —— 那行「无可换」正是拒因,压到 60% 就读不出。
+            药丸式柔底(无描边):可换时 azure 淡底浮字,无可换时墨色沉底置灰 —— 比描边小字更醒目也更干净;
+            文案压到一截:可换「穿齐·换 N」,无可换只留拒因,箭头与括号都省去。
           -->
           <button
-            class="-my-2 shrink-0 rounded px-1 py-2 text-[10px] text-azure ring-1 ring-inset ring-azure/30 active:opacity-60 disabled:text-ink-faint"
+            class="-my-2 shrink-0 rounded-md px-2.5 py-2 text-[10px] transition-colors active:opacity-60 disabled:cursor-not-allowed"
+            :class="s.preview > 0 ? 'bg-azure/10 text-azure' : 'bg-ink/5 text-ink-faint'"
             :disabled="s.preview <= 0"
             @click="onEquipSet(s.def.id)"
           >
-            穿齐 →({{ s.preview > 0 ? `换 ${s.preview}` : '无可换' }})
+            {{ s.preview > 0 ? `穿齐 ·换 ${s.preview}` : '无可换' }}
           </button>
         </p>
       </div>

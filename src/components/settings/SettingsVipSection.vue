@@ -32,9 +32,10 @@
       >{{ auth.isVip ? 'VIP -10%' : '未享' }}</span>
     </div>
 
-    <!-- 到期后开关与去处保留、只是暂停:续费即恢复,不必回设置页逐个重开 -->
-    <p v-if="!auth.isVip && keptToggles > 0" class="pb-3 text-[10px] leading-relaxed text-ink-faint">
-      已有 {{ keptToggles }} 项托管开关(连同历练去处与围妖难度)保留在原处,开通或续费后立即恢复,不必重设
+    <!-- 到期即收线:托管开关(含背包页自动换装/自动分解)全部自动关闭,续费后须重新打开 -->
+    <p v-if="!auth.isVip" class="pb-3 text-[10px] leading-relaxed text-ink-faint">
+      VIP 有效期内才可开启托管;到期后各项托管开关(含背包页的自动换装/自动分解)会自动关闭,
+      修行九折、每日捐献五次、远征不限次等待遇即时停享。开通或续费后重新打开即可
     </p>
 
     <!-- 激活码兑换(开通/续期皆可,永久卡直接补足到永久;已是永久则无需再兑) -->
@@ -212,15 +213,9 @@
   const ui = useUiStore()
 
   const statusText = computed(() => {
-    if (!auth.isVip) return '未开通 · 扫码/激活码自助开通,或联系仙官(GM);到期只暂停托管,开关与去处保留'
+    if (!auth.isVip) return '未开通 · 扫码/激活码自助开通,或联系仙官(GM);到期后各项托管自动关闭,待遇即时停享'
     if (auth.vipForever) return '永久 VIP · 尊享全部托管特权'
     return `剩余 ${auth.vipDaysLeft} 天(至 ${expireText.value})`
-  })
-
-  /** 到期仍留在原处的托管项数:只作「没有白设」的告知,不参与 gate */
-  const keptToggles = computed(() => {
-    const s = settings
-    return [s.autoBoss, s.autoRetreat, s.autoAdventure, s.autoDailyEvent, s.autoDonate].filter(Boolean).length
   })
 
   const codeInput = ref('')

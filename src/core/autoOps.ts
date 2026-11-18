@@ -66,27 +66,62 @@ let dailyWarmup: ReturnType<typeof setTimeout> | undefined
 /** 到期提示只报一次:置位后不再重复 toast,直到重新成为 VIP */
 let expiryNotified = false
 
+/**
+ * VIP 到期全站收线(1.74.4):isVip 是 computed,Date.now() 不进依赖,自然过期不会触发重算
+ * (只有 vipUntil 被赋值才会)—— 每 tick 用墙钟直查,过了期把 vipUntil 落 0:
+ * 一次赋值触发全站反应,九折/捐献五次/远征不限次等待遇即时停享,各处 VIP 块随之隐藏。
+ * 七枚托管开关(五项设置页 + 背包页自动换装/自动分解)一并关闭 —— 到期不再「留开关暂停」,
+ * 续费/复购后须重新打开,不留「看不见却还开着」的隐性档。
+ * 返回 'cleared' = 本 tick 清掉了开关(到期那一刻,提示就报这一回)。
+ */
+function enforceVipExpiry(
+  auth: ReturnType<typeof useAuthStore>,
+  settings: ReturnType<typeof useSettingsStore>
+): 'cleared' | 'off' | 'on' {
+  if (auth.vipUntil > 0 && auth.vipUntil <= Date.now()) auth.vipUntil = 0
+  if (!auth.isVip) {
+    const had =
+      settings.autoBoss ||
+      settings.autoRetreat ||
+      settings.autoAdventure ||
+      settings.autoDailyEvent ||
+      settings.autoDonate ||
+      settings.autoEquipBest ||
+      settings.autoSalvageWorse
+    if (had) {
+      settings.autoBoss = false
+      settings.autoRetreat = false
+      settings.autoAdventure = false
+      settings.autoDailyEvent = false
+      settings.autoDonate = false
+      settings.autoEquipBest = false
+      settings.autoSalvageWorse = false
+    }
+    return had ? 'cleared' : 'off'
+  }
+  return 'on'
+}
+
 /** 通用前置:游戏已开局、已登录、有任一托管开关;返回 null 表示本次 tick 无事可做 */
 function gate(): { auth: ReturnType<typeof useAuthStore>; settings: ReturnType<typeof useSettingsStore> } | null {
   const game = useGameStore()
   const auth = useAuthStore()
   const settings = useSettingsStore()
   if (!game.started || !auth.loggedIn) return null
-  if (!settings.autoBoss && !settings.autoRetreat && !settings.autoAdventure && !settings.autoDailyEvent) return null
   /*
-   * 到期只暂停,不把开关清掉。
-   *
-   * 原先这里调 stopAllToggles() 把四项置 false —— 玩家续费后得回设置页逐个重开,
-   * 而且「他本来想开的是什么」已经没了。设置留在原处更好:服务端那侧的离线代打另有
-   * vipActive 把关,开关留着不会白跑;客户端这边 gate 返回 null 即一步不做。
+   * 到期先收线再进门:七枚托管开关在过期那一刻全部关闭,并报一句(只报一次)。
+   * 原先这里「只暂停不清开关,续费即恢复」;1.74.4 改为到期即全关 —— 福利类状态
+   * 不该在失格后还挂着,续费后重新打开即可,设置里不再有看不见的隐性档。
    */
-  if (!auth.isVip) {
+  if (enforceVipExpiry(auth, settings) === 'cleared') {
     if (!expiryNotified) {
       expiryNotified = true
-      useUiStore().toast('VIP 已到期,托管暂停(续费即恢复)', 'warn')
+      useUiStore().toast('VIP 已到期,各项托管已自动关闭(续费后可重新开启)', 'warn')
     }
     return null
   }
+  if (!auth.isVip) return null
+  if (!settings.autoBoss && !settings.autoRetreat && !settings.autoAdventure && !settings.autoDailyEvent) return null
   expiryNotified = false
   return { auth, settings }
 }
@@ -420,14 +455,16 @@ export async function autoApprenticeTick(): Promise<void> {
  * 化尘守卫见 core/equipBest.belowWornTargets(练过/近满/成套/上锁/空槽无基准一律豁免)。
  * 与历练/闭关/差事互不相干 —— 只动装配与行囊,不碰任何会话与在途账。
  * 未用 gate():那道闸要求四项托管开关至少一项开着,而装备开关自成一对;
- * VIP 判据自己带上,非 VIP 静默跳过(开关本就不给他们看,不至于到了期还弹一句)。
+ * 但到期收线同源(enforceVipExpiry):非 VIP 时两枚开关已被一并关闭,这里只静默跳过。
  * 导出供单测直接驱动一轮。
  */
 export function autoEquipTick(): void {
   const game = useGameStore()
   const auth = useAuthStore()
   const settings = useSettingsStore()
-  if (!game.started || !auth.loggedIn || !auth.isVip) return
+  if (!game.started || !auth.loggedIn) return
+  enforceVipExpiry(auth, settings)
+  if (!auth.isVip) return
   if (!settings.autoEquipBest && !settings.autoSalvageWorse) return
   const inventory = useInventoryStore()
   if (!inventory.bagFull) return

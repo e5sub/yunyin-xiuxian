@@ -34,7 +34,8 @@ export const useSettingsStore = defineStore(
     const dndEvents = ref(false)
     /**
      * VIP 托管自动化(core/autoOps 循环读取):四项开关独立,「历练优先于闭关」。
-     * 开关本身持久化,但须 VIP 才能开;VIP 到期由 autoOps 循环复核后自动关停。
+     * 开关本身持久化,但须 VIP 才能开;VIP 到期由 autoOps 循环复核后**全部自动关闭**
+     * (1.74.4 起不再「留开关暂停」,续费后须重新打开)。
      */
     const autoBoss = ref(false)
     const autoRetreat = ref(false)
@@ -60,6 +61,7 @@ export const useSettingsStore = defineStore(
      * autoEquipBest = 行囊满时一键换装(equipAllBest 同一把尺);autoSalvageWorse = 随后化尘
      * 「低于穿戴」的行囊件(见 core/equipBest.belowWornTargets 的守卫)。
      * 触发条件是「行囊满」—— 平时不搅局,装不下这一刻才插手:先换最强,再化尘弱装。
+     * VIP 到期自动关闭并隐藏(与其他托管同一待遇)。
      * 背包不进云端,离线无从代办,故只在线跑。
      */
     const autoEquipBest = ref(false)
