@@ -181,13 +181,21 @@ export const useApprenticeStore = defineStore(
      * 收割已完工弟子,返回尾账供界面播报。
      * 登录走服务端差事账(1.74.1):开工时刻以服务端为准,收割须过「真实经过 ≥ 工期」
      * 这关,产出以服务端复算回传为准 —— 改本地时钟把差事秒完不再有用。服务端拒了
-     * 就分两种处置(1.74.1 修「卡在约剩 00分00秒」):
+     * 分三种处置(1.74.1 修「卡在约剩 00分00秒」):
      *  · gone(云端查无此账:存量任务/他端已收)—— 作废这单,道童回闲。这单永远收不回,
      *    不清就是一张倒计时停死在 00:00 的卡。
      *  · remainMs(尚在差中:本机钟比服务端快)—— 按服务端口径校准 finishAt,倒计时恢复走动。
-     * 其余(网络/服务异常)不收不清:差事留着;失败后冷却 3 秒,免得界面每秒一发空请求。
+     *  · 其余(网络/服务异常/旧版服务端不认这两个字段)—— 不收不清,但记下首败时刻:
+     *    **同一条完工未收满 60 秒即作废放人**(不给产出)。作废不发放任何资源,反作弊面
+     *    丝毫无损;而「永远等下去」换来的只是一张死卡 —— 网络、部署错位、新旧版本混跑,
+     *    任何一种都能把「等」变成「永远等」。
+     * 失败后冷却 3 秒,免得界面每秒一发空请求。
      */
     let claimCooldownUntil = 0
+    /** 完工却屡收不回的弟子:uid → 首次收割失败的时刻;收成落袋/校准/派新活即除名 */
+    const stuckSince = new Map<string, number>()
+    /** 完工未收的等待上限:超过它宁可作废这单(不发放),也不让道童永远钉在 00:00 */
+    const STUCK_VOID_MS = 60_000
     async function collectFinished(now: number, major: number): Promise<TaskSpoils[]> {
       if (!validNow(now)) return []
       const auth = useAuthStore()
@@ -195,27 +203,37 @@ export const useApprenticeStore = defineStore(
       if (auth.loggedIn && now < claimCooldownUntil) return []
       let claimFailed = false
       for (const appr of apprentices.value) {
-        if (!taskDone(appr, now)) continue
+        if (!taskDone(appr, now)) {
+          // 没完工(含校准后的新完工时刻):不再处于「收不回」的僵局
+          stuckSince.delete(appr.uid)
+          continue
+        }
         const spec = appr.task!.spec
         let spoils: TaskSpoils
         if (auth.loggedIn) {
           try {
             const r = await cloudApi.apprenticeTaskClaim(appr.uid)
             if (r.ok && r.spoils) {
+              stuckSince.delete(appr.uid)
               spoils = r.spoils
             } else if (r.gone) {
+              stuckSince.delete(appr.uid)
               appr.task = null
               continue
             } else if (typeof r.remainMs === 'number' && Number.isFinite(r.remainMs) && r.remainMs >= 0 && appr.task) {
               // 校准 +250ms 缓冲:remainMs 是服务端此刻的余量,取回与写回之间又流走了一点
+              stuckSince.delete(appr.uid)
               appr.task.finishAt = now + r.remainMs + 250
               claimFailed = true
+              continue
+            } else if (voidIfStuck(appr, now)) {
               continue
             } else {
               claimFailed = true
               continue
             }
           } catch {
+            if (voidIfStuck(appr, now)) continue
             claimFailed = true
             continue
           }
@@ -230,6 +248,21 @@ export const useApprenticeStore = defineStore(
       }
       if (claimFailed) claimCooldownUntil = now + 3000
       return reaped
+    }
+
+    /**
+     * 完工却屡收不回:首败记时刻,等满 60 秒作废放人(不发放,道童回闲)。
+     * 返回 true 表示这次已作废,调用方直接 continue。
+     */
+    function voidIfStuck(appr: OwnedApprentice, now: number): boolean {
+      const since = stuckSince.get(appr.uid)
+      if (since === undefined || now - since < STUCK_VOID_MS) {
+        if (since === undefined) stuckSince.set(appr.uid, now)
+        return false
+      }
+      stuckSince.delete(appr.uid)
+      appr.task = null
+      return true
     }
 
     /** 派一名闲置弟子跑一趟;登录先入服务端差事账,入账不成不派(宁可白点一次) */
@@ -251,6 +284,7 @@ export const useApprenticeStore = defineStore(
         }
       }
       appr.task = { spec, startAt: now, finishAt: now + apprenticeTaskSeconds(spec) * 1000 }
+      stuckSince.delete(uid)
       return true
     }
 
@@ -296,6 +330,7 @@ export const useApprenticeStore = defineStore(
       for (const appr of apprentices.value) max = Math.max(max, appr.bond)
       rebirthKarma.value = max >= REBIRTH_KARMA_CAP ? REBIRTH_KARMA_CAP : 0
       apprentices.value = []
+      stuckSince.clear()
     }
 
     return { apprentices, rebirthKarma, sanitize, sync, collectFinished, dispatch, dispatchAll, resetForRebirth, recruit }

@@ -563,3 +563,34 @@ describe('在线收割 · 服务端差事账的三种拒绝(1.74.1 修卡 00:00)
     expect(a.apprentices[0]!.task).toBeNull()
   })
 })
+
+describe('在线收割 · 屡败兜底(完工未收满 60 秒作废放人)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.spyOn(cloudApi, 'apprenticeTaskClaim').mockReset()
+    useAuthStore().$patch({ token: 't', userId: 1 })
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('服务端一直拒(旧版不认 gone/remainMs 也一样):60 秒内保留,满 60 秒作废回闲,不白拿产出', async () => {
+    vi.mocked(cloudApi.apprenticeTaskClaim).mockResolvedValue({ ok: false, reason: '服务器异常' })
+    const a = useApprenticeStore()
+    const res = useResourcesStore()
+    a.$patch({ apprentices: [make('ap_luanniao', { task: { spec: 'herb', startAt: 0, finishAt: 1 } })] })
+    // 首败记时刻;冷却 3 秒内的重试不发请求
+    expect(await a.collectFinished(0, 0)).toEqual([])
+    expect(a.apprentices[0]!.task).not.toBeNull()
+    await a.collectFinished(1000, 0)
+    expect(vi.mocked(cloudApi.apprenticeTaskClaim), '冷却期内不发请求').toHaveBeenCalledTimes(1)
+    // 未满 60 秒:仍保留(第 2 次真发)
+    await a.collectFinished(59000, 0)
+    expect(a.apprentices[0]!.task).not.toBeNull()
+    // 满 60 秒:作废放人,不给产出、不进阶 —— 卡死在任何服务端状态下都不可能持续
+    await a.collectFinished(63000, 0)
+    expect(a.apprentices[0]!.task, '屡败 60 秒后作废回闲').toBeNull()
+    expect(a.apprentices[0]!.level).toBe(3)
+    expect(res.herbOf(herbGradeOfMajor(0)), '作废不得白拿产出').toBe(0)
+  })
+})
