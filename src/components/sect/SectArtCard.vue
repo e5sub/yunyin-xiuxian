@@ -1,16 +1,20 @@
 <template>
   <div class="card-ink px-3 py-2.5">
-    <div class="flex items-baseline justify-between gap-2">
-      <p class="flex items-center gap-1.5">
-        <GameIcon :name="def.icon" :size="14" class="shrink-0 text-gold-ink" />
-        <span class="font-kai text-[12px] text-gold-ink">{{ def.name }}</span>
-        <span class="text-[9px] text-ink-faint">绝学 · 全门同享</span>
-      </p>
+    <div class="flex items-start justify-between gap-2">
+      <div class="flex min-w-0 items-start gap-2.5">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-md" :class="level > 0 ? 'bg-gold-ink/10 text-ink' : 'bg-ink/5 text-ink-faint'">
+          <GameIcon :name="def.icon" :size="17" />
+        </span>
+        <p class="min-w-0">
+          <span class="block truncate font-kai text-[14px] leading-snug" :class="level > 0 ? 'text-ink' : 'text-ink-soft'">{{ def.name }}</span>
+          <span class="mt-0.5 block text-[10px] text-ink-faint">绝学 · 全门同享</span>
+        </p>
+      </div>
       <span class="shrink-0 text-[10px] tabular" :class="level > 0 ? 'text-gold-ink' : 'text-ink-faint'">
         {{ level > 0 ? `${level}/${maxLevel} 重` : '未研' }}
       </span>
     </div>
-    <p class="mt-1.5 grow text-[11px] leading-relaxed text-ink-faint">{{ def.desc }}</p>
+    <p class="mt-2 grow text-[11px] leading-relaxed text-ink-faint">{{ def.desc }}</p>
     <p class="mt-1 text-[10px] leading-relaxed" :class="level > 0 ? 'text-jade' : 'text-ink-faint'">
       {{ level > 0 ? `当前:${def.effectText(level)}` : `研成一重:${def.effectText(1)}` }}
       <span v-if="level > 0 && level < maxLevel" class="text-ink-faint"> · 下一重 {{ def.effectText(level + 1) }}</span>
