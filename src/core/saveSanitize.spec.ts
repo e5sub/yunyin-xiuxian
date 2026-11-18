@@ -11,7 +11,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { SAVE_SANITIZE_STEPS, sanitizeSaveSlices } from './saveSanitize'
 import { AFFIXES, affixFitBlock } from '@/data/affixes'
 import { EQUIPMENT_TEMPLATES } from '@/data/equipment'
-import { EQUIP_MAX_LEVEL_BASE } from '@/data/constants'
+import { EQUIP_LEVEL_CAP_BASE } from '@/data/realms'
 import { SAVE_GNUM_MAX_EXP } from '@/utils/saveShape'
 
 /** 各分片默认态拼出的档:等价于开局第一秒的存档,字段齐全但没有任何进度 */
@@ -89,8 +89,8 @@ describe('存档归一化 · 越界项按玩法链钳回', () => {
     const result = sanitizeSaveSlices(withItem({ tier: 999, level: 99_999 }))!
     const item = (inventoryOf(result.data).items as Array<Record<string, unknown>>)[0]!
     expect(item.tier).toBeLessThanOrEqual(40)
-    // 洞府没起炼器台时上限就是基础上限,改包写 25 级不该算进属性
-    expect(item.level).toBe(EQUIP_MAX_LEVEL_BASE)
+    // 默认档在人间界、没起炼器台:上限就是界基 25(1.74.4 起,原死数 20)
+    expect(item.level).toBe(EQUIP_LEVEL_CAP_BASE)
     expect(result.touched).toContain('inventory')
   })
 

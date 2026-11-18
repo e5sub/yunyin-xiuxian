@@ -101,8 +101,10 @@ const STATEFUL_CORE = new Set<string>([
  *   复算战力/掉落环境要把表里的状态水合进 store —— 不注进去,服务端快照就比玩家面板少一截。
  * 1.74.2:249 → 250。core/offline 读 sect:离线结算里的门派产量三座(灵草园/玄铁矿/悟道堂)
  *   要按门派建筑等级计产,而门派状态不在存档分片里 —— 结算前先补拉一次(见 offline.ts produce 前)。
+ * 1.74.4:250 → 251。core/autoOps 读 inventory:装备托管以「行囊满」为触发,
+ *   bagFull 是 inventory 的派生,托管巡检读它才算真满(自算容量必与 store 分叉)。
  */
-const CORE_STORE_SITES = 250;
+const CORE_STORE_SITES = 251;
 /**
  * core 用例里需要 Pinia 的文件数基线(只许减)。
  * 上游 121 + 本仓 autoOpsDaily/gongfaSeats 等新增,合并后以实跑数为准,见本文件底部对账。
@@ -119,8 +121,10 @@ const CORE_STORE_SITES = 250;
  * 断言本身就是「连点两下之后灵石还剩多少」,不打真 store 测不出来(与 forgeServiceCharge 同因)。
  * 1.74.1(+2,133 → 135):autoOpsApprentice.spec(托管收派道童走 store 动作)与
  * expeditionAuto.spec(全自动远征的额度记在 endgame store、续行走 store 状态机)。
+ * 1.74.4(+1,135 → 136):autoOpsEquip.spec —— 装备托管以「行囊满」为触发、换装配与化尘都走
+ * inventory store 的真账,不打真 store 测不出「换下的旧件当轮化尘」这条次序判据。
  */
-const CORE_PINIA_SPECS = 135;
+const CORE_PINIA_SPECS = 136;
 
 function sources(dir: string): { name: string; text: string }[] {
   return readdirSync(dir)

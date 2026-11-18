@@ -24,6 +24,9 @@ import { useResourcesStore } from '@/stores/resources'
 import { useUiStore } from '@/stores/ui'
 import { useCultivationStore } from '@/stores/cultivation'
 import { useApprenticeStore } from '@/stores/apprentice'
+import { useInventoryStore } from '@/stores/inventory'
+import { equipAllBest, belowWornTargets } from './equipBest'
+import { decomposeBatch, batchYieldText } from './forge'
 import { isRetreating, startRetreat } from './earlyGameService'
 import { canEnterRegion, placeContent } from './mortalWorldService'
 import { stoneByTier } from './formulas'
@@ -408,12 +411,46 @@ export async function autoApprenticeTick(): Promise<void> {
   }
 }
 
+/* ---------------- 装备托管(背包页开关,VIP 专属) ---------------- */
+
+/**
+ * 装备巡检:**行囊满才触发**(bagFull 为准),触发后固定两步 —— 先换最强,再化尘弱装。
+ * 平时不搅局:玩家自己的行囊自己整理,只有「装不下了」这一刻托管才插手;
+ * 换下的旧件当轮就落进「低于穿戴」,化尘随即跟上,一格不浪费。
+ * 化尘守卫见 core/equipBest.belowWornTargets(练过/近满/成套/上锁/空槽无基准一律豁免)。
+ * 与历练/闭关/差事互不相干 —— 只动装配与行囊,不碰任何会话与在途账。
+ * 未用 gate():那道闸要求四项托管开关至少一项开着,而装备开关自成一对;
+ * VIP 判据自己带上,非 VIP 静默跳过(开关本就不给他们看,不至于到了期还弹一句)。
+ * 导出供单测直接驱动一轮。
+ */
+export function autoEquipTick(): void {
+  const game = useGameStore()
+  const auth = useAuthStore()
+  const settings = useSettingsStore()
+  if (!game.started || !auth.loggedIn || !auth.isVip) return
+  if (!settings.autoEquipBest && !settings.autoSalvageWorse) return
+  const inventory = useInventoryStore()
+  if (!inventory.bagFull) return
+  const ui = useUiStore()
+  // 第一步:换上最强(换下的旧件回行囊,正好交第二步处置)
+  if (settings.autoEquipBest) {
+    const changed = equipAllBest()
+    if (changed > 0) ui.toast(`托管:已换上最强 ${changed} 件`, 'success')
+  }
+  // 第二步:弱装化尘,腾出行囊
+  if (settings.autoSalvageWorse) {
+    const got = decomposeBatch(belowWornTargets())
+    if (got.count > 0) ui.toast(`托管:弱装化尘 ${got.count} 件 · ${batchYieldText(got)}`, 'success')
+  }
+}
+
 export function startAutoOps(): void {
   if (mainTimer !== undefined) return
-  // 主循环十秒一查:历练/闭关之外顺带照看道童差事(收工/派遣各只报一条,不刷屏)
+  // 主循环十秒一查:历练/闭关之外顺带照看道童差事(收工/派遣各只报一条,不刷屏)与装备换尘
   mainTimer = setInterval(() => {
     tickMain()
     void autoApprenticeTick()
+    autoEquipTick()
   }, MAIN_TICK_MS)
   bossTimer = setInterval(() => void tickBoss(), BOSS_TICK_MS)
   dailyTimer = setInterval(() => void autoDailyTick(), DAILY_TICK_MS)
@@ -421,6 +458,7 @@ export function startAutoOps(): void {
   dailyWarmup = setTimeout(() => {
     void autoDailyTick()
     void autoApprenticeTick()
+    autoEquipTick()
   }, DAILY_WARMUP_MS)
   // 托管设置变更(含登录成为 VIP、到期自动关停)即同步服务端:离线托管按这份设置代打
   stopSyncWatch = watch(

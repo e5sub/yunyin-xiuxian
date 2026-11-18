@@ -13,7 +13,8 @@ import { MAX_EQUIP_TIER } from '@/data/equipment'
 import { EQUIP_LEVEL_SANITIZE_CAP } from '@/data/buildings'
 import { equipLevelCap } from '@/core/forge'
 import { BUILDINGS } from '@/data/buildings'
-import { FORGE_LEVEL_PER_CAP, EQUIP_MAX_LEVEL_BASE } from '@/data/constants'
+import { FORGE_LEVEL_PER_CAP } from '@/data/constants'
+import { EQUIP_LEVEL_CAP_BASE, EQUIP_LEVEL_CAP_MAX } from '@/data/realms'
 import { useDongfuStore } from '@/stores/dongfu'
 import type { EquipmentInstance } from '@/types'
 
@@ -157,10 +158,10 @@ describe('行囊修形 · 强化上界跟着建筑表走', () => {
     const forgeMax = BUILDINGS.find(b => b.id === 'forge')!.maxLevel
     dongfu.levels = { ...dongfu.levels, forge: forgeMax }
     const legal = equipLevelCap()
-    expect(legal, '满级炼器台应高于基础上限').toBeGreaterThan(EQUIP_MAX_LEVEL_BASE)
+    expect(legal, '满级炼器台应高于界基').toBeGreaterThan(EQUIP_LEVEL_CAP_BASE)
     expect(EQUIP_LEVEL_SANITIZE_CAP, '修形上界须覆盖满级建筑加成').toBeGreaterThanOrEqual(legal)
-    expect(EQUIP_LEVEL_SANITIZE_CAP, '推导口径:基础上限 + 满级加成').toBe(
-      EQUIP_MAX_LEVEL_BASE + Math.floor(forgeMax / FORGE_LEVEL_PER_CAP)
+    expect(EQUIP_LEVEL_SANITIZE_CAP, '推导口径:界基走满 + 满级加成').toBe(
+      EQUIP_LEVEL_CAP_MAX + Math.floor(forgeMax / FORGE_LEVEL_PER_CAP)
     )
 
     inv.items = [blade({ uid: 'keep', level: legal })]

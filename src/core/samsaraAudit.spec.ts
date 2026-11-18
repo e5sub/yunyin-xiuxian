@@ -407,6 +407,8 @@ describe('轮回审计 · 跨店持久化分片最小完备', () => {
       autoBoss: 'keep', autoRetreat: 'keep', autoAdventure: 'keep', autoRegionId: 'keep', autoMode: 'keep',
       autoDailyEvent: 'keep',
       autoDonate: 'keep',
+      autoEquipBest: 'keep',
+      autoSalvageWorse: 'keep',
       bossDifficulty: 'keep',
       privacyAccepted: 'keep', theme: 'keep', installNoticeDismissed: 'keep', lastSeenVersion: 'keep'
     },

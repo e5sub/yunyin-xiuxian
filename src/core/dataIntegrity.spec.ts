@@ -7,9 +7,9 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { MAX_MAJOR } from '@/data/realms'
 import { EQUIP_LEVEL_SANITIZE_CAP } from '@/data/buildings'
-import { EQUIP_MAX_LEVEL_BASE, FORGE_LEVEL_PER_CAP } from '@/data/constants'
+import { FORGE_LEVEL_PER_CAP } from '@/data/constants'
+import { EQUIP_LEVEL_CAP_BASE, EQUIP_LEVEL_CAP_MAX, equipLevelCapOf, MAX_MAJOR, WORLDS, WORLD_BREAK_MAJOR } from '@/data/realms'
 import { REGION_EVENTS } from '@/data/regionEvents'
 import { REGIONS } from '@/data/regions'
 import { QUALITIES } from '@/data/qualities'
@@ -189,15 +189,30 @@ describe('数据完整性 · 内容门槛必须可达', () => {
  * 两份靠人工同步,改一处忘另一处就会分叉:修形比执行宽 → 坏档里超上限的装备能留下来;
  * 修形比执行窄 → 合法装备被误伤到上限。
  *
- * 判据用**纯数据**算一遍(不经 store):满级炼器台的 `maxLevel` 代入
- * `forgeCapBonus` 的同一个公式,结果须等于 `EQUIP_LEVEL_SANITIZE_CAP`。
+ * 判据用**纯数据**算一遍(不经 store):界基走满的强化上限 + 满级炼器台的
+ * `maxLevel` 代入 `forgeCapBonus` 的同一个公式,结果须等于 `EQUIP_LEVEL_SANITIZE_CAP`。
  */
 describe('数据完整性 · 装备等级上限两处同式', () => {
   it('满级炼器台下,修形上限与执行上限用同一算式', () => {
     const forge = BUILDINGS.find(b => b.id === 'forge')
     expect(forge, '炼器台建筑不存在').toBeTruthy()
-    const execAtMax = EQUIP_MAX_LEVEL_BASE + Math.floor(forge!.maxLevel / FORGE_LEVEL_PER_CAP)
+    const execAtMax = EQUIP_LEVEL_CAP_MAX + Math.floor(forge!.maxLevel / FORGE_LEVEL_PER_CAP)
     expect(execAtMax, '两处公式已分叉:改了一处忘另一处').toBe(EQUIP_LEVEL_SANITIZE_CAP)
+    expect(MAX_MAJOR, '界数与境界表须对得上').toBeGreaterThan(0)
+  })
+})
+
+/**
+ * 强化上限随界抬(1.74.4):人间 25、仙界 50……以此类推,与 bagCapacity 同一条界序尺。
+ * 死数上限(20)已废 —— 跨界那一刻上限必须跟着抬,否则高界玩家被旧数锁死。
+ */
+describe('数据完整性 · 强化上限随界抬', () => {
+  it('界基 25,每跨一界 +25;满界 = 界基 × 界数', () => {
+    expect(equipLevelCapOf(0), '人间界 25').toBe(25)
+    expect(equipLevelCapOf(WORLD_BREAK_MAJOR), '仙界 50').toBe(50)
+    expect(EQUIP_LEVEL_CAP_MAX, '界基走满 = 界基 × 界数').toBe(EQUIP_LEVEL_CAP_BASE * WORLDS.length)
+    // 界序尺与行囊容量同一把:同一境界换算不得分叉
+    expect(equipLevelCapOf(MAX_MAJOR)).toBeGreaterThan(equipLevelCapOf(WORLD_BREAK_MAJOR))
   })
 })
 

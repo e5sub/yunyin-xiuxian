@@ -3,7 +3,8 @@ import type { EquipmentInstance, EquipSlot, GNum } from '@/types'
 import { qualityDef } from '@/data/qualities'
 import { EQUIP_SLOTS, equipmentTemplate } from '@/data/equipment'
 import { artifactDef, ARTIFACT_MAX_LEVEL } from '@/data/artifacts'
-import { EQUIP_MAX_LEVEL_BASE, UPGRADE_SAFE_STEP } from '@/data/constants'
+import { UPGRADE_SAFE_STEP } from '@/data/constants'
+import { equipLevelCapOf } from '@/data/realms'
 import { upgradeCost, upgradeFailLevel, upgradeSuccessRate } from './formulas'
 import { artifactUpCostAt } from './artifactCost'
 import { add, gnZero, isZero, subClamp } from '@/utils/gnum'
@@ -38,8 +39,12 @@ import { useLoreStore } from '@/stores/lore'
 import { useDongfuStore } from '@/stores/dongfu'
 import { useUiStore } from '@/stores/ui'
 
+/**
+ * 强化上限:界基随所在界抬(人间 25、仙界 50……见 data/realms.equipLevelCapOf),
+ * 炼器台每 2 级再 +1。跨界那一刻上限随之抬,旧行囊里的件立刻能接着强。
+ */
 export function equipLevelCap(): number {
-  return EQUIP_MAX_LEVEL_BASE + useDongfuStore().forgeCapBonus
+  return equipLevelCapOf(usePlayerStore().major) + useDongfuStore().forgeCapBonus
 }
 
 export interface UpgradeQuote {

@@ -7,6 +7,7 @@ import { qualityDef } from '@/data/qualities'
 import { EQUIP_SLOTS, equipmentTemplate } from '@/data/equipment'
 import { resolveEquipStats } from './equipGen'
 import { POWER_STAT_WEIGHTS } from './powerRating'
+import { hasInvestment, perfectRolls } from './smartKeep'
 import { toNum } from '@/utils/gnum'
 import type { AnyStatKey, EquipmentInstance, EquipSlot } from '@/types'
 
@@ -145,4 +146,30 @@ export function equipSetPreview(setId: string): number {
     changed += 1
   }
   return changed
+}
+
+/**
+ * 行囊里「低于穿戴」的件:同槽位已有严格更强者在身,这件留着也只是占位。
+ * 一键换装(托管或手动)换下的旧件落在这一份名单里,当轮即可化尘,不隔夜。
+ *
+ * 守卫(与 smartKeep 的自动处置同一族原则,只紧不松):
+ * - 上锁、投入过(强化/重铸/封存/转入词条)的件永不自动分解;
+ * - 词条近满与成套共鸣件是词条转移与凑套的素材,同样豁免 —— 换装换的是战力,
+ *   不该顺手烧掉玩家的「另一套可能」;
+ * - 空槽不参与:没穿的那一档无「穿戴基准」,强弱无从比。
+ */
+export function belowWornTargets(): EquipmentInstance[] {
+  const inventory = useInventoryStore()
+  const targets: EquipmentInstance[] = []
+  for (const it of inventory.bagItems) {
+    if (it.locked || hasInvestment(it) || perfectRolls(it)) continue
+    const tpl = equipmentTemplate(it.templateId)
+    if (!tpl || tpl.set) continue
+    const occupantUid = inventory.equipped[tpl.slot]
+    if (!occupantUid) continue
+    const occupant = inventory.findItem(occupantUid)
+    if (!occupant) continue
+    if (stronger(occupant, it)) targets.push(it)
+  }
+  return targets
 }

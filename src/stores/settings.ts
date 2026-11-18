@@ -55,6 +55,15 @@ export const useSettingsStore = defineStore(
      * 前一档不够才退下一档;服务端每分钟巡检时结算(见 server/src/autoOps 的 tickAutoDonate)。
      */
     const autoDonate = ref(false)
+    /**
+     * 装备托管(VIP,客户端在场时代办;开关在背包页,非 VIP 不显示):
+     * autoEquipBest = 行囊满时一键换装(equipAllBest 同一把尺);autoSalvageWorse = 随后化尘
+     * 「低于穿戴」的行囊件(见 core/equipBest.belowWornTargets 的守卫)。
+     * 触发条件是「行囊满」—— 平时不搅局,装不下这一刻才插手:先换最强,再化尘弱装。
+     * 背包不进云端,离线无从代办,故只在线跑。
+     */
+    const autoEquipBest = ref(false)
+    const autoSalvageWorse = ref(false)
     /** 自动历练的去处与档位('' = 未选;AUTO_REGION_ID 即 'auto' = 托管自行择地;档位 'auto' = 自动选档,收益最大化) */
     const autoRegionId = ref('')
     const autoMode = ref<import('@/types').AutoModeChoice>(AUTO_MODE_ID)
@@ -102,6 +111,8 @@ export const useSettingsStore = defineStore(
       autoAdventure.value = autoAdventure.value === true
       autoDailyEvent.value = autoDailyEvent.value === true
       autoDonate.value = autoDonate.value === true
+      autoEquipBest.value = autoEquipBest.value === true
+      autoSalvageWorse.value = autoSalvageWorse.value === true
       autoRegionId.value = typeof autoRegionId.value === 'string' ? autoRegionId.value : ''
       autoMode.value = autoModeOf(autoMode.value)
       bossDifficulty.value = bossDifficultyOf(bossDifficulty.value)
@@ -154,6 +165,8 @@ export const useSettingsStore = defineStore(
       autoAdventure,
       autoDailyEvent,
       autoDonate,
+      autoEquipBest,
+      autoSalvageWorse,
       autoRegionId,
       autoMode,
       bossDifficulty,

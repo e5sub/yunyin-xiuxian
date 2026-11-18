@@ -862,7 +862,7 @@ describe('丹药存量 · 读档封顶', () => {
  * 累计投入灵石的读档上界。
  *
  * 它与 `invested.dust` 是同一个结构、同一个结局 —— 都会经 `enhanceInvested`
- * **原样退还给玩家**。而 `dust` 早有 `INVESTED_DUST_MAX`(两万)挡着,
+ * **原样退还给玩家**。而 `dust` 早有 `INVESTED_DUST_MAX` 挡着(1.74.4 起 5e24,随界基抬升),
  * `stone` 却只走 `asBoundedGNum`,上界是 `SAVE_GNUM_MAX_EXP`(999):
  * 坏档写 `9.99e900` 照样通过,拆一件就白得比 `Number.MAX_VALUE` 还大的灵石。
  *

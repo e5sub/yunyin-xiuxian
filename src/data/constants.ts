@@ -279,7 +279,6 @@ export const EQUIP_QUALITY_FLAT_EXP = 1.8
 export const QUALITY_OUT_OF_BAND = 0.1
 /** 每强化一级基础属性 +12% */
 export const EQUIP_LEVEL_BONUS = 0.12
-export const EQUIP_MAX_LEVEL_BASE = 20
 /**
  * 强化成功率:以 0 级为必成,逐级递减,到下限为止(level 0 = 100%,每级 -3.5%,不低于 25%)。
  * 失败损失一级,但不会跌破最近的保级点(见 UPGRADE_SAFE_STEP)。
@@ -314,11 +313,17 @@ export const EQUIP_COUNTER_MAX = 100_000_000
  *
  * **取值不能凭「够用」定**:本仓强化另收修为、成功率与保级点,单级成本比上游高,
  * 满强化(炼器台满级、最高层级、最高品质)累计实测 444417(上游同口径是 8743,
- * 故上游的两万在本仓会**把正常档洗成零**)。取一百万:比真实可达值宽一倍多,
- * 仍远低于 `1e21`(裸插值印科学计数法的门槛)。
+ * 故上游的两万在本仓会**把正常档洗成零**)。
+ *
+ * 1.74.4 强化上限随界抬(人间 25、每界 +25,满界基 125 + 满级炼器台 5 → 修形上界 130 级):
+ * 满强化累计涨到 2.12e24,上界随之抬到 5e24(约 2.4 倍余量),越界仍归零不夹取。
  */
-export const INVESTED_DUST_MAX = 1_000_000
-/** 炼器台每 2 级提高强化上限 1 */
+export const INVESTED_DUST_MAX = 5e24
+/**
+ * 炼器台每 2 级提高强化上限 1。
+ * 强化上限的界基(人间 25、仙界 50……)在 data/realms 的 EQUIP_LEVEL_CAP_BASE,
+ * 这里只管炼器台的加成部分;原死数 EQUIP_MAX_LEVEL_BASE = 20 已废(1.74.4)。
+ */
 export const FORGE_LEVEL_PER_CAP = 2
 /** 强化成本:灵尘 */
 export const UPGRADE_DUST_BASE = 4

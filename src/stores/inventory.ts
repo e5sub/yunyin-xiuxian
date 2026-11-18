@@ -30,7 +30,7 @@ export function setBagRealmResolver(fn: () => number): void {
 }
 
 /** 累计投入灵石的读档上界:满强化实测 5.32e11,取约 2.3 倍余量(dust 按同一比例) */
-const INVESTED_STONE_MAX = gn(1.2e12)
+const INVESTED_STONE_MAX = gn(1.3e16)
 
 export const useInventoryStore = defineStore(
   'inventory',
@@ -136,8 +136,9 @@ export const useInventoryStore = defineStore(
                    * 累计投入的器灵尘 —— 它会经 `enhanceInvested` **原样退还给玩家**
                    * (分解/回收时),坏档写 1e300 就等于让玩家白得 1e300 器灵尘。
                    *
-                   * 上界按真实最大投入算:满强化(15 级、最高层级、最高品质)累计实测 8743,
-                   * 取两万留余量。越界**归零**而不是夹到上界 —— 夹到两万仍是白送两万,
+                   * 上界按真实最大投入算:1.74.4 起强化上限随界抬(修形上界 130 级),
+                   * 满强化累计实测 2.12e24,INVESTED_DUST_MAX 取 5e24(约 2.4 倍余量)。
+                   * 越界**归零**而不是夹到上界 —— 夹到上界仍是白送,
                    * 与「道源越界归零」同一条理:坏值本就没有可信来源,
                    * 归零的语义是「这件装备没投入过」。
                    */
@@ -151,8 +152,8 @@ export const useInventoryStore = defineStore(
                    * 等于白送一笔比 `Number.MAX_VALUE` 还大的灵石。实测塞 `9.99e900` 后
                    * sanitize 不修,而同一个结构里的 `dust` 早被两万的上界挡住。
                    *
-                   * 上界按真实最大投入算:满强化(15 级、最高层级、最高品质)累计
-                   * `5.32e11`,与 `dust` 同一条思路取约 2.3 倍余量。越界**归零**,
+                   * 上界按真实最大投入算:1.74.4 起满强化(130 级、最高层级)累计
+                   * 约 `5.8e15`,INVESTED_STONE_MAX 取 `1.3e16`(约 2.2 倍余量)。越界**归零**,
                    * 理由与 `dust` 同:夹到上界仍是白送。
                    */
                   stone: (() => {

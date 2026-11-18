@@ -83,6 +83,28 @@
         一键换装{{ bestSwapPreview }}
       </button>
       <!--
+        装备托管开关(VIP 专属,非 VIP 整行不渲染 —— 不是一个置灰钮,是看不见):
+        「换装」在行囊满时一键换上最强;「化尘」随后分解低于穿戴的行囊件(练过/近满/成套/上锁的件豁免)。
+        开关持久化在 settings,VIP 到期后开关留原处、托管循环自行停(与四项托管同一待遇)。
+      -->
+      <div v-if="auth.isVip" class="mt-1.5 flex items-center gap-2 px-1">
+        <button
+          class="-my-1 grow rounded px-2 py-1.5 text-[11px] ring-1 ring-inset active:opacity-60"
+          :class="settings.autoEquipBest ? 'text-jade ring-jade/40' : 'text-ink-faint ring-ink/20'"
+          :aria-pressed="settings.autoEquipBest"
+          @click="settings.autoEquipBest = !settings.autoEquipBest"
+        >托管换装{{ settings.autoEquipBest ? '·启' : '·停' }}</button>
+        <button
+          class="-my-1 grow rounded px-2 py-1.5 text-[11px] ring-1 ring-inset active:opacity-60"
+          :class="settings.autoSalvageWorse ? 'text-jade ring-jade/40' : 'text-ink-faint ring-ink/20'"
+          :aria-pressed="settings.autoSalvageWorse"
+          @click="settings.autoSalvageWorse = !settings.autoSalvageWorse"
+        >托管化尘{{ settings.autoSalvageWorse ? '·启' : '·停' }}</button>
+      </div>
+      <p v-if="auth.isVip && (settings.autoEquipBest || settings.autoSalvageWorse)" class="px-1 text-[10px] leading-relaxed text-ink-faint">
+        行囊满时托管出手:{{ settings.autoEquipBest ? '先换上最强,' : '' }}{{ settings.autoSalvageWorse ? '再化尘弱装腾格(练过/近满/成套/上锁的件不动)。' : '' }}
+      </p>
+      <!--
         强化与卸下是次一级动作,并排两格(各半宽),不跟「一键换装」抢同一档份量。
         两句话都压到五字内:半宽钮放不下长句,细则(各掷一次、失手、料尽)交给提示报。
       -->
@@ -360,6 +382,7 @@
   import { useResourcesStore } from '@/stores/resources'
   import { useUiStore } from '@/stores/ui'
   import { useSettingsStore } from '@/stores/settings'
+  import { useAuthStore } from '@/stores/auth'
   import { useCultivationStore } from '@/stores/cultivation'
   import { qualityDef, qualityTextColor } from '@/data/qualities'
   import { equipSlotLabel } from '@/ui/inventoryText'
@@ -408,6 +431,7 @@
   const { herbGrade, recipes, anyCraftable, now } = useBrewing()
   const ui = useUiStore()
   const settings = useSettingsStore()
+  const auth = useAuthStore()
   const lore = useLoreStore()
   const cultivation = useCultivationStore()
 

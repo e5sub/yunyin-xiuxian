@@ -148,3 +148,18 @@ function worldIndexOf(major: number): number {
 export function bagCapacity(major: number): number {
   return BAG_CAP_BASE * (worldIndexOf(major) + 1)
 }
+
+/**
+ * 强化上限的界基:人间界 25 级,每跨一界 +25(1.74.4)。
+ * 为什么跟着界走:强化价按等级陡涨,而掉落阶数随界抬 —— 人间界的 50 级是天价锁,
+ * 到了仙界它才是够得着的日常。与 bagCapacity 同一条界序尺,跨界那一刻上限随之抬。
+ */
+export const EQUIP_LEVEL_CAP_BASE = 25
+
+/** 该境界的装备强化上限(不含炼器台加成):人间 25、仙界 50……以此类推 */
+export function equipLevelCapOf(major: number): number {
+  return EQUIP_LEVEL_CAP_BASE * (worldIndexOf(major) + 1)
+}
+
+/** 界基走满的强化上限(本源界);修形上界 = 它 + 满级炼器台加成 */
+export const EQUIP_LEVEL_CAP_MAX = EQUIP_LEVEL_CAP_BASE * WORLDS.length
