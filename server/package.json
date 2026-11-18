@@ -6,7 +6,7 @@
     "dev": "tsx watch --tsconfig ../tsconfig.app.json src/index.ts",
     "start": "tsx --tsconfig ../tsconfig.app.json src/index.ts",
     "admin": "tsx src/scripts/create-admin.ts",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit && tsx src/scripts/check-riddles.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

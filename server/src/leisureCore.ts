@@ -5,13 +5,14 @@
  * 规矩照旧:换日按北京时间零点、结果由服务端裁定、每日各有额度(一签 / 三竿 / 一问)。
  *
  * 三则都不碰既有玩法:不消耗行动次数,不改战斗数值,只发一份小赏。
- * 观星与猜谜的题面按「日号哈希」定,同一天全服同一签、同一题,便于道友在群里对签;
+ * 观星按「用户+日号」哈希定签,猜谜按日序等步进走题库:同一天全服同一签、同一题,便于道友在群里对签;
  * 垂钓每次现掷,钓到的先入篓,由玩家自己收篓入账 —— 半路关掉界面也不会白钓。
  */
 import { get, run } from './db.js'
 import { getConfig } from './config.js'
 import { withKeyLock } from './mutex.js'
 import { dayKeyOf, secsToNextDay } from './eventCore.js'
+import { RIDDLES } from './leisureRiddles.js'
 
 /** 赏格形状与七会一致:灵石给基础值,客户端按自身层级折算 */
 export interface LeisureReward {
@@ -95,93 +96,6 @@ export const CATCHES: Catch[] = [
 /** 每日可起竿次数 */
 export const MAX_CASTS = 3
 
-/* ---------------- 猜谜 ---------------- */
-
-export interface Riddle {
-  q: string
-  options: string[]
-  /** 正确项下标 */
-  answer: number
-  /** 答后揭晓的一句 */
-  note: string
-}
-
-/** 十二问:老谜面为主,不取偏僻,答不上也能会心一笑 */
-export const RIDDLES: Riddle[] = [
-  {
-    q: '有风不动无风动,不动无风动有风。',
-    options: ['扇子', '灯笼', '风铃', '纸鸢'],
-    answer: 0,
-    note: '扇子不动则无风,一摇风自来。'
-  },
-  {
-    q: '千条线,万条线,落在水里看不见。',
-    options: ['渔网', '雨', '柳丝', '日光'],
-    answer: 1,
-    note: '雨落水面,只余涟漪。'
-  },
-  {
-    q: '远看山有色,近听水无声;春去花还在,人来鸟不惊。',
-    options: ['梦境', '画卷', '镜中景', '雪后山'],
-    answer: 1,
-    note: '有声有色而皆不动,是画。'
-  },
-  {
-    q: '三个口,叠成山;尝滋味,它最先。',
-    options: ['晶', '品', '磊', '森'],
-    answer: 1,
-    note: '三口为品,品者尝味。'
-  },
-  {
-    q: '一口咬掉牛尾巴。',
-    options: ['告', '生', '先', '牟'],
-    answer: 0,
-    note: '「牛」去其尾,加一口,成「告」。'
-  },
-  {
-    q: '八十八。',
-    options: ['米', '木', '林', '烊'],
-    answer: 0,
-    note: '「八」+「十」+「八」,合而为「米」。'
-  },
-  {
-    q: '上不在上,下不在下;不可在上,且宜在下。',
-    options: ['一', '十', '卜', '丁'],
-    answer: 0,
-    note: '「上」「下」「不」「且」诸字之中,它皆居下。'
-  },
-  {
-    q: '有骨没有肉,有脚没有手;下雨才出门,晴天家中坐。',
-    options: ['斗笠', '蓑衣', '伞', '木屐'],
-    answer: 2,
-    note: '骨为伞骨,脚为伞柄之撑。'
-  },
-  {
-    q: '有面没有口,有脚没有手;虽有四只脚,自己不会走。',
-    options: ['床', '桌子', '屏风', '书案'],
-    answer: 1,
-    note: '四脚而立,面平无口,是桌。'
-  },
-  {
-    q: '你对它笑,它也笑;你对它哭,它也哭。',
-    options: ['影子', '镜子', '回声', '水面'],
-    answer: 1,
-    note: '镜中形容,随人而动。'
-  },
-  {
-    q: '生在山上,死在锅里,埋在罐里,活在杯里。',
-    options: ['草药', '茶叶', '桂花', '松子'],
-    answer: 1,
-    note: '一叶茶,历四死四生。'
-  },
-  {
-    q: '小时穿黑衣,长大穿白袍;到老留下一卷丝,自己却不见了。',
-    options: ['蚕', '蝶', '蛛', '蝉'],
-    answer: 0,
-    note: '蚕虽作茧,丝成而身隐。'
-  }
-]
-
 /* ---------------- 日号与确定性 ---------------- */
 
 /** FNV-1a:同一「用户+日号+项」每天固定落一签,换日自换 */
@@ -199,9 +113,27 @@ export function fortuneIndexOf(userId: number, day: string): number {
   return hash32(`${userId}:${day}:star`) % FORTUNES.length
 }
 
-/** 今日问号:全服同题,便于道友互相考较 */
+/**
+ * 今日问号:全服同题,便于道友互相考较。
+ *
+ * 不按哈希取模 —— 哈希是「有放回」的抽,库再大也会十来天撞上同一题。
+ * 这里按日序等步进,步长与题目总数互质:一轮恰好走遍全库,两百余日不重,才回头。
+ * 日序取北京日号(与换日同一把尺),同一天全服自然同题。
+ */
 export function riddleIndexOf(day: string): number {
-  return hash32(`${day}:riddle`) % RIDDLES.length
+  const n = RIDDLES.length
+  if (n <= 1) return 0
+  const ordinal = Math.floor(new Date(`${day}T00:00:00Z`).getTime() / 86_400_000)
+  if (!Number.isFinite(ordinal)) return 0
+  return (((ordinal * riddleStep(n)) % n) + n) % n
+}
+
+/** 步长:黄金分割点起找与总数互质的那个数,题序散得开又必然走遍 */
+function riddleStep(n: number): number {
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b))
+  let step = Math.max(1, Math.round(n * 0.618))
+  while (step < n && gcd(step, n) !== 1) step += 1
+  return gcd(step, n) === 1 ? step : 1
 }
 
 /* ---------------- 存储 ---------------- */
