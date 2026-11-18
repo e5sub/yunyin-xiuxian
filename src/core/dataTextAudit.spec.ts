@@ -1483,7 +1483,7 @@ describe('文案数值对账 · 用具三类的界面读同源函数', () => {
     expect(inv, '两条去路互斥,同屏只摆一条').toMatch(/v-else-if="r\.plan\.reason === 'stone'"/)
     // 同时锁目标路由:只断言标签,把 link 改回 market 照样绿
     expect(inv, '灵石那条必须指向历练').toMatch(
-      /v-else-if="r\.plan\.reason === 'stone'"[\s\S]{0,200}?:to="\{ name: 'adventure' \}"[\s\S]{0,200}?去历练攒石 →/,
+      /v-else-if="r\.plan\.reason === 'stone'"[\s\S]{0,200}?:to="\{ name: 'adventure' \}"[\s\S]{0,200}?去历练攒灵石 →/,
     )
   })
 

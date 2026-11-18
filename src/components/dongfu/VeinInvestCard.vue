@@ -62,7 +62,7 @@
             </p>
           </div>
           <!--
-            钮组另起一行靠右:弹窗正文窄,「改立主脉 · N 石」与说明并排时说明栏只剩 80px 上下。
+            钮组另起一行靠右:弹窗正文窄,「改立主脉 · N 灵石」与说明并排时说明栏只剩 80px 上下。
             说明栏须 flex-1(基准 0):基准按内容宽时,折行会把说明栏整块甩到下一行。
             两钮放不下时折成两行;钮内两段各自不拆,钮窄时上下叠(不叠会被压成逐字竖排)。
           -->
@@ -75,7 +75,7 @@
             <button class="btn-ghost flex-wrap whitespace-normal !px-2.5 !py-2 !text-[11px]" :disabled="!canInvest(row.def.id)" @click="doInvest(row.def.id)">
               <template v-if="canInvest(row.def.id)">
                 <span class="whitespace-nowrap">投一点 ·</span>
-                <span class="whitespace-nowrap">{{ formatGN(investCost) }} 石</span>
+                <span class="whitespace-nowrap">灵石 {{ formatGN(investCost) }}</span>
               </template>
               <template v-else>{{ investedStateLabel(row.def.id) }}</template>
             </button>
@@ -90,7 +90,7 @@
               <span class="whitespace-nowrap">改立主脉 ·</span>
               <!-- 拒因要报出缺的是哪一样:本行光看「尚差 N」不知道是灵石还是别的(同 ExpeditionPanel 虚界那两枚钮) -->
               <span v-if="switchShort" class="whitespace-nowrap">{{ switchShortText }}</span>
-              <span v-else class="whitespace-nowrap">{{ formatGN(switchCost) }} 石</span>
+              <span v-else class="whitespace-nowrap">灵石 {{ formatGN(switchCost) }}</span>
             </button>
           </div>
         </div>
@@ -178,7 +178,7 @@
           :title="veinTotal <= 0 ? '尚未投点,无从重置' : undefined"
           @click="resetArm = true"
         >
-          重置投资 · <span class="whitespace-nowrap">{{ formatGN(resetCost) }} 石</span>
+          重置投资 · <span class="whitespace-nowrap">灵石 {{ formatGN(resetCost) }}</span>
         </button>
       </div>
     </div>

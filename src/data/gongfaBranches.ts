@@ -148,7 +148,7 @@ export const GONGFA_BRANCHES: GongfaBranchDef[] = [
   b('s_budong', 'b_budong_feng', '盾锋', '以盾为锋,罡在势盛', { shieldPower: 0.24, overhealShield: 0.6 }),
 
   // ---- 辅修:点石成金术(灵品) ----
-  b('s_dianshi', 'b_dianshi_jin', '点金', '战胜则石来;锤炼更省,祭炼不与', { spiritStoneGain: 0.2, forgeDiscount: 0.1 }),
+  b('s_dianshi', 'b_dianshi_jin', '点金', '战胜则灵石自来;锤炼更省,祭炼不与', { spiritStoneGain: 0.2, forgeDiscount: 0.1 }),
   b('s_dianshi', 'b_dianshi_sha', '淘沙', '沙里淘珍,时有意外', { dropRate: 0.12, doubleDropRate: 0.1, luck: 0.02 }),
 
   // ---- 辅修:龟息养寿功(灵品) ----
@@ -245,7 +245,7 @@ export const GONGFA_BRANCHES: GongfaBranchDef[] = [
   b('s_hundunti', 'b_hundunti_gu', '固本', '混沌磐身,万击不摇', { maxHpPct: 0.3, defensePct: 0.3 }),
   b('s_hundunti', 'b_hundunti_ren', '润身', '身化混沌,伤处自弥', { regenPerRound: 0.06, maxHpPct: 0.2, damageReduction: 0.1 }),
   // 秘术:神机衍数
-  b('x_shenji', 'b_shenji_ce', '测算', '推演算尽,器物成色自高,战胜则石来', { luck: 0.15, dropRate: 0.25, spiritStoneGain: 0.35 }),
+  b('x_shenji', 'b_shenji_ce', '测算', '推演算尽,器物成色自高,战胜则灵石自来', { luck: 0.15, dropRate: 0.25, spiritStoneGain: 0.35 }),
   b('x_shenji', 'b_shenji_yan', '验天', '验于天时,同程妖踪更密,兵器更易现世', { dropRate: 0.2, explorationSpeed: 0.25, luck: 0.1 }),
   // 秘术:道音玄章
   b('x_daoyin', 'b_daoyin_ming', '明道', '道音入耳,修行不辍', { cultivationSpeed: 0.3, qiRegen: 0.28, breakthroughRate: 0.06 }),

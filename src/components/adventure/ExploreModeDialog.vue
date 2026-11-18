@@ -166,6 +166,6 @@
     if (!region) return ''
     const eventId = currentRegionEvent(region.id)?.eventId ?? null
     const r = expectedWinReward(region, exploreRewardMult(mode, eventId))
-    return `一胜约 ${formatGN(r.stone)} 石 · ${formatGN(r.exp)} 修为`
+    return `一胜约 灵石 ${formatGN(r.stone)} · ${formatGN(r.exp)} 修为`
   }
 </script>

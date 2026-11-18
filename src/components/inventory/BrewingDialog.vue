@@ -91,7 +91,7 @@
                 :to="{ name: 'adventure' }"
                 class="-my-1 inline-flex min-h-[28px] items-center whitespace-nowrap rounded border border-azure/50 px-2 text-[10px] text-azure active:opacity-60"
               >
-                去历练攒石 →
+                去历练攒灵石 →
               </RouterLink>
             </span>
           </div>

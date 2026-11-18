@@ -8,7 +8,6 @@
  */
 import express, { type Request, type Response } from 'express'
 import { get } from '../db.js'
-import { getConfig } from '../config.js'
 import { requireAuth } from '../auth.js'
 import { lootEnv } from '../recompute.js'
 import { grantLoot, verifyExtraGains, expectedSoulGradeOf, lootCountCaps } from '../lootGrant.js'
@@ -177,7 +176,7 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
  * 记进台账后上传才不会被验源移除。法宝的自报 defId 按存在性钳制;器魂的自报品阶在 1.66.3 起
  * 不再照单全收 —— 客户端须带被烧装备的 uid,服务端按云档里这件的品质复算品阶
  * (与 core/soulForge 的 previewSoul 同一条映射),复算不出或原器已烧过一律不签。
- * 自报品阶的旧径默认关死(GM 后台 soul_legacy_grades 才能回开,仅供老客户端过渡期兜底)。
+ * 不带 burnedUid 的申请一律不签(旧「自报品阶」兼容口已于 1.74.2 删除)。
  *
  * 与 /loot/claim 共用同一套限速与小时封顶:签发流量不因多开一个口子而放大。
  *
@@ -212,8 +211,6 @@ lootRouter.post('/loot/extras', requireAuth, (req: Request, res: Response) => {
     const burnedNow: string[] = []
     const claimedSouls = gains.souls
     const withBurn = claimedSouls.filter(s => typeof s.burnedUid === 'string' && s.burnedUid !== '')
-    // 自报品阶的旧径默认关死;GM 后台 soul_legacy_grades=true 仅作老客户端过渡期兜底
-    const legacyGrades = (await getConfig('soul_legacy_grades')) === 'true'
     if (withBurn.length > 0) {
       let saveItems: Array<Record<string, unknown>> | null = null
       try {
@@ -239,14 +236,6 @@ lootRouter.post('/loot/extras', requireAuth, (req: Request, res: Response) => {
         souls.push({ uid: s.uid, type: s.type, grade: Math.trunc(expected) })
         burnedNow.push(burnedUid)
       }
-      // 老客户端兼容口(旧径开关,默认关):不带 burnedUid 的申请沿用钳制后的自报值
-      if (legacyGrades) {
-        for (const s of claimedSouls) {
-          if (typeof s.burnedUid !== 'string' || s.burnedUid === '') souls.push({ uid: s.uid, type: s.type, grade: s.grade })
-        }
-      }
-    } else if (legacyGrades) {
-      souls.push(...claimedSouls.map(s => ({ uid: s.uid, type: s.type, grade: s.grade })))
     }
 
     const want = gains.artifacts.length + souls.length

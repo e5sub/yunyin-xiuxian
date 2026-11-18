@@ -62,13 +62,13 @@
       @click="upgradeOnce"
     >
       <!--
-        每个「数 + 量词」各自 nowrap,只在分隔符处换行(窄屏会在数字与「石」之间断行)。
+        每个「数 + 量词」各自 nowrap,只在分隔符处换行(窄屏会在数字与「灵石」之间断行)。
         外层 span 不可去:btn-ghost 是 flex 容器,散落的文本节点会各成 flex item 竖着堆。
       -->
       <template v-if="info.canUpgrade">
         <span class="leading-tight">
           <span class="whitespace-nowrap">{{ buildingActLabel(level) }} ·</span>
-          <span class="whitespace-nowrap">{{ formatGN(info.stone) }} 石</span>
+          <span class="whitespace-nowrap">灵石 {{ formatGN(info.stone) }}</span>
           <span v-if="info.ore > 0" class="whitespace-nowrap">· {{ info.ore }} 铁</span>
         </span>
       </template>

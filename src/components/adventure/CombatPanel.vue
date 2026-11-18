@@ -235,7 +235,7 @@
     const r = nextRewardRow.value
     if (!r) return null
     const parts: string[] = []
-    if (r.stone > 0) parts.push(`${formatGN(r.stone)} 石`)
+    if (r.stone > 0) parts.push(`灵石 ${formatGN(r.stone)}`)
     if (r.wudao > 0) parts.push(`悟道点 ${r.wudao}`)
     return parts.length ? parts.join(' · ') : null
   })
