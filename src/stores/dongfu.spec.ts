@@ -303,8 +303,8 @@ describe('洞府产出 · 门派产量三座并入 produce', () => {
   const herbTotal = (): number => Object.values(useResourcesStore().herbByGrade).reduce((a, b) => a + (b ?? 0), 0)
 
   it('有门派:produce(3600) 恰好每级发 1 件,品阶随灵田', () => {
-    // hall 3 → 副建筑上限 8,三座产量建筑按级入账
-    useSectStore().hydrate({ name: '测试门', buildings: { hall: 3, herbgarden: 3, oremine: 2, wudao: 5 } })
+    // hall 5 → 副建筑不得超过山门(1.74.2),三座产量建筑按级入账
+    useSectStore().hydrate({ name: '测试门', buildings: { hall: 5, herbgarden: 3, oremine: 2, wudao: 5 } })
     const res = useResourcesStore()
     const herbBefore = herbTotal()
     const oreBefore = res.ore
