@@ -146,6 +146,43 @@
       </div>
     </div>
 
+    <!--
+      重置投资(1.74.1):一口价洗点 —— 四脉点数全数归零、主脉归还,再投时首投成主。
+      已投进去的灵石不退(投资本是消耗),重置买的是「重新分配」的机会;登录态走服务端账,
+      点数与台账一并清,不会上传后被旧点数顶回来。
+    -->
+    <div class="mt-3 border-t border-ink/6 pt-2.5">
+      <div v-if="resetArm" class="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md border border-cinnabar/30 bg-cinnabar/5 px-2.5 py-2">
+        <p class="min-w-[5rem] flex-1 text-[10px] leading-snug text-ink-soft">
+          重置全部灵脉投资 · 耗灵石 <span class="tabular text-ink">{{ formatGN(resetCost) }}</span>
+          <span class="mt-0.5 block text-[9px] leading-relaxed text-cinnabar">
+            四脉点数全数归零、主脉归还(已投灵石不退);再投时首投成主
+          </span>
+          <span v-if="resetShort" class="block text-[9px] text-cinnabar tabular">灵石尚差 {{ formatGap(resetGap) }}</span>
+        </p>
+        <div class="flex shrink-0 gap-1">
+          <button class="btn-ghost !px-2.5 !py-2 !text-[11px]" @click="resetArm = false">再想想</button>
+          <button
+            class="btn-seal !px-2.5 !py-2 !text-[11px]"
+            :disabled="resetShort || veinTotal <= 0"
+            :title="resetShort ? `灵石尚差 ${formatGap(resetGap)}` : veinTotal <= 0 ? '尚未投点,无从重置' : undefined"
+            @click="confirmReset"
+          >重 置</button>
+        </div>
+      </div>
+      <div v-else class="flex flex-wrap items-center justify-between gap-2">
+        <p class="min-w-[5rem] flex-1 text-[10px] leading-relaxed text-ink-faint">投错了想重排?洗掉全部点数重新投,主脉一并归还</p>
+        <button
+          class="btn-ghost shrink-0 !px-2.5 !py-2 !text-[11px] !text-cinnabar"
+          :disabled="veinTotal <= 0"
+          :title="veinTotal <= 0 ? '尚未投点,无从重置' : undefined"
+          @click="resetArm = true"
+        >
+          重置投资 · <span class="whitespace-nowrap">{{ formatGN(resetCost) }} 石</span>
+        </button>
+      </div>
+    </div>
+
     <div class="mt-3 border-t border-ink/6 pt-2.5">
       <p class="text-[10px] text-ink-faint">当前加成</p>
       <div class="mt-1.5 space-y-1">
@@ -169,7 +206,7 @@
   import { VEINS, veinDef, type VeinId } from '@/data/veins'
   import { veinEffectText, veinFullToast, veinPeakToast } from '@/ui/veinText'
   import { axisPct, veinBudget } from '@/ui/veinShape'
-  import { requestVeinBatch, requestVeinInvest, veinCap, veinInvestPlan, veinPointCost, veinPointShortfall, veinSwitchCost, veinSwitchShortfall, switchMainVein, type VeinInvestPlan } from '@/core/veinService'
+  import { requestVeinBatch, requestVeinInvest, requestVeinReset, veinCap, veinInvestPlan, veinPointCost, veinPointShortfall, veinResetCost, veinResetShortfall, veinSwitchCost, veinSwitchShortfall, switchMainVein, type VeinInvestPlan } from '@/core/veinService'
   import { VEIN_MAIN_CAPACITY, VEIN_SIDE_CAP, VEIN_TOTAL_CAPACITY, VEIN_UNLOCK_MAJOR } from '@/data/constants'
   import { formatGN, formatGap } from '@/utils/format'
 
@@ -324,5 +361,17 @@
 
   function doInvest(veinId: VeinId): void {
     void requestVeinInvest(veinId)
+  }
+
+  /* ---------------- 灵脉重置(1.74.1) ---------------- */
+  const resetCost = computed(() => veinResetCost())
+  /** 重置石差(付得起为 0):入口与确认钮同源 */
+  const resetGap = computed(() => veinResetShortfall())
+  const resetShort = computed(() => resetGap.value.m > 0)
+  /** 重置二步确认态 */
+  const resetArm = ref(false)
+  function confirmReset(): void {
+    resetArm.value = false
+    void requestVeinReset() // toast 由服务报
   }
 </script>

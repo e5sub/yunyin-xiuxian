@@ -414,7 +414,8 @@ describe('轮回审计 · 跨店持久化分片最小完备', () => {
     endgame: {
       daoPath: 'reset', worldRun: 'reset', // 道途归还、远征中断(onRebirth)
       daoSource: 'keep', worldClears: 'keep', trialRecords: 'keep', marks: 'keep', voidWorld: 'keep',
-      dailyDoneDay: 'keep', milestones: 'keep', records: 'keep', endgameTutorialSeen: 'keep',
+      dailyDoneDay: 'keep', autoRunDay: 'keep', autoRunCount: 'keep', // 全自动额度按真实日计,跨世保留
+      milestones: 'keep', records: 'keep', endgameTutorialSeen: 'keep',
       souls: 'keep', equippedSouls: 'keep', soulTutorialSeen: 'keep',
       daoFruitTutorialSeen: 'keep', resourceDialogSeen: 'keep'
     },

@@ -36,7 +36,6 @@ import { EVENTS } from '@/data/events'
 import { useUiStore } from '@/stores/ui'
 import { useEndgameStore } from '@/stores/endgame'
 import { startRetreat } from './earlyGameService'
-import { endgameBusy } from './endgameActivity'
 
 /**
  * 须与 petPersonality.EFFECTS 的 cautious 值一致(见 petPersonality.spec)。
@@ -404,8 +403,8 @@ describe('闭关禁令:闭关期间不得进入历练(Phase 28 接线后)', () =
   })
 })
 
-/** 在途互斥的反方向:远征途中不许开历练,否则历练心跳与远征 runSnap 同时推进 */
-describe('在途互斥 · 远征途中不得再开一程历练', () => {
+/** 远征与历练并行(1.74.1 起):远征途中照样可以再开一程历练,两边的账各记各的(见 core/expedition 注释) */
+describe('在途并行 · 远征途中仍可开历练', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     // 五个桩开关全部归位:它们是模块级可变状态,漏一个就会被前面的用例带进来
@@ -416,9 +415,8 @@ describe('在途互斥 · 远征途中不得再开一程历练', () => {
     forceBuild.value = false
   })
 
-  it('远征在途:起程被拒、不落会话,并指名统一判据的拒因', () => {
+  it('远征在途:起程照常落会话(并行,不再互斥)', () => {
     const endgame = useEndgameStore()
-    const adventure = useAdventureStore()
     endgame.worldRun = {
       worldId: 'chiyan',
       pactId: null,
@@ -430,17 +428,17 @@ describe('在途互斥 · 远征途中不得再开一程历练', () => {
       totalRounds: 0,
       winStacks: 0
     }
-    expect(startExploration('qingyun', 'normal'), '远征途中不该还能开历练').toBe(false)
-    expect(adventure.session, '被拒就不该落会话').toBeNull()
-    // 拒因取 endgameBusy 单源
-    expect(useUiStore().toasts.at(-1)?.text).toContain(endgameBusy(endgame.worldRun, null, null)!.reason)
+    expect(startExploration('qingyun', 'normal'), '远征途中应能再开历练(并行)').toBe(true)
+    expect(useAdventureStore().session, '并行就该落会话').not.toBeNull()
   })
 
-  it('清空在途后同一入口放行(守卫只认在途,不是把人永久锁死)', () => {
-    const endgame = useEndgameStore()
-    endgame.worldRun = null
-    expect(startExploration('qingyun', 'normal')).toBe(true)
-    expect(useAdventureStore().session).not.toBeNull()
+  it('秘境仍互斥:身在秘境时历练不开', () => {
+    usePlayerStore().secretRealm = {
+      realmId: 'sr_kurong', enteredAt: 1, layer: 1, wins: 0, losses: 0, spoils: [], rules: [], carriedHpPct: 1, finished: false
+    }
+    expect(startExploration('qingyun', 'normal')).toBe(false)
+    expect(useAdventureStore().session, '被拒就不该落会话').toBeNull()
+    expect(useUiStore().toasts.at(-1)?.text).toContain('身在秘境')
   })
 })
 

@@ -115,8 +115,10 @@ const CORE_STORE_SITES = 249;
  * 时序判据绕不开 Pinia(上游自己在同一处把它的基线从 121 调到 122,理由相同)。
  * 1.74.0(+1,132 → 133):settleQueue.spec —— 乱序落账是**跨 store 的余额**问题,
  * 断言本身就是「连点两下之后灵石还剩多少」,不打真 store 测不出来(与 forgeServiceCharge 同因)。
+ * 1.74.1(+2,133 → 135):autoOpsApprentice.spec(托管收派道童走 store 动作)与
+ * expeditionAuto.spec(全自动远征的额度记在 endgame store、续行走 store 状态机)。
  */
-const CORE_PINIA_SPECS = 133;
+const CORE_PINIA_SPECS = 135;
 
 function sources(dir: string): { name: string; text: string }[] {
   return readdirSync(dir)

@@ -412,6 +412,13 @@ export const useEndgameStore = defineStore(
     const voidWorld = ref<CelestialWorldDef | null>(null)
     /** 今日天道完成日(day number;跨世保留) */
     const dailyDoneDay = ref<number | null>(null)
+    /*
+     * 全自动远征的每日额度(非 VIP 5 次/日,VIP 不限;见 core/expedition)。
+     * 按真实日计,转世不清 —— 否则转一次世白得五回全自动,额度就成了「每世 5 次」。
+     * sanitize 对齐 dailyDoneDay 的纪律:日号只认非负有限数且不得超前(时钟被拨快过的坏档)。
+     */
+    const autoRunDay = ref<number | null>(null)
+    const autoRunCount = ref(0)
     /** 修行节点:跨世保留的「首次」历史 */
     const milestones = ref<{ id: string; life: number; at: number }[]>([])
     /** 极限纪录:只与过去的自己比 */
@@ -573,6 +580,14 @@ export const useEndgameStore = defineStore(
         typeof dailyDoneDay.value === 'number' && Number.isFinite(dailyDoneDay.value) && dailyDoneDay.value >= 0
           ? Math.min(Math.floor(dailyDoneDay.value), todayNum)
           : null
+      // 全自动远征的额度:日号与 dailyDoneDay 同一条纪律;次数封顶 99(一日里真正的全自动也就几回)
+      autoRunDay.value =
+        typeof autoRunDay.value === 'number' && Number.isFinite(autoRunDay.value) && autoRunDay.value >= 0
+          ? Math.min(Math.floor(autoRunDay.value), todayNum)
+          : null
+      autoRunCount.value = autoRunDay.value === todayNum
+        ? Math.min(99, Math.max(0, Math.floor(asFiniteNumber(autoRunCount.value, 0, 0))))
+        : 0
       // 修行节点只认 MILESTONE_DEFS 里的 id:野 id 会把「修行节点 N/总数」顶破
       milestones.value = asArray<{ id: string; life: number; at: number }>(
         milestones.value,
@@ -878,6 +893,8 @@ export const useEndgameStore = defineStore(
       adventureSession,
       voidWorld,
       dailyDoneDay,
+      autoRunDay,
+      autoRunCount,
       milestones,
       records,
       endgameTutorialSeen,

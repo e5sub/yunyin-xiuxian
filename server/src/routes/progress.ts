@@ -18,7 +18,7 @@ import { requireAuth } from '../auth.js'
 import { metricsOf, backupBeforeOverwrite, syncProfileFromData } from './save.js'
 import { loadClientModule } from '../clientVendor.js'
 import { recordProgressSpend } from '../progressLedger.js'
-import { recordLevelStates } from '../levelLedger.js'
+import { recordLevelStates, clearLevelKind } from '../levelLedger.js'
 import { lootProvenance } from '../lootLedger.js'
 import { withKeyLock } from '../mutex.js'
 import { vipActive } from '../vip.js'
@@ -189,13 +189,21 @@ progressRouter.post('/progress/op', requireAuth, (req: Request, res: Response) =
             : result.detail.kind === 'vein'
               ? 'vein'
               : 'building'
-      await recordLevelStates(userId, [
-        {
-          kind,
-          itemId: result.detail.id,
-          level: result.detail.to
-        }
-      ])
+      /*
+       * 灵脉重置(1.74.1)是**降级**:四脉点数全数归零,须清空 vein 台账而非按行记数 ——
+       * 台账只升不降,记一笔 0 行也压不住(enforce 取历史最高),旧点数会原样顶回来。
+       */
+      if (result.detail.kind === 'veinReset') {
+        await clearLevelKind(userId, 'vein')
+      } else {
+        await recordLevelStates(userId, [
+          {
+            kind,
+            itemId: result.detail.id,
+            level: result.detail.to
+          }
+        ])
+      }
     } catch {
       /* 记不上只是这条压不住,下次签发再补;不影响本次结算 */
     }

@@ -2,12 +2,12 @@
 import type { GNum } from '@/types'
 import type { VeinId } from '@/data/veins'
 import { veinDef } from '@/data/veins'
-import { VEIN_MAIN_CAPACITY, VEIN_POINT_STONE, VEIN_SIDE_CAP, VEIN_TOTAL_CAPACITY, VEIN_UNLOCK_MAJOR } from '@/data/constants'
+import { VEIN_MAIN_CAPACITY, VEIN_POINT_STONE, VEIN_RESET_STONE, VEIN_SIDE_CAP, VEIN_TOTAL_CAPACITY, VEIN_UNLOCK_MAJOR } from '@/data/constants'
 import { stoneByTier } from './formulas'
 import { cutGNum } from './spendRate'
 import { playerTier } from './progress'
 import { formatGN, formatGap } from '@/utils/format'
-import { gnZero, mulN, ratio, subClamp } from '@/utils/gnum'
+import { gnZero, gn, mulN, ratio, subClamp } from '@/utils/gnum'
 import { playSfx } from './audio'
 import { useAuthStore } from '@/stores/auth'
 import { cloudApi } from '@/services/cloud'
@@ -45,6 +45,18 @@ export function veinPointCost(): GNum {
 
 export function veinSwitchCost(): GNum {
   return cutGNum(stoneByTier(playerTier(), VEIN_POINT_STONE * 20))
+}
+
+/** 灵脉重置的一口价(不随层级走;VIP 九折照常 —— 灵脉本就属修行开销) */
+export function veinResetCost(): GNum {
+  return cutGNum(gn(VEIN_RESET_STONE))
+}
+
+/** 重置还差多少灵石(付得起为 0) */
+export function veinResetShortfall(): GNum {
+  const cost = veinResetCost()
+  const resources = useResourcesStore()
+  return resources.hasStone(cost) ? gnZero() : subClamp(cost, resources.spiritStone)
 }
 
 /** 改立主脉还差多少灵石(付得起为 0);入口、确认钮与服务拒因同读此处 */
@@ -163,7 +175,6 @@ export function switchMainVein(id: VeinId): boolean {
 }
 
 /* ---------------- 登录态入口(1.67.0 收进服务端) ---------------- */
-
 /*
  * 为什么投点也要上服务端:veinPoints 既进服务端算价(levelResolve 的 gongfaUpgradeQuote 读
  * dongfu.insightDiscount 折悟道点),又是采集加成与祭炼折扣的底数 —— 此前没有任何台账,
@@ -232,4 +243,55 @@ export async function requestVeinBatch(id: VeinId): Promise<number> {
   playSfx('success')
   ui.toast(veinBatchDoneToast(veinDef(id).name, points, formatGN(stone ?? gnZero())), 'success')
   return points
+}
+
+/* ---------------- 灵脉重置(1.74.1) ---------------- */
+
+/**
+ * 灵脉重置:四脉点数全数归零、主脉归还,一口价 VEIN_RESET_STONE(VIP 九折照常)。
+ * 与投点同一条服务端账(levelResolve 的 veinReset):登录态走 /api/progress/op,
+ * 服务端按台账清空 vein 行 —— 台账只升不降,不清的话上传一次旧点数又被顶回来。
+ * 本地(未登录)直接动手:重置不动任何服务端算价输入以外的账,spendStone 走本地结算。
+ */
+export async function requestVeinReset(): Promise<boolean> {
+  const ui = useUiStore()
+  const gap = veinResetShortfall()
+  if (gap.m > 0) {
+    playSfx('warn')
+    ui.toast(`灵石尚差 ${formatGap(gap)},重不成`, 'warn')
+    return false
+  }
+  if (!useAuthStore().loggedIn) {
+    const resources = useResourcesStore()
+    const dongfu = useDongfuStore()
+    if (dongfu.veinTotal <= 0) return false
+    resources.spendStone(veinResetCost())
+    dongfu.resetVeins()
+    playSfx('success')
+    ui.toast('灵脉已重置 · 四脉归零,再投时首投成主', 'success')
+    return true
+  }
+  const resources = useResourcesStore()
+  const res = await settleLevelRequest(() =>
+    cloudApi.progressOp({
+      op: { op: 'veinReset' },
+      stone: resources.spiritStone
+    })
+  )
+  if (res === null) {
+    playSfx('warn')
+    ui.toast('未能结算', 'warn')
+    return false
+  }
+  if (!res.ok) {
+    playSfx('warn')
+    // 拒因就三种:境界未到 / 一点未投 / 灵石不足 —— 前两种照实说,不足报差额
+    if (res.reason === 'stone') ui.toast(`灵石尚差 ${formatGap(veinResetShortfall())},重不成`, 'warn')
+    else if (res.reason === 'realm') ui.toast('灵脉尚未开放', 'warn')
+    else ui.toast('尚未投点,无从重置', 'warn')
+    return false
+  }
+  playSfx('success')
+  ui.toast('灵脉已重置 · 四脉归零,再投时首投成主', 'success')
+  return true
 }

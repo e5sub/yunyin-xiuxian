@@ -180,7 +180,7 @@ describe('远征 · 败战即结(不留残局续打)', () => {
 })
 
 describe('终局付费战斗 · 在途互斥', () => {
-  it('历练在途:启程与变数连战都在扣费前拒绝', () => {
+  it('历练在途:启程照常(远征历练并行),变数连战仍在扣费前拒绝', () => {
     seated(9, MORTAL_TOP, 'heaven', 20)
     const eg = useEndgameStore()
     useAdventureStore().setSession({
@@ -197,10 +197,13 @@ describe('终局付费战斗 · 在途互斥', () => {
       itemGain: 0
     })
     const before = eg.daoSource
-    expect(startWorldExpedition('chiyan', null), '历练在途仍可启程').toBeNull()
-    expect(challengeMutation([]), '历练在途仍可开变数').toBeNull()
-    expect(eg.daoSource, '在途拒绝不得扣道源').toBe(before)
-    expect(useUiStore().toasts.at(-1)?.text).toContain('历练在途')
+    const outcome = startWorldExpedition('chiyan', null)
+    expect(outcome, '历练在途仍可启程 —— 并行,两边的账各记各的').not.toBeNull()
+    expect(eg.worldRun?.worldId).toBe('chiyan')
+    expect(challengeMutation([]), '变数连战与在途互斥').toBeNull()
+    expect(eg.daoSource, '变数在扣费前拒绝,启程则照常扣入界价').toBe(before - world('chiyan').entryCost)
+    // 启程已落 run,变数此刻先撞上「远征在途」(同一份判据,worldRun 先查)
+    expect(useUiStore().toasts.at(-1)?.text).toContain('远征在途')
   })
 
   it('远征在途:变数连战在扣费前拒绝', () => {

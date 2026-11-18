@@ -507,18 +507,18 @@ describe('文案数值对账 · 视图不手抄数量', () => {
   })
 
   /**
-   * 在途互斥是双向的:别的活动在途时不许开历练,历练在途时也不许开别的。
-   * 若远征在途时放行「出发」,历练心跳与 runSnap 携带气血会同时推进。
-   * core 的 startExploration 与历练页「出发」都问统一判据 endgameBusy。
-   * 故障注入:删掉 core 里那一支,core 断言红;把界面前置改回只问闭关,界面断言红。
+   * 在途互斥自 1.74.1 起收窄:远征与历练**并行**(两边的账各记各的),历练页与 core
+   * 都不再拦「远征在途」;秘境仍与两者互斥。故障注入:把 worldRun 拦截加回去,本条红;
+   * 把秘境互斥删掉,本条也红。
    */
-  it('历练与终局的在途互斥是双向的,核心与界面共用 endgameBusy', () => {
+  it('历练与终局在途互斥的边界:远征历练并行,秘境仍独占,判据共用 endgameBusy', () => {
     const core = src('./exploration.ts')
-    expect(core, 'startExploration 该问统一在途判据').toContain('endgameBusy(useEndgameStore().worldRun, null, null)')
-    expect(core, '拒因取判据本体,不再手抄一句').toContain('ui.toast(busy.reason, \'warn\')')
+    expect(core, 'startExploration 不再拦远征在途(并行)').not.toContain('endgameBusy(useEndgameStore().worldRun, null, null)')
+    expect(core, '历练/闭关的拒因仍取 BUSY_REASON 常量').toContain("ui.toast(BUSY_REASON.exploration, 'warn')")
+    expect(core, '秘境互斥仍取 BUSY_REASON').toContain("ui.toast(BUSY_REASON.secretRealm, 'warn')")
     const view = src('../views/AdventureView.vue')
-    expect(view, '出发前置也要认出远征/秘境在途').toContain('endgameBusy(endgame.worldRun, player.secretRealm, null)')
-    expect(view, '前置拒因同样取判据本体').toContain('ui.toast(busy.reason, \'warn\')')
+    expect(view, '出发前置不再拦远征(并行),仍拦秘境').toContain('endgameBusy(null, player.secretRealm, null)')
+    expect(view, '前置拒因同样取判据本体').toContain("ui.toast(busy.reason, 'warn')")
     // 秘境入口也归入同一份判据
     const secret = src('./secretRealm.ts')
     expect(secret, '秘境入口该读统一在途判据').toContain('endgameBusy(endgame.worldRun, player.secretRealm, useAdventureStore().session)')

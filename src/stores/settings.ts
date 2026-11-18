@@ -37,6 +37,11 @@ export const useSettingsStore = defineStore(
      */
     const autoBoss = ref(false)
     const autoRetreat = ref(false)
+    /**
+     * 自动历练(VIP 托管):自己出门历练之外,兼管道童差事 —— 完工即收、闲置即按
+     * 「各尽其长」再派(dispatchAll 同一套择门逻辑)。差事的开工/收工本就入服务端
+     * 差事账(1.74.1),托管只是替玩家点;只在客户端在场时代办,离线归来第一查即补收补派。
+     */
     const autoAdventure = ref(false)
     /**
      * 自动做每日活动(周天七会 + 闲趣三则)。

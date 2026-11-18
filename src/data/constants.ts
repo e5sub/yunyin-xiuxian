@@ -219,6 +219,8 @@ export const VEIN_MAIN_CAPACITY = 70
 export const VEIN_SIDE_CAP = 30
 /** 每点投资灵石倍率(stoneByTier 按玩家层级) */
 export const VEIN_POINT_STONE = 25
+/** 灵脉重置的灵石价(一口价,不随层级走;VIP 九折照常,见 veinService.veinResetCost) */
+export const VEIN_RESET_STONE = 1e10
 /** 灵脉开放境界(金丹) */
 export const VEIN_UNLOCK_MAJOR = 2
 

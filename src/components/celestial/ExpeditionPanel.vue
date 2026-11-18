@@ -79,13 +79,20 @@
           决战 · {{ runWorld.guardian.name }}
         </button>
       </template>
-      <button
-        v-if="!abandonConfirm"
-        class="btn-ghost mt-2 w-full !py-2 !text-[11px] !text-ink-faint"
-        @click="abandonConfirm = true"
-      >
-        中道而返(道源不退)
-      </button>
+        <button
+          v-if="canAuto"
+          class="btn-ghost mt-2 w-full !py-2 !text-[12px] !text-cinnabar"
+          @click="autoContinue"
+        >
+          自动续行 · 一路打到终局({{ autoQuotaText }})
+        </button>
+        <button
+          v-if="!abandonConfirm"
+          class="btn-ghost mt-2 w-full !py-2 !text-[11px] !text-ink-faint"
+          @click="abandonConfirm = true"
+        >
+          中道而返(道源不退)
+        </button>
       <div v-else class="mt-2 grid grid-cols-2 gap-2">
         <button class="btn-ghost !py-2 !text-[11px] !text-ink-soft" @click="abandonConfirm = false">再想想</button>
         <button class="btn-seal !py-2 !text-[11px]" @click="abandonRun">
@@ -303,6 +310,10 @@
       <p v-if="prepPreview?.riskLines.length" class="mt-1 text-[10px] leading-relaxed text-cinnabar">
         危局:{{ prepPreview.riskLines.join(';') }}
       </p>
+      <p class="mt-2 rounded-md bg-paper-deep/70 px-3 py-2 text-[10px] leading-relaxed text-ink-faint">
+        出发后<span class="text-ink">全自动</span>逐层直至终局:两径按实战同源胜算自动择一、界主自动决战,中途无需再点
+        ({{ autoQuotaText }})。额度用尽仍可启程,只是逐层自行择路。
+      </p>
     </template>
     <template #footer>
       <button class="btn-seal w-full" @click="depart">启 程{{ selectedPact ? `(携「${selectedPact.name}」)` : '' }}</button>
@@ -313,8 +324,8 @@
 <script setup lang="ts">
   import { computed, ref } from 'vue'
   import { usePlayerStore } from '@/stores/player'
+  import { useAuthStore } from '@/stores/auth'
   import { useEndgameStore } from '@/stores/endgame'
-  import { useAdventureStore } from '@/stores/adventure'
   import { REALMS } from '@/data/realms'
   import { tierMajor } from '@/core/formulas'
   import { CELESTIAL_WORLDS, EXPEDITION_GUARDIAN_LAYER, EXPEDITION_ROUTE_LAYERS } from '@/data/endgame'
@@ -327,9 +338,14 @@
   import { gateRuleSummary } from '@/core/gateRuleText'
   import {
     abandonExpedition,
+    autoAdvanceExpedition,
+    autoRunsUsed,
+    canAutoExpedition,
     challengeGuardian,
     chooseRouteNode,
+    EXPEDITION_AUTO_DAILY_LIMIT,
     forecastExpedition,
+    noteAutoExpedition,
     previewFight,
     isVoidRerolling,
     rerollVoidWorld,
@@ -353,8 +369,14 @@
   const emit = defineEmits<{ report: [ReportView] }>()
   const player = usePlayerStore()
   const endgame = useEndgameStore()
-  const adventure = useAdventureStore()
-  const busy = computed(() => endgameBusy(endgame.worldRun, player.secretRealm, adventure.session))
+  const auth = useAuthStore()
+  // 在途判据:远征自 1.74.1 起与历练并行,历练在途不再拦启程;秘境仍互斥
+  const busy = computed(() => endgameBusy(endgame.worldRun, player.secretRealm, null))
+  /** 全自动远征的额度口径:VIP 不限,非 VIP 每日有数 */
+  const canAuto = computed(() => canAutoExpedition())
+  const autoQuotaText = computed(() =>
+    auth.isVip ? 'VIP 不限' : `今日余 ${Math.max(0, EXPEDITION_AUTO_DAILY_LIMIT - autoRunsUsed())}/${EXPEDITION_AUTO_DAILY_LIMIT} 次`
+  )
   /**
    * 窥探虚界是分块异步的(单次候选审计约 70ms,整趟中位 654ms、最坏 3183ms),
    * 期间要置灰两颗钮并写「窥探中」。core 不引 Vue 响应式,故这里用本地 ref 跟着走。
@@ -453,7 +475,23 @@
     const title = prepWorld.value.name
     const outcome = startWorldExpedition(prepWorld.value.id, prepPact.value, prepGate.value)
     if (outcome) prepWorldId.value = null
+    /*
+     * 全自动:出发后一路打到终局(自动择径 + 自动决战界主),不再逐层手点。
+     * 非 VIP 每日 EXPEDITION_AUTO_DAILY_LIMIT 次、VIP 不限 —— 额度用尽走原来的逐层手点,
+     * 只是不再代点,收费(道源入界)与战果口径分毫不差。
+     */
+    if (outcome?.type === 'advance' && canAutoExpedition()) {
+      noteAutoExpedition()
+      handleOutcome(autoAdvanceExpedition(), title)
+      return
+    }
     handleOutcome(outcome, title)
+  }
+
+  /** 在途续行:归来接着走时一键全自动到终局(额度同出发;不重复计数 —— 这趟已在出发时记过) */
+  function autoContinue(): void {
+    if (!canAutoExpedition()) return
+    handleOutcome(autoAdvanceExpedition(), titleOfRun())
   }
 
   /** 战报标题须在开战前取:被逐/出界会把 worldRun 清成 null */

@@ -375,3 +375,14 @@ export async function enforceLevelStates(userId: number, data: unknown, prev?: u
   if (entries.length > 0) await recordLevelStates(userId, entries)
   return corrected
 }
+
+/**
+ * 清空某一类的台账(1.74.1:灵脉重置)。
+ *
+ * 灵脉重置把四脉点数全数归零,台账若不跟着清,上传一次旧点数就被「只升不降」
+ * 的 enforceLevelStates 顶回档里 —— 重置等于白买。这里只删行不动播种标记:
+ * 重置是**降级**不是删档,首传采信那扇门不能因此重开。
+ */
+export async function clearLevelKind(userId: number, kind: 'vein'): Promise<void> {
+  await run('DELETE FROM level_state WHERE user_id = ? AND kind = ?', [userId, kind])
+}

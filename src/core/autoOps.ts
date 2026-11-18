@@ -4,6 +4,7 @@
  * 离线时服务端按同步上来的设置代打妖王(所得记台账,归来领取);
  * 闭关/历练的离线收益在归来结算时补推(见 prepOfflineAutoOps)。
  * 每日活动(周天七会 / 闲趣三则)只在客户端在场时代办:登录归来第一查即补办一遍。
+ * 自动历练兼管道童差事(完工即收、闲置即按「各尽其长」再派),差事账在服务端,托管只是替玩家点。
  * 开关存 settings(持久化)并同步服务端,一律须 VIP;到期自动关停并提示。
  */
 import { watch } from 'vue'
@@ -21,11 +22,10 @@ import { useAdventureStore } from '@/stores/adventure'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useUiStore } from '@/stores/ui'
-import { useEndgameStore } from '@/stores/endgame'
 import { useCultivationStore } from '@/stores/cultivation'
+import { useApprenticeStore } from '@/stores/apprentice'
 import { isRetreating, startRetreat } from './earlyGameService'
 import { canEnterRegion, placeContent } from './mortalWorldService'
-import { endgameBusy } from './endgameActivity'
 import { stoneByTier } from './formulas'
 import { tierOfMajor } from './secretRealm'
 import { AUTO_REGION_ID, EXPLORE_MODES } from '@/data/constants'
@@ -161,7 +161,7 @@ export function autoTripTarget(regionId: string, mode: ExploreMode): TripTarget 
   return { regionId, regionName: region.name, mode, plan: null }
 }
 
-/** 自动历练与自动闭关(互斥,历练优先) */
+/** 自动历练与自动闭关(互斥,历练优先);远征在途不拦 —— 1.74.1 起两者并行 */
 function tickMain(): void {
   const g = gate()
   if (g === null) return
@@ -169,8 +169,6 @@ function tickMain(): void {
   const player = usePlayerStore()
   if (player.dead || player.secretRealm) return
   if (adventure.session || isRetreating()) return
-  const busy = endgameBusy(useEndgameStore().worldRun, null, null)
-  if (busy) return
 
   if (g.settings.autoAdventure) {
     const target = autoTripTarget(g.settings.autoRegionId, g.settings.autoMode)
@@ -371,13 +369,44 @@ export async function autoDailyTick(): Promise<void> {
   }
 }
 
+/* ---------------- 道童差事托管(随「自动历练」开关) ---------------- */
+
+/**
+ * 道童差事巡检:完工即收、闲置即派,与道童页的「一键各尽其长」同一条路
+ * (collectFinished 走服务端差事账,dispatchAll 按当前最缺的门择活)。
+ * 开关与自动历练同源 —— 出门历练之外,家里的道童也一并照看。
+ * 差事与历练/闭关互不相干,不必让位;player.dead/秘境中也不拦 —— 差事自有工期,
+ * 收派只动道童自己的账。导出供单测直接驱动一轮。
+ */
+export async function autoApprenticeTick(): Promise<void> {
+  const g = gate()
+  if (g === null || !g.settings.autoAdventure) return
+  try {
+    const appr = useApprenticeStore()
+    const now = Date.now()
+    const reaped = await appr.collectFinished(now, usePlayerStore().major)
+    if (reaped.length > 0) useUiStore().toast(`托管:道童收工 ${reaped.length} 趟`, 'info')
+    const sent = await appr.dispatchAll(Date.now())
+    if (sent > 0) useUiStore().toast(`托管:道童另派 ${sent} 单`, 'info')
+  } catch {
+    // 云不可达 / 会话失效:静默跳过,下一轮再说
+  }
+}
+
 export function startAutoOps(): void {
   if (mainTimer !== undefined) return
-  mainTimer = setInterval(tickMain, MAIN_TICK_MS)
+  // 主循环十秒一查:历练/闭关之外顺带照看道童差事(收工/派遣各只报一条,不刷屏)
+  mainTimer = setInterval(() => {
+    tickMain()
+    void autoApprenticeTick()
+  }, MAIN_TICK_MS)
   bossTimer = setInterval(() => void tickBoss(), BOSS_TICK_MS)
   dailyTimer = setInterval(() => void autoDailyTick(), DAILY_TICK_MS)
   // 开局第一查:登录归来先补办一次(离线期间的活动托管不在服务端代办,靠这一次补上)
-  dailyWarmup = setTimeout(() => void autoDailyTick(), DAILY_WARMUP_MS)
+  dailyWarmup = setTimeout(() => {
+    void autoDailyTick()
+    void autoApprenticeTick()
+  }, DAILY_WARMUP_MS)
   // 托管设置变更(含登录成为 VIP、到期自动关停)即同步服务端:离线托管按这份设置代打
   stopSyncWatch = watch(
     () => {
@@ -483,8 +512,8 @@ export async function prepOfflineAutoOps(): Promise<void> {
   if (!wantAdventure && !wantRetreat) return
   const player = usePlayerStore()
   if (player.dead || player.secretRealm) return
+  // 远征在途不拦:远征与历练并行(1.74.1 起)(见 core/expedition),离线补推照常补历练段
   const adventure = useAdventureStore()
-  if (endgameBusy(useEndgameStore().worldRun, null, null)) return
   const offlineSec = Math.max(0, (Date.now() - game.lastActiveAt) / 1000)
   if (offlineSec < 60) return // 窗口太短,不值得补推
 

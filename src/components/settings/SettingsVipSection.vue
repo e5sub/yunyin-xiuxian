@@ -120,6 +120,10 @@
           离线归来后第一分钟内补办
         </p>
         <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
+          自动历练兼管道童差事:自己出门历练之余,道童完工即收、闲置即按「各尽其长」派往
+          当前最缺的门,与道童页一键同规;开工收工都入云端差事账,离线归来第一分钟内补收补派
+        </p>
+        <p class="mt-1 text-[10px] leading-relaxed text-ink-faint">
           打 BOSS 量力而行:能补刀先补刀,站得住便出剑;力有不及则蓄势,临期兜底出手。
           出剑无资粮,妖王被推倒时凡出过剑者按功均分击杀赏
         </p>
@@ -342,7 +346,7 @@
     stopPolling()
   })
 
-  /** 一行四滑块:key 直指 settings 字段,点滑块即翻转 */
+  /** 一行五滑块:key 直指 settings 字段,点滑块即翻转 */
   const AUTO_ITEMS: ReadonlyArray<{ key: 'autoBoss' | 'autoRetreat' | 'autoAdventure' | 'autoDailyEvent' | 'autoDonate'; label: string }> = [
     { key: 'autoBoss', label: '自动打 BOSS' },
     { key: 'autoRetreat', label: '自动闭关' },

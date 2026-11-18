@@ -34,14 +34,13 @@ import { useAdventureStore, type LastBattleView } from '@/stores/adventure'
 import { useCultivationStore } from '@/stores/cultivation'
 import { useSettingsStore } from '@/stores/settings'
 import { useUiStore } from '@/stores/ui'
-import { useEndgameStore } from '@/stores/endgame'
 import { checkSuppression, memorialLine, suppressRateLine, MEMORIAL_CHANCE } from './suppress'
 import { recordLoss, isNemesis, markAvenged, ghostOf, ghostTitle, ghostLeadIn, ECHO_GHOST_CHANCE, NEMESIS_THRESHOLD, regionRecallFor } from './worldMemory'
 import { personalityEffects } from './petPersonality'
 // earlyGameService(连胜)与 worldMemory(宿敌)各有一个 recordLoss,连胜那份走别名以免遮蔽
 import { recordWin as recordStreakWin, recordLoss as recordStreakLoss, isRetreating } from './earlyGameService'
 import { currentRegionEvent, regionEventDef, rollRegionEvent } from './regionEvent'
-import { BUSY_REASON, endgameBusy } from './endgameActivity'
+import { BUSY_REASON } from './endgameActivity'
 import { noteEnemy } from './loreService'
 import { noteTaboo } from './samsaraService'
 import { useInventoryStore } from '@/stores/inventory'
@@ -90,13 +89,8 @@ export function startExploration(regionId: string, mode: ExploreMode, opts?: { q
     ui.toast(BUSY_REASON.secretRealm, 'warn')
     return false
   }
-  // 远征在途不许开历练;判据与拒因取 endgameBusy,不手抄。
-  // 只传 worldRun:历练会话已在上方单独拒绝。
-  const busy = endgameBusy(useEndgameStore().worldRun, null, null)
-  if (busy) {
-    ui.toast(busy.reason, 'warn')
-    return false
-  }
+  // 远征与历练并行(1.74.1 起):远征在途也可开历练,两边的账各记各的(见 core/expedition 注释)。
+  // 秘境仍互斥 —— 上面那条 player.secretRealm 已拦。
   if (!routeAllows(regionId)) {
     ui.toast(entryBlockReason(regionId) ?? `${region.name}未解锁`, 'warn')
     return false

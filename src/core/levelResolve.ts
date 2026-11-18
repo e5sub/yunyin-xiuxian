@@ -32,6 +32,7 @@ import type { VeinId } from '@/data/veins'
 import {
   VEIN_MAIN_CAPACITY,
   VEIN_POINT_STONE,
+  VEIN_RESET_STONE,
   VEIN_SIDE_CAP,
   VEIN_TOTAL_CAPACITY,
   VEIN_UNLOCK_MAJOR
@@ -62,6 +63,8 @@ export type LevelOp =
   | { op: 'artifactUpgrade'; defId: string; steps: number }
   /** 灵脉投点:points = 1 单投,0 = 投到付不起(1.67.0 收进服务端 —— 点数此前可改档写满) */
   | { op: 'veinInvest'; id: VeinId; points: number }
+  /** 灵脉重置:四脉点数全数归零、主脉归还,一口价灵石(1.74.1;台账随档清,见 server/levelLedger.clearLevelKind) */
+  | { op: 'veinReset' }
   /** steps = 1 单升;> 1 连升指定级数;0 = 连升到付不起为止(建筑的「连升」按钮) */
   | { op: 'buildingUpgrade'; id: BuildingId; steps: number }
 
@@ -86,10 +89,11 @@ export type LevelBlock =
   | 'max' // 建筑已圆满
   | 'gate' // 洞府辖限(等级被洞府压住)
   | 'stone' | 'ore' // 建筑缺料
-  | 'empty' // 连升一步都没走成且无明确拒因(理论不至,兜底)
+  // 连升一步都没走成且无明确拒因(理论不至,兜底);灵脉重置:一点未投,无从重置
+  | 'empty'
 
 export interface LevelDetail {
-  kind: 'gongfa' | 'building' | 'artifact' | 'vein'
+  kind: 'gongfa' | 'building' | 'artifact' | 'vein' | 'veinReset'
   id: string
   /** 升级前等级(功法从 1 起,建筑从 0 起) */
   from: number
@@ -138,6 +142,8 @@ export function parseLevelOp(raw: unknown): LevelOp | null {
   if (!isPlainObject(raw)) return null
   // 参悟不带 id(学哪部由池中随机决定):先于 id 校验处理
   if (raw.op === 'gongfaLearn') return { op: 'gongfaLearn' }
+  // 重置不带参数:一口价、全脉归零,没什么可收口的
+  if (raw.op === 'veinReset') return { op: 'veinReset' }
   if (raw.op === 'veinInvest') {
     const veinId = strOr(raw.id)
     if (veinId === '' || veinId.length > 64) return null
@@ -468,6 +474,34 @@ export function resolveLevelOnStores(op: LevelOp): LevelResult {
       spend: { ...emptySpend(), stone: total },
       slices: slicesDiff(before),
       detail: { kind: 'vein', id: op.id, from: current, to, levels: points, atMax: dongfu.veinTotal >= VEIN_TOTAL_CAPACITY }
+    }
+  }
+
+  /*
+   * 灵脉重置(1.74.1):四脉点数全数归零、主脉归还。与投点同一处结算 ——
+   * 点数是服务端算价的输入,重置若留客户端自改,改档就能免费洗点重投。
+   * 一口价(VEIN_RESET_STONE,不随层级走),VIP 九折照常(灵脉本就属修行开销)。
+   * detail.kind 用 'veinReset':服务端据此**清空** vein 台账而非按行记数 ——
+   * 台账只升不降,不清的话重置后上传一次,旧点数又被顶回来,重置等于白买。
+   */
+  if (op.op === 'veinReset') {
+    const dongfu = useDongfuStore()
+    const resources = useResourcesStore()
+    const player = usePlayerStore()
+    if (player.major < VEIN_UNLOCK_MAJOR) return reject(op.op, 'realm')
+    const from = dongfu.veinTotal
+    if (from <= 0) return reject(op.op, 'empty')
+    const cost = cutGNum(gn(VEIN_RESET_STONE))
+    if (!resources.hasStone(cost)) return reject(op.op, 'stone')
+    resources.spendStone(cost)
+    dongfu.resetVeins()
+    return {
+      ok: true,
+      reason: '',
+      op: op.op,
+      spend: { ...emptySpend(), stone: cost },
+      slices: slicesDiff(before),
+      detail: { kind: 'veinReset', id: 'vein', from, to: 0, levels: 0, atMax: false }
     }
   }
 

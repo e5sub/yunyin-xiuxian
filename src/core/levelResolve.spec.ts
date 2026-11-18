@@ -13,7 +13,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { toNum } from '@/utils/gnum'
 import { buildingDef } from '@/data/buildings'
 import { GONGFA, gongfaDef, gongfaMaxLevel } from '@/data/gongfa'
-import { COMPREHEND_PAGE_COST, VEIN_UNLOCK_MAJOR } from '@/data/constants'
+import { COMPREHEND_PAGE_COST, VEIN_RESET_STONE, VEIN_UNLOCK_MAJOR } from '@/data/constants'
 import { ARTIFACTS, ARTIFACT_MAX_LEVEL } from '@/data/artifacts'
 import { useInventoryStore } from '@/stores/inventory'
 import { usePlayerStore } from '@/stores/player'
@@ -29,6 +29,7 @@ import {
   resolveLevelFromSlices,
   resolveLevelOnStores
 } from './levelResolve'
+import { setVipResolver } from './spendRate'
 
 const G = 'm_taixuan' // 凡品主修,满级 9
 
@@ -246,6 +247,74 @@ describe('升级裁决 · 灵脉投点(1.67.0 收进服务端)', () => {
     expect(out.ok).toBe(false)
     expect(out.reason).toBe('realm')
     expect(dongfu.veinPoints.insight).toBe(0)
+  })
+})
+
+describe('升级裁决 · 灵脉重置(1.74.1)', () => {
+  it('一口价 100 亿:四脉归零、主脉归还、spend 记整笔', () => {
+    usePlayerStore().major = VEIN_UNLOCK_MAJOR
+    const res = useResourcesStore()
+    res.$patch({ spiritStone: { m: 2, e: 10 } })
+    const dongfu = useDongfuStore()
+    dongfu.veinMain = 'insight'
+    dongfu.veinPoints = { gather: 10, craft: 5, alchemy: 3, insight: 12 }
+    const out = resolveLevelOnStores({ op: 'veinReset' })
+    expect(out.ok).toBe(true)
+    expect(toNum(out.spend.stone)).toBe(VEIN_RESET_STONE)
+    expect(toNum(res.spiritStone), '付的是一口价,不按层级走').toBe(2e10 - VEIN_RESET_STONE)
+    expect(dongfu.veinTotal, '四脉全数归零').toBe(0)
+    expect(dongfu.veinMain, '主脉归还,再投时首投成主').toBeNull()
+    expect(out.detail).toMatchObject({ kind: 'veinReset', id: 'vein', from: 30, to: 0, levels: 0 })
+  })
+
+  it('VIP 九折照常:灵脉属修行开销,重置付九成', () => {
+    usePlayerStore().major = VEIN_UNLOCK_MAJOR
+    useResourcesStore().$patch({ spiritStone: { m: 2, e: 10 } })
+    const dongfu = useDongfuStore()
+    dongfu.veinPoints = { gather: 1, craft: 0, alchemy: 0, insight: 0 }
+    setVipResolver(() => true)
+    try {
+      const out = resolveLevelOnStores({ op: 'veinReset' })
+      expect(out.ok).toBe(true)
+      expect(toNum(out.spend.stone)).toBe(VEIN_RESET_STONE * 0.9)
+    } finally {
+      setVipResolver(null)
+    }
+  })
+
+  it('灵石不够:拒绝(stone),点数一点不动', () => {
+    usePlayerStore().major = VEIN_UNLOCK_MAJOR
+    useResourcesStore().$patch({ spiritStone: { m: 5, e: 7 } })
+    const dongfu = useDongfuStore()
+    dongfu.veinMain = 'gather'
+    dongfu.veinPoints = { gather: 10, craft: 0, alchemy: 0, insight: 0 }
+    const out = resolveLevelOnStores({ op: 'veinReset' })
+    expect(out.ok).toBe(false)
+    expect(out.reason).toBe('stone')
+    expect(dongfu.veinTotal).toBe(10)
+    expect(dongfu.veinMain).not.toBeNull()
+  })
+
+  it('一点未投:拒绝(empty),不收钱', () => {
+    usePlayerStore().major = VEIN_UNLOCK_MAJOR
+    const res = useResourcesStore()
+    const dongfu = useDongfuStore()
+    dongfu.veinMain = null
+    dongfu.veinPoints = { gather: 0, craft: 0, alchemy: 0, insight: 0 }
+    const out = resolveLevelOnStores({ op: 'veinReset' })
+    expect(out.ok).toBe(false)
+    expect(out.reason).toBe('empty')
+    expect(toNum(res.spiritStone)).toBe(1e9)
+  })
+
+  it('未到解锁境界:拒绝(realm)', () => {
+    usePlayerStore().major = 0
+    const dongfu = useDongfuStore()
+    dongfu.veinPoints = { gather: 10, craft: 0, alchemy: 0, insight: 0 }
+    const out = resolveLevelOnStores({ op: 'veinReset' })
+    expect(out.ok).toBe(false)
+    expect(out.reason).toBe('realm')
+    expect(dongfu.veinTotal).toBe(10)
   })
 })
 

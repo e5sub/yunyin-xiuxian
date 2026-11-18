@@ -142,7 +142,6 @@
   import { worldView } from '@/core/mortalWorldService'
   import { isRetreating } from '@/core/earlyGameService'
   import { BUSY_REASON, endgameBusy } from '@/core/endgameActivity'
-  import { useEndgameStore } from '@/stores/endgame'
   import { MANSION_REDIRECT_COST, MANSION_REDIRECT_MAX } from '@/data/constants'
   import { exploreEventChance, startExploration } from '@/core/exploration'
   import { cutGNum } from '@/core/spendRate'
@@ -162,7 +161,6 @@
   const player = usePlayerStore()
   const ui = useUiStore()
   const resources = useResourcesStore()
-  const endgame = useEndgameStore()
 
   /** 地界投影与分组:事实取自 `useRegionRows`(区域卡与「出发前预览」共用同一份),本页只摆出来 */
   const { groupedRows } = useRegionRows()
@@ -247,9 +245,8 @@
       ui.toast(BUSY_REASON.retreat, 'warn')
       return
     }
-    // 在途远征/秘境:与 core 同一判据 endgameBusy,拒因不另抄。
-    // 历练会话不在此列:进得来本页就说明没在历练
-    const busy = endgameBusy(endgame.worldRun, player.secretRealm, null)
+    // 在途秘境仍互斥;远征自 1.74.1 起与历练并行,不再拦(判据仍取 endgameBusy,拒因不另抄)。
+    const busy = endgameBusy(null, player.secretRealm, null)
     if (busy) {
       ui.toast(busy.reason, 'warn')
       return

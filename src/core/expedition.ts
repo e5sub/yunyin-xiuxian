@@ -32,10 +32,12 @@ import { recordMilestone, trackClearRecords } from './identity'
 import { defaultHistoryAsync, generateApprovedWorldAsync, type HistoryEntry } from './worldGen'
 import { BUILD_PROFILES, buildSnap } from './buildSim'
 import { usePlayerStore } from '@/stores/player'
+import { useAuthStore } from '@/stores/auth'
 import { useEndgameStore, type WorldRunState } from '@/stores/endgame'
 import { gateDef } from '@/data/qimen'
 import { useUiStore } from '@/stores/ui'
 import { daoSourceShortfall } from './daoSource'
+import { localDayNum } from '@/utils/time'
 import { endgameBusy, ENTRY_REASON } from './endgameActivity'
 
 /** 单场战果 */
@@ -216,7 +218,11 @@ function fightStep(run: WorldRunState, world: CelestialWorldDef, foeShape: World
   return { type: 'advance', row, rewardDaoSource: 0 }
 }
 
-/** 启程:签契、扣道源、打入界战 */
+/**
+ * 出发前置:远征与历练并行(1.74.1 起)——出门历练的途中照样可以入界,
+ * 两边的账各记各的(历练会话在 adventure store,远征在 endgame.worldRun),
+ * 携带气血、道源、战报互不串线;秘境仍与远征互斥(同一个「人」分身不得)。
+ */
 export function startWorldExpedition(worldId: string, pactId: string | null, gateId: string | null = null): StepOutcome | null {
   const endgame = useEndgameStore()
   const ui = useUiStore()
@@ -226,7 +232,7 @@ export function startWorldExpedition(worldId: string, pactId: string | null, gat
     ui.toast(ENTRY_REASON.noDaoPath, 'warn')
     return null
   }
-  const busy = endgameBusy(endgame.worldRun, usePlayerStore().secretRealm, endgame.adventureSession)
+  const busy = endgameBusy(endgame.worldRun, usePlayerStore().secretRealm, null)
   if (busy) {
     ui.toast(busy.reason, 'warn')
     return null
@@ -286,6 +292,83 @@ export function challengeGuardian(): StepOutcome | null {
   const world = resolveWorld(run.worldId)
   if (!world) return null
   return fightStep(run, world, world.guardian)
+}
+
+/* ---------------- 全自动远征 ---------------- */
+
+/** 非 VIP 每日的全自动次数:体验额度;VIP 不限 */
+export const EXPEDITION_AUTO_DAILY_LIMIT = 5
+
+/** 今日日号(与 endgame.dailyDoneDay 同一把尺:本地时区的天序数) */
+function autoDay(): number {
+  return localDayNum(Date.now())
+}
+
+/** 今日已用掉的全自动次数(换了日号即视为未用) */
+export function autoRunsUsed(): number {
+  const endgame = useEndgameStore()
+  return endgame.autoRunDay === autoDay() ? endgame.autoRunCount : 0
+}
+
+/** 此刻能不能全自动:VIP 不限;非 VIP 每日 EXPEDITION_AUTO_DAILY_LIMIT 次 */
+export function canAutoExpedition(): boolean {
+  return useAuthStore().isVip || autoRunsUsed() < EXPEDITION_AUTO_DAILY_LIMIT
+}
+
+/** 记一次全自动出发(换日先归零);只该在确实进入全自动时调用 */
+export function noteAutoExpedition(): void {
+  const endgame = useEndgameStore()
+  const day = autoDay()
+  if (endgame.autoRunDay === day) endgame.autoRunCount += 1
+  else {
+    endgame.autoRunDay = day
+    endgame.autoRunCount = 1
+  }
+}
+
+/**
+ * 自动择径:两径各按实战同源的快照与规则(含携带气血、逐胜叠层)试算胜算,
+ * 高者胜出;平手取道源厚的那条。与手动择路同一把尺 —— 自动不会打出手动打不出的账。
+ */
+function autoPickNode(world: CelestialWorldDef, run: WorldRunState): 0 | 1 | null {
+  const nodes = world.routes[run.layer]
+  if (!nodes?.length) return null
+  const player = usePlayerStore()
+  const { ref, judgement } = celestialFoeCaliber(player.major, player.celestialStats.mods, world.anchorTier)
+  const scored = nodes.map((node, i) => ({
+    i: i as 0 | 1,
+    bonus: node.bonus,
+    rate: sampleWinRate(runSnap(run), worldFoeSnap(node.foe, ref, 1, judgement), rng, 3, withCarriedHp(expeditionRules(world, run, node), run))
+  }))
+  scored.sort((a, b) => b.rate - a.rate || b.bonus - a.bonus)
+  return scored[0]!.i
+}
+
+/**
+ * 全自动续行:从当前层一路打到终局 —— 层间自动择径、界主自动决战,
+ * 败/契碎/破界即止,返回最后一战的战果(run 已清空时战果里带全程行)。
+ * 每战之间不弹窗:界面只在终局收一份完整战报,行进中的各战照常落在 run.rows 里。
+ */
+export function autoAdvanceExpedition(): StepOutcome | null {
+  const endgame = useEndgameStore()
+  if (!endgame.worldRun) return null
+  const world = resolveWorld(endgame.worldRun.worldId)
+  if (!world) return null
+  let last: StepOutcome | null = null
+  // 保险丝:全程至多 ROUTE_LAYERS+2 战;循环若超它必是状态机被外力改坏,宁可停手
+  for (let guard = 0; guard <= EXPEDITION_ROUTE_LAYERS + 2; guard += 1) {
+    const run = endgame.worldRun
+    if (!run) break
+    last =
+      run.layer === EXPEDITION_GUARDIAN_LAYER
+        ? challengeGuardian()
+        : (() => {
+            const pick = autoPickNode(world, run)
+            return pick === null ? null : chooseRouteNode(pick)
+          })()
+    if (!last || last.type !== 'advance') break
+  }
+  return last
 }
 
 /** 中道而返(不退道源,记一笔殁) */

@@ -195,6 +195,12 @@ export const useDongfuStore = defineStore(
       if (VEINS.some(v => v.id === id)) veinMain.value = id
     }
 
+    /** 灵脉重置(付费,见 veinService.requestVeinReset):四脉点数归零、主脉归还 —— 再投时首投成主 */
+    function resetVeins(): void {
+      veinMain.value = null
+      veinPoints.value = { gather: 0, craft: 0, alchemy: 0, insight: 0 }
+    }
+
     /** 转世:建筑与灵脉清零。继承清单见 core/reincarnation。 */
     function resetForRebirth(): void {
       const nextLevels = { ...levels.value }
@@ -249,6 +255,7 @@ export const useDongfuStore = defineStore(
       setLevel,
       addVeinPoint,
       setVeinMain,
+      resetVeins,
       resetForRebirth,
       produce,
       sanitize
