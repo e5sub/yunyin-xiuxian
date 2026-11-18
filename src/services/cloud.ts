@@ -735,7 +735,12 @@ export const cloudApi = {
     level: number
     major: number
   }): Promise<{ ok: true }> => request('POST', '/apprentice/task/start', payload),
-  apprenticeTaskClaim: (uid: string): Promise<{ ok: boolean; reason?: string; spoils?: TaskSpoils }> =>
+  /**
+   * 收割失败不是一律「下次再点」:
+   *  · gone —— 云端查无此账(存量任务/他端已收/转世),客户端应作废这单,否则倒计时永卡 00:00;
+   *  · remainMs —— 「尚在差中」时带回服务端口径的真实剩余(本机钟快会让本地倒计时先到 0)。
+   */
+  apprenticeTaskClaim: (uid: string): Promise<{ ok: boolean; reason?: string; spoils?: TaskSpoils; remainMs?: number; gone?: boolean }> =>
     request('POST', '/apprentice/task/claim', { uid }),
   /** 坊市成交记账(1.58.1):服务端按货架复算价并落账,上传时把这笔钱从增量里扣掉 */
   marketBuy: (payload: { stockedAt: number; idx: number }): Promise<{ ok: boolean; recorded: boolean }> =>

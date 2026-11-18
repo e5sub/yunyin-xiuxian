@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { OwnedApprentice } from '@/core/apprenticeService'
 import { APPRENTICE_MAX_LEVEL, STARTER_APPRENTICE, APPRENTICES, apprenticeSlots, APPRENTICE_SLOT_HARD_CAP } from '@/data/apprentices'
@@ -6,9 +6,11 @@ import { herbGradeOfMajor } from '@/data/herbGrades'
 import { gn, toNum } from '@/utils/gnum'
 import { apprenticeRecruitCost } from '@/core/apprenticeService'
 import { useApprenticeStore } from '@/stores/apprentice'
+import { useAuthStore } from '@/stores/auth'
 import { useResourcesStore } from '@/stores/resources'
 import { usePlayerStore } from '@/stores/player'
 import { MAX_MAJOR } from '@/data/realms'
+import { cloudApi } from '@/services/cloud'
 
 function make(archId = 'ap_luanniao', over: Partial<OwnedApprentice> = {}): OwnedApprentice {
   return { uid: 'u1', archId, level: 3, bond: 0, task: null, ...over }
@@ -497,4 +499,67 @@ describe('门庭 · 超槽位坏档截断', () => {
     expect(a.apprentices).toHaveLength(0)
   })
 })
+})
+
+describe('在线收割 · 服务端差事账的三种拒绝(1.74.1 修卡 00:00)', () => {
+  /*
+   * 不用 vi.mock('@/services/cloud'):全仓 vitest 跑在 isolate:false + fsModuleCache 下,
+   * 文件级 mock 会跟真实加载同一模块的 spec(storeResilience 也 import stores/apprentice)
+   * 串模块注册表 —— store 拿到真 cloudApi,四条用例全走真网。这里直接 spyOn cloudApi
+   * 的方法顶替实现,afterEach 复原,模块注册表不动。
+   */
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.spyOn(cloudApi, 'apprenticeTaskClaim').mockReset()
+    // 登录态:收割走服务端账
+    useAuthStore().$patch({ token: 't', userId: 1 })
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('云端查无此账(gone):作废这单回闲,不白拿产出、不进阶', async () => {
+    vi.mocked(cloudApi.apprenticeTaskClaim).mockResolvedValue({ ok: false, reason: '没有在途的差事', gone: true })
+    const a = useApprenticeStore()
+    const res = useResourcesStore()
+    a.$patch({ apprentices: [make('ap_luanniao', { task: { spec: 'herb', startAt: 0, finishAt: 1 } })] })
+    expect(await a.collectFinished(9999, 0)).toEqual([])
+    expect(a.apprentices[0]!.task, '作废后道童回闲,倒计时不再卡死').toBeNull()
+    expect(a.apprentices[0]!.level).toBe(3)
+    expect(res.herbOf(herbGradeOfMajor(0)), '查无此账不得凭空入账').toBe(0)
+  })
+
+  it('尚在差中(本机钟快):按服务端口径校准完工时刻,倒计时恢复走动', async () => {
+    vi.mocked(cloudApi.apprenticeTaskClaim).mockResolvedValue({ ok: false, reason: '尚在差中', remainMs: 5000 })
+    const a = useApprenticeStore()
+    a.$patch({ apprentices: [make('ap_luanniao', { task: { spec: 'herb', startAt: 0, finishAt: 1 } })] })
+    expect(await a.collectFinished(9999, 0)).toEqual([])
+    const task = a.apprentices[0]!.task!
+    expect(task).not.toBeNull()
+    expect(task.finishAt, '校准 = 当前时刻 + 服务端剩余 + 250ms 缓冲').toBe(9999 + 5000 + 250)
+  })
+
+  it('其余拒绝不收不清,失败后 3 秒冷却不再空转请求', async () => {
+    vi.mocked(cloudApi.apprenticeTaskClaim).mockResolvedValue({ ok: false, reason: '差事账不可复算' })
+    const a = useApprenticeStore()
+    a.$patch({ apprentices: [make('ap_luanniao', { task: { spec: 'herb', startAt: 0, finishAt: 1 } })] })
+    expect(await a.collectFinished(9999, 0)).toEqual([])
+    expect(vi.mocked(cloudApi.apprenticeTaskClaim)).toHaveBeenCalledTimes(1)
+    expect(a.apprentices[0]!.task, '不可复算的账保留重试,不吞任务').not.toBeNull()
+    await a.collectFinished(10000, 0)
+    expect(vi.mocked(cloudApi.apprenticeTaskClaim), '冷却期内不发请求').toHaveBeenCalledTimes(1)
+    await a.collectFinished(13001, 0)
+    expect(vi.mocked(cloudApi.apprenticeTaskClaim), '冷却过后恢复重试').toHaveBeenCalledTimes(2)
+  })
+
+  it('服务端回传产出照单入账,不受本地自报影响', async () => {
+    vi.mocked(cloudApi.apprenticeTaskClaim).mockResolvedValue({ ok: true, spoils: { stone: 7 } })
+    const a = useApprenticeStore()
+    const res = useResourcesStore()
+    a.$patch({ apprentices: [make('ap_luanniao', { task: { spec: 'herb', startAt: 0, finishAt: 1 } })] })
+    const reaped = await a.collectFinished(9999, 0)
+    expect(reaped).toHaveLength(1)
+    expect(toNum(res.spiritStone)).toBe(7)
+    expect(a.apprentices[0]!.task).toBeNull()
+  })
 })

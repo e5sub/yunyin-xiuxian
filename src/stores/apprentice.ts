@@ -181,12 +181,19 @@ export const useApprenticeStore = defineStore(
      * 收割已完工弟子,返回尾账供界面播报。
      * 登录走服务端差事账(1.74.1):开工时刻以服务端为准,收割须过「真实经过 ≥ 工期」
      * 这关,产出以服务端复算回传为准 —— 改本地时钟把差事秒完不再有用。服务端拒了
-     * (时钟慢/账丢了)就不收:差事留着,下次再点;未登录单机走原来的本地路径。
+     * 就分两种处置(1.74.1 修「卡在约剩 00分00秒」):
+     *  · gone(云端查无此账:存量任务/他端已收)—— 作废这单,道童回闲。这单永远收不回,
+     *    不清就是一张倒计时停死在 00:00 的卡。
+     *  · remainMs(尚在差中:本机钟比服务端快)—— 按服务端口径校准 finishAt,倒计时恢复走动。
+     * 其余(网络/服务异常)不收不清:差事留着;失败后冷却 3 秒,免得界面每秒一发空请求。
      */
+    let claimCooldownUntil = 0
     async function collectFinished(now: number, major: number): Promise<TaskSpoils[]> {
       if (!validNow(now)) return []
       const auth = useAuthStore()
       const reaped: TaskSpoils[] = []
+      if (auth.loggedIn && now < claimCooldownUntil) return []
+      let claimFailed = false
       for (const appr of apprentices.value) {
         if (!taskDone(appr, now)) continue
         const spec = appr.task!.spec
@@ -194,10 +201,22 @@ export const useApprenticeStore = defineStore(
         if (auth.loggedIn) {
           try {
             const r = await cloudApi.apprenticeTaskClaim(appr.uid)
-            if (!r.ok || !r.spoils) continue
-            spoils = r.spoils
+            if (r.ok && r.spoils) {
+              spoils = r.spoils
+            } else if (r.gone) {
+              appr.task = null
+              continue
+            } else if (typeof r.remainMs === 'number' && Number.isFinite(r.remainMs) && r.remainMs >= 0 && appr.task) {
+              // 校准 +250ms 缓冲:remainMs 是服务端此刻的余量,取回与写回之间又流走了一点
+              appr.task.finishAt = now + r.remainMs + 250
+              claimFailed = true
+              continue
+            } else {
+              claimFailed = true
+              continue
+            }
           } catch {
-            /* 网络/服务异常:不收,差事留着下次再点 */
+            claimFailed = true
             continue
           }
         } else {
@@ -209,6 +228,7 @@ export const useApprenticeStore = defineStore(
         appr.task = null
         reaped.push(spoils)
       }
+      if (claimFailed) claimCooldownUntil = now + 3000
       return reaped
     }
 

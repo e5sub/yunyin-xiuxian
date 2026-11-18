@@ -103,7 +103,12 @@
             <span class="flex items-center gap-1.5 text-[12px] text-ink-soft">
               <GameIcon :name="a.taskIcon" :size="14" />{{ a.taskName }}
             </span>
-            <span class="tabular text-[11px] text-azure">约剩 {{ formatCountdown(a.remainingSec) }}</span>
+            <!--
+              倒计时到 0 而收成还没落袋(收割在途/网络重试中),显示「完工待收」:
+              死盯着「约剩 00分00秒」会让玩家以为卡死了。正常节奏下这行只闪现一秒。
+            -->
+            <span v-if="a.remainingSec > 0" class="tabular text-[11px] text-azure">约剩 {{ formatCountdown(a.remainingSec) }}</span>
+            <span v-else class="text-[11px] text-gold-ink">完工待收 · 即将入账</span>
           </div>
           <div v-else class="mt-2 flex flex-wrap items-center gap-1.5">
             <button

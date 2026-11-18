@@ -82,7 +82,9 @@ apprenticeRouter.post('/apprentice/task/claim', requireAuth, (req: Request, res:
       [userId, uid]
     )
     if (row === undefined) {
-      res.json({ ok: false, reason: '没有在途的差事' })
+      // gone:云端没有这单在途(更新前派出的存量任务、另一台设备已收、转世清档)。
+      // 这不是「再等等」能解决的 —— 客户端见到它就该把这单作废,道童回闲,不能让倒计时卡死在 00:00。
+      res.json({ ok: false, reason: '没有在途的差事', gone: true })
       return
     }
     const seconds = await apprenticeTaskSeconds(row.spec)
@@ -90,9 +92,11 @@ apprenticeRouter.post('/apprentice/task/claim', requireAuth, (req: Request, res:
       res.json({ ok: false, reason: '差事账不可复算' })
       return
     }
-    // 工期按服务端时钟:开工到现在的真实经过。本机时钟偏快也提前不了 —— 开工时刻就是服务端记的
+    // 工期按服务端时钟:开工到现在的真实经过。本机时钟偏快也提前不了 —— 开工时刻就是服务端记的。
+    // remainMs 把服务端口径的真实剩余带回去:客户端倒计时按本地钟走,钟快几分就会先到 00:00
+    // 而服务端还差着一截 —— 不带回这个数,玩家看到的就是一段纹丝不动的「约剩 00分00秒」。
     if (now - row.started_at < seconds * 1000) {
-      res.json({ ok: false, reason: '尚在差中' })
+      res.json({ ok: false, reason: '尚在差中', remainMs: seconds * 1000 - (now - row.started_at) })
       return
     }
     const spoils = await computeApprenticeSpoils(row.arch_id, row.spec, row.major, row.level)
