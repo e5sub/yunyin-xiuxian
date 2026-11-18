@@ -113,13 +113,15 @@
         开关持久化在 settings,VIP 到期后开关留原处、托管循环自行停(与四项托管同一待遇)。
       -->
       <div v-if="auth.isVip" class="mt-2 space-y-1.5 px-1">
-        <div class="flex items-center justify-between gap-2">
-          <span class="text-[11px]" :class="settings.autoEquipBest ? 'text-ink' : 'text-ink-faint'">自动换装</span>
-          <ToggleSwitch v-model="settings.autoEquipBest" label="自动换装" />
-        </div>
-        <div class="flex items-center justify-between gap-2">
-          <span class="text-[11px]" :class="settings.autoSalvageWorse ? 'text-ink' : 'text-ink-faint'">自动分解</span>
-          <ToggleSwitch v-model="settings.autoSalvageWorse" label="自动分解" />
+        <div class="flex items-center gap-4">
+          <div class="flex grow items-center justify-between gap-2">
+            <span class="text-[11px]" :class="settings.autoEquipBest ? 'text-ink' : 'text-ink-faint'">自动换装</span>
+            <ToggleSwitch v-model="settings.autoEquipBest" label="自动换装" />
+          </div>
+          <div class="flex grow items-center justify-between gap-2">
+            <span class="text-[11px]" :class="settings.autoSalvageWorse ? 'text-ink' : 'text-ink-faint'">自动分解</span>
+            <ToggleSwitch v-model="settings.autoSalvageWorse" label="自动分解" />
+          </div>
         </div>
         <p v-if="settings.autoEquipBest || settings.autoSalvageWorse" class="text-[10px] leading-relaxed text-ink-faint">
           行囊满时托管出手:{{ settings.autoEquipBest ? '先换上最强,' : '' }}{{ settings.autoSalvageWorse ? '再化尘弱装腾格(练过/近满/成套/上锁的件不动)。' : '' }}
