@@ -553,7 +553,7 @@ describe('在线收割 · 服务端差事账的三种拒绝(1.74.1 修卡 00:00)
   })
 
   it('服务端回传产出照单入账,不受本地自报影响', async () => {
-    vi.mocked(cloudApi.apprenticeTaskClaim).mockResolvedValue({ ok: true, spoils: { stone: 7 } })
+    vi.mocked(cloudApi.apprenticeTaskClaim).mockResolvedValue({ ok: true, spoils: { stone: gn(7) } })
     const a = useApprenticeStore()
     const res = useResourcesStore()
     a.$patch({ apprentices: [make('ap_luanniao', { task: { spec: 'herb', startAt: 0, finishAt: 1 } })] })

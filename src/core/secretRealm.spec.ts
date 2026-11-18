@@ -8,6 +8,7 @@ import { gn, subClamp, toNum } from '@/utils/gnum'
 import { formatGN } from '@/utils/format'
 import { SECRET_REALMS, SECRET_RULES, secretRuleByText } from '@/data/secretRealms'
 import { gateRuleSummary } from './gateRuleText'
+import { stoneByTier } from './formulas'
 import { MATERIALS, type MaterialBucket, type MaterialDef } from '@/data/materials'
 import { rng } from '@/utils/random'
 import { usePlayerStore } from '@/stores/player'
@@ -35,6 +36,7 @@ import {
   secretFightRules,
   secretLayerFoe,
   secretLayerReward,
+  secretRewardText,
   secretRuleTexts,
   secretRealmDef,
   tierOfMajor
@@ -500,6 +502,22 @@ describe('秘境 · 战利倍率算得出对', () => {
     for (let tier = 3; tier < 30; tier += 1) {
       expect(toNum(secretLayerReward(tier + 1, 2, 1.2).stone)).toBeGreaterThan(toNum(secretLayerReward(tier, 2, 1.2).stone))
     }
+  })
+
+  it('通关全额预估的文案与逐层账对得上', async () => {
+    // 文案的灵石是「Σ 逐层 stoneByTier(12+6·层)×倍率」并成一次 72×倍率 的折算:
+    // stoneByTier 对金额线性,两把尺必须量出同一个数
+    const tier = 10
+    let stone = 0
+    for (let layer = 1; layer <= SECRET_LAYERS; layer += 1) {
+      stone += toNum(secretLayerReward(tier, layer, 1.4).stone)
+    }
+    expect(toNum(stoneByTier(tier, 72 * 1.4)), '72 = Σ(12+6·层), SECRET_LAYERS=3').toBeCloseTo(stone, 4)
+    const text = secretRewardText(1.4, tier, 5)
+    expect(text, '灵草只随层数:三层合计 12 株').toContain('灵草 ×12')
+    expect(text).toContain('悟道点 +3')
+    expect(text).toContain('装备一件')
+    expect(text).not.toContain('NaN')
   })
 })
 

@@ -28,6 +28,8 @@
         {{ def?.name }} · {{ def?.desc }}
       </p>
       <p class="mt-1 text-[10px] leading-relaxed text-violet-ink">此地规则:{{ secretRuleTexts(state).join(' · ') }}</p>
+      <!-- 通关宝藏随行印着:逐层灵石灵草已见战利列表,这句只补「探尽那一刻还有什么」 -->
+      <p class="mt-1 text-[10px] leading-relaxed text-gold-ink">通关宝藏:装备一件 · 悟道点 +3</p>
       <!-- 败场刻度:这是**剩余**而不是已得 —— 实心越少越危险,故与层数反过来 -->
       <p v-if="state.losses > 0" class="mt-0.5 flex items-center gap-1.5 text-[10px] leading-relaxed tabular text-cinnabar">
         <span
@@ -99,6 +101,7 @@
             </span>
             <span class="w-5 shrink-0 text-right text-[9px] leading-none text-gold-ink">战利</span>
           </span>
+          <span class="mt-0.5 block text-[10px] leading-relaxed text-gold-ink">{{ row.reward }}</span>
           <span class="mt-0.5 block text-[10px] leading-relaxed text-ink-faint">{{ row.def.desc }}</span>
         </button>
         <p v-if="list.length === 0" class="empty-note text-center text-[11px] text-ink-faint">
@@ -128,7 +131,9 @@
     entryShortfallOf,
     fightSecretLayer,
     realmUnlock,
-    secretRuleTexts
+    secretRewardText,
+    secretRuleTexts,
+    tierOfMajor
   } from '@/core/secretRealm'
   import { endgameBusy } from '@/core/endgameActivity'
   import { useAdventureStore } from '@/stores/adventure'
@@ -186,7 +191,9 @@
       topGain: isTopGain(mark),
       label: realmEntryLabel(mark, cost, block),
       healPct: `${mark.heal * 100}%`,
-      gainPct: `${mark.gain * 100}%`
+      gainPct: `${mark.gain * 100}%`,
+      /** 通关全额预估(满胜口径,见 core/secretRealm.secretRewardText) */
+      reward: secretRewardText(r.rewardMult, tierOfMajor(player.major), player.major)
     }
   }
 

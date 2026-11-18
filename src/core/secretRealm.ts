@@ -249,6 +249,19 @@ export function secretLayerReward(tier: number, layer: number, rewardMult: numbe
   return { stone: stoneByTier(tier, (12 + 6 * layer) * rewardMult), material: 2 + layer }
 }
 
+/**
+ * 通关全额预估的一句文案:入境册上每个秘境都印着自己的战利,玩家进门之前就知道值不值。
+ * 灵石按三层逐层 (12+6·层)×倍率 求和 —— `stoneByTier` 对金额线性,三层可并成一次折算;
+ * 灵草只随层数(每层 2+层,不吃倍率);通关另得装备一件(品质下限收在签发侧,进境前说不了死数)
+ * 与悟道点 3。两败逐出则一无所获,这句只报「满胜」的账,故以「满胜可得」起头。
+ */
+export function secretRewardText(rewardMult: number, tier: number, major: number): string {
+  const stoneSum = SECRET_LAYERS * 12 + 6 * ((SECRET_LAYERS * (SECRET_LAYERS + 1)) / 2)
+  const herbSum = SECRET_LAYERS * 2 + (SECRET_LAYERS * (SECRET_LAYERS + 1)) / 2
+  const stone = stoneByTier(tier, stoneSum * rewardMult)
+  return `满胜可得:灵石 ${formatGN(stone)} · ${HERB_GRADE_SHORT[herbGradeOfMajor(major)]}灵草 ×${herbSum} · 通关得装备一件、悟道点 +3`
+}
+
 export async function fightSecretLayer(): Promise<SecretLayerResult | null> {
   const player = usePlayerStore()
   const resources = useResourcesStore()
