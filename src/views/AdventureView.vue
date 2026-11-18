@@ -256,7 +256,8 @@
 
   function begin(mode: ExploreMode): void {
     if (!modeTarget.value) return
-    if (startExploration(modeTarget.value.id, mode)) {
+    // 手动出发带 replace(1.74.2):在途时改道 —— 上一程结算入袋再启新程(见 core/exploration 注释)
+    if (startExploration(modeTarget.value.id, mode, { replace: true })) {
       modeTarget.value = null
     }
   }

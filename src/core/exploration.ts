@@ -68,8 +68,13 @@ function routeAllows(regionId: string): boolean {
  * 开一趟历练。
  * `quiet` 只压「前往某地 · 某档」那一条:托管自己会报一条更详细的回执(见 core/autoOps),
  * 其余提示(区域异象、凭吊、拒因)照报不误。
+ *
+ * `replace`(1.74.2):在途时再出发不再吃「历练在途」——手动改道是出发的应有之义。
+ * 校验(闭关/秘境/路引)全在前,结算在后:目的地无效时一个字都不动旧会话,
+ * 不会出现「旧程被收了队、新程却开不出去」的空窗。托管不带 replace:
+ * 它在途时本来就该等,绝不能把玩家的在途行程悄悄顶掉(autoOps 的 tick 先看会话再派)。
  */
-export function startExploration(regionId: string, mode: ExploreMode, opts?: { quiet?: boolean }): boolean {
+export function startExploration(regionId: string, mode: ExploreMode, opts?: { quiet?: boolean; replace?: boolean }): boolean {
   const adventure = useAdventureStore()
   const player = usePlayerStore()
   const ui = useUiStore()
@@ -80,20 +85,24 @@ export function startExploration(regionId: string, mode: ExploreMode, opts?: { q
     ui.toast(BUSY_REASON.retreat, 'warn')
     return false
   }
-  // 拒绝须有 toast,不得静默 return false
-  if (adventure.session) {
-    ui.toast(BUSY_REASON.exploration, 'warn')
-    return false
-  }
   if (player.secretRealm) {
     ui.toast(BUSY_REASON.secretRealm, 'warn')
     return false
   }
   // 远征与历练并行(1.74.1 起):远征在途也可开历练,两边的账各记各的(见 core/expedition 注释)。
-  // 秘境仍互斥 —— 上面那条 player.secretRealm 已拦。
   if (!routeAllows(regionId)) {
     ui.toast(entryBlockReason(regionId) ?? `${region.name}未解锁`, 'warn')
     return false
+  }
+  // 拒绝须有 toast,不得静默 return false
+  if (adventure.session) {
+    if (opts?.replace === true) {
+      // 上一程按手动收队结算入袋(战报照报),再启新程 —— 两程的账不串
+      stopExploration('manual')
+    } else {
+      ui.toast(BUSY_REASON.exploration, 'warn')
+      return false
+    }
   }
   offerBondEvent('enterPlace')
   const now = Date.now()

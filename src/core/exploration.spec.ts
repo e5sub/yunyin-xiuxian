@@ -442,6 +442,51 @@ describe('在途并行 · 远征途中仍可开历练', () => {
   })
 })
 
+/** 改道(1.74.2):在途时手动出发,上一程按手动收队结算入袋再启新程;托管不带 replace 仍被拒 */
+describe('改道 · 在途出发不再吃「历练在途」', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    // 五个桩开关全部归位:它们是模块级可变状态,漏一个就会被前面的用例带进来
+    protect.value = false
+    combatWin.value = false
+    meetChance.value = false
+    combatHpPct.value = 0
+    forceBuild.value = false
+  })
+
+  it('带 replace:上一程结算入袋(战报入 toast),新程落会话', () => {
+    expect(startExploration('qingyun', 'normal')).toBe(true)
+    const old = useAdventureStore().session
+    expect(old).not.toBeNull()
+    expect(startExploration('qingyun', 'deep', { replace: true })).toBe(true)
+    const fresh = useAdventureStore().session
+    expect(fresh, '改道后须有新会话在途').not.toBeNull()
+    expect(fresh!.mode).toBe('deep')
+    expect(fresh!.startedAt).toBeGreaterThanOrEqual(old!.startedAt)
+    const texts = useUiStore().toasts.map(t => t.text)
+    // 上一程按手动收队报了战报,而不是弹「历练在途」;新程照报「前往…」
+    expect(texts.some(t => t.startsWith('历练结束 · '))).toBe(true)
+    expect(texts.at(-1)).toContain('前往')
+  })
+
+  it('不带 replace(托管路径):仍被拒,旧会话原封不动', () => {
+    expect(startExploration('qingyun', 'normal')).toBe(true)
+    const old = useAdventureStore().session
+    expect(startExploration('qingyun', 'deep', { quiet: true })).toBe(false)
+    expect(useUiStore().toasts.at(-1)?.text).toContain('历练在途')
+    expect(useAdventureStore().session).toBe(old)
+  })
+
+  it('目的地无效(replace 也一样):校验在前,旧会话一个字不动', () => {
+    expect(startExploration('qingyun', 'normal')).toBe(true)
+    const old = useAdventureStore().session
+    // yunhai 默认未解锁(解锁链自愈 spec 的「补票」语义):路引先拒,旧程照跑
+    expect(startExploration('yunhai', 'normal', { replace: true })).toBe(false)
+    expect(useAdventureStore().session).toBe(old)
+    expect(useUiStore().toasts.some(t => t.text.startsWith('历练结束'))).toBe(false)
+  })
+})
+
 /** 会话账目与战报:与 afterWin 的真实入账同源;itemGain 数实物件数,不数文案行 */
 describe('会话账目 · 与真实入账同源', () => {
   beforeEach(() => {

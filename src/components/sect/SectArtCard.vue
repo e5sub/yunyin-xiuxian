@@ -1,7 +1,8 @@
 <template>
   <div class="card-ink px-3 py-2.5">
     <div class="flex items-baseline justify-between gap-2">
-      <p class="flex items-baseline gap-1.5">
+      <p class="flex items-center gap-1.5">
+        <GameIcon :name="def.icon" :size="14" class="shrink-0 text-gold-ink" />
         <span class="font-kai text-[12px] text-gold-ink">{{ def.name }}</span>
         <span class="text-[9px] text-ink-faint">绝学 · 全门同享</span>
       </p>
@@ -35,6 +36,7 @@
 
 <script setup lang="ts">
   import { computed } from 'vue'
+  import GameIcon from '@/components/common/GameIcon.vue'
   import type { SectArtDef } from '@/data/sect'
   import { artCost, artMaxLevel } from '@/core/sectRules'
   import { useSectStore } from '@/stores/sect'

@@ -15,9 +15,11 @@ import {
   VEIN_TOTAL_CAPACITY
 } from '@/data/constants'
 import { mergeMods } from '@/core/statsCalc'
+import { sectProductionPerHour } from '@/core/sectRules'
 import { usePlayerStore } from '@/stores/player'
 import { herbGradeOfMajor, fieldGradeCap, type HerbGrade } from '@/data/herbGrades'
 import { useResourcesStore } from './resources'
+import { useSectStore } from './sect'
 
 /**
  * 灵田产草品阶:不低于当前境界品,最多高一档且不超田内可种上限,不越道品。
@@ -211,20 +213,26 @@ export const useDongfuStore = defineStore(
       veinPoints.value = { gather: 0, craft: 0, alchemy: 0, insight: 0 }
     }
 
-    /** 建筑产出(灵田/藏经阁),按秒推进 */
+    /** 建筑产出(灵田/藏经阁 + 门派产量三座),按秒推进 */
     function produce(dtSec: number): void {
       if (!Number.isFinite(dtSec) || dtSec <= 0) return
       const resources = useResourcesStore()
       const player = usePlayerStore()
       const fieldLv = levels.value.field
       const libLv = levels.value.library
+      // 门派产量三座(1.74.2):灵草园/玄铁矿/悟道堂每级每小时 +1,与灵田同一只 frac 累积器入袋;
+      // 门派未拉到状态时按 0 计(离线结算在 offline.ts 里先补拉一次,在线 tick 由 sect.load 兜)
+      const sectProd = sectProductionPerHour(useSectStore().state.buildings)
       if (fieldLv > 0) {
         frac.value.herb += (fieldLv * FIELD_HERB_PER_HOUR * dtSec) / 3600
         frac.value.ore += (fieldLv * FIELD_ORE_PER_HOUR * dtSec) / 3600
       }
+      if (sectProd.herb > 0) frac.value.herb += (sectProd.herb * dtSec) / 3600
+      if (sectProd.ore > 0) frac.value.ore += (sectProd.ore * dtSec) / 3600
       if (libLv > 0) {
         frac.value.wudao += (libLv * LIBRARY_WUDAO_PER_HOUR * dtSec) / 3600
       }
+      if (sectProd.wudao > 0) frac.value.wudao += (sectProd.wudao * dtSec) / 3600
       for (const key of ['herb', 'ore', 'wudao'] as const) {
         const whole = Math.floor(frac.value[key])
         if (whole >= 1) {

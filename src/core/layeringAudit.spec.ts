@@ -99,8 +99,10 @@ const STATEFUL_CORE = new Set<string>([
  *   · core/veinService 读 auth:登录态走 progress/op,未登录才走本地链(同 forgeService 的既有做法)。
  * 1.68.0:248 → 249。core/profileRecompute 读 sect:门派状态服务端独占、不在存档分片里,
  *   复算战力/掉落环境要把表里的状态水合进 store —— 不注进去,服务端快照就比玩家面板少一截。
+ * 1.74.2:249 → 250。core/offline 读 sect:离线结算里的门派产量三座(灵草园/玄铁矿/悟道堂)
+ *   要按门派建筑等级计产,而门派状态不在存档分片里 —— 结算前先补拉一次(见 offline.ts produce 前)。
  */
-const CORE_STORE_SITES = 249;
+const CORE_STORE_SITES = 250;
 /**
  * core 用例里需要 Pinia 的文件数基线(只许减)。
  * 上游 121 + 本仓 autoOpsDaily/gongfaSeats 等新增,合并后以实跑数为准,见本文件底部对账。

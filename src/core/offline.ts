@@ -72,6 +72,7 @@ import { useGameStore } from '@/stores/game'
 import { useUiStore } from '@/stores/ui'
 import { useEndgameStore } from '@/stores/endgame'
 import { useApprenticeStore } from '@/stores/apprentice'
+import { useSectStore } from '@/stores/sect'
 import { sanitizeAllStores } from '@/stores/sanitizeAll'
 import { apprenticeReturnText } from '@/ui/apprenticeText'
 
@@ -210,6 +211,16 @@ async function settleOfflineInner(nowMs: number): Promise<OfflineSummary | null>
   const wudaoBefore = resources.wudao
   // 灵石快照必须与其余资源同一批截:镇压结算也会发灵石,截在它之后会让卷轴的 stone 少报一截
   const stoneBefore = { ...resources.spiritStone }
+  // 门派产量三座(灵草园/玄铁矿/悟道堂)走 produce,而门派状态不进存档分片、须单独拉 ——
+  // 离线结算跑在启动早期,sect.load 可能还没回来;先补拉一次(未入派/网络差按 0 产计,不拦结算)
+  const sect = useSectStore()
+  if (!sect.loaded) {
+    try {
+      await sect.load()
+    } catch {
+      // 门派状态拉不到:门派产量按 0 计,其余离线收益照结
+    }
+  }
   dongfu.produce(effSec)
 
   // 藏经阁被动钻研:与在线同源

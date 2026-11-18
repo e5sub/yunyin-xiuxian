@@ -14,6 +14,7 @@ import { MAX_MAJOR } from '@/data/realms'
 import type { HerbGrade } from '@/data/herbGrades'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
+import { useSectStore } from './sect'
 import { modsText } from '@/data/statNames'
 import { readFileSync } from 'node:fs'
 import type { BuildingId } from '@/types'
@@ -290,6 +291,39 @@ describe('洞府产出 · 灵田品阶(灵田等级越高产更高品)', () => {
 
   it('到顶不越道品(5):混沌海拉满灵田仍止于道品', () => {
     expect(yieldByGrade(MAX_MAJOR, 15)).toEqual({ 1: 0, 2: 0, 3: 0, 4: 0, 5: herbCount(15) })
+  })
+})
+
+/** 门派产量三座(1.74.2):灵草园/玄铁矿/悟道堂每级每小时 +1,与灵田同一只 frac 累积器入袋 */
+describe('洞府产出 · 门派产量三座并入 produce', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  const herbTotal = (): number => Object.values(useResourcesStore().herbByGrade).reduce((a, b) => a + (b ?? 0), 0)
+
+  it('有门派:produce(3600) 恰好每级发 1 件,品阶随灵田', () => {
+    // hall 3 → 副建筑上限 8,三座产量建筑按级入账
+    useSectStore().hydrate({ name: '测试门', buildings: { hall: 3, herbgarden: 3, oremine: 2, wudao: 5 } })
+    const res = useResourcesStore()
+    const herbBefore = herbTotal()
+    const oreBefore = res.ore
+    const wudaoBefore = res.wudao
+    useDongfuStore().produce(3600)
+    expect(herbTotal() - herbBefore).toBe(3)
+    expect(res.ore - oreBefore).toBe(2)
+    expect(res.wudao - wudaoBefore).toBe(5)
+  })
+
+  it('未入门派:一条不多,与旧产出同值', () => {
+    const res = useResourcesStore()
+    const herbBefore = herbTotal()
+    const oreBefore = res.ore
+    const wudaoBefore = res.wudao
+    useDongfuStore().produce(3600)
+    expect(herbTotal() - herbBefore).toBe(0)
+    expect(res.ore - oreBefore).toBe(0)
+    expect(res.wudao - wudaoBefore).toBe(0)
   })
 })
 

@@ -14,6 +14,7 @@ import {
   SECT_ARTS,
   SECT_ART_MAX_LEVEL
 } from '@/data/sect'
+import { ICONS } from '@/ui/icons'
 import {
   applyCap,
   buildQueueCap,
@@ -42,6 +43,7 @@ import {
   skillPrevRow,
   skillUnlocked,
   artCost,
+  sectProductionPerHour,
   type SectState
 } from './sectRules'
 
@@ -70,8 +72,8 @@ describe('门派数据', () => {
     expect(sectOfSkill('nope')).toBeUndefined()
   })
 
-  it('五座建筑,山门是唯一闸门;贡献与耗时基数都为正', () => {
-    expect(SECT_BUILDINGS).toHaveLength(5)
+  it('九座建筑,山门是唯一闸门;贡献与耗时基数都为正', () => {
+    expect(SECT_BUILDINGS).toHaveLength(9)
     expect(SECT_BUILDINGS.filter(b => b.id === 'hall')).toHaveLength(1)
     for (const b of SECT_BUILDINGS) {
       expect(b.costBase).toBeGreaterThan(0)
@@ -79,6 +81,22 @@ describe('门派数据', () => {
       // 门派建筑没有品类满级(1.69.0):数据里不该再有 maxLevel
       expect('maxLevel' in b).toBe(false)
     }
+  })
+
+  it('产量三座与灵兽苑(1.74.2):每级每小时 +1 走纯函数尺,beastPct 每级 +0.5%', () => {
+    const prod = sectProductionPerHour({ herbgarden: 3, oremine: 2, wudao: 5 })
+    expect(prod).toEqual({ herb: 3, ore: 2, wudao: 5 })
+    // 坏值一律按 0 计:负数与坏档不白送;小数按级取整
+    expect(sectProductionPerHour({ herbgarden: -4, oremine: Number.NaN, wudao: 1.9 })).toEqual({
+      herb: 0,
+      ore: 0,
+      wudao: 1
+    })
+    expect(sectProductionPerHour({})).toEqual({ herb: 0, ore: 0, wudao: 0 })
+    // 灵兽苑走 beastPct:进 sectMods,与安抚灵兽增益同一条放大口径
+    expect(sectMods({}, { beastgarden: 4 }).beastPct).toBeCloseTo(0.02, 10)
+    // 产量三座不给任何属性:产线只认 sectProductionPerHour 一把尺
+    expect(sectMods({}, { herbgarden: 9, oremine: 9, wudao: 9 })).toEqual({})
   })
 
   it('捐献三档,份数与贡献都为正', () => {
@@ -574,6 +592,11 @@ describe('门派绝学(1.74.1)', () => {
     }
     for (let i = 1; i < SECT_ARTS.length; i += 1) {
       expect(SECT_ARTS[i]!.costPool, '层次越高研究越贵').toBeGreaterThan(SECT_ARTS[i - 1]!.costPool)
+    }
+    // 卡面图标(1.74.2):每门绝学都要挂着一张真图标 —— 漏图标会在卡上退成「未知」占位
+    for (const a of SECT_ARTS) {
+      expect(a.icon.length, `${a.name} 缺 icon`).toBeGreaterThan(0)
+      expect(ICONS[a.icon], `${a.name} 的 icon「${a.icon}」不在图标注册表`).toBeDefined()
     }
   })
 

@@ -1,4 +1,4 @@
-/** 门派数据 —— 3 宗门 · 15 门技能 · 5 座建筑 · 3 档捐献 */
+/** 门派数据 —— 3 宗门 · 15 门技能 · 9 座建筑 · 5 门绝学 · 3 档捐献 */
 import type { StatMods } from '@/types'
 
 /**
@@ -7,7 +7,18 @@ import type { StatMods } from '@/types'
  */
 
 export type SectId = 'taixu' | 'danxia' | 'wanxiang'
-export type SectBuildingId = 'hall' | 'scripture' | 'arena' | 'alchemy' | 'treasury'
+export type SectBuildingId =
+  | 'hall'
+  | 'scripture'
+  | 'arena'
+  | 'alchemy'
+  | 'treasury'
+  /** 产量四座(1.74.2):灵草园/玄铁矿/悟道堂各给「每级每小时 +1」的产线(见 core/sectRules 的 sectProductionPerHour) */
+  | 'herbgarden'
+  | 'oremine'
+  | 'wudao'
+  /** 灵兽苑(1.74.2):每级灵兽效果 +0.5%(beastPct,与洞府灵兽园同一条放大口径) */
+  | 'beastgarden'
 export type SectDonateKind = 'stone' | 'ore' | 'herb'
 
 export interface SectSkillDef {
@@ -328,7 +339,7 @@ export const SECTS: SectDef[] = [
 ]
 
 /**
- * 五座建筑。山门是闸门:其余建筑的等级上限 = (山门等级 + 1) × 2 —— 山门不封顶,
+ * 九座建筑(1.74.2 起)。山门是闸门:其余建筑的等级上限 = (山门等级 + 1) × 2 —— 山门不封顶,
  * 这份「余地」也就一直有得开;想升丹房,先垫山门。
  * 与洞府同一套「主闸」思路,但门派是多人共造,所以没有品类满级这一说(1.69.0)。
  */
@@ -384,6 +395,51 @@ export const SECT_BUILDINGS: SectBuildingDef[] = [
     timeBaseMin: 6,
     effectText: lv => `灵石所得 +${(lv * 2).toFixed(0)}%,机缘 +${(lv * 0.5).toFixed(1)}%`,
     mods: lv => ({ spiritStoneGain: lv * 0.02, luck: lv * 0.005 })
+  },
+  /*
+   * 产量四座(1.74.2)。前三座是「每级每小时 +1」的产线,不走 StatMods 百分比 ——
+   * 产线只认 core/sectRules 的 sectProductionPerHour(纯函数),洞府 produce 与离线结算同读一把尺;
+   * mods 因此恒空,不算加成不算属性。灵兽苑走 beastPct(每级 +0.5%),与安抚灵兽的增益同一条放大口径。
+   */
+  {
+    id: 'herbgarden',
+    name: '灵草园',
+    desc: '门中药田,四时灵草不辍',
+    icon: 'sprout',
+    costBase: 48,
+    timeBaseMin: 6,
+    effectText: lv => `每小时产灵草 +${lv} 株(品阶随灵田)`,
+    mods: () => ({})
+  },
+  {
+    id: 'oremine',
+    name: '玄铁矿',
+    desc: '凿山取铁,炉火所依',
+    icon: 'axe',
+    costBase: 48,
+    timeBaseMin: 6,
+    effectText: lv => `每小时产玄铁 +${lv} 块`,
+    mods: () => ({})
+  },
+  {
+    id: 'wudao',
+    name: '悟道堂',
+    desc: '静室数楹,参玄悟道之所',
+    icon: 'scroll',
+    costBase: 48,
+    timeBaseMin: 6,
+    effectText: lv => `每小时产悟道点 +${lv}`,
+    mods: () => ({})
+  },
+  {
+    id: 'beastgarden',
+    name: '灵兽苑',
+    desc: '豢养灵兽,调教有方',
+    icon: 'paw',
+    costBase: 44,
+    timeBaseMin: 5,
+    effectText: lv => `灵兽效果 +${(lv * 0.5).toFixed(1)}%`,
+    mods: lv => ({ beastPct: lv * 0.005 })
   }
 ]
 
@@ -429,6 +485,8 @@ export interface SectArtDef {
   id: string
   name: string
   desc: string
+  /** 卡面图标(见 ui/icons 的 ICONS 键名) */
+  icon: string
   /** 层次 1~5,与技能同层并排 */
   row: number
   /** 一重的门派库价;每升一重 ×1.9(见 core/sectRules 的 artCost) */
@@ -443,6 +501,7 @@ export const SECT_ARTS: SectArtDef[] = [
     id: 'art_guizong',
     name: '万法归宗',
     desc: '三脉之法同炉共冶,攻守兼资',
+    icon: 'orbit',
     row: 1,
     // 一重的门派库价;再往上每重 ×1.9(与技能同一条陡峭曲线,见 artCost)
     costPool: 3000,
@@ -453,6 +512,7 @@ export const SECT_ARTS: SectArtDef[] = [
     id: 'art_xuangang',
     name: '百炼玄纲',
     desc: '合门之力炼就一条玄纲,锋锐破坚',
+    icon: 'sword',
     row: 2,
     costPool: 8000,
     mods: lv => ({ armorPen: lv * 0.008, critRate: lv * 0.006 }),
@@ -462,6 +522,7 @@ export const SECT_ARTS: SectArtDef[] = [
     id: 'art_zhoutian',
     name: '周天吐纳',
     desc: '门中阵眼引气周天,修行事半功倍',
+    icon: 'wind',
     row: 3,
     costPool: 16000,
     mods: lv => ({ cultivationSpeed: lv * 0.016, qiRegen: lv * 0.008 }),
@@ -471,6 +532,7 @@ export const SECT_ARTS: SectArtDef[] = [
     id: 'art_zaohua',
     name: '天工造化',
     desc: '聚宝阁藏天地造化之气,泽被门人',
+    icon: 'sparkles',
     row: 4,
     costPool: 30000,
     mods: lv => ({ dropRate: lv * 0.012, doubleDropRate: lv * 0.008 }),
@@ -480,6 +542,7 @@ export const SECT_ARTS: SectArtDef[] = [
     id: 'art_zhenpai',
     name: '镇派大阵',
     desc: '开山祖师留下的护门大阵,全门同沐其威',
+    icon: 'shield',
     row: 5,
     costPool: 50000,
     mods: lv => ({ attackPct: lv * 0.012, maxHpPct: lv * 0.012, firstStrike: lv * 0.02 }),

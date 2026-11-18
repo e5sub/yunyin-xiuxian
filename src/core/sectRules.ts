@@ -367,6 +367,31 @@ export function donationDef(kind: string): (typeof SECT_DONATIONS)[number] | und
 }
 
 /**
+ * 产量三座(1.74.2):灵草园/玄铁矿/悟道堂各按「每级每小时 +1」计产。
+ * 这份产不走 StatMods 百分比(那套是比例,不是产量),只认这一把纯函数尺 ——
+ * 洞府 produce(在线 tick)与离线结算都从这里取数,不各写一套;
+ * 服务端经 vendor 同读,界面上报多少玩家就真产多少,不构成新的攻击面。
+ * 负数与坏值一律按 0 计:坏档少产,不白送。
+ */
+export interface SectProduction {
+  herb: number
+  ore: number
+  wudao: number
+}
+
+const SECT_PROD_IDS = ['herbgarden', 'oremine', 'wudao'] as const
+
+export function sectProductionPerHour(buildings: Record<string, number>): SectProduction {
+  const out: SectProduction = { herb: 0, ore: 0, wudao: 0 }
+  for (const id of SECT_PROD_IDS) {
+    const lv = buildings[id] ?? 0
+    if (!Number.isFinite(lv) || lv <= 0) continue
+    out[id === 'herbgarden' ? 'herb' : id === 'oremine' ? 'ore' : 'wudao'] = Math.floor(lv)
+  }
+  return out
+}
+
+/**
  * 一次捐献的贡献拆分:三成入门派库,其余记个人。
  * 用减法而不是两处各乘 —— 两处 floor 加起来会少一点,久了账对不上。
  */
