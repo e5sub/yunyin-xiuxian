@@ -24,12 +24,13 @@
           <span class="min-w-0 grow text-[10px] leading-relaxed text-ink-faint">{{ s.def.effectDesc }}</span>
           <!--
             触控靶面:负外边距配正内边距,盒高 31px 过 layout-check(≥28),流中仍占 15px 行高;同页收纳/分解同法。
-            药丸式柔底(无描边):可换时 azure 淡底浮字,无可换时墨色沉底置灰 —— 比描边小字更醒目也更干净;
+            药丸式柔底(无描边):色块只作底、字走主题墨(palette.spec 同色淡底棘轮的推荐写法,
+            azure 字压同色淡底过不了 4.5:1);无可换时墨色沉底置灰。
             文案压到一截:可换「穿齐·换 N」,无可换只留拒因,箭头与括号都省去。
           -->
           <button
             class="-my-2 shrink-0 rounded-md px-2.5 py-2 text-[10px] transition-colors active:opacity-60 disabled:cursor-not-allowed"
-            :class="s.preview > 0 ? 'bg-azure/10 text-azure' : 'bg-ink/5 text-ink-faint'"
+            :class="s.preview > 0 ? 'bg-azure/10 text-ink' : 'bg-ink/5 text-ink-faint'"
             :disabled="s.preview <= 0"
             @click="onEquipSet(s.def.id)"
           >
