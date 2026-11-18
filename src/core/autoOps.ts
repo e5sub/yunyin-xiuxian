@@ -8,7 +8,7 @@
  * 开关存 settings(持久化)并同步服务端,一律须 VIP;到期自动关停并提示。
  */
 import { watch } from 'vue'
-import type { EnemyDef, ExploreMode, RegionDef } from '@/types'
+import type { AutoModeChoice, EnemyDef, ExploreMode, RegionDef } from '@/types'
 import {
   cloudApi,
   type BossStrikeResult,
@@ -28,7 +28,7 @@ import { isRetreating, startRetreat } from './earlyGameService'
 import { canEnterRegion, placeContent } from './mortalWorldService'
 import { stoneByTier } from './formulas'
 import { tierOfMajor } from './secretRealm'
-import { AUTO_REGION_ID, EXPLORE_MODES } from '@/data/constants'
+import { AUTO_ADVENTURE_MIN_WIN, AUTO_MODE_ID, AUTO_REGION_ID, EXPLORE_MODES } from '@/data/constants'
 import { REGIONS, regionDef } from '@/data/regions'
 import { enemyDef } from '@/data/enemies'
 import { makeEnemySnap, sampleWinRate } from './combat'
@@ -36,7 +36,8 @@ import { buildPlayerSnap } from './playerSnap'
 import { personalityEffects } from './petPersonality'
 import { dangerFactorFor, explorationRules, regionBossCleared, startExploration } from './exploration'
 import { claimBossLoot } from './bossLoot'
-import { pickAutoPlan, type AutoAdventurePlan } from './autoAdventure'
+import { pickAutoPlan, MODES_BY_REWARD, type AutoAdventurePlan } from './autoAdventure'
+import { autoModeOf } from './exploreModes'
 import { autoTripText } from '@/ui/adventureText'
 import { eventDone } from '@/ui/sevenDayText'
 import { basketEmpty } from '@/ui/leisureText'
@@ -140,16 +141,17 @@ function adventureCandidates(): RegionDef[] {
   ).sort((a, b) => b.tier - a.tier)
 }
 
-/** 自动择地:挑最深且打得过的一处(力有不及则退档,再不行不出行) */
-export function planAutoAdventure(preferred: ExploreMode): AutoAdventurePlan | null {
+/** 自动择地:挑收益最大化的一处一档(auto = 全地全档择优;手选档则力有不及退最稳档) */
+export function planAutoAdventure(preferred: AutoModeChoice): AutoAdventurePlan | null {
   return pickAutoPlan(adventureCandidates(), preferred, { rateAt: estimateWinRate, cleared: regionBossCleared })
 }
 
 /**
  * 这一趟该去哪:自动择地走择地结果,手动指定则照玩家所选(没选/进不去则不出行)。
+ * 手动指定去处 + 档位 'auto':在该地全档里挑打得过的收益最高档,都站不住则不出行。
  * 在线巡检与离线补推共用这一处,两处不各写一套。
  */
-export function autoTripTarget(regionId: string, mode: ExploreMode): TripTarget | null {
+export function autoTripTarget(regionId: string, mode: AutoModeChoice): TripTarget | null {
   if (regionId === AUTO_REGION_ID) {
     const plan = planAutoAdventure(mode)
     if (plan === null) return null
@@ -158,7 +160,20 @@ export function autoTripTarget(regionId: string, mode: ExploreMode): TripTarget 
   if (regionId === '' || !canEnterRegion(regionId)) return null
   const region = regionDef(regionId)
   if (region === undefined) return null
+  if (mode === AUTO_MODE_ID) {
+    const picked = bestModeAt(region)
+    if (picked === null) return null
+    return { regionId, regionName: region.name, mode: picked, plan: null }
+  }
   return { regionId, regionName: region.name, mode, plan: null }
+}
+
+/** 手动指定去处时的自动选档:该地全档里挑「打得过且倍率最高」的一档(同倍率不会出现,档位表键唯一) */
+function bestModeAt(region: RegionDef): ExploreMode | null {
+  for (const mode of MODES_BY_REWARD) {
+    if (estimateWinRate(region, mode) >= AUTO_ADVENTURE_MIN_WIN) return mode
+  }
+  return null
 }
 
 /** 自动历练与自动闭关(互斥,历练优先);远征在途不拦 —— 1.74.1 起两者并行 */
@@ -526,8 +541,8 @@ export async function prepOfflineAutoOps(): Promise<void> {
     }
     if (isRetreating()) return
     const regionId = syncedAutoOps !== null ? syncedAutoOps.regionId : settings.autoRegionId
-    const rawMode = syncedAutoOps !== null ? syncedAutoOps.mode : settings.autoMode
-    const mode = (rawMode in EXPLORE_MODES ? rawMode : settings.autoMode) as keyof typeof EXPLORE_MODES
+    // 服务端只存字符串:'auto'(自动选档)原样放行,真档位原样,野值归自动
+    const mode = autoModeOf(syncedAutoOps !== null ? syncedAutoOps.mode : settings.autoMode)
     // 与在线 tick 同一条择地口径:自动择地此刻按归来时的修为重挑一处(离线整段都在这处结算)
     const target = autoTripTarget(regionId, mode)
     if (target === null) return

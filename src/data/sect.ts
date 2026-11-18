@@ -48,8 +48,9 @@ export interface SectBuildingDef {
   desc: string
   icon: string
   /*
-   * 门派建筑**不设等级上限**(1.69.0):山门能一直往上垒,其余建筑的上限由山门抬
-   * (见 SECT_BUILDING_GATE_MULT)。所以这里没有 maxLevel —— 一世的经营不该有「到顶」那一天。
+   * 门派建筑**不设游戏内上限**(1.69.0):山门能一直往上垒,其余建筑的上限由山门抬
+   * (副建筑不得越过山门,见 core/sectRules.buildingLevelCap)。所以这里没有 maxLevel ——
+   * 一世的经营不该有「到顶」那一天。
    */
   /** 门派贡献基数(随等级增长,曲线见 core/sectRules 的 buildingCost) */
   costBase: number
@@ -131,8 +132,6 @@ export const SECT_BUILD_QUEUE_STEPS = 4
  */
 export const SECT_LEVEL_HARD_MAX = 999
 
-/** 山门定其余建筑等级上限的系数:上限 = (山门等级 + 1) × 2 */
-export const SECT_BUILDING_GATE_MULT = 2
 /**
  * 技能等级:**基础五重**。五重之后再往上,要看山门 —— 见下面的续修三常量。
  */
@@ -339,7 +338,7 @@ export const SECTS: SectDef[] = [
 ]
 
 /**
- * 九座建筑(1.74.2 起)。山门是闸门:其余建筑的等级上限 = (山门等级 + 1) × 2 —— 山门不封顶,
+ * 九座建筑(1.74.2 起)。山门是闸门:其余建筑的等级不得超过山门等级 —— 山门不封顶,
  * 这份「余地」也就一直有得开;想升丹房,先垫山门。
  * 与洞府同一套「主闸」思路,但门派是多人共造,所以没有品类满级这一说(1.69.0)。
  */
@@ -352,7 +351,7 @@ export const SECT_BUILDINGS: SectBuildingDef[] = [
     costBase: 60,
     timeBaseMin: 6,
     effectText: lv =>
-      `门人 ${SECT_MEMBERS_BASE + lv * SECT_MEMBERS_PER_LEVEL} 人;余筑上限 ${(lv + 1) * SECT_BUILDING_GATE_MULT} 级;`
+      `门人 ${SECT_MEMBERS_BASE + lv * SECT_MEMBERS_PER_LEVEL} 人;余筑上限 ${lv} 级;`
       + `技能耗 -${Math.min(50, lv * 0.5)}% · 营造 -${Math.min(60, lv)}%;修炼 +${(lv * 1.5).toFixed(1)}%`,
     mods: lv => ({ cultivationSpeed: lv * 0.015 })
   },

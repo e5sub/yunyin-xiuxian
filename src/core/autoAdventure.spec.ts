@@ -87,6 +87,56 @@ describe('托管择地 · 量力而行', () => {
   })
 })
 
+describe('托管自动选档 · 全地全档择优', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('同一处站得住的档里挑奖励倍率最高的一档', () => {
+    const plan = pickAutoPlan(
+      cands,
+      'auto',
+      deps({
+        hantan: { normal: 0.93, deep: 0.93, risky: 0.08 },
+        heifeng: { normal: 0.93, deep: 0.93 }
+      })
+    )
+    // 同为 deep 档,寒潭层级更深分更高;risky 打不过,deep 是站得住的最高档
+    expect(plan?.regionId).toBe(deep.id)
+    expect(plan?.mode).toBe('deep')
+    expect(plan?.reason).toBe('frontier')
+  })
+
+  it('两维相乘择优:浅处的长档能盖过深处的短档', () => {
+    // 黑风(3)×彻夜问道 3.0 = 9 分;寒潭(4)×寻常游历 1.0 = 4 分 —— 择优取黑风长档
+    const plan = pickAutoPlan(
+      cands,
+      'auto',
+      deps({
+        hantan: { normal: 0.93, deep: 0.08, marathon: 0.08 },
+        heifeng: { normal: 0.93, deep: 0.08, marathon: 0.93 }
+      })
+    )
+    expect(plan?.regionId).toBe(mid.id)
+    expect(plan?.mode).toBe('marathon')
+  })
+
+  it('全档都站不住便不出行(自动选档不给「退最稳档」的第二次机会,normal 本就在扫列里)', () => {
+    const plan = pickAutoPlan(
+      cands,
+      'auto',
+      deps({ hantan: { normal: 0.4, deep: 0.08 }, heifeng: { normal: 0.08 } })
+    )
+    expect(plan).toBeNull()
+  })
+
+  it('前路已靖的择优结果如实报 ceiling', () => {
+    const plan = pickAutoPlan(cands, 'auto', deps({ hantan: { normal: 0.93 } }, [deep.id]))
+    expect(plan?.regionId).toBe(deep.id)
+    expect(plan?.reason).toBe('ceiling')
+  })
+})
+
 describe('托管择地 · 与地界数据对得上', () => {
   beforeEach(() => {
     setActivePinia(createPinia())

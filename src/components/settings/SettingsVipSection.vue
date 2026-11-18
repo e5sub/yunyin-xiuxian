@@ -154,12 +154,19 @@
           <label class="flex items-center justify-between gap-2">
             <span class="shrink-0 text-[11px] text-ink-faint">出行档位</span>
             <select v-model="settings.autoMode" aria-label="托管行事风格" class="min-w-0 grow rounded border border-ink/20 bg-transparent px-1.5 py-1 text-[12px] text-ink">
+              <option :value="AUTO_MODE_ID">自动选档(只挑打得过的,收益最大化)</option>
               <option v-for="(m, id) in EXPLORE_MODES" :key="id" :value="id">{{ m.name }}({{ classicalDuration(m.durationSec) }})</option>
             </select>
           </label>
           <p v-if="settings.autoRegionId === AUTO_REGION_ID" class="text-[10px] leading-relaxed text-ink-faint">
-            自动择地:每次出行前按实战同源试算遇敌胜率,取<span class="text-ink">最深且站得住</span>的一处;
-            所选档位过于凶险会自动退到最稳档,力有不及则不出行(败则中断行程、负伤,白耗时辰)
+            <template v-if="settings.autoMode === AUTO_MODE_ID">
+              自动择地+自动选档:每次出行前按实战同源试算遇敌胜率,「全地 × 全档」只挑打得过的,
+              按<span class="text-ink">层级 × 奖励倍率</span>挑收益最高的一趟;力有不及则不出行(败则中断行程、负伤,白耗时辰)
+            </template>
+            <template v-else>
+              自动择地:每次出行前按实战同源试算遇敌胜率,取<span class="text-ink">最深且站得住</span>的一处;
+              所选档位过于凶险会自动退到最稳档,力有不及则不出行(败则中断行程、负伤,白耗时辰)
+            </template>
           </p>
           <p v-if="planHint !== ''" class="text-[10px] leading-relaxed text-gold-ink">{{ planHint }}</p>
           <p v-if="settings.autoRegionId === ''" class="text-[10px] text-cinnabar">须先选历练去处,否则托管不出行</p>
@@ -191,7 +198,7 @@
   import { useUiStore } from '@/stores/ui'
   import { cloudApi, type VipPurchaseType } from '@/services/cloud'
   import { canEnterRegion } from '@/core/mortalWorldService'
-  import { AUTO_REGION_ID, EXPLORE_MODES } from '@/data/constants'
+  import { AUTO_MODE_ID, AUTO_REGION_ID, EXPLORE_MODES } from '@/data/constants'
   import { REGIONS } from '@/data/regions'
   import { BOSS_DIFFICULTY_OPTIONS } from '@/data/bossDifficulty'
   import { classicalDuration } from '@/data/timeUnits'
@@ -387,6 +394,7 @@
       const band = winBandText(plan.winRate)
       if (plan.reason === 'safer') return `托管会去:${where}(${band})· 所选档位力有不及,已退到最稳档`
       if (plan.reason === 'ceiling') return `托管会去:${where}(${band})· 前路已靖,聊作温养`
+      if (settings.autoMode === AUTO_MODE_ID) return `托管会去:${where}(${band})· 全地全档择优,此为当前打得过的收益最高一趟`
       return `托管会去:${where}(${band})`
     } catch {
       return ''

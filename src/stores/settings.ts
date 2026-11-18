@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { persistConfig } from '@/utils/storage'
 import { asArray, asFiniteNumber, asRecord, truncateCodePoints } from '@/utils/saveShape'
-import { exploreModeOf } from '@/core/exploreModes'
+import { autoModeOf } from '@/core/exploreModes'
+import { AUTO_MODE_ID } from '@/data/constants'
 import { bossDifficultyOf } from '@/data/bossDifficulty'
 import { MAX_EQUIP_TIER } from '@/data/equipment'
 import { QUALITIES } from '@/data/qualities'
@@ -54,9 +55,9 @@ export const useSettingsStore = defineStore(
      * 前一档不够才退下一档;服务端每分钟巡检时结算(见 server/src/autoOps 的 tickAutoDonate)。
      */
     const autoDonate = ref(false)
-    /** 自动历练的去处与档位('' = 未选;AUTO_REGION_ID 即 'auto' = 托管自行择地) */
+    /** 自动历练的去处与档位('' = 未选;AUTO_REGION_ID 即 'auto' = 托管自行择地;档位 'auto' = 自动选档,收益最大化) */
     const autoRegionId = ref('')
-    const autoMode = ref<import('@/types').ExploreMode>('normal')
+    const autoMode = ref<import('@/types').AutoModeChoice>(AUTO_MODE_ID)
     /** 围妖出剑难度档(手动出剑与托管代打同用;击杀赏格随档加深) */
     const bossDifficulty = ref<import('@/data/bossDifficulty').BossDifficulty>('normal')
     const battleSpeed = ref<1 | 2 | 4>(1)
@@ -102,7 +103,7 @@ export const useSettingsStore = defineStore(
       autoDailyEvent.value = autoDailyEvent.value === true
       autoDonate.value = autoDonate.value === true
       autoRegionId.value = typeof autoRegionId.value === 'string' ? autoRegionId.value : ''
-      autoMode.value = exploreModeOf(autoMode.value)
+      autoMode.value = autoModeOf(autoMode.value)
       bossDifficulty.value = bossDifficultyOf(bossDifficulty.value)
       // 布尔开关一律 ===true 归一:损坏档里混入的字符串("false")/数字(1)会以真值存活
       sfxOn.value = sfxOn.value === true

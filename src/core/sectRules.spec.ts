@@ -169,14 +169,14 @@ describe('建筑价目与工期', () => {
     expect(buildingDurationMs('arena', 99)! / 3_600_000).toBeLessThan(6)
   })
 
-  it('山门闸门:山门自身只受硬夹,其余 = (山门+1)×2 且不再有品类满级', () => {
+  it('山门闸门:山门自身只受硬夹,其余不得越过山门等级(1.74.2 起)且不再有品类满级', () => {
     expect(buildingLevelCap('hall', 0)).toBe(SECT_LEVEL_HARD_MAX)
-    expect(buildingLevelCap('arena', 0)).toBe(2)
-    expect(buildingLevelCap('arena', 1)).toBe(4)
-    expect(buildingLevelCap('arena', 4)).toBe(10)
-    // 山门升到 8 级:演武场能到 18 级(旧版被自身满级卡在 10)
-    expect(buildingLevelCap('arena', 8)).toBe(18)
-    expect(buildingLevelCap('arena', 49)).toBe(100)
+    expect(buildingLevelCap('arena', 0)).toBe(0)
+    expect(buildingLevelCap('arena', 1)).toBe(1)
+    expect(buildingLevelCap('arena', 4)).toBe(4)
+    // 山门升到 8 级:演武场至多 8 级,想再往上先垫山门
+    expect(buildingLevelCap('arena', 8)).toBe(8)
+    expect(buildingLevelCap('arena', 49)).toBe(49)
     expect(buildingLevelCap('nope', 8)).toBe(0)
   })
 })
@@ -329,7 +329,7 @@ describe('计时结算', () => {
   const base = (over: Partial<SectState> = {}): SectState => ({ ...emptySectState(), ...over })
 
   it('未到点不完工,到点即落级并清出队列', () => {
-    const state = base({ build: [{ id: 'arena', to: 1, startAt: 1_000, finishAt: 61_000 }] })
+    const state = base({ buildings: { hall: 1 }, build: [{ id: 'arena', to: 1, startAt: 1_000, finishAt: 61_000 }] })
     expect(settleBuild(state, 60_999).done).toEqual([])
     const after = settleBuild(state, 61_000)
     expect(after.done).toEqual(['arena'])
@@ -358,11 +358,11 @@ describe('计时结算', () => {
   })
 
   it('目标等级被写到闸门之外:只按闸门落级,不白送多余等级', () => {
-    const state = base({ build: [{ id: 'arena', to: 99, startAt: 1_000, finishAt: 2_000 }] })
+    const state = base({ buildings: { hall: 5 }, build: [{ id: 'arena', to: 99, startAt: 1_000, finishAt: 2_000 }] })
     const after = settleBuild(state, 3_000)
     expect(after.state.build).toEqual([])
-    // 山门 0 级时演武场只能到 2 级
-    expect(after.state.buildings.arena).toBe(2)
+    // 山门 5 级时演武场只能到 5 级(不得越过主建筑)
+    expect(after.state.buildings.arena).toBe(5)
   })
 
   it('山门自己不受闸门限制:写多高就落多高(只受硬夹)', () => {
@@ -399,11 +399,11 @@ describe('状态修形', () => {
     expect(s.totalDonated).toBe(12)
   })
 
-  it('建筑等级按山门闸门压回(山门自身只受硬夹)', () => {
+  it('建筑等级按山门闸门压回(山门自身只受硬夹;不得越过山门)', () => {
     const s = normalizeSectState({ ...founded, buildings: { hall: 0, arena: 9 } }, now)
-    expect(s.buildings.arena).toBe(2)
+    expect(s.buildings.arena).toBe(0)
     const tall = normalizeSectState({ ...founded, buildings: { hall: 8, arena: 99 } }, now)
-    expect(tall.buildings.arena).toBe(18)
+    expect(tall.buildings.arena).toBe(8)
     expect(tall.buildings.hall).toBe(8)
   })
 

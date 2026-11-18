@@ -436,6 +436,8 @@ export const AUTO_ADVENTURE_SAFE_MODE = 'normal'
 export const AUTO_ADVENTURE_TRIALS = 3
 /** 托管去处选「自动择地」时的哨兵值(与具体地界 id 区分;地界 id 里没有 auto) */
 export const AUTO_REGION_ID = 'auto'
+/** 托管档位选「自动选档」时的哨兵值(与真档位 id 区分;档位 id 里没有 auto) */
+export const AUTO_MODE_ID = 'auto'
 /** 战败重伤 Buff 持续秒数 */
 export const INJURY_DURATION = 150
 

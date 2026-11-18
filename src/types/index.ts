@@ -480,6 +480,11 @@ export interface EnemyDef {
 
 // ============ 区域 ============
 export type ExploreMode = 'normal' | 'deep' | 'risky' | 'prolonged' | 'marathon' | 'deepExpedition'
+/**
+ * 托管的档位选择:手选真档位,或 'auto' 哨兵 —— 托管把「全地 × 全档」按
+ * 「层级 × 奖励倍率」扫一遍,只挑打得过的,收益最大化(见 core/autoAdventure)。
+ */
+export type AutoModeChoice = ExploreMode | 'auto'
 
 export interface RegionDef {
   id: string

@@ -14,7 +14,6 @@ import {
   SECT_APPLY_MAX,
   SECT_BUILD_QUEUE_STEPS,
   SECT_BUILD_QUEUE_STEP,
-  SECT_BUILDING_GATE_MULT,
   SECT_DONATIONS,
   SECT_DONATE_DAILY_CAP,
   SECT_DONATE_VIP_CAP,
@@ -348,7 +347,7 @@ export function buildingDurationMs(id: string, level: number, hallLevel = 0): nu
 }
 
 /**
- * 建筑等级上限:山门本身无上限(只受硬夹),其余 = (山门等级 + 1) × 2。
+ * 建筑等级上限:山门本身无上限(只受硬夹),其余 = 山门等级(1.74.2 起不得越过主建筑)。
  * 山门是闸门 —— 副建筑想再往上,先垫山门一级;山门不封顶,这份余地也就一直有得开。
  * 与洞府(gongfaSeats 那套)都是「主闸限副」,区别是门派没有品类满级。
  */
@@ -356,7 +355,7 @@ export function buildingLevelCap(id: string, hallLevel: number): number {
   const def = sectBuildingDef(id)
   if (def === undefined) return 0
   if (def.id === 'hall') return SECT_LEVEL_HARD_MAX
-  return Math.min(SECT_LEVEL_HARD_MAX, (intIn(hallLevel, 0, SECT_LEVEL_HARD_MAX) + 1) * SECT_BUILDING_GATE_MULT)
+  return Math.min(SECT_LEVEL_HARD_MAX, intIn(hallLevel, 0, SECT_LEVEL_HARD_MAX))
 }
 
 /* ---------------- 捐献 ---------------- */

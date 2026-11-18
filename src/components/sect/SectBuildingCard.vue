@@ -121,8 +121,8 @@
   const blockLine = computed(() => {
     // 门人不开工:营造是有职者(掌门/副掌门/长老)的事
     if (!sect.canBuild) return '有职者方可营造'
-    // 上限 = (山门+1)×2 → 要再升一级,山门须到 floor(当前等级 / 2)
-    if (gateLimited.value) return `需山门 ${Math.floor(level.value / 2)} 级`
+    // 上限 = 山门等级 → 要再升一级,山门须到 当前等级 + 1
+    if (gateLimited.value) return `需山门 ${level.value + 1} 级`
     if (building.value) return '尚在营造'
     if (queueFull.value) return '营造队列已满'
     return `门派库不足 · 差 ${Math.max(0, cost.value - sect.pool)}`
