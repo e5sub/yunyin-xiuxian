@@ -565,7 +565,7 @@ CREATE TABLE IF NOT EXISTS autoops_state (
   ledger_herb INTEGER NOT NULL DEFAULT 0,
   ledger_strikes INTEGER NOT NULL DEFAULT 0,
   ledger_tier INTEGER NOT NULL DEFAULT 0,
-  -- 离线代办的每日活动赏台账(形状同 EventReward;stone 是基础值,客户端按 tier 折算)
+  -- 离线代办的每日活动赏台账(形状同 EventReward,stone 是基础值,客户端按 tier 折算)
   ev_stone REAL NOT NULL DEFAULT 0,
   ev_herb INTEGER NOT NULL DEFAULT 0,
   ev_ore INTEGER NOT NULL DEFAULT 0,
@@ -1050,7 +1050,7 @@ CREATE TABLE IF NOT EXISTS autoops_state (
   ledger_herb INT NOT NULL DEFAULT 0,
   ledger_strikes INT NOT NULL DEFAULT 0,
   ledger_tier INT NOT NULL DEFAULT 0,
-  -- 离线代办的每日活动赏台账(形状同 EventReward;stone 是基础值,客户端按 tier 折算)
+  -- 离线代办的每日活动赏台账(形状同 EventReward,stone 是基础值,客户端按 tier 折算)
   ev_stone DOUBLE NOT NULL DEFAULT 0,
   ev_herb INT NOT NULL DEFAULT 0,
   ev_ore INT NOT NULL DEFAULT 0,
