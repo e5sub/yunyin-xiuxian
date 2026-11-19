@@ -41,7 +41,8 @@ console.log(`[build-vendor] ${ENTRY_POINTS.length} 个模块 -> server/vendor/`)
 // vendor 的传递依赖图极深(一层打包牵进 17 个 store),任何一层新增浏览器专属顶层代码
 // (window/document/import.meta.env 直读)都只有线上首次调用才会炸 —— 必须在这里拦住。
 const EXPECTED = {
-  'apprenticeService.mjs': ['isApprenticeArch', 'apprenticeSpoils', 'apprenticeTaskSeconds'],
+  // 离线派工(1.74.5):服务端读存档分片算库存,派工口径吃客户端这一份(单源)
+  'apprenticeService.mjs': ['isApprenticeArch', 'apprenticeSpoils', 'apprenticeTaskSeconds', 'dispatchTargetsFromStocks'],
   // 分解进项账(1.74.1):server/src/salvageCredit 用它复算「消失的件」应得多少尘
   'salvage.mjs': ['salvageOf'],
   // 道源进项账(1.74.1):server/src/daoCredit 用它按世界/试炼的结算上界折算每条通关道痕

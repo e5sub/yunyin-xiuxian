@@ -617,6 +617,7 @@ export const cloudApi = {
       autoBoss: boolean
       autoRetreat: boolean
       autoAdventure: boolean
+      autoDailyEvent?: boolean
       regionId: string
       mode: string
       bossDifficulty: 'calm' | 'normal' | 'peril'
@@ -631,17 +632,28 @@ export const cloudApi = {
     autoAdventure: boolean
     /** 门派自动捐献(VIP 托管) */
     autoDonate?: boolean
+    /** 每日活动托管(1.74.5 起离线也由服务端代办) */
+    autoDailyEvent?: boolean
     regionId: string
     mode: string
     bossDifficulty: 'calm' | 'normal' | 'peril'
   }): Promise<{ ok: boolean }> => request('PUT', '/vip/autoops', s),
   /**
-   * 领取离线讨伐所得(领取即清零)。
-   * 出剑无资粮,stoneM/stoneE/herb 三列恒为 0(老字段,留着兼容);真正的所得是击杀赏,
+   * 领取离线托管所得(领取即清零)。
+   * 出剑无资粮,stoneM/stoneE/herb 三列恒为 0(老字段,留着兼容);真正的讨伐所得是击杀赏,
    * 走 bossClaim 另领。skip 是「最近一次没出剑」的原因(hold/capped/boss-dead/no-profile)。
+   * events 是离线代办的每日活动赏(1.74.5):观星/垂钓/擂台/领赏攒在这里,形状同 EventReward,
+   * 灵石是基础值,须按授予时的 tier 折算;全 0 表示离线期间无可办。
    */
   collectVipAutoOps: (): Promise<{
-    collected: { stoneM: number; stoneE: number; herb: number; strikes: number; tier: number }
+    collected: {
+      stoneM: number
+      stoneE: number
+      herb: number
+      strikes: number
+      tier: number
+      events?: { stone: number; herb: number; ore: number; wudao: number; dust: number; page: number; tier: number }
+    }
     skip?: { reason: string; at: number } | null
   }> => request('POST', '/vip/autoops/collect'),
   emailCode: (email: string, purpose: 'register' | 'reset' | 'bind', turnstileToken = ''): Promise<EmailCodeResp> =>
@@ -742,6 +754,12 @@ export const cloudApi = {
    */
   apprenticeTaskClaim: (uid: string): Promise<{ ok: boolean; reason?: string; spoils?: TaskSpoils; remainMs?: number; gone?: boolean }> =>
     request('POST', '/apprentice/task/claim', { uid }),
+  /**
+   * 在途差事清单(1.74.5):离线托管由服务端代派的单,本地账里没有 —— 归来先对齐再收。
+   * seconds 回服务端口径的工期,倒计时不吃本地钟偏快。
+   */
+  apprenticeTaskList: (): Promise<{ tasks: Array<{ uid: string; spec: string; startedAt: number; seconds: number }> }> =>
+    request('GET', '/apprentice/task/list'),
   /** 坊市成交记账(1.58.1):服务端按货架复算价并落账,上传时把这笔钱从增量里扣掉 */
   marketBuy: (payload: { stockedAt: number; idx: number }): Promise<{ ok: boolean; recorded: boolean }> =>
     request('POST', '/market/buy', payload),

@@ -14,6 +14,10 @@ import { dayKey, attemptsUsed } from './dungeonCore.js'
 import { bossAttemptBonus } from './eventCore.js'
 import { performStrike, ensureBoss, assessStrike, bossDifficultyOf, type BossDifficulty } from './routes/boss.js'
 import { autoDonateFor } from './routes/sect.js'
+import { arenaRun } from './routes/event.js'
+import { activeEvent, addEventProgress, claimEvent, eventProgress, leaderboardRank, todayEvent, type EventReward } from './eventCore.js'
+import { castLine, claimBasket, drawStar, leisureEnabled } from './leisureCore.js'
+import { dispatchTargets, isApprenticeArch } from './apprenticeCore.js'
 
 export const autoOpsRouter = express.Router()
 
@@ -38,6 +42,8 @@ interface AutoOpsRow {
   auto_adventure: number
   /** 门派自动捐献:VIP 每日把名额捐完(石→铁→草) */
   auto_donate: number
+  /** 每日活动托管(1.74.5):离线也由服务端代办当日额度 */
+  auto_daily: number
   region_id: string
   mode: string
   boss_difficulty: string
@@ -46,6 +52,14 @@ interface AutoOpsRow {
   ledger_herb: number
   ledger_strikes: number
   ledger_tier: number
+  /** 离线代办的每日活动赏台账(stone 是基础值,客户端按 ev_tier 折算) */
+  ev_stone: number
+  ev_herb: number
+  ev_ore: number
+  ev_wudao: number
+  ev_dust: number
+  ev_page: number
+  ev_tier: number
   last_skip: string
   last_skip_at: number
 }
@@ -60,9 +74,33 @@ function settingsOf(r: AutoOpsRow | undefined): Record<string, unknown> {
     autoRetreat: (r?.auto_retreat ?? 0) === 1,
     autoAdventure: (r?.auto_adventure ?? 0) === 1,
     autoDonate: (r?.auto_donate ?? 0) === 1,
+    autoDailyEvent: (r?.auto_daily ?? 0) === 1,
     regionId: r?.region_id ?? '',
     mode: r?.mode ?? '',
     bossDifficulty: bossDifficultyOf(r?.boss_difficulty)
+  }
+}
+
+/** 离线代办的每日活动赏台账(形状同 EventReward + 授予层级) */
+interface EventLedger {
+  stone: number
+  herb: number
+  ore: number
+  wudao: number
+  dust: number
+  page: number
+  tier: number
+}
+
+function eventLedgerOf(r: AutoOpsRow | undefined): EventLedger {
+  return {
+    stone: r?.ev_stone ?? 0,
+    herb: r?.ev_herb ?? 0,
+    ore: r?.ev_ore ?? 0,
+    wudao: r?.ev_wudao ?? 0,
+    dust: r?.ev_dust ?? 0,
+    page: r?.ev_page ?? 0,
+    tier: r?.ev_tier ?? 0
   }
 }
 
@@ -97,7 +135,7 @@ autoOpsRouter.get('/', requireAuth, (req: Request, res: Response) => {
 })
 
 /** 同步托管设置(客户端在开关变更时调用;布尔必须显式传)。
- *  台账列绝不能出现在这份写入里:离线代打的所得走 ledger_* 累加(creditLedger 是
+ *  台账列绝不能出现在这份写入里:离线代打的所得走 ledger 与 ev 台账列累加(creditLedger 是
  *  `ledger_herb = ledger_herb + ?` 风格),整行 REPLACE 会把玩家还没领的奖励清零 ——
  *  所以行存在时只 UPDATE 设置列,不存在才插入带零台账的完整行(1.62.0 修复)。 */
 autoOpsRouter.put('/', requireAuth, (req: Request, res: Response) => {
@@ -110,6 +148,7 @@ autoOpsRouter.put('/', requireAuth, (req: Request, res: Response) => {
       auto_retreat: b(body.autoRetreat) ? 1 : 0,
       auto_adventure: b(body.autoAdventure) ? 1 : 0,
       auto_donate: b(body.autoDonate) ? 1 : 0,
+      auto_daily: b(body.autoDailyEvent) ? 1 : 0,
       region_id: s(body.regionId, 64),
       mode: s(body.mode, 16),
       boss_difficulty: bossDifficultyOf(body.bossDifficulty),
@@ -124,18 +163,26 @@ autoOpsRouter.put('/', requireAuth, (req: Request, res: Response) => {
         ledger_stone_e: 0,
         ledger_herb: 0,
         ledger_strikes: 0,
-        ledger_tier: 0
+        ledger_tier: 0,
+        ev_stone: 0,
+        ev_herb: 0,
+        ev_ore: 0,
+        ev_wudao: 0,
+        ev_dust: 0,
+        ev_page: 0,
+        ev_tier: 0
       })
     } else {
       await run(
         `UPDATE autoops_state
-         SET auto_boss = ?, auto_retreat = ?, auto_adventure = ?, auto_donate = ?, region_id = ?, mode = ?, boss_difficulty = ?, updated_at = ?
+         SET auto_boss = ?, auto_retreat = ?, auto_adventure = ?, auto_donate = ?, auto_daily = ?, region_id = ?, mode = ?, boss_difficulty = ?, updated_at = ?
          WHERE user_id = ?`,
         [
           settings.auto_boss,
           settings.auto_retreat,
           settings.auto_adventure,
           settings.auto_donate,
+          settings.auto_daily,
           settings.region_id,
           settings.mode,
           settings.boss_difficulty,
@@ -160,14 +207,15 @@ autoOpsRouter.post('/collect', requireAuth, (req: Request, res: Response) => {
   void (async () => {
     const r = await rowOf(req.user!.id)
     const pending = ledgerOf(r)
+    const events = eventLedgerOf(r)
     const skip = skipOf(r)
-    if (r !== undefined && r.ledger_strikes > 0) {
+    if (r !== undefined && (r.ledger_strikes > 0 || events.stone > 0 || events.herb > 0 || events.ore > 0 || events.wudao > 0 || events.dust > 0 || events.page > 0)) {
       await run(
-        'UPDATE autoops_state SET ledger_stone_m = 0, ledger_stone_e = 0, ledger_herb = 0, ledger_strikes = 0, ledger_tier = 0 WHERE user_id = ?',
+        'UPDATE autoops_state SET ledger_stone_m = 0, ledger_stone_e = 0, ledger_herb = 0, ledger_strikes = 0, ledger_tier = 0, ev_stone = 0, ev_herb = 0, ev_ore = 0, ev_wudao = 0, ev_dust = 0, ev_page = 0, ev_tier = 0 WHERE user_id = ?',
         [req.user!.id]
       )
     }
-    res.json({ collected: pending, skip })
+    res.json({ collected: { ...pending, events }, skip })
   })().catch(() => res.status(500).json({ error: '服务器异常' }))
 })
 
@@ -272,6 +320,169 @@ async function tickAutoDonate(): Promise<void> {
   }
 }
 
+/* ---------------- 每日活动离线代办(1.74.5) ---------------- */
+
+/** 把一份赏记进每日活动台账(SQL 侧累加,并发安全);tier 取授予时的境界层级 */
+async function creditEventLedger(userId: number, reward: EventReward, tier: number): Promise<void> {
+  await run(
+    `UPDATE autoops_state
+     SET ev_stone = ev_stone + ?, ev_herb = ev_herb + ?, ev_ore = ev_ore + ?, ev_wudao = ev_wudao + ?, ev_dust = ev_dust + ?, ev_page = ev_page + ?, ev_tier = ?
+     WHERE user_id = ?`,
+    [reward.stone, reward.herb, reward.ore, reward.wudao, reward.dust, reward.page, tier, userId]
+  ).catch(() => undefined)
+}
+
+/** 授予时层级:灵石按授予时的境界折,归来时境界变了也不漂(与 boss 台账 ledger_tier 同思路) */
+async function realmTierOf(userId: number): Promise<number> {
+  const row = await get<{ realm_index: number }>('SELECT realm_index FROM profiles WHERE user_id = ?', [userId])
+  return Math.max(0, Math.trunc(row?.realm_index ?? 0))
+}
+
+/**
+ * 一轮巡检:离线 VIP 道友的「自动做每日活动」。
+ *
+ * 客户端在场时它自己每分钟办一遍,这里只补没人的那段(与代打妖王同一个在场判据)。
+ * 逐项口径与客户端 autoOps 的 autoSevenDay/autoLeisure 一致:
+ *   · 擂台:未达标就代连战(raise 只升不降,重复跑不亏);
+ *   · 妖潮夜:出剑是 autoBoss 的事,这里只在达标后领赏;
+ *   · 天榜:名次达标补满进度即领;
+ *   · 切磋/秘境:要玩家本人拍板,不代做;
+ *   · 观星:一日一签,抽过即回看;
+ *   · 垂钓:竿竿钓满再收篓。
+ * 所得全部进 ev_* 台账,玩家归来随 /collect 一并领走 —— 与在线托管同等待遇。
+ */
+async function tickAutoDaily(): Promise<void> {
+  const rows = await all<{ user_id: number }>('SELECT user_id FROM autoops_state WHERE auto_daily = 1')
+  for (const r of rows) {
+    try {
+      if (isOnline(r.user_id) && (await recentlySynced(r.user_id))) continue
+      if (!(await vipActive(r.user_id))) continue
+      const tier = await realmTierOf(r.user_id)
+      /* ---- 周天七会 ---- */
+      const { day, event } = todayEvent()
+      if (await activeEvent()) {
+        const mine = await eventProgress(r.user_id, day, event.id)
+        if (!mine.claimed) {
+          if (event.kind === 'arena') {
+            if (mine.progress < event.target) await arenaRun(r.user_id)
+            const after = await eventProgress(r.user_id, day, event.id)
+            if (after.progress >= event.target && !after.claimed) {
+              const reward = await claimEvent(r.user_id, day, event.id)
+              if (reward !== null) await creditEventLedger(r.user_id, reward, tier)
+            }
+          } else if (event.kind === 'boss') {
+            // 出剑由 tickOfflineBoss 负责;这边只把达标的赏领走
+            if (mine.progress >= event.target) {
+              const reward = await claimEvent(r.user_id, day, event.id)
+              if (reward !== null) await creditEventLedger(r.user_id, reward, tier)
+            }
+          } else if (event.kind === 'board') {
+            const rank = await leaderboardRank(r.user_id)
+            if (rank !== null && rank <= event.target) {
+              await addEventProgress(r.user_id, day, event.id, event.target)
+              const reward = await claimEvent(r.user_id, day, event.id)
+              if (reward !== null) await creditEventLedger(r.user_id, reward, tier)
+            }
+          }
+          // duel / dungeon 要玩家本人挑对手与层数,离线不代做(与在线托管同口径)
+        }
+      }
+      /* ---- 闲趣三则(猜谜一问一次、要本人作答,不代答) ---- */
+      if (await leisureEnabled()) {
+        const star = await drawStar(r.user_id)
+        if (!star.already) await creditEventLedger(r.user_id, star.reward, tier)
+        // 竿竿钓满:castLine 三竿用尽(或已收篓)返回 null
+        for (let i = 0; i < 6; i += 1) {
+          const cast = await castLine(r.user_id)
+          if (cast === null) break
+        }
+        const basket = await claimBasket(r.user_id)
+        if (basket !== null) await creditEventLedger(r.user_id, basket, tier)
+      }
+    } catch {
+      // 单人失败不影响其余道友
+    }
+  }
+}
+
+/* ---------------- 道童差事离线派工(1.74.5) ---------------- */
+
+/**
+ * 一轮巡检:离线 VIP 道友的闲置弟子按「各尽其长」自动派差。
+ *
+ * 开关与客户端同源:自动历练兼管道童差事(auto_adventure),离线在线同一待遇。
+ * 名册与库存读存档分片(saves.data,整片 JSON):apprentice 名册、resources/inventory 库存、
+ * player 境界;派工口径吃客户端 dispatchTargetsFromStocks(vendor 单源,不另写一份规则)。
+ * 只派工、不收割:产出仍由客户端归来时走 claim 复算入账(工期按服务端开工时刻,
+ * 离线派出的那趟照常完工,归来即收 —— 与在线派工同一份产出)。
+ * 派完即闲单清零;离线期间差事完工,下一轮巡检续派新单,与在线 10 秒一查的节奏等价。
+ */
+async function tickAutoApprentice(): Promise<void> {
+  const rows = await all<{ user_id: number }>('SELECT user_id FROM autoops_state WHERE auto_adventure = 1')
+  for (const r of rows) {
+    try {
+      if (isOnline(r.user_id) && (await recentlySynced(r.user_id))) continue
+      if (!(await vipActive(r.user_id))) continue
+      const save = await get<{ data: string }>('SELECT data FROM saves WHERE user_id = ?', [r.user_id])
+      if (save === undefined) continue
+      let data: Record<string, unknown>
+      try {
+        data = JSON.parse(save.data) as Record<string, unknown>
+      } catch {
+        continue
+      }
+      const roster = (data['apprentice'] as { apprentices?: unknown } | undefined)?.apprentices
+      if (!Array.isArray(roster)) continue
+      const playerSlice = data['player'] as { major?: unknown } | undefined
+      const resourcesSlice = data['resources'] as { herbByGrade?: unknown; ore?: unknown; wudao?: unknown; dust?: unknown } | undefined
+      const inventorySlice = data['inventory'] as { pills?: unknown } | undefined
+      if (resourcesSlice === undefined) continue
+      const major = Math.max(0, Math.min(40, Math.trunc(Number(playerSlice?.major ?? 0)) || 0))
+      const stock = {
+        herbByGrade: (resourcesSlice.herbByGrade ?? {}) as Record<string, number>,
+        ore: Math.max(0, Math.trunc(Number(resourcesSlice.ore ?? 0)) || 0),
+        wudao: Math.max(0, Math.trunc(Number(resourcesSlice.wudao ?? 0)) || 0),
+        dust: Math.max(0, Math.trunc(Number(resourcesSlice.dust ?? 0)) || 0),
+        seek: Object.values((inventorySlice?.pills ?? {}) as Record<string, number>).reduce(
+          (a: number, b) => a + (Number.isFinite(b) ? Math.max(0, Math.trunc(b)) : 0),
+          0
+        )
+      }
+      // 闲置 = 本地任务为空 且 服务端无在途账(两处都查:本地档可能落后于服务端账)
+      const inFlight = new Set(
+        (await all<{ uid: string }>('SELECT uid FROM apprentice_tasks WHERE user_id = ?', [r.user_id])).map(x => x.uid)
+      )
+      const idle: Array<{ uid: string; archId: string; level: number }> = []
+      for (const raw of roster) {
+        const a = raw as { uid?: unknown; archId?: unknown; level?: unknown; task?: unknown }
+        if (typeof a.uid !== 'string' || typeof a.archId !== 'string') continue
+        if (a.task !== null && a.task !== undefined) continue
+        if (inFlight.has(a.uid)) continue
+        if (!(await isApprenticeArch(a.archId))) continue
+        idle.push({ uid: a.uid, archId: a.archId, level: Math.max(1, Math.min(30, Math.trunc(Number(a.level ?? 1)) || 1)) })
+      }
+      if (idle.length === 0) continue
+      const targets = await dispatchTargets(
+        idle.map(x => ({ uid: x.uid, archId: x.archId })),
+        stock,
+        major
+      )
+      if (targets === null) continue
+      const now = Date.now()
+      for (const t of targets) {
+        const own = idle.find(x => x.uid === t.uid)
+        if (own === undefined) continue
+        await run(
+          'REPLACE INTO apprentice_tasks (user_id, uid, arch_id, spec, level, major, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [r.user_id, own.uid, own.archId, t.spec, own.level, major, now]
+        )
+      }
+    } catch {
+      // 单人失败不影响其余道友
+    }
+  }
+}
+
 let jobTimer: ReturnType<typeof setInterval> | undefined
 
 /** 服务端启动时挂离线托管巡检 */
@@ -280,6 +491,8 @@ export function startAutoOpsJob(): void {
   jobTimer = setInterval(() => {
     void tickOfflineBoss().catch(() => undefined)
     void tickAutoDonate().catch(() => undefined)
+    void tickAutoDaily().catch(() => undefined)
+    void tickAutoApprentice().catch(() => undefined)
   }, JOB_TICK_MS)
   jobTimer.unref?.()
 }

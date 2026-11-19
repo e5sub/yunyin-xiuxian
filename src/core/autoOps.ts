@@ -1,10 +1,11 @@
 /**
  * VIP 托管自动化:自动打 BOSS / 自动闭关 / 自动历练 / 自动做每日活动。
  * 在线时本循环驱动(App.vue 启停);历练与闭关都开时历练优先。
- * 离线时服务端按同步上来的设置代打妖王(所得记台账,归来领取);
+ * 离线时服务端按同步上来的设置代打:妖王出剑、每日活动(七会/闲趣)、道童差事派工、
+ * 门派捐献各有服务端巡检(见 server/src/autoOps);所得进台账,归来领取。
  * 闭关/历练的离线收益在归来结算时补推(见 prepOfflineAutoOps)。
- * 每日活动(周天七会 / 闲趣三则)只在客户端在场时代办:登录归来第一查即补办一遍。
- * 自动历练兼管道童差事(完工即收、闲置即按「各尽其长」再派),差事账在服务端,托管只是替玩家点。
+ * 自动历练兼管道童差事(完工即收、闲置即按「各尽其长」再派),差事账在服务端,托管只是替玩家点;
+ * 在线客户端办,离线服务端派(归来先对齐在途清单再收,见 stores/apprentice 的 reconcileServerTasks)。
  * 开关存 settings(持久化)并同步服务端,一律须 VIP;到期自动关停并提示。
  */
 import { watch } from 'vue'
@@ -405,7 +406,8 @@ async function autoLeisure(): Promise<boolean> {
 
 /**
  * 每日活动巡检:七会与闲趣各走一趟;今日全办妥则换日(或换号)前不再空跑接口。
- * 循环每分钟调一次;导出供单测直接驱动一轮。
+ * 在线时本循环每分钟调一次;离线的同一段由服务端代办(server/src/autoOps 的 tickAutoDaily),
+ * 所得进台账归来领取 —— 两条路是同一段活的两班倒,不是各算各的。导出供单测直接驱动一轮。
  */
 export async function autoDailyTick(): Promise<void> {
   const g = gate()
@@ -427,6 +429,8 @@ export async function autoDailyTick(): Promise<void> {
 /**
  * 道童差事巡检:完工即收、闲置即派,与道童页的「一键各尽其长」同一条路
  * (collectFinished 走服务端差事账,dispatchAll 按当前最缺的门择活)。
+ * 离线的同一段由服务端代派(server/src/autoOps 的 tickAutoApprentice,同一份择门口径),
+ * 归来 collectFinished 先对齐在途清单再收 —— 在线离线一个待遇。
  * 开关与自动历练同源 —— 出门历练之外,家里的道童也一并照看。
  * 差事与历练/闭关互不相干,不必让位;player.dead/秘境中也不拦 —— 差事自有工期,
  * 收派只动道童自己的账。导出供单测直接驱动一轮。
@@ -502,7 +506,7 @@ export function startAutoOps(): void {
     () => {
       const auth = useAuthStore()
       const s = useSettingsStore()
-      return [auth.loggedIn, auth.isVip, s.autoBoss, s.autoRetreat, s.autoAdventure, s.autoDonate, s.autoRegionId, s.autoMode, s.bossDifficulty] as const
+      return [auth.loggedIn, auth.isVip, s.autoBoss, s.autoRetreat, s.autoAdventure, s.autoDonate, s.autoDailyEvent, s.autoRegionId, s.autoMode, s.bossDifficulty] as const
     },
     () => scheduleSync(),
     { immediate: true }
@@ -556,6 +560,7 @@ function pushAutoOpsSettings(): void {
       autoRetreat: settings.autoRetreat,
       autoAdventure: settings.autoAdventure,
       autoDonate: settings.autoDonate,
+      autoDailyEvent: settings.autoDailyEvent,
       regionId: settings.autoRegionId,
       mode: settings.autoMode,
       bossDifficulty: settings.bossDifficulty
@@ -661,13 +666,15 @@ function skipText(reason: string): string | null {
 }
 
 /**
- * 领取离线讨伐所得。
+ * 领取离线托管所得。
  *
- * 两处口径要按玩法来:
+ * 三处口径要按玩法来:
  *   一 领的是**已经发生**的事,与此刻还是不是 VIP 无关 —— 原先这里也要 isVip,
  *      月卡在离线途中到期就领不出来,得等续费;台账不清零,看着像吞了东西。
  *   二 出剑自 1.62.0 起就无资粮,所得全在击杀赏。原本文案按台账折「灵石 +0」报给玩家,
  *      是一笔假账;现只报剑数,顺手把击杀赏领掉(与在线巡检、围妖页同一条入账路)。
+ *   三 每日活动赏(1.74.5)与剑数同车:离线代办攒的 ev_* 台账随 /collect 一起回来,
+ *      灵石按**授予时**的层级折(台账记了 tier),归来境界已变也不漂。
  */
 export async function collectOfflineBossLedger(): Promise<void> {
   const auth = useAuthStore()
@@ -676,16 +683,33 @@ export async function collectOfflineBossLedger(): Promise<void> {
     const res = await cloudApi.collectVipAutoOps()
     collectRetries = 0
     const c = res.collected
-    if (c.strikes <= 0) {
-      // 一剑没打也要说清缘由,否则玩家只看到「托管开着却什么都没有」
+    const ev = c.events
+    const evHasReward =
+      ev !== undefined && (ev.stone > 0 || ev.herb > 0 || ev.ore > 0 || ev.wudao > 0 || ev.dust > 0 || ev.page > 0)
+    if (c.strikes <= 0 && !evHasReward) {
+      // 一剑没出、活动也没得办也要说清缘由,否则玩家只看到「托管开着却什么都没有」
       const why = skipText(res.skip?.reason ?? '')
       if (why !== null) useUiStore().toast(`托管离线代打:未出剑(${why})`, 'warn')
       return
     }
-    const got = await claimBossLoot()
+    const got = c.strikes > 0 ? await claimBossLoot() : null
     const tail = got !== null ? ` · 击杀赏 灵石 ${got.stoneText}${got.equipLine !== null ? ' + 装备' : ''}` : ''
-    useUiStore().toast(`托管离线代打:出剑 ${c.strikes} 次${tail}`, 'success')
-    if (got?.equipLine != null) useUiStore().toast(`击杀赏装备:${got.equipLine}`, 'rare')
+    if (c.strikes > 0) {
+      useUiStore().toast(`托管离线代打:出剑 ${c.strikes} 次${tail}`, 'success')
+      if (got?.equipLine != null) useUiStore().toast(`击杀赏装备:${got.equipLine}`, 'rare')
+    }
+    if (evHasReward && ev !== undefined) {
+      // 与在线 grantEventReward 同一条入账路;灵石按授予时的层级折算
+      const resources = useResourcesStore()
+      const tier = Math.max(0, Math.trunc(ev.tier))
+      if (ev.stone > 0) resources.addStone(stoneByTier(tier, ev.stone))
+      if (ev.wudao > 0) resources.addSmall('wudao', ev.wudao)
+      if (ev.herb > 0) resources.addSmall('herb', ev.herb)
+      if (ev.ore > 0) resources.addSmall('ore', ev.ore)
+      if (ev.dust > 0) resources.addSmall('dust', ev.dust)
+      if (ev.page > 0) resources.addSmall('page', ev.page)
+      useUiStore().toast('托管离线代办:每日活动赏已补发', 'success')
+    }
   } catch {
     // 网络抖动:稍候重试,次数用尽则等下次登录再领(台账在服务端不清零)
     if (collectRetries < COLLECT_MAX_RETRIES) {

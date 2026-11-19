@@ -196,11 +196,38 @@ export const useApprenticeStore = defineStore(
     const stuckSince = new Map<string, number>()
     /** 完工未收的等待上限:超过它宁可作废这单(不发放),也不让道童永远钉在 00:00 */
     const STUCK_VOID_MS = 60_000
+    /** 服务端代派对齐的上次时刻:30 秒一次足够,省得每轮收割都拉一遍清单 */
+    let reconciledAt = 0
+    /**
+     * 服务端代派的差事认领回本地(1.74.5):离线托管由服务端按「各尽其长」派出的单,
+     * 本地账里没有(task 为 null)—— 归来先把在途清单对齐到本地,随后的收割才认得它们。
+     * 本地已有任务的(自己派的)不动;清单里没有而本地有的,由收割的 gone 分支作废。
+     */
+    async function reconcileServerTasks(): Promise<void> {
+      if (!useAuthStore().loggedIn) return
+      const now = Date.now()
+      if (now - reconciledAt < 30_000) return
+      reconciledAt = now
+      try {
+        const r = await cloudApi.apprenticeTaskList()
+        for (const row of r.tasks) {
+          const appr = apprentices.value.find(x => x.uid === row.uid)
+          if (!appr || appr.task) continue
+          const spec = isSpec(row.spec) ? row.spec : null
+          if (spec === null || !(row.seconds > 0)) continue
+          appr.task = { spec, startAt: row.startedAt, finishAt: row.startedAt + row.seconds * 1000 }
+        }
+      } catch {
+        // 云不可达:下次收割再对齐,不影响本地已派的单
+      }
+    }
     async function collectFinished(now: number, major: number): Promise<TaskSpoils[]> {
       if (!validNow(now)) return []
       const auth = useAuthStore()
       const reaped: TaskSpoils[] = []
       if (auth.loggedIn && now < claimCooldownUntil) return []
+      // 先对齐服务端代派的单再收割:离线托管派出的差事,本地账里原本没有
+      if (auth.loggedIn) await reconcileServerTasks()
       let claimFailed = false
       for (const appr of apprentices.value) {
         if (!taskDone(appr, now)) {

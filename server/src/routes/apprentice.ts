@@ -12,7 +12,7 @@
  * 重派覆盖或永远不被收割,不构成刷点 —— 收割必须 uid 对得上且在途。
  */
 import express, { type Request, type Response } from 'express'
-import { get, run } from '../db.js'
+import { get, run, all } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { withKeyLock } from '../mutex.js'
 import { isApprenticeArch, apprenticeTaskSeconds, computeApprenticeSpoils } from '../apprenticeCore.js'
@@ -63,6 +63,23 @@ apprenticeRouter.post('/apprentice/task/start', requireAuth, (req: Request, res:
       [userId, uid, archId, spec, level, major, now]
     )
     res.json({ ok: true })
+  })().catch(() => res.status(500).json({ error: '服务器异常' }))
+})
+
+/** 在途差事清单(1.74.5):离线托管由服务端代派的单,本地账里没有 —— 归来先对齐再收 */
+apprenticeRouter.get('/apprentice/task/list', requireAuth, (req: Request, res: Response) => {
+  void (async () => {
+    const rows = await all<{ uid: string; spec: string; started_at: number }>(
+      'SELECT uid, spec, started_at FROM apprentice_tasks WHERE user_id = ?',
+      [req.user!.id]
+    )
+    const tasks: Array<{ uid: string; spec: string; startedAt: number; seconds: number }> = []
+    for (const row of rows) {
+      const seconds = await apprenticeTaskSeconds(row.spec)
+      if (seconds < 0) continue // 认不出的 spec 不回(客户端不会派它,理论到不了这里)
+      tasks.push({ uid: row.uid, spec: row.spec, startedAt: row.started_at, seconds })
+    }
+    res.json({ tasks })
   })().catch(() => res.status(500).json({ error: '服务器异常' }))
 })
 

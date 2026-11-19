@@ -554,6 +554,8 @@ CREATE TABLE IF NOT EXISTS autoops_state (
   auto_adventure INTEGER NOT NULL DEFAULT 0,
   -- 门派自动捐献(VIP 托管):每日按石→铁→草的次序把当日名额用完
   auto_donate INTEGER NOT NULL DEFAULT 0,
+  -- 每日活动托管(1.74.5):离线也由服务端代办当日额度(擂台/观星/垂钓/领赏)
+  auto_daily INTEGER NOT NULL DEFAULT 0,
   region_id TEXT NOT NULL DEFAULT '',
   mode TEXT NOT NULL DEFAULT '',
   -- 托管出剑所选难度(离线代打按它算赏格)
@@ -563,6 +565,15 @@ CREATE TABLE IF NOT EXISTS autoops_state (
   ledger_herb INTEGER NOT NULL DEFAULT 0,
   ledger_strikes INTEGER NOT NULL DEFAULT 0,
   ledger_tier INTEGER NOT NULL DEFAULT 0,
+  -- 离线代办的每日活动赏台账(形状同 EventReward;stone 是基础值,客户端按 tier 折算)
+  ev_stone REAL NOT NULL DEFAULT 0,
+  ev_herb INTEGER NOT NULL DEFAULT 0,
+  ev_ore INTEGER NOT NULL DEFAULT 0,
+  ev_wudao INTEGER NOT NULL DEFAULT 0,
+  ev_dust INTEGER NOT NULL DEFAULT 0,
+  ev_page INTEGER NOT NULL DEFAULT 0,
+  -- 授予时的层级:归来时境界可能已变,灵石按授予时折才不漂
+  ev_tier INTEGER NOT NULL DEFAULT 0,
   -- 最近一次没打成的原因(hold/capped/boss-dead/no-profile);'' = 最近一次出剑成功。
   -- 玩家归来只看到「出剑 0 次」时,靠它说清是打不过、次数用尽还是妖王未生。
   last_skip TEXT NOT NULL DEFAULT '',
@@ -599,6 +610,14 @@ CREATE INDEX IF NOT EXISTS idx_progress_spend_user ON progress_spend(user_id, se
       "ALTER TABLE dungeon_teams ADD COLUMN difficulty TEXT NOT NULL DEFAULT 'normal'",
       "ALTER TABLE boss_damage ADD COLUMN difficulty TEXT NOT NULL DEFAULT 'normal'",
       "ALTER TABLE autoops_state ADD COLUMN auto_donate INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE autoops_state ADD COLUMN auto_daily INTEGER NOT NULL DEFAULT 0",
+      'ALTER TABLE autoops_state ADD COLUMN ev_stone REAL NOT NULL DEFAULT 0',
+      'ALTER TABLE autoops_state ADD COLUMN ev_herb INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE autoops_state ADD COLUMN ev_ore INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE autoops_state ADD COLUMN ev_wudao INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE autoops_state ADD COLUMN ev_dust INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE autoops_state ADD COLUMN ev_page INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE autoops_state ADD COLUMN ev_tier INTEGER NOT NULL DEFAULT 0',
       "ALTER TABLE autoops_state ADD COLUMN boss_difficulty TEXT NOT NULL DEFAULT 'normal'",
       "ALTER TABLE autoops_state ADD COLUMN last_skip TEXT NOT NULL DEFAULT ''",
       'ALTER TABLE autoops_state ADD COLUMN last_skip_at INTEGER NOT NULL DEFAULT 0'
@@ -1019,6 +1038,8 @@ CREATE TABLE IF NOT EXISTS autoops_state (
   auto_adventure TINYINT NOT NULL DEFAULT 0,
   -- 门派自动捐献(VIP 托管):每日按石→铁→草的次序把当日名额用完
   auto_donate TINYINT NOT NULL DEFAULT 0,
+  -- 每日活动托管(1.74.5):离线也由服务端代办当日额度(擂台/观星/垂钓/领赏)
+  auto_daily TINYINT NOT NULL DEFAULT 0,
   region_id VARCHAR(64) NOT NULL DEFAULT '',
   mode VARCHAR(16) NOT NULL DEFAULT '',
   -- 托管出剑所选难度(离线代打按它算赏格)
@@ -1029,6 +1050,15 @@ CREATE TABLE IF NOT EXISTS autoops_state (
   ledger_herb INT NOT NULL DEFAULT 0,
   ledger_strikes INT NOT NULL DEFAULT 0,
   ledger_tier INT NOT NULL DEFAULT 0,
+  -- 离线代办的每日活动赏台账(形状同 EventReward;stone 是基础值,客户端按 tier 折算)
+  ev_stone DOUBLE NOT NULL DEFAULT 0,
+  ev_herb INT NOT NULL DEFAULT 0,
+  ev_ore INT NOT NULL DEFAULT 0,
+  ev_wudao INT NOT NULL DEFAULT 0,
+  ev_dust INT NOT NULL DEFAULT 0,
+  ev_page INT NOT NULL DEFAULT 0,
+  -- 授予时的层级:归来时境界可能已变,灵石按授予时折才不漂
+  ev_tier INT NOT NULL DEFAULT 0,
   last_skip VARCHAR(24) NOT NULL DEFAULT '',
   last_skip_at BIGINT NOT NULL DEFAULT 0,
   updated_at BIGINT NOT NULL,
@@ -1058,6 +1088,14 @@ CREATE TABLE IF NOT EXISTS autoops_state (
     "ALTER TABLE dungeon_teams ADD COLUMN difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'",
     "ALTER TABLE boss_damage ADD COLUMN difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'",
     "ALTER TABLE autoops_state ADD COLUMN auto_donate TINYINT NOT NULL DEFAULT 0",
+    "ALTER TABLE autoops_state ADD COLUMN auto_daily TINYINT NOT NULL DEFAULT 0",
+    'ALTER TABLE autoops_state ADD COLUMN ev_stone DOUBLE NOT NULL DEFAULT 0',
+    'ALTER TABLE autoops_state ADD COLUMN ev_herb INT NOT NULL DEFAULT 0',
+    'ALTER TABLE autoops_state ADD COLUMN ev_ore INT NOT NULL DEFAULT 0',
+    'ALTER TABLE autoops_state ADD COLUMN ev_wudao INT NOT NULL DEFAULT 0',
+    'ALTER TABLE autoops_state ADD COLUMN ev_dust INT NOT NULL DEFAULT 0',
+    'ALTER TABLE autoops_state ADD COLUMN ev_page INT NOT NULL DEFAULT 0',
+    'ALTER TABLE autoops_state ADD COLUMN ev_tier INT NOT NULL DEFAULT 0',
     "ALTER TABLE autoops_state ADD COLUMN boss_difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'",
     "ALTER TABLE autoops_state ADD COLUMN last_skip VARCHAR(24) NOT NULL DEFAULT ''",
     'ALTER TABLE autoops_state ADD COLUMN last_skip_at BIGINT NOT NULL DEFAULT 0'

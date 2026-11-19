@@ -16,6 +16,12 @@ interface ApprenticeCore {
   isApprenticeArch: (archId: string) => boolean
   apprenticeSpoils: (archId: string, spec: string, major: number, level: number) => ServerSpoils
   apprenticeTaskSeconds: (spec: string) => number
+  /** 离线派工(1.74.5):整包库存快照 → 各道童该去哪一门(客户端同一份口径) */
+  dispatchTargetsFromStocks: (
+    idle: Array<{ uid: string; archId: string }>,
+    stock: { herbByGrade: Record<string, number>; ore: number; wudao: number; dust: number; seek: number },
+    major: number
+  ) => Array<{ uid: string; spec: string }>
 }
 
 let cached: Promise<ApprenticeCore | null> | null = null
@@ -54,6 +60,26 @@ export async function computeApprenticeSpoils(
   if (mod === null) return null
   try {
     return mod.apprenticeSpoils(archId, spec, major, level)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 离线派工(1.74.5):从存档分片读出的原始库存 → 各闲置道童该去哪一门。
+ * 口径吃客户端 dispatchTargetsFromStocks(herb 品阶随境界、天赋兜底都在那边算),
+ * 装载失败/口径缺失返回 null —— 宁可这一轮不派,不可凭服务端自造的规则乱派。
+ */
+export async function dispatchTargets(
+  idle: Array<{ uid: string; archId: string }>,
+  stock: { herbByGrade: Record<string, number>; ore: number; wudao: number; dust: number; seek: number },
+  major: number
+): Promise<Array<{ uid: string; spec: string }> | null> {
+  const mod = await core()
+  if (mod === null || typeof mod.dispatchTargetsFromStocks !== 'function') return null
+  try {
+    const targets = mod.dispatchTargetsFromStocks(idle, stock, major)
+    return Array.isArray(targets) ? targets : null
   } catch {
     return null
   }

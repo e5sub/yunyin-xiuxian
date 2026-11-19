@@ -511,6 +511,8 @@ describe('在线收割 · 服务端差事账的三种拒绝(1.74.1 修卡 00:00)
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.spyOn(cloudApi, 'apprenticeTaskClaim').mockReset()
+    // 收割前会对齐服务端代派清单(1.74.5):不顶替就发真网请求
+    vi.spyOn(cloudApi, 'apprenticeTaskList').mockReset()
     // 登录态:收割走服务端账
     useAuthStore().$patch({ token: 't', userId: 1 })
   })
@@ -592,5 +594,58 @@ describe('在线收割 · 屡败兜底(完工未收满 60 秒作废放人)', () 
     expect(a.apprentices[0]!.task, '屡败 60 秒后作废回闲').toBeNull()
     expect(a.apprentices[0]!.level).toBe(3)
     expect(res.herbOf(herbGradeOfMajor(0)), '作废不得白拿产出').toBe(0)
+  })
+})
+
+describe('服务端代派对齐(1.74.5 离线托管)', () => {
+  /** 离线托管由服务端按「各尽其长」代派的单,本地账里没有 —— 归来收割前先对齐再收 */
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.spyOn(cloudApi, 'apprenticeTaskClaim').mockReset()
+    vi.spyOn(cloudApi, 'apprenticeTaskList').mockReset()
+    useAuthStore().$patch({ token: 't', userId: 1 })
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('代派的单对齐进本地,完工当轮即收:入账、进阶、清任务', async () => {
+    const startedAt = 1000
+    vi.mocked(cloudApi.apprenticeTaskList).mockResolvedValue({
+      tasks: [{ uid: 'u1', spec: 'ore', startedAt, seconds: 5 }]
+    })
+    vi.mocked(cloudApi.apprenticeTaskClaim).mockResolvedValue({ ok: true, spoils: { ore: 9 } })
+    const a = useApprenticeStore()
+    const res = useResourcesStore()
+    a.$patch({ apprentices: [make('ap_luanniao')] }) // 本地 task=null:代派的单本地原本不认识
+    const reaped = await a.collectFinished(startedAt + 6000, 0)
+    expect(reaped, '对齐后当轮即收,不隔一轮').toHaveLength(1)
+    expect(a.apprentices[0]!.task).toBeNull()
+    expect(a.apprentices[0]!.level).toBe(4)
+    expect(res.ore).toBe(9)
+    expect(vi.mocked(cloudApi.apprenticeTaskClaim), '收割走服务端账').toHaveBeenCalledWith('u1')
+  })
+
+  it('对齐只补空位:本地任务不被清单顶掉,陌生 uid 与野 spec 一概不认', async () => {
+    vi.mocked(cloudApi.apprenticeTaskList).mockResolvedValue({
+      tasks: [
+        { uid: 'u1', spec: 'study', startedAt: 0, seconds: 10 },
+        { uid: 'ghost', spec: 'herb', startedAt: 0, seconds: 10 },
+        { uid: 'wild', spec: 'nope', startedAt: 0, seconds: 10 }
+      ]
+    })
+    const a = useApprenticeStore()
+    a.$patch({ apprentices: [make('ap_luanniao', { task: { spec: 'herb', startAt: 0, finishAt: 999999 } })] })
+    expect(await a.collectFinished(1000, 0), '本地任务未完工,不收割').toEqual([])
+    expect(a.apprentices[0]!.task!.spec, '本地任务保留,不被清单顶掉').toBe('herb')
+    expect(a.apprentices, '陌生 uid 不会凭空入册').toHaveLength(1)
+  })
+
+  it('未登录不对齐:清单接口不发,本地账原样', async () => {
+    useAuthStore().$patch({ token: '', userId: 0 })
+    const a = useApprenticeStore()
+    a.$patch({ apprentices: [make('ap_luanniao')] })
+    expect(await a.collectFinished(9999, 0)).toEqual([])
+    expect(vi.mocked(cloudApi.apprenticeTaskList), '未登录不发请求').not.toHaveBeenCalled()
   })
 })

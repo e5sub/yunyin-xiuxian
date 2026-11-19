@@ -10,6 +10,7 @@ import { cutGNum } from './spendRate'
 import { PILLS } from '@/data/pills'
 import { maxTierForMajor } from '@/data/regions'
 import { qualityDef } from '@/data/qualities'
+import { herbGradeOfMajor } from '@/data/herbGrades'
 import {
   APPRENTICE_TALENT_BONUS,
   APPRENTICE_QUALITY_YIELD_STEP,
@@ -166,4 +167,28 @@ export function dispatchAllToNeed(
   const target = needTargetDoor(stock)
   if (target) return idle.map(x => ({ uid: x.uid, spec: target }))
   return idle.map(x => ({ uid: x.uid, spec: x.talent }))
+}
+
+/**
+ * 服务端离线派工用(1.74.5):整包库存快照 → 各道童该去哪一门。
+ * 服务端从存档分片里读出的是原始库存(herbByGrade 全档、丹药总量),没有
+ * herbGradeOfMajor 与 apprenticeDef 这些客户端数据表 —— 统统在这边算好,
+ * 服务端只传数,派工口径与在线 dispatchAll 同一份代码(单源,不分叉)。
+ */
+export function dispatchTargetsFromStocks(
+  idle: Array<{ uid: string; archId: string }>,
+  stock: { herbByGrade: Record<string, number>; ore: number; wudao: number; dust: number; seek: number },
+  major: number
+): Array<{ uid: string; spec: ApprenticeSpec }> {
+  const grade = herbGradeOfMajor(major)
+  return dispatchAllToNeed(
+    idle.map(x => ({ uid: x.uid, talent: apprenticeDef(x.archId)?.talent ?? 'herb' })),
+    {
+      herb: stock.herbByGrade?.[String(grade)] ?? 0,
+      ore: stock.ore,
+      wudao: stock.wudao,
+      dust: stock.dust,
+      seek: stock.seek
+    }
+  )
 }

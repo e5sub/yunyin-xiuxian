@@ -17,7 +17,8 @@ import {
   raiseEventProgress,
   secsToNextDay,
   todayEvent,
-  type DailyEvent
+  type DailyEvent,
+  type EventProgress
 } from '../eventCore.js'
 
 export const eventRouter = express.Router()
@@ -77,66 +78,81 @@ eventRouter.get('/today', requireAuth, (req: Request, res: Response) => {
   })().catch(() => res.status(500).json({ error: '服务器异常' }))
 })
 
+/**
+ * 擂台连战核心(路由与离线代办共用,1.74.5):按自身档案生成三关对手、服务端模拟、
+ * 取最好成绩记进度。失败分支带原路由的状态码与拒因,两端口径一致。
+ */
+export type ArenaRunResult =
+  | {
+      ok: true
+      day: string
+      eventId: string
+      runs: { round: number; foe: string; win: boolean; rounds: number; log: string[] }[]
+      streak: number
+      mine: EventProgress
+      target: number
+    }
+  | { ok: false; status: number; error: string }
+
+export async function arenaRun(userId: number, now = Date.now()): Promise<ArenaRunResult> {
+  const { day, event } = todayEvent(now)
+  if (event.kind !== 'arena') return { ok: false, status: 400, error: '今日不是擂台' }
+  if (!(await eventEnabled())) return { ok: false, status: 404, error: '今日无活动' }
+  const me = await get<ProfileRow>(
+    'SELECT name, hp_m, hp_e, atk_m, atk_e, power_m, power_e FROM profiles WHERE user_id = ?',
+    [userId]
+  )
+  if (me === undefined) return { ok: false, status: 400, error: '自身档案未同步' }
+  const foeMult = event.bonus?.arenaFoe ?? 1
+  const selfHpMult = event.bonus?.arenaSelfHp ?? 1
+  const mySide: DuelSide = {
+    id: userId,
+    name: me.name,
+    hpM: me.hp_m * selfHpMult,
+    hpE: me.hp_e,
+    atkM: me.atk_m,
+    atkE: me.atk_e,
+    powerM: me.power_m,
+    powerE: me.power_e
+  }
+  // 三关递增:每关对手气血 +15%、攻势 +10%,起手略低于本人(连战三场全胜约四成把握)
+  const hpBase = mag(me.hp_m, me.hp_e) * 0.78 * foeMult
+  const atkBase = mag(me.atk_m, me.atk_e) * 0.82 * foeMult
+
+  const runs: { round: number; foe: string; win: boolean; rounds: number; log: string[] }[] = []
+  let streak = 0
+  for (let i = 0; i < event.target; i += 1) {
+    const hp = toGNum(hpBase * (1 + 0.15 * i))
+    const atk = toGNum(atkBase * (1 + 0.1 * i))
+    const foe: DuelSide = {
+      id: 0,
+      name: ARENA_FOE_NAMES[i] ?? `第${i + 1}关`,
+      hpM: hp.m,
+      hpE: hp.e,
+      atkM: atk.m,
+      atkE: atk.e,
+      powerM: hp.m,
+      powerE: hp.e
+    }
+    const r = simulateDuel(mySide, foe)
+    const win = r.winner === 'me'
+    runs.push({ round: i + 1, foe: foe.name, win, rounds: r.rounds, log: r.log })
+    if (!win) break
+    streak += 1
+  }
+  const mine = await raiseEventProgress(userId, day, event.id, streak)
+  return { ok: true, day, eventId: event.id, runs, streak, mine, target: event.target }
+}
+
 /** 擂台:按自身档案生成三关对手,服务端模拟;取今日最好连胜,可反复再战 */
 eventRouter.post('/arena', requireAuth, (req: Request, res: Response) => {
   void (async () => {
-    const now = Date.now()
-    const { day, event } = todayEvent(now)
-    if (event.kind !== 'arena') {
-      res.status(400).json({ error: '今日不是擂台' })
+    const out = await arenaRun(req.user!.id)
+    if (!out.ok) {
+      res.status(out.status).json({ error: out.error })
       return
     }
-    if (!(await eventEnabled())) {
-      res.status(404).json({ error: '今日无活动' })
-      return
-    }
-    const me = await get<ProfileRow>(
-      'SELECT name, hp_m, hp_e, atk_m, atk_e, power_m, power_e FROM profiles WHERE user_id = ?',
-      [req.user!.id]
-    )
-    if (me === undefined) {
-      res.status(400).json({ error: '自身档案未同步' })
-      return
-    }
-    const foeMult = event.bonus?.arenaFoe ?? 1
-    const selfHpMult = event.bonus?.arenaSelfHp ?? 1
-    const mySide: DuelSide = {
-      id: req.user!.id,
-      name: me.name,
-      hpM: me.hp_m * selfHpMult,
-      hpE: me.hp_e,
-      atkM: me.atk_m,
-      atkE: me.atk_e,
-      powerM: me.power_m,
-      powerE: me.power_e
-    }
-    // 三关递增:每关对手气血 +15%、攻势 +10%,起手略低于本人(连战三场全胜约四成把握)
-    const hpBase = mag(me.hp_m, me.hp_e) * 0.78 * foeMult
-    const atkBase = mag(me.atk_m, me.atk_e) * 0.82 * foeMult
-
-    const runs: { round: number; foe: string; win: boolean; rounds: number; log: string[] }[] = []
-    let streak = 0
-    for (let i = 0; i < event.target; i += 1) {
-      const hp = toGNum(hpBase * (1 + 0.15 * i))
-      const atk = toGNum(atkBase * (1 + 0.1 * i))
-      const foe: DuelSide = {
-        id: 0,
-        name: ARENA_FOE_NAMES[i] ?? `第${i + 1}关`,
-        hpM: hp.m,
-        hpE: hp.e,
-        atkM: atk.m,
-        atkE: atk.e,
-        powerM: hp.m,
-        powerE: hp.e
-      }
-      const r = simulateDuel(mySide, foe)
-      const win = r.winner === 'me'
-      runs.push({ round: i + 1, foe: foe.name, win, rounds: r.rounds, log: r.log })
-      if (!win) break
-      streak += 1
-    }
-    const mine = await raiseEventProgress(req.user!.id, day, event.id, streak)
-    res.json({ day, eventId: event.id, runs, streak, mine, target: event.target })
+    res.json({ day: out.day, eventId: out.eventId, runs: out.runs, streak: out.streak, mine: out.mine, target: out.target })
   })().catch(() => res.status(500).json({ error: '擂台开战失败' }))
 })
 

@@ -4,6 +4,7 @@ import {
   apprenticeRecruitCost,
   apprenticeRecruitShortfall,
   dispatchAllToNeed,
+  dispatchTargetsFromStocks,
   needTargetDoor,
   type DispatchNeedStock
 } from './apprenticeService'
@@ -88,5 +89,37 @@ describe('各尽其长 · dispatchAllToNeed 派发', () => {
       { uid: 'u2', spec: 'adventure' },
       { uid: 'u3', spec: 'herb' }
     ])
+  })
+})
+
+describe('离线派工 · dispatchTargetsFromStocks(1.74.5 服务端单源口径)', () => {
+  /** 服务端从存档分片读到的是 herbByGrade 全档与丹药总量;herb 取数随境界品阶 */
+  it('herb 按当前境界取对应品阶:凡境取 1 档,高境取高档', () => {
+    const byGrade = { '1': 0, '2': 500 }
+    const low = dispatchTargetsFromStocks([{ uid: 'u1', archId: 'ap_luanniao' }], { herbByGrade: byGrade, ore: 5, wudao: 7, dust: 9, seek: 3 }, 0)
+    const high = dispatchTargetsFromStocks([{ uid: 'u1', archId: 'ap_luanniao' }], { herbByGrade: byGrade, ore: 5, wudao: 7, dust: 9, seek: 3 }, 6)
+    // 凡境(0~4)取 1 档存量 0 → 采药短缺分 40 最高,去采药;仙境(5~8)取 2 档存量 500 → 短缺分骤降,玄铁最缺
+    expect(low[0]!.spec).toBe('herb')
+    expect(high[0]!.spec).not.toBe('herb')
+  })
+
+  it('并列无单门胜出时各自专职:天赋从 archId 现查,不靠调用方喂', () => {
+    const all = [
+      { uid: 'u1', archId: 'ap_luanniao' }, // 天赋 herb
+      { uid: 'u2', archId: 'ap_kuangtou' } // 天赋 ore
+    ]
+    const herbShort = dispatchTargetsFromStocks(all, { herbByGrade: { '1': 0 }, ore: 9999, wudao: 9999, dust: 9999, seek: 9999 }, 0)
+    expect(herbShort[0]!.spec).toBe('herb')
+    expect(herbShort[1]!.spec).toBe('herb')
+    // 寻宝短缺分 10 必须压过历练兜底分与器尘短缺分:器尘给 20(30/21≈1.43 < 10)
+    const seekShort = dispatchTargetsFromStocks(all, { herbByGrade: { '1': 9999 }, ore: 9999, wudao: 9999, dust: 20, seek: 0 }, 0)
+    expect(seekShort[0]!.spec).toBe('seek')
+    expect(seekShort[1]!.spec).toBe('seek')
+  })
+
+  it('野 archId 兜底 herb 门,不抛错', () => {
+    const out = dispatchTargetsFromStocks([{ uid: 'u1', archId: 'ap_ghost' }], { herbByGrade: { '1': 9999 }, ore: 9999, wudao: 9999, dust: 9999, seek: 9999 }, 0)
+    expect(out).toHaveLength(1)
+    expect(out[0]!.spec).toBe('adventure') // 全不缺 → 历练兜底分胜出
   })
 })
