@@ -881,6 +881,15 @@ const EQUIVALENT = [
       '它防的是「有人把上面那句 hasSmall 换掉」,不是可达分支。'
   },
   {
+    file: 'src/core/forgeResolve.ts',
+    text: 'Math.max(0, Math.trunc(claims.dust))',
+    why:
+      '结算回填的尘下限钳制(1.73.0 「余额以上报为准」)。claims.dust 改包可填负,但回填只写进' +
+      'resolveForgeFromSlices 自建的那份内部 Pinia;结算结果只回 items/spend/detail,' +
+      'routes/forge.ts 的 patchItems 只把装备件写回存档 —— 负余额出不了结算窗口,不落云档、不回客户端。' +
+      '窗口内唯一的消费是余额判定,负数与 0 同判「付不起」,spend 逐字段相同,结算产物不变。'
+  },
+  {
     file: 'src/core/eventEngine.ts',
     text: 'if (!def) return',
     why:

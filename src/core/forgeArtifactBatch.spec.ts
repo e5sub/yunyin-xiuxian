@@ -5,7 +5,8 @@ import type { GNum } from '@/types'
 import { useInventoryStore } from '@/stores/inventory'
 import { useResourcesStore } from '@/stores/resources'
 import { useUiStore } from '@/stores/ui'
-import { add, gn, gnZero, sub } from '@/utils/gnum'
+import { add, gn, gnZero, sub, toNum } from '@/utils/gnum'
+import { requestArtifactUp } from './forgeService'
 import { ARTIFACT_MAX_LEVEL, artifactDef } from '@/data/artifacts'
 import { artifactBatchPlan, artifactShortfall, artifactUpCostAt, upgradeArtifact, upgradeArtifactBatch } from './forge'
 
@@ -264,4 +265,20 @@ describe('祭炼连升 · 批量账', () => {
     expect(text).not.toContain('灵石不足')
   })
 
+})
+
+describe('祭炼连升 · 未登录走本地链(requestArtifactUp 的远程分岔)', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  /** 未登录:isRemote() 为假,直走 core/forge.upgradeArtifact 本地链;守卫坏了会误走远程请求 */
+  it('未登录 requestArtifactUp:就地祭炼,升一重并扣当重成本', async () => {
+    seat(0)
+    rich()
+    const r = useResourcesStore()
+    const cost = costOf(0)
+    expect(await requestArtifactUp(DEF_ID)).toBe(true)
+    expect(useInventoryStore().artifacts[0]!.level).toBe(1)
+    expect(r.wudao).toBe(WUDAO_BUDGET - cost.wudao)
+    expect(toNum(r.spiritStone)).toBeCloseTo(1e30 - toNum(cost.stone), 6)
+  })
 })

@@ -18,6 +18,7 @@ import { upgradeCost, upgradeFailLevel, upgradeSuccessRate } from './formulas'
 import {
   equipLevelCap,
   equipUpgradeQuote,
+  showUpgradeFeedback,
   upgradeBatchPlan,
   upgradeEquipment,
   upgradeShortfall
@@ -370,5 +371,30 @@ describe('强化 · 材料差额钳制', () => {
     r.dust = 100
     expect(upgradeShortfall({ dust: 50, stone: { m: 1, e: 0 }, exp: gnZero() }).dust, '多于所需应为 0').toBe(0)
     expect(upgradeShortfall({ dust: 500, stone: { m: 1, e: 0 }, exp: gnZero() }).dust, '少于所需应为差值').toBe(400)
+  })
+})
+
+describe('强化反馈 · 失败降级的下限钳制', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  /**
+   * 服务端裁决回来的 run 也走同一套反馈。多设备场景:本地记录的 levelBefore 是旧值,
+   * 云档已被另一台设备强到更高,裁决失败跌 1 级后 after.level 仍高于本地记录 ——
+   * 未经钳制的差值是负数,文案会报「回落 -2 级」。钳制把这种跨账错位压成「保级」。
+   */
+  it('after.level 高于 levelBefore(云档已被别处强过):报保级,不报负数回落', () => {
+    const item: EquipmentInstance = { uid: 'h', templateId: 'b_qingyun', quality: 'mortal', tier: 3, level: 2, affixes: [] }
+    useInventoryStore().items = [item]
+    showUpgradeFeedback('h', {
+      outcome: 'fail',
+      after: { ...item, level: 4 },
+      spent: { dust: 10, stone: gnZero(), exp: gnZero() },
+      levelBefore: 2
+    })
+    const text = useUiStore().toasts.at(-1)?.text ?? ''
+    expect(text).toContain('保级')
+    expect(text).not.toContain('回落')
   })
 })

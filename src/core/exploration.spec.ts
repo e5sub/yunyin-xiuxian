@@ -964,7 +964,7 @@ describe('历练途中相遇 · 本世未凝', () => {
    * 概率路径要强制命中才测得稳:MEET_CHANCE 是 0.06,靠循环碰运气在二十场里
    * 期望命中仅 1.2 次,故障注入会假绿(实测连跑三次都没红)。
    */
-  it('mortalWorld 为 null 时途中相遇:不抛', () => {
+  it('mortalWorld 为 null 时途中相遇:不抛(含异步结算)', async () => {
     useGameStore().markStarted()
     useAdventureStore().mortalWorld = null
     usePlayerStore().bond = null as never
@@ -973,14 +973,21 @@ describe('历练途中相遇 · 本世未凝', () => {
      * 战斗根本打不起来(实测 wins 恒 0)。只让相遇那一步(0.06)命中。
      */
     vi.spyOn(rng, 'chance').mockImplementation((p: number) => p < 0.1)
-    expect(() => {
-      for (let round = 0; round < 5; round += 1) {
-        startExploration('qingyun', 'normal')
-        const s = useAdventureStore().session!
-        tickExploration(s.nextBattleAt + 1)
-        stopExploration('manual')
-      }
-    }).not.toThrow()
+    /*
+     * 战斗结算走结算闸,tickExploration 可能返回 Promise —— 守卫坏掉时的 TypeError
+     * 会从 promise 里冒成未处理拒绝(实测 vitest 只记 error 不记失败,变异扫描判设施故障)。
+     * 必须 await 整个循环,把异步抛出也纳入断言。
+     */
+    await expect(
+      (async () => {
+        for (let round = 0; round < 5; round += 1) {
+          startExploration('qingyun', 'normal')
+          const s = useAdventureStore().session!
+          await tickExploration(s.nextBattleAt + 1)
+          stopExploration('manual')
+        }
+      })()
+    ).resolves.toBeUndefined()
   })
 })
 
