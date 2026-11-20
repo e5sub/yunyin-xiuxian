@@ -22,6 +22,7 @@ import { cutCount, cutGNum } from './spendRate'
 import { mintDrops } from './lootClaim'
 import { acquireEquipment } from './loot'
 import { harvestMaterials } from './loreService'
+import { cloudApi } from '@/services/cloud'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useUiStore } from '@/stores/ui'
@@ -280,6 +281,10 @@ export async function fightSecretLayer(): Promise<SecretLayerResult | null> {
 
   if (result.win) {
     const { stone, material: mat } = secretLayerReward(tier, state.layer, def.rewardMult)
+    // 经济 op(1.77.0):层奖励按 (realmId, layer) 服务端复算记进项账
+    void cloudApi
+      .economyOp('secret_layer', { realmId: state.realmId, layer: state.layer })
+      .catch(() => {})
     resources.addStone(stone)
     resources.addSmall('herb', mat)
     harvestMaterials(tier, 'herb', mat)

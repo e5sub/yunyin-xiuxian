@@ -21,7 +21,8 @@ const ENTRY_POINTS = [
   'src/core/sectRules.ts',
   'src/core/apprenticeService.ts',
   'src/core/salvage.ts',
-  'src/core/daoCredit.ts'
+  'src/core/daoCredit.ts',
+  'src/core/economyOps.ts'
 ]
 
 await build({
@@ -48,6 +49,8 @@ const EXPECTED = {
   'salvage.mjs': ['salvageOf'],
   // 道源进项账(1.74.1):server/src/daoCredit 用它按世界/试炼的结算上界折算每条通关道痕
   'daoCredit.mjs': ['daoMarkCeil'],
+  // 经济 op 复算(1.77.0):坊市卖出/悬赏/巡游/成就任务/连胜/秘境的灵石进项按表复算
+  'economyOps.mjs': ['resolveEconomyOp'],
   'saveSanitize.mjs': ['sanitizeSaveSlices'],
   'saveAuthority.mjs': ['enforceSaveAuthority'],
   'profileRecompute.mjs': ['snapshotFromSlices', 'lootEnvFromSlices'],

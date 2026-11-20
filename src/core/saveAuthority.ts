@@ -137,6 +137,13 @@ export interface AuthorityInput {
    * 没有出处的那部分照旧按窗口压回。
    */
   creditDao?: number
+  /**
+   * 灵石进项额度(1.77.0):本次上传之前、stone_ledger 里「上次落库之后」的进项合计 ——
+   * 坊市卖出/悬赏/洞府巡游/成就任务/连胜/秘境等客户端自算收入各走 op 端点,
+   * 服务端按数据表复算后记账(server/src/stoneLedger)。有出处的进项直接加在窗口
+   * 可增长量之上,不被持有上限夹;没记过账的灵石进项一律被窗口钳钳回。
+   */
+  creditStone?: { m: number; e: number }
 }
 
 export interface AuthorityCorrection {
@@ -472,12 +479,41 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
     // ---------- 资源 ----------
     if (nextRes !== null) {
       /*
-       * 灵石不再受持有上限钳制(1.74.0,运营决定):卖装备/卖灵草/悬赏这些模型外的成批进项
-       * 攒出来的合法余额,会被「满产速 720 小时」的天花板反复裁回去 —— 玩家看到的就是
-       * 「点几下强化,几亿灵石只剩零头」,GM 审计里成片的「灵石超本窗口可增长量」。
-       * 改包填天文数字在灵石上从此拦不住,换取的是合法玩家余额永不被误伤;
-       * 其余小资源(尘/铁/页/悟道)的窗口钳制照旧。
+       * 灵石窗口钳恢复(1.77.0):1.74.0 曾因「卖装余额被 720 小时满产速天花板误伤」解除钳制,
+       * 代价是改包填天文数字在灵石上无人拦。现把两头都补上 ——
+       *   · 有出处的成批进项不再被夹:坊市卖出/悬赏/巡游/成就任务/连胜/秘境各走 op 端点,
+       *     服务端复算记进 stone_ledger,input.creditStone 就是「上次落库之后」的进项合计,
+       *     直接加在可增长量之上(与分解尘/通关道源同一模式);
+       *   · 没记过账的进项按窗口钳压回:改包填天文数字从此拦得住。
+       * 服务端自己结算的进项(副本/妖王/离线/镇压)不记账 —— 它们由服务端写进云档,
+       * 天然构成下一次上传的「上次值」,重复记账会双份。
        */
+      const curStone = gnumOf(nextRes.spiritStone)
+      if (curStone !== null) {
+        const stoneIncome = incomeOf(capMajor).stone ?? 0
+        const stoneCap = stoneIncome > 0 ? stoneIncome * HOLD_HOURS : 0
+        const prevStoneVal = prevRes !== null ? gnumOf(prevRes.spiritStone) : null
+        const burst = Math.max(
+          stoneIncome * elapsedHours * RESOURCE_CATCHUP_MULT,
+          stoneCap * RESOURCE_BURST_FRACTION
+        )
+        const grown = add(prevStoneVal ?? gnZero(), gn(burst))
+        const base = freshUpload
+          ? stoneCap > 0
+            ? gn(stoneCap)
+            : gnZero()
+          : stoneCap > 0
+            ? gnMin(gn(stoneCap), grown)
+            : grown
+        const credit = gnumOf(input.creditStone) ?? gnZero()
+        const spendG = input.pendingSpend !== undefined ? gnumOf({ m: input.pendingSpend.m, e: input.pendingSpend.e }) : null
+        const ceil = gnMax(gnZero(), sub(add(base, credit), spendG ?? gnZero()))
+        if (gt(curStone, ceil)) {
+          corrections.push({ path: 'resources.spiritStone', before: nextRes.spiritStone, after: { ...ceil } })
+          nextRes.spiritStone = { ...ceil }
+          notes.push(freshUpload ? '灵石超本境界持有上限' : '灵石超本窗口可增长量(含台账进项)')
+        }
+      }
       const smallFields = ['ore', 'page', 'dust', 'wudao'] as const
       // 未兑现的账面支出从小资源可增长量里扣(1.58.3 炼器的器灵尘;1.59.0 起建筑玄铁、
       // 功法进修的悟道点与残页也走台账):扣款写在客户端,不记账就白烧

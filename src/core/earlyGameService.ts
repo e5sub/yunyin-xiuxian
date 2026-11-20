@@ -18,6 +18,7 @@ import {
   earlyEventDecay
 } from '@/data/earlyGame'
 import { gn, gnZero, gte, subClamp } from '@/utils/gnum'
+import { cloudApi } from '@/services/cloud'
 import { BUSY_REASON } from './endgameActivity'
 import { expFromSecs } from '@/core/formulas'
 import { INSTANT_EXP_LAYER_CAP } from '@/data/constants'
@@ -256,6 +257,8 @@ export function recordWin(): void {
   const reward = WIN_STREAK_REWARDS.find(r => r.streak === streak)
   if (reward) {
     const resources = useResourcesStore()
+    // 经济 op(1.77.0):赏格按固定表由服务端复算记账
+    void cloudApi.economyOp('streak', { streak }).catch(() => {})
     resources.addStone(gn(reward.stone))
     resources.addSmall('wudao', reward.wudao)
     useUiStore().toast(streakRewardText(streak, reward.stone, reward.wudao), 'success')
@@ -400,6 +403,10 @@ export function chooseCaveOption(optionIndex: number): void {
         )
         break
       case 'stone':
+        // 经济 op(1.77.0):按事件 id+选项查固定池,服务端复算奖励记进项账
+        void cloudApi
+          .economyOp('cave_tour', { eventId: caveEvent.id, optionIdx: optionIndex })
+          .catch(() => {})
         resources.addStone(gn(opt.reward.value as number))
         break
       case 'herb':

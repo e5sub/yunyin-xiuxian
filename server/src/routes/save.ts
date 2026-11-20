@@ -14,6 +14,7 @@ import { clearProgressSpend, pendingProgressSpend, settleProgressSpend } from '.
 import { enforceLevelStates, resetLevelStatesFromData } from '../levelLedger.js'
 import { pendingSalvageCredit } from '../salvageCredit.js'
 import { pendingDaoCredit } from '../daoCredit.js'
+import { pruneStoneCredits, sumStoneCreditsSince } from '../stoneLedger.js'
 import { clearSect, pendingSectSpend, readSectState, settleSectSpend } from '../sectState.js'
 import { withKeyLock } from '../mutex.js'
 
@@ -363,6 +364,101 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
     let normalizedData = (normalized === null ? body.data : normalized.data) as Record<string, unknown>
 
     /*
+     * 数值权威化(1.77.0 前移到播种之前):客户端上报的数值只是「提议」,落库的是服务端
+     * 裁决后的结果。依次裁「境界 → 修为 → 资源 → 装备」,判据全部取自游戏自己的模型
+     * (突破需求 / 每秒产速 / 每境界每小时产出 / 境界解锁层级),见 src/core/saveAuthority.ts。
+     *
+     * 境界基线取 profiles.realm_index 而不是上次存档:玩家删档重传时 saves 会消失,
+     * profiles 不受影响 —— 否则「删档 + 重传高境界档」就是一条绕过路径。
+     *
+     * 1.77.0 把这一步移到**首传播种之前**:原先 loot/equip/level 三本台账在首传时
+     * 按「归一化后的原始上传」整批播种,境界/资源还没过权威化 —— 新号第一次上传
+     * 塞满顶阶装备与满结构功法就能一次性入账。现在先裁后播种,台账里进来的只有
+     * 裁决过的值。
+     */
+    const prevProfileRow = await get<{ realm_index: number; rebirths: number }>(
+      'SELECT realm_index, rebirths FROM profiles WHERE user_id = ?',
+      [req.user!.id]
+    )
+    /*
+     * 世号基线:profiles.rebirths。
+     * 列刚加上时老档一律是 0 —— 若直接当基线,多世玩家的 count/道果/天赋会被一次性砍到「一世」的量
+     * (数据事故)。所以基线为 0 且云端确有旧档时,用旧档自己的世号播种一次,与 loot_seed 同思路:
+     * 只认「上一次已经落库的档」,不认本次上传 —— 否则先传一个 count=1e6 就把基线毒化了。
+     * 播种值加 1000 的封顶:超过这个数本来就不是玩出来的。
+     */
+    let prevRebirths = prevProfileRow?.rebirths ?? 0
+    if (prevRebirths === 0 && old !== undefined) {
+      prevRebirths = Math.min(1000, rebirthsOf(old.data))
+    }
+    // 上次存档后成交、尚未在档里体现的支出:从灵石可增长量里扣(见 core/saveAuthority)
+    // 坊市成交与炼器料耗两本账合成一份:两处都是「扣款在客户端,服务端只认账」
+    const spend = await pendingSpend(req.user!.id)
+    const forgeSpend = await pendingForgeSpend(req.user!.id)
+    // 升级支出账(1.59.0):功法进修(悟道点/残页)与建筑升级(灵石/玄铁),同套机制
+    const progressSpend = await pendingProgressSpend(req.user!.id)
+    // 门派捐献与建派(1.68.0):门派状态不进存档,但捐献的实物是资源 —— 这笔账一样要在这里兑现,
+    // 否则「捐了不扣」可以反复刷贡献。灵草按品阶分别扣(herbByGrade)。
+    const sectSpend = await pendingSectSpend(req.user!.id)
+    /*
+     * 分解进项(1.74.1):件在上次档里有、这次的档里没有,就把它的分解返还折成尘的额度。
+     * 分解是纯客户端动作,服务端只看得见「件少了、尘多了」;不给这份额度,拆一批强化件
+     * 得到的尘会被尘的窗口上限当成改包压回(与 1.74.0 灵石那个 bug 同源)。
+     */
+    let salvageDust = 0
+    try {
+      salvageDust = await pendingSalvageCredit(req.user!.id, prevData, normalizedData)
+    } catch {
+      salvageDust = 0
+    }
+    /*
+     * 通关道源(1.74.1):上一次档里没有、这次多出来的「通关道痕」,按该世界/试炼的结算
+     * 公式上界折成道源额度。与分解尘同一条思路 —— 有出处的那部分不受窗口线夹,
+     * 否则打赢一场破界的几百道源会被道源的持有上限当改包压回。
+     */
+    let daoCredit = 0
+    try {
+      daoCredit = await pendingDaoCredit(req.user!.id, prevData, normalizedData)
+    } catch {
+      daoCredit = 0
+    }
+    const authority = await enforceAuthority({
+      prev: prevData,
+      next: normalizedData,
+      prevRealmIndex: prevProfileRow?.realm_index ?? 0,
+      elapsedMs: old === undefined ? 0 : Math.max(0, now - old.updated_at),
+      /*
+       * 1.67.0:云端**已有**上次的档时,「上次的档里没有某一栏」不能按「没基线」放行 ——
+       * 那是删片洗基线的形状(删掉 resources 传一次,再传满值就能每次顶满上限)。
+       * 真首传(old 不存在)仍按持有上限收,存量档兼容。
+       */
+      seenBefore: old !== undefined,
+      // 1.57.0+ 客户端标记:境界只认 profiles(唯一写入口是突破 API),上传里的 major/sub 不采信。
+      // 老客户端不带标记,沿用「付得起」预算判据 —— 存量客户端与自建部署的兼容口。
+      realmAuthoritative: body.realmAuth === 2,
+      // 1.58.1:道果/天赋/年龄/游玩时长的乘数基线(见 core/saveAuthority 的「转世乘区」一节)
+      prevRebirths,
+      // 分解返还的尘(1.74.1):这几件在上次档里有、这次没有,服务端按台账里的投入复算过一次
+      creditDust: salvageDust,
+      // 通关道源(1.74.1):本次新增的通关道痕折出的额度,见 server/src/daoCredit
+      creditDao: daoCredit,
+      // 灵石进项(1.77.0):上次落库之后 op 记账的进项合计,放行窗口钳(见 server/src/stoneLedger)
+      creditStone: await sumStoneCreditsSince(req.user!.id, old === undefined ? 0 : old.updated_at),
+      pendingSpend: {
+        m: spend.m + forgeSpend.stone.m + progressSpend.stone.m + sectSpend.stone.m,
+        e: spend.e + forgeSpend.stone.e + progressSpend.stone.e + sectSpend.stone.e,
+        dust: forgeSpend.dust,
+        ore: progressSpend.ore + sectSpend.ore,
+        wudao: progressSpend.wudao + sectSpend.wudao,
+        page: progressSpend.page,
+        herb: sectSpend.herbByGrade
+      }
+    })
+    if (authority !== null) {
+      normalizedData = authority.data as Record<string, unknown>
+    }
+
+    /*
      * 装备验源(1.58.0 掉落服务端权威化):行囊每件装备的 uid 须由签发台账(loot_ledger)发出,
      * console 造的「合法上限内神装」没有账,上传时移除并留痕。首传播种存量,删档重传不重播。
      * 放在复算之前:被移除的件不该算进战力。
@@ -415,92 +511,8 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       levelCorrected = []
     }
 
-    /*
-     * 数值权威化:客户端上报的数值只是「提议」,落库的是服务端裁决后的结果。
-     * 依次裁「境界 → 修为 → 资源 → 装备」,判据全部取自游戏自己的模型
-     * (突破需求 / 每秒产速 / 每境界每小时产出 / 境界解锁层级),见 src/core/saveAuthority.ts。
-     *
-     * 境界基线取 profiles.realm_index 而不是上次存档:玩家删档重传时 saves 会消失,
-     * profiles 不受影响 —— 否则「删档 + 重传高境界档」就是一条绕过路径。
-     */
-    const prevProfileRow = await get<{ realm_index: number; rebirths: number }>(
-      'SELECT realm_index, rebirths FROM profiles WHERE user_id = ?',
-      [req.user!.id]
-    )
-    /*
-     * 世号基线:profiles.rebirths。
-     * 列刚加上时老档一律是 0 —— 若直接当基线,多世玩家的 count/道果/天赋会被一次性砍到「一世」的量
-     * (数据事故)。所以基线为 0 且云端确有旧档时,用旧档自己的世号播种一次,与 loot_seed 同思路:
-     * 只认「上一次已经落库的档」,不认本次上传 —— 否则先传一个 count=1e6 就把基线毒化了。
-     * 播种值加 1000 的封顶:超过这个数本来就不是玩出来的。
-     */
-    let prevRebirths = prevProfileRow?.rebirths ?? 0
-    if (prevRebirths === 0 && old !== undefined) {
-      prevRebirths = Math.min(1000, rebirthsOf(old.data))
-    }
-    // 上次存档后成交、尚未在档里体现的支出:从灵石可增长量里扣(见 core/saveAuthority)
-    // 坊市成交与炼器料耗两本账合成一份:两处都是「扣款在客户端,服务端只认账」
-    const spend = await pendingSpend(req.user!.id)
-    const forgeSpend = await pendingForgeSpend(req.user!.id)
-    // 升级支出账(1.59.0):功法进修(悟道点/残页)与建筑升级(灵石/玄铁),同套机制
-    const progressSpend = await pendingProgressSpend(req.user!.id)
-    // 门派捐献与建派(1.68.0):门派状态不进存档,但捐献的实物是资源 —— 这笔账一样要在这里兑现,
-    // 否则「捐了不扣」可以反复刷贡献。灵草按品阶分别扣(herbByGrade)。
-    const sectSpend = await pendingSectSpend(req.user!.id)
-    /*
-     * 分解进项(1.74.1):件在上次档里有、这次的档里没有,就把它的分解返还折成尘的额度。
-     * 分解是纯客户端动作,服务端只看得见「件少了、尘多了」;不给这份额度,拆一批强化件
-     * 得到的尘会被尘的窗口上限当成改包压回(与 1.74.0 灵石那个 bug 同源)。
-     * 放在这里(装备台账覆盖之后、数值裁决之前):台账行还在,复算用的是权威投入。
-     */
-    let salvageDust = 0
-    try {
-      salvageDust = await pendingSalvageCredit(req.user!.id, prevData, normalizedData)
-    } catch {
-      salvageDust = 0
-    }
-    /*
-     * 通关道源(1.74.1):上一次档里没有、这次多出来的「通关道痕」,按该世界/试炼的结算
-     * 公式上界折成道源额度。与分解尘同一条思路 —— 有出处的那部分不受窗口线夹,
-     * 否则打赢一场破界的几百道源会被道源的持有上限当改包压回。
-     */
-    let daoCredit = 0
-    try {
-      daoCredit = await pendingDaoCredit(req.user!.id, prevData, normalizedData)
-    } catch {
-      daoCredit = 0
-    }
-    const authority = await enforceAuthority({
-      prev: prevData,
-      next: normalizedData,
-      prevRealmIndex: prevProfileRow?.realm_index ?? 0,
-      elapsedMs: old === undefined ? 0 : Math.max(0, now - old.updated_at),
-      /*
-       * 1.67.0:云端**已有**上次的档时,「上次的档里没有某一栏」不能按「没基线」放行 ——
-       * 那是删片洗基线的形状(删掉 resources 传一次,再传满值就能每次顶满上限)。
-       * 真首传(old 不存在)仍按持有上限收,存量档兼容。
-       */
-      seenBefore: old !== undefined,
-      // 1.57.0+ 客户端标记:境界只认 profiles(唯一写入口是突破 API),上传里的 major/sub 不采信。
-      // 老客户端不带标记,沿用「付得起」预算判据 —— 存量客户端与自建部署的兼容口。
-      realmAuthoritative: body.realmAuth === 2,
-      // 1.58.1:道果/天赋/年龄/游玩时长的乘数基线(见 core/saveAuthority 的「转世乘区」一节)
-      prevRebirths,
-      // 分解返还的尘(1.74.1):这几件在上次档里有、这次没有,服务端按台账里的投入复算过一次
-      creditDust: salvageDust,
-      // 通关道源(1.74.1):本次新增的通关道痕折出的额度,见 server/src/daoCredit
-      creditDao: daoCredit,
-      pendingSpend: {
-        m: spend.m + forgeSpend.stone.m + progressSpend.stone.m + sectSpend.stone.m,
-        e: spend.e + forgeSpend.stone.e + progressSpend.stone.e + sectSpend.stone.e,
-        dust: forgeSpend.dust,
-        ore: progressSpend.ore + sectSpend.ore,
-        wudao: progressSpend.wudao + sectSpend.wudao,
-        page: progressSpend.page,
-        herb: sectSpend.herbByGrade
-      }
-    })
-    const data = authority === null ? normalizedData : authority.data
+    // 裁决/验源/台账覆盖都已完成,normalizedData 即落库内容
+    const data = normalizedData
     let json: string
     try {
       json = JSON.stringify(data)
@@ -569,6 +581,12 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
     // 存档已落库:这批支出算兑现了,下一笔重新记账(清账失败只是下一份档再扣一次,不会漏)
     try {
       await settlePurchases(req.user!.id)
+    } catch {
+      /* 同上方:留到下一次 */
+    }
+    // 灵石进项账(1.77.0):进项已随本次上传落进档里,台账行清掉防膨胀(失败只多算一轮,不漏)
+    try {
+      await pruneStoneCredits(req.user!.id, now)
     } catch {
       /* 同上方:留到下一次 */
     }

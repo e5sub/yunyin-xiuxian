@@ -97,7 +97,18 @@ lootRouter.post('/loot/claim', requireAuth, (req: Request, res: Response) => {
     }
     const BUDGET_LIMITS = {
       suppress: { ratePerHour: 0.4, cap: caps.SUPPRESS_COUNT_CAP },
-      offline: { ratePerHour: 65, cap: 48 }
+      offline: { ratePerHour: 65, cap: 48 },
+      /*
+       * 客户端在场签发同样入件数账(1.77.0):battle/boss/secret/event/dungeon 此前
+       * 「每请求必发 1 件」,改包每 300ms 白嫖一件顶阶装(仅受小时 600 件封顶)。
+       * 现按玩法期望产速推上限 —— 历练战斗与离线同速(65/时),妖王/秘境/事件/副本
+       * 按稀有度收紧;没有历史行的首次采信一次(与 suppress/offline 同语义)。
+       */
+      battle: { ratePerHour: 65, cap: 48 },
+      boss: { ratePerHour: 4, cap: 8 },
+      secret: { ratePerHour: 6, cap: 12 },
+      event: { ratePerHour: 12, cap: 24 },
+      dungeon: { ratePerHour: 2, cap: 6 }
     } as const
     type BudgetSrc = keyof typeof BUDGET_LIMITS
     const ctxs = rawClaims.filter(isPlainObject)
@@ -105,10 +116,9 @@ lootRouter.post('/loot/claim', requireAuth, (req: Request, res: Response) => {
       Math.min(Math.max(Math.trunc(typeof ctx.count === 'number' && Number.isFinite(ctx.count) ? ctx.count : 0), 0), cap)
     const remaining = new Map<BudgetSrc, number>()
     for (const src of Object.keys(BUDGET_LIMITS) as BudgetSrc[]) {
-      const cap = src === 'suppress' ? caps.SUPPRESS_COUNT_CAP : caps.OFFLINE_COUNT_CAP
       const total = ctxs
         .filter(c => c.src === src)
-        .reduce((a, c) => a + clampCount(c, cap), 0)
+        .reduce((a, c) => a + clampCount(c, BUDGET_LIMITS[src].cap), 0)
       if (total > 0) {
         remaining.set(src, await takeLootBudget(userId, src, total, now, BUDGET_LIMITS[src]))
       }
@@ -116,8 +126,7 @@ lootRouter.post('/loot/claim', requireAuth, (req: Request, res: Response) => {
     for (const ctx of ctxs) {
       const srcKey = typeof ctx.src === 'string' && ctx.src in BUDGET_LIMITS ? (ctx.src as BudgetSrc) : null
       if (srcKey !== null) {
-        const cap = srcKey === 'suppress' ? caps.SUPPRESS_COUNT_CAP : caps.OFFLINE_COUNT_CAP
-        const req = clampCount(ctx, cap)
+        const req = clampCount(ctx, BUDGET_LIMITS[srcKey].cap)
         const allow = remaining.get(srcKey) ?? 0
         const grant = Math.min(req, allow)
         remaining.set(srcKey, allow - grant)

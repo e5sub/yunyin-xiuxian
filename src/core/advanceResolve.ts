@@ -195,8 +195,8 @@ export interface AdvanceResolveResult {
   snapshot: ProfileSnapshot | null
 }
 
-/** 历练会话声明的时间窗边界:前后各放宽一天(坏档/偏钟在此收口) */
-const SESSION_CLAIM_WINDOW_MS = 86_400_000
+/** 历练会话声明的时间窗边界:前后各放宽一小时(坏档/偏钟在此收口;1.77.0 从 ±1 天收紧) */
+const SESSION_CLAIM_WINDOW_MS = 3_600_000
 
 /**
  * 历练会话声明:非法形状/越界时间返回 undefined(整条忽略,null 表示明确清空会话)。

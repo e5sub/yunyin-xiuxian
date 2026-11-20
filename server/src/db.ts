@@ -252,6 +252,19 @@ CREATE TABLE IF NOT EXISTS loot_budgets (
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, src)
 );
+-- 灵石进项账(1.77.0):客户端自算的灵石收入(坊市卖出/悬赏/洞府巡游/成就任务/连胜/秘境)
+-- 各走 op 端点,服务端复算金额后在此记一笔;上传存档时灵石的可增长量 = 窗口追赶 + 这笔账 ——
+-- 没记过账的进项一律被钳回(1.74.0 解除持有钳制的口子就此收回)。
+-- 服务端自己结算的进项(副本/妖王/离线/镇压等)不在此表:它们由服务端直接写进云档,
+-- 天然构成下一次上传的「上次值」基线,重复记账会双份。
+CREATE TABLE IF NOT EXISTS stone_ledger (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  op TEXT NOT NULL,
+  amount_m REAL NOT NULL,
+  amount_e INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
 -- 弟子差事账(1.74.1):派遣/收割原是纯客户端(本地墙钟判定完工、产出自发自记)——
 -- 改本地时间就能把差事秒完刷产出。现记每名在途弟子的差事:开工时刻以服务端为准,
 -- 收割须过「真实经过 ≥ 工期」这关,产出由服务端复算回传,客户端只管入账与播报。

@@ -56,8 +56,40 @@ apprenticeRouter.post('/apprentice/task/start', requireAuth, (req: Request, res:
       res.status(400).json({ error: '差事申请无效' })
       return
     }
-    const level = clampInt(body.level, 1, MAX_LEVEL_CLAMP)
-    const major = clampInt(body.major, 0, MAX_MAJOR_CLAMP)
+    /*
+     * 名册对账(1.77.0):archId/level 不认客户端自报 —— 档里查无此弟子、或 archId
+     * 对不上,一律拒;level/major 从云档取(产出复算的输入),改包报顶格 level=30
+     * 拿顶格差事产出的路子就此封死。
+     */
+    const saveRow = await get<{ data: string }>('SELECT data FROM saves WHERE user_id = ?', [userId])
+    let rosterLevel = 1
+    let rosterMajor = 0
+    if (saveRow !== undefined) {
+      try {
+        const data = JSON.parse(saveRow.data) as Record<string, unknown>
+        const apprenticeSlice = typeof data.apprentice === 'object' && data.apprentice !== null ? (data.apprentice as Record<string, unknown>) : {}
+        const roster = Array.isArray(apprenticeSlice.apprentices) ? apprenticeSlice.apprentices : []
+        const mine = roster.find(
+          a => typeof a === 'object' && a !== null && (a as Record<string, unknown>).uid === uid
+        ) as Record<string, unknown> | undefined
+        if (mine === undefined) {
+          res.status(400).json({ error: '档里没有这名弟子' })
+          return
+        }
+        if (mine.archId !== archId) {
+          res.status(400).json({ error: '弟子身份对不上' })
+          return
+        }
+        rosterLevel = clampInt(mine.level, 1, MAX_LEVEL_CLAMP)
+        const player = typeof data.player === 'object' && data.player !== null ? (data.player as Record<string, unknown>) : {}
+        rosterMajor = clampInt(player.major, 0, MAX_MAJOR_CLAMP)
+      } catch {
+        res.json({ ok: false, reason: '云档不可读' })
+        return
+      }
+    }
+    const level = rosterLevel
+    const major = rosterMajor
     await run(
       'REPLACE INTO apprentice_tasks (user_id, uid, arch_id, spec, level, major, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [userId, uid, archId, spec, level, major, now]

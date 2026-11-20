@@ -11,6 +11,7 @@ import { buffDef } from '@/data/buffs'
 import { HERB_GRADE_SHORT, herbGradeOfMajor } from '@/data/herbGrades'
 import { maxTierForMajor } from '@/data/regions'
 import { baseCultPerSec, stoneByTier } from './formulas'
+import { cloudApi } from '@/services/cloud'
 import { modOf } from './statsCalc'
 import { formatGN } from '@/utils/format'
 import { usePlayerStore } from '@/stores/player'
@@ -59,12 +60,22 @@ function withReward(prefix: string, lines: string[]): string {
   return lines.length ? `${prefix} · ${lines.join(' · ')}` : prefix
 }
 
-export function grantReward(bundle: RewardBundle, quiet = false): string[] {
+export function grantReward(
+  bundle: RewardBundle,
+  quiet = false,
+  /** 经济 op 出处(1.77.0):成就/主线/日课的灵石进项按 id 由服务端复算记账 */
+  source?: { kind: 'achievement' | 'main' | 'daily'; id: string }
+): string[] {
   const resources = useResourcesStore()
   const quests = useQuestsStore()
   const inventory = useInventoryStore()
   const ui = useUiStore()
-  if (bundle.stoneTier) resources.addStone(stoneByTier(playerTier(), bundle.stoneTier))
+  if (bundle.stoneTier) {
+    // 测试替身可能只 stub 部分 cloudApi 方法:缺 economyOp 就不上报,只损失这笔额度
+    if (source && typeof cloudApi.economyOp === 'function')
+      void cloudApi.economyOp('reward_claim', { rewardKind: source.kind, rewardId: source.id }).catch(() => {})
+    resources.addStone(stoneByTier(playerTier(), bundle.stoneTier))
+  }
   if (bundle.wudao) resources.addSmall('wudao', bundle.wudao)
   if (bundle.herb) resources.addSmall('herb', bundle.herb)
   if (bundle.ore) resources.addSmall('ore', bundle.ore)
@@ -108,7 +119,7 @@ function unlockAchievement(id: string): void {
   const ui = useUiStore()
   const def = ACHIEVEMENTS.find(a => a.id === id)
   if (!def || !quests.unlockAchievement(id)) return
-  const lines = def.reward ? grantReward(def.reward, true) : []
+  const lines = def.reward ? grantReward(def.reward, true, { kind: 'achievement', id }) : []
   ui.toast(withReward(`成就达成「${def.name}」`, lines), 'rare')
 }
 
@@ -163,7 +174,7 @@ function checkMainQuest(): void {
     guard += 1
     const current = MAIN_QUESTS[quests.mainIdx]
     if (!current || !evalCond(current.cond)) break
-    const lines = grantReward(current.reward, true)
+    const lines = grantReward(current.reward, true, { kind: 'main', id: current.id })
     ui.toast(withReward(`主线已成「${current.name}」`, lines), 'success')
     quests.advanceMain()
   }
@@ -176,7 +187,7 @@ function checkDaily(): void {
     if (quests.daily.done.includes(task.id)) continue
     if (quests.dailyDelta(task.counterKey) >= task.target) {
       quests.markDailyDone(task.id)
-      const lines = grantReward(task.reward, true)
+      const lines = grantReward(task.reward, true, { kind: 'daily', id: task.id })
       ui.toast(withReward(`日课已成「${task.name}」`, lines), 'success')
     }
   }

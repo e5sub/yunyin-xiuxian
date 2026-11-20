@@ -774,6 +774,16 @@ export const cloudApi = {
   /** 坊市成交记账(1.58.1):服务端按货架复算价并落账,上传时把这笔钱从增量里扣掉 */
   marketBuy: (payload: { stockedAt: number; idx: number }): Promise<{ ok: boolean; recorded: boolean }> =>
     request('POST', '/market/buy', payload),
+  /**
+   * 经济 op(1.77.0):客户端自算灵石收入的统一上报口 —— 坊市卖出/悬赏交货/洞府巡游/
+   * 成就任务/连胜/秘境层。服务端按数据表复算金额记进 stone_ledger,上传存档时按台账放行;
+   * 没记过账的进项会被灵石窗口钳压回。失败(断网/超时)不阻断本地入账,只损失这一笔的额度。
+   */
+  economyOp: (
+    op: string,
+    payload: Record<string, unknown>
+  ): Promise<{ ok: boolean; reason?: string; stone?: { m: number; e: number } }> =>
+    request('POST', `/economy/${encodeURIComponent(op)}`, payload),
   /** 法宝/器魂签发(1.58.1):入台账后上传才不会在验源时被移除 */
   claimLootExtras: (payload: {
     artifacts?: readonly string[]

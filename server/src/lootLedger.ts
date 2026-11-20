@@ -63,9 +63,14 @@ export async function seedLoot(
   userId: number,
   holdings: { equips: readonly string[]; artifacts: readonly string[]; souls: readonly string[] }
 ): Promise<void> {
-  await recordLoot(userId, holdings.equips, 'seed', 'equip')
-  await recordLoot(userId, holdings.artifacts, 'seed', 'artifact')
-  await recordLoot(userId, holdings.souls, 'seed', 'soul')
+  /*
+   * 播种件数上限(1.77.0):首传是「唯一一次采信客户端」的窗口,数量也该有顶 ——
+   * 行囊容量/法宝表/器魂槽本来就是玩法硬界,超出的部分只能是无账之件,不播。
+   */
+  const SEED_CAPS = { equip: 300, artifact: 60, soul: 120 } as const
+  await recordLoot(userId, holdings.equips.slice(0, SEED_CAPS.equip), 'seed', 'equip')
+  await recordLoot(userId, holdings.artifacts.slice(0, SEED_CAPS.artifact), 'seed', 'artifact')
+  await recordLoot(userId, holdings.souls.slice(0, SEED_CAPS.soul), 'seed', 'soul')
   await run('REPLACE INTO loot_seed (user_id, seeded_at) VALUES (?, ?)', [userId, Date.now()])
 }
 

@@ -50,6 +50,7 @@ function run(
     seenBefore?: boolean
     creditDust?: number
     creditDao?: number
+    creditStone?: { m: number; e: number }
   } = {}
 ) {
   const report = enforceSaveAuthority({
@@ -62,7 +63,8 @@ function run(
     pendingSpend: opts.pendingSpend,
     seenBefore: opts.seenBefore,
     creditDust: opts.creditDust,
-    creditDao: opts.creditDao
+    creditDao: opts.creditDao,
+    creditStone: opts.creditStone
   })
   if (report === null) throw new Error('裁决返回 null')
   return report
@@ -159,15 +161,24 @@ describe('数值权威化 · 修为与资源上限', () => {
     expect(report.corrections.some(c => c.path === 'player.exp')).toBe(true)
   })
 
-  it('灵石写 e100 原样通过:持有上限钳制已解除(1.74.0)', () => {
-    // 故障注入:把 saveAuthority 资源段里对 spiritStone 的跳过改回 holdCapOf 窗口钳制,本用例红
+  it('灵石写 e100 被窗口钳压回:进项台账放行,无账进项拦回(1.77.0)', () => {
+    // 故障注入:把 saveAuthority 资源段里对 spiritStone 的钳制删掉,本用例红
     const next = baseSave()
     ;(next.resources as Record<string, unknown>).spiritStone = { m: 1, e: 100 }
     const report = run(next, { prev: baseSave(), prevRealmIndex: 0 })
     const stone = (report.data.resources as Record<string, unknown>).spiritStone as GNum
-    expect(num(stone)).toBe(1e100)
-    expect(report.corrections.some(c => c.path === 'resources.spiritStone')).toBe(false)
-    expect(report.notes.join(' ')).not.toContain('灵石')
+    // 无进项账时压到本境界持有上限(模型满产速 720h),不再是天文数字
+    expect(num(stone)).toBeLessThan(1e100)
+    expect(report.corrections.some(c => c.path === 'resources.spiritStone')).toBe(true)
+    expect(report.notes.join(' ')).toContain('灵石')
+    // 有台账进项时按「基线 + 进项」放行:卖装攒下的合法余额不再被夹
+    const credited = run(next, {
+      prev: baseSave(),
+      prevRealmIndex: 0,
+      creditStone: { m: 1, e: 100 }
+    })
+    const creditedStone = (credited.data.resources as Record<string, unknown>).spiritStone as GNum
+    expect(num(creditedStone)).toBeGreaterThanOrEqual(1e100)
   })
 
   it('灵草与杂项资源同步收口', () => {
@@ -181,16 +192,24 @@ describe('数值权威化 · 修为与资源上限', () => {
     expect(Number(after.ore)).toBeLessThan(1e12)
   })
 
-  it('灵石一次拉到 1e7 原样通过:窗口约束对灵石不再适用(1.74.0)', () => {
+  it('灵石一次拉到 1e7:无账被压回本窗口可增长量,有账原样放行(1.77.0)', () => {
     const prev = baseSave()
     ;(prev.resources as Record<string, unknown>).spiritStone = { m: 1, e: 3 } // 1000
     const next = baseSave()
     ;(next.resources as Record<string, unknown>).spiritStone = { m: 1, e: 7 } // 1e7:远超一窗口的产出
     const report = run(next, { prev, prevRealmIndex: 0, elapsedMs: ONE_TICK_MS })
     const stone = (report.data.resources as Record<string, unknown>).spiritStone as GNum
-    expect(num(stone)).toBe(1e7)
-    expect(report.corrections.some(c => c.path === 'resources.spiritStone')).toBe(false)
-    expect(report.notes.join(' ')).not.toContain('灵石')
+    expect(num(stone)).toBeLessThan(1e7)
+    expect(report.corrections.some(c => c.path === 'resources.spiritStone')).toBe(true)
+    // 台账进项把它抬回 1e7:卖装这类成批进项走 op 记账后不误伤
+    const credited = run(next, {
+      prev,
+      prevRealmIndex: 0,
+      elapsedMs: ONE_TICK_MS,
+      creditStone: { m: 1, e: 7 }
+    })
+    const creditedStone = (credited.data.resources as Record<string, unknown>).spiritStone as GNum
+    expect(num(creditedStone)).toBe(1e7)
   })
 
   it('坊市支出未在档里体现:灵石不再被压回(支出账只兜小资源,1.74.0)', () => {

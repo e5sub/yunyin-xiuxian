@@ -340,11 +340,17 @@ export const useMarketStore = defineStore(
       const credits: string[] = []
       let keep = consign.value.filter(p => p.finishAt > now)
       const resources = useResourcesStore()
-      for (const p of consign.value) {
-        if (p.finishAt <= now) {
-          resources.addStone(p.price)
-          if (p.name) credits.push(p.name)
-        }
+      // 经济 op(1.77.0):每格到期寄卖上报服务端,按 tier+品质复算价记进项账;
+      // 索引取收割前的档内序号,服务端从云档同序数组校验
+      const finished = consign.value.filter(p => p.finishAt <= now)
+      for (const p of finished) {
+        void cloudApi
+          .economyOp('market_sell_consign', {
+            consignIdx: consign.value.indexOf(p)
+          })
+          .catch(() => {})
+        resources.addStone(p.price)
+        if (p.name) credits.push(p.name)
       }
       // 余下格子的 slot 规整回 0..n-1
       keep = keep
@@ -356,9 +362,15 @@ export const useMarketStore = defineStore(
 
     /** 即时售一枚丹药(仅限可炼丹;无丹方的事件丹无价) */
     function sellPill(pillId: string): boolean {
+      return sellPillOnce(pillId, true)
+    }
+
+    /** 单枚卖出;fireOp=false 供批量走同一笔 op(1.77.0) */
+    function sellPillOnce(pillId: string, fireOp: boolean): boolean {
       const def = pillDef(pillId)
       const inventory = useInventoryStore()
       if (!def?.recipe?.stoneBase || (inventory.pills[pillId] ?? 0) < 1) return false
+      if (fireOp) void cloudApi.economyOp('market_sell_pill', { pillId, count: 1 }).catch(() => {})
       inventory.spendPill(pillId, 1)
       useResourcesStore().addStone(pillSellPrice(pillId))
       return true
@@ -366,8 +378,13 @@ export const useMarketStore = defineStore(
 
     /** 即时售一批玄铁(与货架购入同单位数);灵草走 sellHerb */
     function sellMaterial(major: number): boolean {
+      return sellMaterialOnce(major, true)
+    }
+
+    function sellMaterialOnce(major: number, fireOp: boolean): boolean {
       const resources = useResourcesStore()
       if (resources.ore < MARKET_MAT_COUNT) return false
+      if (fireOp) void cloudApi.economyOp('market_sell_material', { count: 1 }).catch(() => {})
       resources.spendSmall('ore', MARKET_MAT_COUNT)
       resources.addStone(materialSellPrice(major))
       return true
@@ -375,8 +392,13 @@ export const useMarketStore = defineStore(
 
     /** 即时售一批任意品阶灵草(按该品计价) */
     function sellHerb(grade: HerbGrade): boolean {
+      return sellHerbOnce(grade, true)
+    }
+
+    function sellHerbOnce(grade: HerbGrade, fireOp: boolean): boolean {
       const resources = useResourcesStore()
       if (resources.herbOf(grade) < MARKET_MAT_COUNT) return false
+      if (fireOp) void cloudApi.economyOp('market_sell_herb', { grade, count: 1 }).catch(() => {})
       resources.spendHerb(grade, MARKET_MAT_COUNT)
       resources.addStone(herbSellBatch(grade, usePlayerStore().major))
       return true
@@ -391,7 +413,8 @@ export const useMarketStore = defineStore(
       const inventory = useInventoryStore()
       const before = inventory.pills[pillId] ?? 0
       let n = 0
-      while (n < before && sellPill(pillId)) n += 1
+      while (n < before && sellPillOnce(pillId, false)) n += 1
+      if (n > 0) void cloudApi.economyOp('market_sell_pill', { pillId, count: n }).catch(() => {})
       return { count: n, stone: n > 0 ? mulN(pillSellPrice(pillId), n) : gnZero() }
     }
 
@@ -403,7 +426,8 @@ export const useMarketStore = defineStore(
       const resources = useResourcesStore()
       const lots = Math.floor(resources.herbOf(grade) / MARKET_MAT_COUNT)
       let n = 0
-      while (n < lots && sellHerb(grade)) n += 1
+      while (n < lots && sellHerbOnce(grade, false)) n += 1
+      if (n > 0) void cloudApi.economyOp('market_sell_herb', { grade, count: n }).catch(() => {})
       return n
     }
 
@@ -411,7 +435,8 @@ export const useMarketStore = defineStore(
       const resources = useResourcesStore()
       const lots = Math.floor(resources.ore / MARKET_MAT_COUNT)
       let n = 0
-      while (n < lots && sellMaterial(major)) n += 1
+      while (n < lots && sellMaterialOnce(major, false)) n += 1
+      if (n > 0) void cloudApi.economyOp('market_sell_material', { count: n }).catch(() => {})
       return n
     }
 
