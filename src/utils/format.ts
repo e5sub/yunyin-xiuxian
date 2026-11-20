@@ -2,8 +2,22 @@
 import type { GNum } from '@/types'
 import { gn, toNum } from './gnum'
 
-/** 每 4 个数量级一个中文单位 */
-const UNITS = ['万', '亿', '兆', '京', '垓', '秭', '穰', '沟', '涧', '正', '载', '极'] as const
+/**
+ * 每 4 个数量级一个中文单位。
+ *
+ * 万进制到「极」(10^48)之后,中文数词还有一段佛教延伸:恒河沙 → 大数(10^72)。
+ * 补进表里,让真实游玩(含超长周目累积)到不了科学计数兜底 ——
+ * 「1.24e52」这种带英文字母的写法玩家读不懂,也和全站的中文口径不合。
+ */
+const UNITS = [
+  '万', '亿', '兆', '京', '垓', '秭', '穰', '沟', '涧', '正', '载', '极',
+  '恒河沙', '阿僧祇', '那由他', '不可思议', '无量', '大数'
+] as const
+
+/** 阿拉伯数字 → 上标数字(⁰¹²³⁴⁵⁶⁷⁸⁹);科学计数兜底专用,只服务正指数 */
+function superscript(n: number): string {
+  return String(n).replace(/\d/g, d => '⁰¹²³⁴⁵⁶⁷⁸⁹'[Number(d)]!)
+}
 
 /** 数值非法时的统一占位 */
 const NOT_AVAILABLE = '--'
@@ -17,8 +31,8 @@ const NOT_AVAILABLE = '--'
  * **门槛取多少**:`1e7`,即**一千万天**(约 2.7 万年)—— 比上面那个上界低一个数量级。
  * 首版取的正是 1e8,被 99,979,231 天擦过去,坏档仍印八位裸数字。
  *
- * **超过门槛之后印什么**:交给 `formatGN`。它有自己的单位表(万→极),
- * 表内印「9997万天」这类;超出「极」则退回它自己的科学计数兜底(`1.16e295天`)。
+ * **超过门槛之后印什么**:交给 `formatGN`。它有自己的单位表(万→大数),
+ * 表内印「9997万天」这类;超出「大数」则退回它自己的科学计数兜底(`1.16×10²⁹⁵天`)。
  * 那种极端值只在坏档里出现,能读出行数即可,不再为它另造单位。
  *
  * 真实游玩到不了这里:这里量的是**倒计时与时长**,
@@ -26,7 +40,7 @@ const NOT_AVAILABLE = '--'
  */
 const DURATION_DAY_UNIT_CAP = 1e7
 
-/** 格式化大数:1,234 → 12.35万 → 1.235亿 → 1.24e52 */
+/** 格式化大数:1,234 → 12.35万 → 1.235亿 → 1.24×10⁷⁶(超「大数」的科学计数兜底,无英文) */
 export function formatGN(v: GNum | number): string {
   const g = typeof v === 'number' ? gn(v) : v
   /*
@@ -41,8 +55,8 @@ export function formatGN(v: GNum | number): string {
   /*
    * 指数**本身**也得是「小整数」,不只是有限。
    *
-   * 兜底那条路是 `` `${m}e${g.e}` `` —— 直接拼 `g.e`。若 `g.e` 是 1e22,
-   * 拼出来就是「1.00e1e+22」:科学计数里套了一层科学计数,读都读不出来。
+   * 兜底那条路是 `` `${m}×10${superscript(g.e)}` `` —— 直接拼 `g.e`。若 `g.e` 不是小整数,
+   * 上标换算会照抄字符串原样,拼出「1.00×10¹e+²²」这种读不出来的串。
    * `asBoundedGNum` 读档时已把 |e| 夹到 999,但这里是**公共函数**,
    * 不能假定每个调用方都先过那道关(界面上、审计脚本里都直接调)。
    * 与 SAVE_GNUM_MAX_EXP 同一把尺:超过它的指数只可能来自坏档。
@@ -88,10 +102,14 @@ export function formatGN(v: GNum | number): string {
   }
   const unitIdx = Math.floor(g.e / 4) - 1
   if (unitIdx >= UNITS.length) {
-    // 科学计数兜底;mantissa 四舍五入到 10.00 时进位(9.99…e407 → 1.00e408)
+    /*
+     * 科学计数兜底:印「1.24×10⁷⁶」,不印 JS 风格的「1.24e76」——
+     * 字母 e 是英文,与全站中文口径不合;×10ⁿ 是纯数学写法,无字母。
+     * mantissa 四舍五入到 10.00 时进位(9.99…×10⁷⁶ → 1.00×10⁷⁷)。
+     */
     const m = g.m.toFixed(2)
-    if (m === '10.00') return `1.00e${g.e + 1}`
-    return `${m}e${g.e}`
+    if (m === '10.00') return `1.00×10${superscript(g.e + 1)}`
+    return `${m}×10${superscript(g.e)}`
   }
   const value = g.m * Math.pow(10, g.e - (unitIdx + 1) * 4)
   return trimZero(fixedByMag(value)) + UNITS[unitIdx]
@@ -117,8 +135,8 @@ export function formatGap(v: GNum | number): string {
   /*
    * 指数**本身**也得是「小整数」,不只是有限。
    *
-   * 兜底那条路是 `` `${m}e${g.e}` `` —— 直接拼 `g.e`。若 `g.e` 是 1e22,
-   * 拼出来就是「1.00e1e+22」:科学计数里套了一层科学计数,读都读不出来。
+   * 兜底那条路是 `` `${m}×10${superscript(g.e)}` `` —— 直接拼 `g.e`。若 `g.e` 不是小整数,
+   * 上标换算会照抄字符串原样,拼出「1.00×10¹e+²²」这种读不出来的串。
    * `asBoundedGNum` 读档时已把 |e| 夹到 999,但这里是**公共函数**,
    * 不能假定每个调用方都先过那道关(界面上、审计脚本里都直接调)。
    * 与 SAVE_GNUM_MAX_EXP 同一把尺:超过它的指数只可能来自坏档。
@@ -226,7 +244,7 @@ export function formatPercent(x: number, dp = 1): string {
    * (1e22 是有限数)也过了上面的上溢检查(×100 后仍是有限数)——
    * 于是 percent 会印出「1e+22%」这种非法数字。实测从 1e20 起就开始了。
    *
-   * 兜底与 formatGN 同形:`1.00e22`(尾数两位、指数不带 + 号),
+   * 兜底与 formatGN 同形:`1.00×10²²%`(尾数两位、×10ⁿ 无英文字母),
    * 而不是 JS 的 `1e+22` —— 全站只该有一种科学计数写法。
    */
   if (Math.abs(v) >= 1e21) {
@@ -234,15 +252,15 @@ export function formatPercent(x: number, dp = 1): string {
     let mant = v / Math.pow(10, exp)
     /*
      * 尾数进位:`mant` 可能四舍五入成 10.00(如 v = 9.9999e21 → 9.9999 → 10.00),
-     * 那时须把指数抬一位、尾数回到 1.00 —— 否则输出 `10.00e21%`,
+     * 那时须把指数抬一位、尾数回到 1.00 —— 否则输出 `10.00×10²¹%`,
      * 它既不是规范写法,读起来也比真值小一个数量级。
-     * formatGN 的兜底早有这一步(注释:`9.99…e407 → 1.00e408`),这里沿用同一条。
+     * formatGN 的兜底早有这一步,这里沿用同一条。
      */
     if (Math.abs(mant).toFixed(2) === '10.00') {
       exp += 1
       mant = v / Math.pow(10, exp)
     }
-    return `${mant.toFixed(2)}e${exp}%`
+    return `${mant.toFixed(2)}×10${superscript(exp)}%`
   }
   const s = Number.isInteger(v) ? String(v) : v.toFixed(dp)
   return `${trimZero(s)}%`

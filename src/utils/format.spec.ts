@@ -19,13 +19,20 @@ describe('数值格式化', () => {
     expect(formatGN(100000000)).toBe('1亿')
   })
 
-  it('超大数走科学计数法', () => {
-    expect(formatGN(powN(10, 52))).toMatch(/e52$/)
+  it('中文单位一直排到「大数」,不进科学计数兜底', () => {
+    expect(formatGN(powN(10, 48))).toBe('1极')
+    expect(formatGN(powN(10, 52))).toBe('1恒河沙')
+    expect(formatGN(powN(10, 72))).toBe('1大数')
   })
 
-  it('科学计数 mantissa 四舍五入到 10 时进位(9.99…eN→1.00eN+1,不产 10.00eN)', () => {
-    expect(formatGN({ m: 9.999, e: 52 })).toBe('1.00e53')
-    expect(formatGN({ m: 9.494, e: 52 })).toBe('9.49e52')
+  it('超大数(超「大数」)走 ×10ⁿ 兜底,不印英文字母', () => {
+    expect(formatGN(powN(10, 76))).toBe('1.00×10⁷⁶')
+    expect(formatGN(powN(10, 76))).not.toMatch(/[A-Za-z]/)
+  })
+
+  it('科学计数兜底 mantissa 四舍五入到 10 时进位(9.99…×10ⁿ→1.00×10ⁿ⁺¹,不产 10.00×10ⁿ)', () => {
+    expect(formatGN({ m: 9.999, e: 76 })).toBe('1.00×10⁷⁷')
+    expect(formatGN({ m: 9.494, e: 76 })).toBe('9.49×10⁷⁶')
   })
 
   it('零与负数', () => {
@@ -481,40 +488,41 @@ describe('formatYears · 大数上的分辨率(有意取舍)', () => {
  * 但 `1e22` 两道都过 —— 它既有限、×100 后也有限,而 `Number.isInteger` 为真
  * 于是走 `String(v)` 分支,印出 **`1e+22%`**(实测从 1e20 起就开始了)。
  *
- * 兜底须与 formatGN 同形:`1.00e22`(尾数两位、指数不带 + 号),
+ * 兜底须与 formatGN 同形:`1.00×10²²%`(尾数两位、×10ⁿ 无英文字母),
  * 而不是 JS 默认的 `1e+22` —— 全站只该有一种科学计数写法。
  */
 describe('formatPercent · 大值不进 JS 默认科学计数', () => {
-  it('给定 1e21 至 1e300 的正数,则用 formatGN 同形的写法', () => {
+  it('给定 1e21 至 1e300 的正数,则用 formatGN 同形的 ×10ⁿ 写法', () => {
     for (const x of [1e21, 1e28, 1e300]) {
       const got = formatPercent(x)
       expect(got, `${x} 印出了 JS 默认的 1e+N:${got}`).not.toMatch(/e\+/)
-      expect(got, `${x} 该用 formatGN 同形的 eN:${got}`).toMatch(/^\d+\.\d{2}e\d+%$/)
+      expect(got, `${x} 该用 formatGN 同形的 ×10ⁿ:${got}`).toMatch(/^\d+\.\d{2}×10[⁰¹²³⁴⁵⁶⁷⁸⁹]+%$/)
+      expect(got, `${x} 不该带英文字母:${got}`).not.toMatch(/[A-Za-z]/)
     }
   })
 
   it('给定 1e18(×100 后未到门槛),则仍是定点写法', () => {
     // 门槛按「×100 之后」比,故 1e18 → 1e20 还没到,1e19 → 1e21 恰好到
-    expect(formatPercent(1e18), '1e18 ×100 后还没到门槛').not.toMatch(/e/)
-    expect(formatPercent(1e19), '1e19 ×100 后恰好到门槛').toMatch(/e\d+%$/)
+    expect(formatPercent(1e18), '1e18 ×100 后还没到门槛').not.toMatch(/e|×10/)
+    expect(formatPercent(1e19), '1e19 ×100 后恰好到门槛').toMatch(/×10[^%]+%$/)
   })
 
   it('给定尾数会四舍五入成 10.00 的临界值,则指数抬一位', () => {
     /*
-     * 这是本轮修的第二处:`mant.toFixed(2)` 可能得 `10.00`(如 v = 9.9999e21),
-     * 那时须把指数抬一位、尾数回到 1.00 —— 否则输出 `10.00e21%`,
+     * `mant.toFixed(2)` 可能得 `10.00`(如 v = 9.9999e21),
+     * 那时须把指数抬一位、尾数回到 1.00 —— 否则输出 `10.00×10²¹%`,
      * 既不是规范写法,读起来也比真值小一个数量级。
-     * formatGN 的兜底早有这一步(`9.99…e407 → 1.00e408`),这里沿用同一条。
+     * formatGN 的兜底早有这一步,这里沿用同一条。
      */
     for (const x of [9.999e19, 9.9999e19]) {
       const got = formatPercent(x)
-      expect(got, `${x} 尾数没进位:${got}`).not.toMatch(/^10\.00e/)
-      expect(got, `${x} 该进位成 1.00e22%:${got}`).toBe('1.00e22%')
+      expect(got, `${x} 尾数没进位:${got}`).not.toMatch(/^10\.00×10/)
+      expect(got, `${x} 该进位成 1.00×10²²%:${got}`).toBe('1.00×10²²%')
     }
   })
 
   it('给定负数大值,则保留符号', () => {
-    expect(formatPercent(-1e22)).toMatch(/^-1\.00e24%$/)
+    expect(formatPercent(-1e22)).toMatch(/^-1\.00×10²⁴%$/)
   })
 
   it('给定门槛之下的常规值,则行为不变', () => {
