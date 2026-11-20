@@ -15,6 +15,7 @@ import { enforceLevelStates, resetLevelStatesFromData } from '../levelLedger.js'
 import { pendingSalvageCredit } from '../salvageCredit.js'
 import { pendingDaoCredit } from '../daoCredit.js'
 import { pruneStoneCredits, sumStoneCreditsSince } from '../stoneLedger.js'
+import { clearClaims, settleClaims } from '../economyLedger.js'
 import { clearSect, pendingSectSpend, readSectState, settleSectSpend } from '../sectState.js'
 import { withKeyLock } from '../mutex.js'
 
@@ -590,6 +591,12 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
     } catch {
       /* 同上方:留到下一次 */
     }
+    // 经济 op 消费账(1.77.1):卖掉的货已在本次档里少掉,临时行清掉;一次性奖励行永久保留
+    try {
+      await settleClaims(req.user!.id)
+    } catch {
+      /* 同上方:留到下一次(只是这窗口多挡一次出卖) */
+    }
     try {
       await settleForgeSpend(req.user!.id)
     } catch {
@@ -650,6 +657,7 @@ saveRouter.delete('/save', requireAuth, (req: Request, res: Response) => {
     await run("UPDATE profiles SET realm_index = 0, realm_label = '', rebirths = 0 WHERE user_id = ?", [req.user!.id])
     // 旧账不该压在新档头上(删档重修是合法路径)
     await clearPurchases(req.user!.id)
+    await clearClaims(req.user!.id)
     await clearForgeSpend(req.user!.id)
     await clearProgressSpend(req.user!.id)
     // 门派随档一起散:删档是「重来」,建派花掉的资源不该留成一份永久属性

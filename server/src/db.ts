@@ -265,6 +265,18 @@ CREATE TABLE IF NOT EXISTS stone_ledger (
   amount_e INTEGER NOT NULL,
   created_at INTEGER NOT NULL
 );
+-- 经济 op 消费对账(1.77.1):卖出/交货的**扣货**写在客户端,云端档要到下一次上传才少掉。
+-- 只按「档里还剩多少」校验就能把同一批丹卖十次(每次 300ms 一条 op,各自记一笔进项)。
+-- 这张表记「本窗口已经卖/交过多少」,校验时从档内存量里扣;上传落库后清行(permanent=0)。
+-- 一次性奖励(成就/主线/日课/连胜/巡游)记 permanent=1,永不清理 —— 同一天同一条不能再领。
+CREATE TABLE IF NOT EXISTS economy_claims (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  claim_key TEXT NOT NULL,
+  qty INTEGER NOT NULL DEFAULT 1,
+  permanent INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, claim_key)
+);
 -- 弟子差事账(1.74.1):派遣/收割原是纯客户端(本地墙钟判定完工、产出自发自记)——
 -- 改本地时间就能把差事秒完刷产出。现记每名在途弟子的差事:开工时刻以服务端为准,
 -- 收割须过「真实经过 ≥ 工期」这关,产出由服务端复算回传,客户端只管入账与播报。
@@ -741,6 +753,26 @@ CREATE TABLE IF NOT EXISTS loot_budgets (
   updated_at BIGINT NOT NULL,
   PRIMARY KEY (user_id, src),
   CONSTRAINT fk_loot_budgets_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- 灵石进项账(1.77.0):见 SQLite 侧同名表注释
+CREATE TABLE IF NOT EXISTS stone_ledger (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  op VARCHAR(32) NOT NULL,
+  amount_m DOUBLE NOT NULL,
+  amount_e INT NOT NULL,
+  created_at BIGINT NOT NULL,
+  CONSTRAINT fk_stone_ledger_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- 经济 op 消费对账(1.77.1):见 SQLite 侧同名表注释
+CREATE TABLE IF NOT EXISTS economy_claims (
+  user_id BIGINT NOT NULL,
+  claim_key VARCHAR(128) NOT NULL,
+  qty INT NOT NULL DEFAULT 1,
+  permanent TINYINT NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (user_id, claim_key),
+  CONSTRAINT fk_economy_claims_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 -- 弟子差事账(1.74.1):见 SQLite 侧同名表注释
 CREATE TABLE IF NOT EXISTS apprentice_tasks (

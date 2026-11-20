@@ -71,7 +71,16 @@ function report(kind: 'error' | 'conflict', text: string): void {
   if (kind === 'conflict') {
     syncNotice.value = { text: `${text},已暂停上传以免覆盖`, at: Date.now() }
   } else if (failStreak === 3) {
-    syncNotice.value = { text: '云同步失败,进度暂存本机', at: Date.now() }
+    /*
+     * 1.76.0 起本机不存底,旧文案「进度暂存本机」已经是一句假话 —— 它会让玩家以为
+     * 关掉页面也不要紧,而实际上这段进度只活在内存里。现改成说真话并带上真实原因
+     * (网络不通 / 服务器 500 / 存档保存太快…),玩家报障时也能直接念出来。
+     */
+    const why = text === '' ? '' : `(${text})`
+    syncNotice.value = {
+      text: `云端对账失败${why},已连续 ${failStreak} 次;本机不存底,期间关页会丢这段进度`,
+      at: Date.now()
+    }
   }
 }
 
@@ -135,6 +144,26 @@ function walkBase(root: unknown, segs: readonly string[]): unknown {
 }
 
 let pushing = false
+/**
+ * 失败后的补推定时器:弱网抖一下不该整整断一个周期(默认 20 秒)。
+ * 单飞 —— 有在途的就等它,不堆一串。
+ */
+let retryTimer: ReturnType<typeof setTimeout> | undefined
+
+function scheduleRetry(): void {
+  if (retryTimer !== undefined) return
+  retryTimer = setTimeout(() => {
+    retryTimer = undefined
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+    void pushCloudSave()
+  }, 5_000)
+}
+
+function clearRetry(): void {
+  if (retryTimer === undefined) return
+  clearTimeout(retryTimer)
+  retryTimer = undefined
+}
 
 /**
  * 推送结果:ok=已上传;skipped-* = 静默跳过(此前一律谎报成功,设置页「立即上传」会弹出
@@ -203,11 +232,17 @@ export async function pushCloudSave(manual = false): Promise<PushOutcome> {
     }
     blocked = false
     failStreak = 0
+    clearRetry()
     syncState.value = 'ok'
     syncErrorText.value = ''
     lastSyncAt.value = Date.now()
     return 'ok'
   } catch (e) {
+    /*
+     * 429 是「上传太密」(服务端写档限速 2s),不是网络/服务端故障:
+     * 计入失败会让「手动上传紧挨定时上传」这种情形凑出三次假告警。
+     */
+    if (e instanceof CloudError && e.status === 429) return 'skipped-busy'
     failStreak += 1
     if (e instanceof CloudError && e.status === 409) {
       blocked = true
@@ -215,7 +250,8 @@ export async function pushCloudSave(manual = false): Promise<PushOutcome> {
       return 'conflict'
     }
     report('error', e instanceof CloudError ? e.message : '网络不通')
-    // 下一个周期重推
+    // 抖一下就断的弱网不值得等满一个周期(默认 20s):5 秒后补一拍
+    scheduleRetry()
     return 'failed'
   } finally {
     pushing = false
@@ -389,6 +425,7 @@ export function startCloudSync(): void {
 }
 
 export function stopCloudSync(): void {
+  clearRetry()
   if (timer !== undefined) {
     clearInterval(timer)
     timer = undefined

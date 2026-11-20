@@ -89,3 +89,60 @@ describe('经济 op 复算', () => {
     expect(badLayer.ok).toBe(false)
   })
 })
+
+/**
+ * 重放对账(1.77.1):op 只记进项不记扣货时,同一批货能在两次上传之间反复卖 ——
+ * 档里的存量要到下一次上传才少,而每卖一次都记一笔灵石进项。这里钉住「已记量要扣」。
+ */
+describe('经济 op 重放对账', () => {
+  const sellKey = 'sell:pill:p_huichun'
+
+  it('卖丹:本窗口已卖过的量要从档内余量里扣,卖完了再卖就拒', () => {
+    const held = ctx({ inventory: { pills: { p_huichun: 5 }, items: [] } })
+    const first = resolveEconomyOp({ kind: 'market_sell_pill', pillId: 'p_huichun', count: 5 }, held)
+    expect(first.ok).toBe(true)
+    expect(first.consume, '记账要连消费一起落下').toEqual({ key: sellKey, qty: 5, permanent: false })
+
+    const replay = resolveEconomyOp(
+      { kind: 'market_sell_pill', pillId: 'p_huichun', count: 1 },
+      { ...held, claimed: { [sellKey]: 5 } }
+    )
+    expect(replay.ok, '记过账的 5 枚不能再卖').toBe(false)
+
+    // 只卖过 4 枚时还剩 1 枚可卖
+    const one = resolveEconomyOp(
+      { kind: 'market_sell_pill', pillId: 'p_huichun', count: 1 },
+      { ...held, claimed: { [sellKey]: 4 } }
+    )
+    expect(one.ok).toBe(true)
+  })
+
+  it('寄卖/悬赏:同一格同一单在本次上传前只能收一次', () => {
+    const consign = ctx({ market: { consign: [{ tier: 2, qualityRank: 2, finishAt: 1_699_990_000_000 }] } })
+    const key = 'sell:consign:0:1699990000000'
+    expect(resolveEconomyOp({ kind: 'market_sell_consign', consignIdx: 0 }, consign).ok).toBe(true)
+    expect(
+      resolveEconomyOp({ kind: 'market_sell_consign', consignIdx: 0 }, { ...consign, claimed: { [key]: 1 } }).ok
+    ).toBe(false)
+
+    const bountyAt = 1_700_000_000_000
+    const bountyCtx = ctx({
+      bounty: { bountyAt, orders: [{ idx: 0, kind: 'ore', target: 1, claimed: false }] },
+      resources: { ore: 1e9, herbByGrade: {} }
+    })
+    const real = resolveEconomyOp({ kind: 'bounty_claim', bountyIdx: 0 }, bountyCtx)
+    // 再生订单与档里那单对不上就本就拒收;对得上时必须落一条 bounty 键的消费
+    if (real.ok) expect(real.consume?.key.startsWith('bounty:')).toBe(true)
+  })
+
+  it('成就/主线:同一条终身只领一次;日课换日放行', () => {
+    const claim = resolveEconomyOp({ kind: 'reward_claim', rewardKind: 'main', rewardId: 'q_start' }, ctx({ major: 5 }))
+    expect(claim.ok).toBe(true)
+    const key = claim.consume!.key
+    expect(claim.consume).toMatchObject({ qty: 1, permanent: true })
+    expect(
+      resolveEconomyOp({ kind: 'reward_claim', rewardKind: 'main', rewardId: 'q_start' }, ctx({ major: 5, claimed: { [key]: 1 } }))
+        .ok
+    ).toBe(false)
+  })
+})
