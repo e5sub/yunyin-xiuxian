@@ -6,6 +6,7 @@ import { track } from './progress'
 import { useInventoryStore } from '@/stores/inventory'
 import { useEndgameStore } from '@/stores/endgame'
 import { useUiStore } from '@/stores/ui'
+import { reportAction } from './remoteAction'
 import { daoSourceShortfall } from './daoSource'
 import { mintSoul } from './lootClaim'
 
@@ -78,6 +79,7 @@ export async function refineEquipment(uid: string): Promise<boolean> {
   track('soulsRefined')
   const t = equipmentTemplate(inst.templateId)
   ui.toast(`「${t?.name}」凝作${soulName(soul)}`, 'rare')
+  reportAction('soul_refine', { id: uid })
   return true
 }
 
@@ -90,11 +92,14 @@ export function wearSoul(uid: string): boolean {
     return false
   }
   // equipSoul 按有效装配(滤掉 ghost)判槽位;已装配/不在持有池时静默返回
-  return endgame.equipSoul(uid)
+  const ok = endgame.equipSoul(uid)
+  if (ok) reportAction('soul_equip', { id: uid })
+  return ok
 }
 
 export function removeSoul(uid: string): void {
   useEndgameStore().unequipSoul(uid)
+  reportAction('soul_unequip', { id: uid })
 }
 
 /** 散去器魂(不可逆) */
@@ -105,6 +110,7 @@ export function dissolveSoul(uid: string): void {
   if (!soul) return
   endgame.dissolveSoul(uid)
   ui.toast(`${soulName(soul)}已散去`, 'info')
+  reportAction('soul_dissolve', { id: uid })
 }
 
 export { previewSoul, canRefine }

@@ -21,6 +21,24 @@ import { useGameStore } from '@/stores/game'
 /** 自动上传间隔:登录时从服务端 game_config(save_push_interval_sec)取,GM 后台可调 */
 let pushIntervalMs = 20_000
 
+/**
+ * 「抛弃存档」(1.78.0):本机只往云端同步这三片设备偏好。
+ * 进度不再由本机上传 —— 服务端在云档上实时结算(/game/advance 与 /action),
+ * 本机手里那份只是渲染缓存,丢了也不要紧,拉一次就回来。
+ */
+const PREFERENCE_SLICES = ['settings', 'diag', 'pacing'] as const
+
+/** 只带偏好分片的载荷(首传才带整档) */
+function buildPreferencePayload(): Record<string, unknown> {
+  const all = buildExportPayload().data as Record<string, unknown>
+  const thin: Record<string, unknown> = {}
+  for (const id of PREFERENCE_SLICES) {
+    const slice = all[id]
+    if (slice !== undefined) thin[id] = slice
+  }
+  return thin
+}
+
 /** 同步锚点:本机上次对齐到的云端 updatedAt。独立键,不进 PERSISTED_STORES(清档不该清掉它) */
 const SYNC_META_KEY = 'yunyin.syncMeta'
 
@@ -208,7 +226,12 @@ export async function pushCloudSave(manual = false): Promise<PushOutcome> {
         syncNotice.value = { text: '已接续云端进度,恢复自动上传', at: Date.now() }
       }
     }
-    const payload = buildExportPayload()
+    /*
+     * 首传(base=0 且云端无档)要带整档建档 —— 服务端还不知道这号的名字/灵根/难度。
+     * 一旦对齐过,上传的就只有偏好三片:进度归服务端,本机不再是权威副本。
+     */
+    const firstBuild = readBase() === 0
+    const payload = firstBuild ? buildExportPayload() : { data: buildPreferencePayload() }
     const profile = buildProfileSnapshot()
     const res = await cloudApi.putSave({
       version: SAVE_VERSION,

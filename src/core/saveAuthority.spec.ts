@@ -171,14 +171,28 @@ describe('数值权威化 · 修为与资源上限', () => {
     expect(num(stone)).toBeLessThan(1e100)
     expect(report.corrections.some(c => c.path === 'resources.spiritStone')).toBe(true)
     expect(report.notes.join(' ')).toContain('灵石')
-    // 有台账进项时按「基线 + 进项」放行:卖装攒下的合法余额不再被夹
+    /*
+     * 有台账进项时按「基线 + 进项」放行:卖装攒下的合法余额不再被夹(1.77.0)。
+     * 但台账只证明「这笔钱有复算过的出处」,不证明「这批货有出处」——
+     * 改包把一万枚丹写进档再走卖出 op,每一笔复算都合法。所以进项另有窗口量级上界(1.78.0):
+     * 合理量级照放,天文数字压回。见下一条同源判据。
+     */
     const credited = run(next, {
+      prev: baseSave(),
+      prevRealmIndex: 0,
+      creditStone: { m: 1, e: 7 }
+    })
+    const creditedStone = (credited.data.resources as Record<string, unknown>).spiritStone as GNum
+    expect(num(creditedStone)).toBeGreaterThanOrEqual(1e7)
+    // 天文数字的「台账进项」不再原样放行:这是洗钱链的最后一环
+    const absurd = run(next, {
       prev: baseSave(),
       prevRealmIndex: 0,
       creditStone: { m: 1, e: 100 }
     })
-    const creditedStone = (credited.data.resources as Record<string, unknown>).spiritStone as GNum
-    expect(num(creditedStone)).toBeGreaterThanOrEqual(1e100)
+    const absurdStone = (absurd.data.resources as Record<string, unknown>).spiritStone as GNum
+    expect(num(absurdStone)).toBeLessThan(1e100)
+    expect(absurd.notes.join(' ')).toContain('进项')
   })
 
   it('灵草与杂项资源同步收口', () => {

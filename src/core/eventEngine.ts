@@ -31,6 +31,7 @@ import { useCultivationStore } from '@/stores/cultivation'
 import { useAdventureStore } from '@/stores/adventure'
 import { add } from '@/utils/gnum'
 import { useQuestsStore } from '@/stores/quests'
+import { reportAction } from './remoteAction'
 
 const MATERIAL_NAMES = { herb: '灵草', ore: '玄铁', page: '功法残页', dust: '器灵尘', wudao: '悟道点' } as const
 
@@ -308,6 +309,11 @@ export async function resolveEventChoice(
     const isDefault = def.choices[choiceIdx]?.isDefault ?? false
     recordFortuneChoice(def.id, isDefault ? 'leave' : 'take')
   }
+  /*
+   * 1.78.0:际遇落在服务端那条链上。
+   * 无头环境(服务端跑离线自动结算)由 remoteAction 的 window 守卫拦住,不会再发一次。
+   */
+  if (!opts.silent) reportAction('event_choice', { index: choiceIdx })
   return { outcomeText: outcome.text, lines }
 }
 

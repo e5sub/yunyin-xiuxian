@@ -540,6 +540,15 @@ export interface EmailCodeResp {
 const REQUEST_TIMEOUT_MS = 20_000
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  /*
+   * 服务端(vendor bundle,Node ESM)里不发起任何网络请求。
+   * 判据用 `import.meta.env` 是否存在,而不是 `typeof window`:
+   * 浏览器与 vitest 都有 env(测试要 mock fetch),只有 esbuild 打出来的 server/vendor/*.mjs 没有。
+   * 不挡的话,服务端跑结算时 core 里那些 `void cloudApi.economyOp(...)` 会真的往 API_BASE
+   * 打一串无凭证请求 —— 白白多一条账,还污染服务端日志。
+   * core 里的调用点基本都 `.catch(() => {})` 兜过,这里抛错只是把那条路堵死。
+   */
+  if (viteEnv() === undefined) throw new CloudError('服务端不发起网络请求')
   const auth = useAuthStore()
   // 记下本次请求实际带的 token:改密/重登会换 token,在途旧请求回来时 401 只代表
   // 「这枚旧 token 失效了」,不该把已经换上新凭证的会话整条踢下线(1.62.0)
@@ -784,6 +793,17 @@ export const cloudApi = {
     payload: Record<string, unknown>
   ): Promise<{ ok: boolean; reason?: string; stone?: { m: number; e: number } }> =>
     request('POST', `/economy/${encodeURIComponent(op)}`, payload),
+  /**
+   * 动作结算(1.78.0):吃丹/炼丹/际遇/秘境/熔炉/分解/卖出/兑换/装配的服务端执行入口。
+   * 服务端在云档上跑客户端同一份结算代码,回传改动分片(键级);ok=false 时本地那次预测须整体作废。
+   */
+  actionOp: (
+    payload: { kind: string } & Record<string, unknown>
+  ): Promise<{ ok: boolean; reason?: string; slices?: Record<string, Record<string, unknown>>; payload?: unknown }> =>
+    request('POST', '/action', payload),
+  /** 动作被拒后的重对齐:取云档完整分片覆盖本地(低频,只在预测作废时用) */
+  actionResync: (): Promise<{ ok: boolean; slices: Record<string, unknown> | null }> =>
+    request('GET', '/action/resync'),
   /** 法宝/器魂签发(1.58.1):入台账后上传才不会在验源时被移除 */
   claimLootExtras: (payload: {
     artifacts?: readonly string[]

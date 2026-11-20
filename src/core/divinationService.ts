@@ -12,6 +12,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { gameNow } from './enginePause'
 import { cutCount } from './spendRate'
+import { reportAction } from './remoteAction'
 
 export interface DivinationOutcome {
   ok: boolean
@@ -48,5 +49,7 @@ export function askDivination(rand: RandomService = rng): DivinationOutcome {
     castAt: now,
     expiresAt: now + readingMinutes(reading) * 60_000
   })
+  // 1.78.0:卦象由服务端掷(客户端只发「我要问卦」),回传的补丁会覆盖本地这一卦
+  reportAction('divination')
   return { ok: true, reading }
 }

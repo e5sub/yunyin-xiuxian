@@ -22,7 +22,8 @@ const ENTRY_POINTS = [
   'src/core/apprenticeService.ts',
   'src/core/salvage.ts',
   'src/core/daoCredit.ts',
-  'src/core/economyOps.ts'
+  'src/core/economyOps.ts',
+  'src/core/actionOps.ts'
 ]
 
 await build({
@@ -51,6 +52,8 @@ const EXPECTED = {
   'daoCredit.mjs': ['daoMarkCeil'],
   // 经济 op 复算(1.77.0):坊市卖出/悬赏/巡游/成就任务/连胜/秘境的灵石进项按表复算
   'economyOps.mjs': ['resolveEconomyOp'],
+  // 动作结算(1.78.0):吃丹/炼丹/际遇/秘境/熔炉/分解/卖出/兑换/装配的服务端执行入口
+  'actionOps.mjs': ['resolveActionFromSlices'],
   'saveSanitize.mjs': ['sanitizeSaveSlices'],
   'saveAuthority.mjs': ['enforceSaveAuthority'],
   'profileRecompute.mjs': ['snapshotFromSlices', 'lootEnvFromSlices'],

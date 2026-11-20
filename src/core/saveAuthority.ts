@@ -505,13 +505,35 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
           : stoneCap > 0
             ? gnMin(gn(stoneCap), grown)
             : grown
-        const credit = gnumOf(input.creditStone) ?? gnZero()
+        const creditRaw = gnumOf(input.creditStone) ?? gnZero()
+        /*
+         * 台账进项的**单窗口上界**(1.78.0):台账只保证「这笔钱有复算过的出处」,
+         * 不保证「这批货有出处」。丹药没有发放台账,改包把某味丹写成一万枚、
+         * 再走坊市卖出 op,每一笔复算都合法 —— 钱就这样被洗干净了。
+         *
+         * 上界按「本境界满产 1440 小时」与「本窗口产速 × 160」取大者:
+         * 卖一背包装备、领一批悬赏/秘境/成就奖励都在其内(实测量级远低于此),
+         * 而「一次把一万枚丹卖光」这种量级攻击会被压回。模型给不出产速(stoneCap=0)时不设限 ——
+         * 与全模块「模型没有产出就不裁」的边界一致,不拿 0 当上限把人清零。
+         */
+        const creditCeilValue = Math.max(
+          stoneCap * 2,
+          stoneIncome * elapsedHours * RESOURCE_CATCHUP_MULT * 20
+        )
+        const credit = stoneCap > 0 ? gnMin(creditRaw, gn(creditCeilValue)) : creditRaw
         const spendG = input.pendingSpend !== undefined ? gnumOf({ m: input.pendingSpend.m, e: input.pendingSpend.e }) : null
         const ceil = gnMax(gnZero(), sub(add(base, credit), spendG ?? gnZero()))
         if (gt(curStone, ceil)) {
+          const clipped = gt(creditRaw, credit)
           corrections.push({ path: 'resources.spiritStone', before: nextRes.spiritStone, after: { ...ceil } })
           nextRes.spiritStone = { ...ceil }
-          notes.push(freshUpload ? '灵石超本境界持有上限' : '灵石超本窗口可增长量(含台账进项)')
+          notes.push(
+            clipped
+              ? `灵石进项超本窗口上限(台账 ${creditRaw.m}e${creditRaw.e} 压到 ${creditCeilValue.toExponential(2)})`
+              : freshUpload
+                ? '灵石超本境界持有上限'
+                : '灵石超本窗口可增长量(含台账进项)'
+          )
         }
       }
       const smallFields = ['ore', 'page', 'dust', 'wudao'] as const

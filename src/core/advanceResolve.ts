@@ -30,17 +30,6 @@ import { useResourcesStore } from '@/stores/resources'
 import { useCultivationStore } from '@/stores/cultivation'
 import { useDongfuStore } from '@/stores/dongfu'
 import { useAdventureStore } from '@/stores/adventure'
-import { useInventoryStore } from '@/stores/inventory'
-import { useQuestsStore } from '@/stores/quests'
-import { useSettingsStore } from '@/stores/settings'
-import { useLoadoutsStore } from '@/stores/loadouts'
-import { useEndgameStore } from '@/stores/endgame'
-import { useLoreStore } from '@/stores/lore'
-import { useMarketStore } from '@/stores/market'
-import { useApprenticeStore } from '@/stores/apprentice'
-import { useBountyStore } from '@/stores/bounty'
-import { usePacingTelemetry } from '@/stores/pacingTelemetry'
-import { useDiagStore } from '@/stores/diag'
 import { expAccrualBudget } from './saveAuthority'
 import { tickExploration } from './exploration'
 import { settleSuppressedRegions } from './suppress'
@@ -49,32 +38,7 @@ import { settleOfflineOnStores } from './offline'
 import type { OfflineSummary } from '@/types'
 import { rolloverDailyIfNeeded, checkStateAchievements } from './progress'
 import { snapshotFromActiveStores, type ProfileSnapshot } from './profileRecompute'
-
-/** 进程内水合所用的分片清单 = utils/storage 的 PERSISTED_STORES(17 片);ui 不持久化,不进表 */
-type AnyStore = { $patch: (p: unknown) => void; $state: unknown }
-const SLICE_FACTORIES: readonly (readonly [string, () => AnyStore])[] = [
-  ['game', useGameStore],
-  ['player', usePlayerStore],
-  ['resources', useResourcesStore],
-  ['inventory', useInventoryStore],
-  ['cultivation', useCultivationStore],
-  ['dongfu', useDongfuStore],
-  ['adventure', useAdventureStore],
-  ['quests', useQuestsStore],
-  ['settings', useSettingsStore],
-  ['loadouts', useLoadoutsStore],
-  ['endgame', useEndgameStore],
-  ['lore', useLoreStore],
-  ['market', useMarketStore],
-  ['apprentice', useApprenticeStore],
-  ['bounty', useBountyStore],
-  ['pacing', usePacingTelemetry],
-  ['diag', useDiagStore]
-]
-
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
+import { SLICE_FACTORIES, diffSlices, isPlainObject, stateClone } from './sliceStores'
 
 function numOf(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0
@@ -88,32 +52,6 @@ function gnumOf(v: unknown): { m: number; e: number } | null {
   const e = numOf(o.e)
   if (!Number.isFinite(m) || !Number.isFinite(e)) return null
   return { m, e }
-}
-
-function stateClone(): Record<string, Record<string, unknown>> {
-  const out: Record<string, Record<string, unknown>> = {}
-  for (const [id, factory] of SLICE_FACTORIES) {
-    out[id] = JSON.parse(JSON.stringify(factory().$state)) as Record<string, unknown>
-  }
-  return out
-}
-
-/** 顶层键级 diff:值按 JSON 比较,嵌套结构整块给(与突破/上传 corrections 的口径一致) */
-function diffSlices(
-  before: Record<string, Record<string, unknown>>,
-  after: Record<string, Record<string, unknown>>
-): Record<string, Record<string, unknown>> {
-  const out: Record<string, Record<string, unknown>> = {}
-  for (const id of Object.keys(before)) {
-    const b = before[id]!
-    const a = after[id]!
-    const fields: Record<string, unknown> = {}
-    for (const key of Object.keys(a)) {
-      if (JSON.stringify(b[key]) !== JSON.stringify(a[key])) fields[key] = a[key]
-    }
-    if (Object.keys(fields).length > 0) out[id] = fields
-  }
-  return out
 }
 
 /* ---------------- 共享推进:客户端预测与服务端权威走同一份生产代码 ---------------- */

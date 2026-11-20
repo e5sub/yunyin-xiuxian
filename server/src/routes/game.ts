@@ -8,7 +8,7 @@
  * 键级 diff 回传。客户端本地推演只作显示预测,不再权威。
  *
  * 与 PUT /save 共用 `save:<uid>` 锁(读整档 → 打补丁 → 整档写回,交错会互相顶掉)。
- * updated_at 故意不动:客户端同步锚点与冲突判定不受心跳影响。
+ * updated_at 随每次推进前进:它是重启后 dt 的兜底锚点(1.78.0 起客户端不再用它判冲突)。
  *
  * 台账:推进内签发的装备/法宝在回传前补进 loot_ledger 与装备状态台账 ——
  * 服务端自己发的件自己记账,上传验源才不会把它们当无主之件移除。
@@ -19,8 +19,7 @@ import { requireAuth } from '../auth.js'
 import { metricsOf, syncProfileFromData } from './save.js'
 import { loadClientModule } from '../clientVendor.js'
 import { withKeyLock } from '../mutex.js'
-import { recordLoot } from '../lootLedger.js'
-import { recordEquipStatesFromItems } from '../equipLedger.js'
+import { heldKeys, syncNewLoot } from '../lootSync.js'
 
 const SOURCE_MODULE = '../../../src/core/advanceResolve'
 const VENDOR_FILE = 'advanceResolve'
@@ -67,23 +66,6 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 function sliceOf(data: Record<string, unknown>, id: string): Record<string, unknown> {
   const v = data[id]
   return isPlainObject(v) ? v : {}
-}
-
-/** 提取分片里的物件键:行囊装备取 uid,法宝取 defId(与台账键同口径) */
-function heldKeys(data: Record<string, unknown>): { equips: string[]; artifacts: string[] } {
-  const inv = sliceOf(data, 'inventory')
-  const equips: string[] = []
-  const artifacts: string[] = []
-  const items = Array.isArray(inv.items) ? inv.items : []
-  for (const it of items) {
-    if (isPlainObject(it) && typeof it.uid === 'string') equips.push(it.uid)
-  }
-  const arts = Array.isArray(inv.artifacts) ? inv.artifacts : []
-  for (const a of arts) {
-    if (typeof a === 'string') artifacts.push(a)
-    else if (isPlainObject(a) && typeof a.defId === 'string') artifacts.push(a.defId)
-  }
-  return { equips, artifacts }
 }
 
 export const gameRouter = express.Router()
@@ -151,21 +133,11 @@ gameRouter.post('/game/advance', requireAuth, (req: Request, res: Response) => {
 
     // 台账补记:本窗签发的新物件(行囊 diff)入台账;记账失败整体回滚为不回包,
     // 客户端留在本地预测,下一拍重来 —— 宁可不发,不带无账之件出闸
-    const afterKeys = heldKeys(data)
-    const beforeEquip = new Set(beforeKeys.equips)
-    const beforeArt = new Set(beforeKeys.artifacts)
-    const newEquips = afterKeys.equips.filter(k => !beforeEquip.has(k))
-    const newArts = afterKeys.artifacts.filter(k => !beforeArt.has(k))
-    if (newEquips.length > 0 || newArts.length > 0) {
-      if (newEquips.length > 0) await recordLoot(userId, newEquips, 'advance')
-      if (newArts.length > 0) await recordLoot(userId, newArts, 'advance', 'artifact')
-      if (newEquips.length > 0) {
-        const inv = sliceOf(data, 'inventory')
-        const items = (Array.isArray(inv.items) ? inv.items : []).filter(
-          it => isPlainObject(it) && typeof it.uid === 'string' && newEquips.includes(it.uid)
-        ) as Array<Record<string, unknown>>
-        await recordEquipStatesFromItems(userId, items)
-      }
+    try {
+      await syncNewLoot(userId, data, beforeKeys, 'advance')
+    } catch {
+      res.status(500).json({ error: '签发记账失败,请重试' })
+      return
     }
 
     await upsertByPk('saves', {
@@ -173,7 +145,9 @@ gameRouter.post('/game/advance', requireAuth, (req: Request, res: Response) => {
       version: row.version,
       data: JSON.stringify(data),
       started: 1,
-      updated_at: row.updated_at
+      // 推进时间锚点的重启兜底就是这个字段(见上面 anchor 的取法);
+      // 客户端已不再用它做冲突判定(1.78.0 抛弃存档后没有「谁的档更新」这回事)
+      updated_at: now
     })
     lastAdvanceAt.set(userId, now)
     // profiles 跟着推进结果走(复算快照;失败不动,下次上传按存档重算)

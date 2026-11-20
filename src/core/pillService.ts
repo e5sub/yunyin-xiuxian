@@ -25,6 +25,7 @@ import { craftOkToast, craftShortToast, craftUnknownToast, pillGoneToast, pillTa
 import { treasureOf } from '@/ui/treasureCeremony'
 import type { GNum } from '@/types'
 import { cutCount, cutGNum } from './spendRate'
+import { reportAction } from './remoteAction'
 
 /** 服用一枚丹药。quiet=true 供批量服丹:逐枚结算照旧,提示与音效由批量层合为一条。 */
 export function usePill(id: string, quiet = false): boolean {
@@ -81,6 +82,8 @@ export function usePill(id: string, quiet = false): boolean {
   if (!quiet) {
     playSfx('success')
     ui.toast(pillTakenToast(def.name, lines.join(',')), 'success')
+    // 1.78.0:服用由服务端在云档上执行(本地这次只是显示预测,服务端回传的补丁会覆盖它)
+    reportAction('pill_use', { id, count: 1 })
   }
   return true
 }
@@ -106,6 +109,8 @@ export function usePillBatch(id: string, count: number): number {
   if (eaten > 0) {
     playSfx('success')
     ui.toast(`连服 ${eaten} 枚「${name}」`, 'success')
+    // 批量只报一次:服务端按 count 复算并连服同样枚数,回传的补丁覆盖本地预测
+    reportAction('pill_use', { id, count: eaten })
   } else {
     ui.toast(pillGoneToast(), 'warn')
   }
@@ -281,6 +286,8 @@ export function craftPill(id: string, quiet = false): CraftOutcome {
     if (!quiet) {
       playSfx('fail')
       ui.toast('炸炉', 'warn')
+      // 炸炉也料照赔:服务端要按同一份配方复算这笔支出,否则本地少掉的料会被当成改包
+      reportAction('pill_craft', { id, count: 1 })
     }
     return { ok: false, count: 0 }
   }
@@ -297,6 +304,7 @@ export function craftPill(id: string, quiet = false): CraftOutcome {
     // 开炉开出顶档(神品 / 道品)那一炉,与拾得同办仪典 —— 自炼得来的更该被看见
     const treasure = treasureOf({ kind: 'pill', pill: def })
     if (treasure) ui.showTreasure(treasure)
+    reportAction('pill_craft', { id, count: 1 })
   }
   return { ok: true, count: 1 + extra }
 }
@@ -330,6 +338,7 @@ export function craftPillBatch(id: string, count: number): { rounds: number; mad
   } else {
     playSfx('success')
     ui.toast(`连炼 ${rounds} 炉「${name}」:成 ${made} 枚${failed > 0 ? `,炸 ${failed} 炉` : ''}`, failed > 0 ? 'warn' : 'success')
+    reportAction('pill_craft', { id, count: rounds })
   }
   return { rounds, made, failed }
 }

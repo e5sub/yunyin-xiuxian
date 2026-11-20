@@ -39,8 +39,6 @@ const HISTORY_KEEP_MAX = 96
 const HISTORY_MIN_GAP_MS = 10 * 60_000
 /** 历史留存上限(天) */
 const HISTORY_TTL_MS = 7 * 24 * 3_600_000
-/** 客户端回传的 baseUpdatedAt 与服务端值的容差:上一次写入成功但响应丢了不算冲突 */
-const CONFLICT_TOLERANCE_MS = 2_000
 /** 同一账号两次写档的最小间隔:客户端自动上传最快 3 秒一推,限速防改包刷写档接口 */
 const WRITE_MIN_GAP_MS = 2_000
 
@@ -114,6 +112,13 @@ const REALM_INDEX_MAX = 3_000
 /** 快照境界与存档境界允许的偏差:快照与存档同刻生成,差超过一个大境界即视为被改 */
 const REALM_SNAP_TOLERANCE = 200
 
+/**
+ * PUT /save 在云端已有档时**只接受**这三片的替换(1.78.0「抛弃存档」)。
+ * 它们的共同点:不参与战力、不参与经济、不构成任何玩法进度的来源 ——
+ * 换设备要跟着走的只有偏好与遥测。
+ */
+const PREFERENCE_SLICES = ['settings', 'diag', 'pacing'] as const
+
 /** 客户端存档结构版本(src/utils/storage.ts 的 SAVE_VERSION):上传版本超过它即拒收。
  *  两侧一致性由 saveVersionSync.spec 钉住 —— 改客户端版本必须同步改这里。 */
 const CLIENT_SAVE_VERSION = 2
@@ -123,6 +128,47 @@ const lastWriteAt = new Map<number, number>()
 
 function finite(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v)
+}
+
+/**
+ * 服务端独占字段(1.78.0):这些值的**唯一写入口**是 POST /api/action
+ * (服务端在云档上跑结算,见 core/actionOps),客户端上传里出现的差异只可能是改包。
+ *
+ * 为什么只挑这三项:
+ *   - `player.divination`:卦象是一条 StatMods(战力/产出乘区),此前由客户端掷完直写。
+ *   - `endgame.souls / equippedSouls`:器魂没有签发台账,改包往数组里塞几枚顶阶魂
+ *     就是一条无出处的永久战力。凝炼/装配/散去都已走动作端点。
+ * 其余字段仍走 saveAuthority 的窗口钳与各本台账 —— 它们的合法增量路径
+ * (坊市成交、领取奖励、弟子差事)还在客户端,不能一刀切。
+ */
+const SERVER_OWNED_FIELDS: Record<string, readonly string[]> = {
+  player: ['divination'],
+  endgame: ['souls', 'equippedSouls']
+}
+
+function objAt(v: unknown): Record<string, unknown> | null {
+  return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null
+}
+
+/** 以云档(上一份落库的档)覆盖这些字段;上一份档里没有该键时跳过(老档兼容,不拿「无」清空) */
+function pinServerOwned(
+  data: Record<string, unknown>,
+  prev: Record<string, unknown> | null
+): string[] {
+  const pinned: string[] = []
+  if (prev === null) return pinned
+  for (const [sliceId, keys] of Object.entries(SERVER_OWNED_FIELDS)) {
+    const cur = objAt(data[sliceId])
+    const old = objAt(prev[sliceId])
+    if (cur === null || old === null) continue
+    for (const key of keys) {
+      if (!(key in old)) continue
+      if (JSON.stringify(cur[key]) === JSON.stringify(old[key])) continue
+      cur[key] = old[key]
+      pinned.push(`${sliceId}.${key}`)
+    }
+  }
+  return pinned
 }
 
 /**
@@ -357,6 +403,55 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       }
     }
     /*
+     * ---------- 「抛弃存档」(1.78.0) ----------
+     * 云端已有档时,PUT /save **不再写入任何进度**。
+     *
+     * 为什么:此前客户端每 20 秒把整档推上来,服务端再逐字段钳 —— 钳制的本质是
+     * 「允许一段增量」,于是改包后分几次上传,每一段都落在窗口余量内,慢慢堆也能堆出
+     * 改包的效果。1.78.0 把执行搬上服务端之后(/api/game/advance 与 /api/action 直接在
+     * 云档上跑同一份结算代码),客户端手里那副本就只是**渲染缓存**,不再是进度载体。
+     *
+     * 所以这里只做一件事:把设备偏好三片(settings / diag / pacing)换成本机的。
+     * 其余分片一律保留云档现值 —— 客户端传什么都不作数,「存档」这个概念到此结束。
+     *
+     * updated_at 故意不动:advance 的重启兜底拿它当时间锚点,在这里顶一下会把
+     * 两次心跳之间的产出算丢。
+     */
+    if (old !== undefined) {
+      const incoming = objAt(body.data)
+      if (incoming === null) {
+        res.status(400).json({ error: '存档数据缺失' })
+        return
+      }
+      const merged: Record<string, unknown> = { ...(prevData ?? {}) }
+      for (const id of PREFERENCE_SLICES) {
+        const slice = objAt(incoming[id])
+        if (slice !== null) merged[id] = slice
+      }
+      let prefJson: string
+      try {
+        prefJson = JSON.stringify(merged)
+      } catch {
+        res.status(400).json({ error: '存档不可序列化' })
+        return
+      }
+      if (prefJson.length > 8 * 1024 * 1024) {
+        res.status(413).json({ error: '存档过大' })
+        return
+      }
+      await upsertByPk('saves', {
+        user_id: req.user!.id,
+        // 版本只认云档里那份:客户端报的 version 不参与(毒化版本号拉不回档的老坑)
+        version: old.version,
+        data: prefJson,
+        started: metricsOf(prefJson).started ? 1 : 0,
+        updated_at: old.updated_at
+      })
+      res.json({ ok: true, updatedAt: old.updated_at, corrections: [], preferencesOnly: true })
+      return
+    }
+
+    /*
      * 落库前归一化:野装备 id、超品阶、超词条数、超强化等级、超满级功法、坏大数指数、
      * 境界越界 —— 全部按客户端读档自愈的同一套判据修平再进库。
      * 归一化失败(模块加载不了/分片畸形到链路抛错)按原样落库:加固环节不能变成拒收存档。
@@ -388,10 +483,9 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
      * 只认「上一次已经落库的档」,不认本次上传 —— 否则先传一个 count=1e6 就把基线毒化了。
      * 播种值加 1000 的封顶:超过这个数本来就不是玩出来的。
      */
-    let prevRebirths = prevProfileRow?.rebirths ?? 0
-    if (prevRebirths === 0 && old !== undefined) {
-      prevRebirths = Math.min(1000, rebirthsOf(old.data))
-    }
+    // 走到这里的只可能是首传(云端有档的已在上面的「抛弃存档」分支返回并落库偏好)。
+    // 首传没有旧档可播种,世号基线就取 profiles 现值。
+    const prevRebirths = prevProfileRow?.rebirths ?? 0
     // 上次存档后成交、尚未在档里体现的支出:从灵石可增长量里扣(见 core/saveAuthority)
     // 坊市成交与炼器料耗两本账合成一份:两处都是「扣款在客户端,服务端只认账」
     const spend = await pendingSpend(req.user!.id)
@@ -427,13 +521,10 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       prev: prevData,
       next: normalizedData,
       prevRealmIndex: prevProfileRow?.realm_index ?? 0,
-      elapsedMs: old === undefined ? 0 : Math.max(0, now - old.updated_at),
-      /*
-       * 1.67.0:云端**已有**上次的档时,「上次的档里没有某一栏」不能按「没基线」放行 ——
-       * 那是删片洗基线的形状(删掉 resources 传一次,再传满值就能每次顶满上限)。
-       * 真首传(old 不存在)仍按持有上限收,存量档兼容。
-       */
-      seenBefore: old !== undefined,
+      // 首传没有时间基线:不给「本窗口可产出」的额度,只按持有上限收
+      elapsedMs: 0,
+      // 首传即存量兼容路径(按持有上限收):新号第一份档不该被打回,但也进不了顶阶
+      seenBefore: false,
       // 1.57.0+ 客户端标记:境界只认 profiles(唯一写入口是突破 API),上传里的 major/sub 不采信。
       // 老客户端不带标记,沿用「付得起」预算判据 —— 存量客户端与自建部署的兼容口。
       realmAuthoritative: body.realmAuth === 2,
@@ -444,7 +535,7 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       // 通关道源(1.74.1):本次新增的通关道痕折出的额度,见 server/src/daoCredit
       creditDao: daoCredit,
       // 灵石进项(1.77.0):上次落库之后 op 记账的进项合计,放行窗口钳(见 server/src/stoneLedger)
-      creditStone: await sumStoneCreditsSince(req.user!.id, old === undefined ? 0 : old.updated_at),
+      creditStone: await sumStoneCreditsSince(req.user!.id, 0),
       pendingSpend: {
         m: spend.m + forgeSpend.stone.m + progressSpend.stone.m + sectSpend.stone.m,
         e: spend.e + forgeSpend.stone.e + progressSpend.stone.e + sectSpend.stone.e,
@@ -458,6 +549,9 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
     if (authority !== null) {
       normalizedData = authority.data as Record<string, unknown>
     }
+
+    // 服务端独占字段:只认云档(上一份落库的档),客户端上传的差异在这里被顶回
+    const pinned = pinServerOwned(normalizedData, prevData)
 
     /*
      * 装备验源(1.58.0 掉落服务端权威化):行囊每件装备的 uid 须由签发台账(loot_ledger)发出,
@@ -526,29 +620,12 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
       return
     }
 
+    /*
+     * 首传建档。这里**没有**「覆盖已有档」的分支 —— 云端有档的请求已在上面的
+     * 「抛弃存档」处返回(只同步偏好三片)。所以不需要冲突判定、不需要留旧档备份:
+     * 进度不再由客户端副本产生,也就没有「谁的档更新」这回事。
+     */
     const metrics = metricsOf(json)
-    if (old !== undefined) {
-      const existing = metricsOf(old.data)
-      // 保护一:云端已有进度,不许被「未开局」的档覆盖(新设备残档 / 清档后的空档)
-      if (existing.started && !metrics.started) {
-        res.status(409).json({
-          code: 'empty_overwrite',
-          error: '云端已有存档,拒绝用未开局的空档覆盖',
-          updatedAt: old.updated_at
-        })
-        return
-      }
-      // 保护二:客户端声明了它基于哪个版本,与服务端不一致说明别的设备写过
-      if (finite(body.baseUpdatedAt) && old.updated_at > body.baseUpdatedAt + CONFLICT_TOLERANCE_MS) {
-        res.status(409).json({
-          code: 'conflict',
-          error: '云端存档已被其他设备更新',
-          updatedAt: old.updated_at
-        })
-        return
-      }
-      await backupBeforeOverwrite(req.user!.id, old)
-    }
 
     await upsertByPk('saves', {
       user_id: req.user!.id,
@@ -636,13 +713,20 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
         metrics.realmIndex,
         prevProfileRow?.realm_index ?? 0,
         normalized?.touched ?? [],
-        [...(authority?.notes ?? []), ...equipCorrected.map(uid => `装备状态按台账覆盖(${uid})`), ...levelCorrected.map(s => `等级按台账压回:${s}`)]
+        [...(authority?.notes ?? []), ...pinned.map(p => `服务端独占字段按云档覆盖(${p})`), ...equipCorrected.map(uid => `装备状态按台账覆盖(${uid})`), ...levelCorrected.map(s => `等级按台账压回:${s}`)]
       )
     } catch {
       // 留痕失败不影响存档本身
     }
     // corrections 回给客户端:被压回的字段要立刻以服务端值覆盖本地,否则玩家看到的是作弊值
-    res.json({ ok: true, updatedAt: now, corrections: authority?.corrections ?? [] })
+    const corrections: Array<{ path: string; before: unknown; after: unknown }> = [...(authority?.corrections ?? [])]
+    // 服务端独占字段也要回执:客户端本地那份是「预测」,不回执就会一直显示假卦象/假器魂
+    for (const path of pinned) {
+      const [slice, key] = path.split('.')
+      const after = objAt(data[slice ?? ''])?.[key ?? '']
+      corrections.push({ path, before: null, after })
+    }
+    res.json({ ok: true, updatedAt: now, corrections })
   }).catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })

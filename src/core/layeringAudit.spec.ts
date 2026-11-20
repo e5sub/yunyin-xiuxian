@@ -24,6 +24,12 @@ const STORE_IMPORT = /from\s+["']@\/stores\/[A-Za-z]+["']/g;
 /** 允许 import store 的 core 模块点名清单(只许减);名字是含 `.ts` 的文件名 */
 const STATEFUL_CORE = new Set<string>([
   // 权威推进(1.75.0):心跳生产/历练战斗/离线结算的服务端裁决,水合 17 分片必然读 store
+  // 动作结算(1.78.0):服务端在云档上跑客户端同一份结算代码,水合 17 分片是它的前提
+  "actionOps.ts",
+  // 同上:上报与重对齐要按分片找 store(与 engine 的心跳回传同一张表)
+  "remoteAction.ts",
+  // 分片 ↔ store 的唯一清单(advanceResolve / actionOps / engine 三处共用)
+  "sliceStores.ts",
   "advanceResolve.ts",
   "affixTransfer.ts",
   "astronomy.ts",
@@ -107,8 +113,11 @@ const STATEFUL_CORE = new Set<string>([
  *   bagFull 是 inventory 的派生,托管巡检读它才算真满(自算容量必与 store 分叉)。
  * 1.75.0:251 → 280。core/advanceResolve 读 17 分片(水合=推进=diff 的同一张清单),
  *   core/engine 读 12 个新分片(心跳回传的 $patch 要按分片找 store)。
+ * 1.78.0:280 → 293。分片清单抽成 core/sliceStores 单点(actionOps 与 advanceResolve 共用),
+ *   17 处引用从 advanceResolve 搬到这里 —— 处数不变只换了文件;净增来自
+ *   core/actionOps 的动作层要直接读写 player/inventory/cultivation/market/apprentice/adventure。
  */
-const CORE_STORE_SITES = 280;
+const CORE_STORE_SITES = 293;
 /**
  * core 用例里需要 Pinia 的文件数基线(只许减)。
  * 上游 121 + 本仓 autoOpsDaily/gongfaSeats 等新增,合并后以实跑数为准,见本文件底部对账。
@@ -130,7 +139,7 @@ const CORE_STORE_SITES = 280;
  * 1.75.0(+1,136 → 137):advanceResolve.spec —— 从分片水合再推进再 diff,判据就是
  * 「水合后的 store 数值变了多少」,不开真 pinia 测不出来(与 breakthroughResolve 同构)。
  */
-const CORE_PINIA_SPECS = 137;
+const CORE_PINIA_SPECS = 138;
 
 function sources(dir: string): { name: string; text: string }[] {
   return readdirSync(dir)

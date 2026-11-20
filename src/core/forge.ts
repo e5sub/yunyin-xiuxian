@@ -38,6 +38,7 @@ import { useInventoryStore } from '@/stores/inventory'
 import { useLoreStore } from '@/stores/lore'
 import { useDongfuStore } from '@/stores/dongfu'
 import { useUiStore } from '@/stores/ui'
+import { reportAction } from './remoteAction'
 
 /**
  * 强化上限:界基随所在界抬(人间 25、仙界 50……见 data/realms.equipLevelCapOf),
@@ -349,6 +350,8 @@ export function decomposeEquipment(uid: string, opts: { quiet?: boolean } = {}):
   resources.addSmall('dust', gain.dust)
   resources.addStone(gain.stone)
   track('decomposed')
+  // 1.78.0:分解返还(尘/灵石)由服务端按签发台账里的权威投入复算并直接落账
+  if (!opts.quiet) reportAction('salvage', { id: uid })
   if (!opts.quiet) {
     playSfx('success')
     ui.toast(
@@ -382,6 +385,7 @@ export function decomposeBatch(items: readonly EquipmentInstance[]): DecomposeBa
     total.dust += gain.dust
     total.stone = add(total.stone, gain.stone)
   }
+  if (total.count > 0) reportAction('salvage', { ids: items.map(it => it.uid) })
   return total
 }
 

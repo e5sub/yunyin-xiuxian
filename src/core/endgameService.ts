@@ -23,6 +23,7 @@ import { MAX_MAJOR, WORLD_BREAK_MAJOR } from '@/data/realms'
 import { maxTierForMajor } from '@/data/regions'
 import { stoneByTier } from './formulas'
 import { cutGNum } from './spendRate'
+import { reportAction } from './remoteAction'
 import { buildPlayerSnap } from './playerSnap'
 import { detectBuild } from './buildDetect'
 import { perWinModsOf } from './daoDepth'
@@ -102,6 +103,8 @@ export function furnaceConvert(rate: FurnaceRate): number {
   }
   endgame.addDaoSource(daoSource)
   ui.toast(`${rate.name}×${spent} 熔作道源 +${daoSource}`, 'success')
+  // 1.78.0:道源进项由服务端在云档上重算(档位只报资源名,兑换率取服务端数据表)
+  reportAction('furnace', { rate: rate.resource })
   return daoSource
 }
 
@@ -133,6 +136,7 @@ export function furnaceConvertStone(n = 1): boolean {
     want === 1 ? `灵石 ${formatGN(cost)} 熔作道源 +${gained}` : `灵石 ${formatGN(cost)} 熔作道源 +${gained}(${want} 次)`,
     'success'
   )
+  reportAction('furnace_stone', { count: want })
   return true
 }
 
@@ -177,6 +181,7 @@ export function condenseDaoFruit(n = 1): boolean {
     want === 1 ? `${DAO_SOURCE_PER_FRUIT} 缕道源凝作一枚道果` : `${formatGN(total)} 缕道源凝作 ${want} 枚道果`,
     'rare'
   )
+  reportAction('dao_fruit', { count: want })
   return true
 }
 
@@ -466,6 +471,7 @@ export function challengeTrial(trialId: string): ExpeditionResult | null {
     ui.toast(`${trial.name}未竟,止步第 ${report.fightsWon + 1} 战`, 'warn')
   }
   recordMark(trial.id, trial.name, report.cleared, report.totalRounds)
+  reportAction('trial', { id: trialId })
   return {
     title: trial.name,
     report,
