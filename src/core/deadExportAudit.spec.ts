@@ -251,6 +251,10 @@ describe('死导出审计', () => {
 
   /** 骨架空转豁免:运行时模块里只被 spec 用到的导出,每项须写明理由;纯审计模块不进此表 */
   const SPEC_ONLY_ALLOWLIST: Record<string, string> = {
+    isOtherTabSaving:
+      '另一页开合的状态出口:设置页存档段(唯一 UI 消费方)已随 1.76.0 纯网游下线;判定逻辑本身仍在跑(写档事件 + 心跳),口径由 otherTabDetection.spec 守',
+    saveWriteFailure:
+      '写盘失败状态的查询口:设置页存档段(唯一 UI 消费方)已随 1.76.0 纯网游下线;玩家可见面由 App.vue 的 subscribeSaveWriteFailure(toast)承担,状态机由 savePersistence.spec 守',
     weatherDef: '查表原语:运行时用 todayWeather() 直接取对象,按 id 查表服务于数据自检与联动审计',
     reliefKinds: '审计汇总:把灵根的劫型解法通道列出来,供渡劫审计与灵根角色审计读',
     winChanceFromRatio: '审计公式:胜率换算只作审计口径,不进战斗结算',
@@ -268,6 +272,7 @@ describe('死导出审计', () => {
     snapshotFromSlices: '服务端复算入口:server/src/recompute.ts 动态加载本模块跑无头复算(save.ts 反作弊),消费方在 src 之外,审计扫不到;profileRecompute.spec 守其口径',
     sanitizeSaveSlices: '服务端归一化入口:server/src/saveNormalize.ts 动态加载本模块,把上传分片按客户端读档同一套 sanitize 修平后落库,消费方在 src 之外,审计扫不到;saveSanitize.spec 守其口径',
     resolveBreakthroughFromSlices: '服务端权威突破入口:server/src/routes/cultivation.ts 动态加载本模块,从云档无头掷点结算(1.57.0),消费方在 src 之外,审计扫不到;breakthroughResolve.spec 守其口径',
+    resolveAdvanceFromSlices: '服务端权威推进入口:server/src/routes/game.ts 动态加载本模块,心跳生产/历练战斗/离线结算从云档无头推演(1.75.0),消费方在 src 之外,审计扫不到;advanceResolve.spec 守其口径',
     enforceSaveAuthority: '服务端数值权威化入口:server/src/saveAuthority.ts 动态加载本模块,PUT /save 落库前裁决(1.56.0),消费方在 src 之外,审计扫不到;saveAuthority.spec 守其口径',
     resolveForgeFromSlices:
       '服务端炼器裁决入口:server/src/routes/forge.ts 动态加载本模块,从云档分片无头水合后跑同一份纯账层(1.58.3),消费方在 src 之外,审计扫不到;forgeResolve.spec 守其口径',

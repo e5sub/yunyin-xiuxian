@@ -114,13 +114,18 @@ export async function settleOffline(nowMs: number): Promise<OfflineSummary | nul
   if (settling) return null
   settling = true
   try {
-    return await settleOfflineInner(nowMs)
+    return await settleOfflineOnStores(nowMs)
   } finally {
     settling = false
   }
 }
 
-async function settleOfflineInner(nowMs: number): Promise<OfflineSummary | null> {
+/**
+ * 离线结算主体:在「当前已激活的 store」上按 game.lastActiveAt 结算整段离线收益。
+ * 客户端离线路径经 settleOffline(带 settling 重入闸)走这里;
+ * 服务端权威结算(core/advanceResolve)直接调它 —— 闸在调用方(路由按账号锁串行)。
+ */
+export async function settleOfflineOnStores(nowMs: number): Promise<OfflineSummary | null> {
   const game = useGameStore()
   const player = usePlayerStore()
   const resources = useResourcesStore()

@@ -1,14 +1,34 @@
 /** GameEngine 游戏心跳:推进均基于时间戳差值,切后台/休眠/关闭不丢进度 */
 import { gn, mulN } from '@/utils/gnum'
-import { ACTIVE_STAMP_MS, AGE_YEARS_PER_HOUR, OFFLINE_MIN_SECONDS, TICK_MS } from '@/data/constants'
+import {
+  ACTIVE_STAMP_MS,
+  AGE_YEARS_PER_HOUR,
+  OFFLINE_MIN_SECONDS,
+  OFFLINE_MODAL_MIN_SECONDS,
+  TICK_MS
+} from '@/data/constants'
 import { buffDef } from '@/data/buffs'
+import { cloudApi } from '@/services/cloud'
+import { useAuthStore } from '@/stores/auth'
 import { useGameStore } from '@/stores/game'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useDongfuStore } from '@/stores/dongfu'
 import { useCultivationStore } from '@/stores/cultivation'
 import { useAdventureStore } from '@/stores/adventure'
+import { useInventoryStore } from '@/stores/inventory'
+import { useQuestsStore } from '@/stores/quests'
+import { useSettingsStore } from '@/stores/settings'
+import { useLoadoutsStore } from '@/stores/loadouts'
+import { useEndgameStore } from '@/stores/endgame'
+import { useLoreStore } from '@/stores/lore'
+import { useMarketStore } from '@/stores/market'
+import { useApprenticeStore } from '@/stores/apprentice'
+import { useBountyStore } from '@/stores/bounty'
+import { useDiagStore } from '@/stores/diag'
+import { usePacingTelemetry } from '@/stores/pacingTelemetry'
 import { useUiStore } from '@/stores/ui'
+import { advanceOnStores } from './advanceResolve'
 import { tickExploration, stopExploration } from './exploration'
 import { settleOffline, sanitizeOfflineInputs } from './offline'
 import { checkStateAchievements, rolloverDailyIfNeeded } from './progress'
@@ -21,12 +41,48 @@ import { shiftEarlyGameWindows } from './earlyGameService'
 
 const PERIODIC_CHECK_SEC = 30
 
+/** 登录态心跳间隔(秒):服务端权威推进的对账节奏;服务端限速 2 秒,5 秒不撞 */
+const HEARTBEAT_SEC = 5
+
+/** 回传分片 → store:与 core/advanceResolve 的 SLICE_FACTORIES 同一张清单(ui 不持久化,不在内) */
+const SLICE_STORES: Record<string, () => unknown> = {
+  game: useGameStore,
+  player: usePlayerStore,
+  resources: useResourcesStore,
+  inventory: useInventoryStore,
+  cultivation: useCultivationStore,
+  dongfu: useDongfuStore,
+  adventure: useAdventureStore,
+  quests: useQuestsStore,
+  settings: useSettingsStore,
+  loadouts: useLoadoutsStore,
+  endgame: useEndgameStore,
+  lore: useLoreStore,
+  market: useMarketStore,
+  apprentice: useApprenticeStore,
+  bounty: useBountyStore,
+  pacing: usePacingTelemetry,
+  diag: useDiagStore
+}
+
+/** 应用服务端回传的分片补丁(顶层键级):未知分片忽略 */
+function applySlicesToStores(slices: Record<string, Record<string, unknown>>): void {
+  for (const [id, fields] of Object.entries(slices)) {
+    const factory = SLICE_STORES[id]
+    if (factory === undefined) continue
+    ;(factory() as { $patch: (p: unknown) => void }).$patch(fields)
+  }
+}
+
 class GameEngine {
   private timer: number | undefined
   private lastTickAt = 0
   private lastStampAt = 0
   private periodicAccum = 0
   private deathAnnounced = false
+  /** 心跳对账(登录态):自上次成功推进起累计的秒数与在途标记 */
+  private heartAccum = 0
+  private heartInFlight = false
 
   start(): void {
     const now = Date.now()
@@ -41,18 +97,24 @@ class GameEngine {
       // 先翻日再结算离线:跨午夜的离线收益记入"归来之日"的日课
       rolloverDailyIfNeeded()
       if (game.started && game.lastActiveAt > 0) {
-        // 离线结算含装备签发,整段异步;死亡判定在其后串行(结算先加寿元,判死须用加完的数)
-        void settleOffline(now).then(() => {
-          if (game.started) {
-            this.checkDeath()
-            if (usePlayerStore().dead) {
-              this.deathAnnounced = true
-              useUiStore().deathDialog = true
+        if (useAuthStore().loggedIn) {
+          // 登录态(1.75.0):离线收益由服务端按它自己的时间锚点结算,
+          // 本地不再自算 —— 首拍心跳回传归来卷轴与分片补丁,簿记在落账后补做。
+          void this.sendAdvance()
+        } else {
+          // 离线结算含装备签发,整段异步;死亡判定在其后串行(结算先加寿元,判死须用加完的数)
+          void settleOffline(now).then(() => {
+            if (game.started) {
+              this.checkDeath()
+              if (usePlayerStore().dead) {
+                this.deathAnnounced = true
+                useUiStore().deathDialog = true
+              }
+              // 补扫成就:老档/导入档未 track 过的已满足成就当场解锁
+              checkStateAchievements()
             }
-            // 补扫成就:老档/导入档未 track 过的已满足成就当场解锁
-            checkStateAchievements()
-          }
-        })
+          })
+        }
       } else if (game.started) {
         this.checkDeath()
         // 已死存档须重开轮回入口:ui.deathDialog 不持久化,不重开则低境界软锁
@@ -149,7 +211,34 @@ class GameEngine {
     // 否则切后台挂机会比正常游玩更快刷过每日配额(游戏日由 totalPlaySec 推),
     // 与「关掉重开」路径(只盖章不补时长)也不一致。
     let settledOffline = false
-    if (dt > OFFLINE_MIN_SECONDS) {
+    if (useAuthStore().loggedIn) {
+      /*
+       * 登录态(1.75.0):本地只做显示预测(生产数字),战斗/镇压/离线全由服务端裁决,
+       * patch 回填;断网时服务端不回包,本地保持预测值,恢复后对账。
+       * 顿悟与洞府巡游仍是玩家在场时的 UI 弹窗流,留在本地触发(见 advanceResolve 注释)。
+       */
+      void advanceOnStores(dt, now, { exploration: false, suppress: false })
+        .then(() => this.checkDeath())
+        .catch(() => {})
+      this.heartAccum += dt
+      if (dt > OFFLINE_MIN_SECONDS) {
+        // 后台冻结:不本地结算,整段交给服务端按它的锚点补(立刻打一拍心跳)
+        settledOffline = true
+        void this.sendAdvance()
+      } else if (this.heartAccum >= HEARTBEAT_SEC && !this.heartInFlight) {
+        void this.sendAdvance()
+      }
+      // 顿悟与洞府巡游是玩家在场时的 UI 弹窗流:留在客户端触发(奖励走签发漏斗,
+      // 与未登录同一条本地链),服务端推进不代跑(见 advanceResolve 头注)
+      mayTriggerEnlightenment()
+      this.periodicAccum += dt
+      if (this.periodicAccum >= PERIODIC_CHECK_SEC) {
+        this.periodicAccum = 0
+        rolloverDailyIfNeeded()
+        checkStateAchievements()
+        mayTriggerCaveEvent()
+      }
+    } else if (dt > OFFLINE_MIN_SECONDS) {
       // 长时间停摆(休眠/后台冻结)走离线结算;先翻日再结算,同 start。死亡判定在其后串行
       rolloverDailyIfNeeded()
       void settleOffline(now).then(() => this.checkDeath())
@@ -163,6 +252,51 @@ class GameEngine {
       if (!settledOffline) game.addPlayTime((now - this.lastStampAt) / 1000)
       game.stampActive(now)
       this.lastStampAt = now
+    }
+  }
+
+  /**
+   * 服务端权威心跳(1.75.0):报当前修为/灵气与历练会话,应用回传分片。
+   * 失败(断网/服务端不可用)留在本地预测,下一拍重试;在途标记防重入。
+   */
+  private async sendAdvance(): Promise<void> {
+    if (this.heartInFlight) return
+    this.heartInFlight = true
+    this.heartAccum = 0
+    try {
+      const player = usePlayerStore()
+      const resources = useResourcesStore()
+      const adventure = useAdventureStore()
+      const r = await cloudApi.advanceGame({
+        exp: { ...player.exp },
+        qi: resources.qi,
+        session: adventure.session
+      })
+      if (r.ok && r.slices !== undefined) {
+        applySlicesToStores(r.slices)
+        this.afterAuthorityApply()
+      }
+      // 归来卷轴:弹窗门槛与本地结算同一条(OFFLINE_MODAL_MIN_SECONDS),短结算只落账不打扰
+      if (r.offline != null && r.offline.seconds >= OFFLINE_MODAL_MIN_SECONDS) {
+        useUiStore().offlineSummary = r.offline
+        this.afterAuthorityApply()
+      }
+    } catch {
+      // 断网:留在本地预测,下一拍重试
+    } finally {
+      this.heartInFlight = false
+    }
+  }
+
+  /** 权威分片落账后的簿记:死亡判定与成就补扫(与旧离线结算回调同口径) */
+  private afterAuthorityApply(): void {
+    const game = useGameStore()
+    if (!game.started) return
+    this.checkDeath()
+    checkStateAchievements()
+    if (usePlayerStore().dead) {
+      this.deathAnnounced = true
+      useUiStore().deathDialog = true
     }
   }
 

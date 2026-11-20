@@ -14,6 +14,7 @@ const ENTRY_POINTS = [
   'src/core/saveAuthority.ts',
   'src/core/profileRecompute.ts',
   'src/core/breakthroughResolve.ts',
+  'src/core/advanceResolve.ts',
   'src/core/lootGrant.ts',
   'src/core/forgeResolve.ts',
   'src/core/levelResolve.ts',
@@ -51,6 +52,8 @@ const EXPECTED = {
   'saveAuthority.mjs': ['enforceSaveAuthority'],
   'profileRecompute.mjs': ['snapshotFromSlices', 'lootEnvFromSlices'],
   'breakthroughResolve.mjs': ['resolveBreakthroughFromSlices'],
+  // 权威推进(1.75.0):心跳生产/历练战斗/离线结算的服务端裁决入口(advanceOnStores 为 async)
+  'advanceResolve.mjs': ['resolveAdvanceFromSlices', 'advanceOnStores'],
   'lootGrant.mjs': ['grantEquips', 'validateExtraGains', 'marketPriceAt', 'expectedSoulGrade'],
   'forgeResolve.mjs': ['resolveForgeFromSlices'],
   'levelResolve.mjs': ['resolveLevelFromSlices'],

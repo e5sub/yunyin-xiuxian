@@ -9,6 +9,7 @@ import type { SectRole, SectState } from '@/core/sectRules'
 import type { ForgeDetail, ForgeOp, ForgeSpend } from '@/core/forgeResolve'
 import type { LevelDetail, LevelOp, LevelSpend } from '@/core/levelResolve'
 import type { TaskSpoils } from '@/core/apprenticeService'
+import type { OfflineSummary } from '@/types'
 
 export const DEFAULT_API_BASE = 'https://yy.071717.xyz'
 
@@ -710,6 +711,16 @@ export const cloudApi = {
     }
     slices?: Record<string, Record<string, unknown>>
   }> => request('POST', '/cultivation/breakthrough', payload),
+  /**
+   * 服务端权威推进(1.75.0):心跳对账。客户端报当前修为/灵气与历练会话,
+   * 服务端按自己的时间锚点推进生产/战斗/离线结算,回传被改动的分片(键级)。
+   * offline 非 null 表示这一拍按离线结算了,summary 是归来卷轴(客户端沿用既有弹窗)。
+   */
+  advanceGame: (payload: { exp?: unknown; qi?: number; session?: unknown }): Promise<{
+    ok: boolean
+    slices?: Record<string, Record<string, unknown>>
+    offline?: OfflineSummary | null
+  }> => request('POST', '/game/advance', payload),
   saveHistory: (limit = 30): Promise<{ history: SaveHistoryRow[] }> =>
     request('GET', `/save/history?limit=${limit}`),
   restoreSave: (historyId: number): Promise<{ ok: boolean; updatedAt: number }> =>

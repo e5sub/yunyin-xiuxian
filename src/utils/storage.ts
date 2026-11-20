@@ -1,6 +1,7 @@
 /**
- * 存档底层工具 —— localStorage 安全读写 / 导出导入 / 损坏保护
- * 所有落盘内容均经 AES 加密(见 utils/crypto.ts),读取时兼容旧版明文
+ * 存档底层工具 —— 会话缓存 + localStorage 安全读写 / 导出导入 / 损坏保护
+ * 纯网游分层(1.76.0):进度分片只写会话缓存(sessionStorage,关页即清),服务端为唯一权威;
+ * localStorage 只留登录态、设备偏好(settings/diag)与心跳。落盘内容均经 AES 加密(见 utils/crypto.ts)
  */
 
 import type { StateTree } from 'pinia'
@@ -123,6 +124,98 @@ export function accountStorageKey(key: string): string {
   return translateKey(key)
 }
 
+/* ---------------- 纯网游存储分层(1.76.0) ----------------
+ * 进度分片不再落盘:一律写会话缓存(sessionStorage),关页即清、刷新不丢。
+ * 本机磁盘只留:登录态(auth)、设备偏好(settings)、异常留档(diag)与同步锚点(syncMeta)。
+ * 进度的唯一权威在服务端:开机拉云档水合,在线期间心跳对账(1.75.0);断网靠内存态
+ * 继续玩,恢复后照常补推 —— 会话层只是「这一局的缓存」,不是第二权威。
+ * 旧版写在 localStorage 的进度分片从此成为死数据:不再读取,清档时顺带清掉。
+ * Node/测试没有 sessionStorage,退内存 Map(语义一致:进程结束即清)。
+ */
+const SESSION_SLICES: ReadonlySet<string> = new Set(
+  PERSISTED_STORES.filter(id => id !== 'settings' && id !== 'diag')
+)
+
+/** 该分片是否走会话缓存(守卫与测试用:settings/diag 是设备级,仍落 localStorage) */
+export function isSessionSlice(storeId: string): boolean {
+  return SESSION_SLICES.has(storeId)
+}
+
+interface DiskLike {
+  getItem(key: string): string | null
+  setItem(key: string, value: string): void
+  removeItem(key: string): void
+}
+
+/** localStorage 安全壳:逐次 try,私有模式/配额满不炸启动 */
+const LS_DISK: DiskLike = {
+  getItem: key => {
+    try {
+      return localStorage.getItem(key)
+    } catch {
+      return null
+    }
+  },
+  setItem: (key, value) => {
+    try {
+      localStorage.setItem(key, value)
+    } catch {
+      // 存储不可用:丢这一笔(写盘失败告警由 flushSaveWrites 汇总)
+    }
+  },
+  removeItem: key => {
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      // 同上
+    }
+  }
+}
+
+/** 内存盘:Node/测试或会话存储不可用时的退路 */
+const MEMORY_DISK: DiskLike = (() => {
+  const map = new Map<string, string>()
+  return {
+    getItem: key => map.get(key) ?? null,
+    setItem: (key, value) => {
+      map.set(key, value)
+    },
+    removeItem: key => {
+      map.delete(key)
+    }
+  }
+})()
+
+/** 会话盘:逐次懒读全局 —— 必须在调用时取,模块加载期固化会错过 vi.stubGlobal 的替身 */
+function sessionDisk(): DiskLike {
+  try {
+    const ss = (globalThis as { sessionStorage?: Storage | undefined }).sessionStorage
+    if (ss !== undefined && ss !== null) return ss
+  } catch {
+    // 部分隐私模式连访问都抛:按不可用处理
+  }
+  return MEMORY_DISK
+}
+
+/** 分片落在哪块盘:进度/资源等会话分片 → 会话缓存;settings/diag 设备级 → localStorage */
+export function sliceDisk(storeId: string): DiskLike {
+  return isSessionSlice(storeId) ? sessionDisk() : LS_DISK
+}
+
+/** 直读某分片当前盘上的原始密文(绕过 pinia 与待落盘队列;给启动探针用) */
+export function readSliceRaw(storeId: string): string | null {
+  return sliceDisk(storeId).getItem(storageKey(storeId))
+}
+
+/** 从落盘键反查分片 id;非分片键(心跳/主题/非存档键)返回 null */
+function sliceIdOfKey(key: string): string | null {
+  if (!key.startsWith(SAVE_PREFIX)) return null
+  let rest = key.slice(SAVE_PREFIX.length)
+  const scoped = /^u\d+\./.exec(rest)
+  if (scoped !== null) rest = rest.slice(scoped[0].length)
+  return rest
+}
+
 /**
  * 启动初始化:从 auth 分片(设备级键)读出登录账号,定作用域;
  * 已登录而账号命名空间还是空的,把旧的全局档一次性搬进去(升级迁移,搬完删源)。
@@ -138,6 +231,24 @@ export function initAccountScope(): void {
     }
   } catch {
     // auth 读不出按未登录处理:走设备级键,交由路由守卫进登录页
+  }
+  // 会话缓存分片同样按账号隔离:同标签页换号登录后,上一账号的缓存键一律清掉;
+  // 未登录启动(scope 0)则全清 —— 会话盘里不该留着任何无主进度。
+  // 必须在早退**之前**跑:scope 0 恰恰是最需要清的一种情形。
+  // 只动 `yunyin.u<id>.` 形状的键:会话盘里可能有宿主(测试替身/扩展)放的其它键,不碰。
+  try {
+    const ss = (globalThis as { sessionStorage?: Storage | undefined }).sessionStorage
+    if (ss !== undefined && ss !== null) {
+      const mine = accountScope > 0 ? `${SAVE_PREFIX}u${accountScope}.` : null
+      for (let i = ss.length - 1; i >= 0; i -= 1) {
+        const k = ss.key(i)
+        if (k === null || !k.startsWith(SAVE_PREFIX)) continue
+        if (!/^u\d+\./.test(k.slice(SAVE_PREFIX.length))) continue
+        if (mine === null || !k.startsWith(mine)) ss.removeItem(k)
+      }
+    }
+  } catch {
+    // 会话存储不可用:无事可做
   }
   if (accountScope <= 0) return
   // 旧全局档(1.62.0 之前)一次性搬进本账号命名空间:进度分片与云同步锚点同一套搬法
@@ -201,7 +312,10 @@ export function flushSaveWrites(): void {
   const failed: string[] = []
   for (const [key, plain] of pending) {
     try {
-      localStorage.setItem(key, encryptSave(plain))
+      // 会话分片写会话缓存,settings/diag 写 localStorage;键不属于任何分片(理论不可达)按 localStorage 兜底
+      const id = sliceIdOfKey(key)
+      const disk = id !== null ? sliceDisk(id) : LS_DISK
+      disk.setItem(key, encryptSave(plain))
     } catch {
       // 单键失败不阻断其余键
       failed.push(key)
@@ -267,11 +381,8 @@ const THROTTLED_STORAGE = {
       preloadedPlain.delete(key)
       return preloaded
     }
-    try {
-      return localStorage.getItem(k)
-    } catch {
-      return null
-    }
+    const id = sliceIdOfKey(k)
+    return (id !== null ? sliceDisk(id) : LS_DISK).getItem(k)
   },
   /** 扫描期专用:记下已解密的明文,供水合那一次读取复用 */
   preload(key: string, plain: string): void {
@@ -282,12 +393,10 @@ const THROTTLED_STORAGE = {
     if (flushTimer === undefined) flushTimer = setTimeout(flushSaveWrites, SAVE_FLUSH_MS)
   },
   removeItem: (key: string): void => {
-    pending.delete(translateKey(key))
-    try {
-      localStorage.removeItem(translateKey(key))
-    } catch {
-      // 存储不可用时忽略
-    }
+    const k = translateKey(key)
+    pending.delete(k)
+    const id = sliceIdOfKey(k)
+    ;(id !== null ? sliceDisk(id) : LS_DISK).removeItem(k)
   }
 }
 
@@ -420,11 +529,8 @@ function setOtherTab(active: boolean): void {
 const SAVE_SLICE_IDS = new Set<string>(PERSISTED_STORES)
 
 function isSaveSliceKey(key: string): boolean {
-  if (!key.startsWith(SAVE_PREFIX)) return false
-  let rest = key.slice(SAVE_PREFIX.length)
-  const scoped = /^u\d+\./.exec(rest)
-  if (scoped !== null) rest = rest.slice(scoped[0].length)
-  return SAVE_SLICE_IDS.has(rest)
+  const id = sliceIdOfKey(key)
+  return id !== null && SAVE_SLICE_IDS.has(id)
 }
 
 /**
@@ -477,7 +583,9 @@ if (typeof window !== 'undefined') {
       return
     }
     if (isSaveSliceKey(e.key)) {
-      // 见到对面写档就是它此刻还开着的硬证据,记下来给心跳停摆的那段时间兜底
+      // 见到对面写档就是它此刻还开着的硬证据,记下来给心跳停摆的那段时间兜底。
+      // 1.76.0 起进度分片写会话缓存,不触发 storage 事件 —— 这条证据只剩
+      // settings/diag 与升级残留的写入会喂进来;活页判定以心跳为主。
       lastPeerWriteAt = Date.now()
       setOtherTab(true)
     }
@@ -603,8 +711,9 @@ export function preflightScan(): string[] {
   preloadedPlain.clear()
   for (const id of PERSISTED_STORES) {
     const key = storageKey(id)
+    const disk = sliceDisk(id)
     try {
-      const raw = localStorage.getItem(key)
+      const raw = disk.getItem(key)
       if (raw === null) continue
       const plain = readSaveText(raw)
       JSON.parse(plain)
@@ -612,9 +721,9 @@ export function preflightScan(): string[] {
     } catch {
       corrupted.push(id)
       try {
-        const raw = localStorage.getItem(key)
-        if (raw !== null) localStorage.setItem(CORRUPT_PREFIX + key, raw)
-        localStorage.removeItem(key)
+        const raw = disk.getItem(key)
+        if (raw !== null) disk.setItem(CORRUPT_PREFIX + key, raw)
+        disk.removeItem(key)
       } catch {
         // 存储不可用时放弃备份,仅保证游戏可启动
       }
@@ -719,24 +828,26 @@ function normalizeArtifactIds(raw: unknown): string[] {
 /** 本地存档结构升级(在 Pinia 水合之前执行);只有真发生了迁移才回写 */
 export function migrateLocalSchema(): void {
   try {
+    const invDisk = sliceDisk('inventory')
     const invKey = storageKey('inventory')
-    const invRaw = localStorage.getItem(invKey)
+    const invRaw = invDisk.getItem(invKey)
     if (invRaw !== null) {
       const inv = JSON.parse(readSaveText(invRaw)) as Record<string, unknown>
       const migrated = migrateInventorySlice(inv)
       if (migrated !== inv) {
-        localStorage.setItem(invKey, encryptSave(JSON.stringify(migrated)))
+        invDisk.setItem(invKey, encryptSave(JSON.stringify(migrated)))
         // 迁移写回了新形态:扫描时缓存的那份旧明文必须作废,否则水合会把迁移原地撤销
         preloadedPlain.delete(invKey)
       }
     }
+    const resDisk = sliceDisk('resources')
     const resKey = storageKey('resources')
-    const resRaw = localStorage.getItem(resKey)
+    const resRaw = resDisk.getItem(resKey)
     if (resRaw !== null) {
       const res = JSON.parse(readSaveText(resRaw)) as Record<string, unknown>
       const migrated = migrateHerbSlice(res)
       if (migrated !== res) {
-        localStorage.setItem(resKey, encryptSave(JSON.stringify(migrated)))
+        resDisk.setItem(resKey, encryptSave(JSON.stringify(migrated)))
         preloadedPlain.delete(resKey)
       }
     }
@@ -775,13 +886,13 @@ export function buildExportPayload(): ExportPayload {
   for (const id of PERSISTED_STORES) {
     const key = storageKey(id)
     try {
-      // 待落盘队列里的是内存最新态(写盘失败时磁盘还停在旧值),优先于 localStorage
+      // 待落盘队列里的是内存最新态(写盘失败时磁盘还停在旧值),优先于会话缓存
       const plain = pending.get(key)
       if (plain !== undefined) {
         data[id] = JSON.parse(plain)
         continue
       }
-      const raw = localStorage.getItem(key)
+      const raw = sliceDisk(id).getItem(key)
       if (raw !== null) data[id] = JSON.parse(readSaveText(raw))
     } catch {
       // 读不出的分片不阻断整份导出,但必须留名:少装了哪一片要说得出来
@@ -803,7 +914,7 @@ export function collectCorrupted(): Record<string, string> {
   const out: Record<string, string> = {}
   for (const id of PERSISTED_STORES) {
     try {
-      const raw = localStorage.getItem(CORRUPT_PREFIX + storageKey(id))
+      const raw = sliceDisk(id).getItem(CORRUPT_PREFIX + storageKey(id))
       if (raw !== null) out[id] = raw
     } catch {
       // 存储不可用:拿不到就当没有
@@ -860,7 +971,7 @@ export function applyImportPayload(payload: ExportPayload): void {
   const backup = new Map<string, string | null>()
   try {
     for (const id of PERSISTED_STORES) {
-      backup.set(id, localStorage.getItem(storageKey(id)))
+      backup.set(id, sliceDisk(id).getItem(storageKey(id)))
     }
   } catch {
     // 快照读不出时不阻塞,回滚能力降级
@@ -871,7 +982,7 @@ export function applyImportPayload(payload: ExportPayload): void {
     const slice = payload.data[id]
     if (slice === undefined) continue
     try {
-      localStorage.setItem(storageKey(id), encryptSave(JSON.stringify(slice)))
+      sliceDisk(id).setItem(storageKey(id), encryptSave(JSON.stringify(slice)))
     } catch {
       failed.push(id)
     }
@@ -880,8 +991,8 @@ export function applyImportPayload(payload: ExportPayload): void {
   if (failed.length > 0) {
     for (const [id, raw] of backup) {
       try {
-        if (raw === null) localStorage.removeItem(storageKey(id))
-        else localStorage.setItem(storageKey(id), raw)
+        if (raw === null) sliceDisk(id).removeItem(storageKey(id))
+        else sliceDisk(id).setItem(storageKey(id), raw)
       } catch {
         // 回滚尽力而为
       }
@@ -900,9 +1011,11 @@ export function clearAllSave(): void {
   }
   for (const id of PERSISTED_STORES) {
     try {
-      localStorage.removeItem(storageKey(id))
-      // 坏档备份是分片的附属物:不清会让下次导出继续携带陈旧坏档(1.63.0)
-      localStorage.removeItem(CORRUPT_PREFIX + storageKey(id))
+      // 两块盘都清:当前落点(sliceDisk)之外,旧版写在 localStorage 的进度分片是升级残留,顺带清掉
+      sliceDisk(id).removeItem(storageKey(id))
+      sliceDisk(id).removeItem(CORRUPT_PREFIX + storageKey(id))
+      LS_DISK.removeItem(storageKey(id))
+      LS_DISK.removeItem(CORRUPT_PREFIX + storageKey(id))
     } catch {
       // 残留交由下面的兜底处理
     }
@@ -949,6 +1062,21 @@ export function clearAllSave(): void {
       for (const [k, v] of keep) localStorage.setItem(k, v)
     } catch {
       // 存储完全不可用,交由重载后的路由守卫兜底
+    }
+  }
+  // 会话缓存盘同样的兜底:盘里只有本页的分片与坏档备份,出现残留就清掉自己的全部 yunyin.* 键
+  const ssLeftover = PERSISTED_STORES.some(id => SESSION_SLICES.has(id) && sliceDisk(id).getItem(storageKey(id)) !== null)
+  if (ssLeftover) {
+    try {
+      const ss = (globalThis as { sessionStorage?: Storage | undefined }).sessionStorage
+      if (ss !== undefined && ss !== null) {
+        for (let i = ss.length - 1; i >= 0; i -= 1) {
+          const k = ss.key(i)
+          if (k !== null && k.startsWith(SAVE_PREFIX)) ss.removeItem(k)
+        }
+      }
+    } catch {
+      // 会话存储不可用:交由重载后的路由守卫兜底
     }
   }
 }

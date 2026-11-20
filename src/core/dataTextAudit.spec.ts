@@ -417,12 +417,10 @@ describe('文案数值对账 · 视图不手抄数字', () => {
   it('设置页各段随本体迁出,宿主不再自带实现', () => {
     const host = src('../views/SettingsView.vue')
     const pref = src('../components/settings/SettingsPreferenceSection.vue')
-    const save = src('../components/settings/SettingsSaveSection.vue')
     const diag = src('../components/settings/SettingsDiagnosticsSection.vue')
     const about = src('../components/settings/SettingsAboutSection.vue')
     for (const [name, text, marker] of [
       ['偏好段', pref, 'settings.musicOn'],
-      ['存档段', save, 'pushCloudSave('],
       ['诊断段', diag, 'diag.errors'],
       ['关于段', about, 'markReleaseSeen(']
     ] as const) {
@@ -433,6 +431,8 @@ describe('文案数值对账 · 视图不手抄数字', () => {
     expect(host, '宿主不再自己接存档流程').not.toMatch(/resetGame\(|cloudApi\./)
     expect(host, '宿主不再自己摊诊断').not.toContain('diag.errors')
     expect(host, '宿主不再自己开关于浮层').not.toContain('markReleaseSeen(')
+    // 1.76.0 纯网游:存档段整体下线 —— 进度权威在服务端,心跳自动对账,不再有手动上传/恢复入口
+    expect(host, '存档段应已删除,不许以任何形式回流').not.toContain('存档')
   })
 })
 

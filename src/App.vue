@@ -146,7 +146,7 @@
     const auto = await autoRestoreIfNewer()
     if (auto) return
     const newerAt = await probeCloudNewer()
-    if (newerAt !== null) ui.toast('云端存档比本机新,可在「设置 → 存档」中恢复', 'warn')
+    if (newerAt !== null) ui.toast('云端进度比本机新,已暂停上传以免覆盖', 'warn')
     startCloudSync()
     // 门派不进存档分片,须单独拉一次;失败不拦启动(门派页会再试)
     void sect.load()

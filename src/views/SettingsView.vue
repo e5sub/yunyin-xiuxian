@@ -10,9 +10,6 @@
     <SectionTitle title="偏好" />
     <SettingsPreferenceSection />
 
-    <SectionTitle title="存档" />
-    <SettingsSaveSection />
-
     <SectionTitle title="诊断" />
     <SettingsDiagnosticsSection />
 
@@ -30,7 +27,6 @@
   import SettingsAccountSection from '@/components/settings/SettingsAccountSection.vue'
   import SettingsVipSection from '@/components/settings/SettingsVipSection.vue'
   import SettingsPreferenceSection from '@/components/settings/SettingsPreferenceSection.vue'
-  import SettingsSaveSection from '@/components/settings/SettingsSaveSection.vue'
   import SettingsDiagnosticsSection from '@/components/settings/SettingsDiagnosticsSection.vue'
   import SettingsAboutSection from '@/components/settings/SettingsAboutSection.vue'
 </script>

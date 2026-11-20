@@ -126,7 +126,6 @@ describe('二步确认 · 两态同栏同高', () => {
   it('btn-ghost 与 btn-seal 并排时用 grid 两栏,不用 flex + flex-1', () => {
     const files = [
       'components/common/ExitConfirmDialog.vue',
-      'components/settings/SettingsSaveSection.vue',
       'components/inventory/DismantleDialog.vue',
       'components/equipment/EquipmentDetailDialog.vue',
       'views/CelestialView.vue',
@@ -192,7 +191,6 @@ describe('二步确认 · 两态同栏同高', () => {
    */
   it('不带 btn 基类的文字按钮自带触控高度', () => {
     const files = [
-      'components/settings/SettingsSaveSection.vue',
       'components/common/InstallToHomeNotice.vue',
       'views/WelcomeView.vue',
       'views/SoulsView.vue'

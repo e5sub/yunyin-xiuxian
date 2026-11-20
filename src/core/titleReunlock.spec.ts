@@ -16,14 +16,17 @@ import { clearAllSave, flushSaveWrites, storageKey, PERSISTED_STORES } from '@/u
 /** 内存 localStorage */
 function installStorage(): void {
   const disk = new Map<string, string>()
-  vi.stubGlobal('localStorage', {
+  // 1.76.0 起进度分片写会话缓存:两个全局共用同一张假盘
+  const fake = {
     getItem: (k: string) => disk.get(k) ?? null,
     setItem: (k: string, v: string) => void disk.set(k, v),
     removeItem: (k: string) => void disk.delete(k),
     clear: () => disk.clear(),
     key: () => null,
     length: 0
-  })
+  }
+  vi.stubGlobal('localStorage', fake)
+  vi.stubGlobal('sessionStorage', fake)
 }
 
 /** 真 pinia + 真持久化插件 */

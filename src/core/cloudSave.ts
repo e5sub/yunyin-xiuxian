@@ -1,6 +1,6 @@
 /**
  * 存档上云:登录后定时把本地分片推到服务器,登录/启动时拉取云端档覆盖本地。
- * 本地 localStorage 降级为缓存;服务器为权威副本。
+ * 1.76.0 起纯网游:进度分片只进会话缓存(sessionStorage,关页即清),服务器为唯一权威副本。
  * 云端应用与本地导入走同一条校验/迁移/原子写盘链路(core/save.applySavePayload)。
  *
  * 防丢档的三道闸:
@@ -9,7 +9,7 @@
  * 3. 云端存档应用失败时不进空档流程(否则开局 20 秒后空档会把云端原档推平)。
  */
 import { ref } from 'vue'
-import { accountStorageKey, buildExportPayload, SAVE_VERSION, storageKey } from '@/utils/storage'
+import { accountStorageKey, buildExportPayload, readSliceRaw, SAVE_VERSION } from '@/utils/storage'
 import { readSaveText } from '@/utils/crypto'
 import { applySavePayload, reloadGame } from '@/core/save'
 import { snapshotFromActiveStores, type ProfileSnapshot } from '@/core/profileRecompute'
@@ -27,9 +27,13 @@ const SYNC_META_KEY = 'yunyin.syncMeta'
 /** 手动上传成功后解除冲突封锁 */
 export type SyncState = 'idle' | 'ok' | 'error' | 'conflict'
 
-export const syncState = ref<SyncState>('idle')
-export const syncErrorText = ref('')
-export const lastSyncAt = ref(0)
+/*
+ * 同步状态三件套只在本模块内读写:设置页存档段(唯一 UI 消费方)已随 1.76.0 纯网游下线,
+ * 玩家可见的异常改由 syncNotice 一次性提示承担(App.vue 订阅弹 toast)。
+ */
+const syncState = ref<SyncState>('idle')
+const syncErrorText = ref('')
+const lastSyncAt = ref(0)
 /** 一次性提示:core 不直接依赖 ui store,由界面层订阅后弹 toast(每次新建对象,相同文案也会触发) */
 export const syncNotice = ref<{ text: string; at: number } | null>(null)
 
@@ -296,10 +300,11 @@ const CLOCK_SKEW_MS = 120_000
  * 但 5 秒刷盘窗口内磁盘仍是旧值;此刻读取(早于任何 store 水合写回)拿到的是关页时刻。
  */
 function readPersistedLastActive(): number {
+  // 1.76.0 起 game 分片在会话缓存(sessionStorage)里,经 readSliceRaw 按当前分层直读
+  const raw = readSliceRaw('game')
+  if (raw === null) return 0
+  // 盘上是密文,须经 readSaveText 解码(明文旧档/待刷队列同样兼容)
   try {
-    const raw = localStorage.getItem(storageKey('game'))
-    if (raw === null) return 0
-    // 磁盘是密文,须经 readSaveText 解码(明文旧档/待刷队列同样兼容)
     const obj = JSON.parse(readSaveText(raw)) as { lastActiveAt?: unknown }
     return typeof obj.lastActiveAt === 'number' && Number.isFinite(obj.lastActiveAt) ? obj.lastActiveAt : 0
   } catch {

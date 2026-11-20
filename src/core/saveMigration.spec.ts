@@ -21,7 +21,6 @@ import {
   migrateLocalSchema,
   storageKey
 } from '@/utils/storage'
-import { readFileSync } from 'node:fs'
 import { decryptSave, encryptSave } from '@/utils/crypto'
 import { applySavePayload } from './save'
 
@@ -31,14 +30,17 @@ import { usePlayerStore } from '@/stores/player'
 
 function installStorage(): Map<string, string> {
   const disk = new Map<string, string>()
-  vi.stubGlobal('localStorage', {
+  // 1.76.0 起进度分片写会话缓存:两个全局共用同一张假盘,播种/断言口径与旧版一致
+  const fake = {
     getItem: (k: string) => disk.get(k) ?? null,
     setItem: (k: string, v: string) => void disk.set(k, v),
     removeItem: (k: string) => void disk.delete(k),
     clear: () => disk.clear(),
     key: () => null,
     length: 0
-  })
+  }
+  vi.stubGlobal('localStorage', fake)
+  vi.stubGlobal('sessionStorage', fake)
   return disk
 }
 
@@ -308,10 +310,10 @@ describe('迁移 · 档内版本号跟着升,且坏值修得掉', () => {
     }
   })
 
-  it('界面报档内那一份,不印常量', () => {
-    const view = readFileSync(new URL('../components/settings/SettingsSaveSection.vue', import.meta.url), 'utf-8')
-    expect(view, '版本应读 game.saveVersion').toContain('game.saveVersion')
-  })
+  /*
+   * 「界面报档内那一份,不印常量」随设置页存档段一并下线(1.76.0 纯网游):
+   * 档内版本号的升级判据由上面的「导入 v1 旧档后,档内 saveVersion 也是当前版本」承担。
+   */
 
   /**
    * 分账已是脏形态时,迁移不能原样放行。

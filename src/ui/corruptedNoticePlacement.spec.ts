@@ -20,7 +20,6 @@ import { resolve } from 'node:path'
 
 const ROOT = resolve(__dirname, '../..')
 const WELCOME = readFileSync(resolve(ROOT, 'src/views/WelcomeView.vue'), 'utf-8')
-const SETTINGS = readFileSync(resolve(ROOT, 'src/components/settings/SettingsSaveSection.vue'), 'utf-8')
 
 describe('坏档 · 欢迎页也要说一句', () => {
   it('欢迎页读了 corruptedNotice', () => {
@@ -35,17 +34,14 @@ describe('坏档 · 欢迎页也要说一句', () => {
     expect(WELCOME, '没有把分片名翻成中文(漏一条会印内部 id)').toContain('STORE_NAMES[id]')
   })
 
-  it('与设置页同一句话,不各写一份', () => {
+  it('一句话说全:坏在哪 + 原样留档', () => {
     /*
-     * 两处都写「存档损坏:{名字} · 原档留在本机」。
-     * 文案若分叉,玩家在两处看到的是两种说法 —— 而它们说的是同一件事。
+     * 1.76.0 起设置页存档段整体下线,坏档状态只剩欢迎页一处 ——
+     * 与启动 toast 说的必须是同一句话,不许再分叉出第二种说法。
      */
     const phrase = '存档损坏:'
     expect(WELCOME, '欢迎页缺「存档损坏:」那半句').toContain(phrase)
-    expect(SETTINGS, '设置页缺「存档损坏:」那半句').toContain(phrase)
-    for (const text of [WELCOME, SETTINGS]) {
-      expect(text, '缺「原档留在本机」那一半事实').toContain('原档留在本机')
-    }
+    expect(WELCOME, '缺「原档留在本机」那一半事实').toContain('原档留在本机')
   })
 
   it('文案守 UI 规范:不给建议、不劝导、不解释原因', () => {

@@ -23,6 +23,8 @@ const STORE_IMPORT = /from\s+["']@\/stores\/[A-Za-z]+["']/g;
 
 /** 允许 import store 的 core 模块点名清单(只许减);名字是含 `.ts` 的文件名 */
 const STATEFUL_CORE = new Set<string>([
+  // 权威推进(1.75.0):心跳生产/历练战斗/离线结算的服务端裁决,水合 17 分片必然读 store
+  "advanceResolve.ts",
   "affixTransfer.ts",
   "astronomy.ts",
   "autoOps.ts",
@@ -103,8 +105,10 @@ const STATEFUL_CORE = new Set<string>([
  *   要按门派建筑等级计产,而门派状态不在存档分片里 —— 结算前先补拉一次(见 offline.ts produce 前)。
  * 1.74.4:250 → 251。core/autoOps 读 inventory:装备托管以「行囊满」为触发,
  *   bagFull 是 inventory 的派生,托管巡检读它才算真满(自算容量必与 store 分叉)。
+ * 1.75.0:251 → 280。core/advanceResolve 读 17 分片(水合=推进=diff 的同一张清单),
+ *   core/engine 读 12 个新分片(心跳回传的 $patch 要按分片找 store)。
  */
-const CORE_STORE_SITES = 251;
+const CORE_STORE_SITES = 280;
 /**
  * core 用例里需要 Pinia 的文件数基线(只许减)。
  * 上游 121 + 本仓 autoOpsDaily/gongfaSeats 等新增,合并后以实跑数为准,见本文件底部对账。
@@ -123,8 +127,10 @@ const CORE_STORE_SITES = 251;
  * expeditionAuto.spec(全自动远征的额度记在 endgame store、续行走 store 状态机)。
  * 1.74.4(+1,135 → 136):autoOpsEquip.spec —— 装备托管以「行囊满」为触发、换装配与化尘都走
  * inventory store 的真账,不打真 store 测不出「换下的旧件当轮化尘」这条次序判据。
+ * 1.75.0(+1,136 → 137):advanceResolve.spec —— 从分片水合再推进再 diff,判据就是
+ * 「水合后的 store 数值变了多少」,不开真 pinia 测不出来(与 breakthroughResolve 同构)。
  */
-const CORE_PINIA_SPECS = 136;
+const CORE_PINIA_SPECS = 137;
 
 function sources(dir: string): { name: string; text: string }[] {
   return readdirSync(dir)

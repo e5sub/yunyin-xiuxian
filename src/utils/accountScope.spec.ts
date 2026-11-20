@@ -29,6 +29,22 @@ function installStorage(failRemovePrefix?: string): Map<string, string> {
   }
   Object.defineProperty(api, 'length', { get: () => disk.size })
   vi.stubGlobal('localStorage', api)
+  // 会话缓存(1.76.0):独立假盘 —— initAccountScope 会清掉非当前账号的会话分片键
+  const sessionDisk = new Map<string, string>()
+  vi.stubGlobal('sessionStorage', {
+    getItem: (k: string): string | null => sessionDisk.get(k) ?? null,
+    setItem: (k: string, v: string): void => {
+      sessionDisk.set(k, v)
+    },
+    removeItem: (k: string): void => {
+      sessionDisk.delete(k)
+    },
+    clear: (): void => sessionDisk.clear(),
+    key: (i: number): string | null => [...sessionDisk.keys()][i] ?? null,
+    get length(): number {
+      return sessionDisk.size
+    }
+  })
   return disk
 }
 

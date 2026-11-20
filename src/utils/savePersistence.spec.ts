@@ -31,7 +31,8 @@ let probe: Probe
 function installFakeStorage(): Probe {
   const disk = new Map<string, string>()
   const p: Probe = { disk, writes: 0, stacks: [] }
-  vi.stubGlobal('localStorage', {
+  // 1.76.0 起进度分片写会话缓存:两个全局共用同一张假盘(计数器同一个)
+  const fake = {
     getItem: (k: string) => disk.get(k) ?? null,
     setItem: (k: string, v: string) => {
       disk.set(k, v)
@@ -42,7 +43,9 @@ function installFakeStorage(): Probe {
     clear: () => disk.clear(),
     key: () => null,
     length: 0
-  })
+  }
+  vi.stubGlobal('localStorage', fake)
+  vi.stubGlobal('sessionStorage', fake)
   return p
 }
 
@@ -244,10 +247,11 @@ describe('启动期 · 扫描与水合共用一次解密', () => {
  *   三 恢复后报一声并清掉警告。
  */
 describe('存档写盘 · 失败不许静默', () => {
-  /** 让 localStorage.setItem 按开关抛错(模拟容量满/被拒);allow(true) = 能写得进去 */
+  /** 让 setItem 按开关抛错(模拟容量满/被拒);allow(true) = 能写得进去。
+   *  1.76.0 起进度分片写会话缓存:两块盘都要堵,只堵 localStorage 挡不住 player 分片 */
   function installJammedStorage(probe: Probe): { allow: (ok: boolean) => void } {
     let jammed = false
-    vi.stubGlobal('localStorage', {
+    const jammedApi = {
       getItem: (k: string) => probe.disk.get(k) ?? null,
       setItem: (k: string, v: string) => {
         if (jammed) throw new DOMException('quota', 'QuotaExceededError')
@@ -258,7 +262,9 @@ describe('存档写盘 · 失败不许静默', () => {
       clear: () => probe.disk.clear(),
       key: () => null,
       length: 0
-    })
+    }
+    vi.stubGlobal('localStorage', jammedApi)
+    vi.stubGlobal('sessionStorage', jammedApi)
     return {
       allow: (ok: boolean) => {
         jammed = !ok
