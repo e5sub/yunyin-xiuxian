@@ -8,8 +8,9 @@
  *    所以每条判据都要有一条「合法档原样通过」的对照。
  */
 import { describe, expect, it } from 'vitest'
-import { enforceSaveAuthority } from '@/core/saveAuthority'
+import { enforceSaveAuthority, expAccrualBudget } from '@/core/saveAuthority'
 import { expRequirement } from '@/core/formulas'
+import { INSTANT_EXP_LAYER_CAP } from '@/data/constants'
 import { maxTierForMajor } from '@/data/regions'
 import { MAX_MAJOR } from '@/data/realms'
 import { TALENTS } from '@/data/talents'
@@ -640,5 +641,55 @@ describe('数值权威化 · 道源', () => {
     expect(Number((withCredit.data.endgame as Record<string, unknown>).daoSource)).toBeGreaterThan(
       Number((withoutCredit.data.endgame as Record<string, unknown>).daoSource)
     )
+  })
+})
+
+describe('数值权威化 · 修为增量收口(1.74.6)', () => {
+  /*
+   * 此前修为只验「≤ 持有上限(突破需求 ×100)」不问来源:改包把 exp 写进上界内就能落库,
+   * 而突破端的收口基线正是云档存量 —— 存量即假值,每层突破都免攒。现按资源侧
+   * catchUpCeil 同一把尺收口:上次值 + max(本窗口可信产出, 突破需求 × INSTANT_EXP_LAYER_CAP)。
+   */
+
+  it('续传把修为写到上界内但超本窗口可信增量:压回「上次值 + 余量」,不再整段采信', () => {
+    /*
+     * 高境界(12-0)夹具:低境界修炼速率快到「时窗可信产出 ≥ 持有上限」,新旧口径
+     * 恰好等价,抓不住差异;高境界 ceil(×100 需求)远大于预算,两口径才分得开
+     * (实测 1-0~5-0 ceil ≤ accrual,8-0 起 ceil > accrual)。
+     */
+    const MJ = 12
+    const realmIndex = MJ * 100 // realmOf: major = floor(index/100), sub = 余数
+    const req = num(expRequirement(MJ, 0))
+    const burst = Math.max(num(expAccrualBudget(MJ, 0, ONE_TICK_MS)), req * INSTANT_EXP_LAYER_CAP)
+    const prev = baseSave()
+    ;(prev.player as Record<string, unknown>).major = MJ
+    ;(prev.player as Record<string, unknown>).exp = { m: Math.round(burst), e: 0 }
+    const next = baseSave()
+    ;(next.player as Record<string, unknown>).major = MJ
+    // 与实现同一把尺构造 claim:超过「上次值 + max(时窗产出, 需求×0.9)」数倍,仍在 ×100 上界之内
+    ;(next.player as Record<string, unknown>).exp = { m: Math.round(burst + burst * 3), e: 0 }
+    const report = run(next, { prev, prevRealmIndex: realmIndex, elapsedMs: ONE_TICK_MS, realmAuthoritative: true, seenBefore: true })
+    const exp = (report.data.player as Record<string, unknown>).exp as GNum
+    expect(report.corrections.some(c => c.path === 'player.exp'), '必须产生修为修正').toBe(true)
+    expect(report.notes.some(n => n.includes('可信增量')), '拒因必须点明增量口径').toBe(true)
+    expect(num(exp), '压回后恰为上次值 + 余量').toBeLessThanOrEqual(burst + burst + 1)
+    expect(num(exp), '不再整段采信改包值').toBeLessThan(burst + burst * 3)
+  })
+
+  it('真首传(云端无旧档)按持有上限收:存量档的合法修为不被打回', () => {
+    const req = num(expRequirement(0, 0))
+    const next = baseSave()
+    ;(next.player as Record<string, unknown>).exp = { m: Math.round(req * 90), e: 0 }
+    const report = run(next, { prev: null, prevRealmIndex: 0, elapsedMs: ONE_TICK_MS, realmAuthoritative: true })
+    expect(report.corrections.some(c => c.path === 'player.exp'), '首传不按增量收').toBe(false)
+  })
+
+  it('窗口内的正常增长放行:挂机攒修为的档不产生修正', () => {
+    const prev = baseSave()
+    const next = baseSave()
+    // 上次 40,本窗口攒一小截(远小于时窗预算):放行
+    ;(next.player as Record<string, unknown>).exp = { m: 41, e: 1 }
+    const report = run(next, { prev, prevRealmIndex: 0, elapsedMs: ONE_TICK_MS, realmAuthoritative: true, seenBefore: true })
+    expect(report.corrections.some(c => c.path === 'player.exp')).toBe(false)
   })
 })

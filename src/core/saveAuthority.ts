@@ -25,10 +25,10 @@
  *   - 只降不升:本模块从不「给」玩家东西,只把超出的部分压回合法区间。
  *   - 转世(世号增加)视为新世:境界重置与资源归零都放行,但新世的增长照旧受上一条约束。
  */
-import { add, gn, gnZero, gt, mulN, sub } from '@/utils/gnum'
+import { add, gn, gnMax, gnMin, gnZero, gt, mulN, sub } from '@/utils/gnum'
 import type { GNum } from '@/types'
 import { baseCultPerSec, daoFruitGain, expRequirement, qiCap } from '@/core/formulas'
-import { AGE_YEARS_PER_HOUR, QI_BANK_MULT, SUB_LEVELS, TALENT_DRAW_DIV } from '@/data/constants'
+import { AGE_YEARS_PER_HOUR, INSTANT_EXP_LAYER_CAP, QI_BANK_MULT, SUB_LEVELS, TALENT_DRAW_DIV } from '@/data/constants'
 import { ACHIEVEMENTS, titleIdsFromAchieved } from '@/data/achievements'
 import { MAX_MAJOR } from '@/data/realms'
 import { maxTierForMajor } from '@/data/regions'
@@ -298,6 +298,16 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
     const prevRealm = rebirth ? { major: 0, sub: 0 } : realmOf(Math.max(0, Math.trunc(input.prevRealmIndex)))
     const prevExp = rebirth ? gnZero() : (gnumOf(prevPlayer.exp) ?? gnZero())
 
+    /*
+     * 「上次的档里没有这一栏」的两种处境(1.67.0):
+     *   · 真首传(云端根本没有旧档):存量档兼容,只按持有上限收 —— 老玩家不该被打回。
+     *   · 已经上传过、这一栏却不在上次的档里:只可能是「删片洗基线」。
+     *     若也按上限放行,「删掉 resources 传一次 → 再传满值」就是每次顶满 cap 的无限刷,
+     *     与「本窗口只能涨 5% 上限」的设计正好相反。这里按**从零起**算,只给成批进项的余量。
+     *   修为的增量收口(1.74.6)也吃这个区分 —— 真首传按持有上限收,续传按「上次值 + 本窗口可信产出」收。
+     */
+    const freshUpload = input.seenBefore !== true
+
     let nextMajor = Math.trunc(Math.min(Math.max(numOf(nextPlayer.major), 0), MAX_MAJOR))
     let nextSub = Math.trunc(Math.min(Math.max(numOf(nextPlayer.sub), 0), SUB_LEVELS - 1))
 
@@ -345,13 +355,31 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
       nextPlayer.sub = nextSub
     }
 
-    // ---------- 修为:上限跟着「裁决后的境界」走 ----------
+    // ---------- 修为:增量收口,再钳持有上限(上限跟着「裁决后的境界」走) ----------
+    /*
+     * 修为存量此前只验「≤ 持有上限(突破需求 ×100)」不问来源(1.74.6 补):
+     * 改包把 exp 写进上界内就能落库,而突破端的收口基线正是云档存量 ——
+     * 存量即假值,每一层突破都免攒,等于全程白拿挂机产出。
+     * 现在按资源侧 catchUpCeil 同一把「不许一步到位」的尺收口:
+     * 上限 = 上次值 + max(本窗口可信产出, 突破需求 × 0.9)。0.9 与即时进项的
+     * 单层封顶 INSTANT_EXP_LAYER_CAP 同值 —— 丹药/际遇那一类「非时间性」进项
+     * 每笔都不越过一层,余量给到 0.9 层不误伤;离线/闭关/历练全是时间折算,
+     * 被 expAccrualBudget 覆盖(elapsedMs 含离线段,7 天封顶)。真首传按持有上限收(存量兼容)。
+     * 只拦暴涨不拦回落:战败折损、突破消耗后的降低照采(与突破端同一口径)。
+     */
     const expCeil = expHoldCap(nextMajor, nextSub)
     const curExp = gnumOf(nextPlayer.exp)
-    if (curExp !== null && gt(curExp, expCeil)) {
-      corrections.push({ path: 'player.exp', before: nextPlayer.exp, after: expCeil })
-      nextPlayer.exp = { ...expCeil }
-      notes.push('修为超本境界持有上限')
+    if (curExp !== null) {
+      const burst = gnMax(
+        expAccrualBudget(nextMajor, nextSub, elapsedSec),
+        mulN(expRequirement(nextMajor, nextSub), INSTANT_EXP_LAYER_CAP)
+      )
+      const expCap = freshUpload ? expCeil : gnMin(expCeil, add(prevExp, burst))
+      if (gt(curExp, expCap)) {
+        corrections.push({ path: 'player.exp', before: nextPlayer.exp, after: expCap })
+        nextPlayer.exp = { ...expCap }
+        notes.push(freshUpload ? '修为超本境界持有上限' : '修为超本窗口可信增量')
+      }
     }
 
     // ---------- 成就 / 称号(1.59.1)----------
@@ -425,14 +453,7 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
     const capMajor = Math.max(prevRealm.major, nextMajor)
     const elapsedHours = Math.max(0, input.elapsedMs) / 3_600_000
     const prevRes = objOf(input.prev?.resources)
-    /*
-     * 「上次的档里没有这一栏」的两种处境(1.67.0):
-     *   · 真首传(云端根本没有旧档):存量档兼容,只按持有上限收 —— 老玩家不该被打回。
-     *   · 已经上传过、这一栏却不在上次的档里:只可能是「删片洗基线」。
-     *     若也按上限放行,「删掉 resources 传一次 → 再传满值」就是每次顶满 cap 的无限刷,
-     *     与「本窗口只能涨 5% 上限」的设计正好相反。这里按**从零起**算,只给成批进项的余量。
-     */
-    const freshUpload = input.seenBefore !== true
+    /* freshUpload 的两种处境见境界段前的注释(修为的增量收口共用这个区分) */
     /**
      * 一次上传允许的资源**增量**(1.58.1):只看「持有上限」时,把数值一次写到上限就等于
      * 永远满仓(上限本身是 720 小时满产出的量)。这里再叠一层「追赶速度」——
