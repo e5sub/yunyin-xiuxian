@@ -50,6 +50,12 @@ interface AuthorityInput {
   /** 通关道源(1.74.1):本次新增的通关道痕折出的额度,见 server/src/daoCredit */
   creditDao?: number
   /**
+   * 灵石进项(1.77.0):上次落库之后经 /api/economy/* 记账的进项合计(GNum)。
+   * 见 server/src/stoneLedger 与 core/saveAuthority「灵石窗口钳」一节 —— 没有这一项,
+   * 卖装/悬赏这些模型外的成批进项会被窗口线当改包压回。
+   */
+  creditStone?: { m: number; e: number }
+  /**
    * 云端已有上次落库的档。用于区分「真首传」与「上次的档里没有这一栏」(删片洗基线,1.67.0):
    * 前者按持有上限收(存量档兼容),后者按从零起算(只给成批进项余量)。
    */

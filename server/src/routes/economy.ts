@@ -18,6 +18,10 @@ import { takeLootBudget } from '../lootLedger.js'
 
 const economyRouter = express.Router()
 
+/** 客户端共享模块:运行时走 tsx paths,打包环境退 vendor(与 game.ts 同一套) */
+const SOURCE_MODULE = '../../../src/core/economyOps'
+const VENDOR_FILE = 'economyOps'
+
 /** 与 /loot/claim、/market/buy 同一档限速 */
 const OP_MIN_GAP_MS = 300
 const lastOpAt = new Map<number, number>()
@@ -78,7 +82,7 @@ economyRouter.post('/economy/:op', requireAuth, (req: Request, res: Response) =>
     const major =
       typeof slices.player?.major === 'number' && Number.isFinite(slices.player.major) ? Math.trunc(slices.player.major) : 0
 
-    const mod = (await loadClientModule('economyOps')) as { resolveEconomyOp: ResolveOp }
+    const mod = (await loadClientModule(SOURCE_MODULE, VENDOR_FILE)) as { resolveEconomyOp: ResolveOp }
     const result = mod.resolveEconomyOp(body, {
       now,
       major,
