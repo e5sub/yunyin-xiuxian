@@ -34,6 +34,7 @@ import {
   type TaskSpoils
 } from '@/core/apprenticeService'
 import { asArray } from '@/utils/saveShape'
+import { reportAction, runActionAwait } from '@/core/remoteAction'
 
 let seq = 0
 function nextUid(): string {
@@ -238,29 +239,32 @@ export const useApprenticeStore = defineStore(
         const spec = appr.task!.spec
         let spoils: TaskSpoils
         if (auth.loggedIn) {
-          try {
-            const r = await cloudApi.apprenticeTaskClaim(appr.uid)
-            if (r.ok && r.spoils) {
-              stuckSince.delete(appr.uid)
-              spoils = r.spoils
-            } else if (r.gone) {
-              stuckSince.delete(appr.uid)
-              appr.task = null
-              continue
-            } else if (typeof r.remainMs === 'number' && Number.isFinite(r.remainMs) && r.remainMs >= 0 && appr.task) {
-              // 校准 +250ms 缓冲:remainMs 是服务端此刻的余量,取回与写回之间又流走了一点
-              stuckSince.delete(appr.uid)
-              appr.task.finishAt = now + r.remainMs + 250
-              claimFailed = true
-              continue
-            } else if (voidIfStuck(appr, now)) {
-              continue
-            } else {
-              claimFailed = true
-              continue
-            }
-          } catch {
-            if (voidIfStuck(appr, now)) continue
+          /*
+           * 收割整笔交给服务端(1.79.0):产出、升级、缘分都在云档上落,
+           * 本地只按回话更新这一位的显示。原先本地记账 —— 抛弃存档之后那笔账传不上去,
+           * 等于白派一趟。
+           */
+          const r = await runActionAwait<{ spoils?: TaskSpoils; remainMs?: number; gone?: boolean }>(
+            'apprentice_claim',
+            { id: appr.uid }
+          )
+          const out = r.ok ? r.value : null
+          if (out?.spoils) {
+            stuckSince.delete(appr.uid)
+            spoils = out.spoils
+          } else if (out?.gone) {
+            stuckSince.delete(appr.uid)
+            appr.task = null
+            continue
+          } else if (typeof out?.remainMs === 'number' && Number.isFinite(out.remainMs) && out.remainMs >= 0 && appr.task) {
+            // 校准 +250ms 缓冲:remainMs 是服务端此刻的余量,取回与写回之间又流走了一点
+            stuckSince.delete(appr.uid)
+            appr.task.finishAt = now + out.remainMs + 250
+            claimFailed = true
+            continue
+          } else if (voidIfStuck(appr, now)) {
+            continue
+          } else {
             claimFailed = true
             continue
           }
@@ -325,6 +329,8 @@ export const useApprenticeStore = defineStore(
       const cost = apprenticeRecruitCost(safeMajor)
       if (!useResourcesStore().spendStone(cost)) return 'poor'
       apprentices.value.push({ uid: nextUid(), archId: rng.pick(pool).id, level: 1, bond: 0, task: null })
+      // 1.79.0:招募由服务端在云档上重跑一次(扣灵石、签发道童都算那一侧),本地这次只是预测
+      reportAction('apprentice_recruit')
       return 'ok'
     }
 
@@ -360,7 +366,17 @@ export const useApprenticeStore = defineStore(
       stuckSince.clear()
     }
 
-    return { apprentices, rebirthKarma, sanitize, sync, collectFinished, dispatch, dispatchAll, resetForRebirth, recruit }
+    /**
+     * 把一趟差事的产出记进账。
+     *
+     * 1.79.0 起服务端也要用这一份(差事收割由动作结算在云档上重跑),
+     * 所以从模块级私有函数提到 store 方法上 —— 两处各写一遍必然漂移。
+     */
+    function applyTaskSpoils(spoils: TaskSpoils, major: number): void {
+      applySpoils(spoils, major)
+    }
+
+    return { apprentices, rebirthKarma, sanitize, sync, collectFinished, dispatch, dispatchAll, resetForRebirth, recruit, applyTaskSpoils }
   },
   { persist: persistConfig('apprentice') }
 )

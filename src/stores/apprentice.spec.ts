@@ -510,7 +510,10 @@ describe('在线收割 · 服务端差事账的三种拒绝(1.74.1 修卡 00:00)
    */
   beforeEach(() => {
     setActivePinia(createPinia())
-    vi.spyOn(cloudApi, 'apprenticeTaskClaim').mockReset()
+    // 收割改走动作端(1.79.0):判据盯的是 actions 回什么,不再是差事账的专用接口
+    vi.stubGlobal('window', {})
+    vi.spyOn(cloudApi, 'actionOp').mockReset()
+    vi.spyOn(cloudApi, 'actionResync').mockResolvedValue({ ok: true, slices: null })
     // 收割前会对齐服务端代派清单(1.74.5):不顶替就发真网请求
     vi.spyOn(cloudApi, 'apprenticeTaskList').mockReset()
     // 登录态:收割走服务端账
@@ -518,10 +521,11 @@ describe('在线收割 · 服务端差事账的三种拒绝(1.74.1 修卡 00:00)
   })
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it('云端查无此账(gone):作废这单回闲,不白拿产出、不进阶', async () => {
-    vi.mocked(cloudApi.apprenticeTaskClaim).mockResolvedValue({ ok: false, reason: '没有在途的差事', gone: true })
+    vi.mocked(cloudApi.actionOp).mockResolvedValue({ ok: true, slices: {}, payload: { gone: true } })
     const a = useApprenticeStore()
     const res = useResourcesStore()
     a.$patch({ apprentices: [make('ap_luanniao', { task: { spec: 'herb', startAt: 0, finishAt: 1 } })] })
@@ -532,7 +536,7 @@ describe('在线收割 · 服务端差事账的三种拒绝(1.74.1 修卡 00:00)
   })
 
   it('尚在差中(本机钟快):按服务端口径校准完工时刻,倒计时恢复走动', async () => {
-    vi.mocked(cloudApi.apprenticeTaskClaim).mockResolvedValue({ ok: false, reason: '尚在差中', remainMs: 5000 })
+    vi.mocked(cloudApi.actionOp).mockResolvedValue({ ok: true, slices: {}, payload: { remainMs: 5000 } })
     const a = useApprenticeStore()
     a.$patch({ apprentices: [make('ap_luanniao', { task: { spec: 'herb', startAt: 0, finishAt: 1 } })] })
     expect(await a.collectFinished(9999, 0)).toEqual([])
@@ -542,20 +546,20 @@ describe('在线收割 · 服务端差事账的三种拒绝(1.74.1 修卡 00:00)
   })
 
   it('其余拒绝不收不清,失败后 3 秒冷却不再空转请求', async () => {
-    vi.mocked(cloudApi.apprenticeTaskClaim).mockResolvedValue({ ok: false, reason: '差事账不可复算' })
+    vi.mocked(cloudApi.actionOp).mockResolvedValue({ ok: true, slices: {}, payload: {} })
     const a = useApprenticeStore()
     a.$patch({ apprentices: [make('ap_luanniao', { task: { spec: 'herb', startAt: 0, finishAt: 1 } })] })
     expect(await a.collectFinished(9999, 0)).toEqual([])
-    expect(vi.mocked(cloudApi.apprenticeTaskClaim)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(cloudApi.actionOp)).toHaveBeenCalledTimes(1)
     expect(a.apprentices[0]!.task, '不可复算的账保留重试,不吞任务').not.toBeNull()
     await a.collectFinished(10000, 0)
-    expect(vi.mocked(cloudApi.apprenticeTaskClaim), '冷却期内不发请求').toHaveBeenCalledTimes(1)
+    expect(vi.mocked(cloudApi.actionOp), '冷却期内不发请求').toHaveBeenCalledTimes(1)
     await a.collectFinished(13001, 0)
-    expect(vi.mocked(cloudApi.apprenticeTaskClaim), '冷却过后恢复重试').toHaveBeenCalledTimes(2)
+    expect(vi.mocked(cloudApi.actionOp), '冷却过后恢复重试').toHaveBeenCalledTimes(2)
   })
 
   it('服务端回传产出照单入账,不受本地自报影响', async () => {
-    vi.mocked(cloudApi.apprenticeTaskClaim).mockResolvedValue({ ok: true, spoils: { stone: gn(7) } })
+    vi.mocked(cloudApi.actionOp).mockResolvedValue({ ok: true, slices: {}, payload: { spoils: { stone: gn(7) } } })
     const a = useApprenticeStore()
     const res = useResourcesStore()
     a.$patch({ apprentices: [make('ap_luanniao', { task: { spec: 'herb', startAt: 0, finishAt: 1 } })] })
@@ -569,15 +573,20 @@ describe('在线收割 · 服务端差事账的三种拒绝(1.74.1 修卡 00:00)
 describe('在线收割 · 屡败兜底(完工未收满 60 秒作废放人)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    vi.spyOn(cloudApi, 'apprenticeTaskClaim').mockReset()
+    // 收割改走动作端(1.79.0):判据盯的是 actions 回什么,不再是差事账的专用接口
+    vi.stubGlobal('window', {})
+    vi.spyOn(cloudApi, 'actionOp').mockReset()
+    vi.spyOn(cloudApi, 'actionResync').mockResolvedValue({ ok: true, slices: null })
+    vi.spyOn(cloudApi, 'apprenticeTaskList').mockResolvedValue({ tasks: [] })
     useAuthStore().$patch({ token: 't', userId: 1 })
   })
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it('服务端一直拒(旧版不认 gone/remainMs 也一样):60 秒内保留,满 60 秒作废回闲,不白拿产出', async () => {
-    vi.mocked(cloudApi.apprenticeTaskClaim).mockResolvedValue({ ok: false, reason: '服务器异常' })
+    vi.mocked(cloudApi.actionOp).mockRejectedValue(new Error('服务器异常'))
     const a = useApprenticeStore()
     const res = useResourcesStore()
     a.$patch({ apprentices: [make('ap_luanniao', { task: { spec: 'herb', startAt: 0, finishAt: 1 } })] })
@@ -585,7 +594,7 @@ describe('在线收割 · 屡败兜底(完工未收满 60 秒作废放人)', () 
     expect(await a.collectFinished(0, 0)).toEqual([])
     expect(a.apprentices[0]!.task).not.toBeNull()
     await a.collectFinished(1000, 0)
-    expect(vi.mocked(cloudApi.apprenticeTaskClaim), '冷却期内不发请求').toHaveBeenCalledTimes(1)
+    expect(vi.mocked(cloudApi.actionOp), '冷却期内不发请求').toHaveBeenCalledTimes(1)
     // 未满 60 秒:仍保留(第 2 次真发)
     await a.collectFinished(59000, 0)
     expect(a.apprentices[0]!.task).not.toBeNull()
@@ -601,12 +610,16 @@ describe('服务端代派对齐(1.74.5 离线托管)', () => {
   /** 离线托管由服务端按「各尽其长」代派的单,本地账里没有 —— 归来收割前先对齐再收 */
   beforeEach(() => {
     setActivePinia(createPinia())
-    vi.spyOn(cloudApi, 'apprenticeTaskClaim').mockReset()
+    // 收割改走动作端(1.79.0):判据盯的是 actions 回什么,不再是差事账的专用接口
+    vi.stubGlobal('window', {})
+    vi.spyOn(cloudApi, 'actionOp').mockReset()
+    vi.spyOn(cloudApi, 'actionResync').mockResolvedValue({ ok: true, slices: null })
     vi.spyOn(cloudApi, 'apprenticeTaskList').mockReset()
     useAuthStore().$patch({ token: 't', userId: 1 })
   })
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it('代派的单对齐进本地,完工当轮即收:入账、进阶、清任务', async () => {
@@ -614,7 +627,7 @@ describe('服务端代派对齐(1.74.5 离线托管)', () => {
     vi.mocked(cloudApi.apprenticeTaskList).mockResolvedValue({
       tasks: [{ uid: 'u1', spec: 'ore', startedAt, seconds: 5 }]
     })
-    vi.mocked(cloudApi.apprenticeTaskClaim).mockResolvedValue({ ok: true, spoils: { ore: 9 } })
+    vi.mocked(cloudApi.actionOp).mockResolvedValue({ ok: true, slices: {}, payload: { spoils: { ore: 9 } } })
     const a = useApprenticeStore()
     const res = useResourcesStore()
     a.$patch({ apprentices: [make('ap_luanniao')] }) // 本地 task=null:代派的单本地原本不认识
@@ -623,7 +636,7 @@ describe('服务端代派对齐(1.74.5 离线托管)', () => {
     expect(a.apprentices[0]!.task).toBeNull()
     expect(a.apprentices[0]!.level).toBe(4)
     expect(res.ore).toBe(9)
-    expect(vi.mocked(cloudApi.apprenticeTaskClaim), '收割走服务端账').toHaveBeenCalledWith('u1')
+    expect(vi.mocked(cloudApi.actionOp), '收割走服务端账').toHaveBeenCalledWith({ kind: 'apprentice_claim', id: 'u1' })
   })
 
   it('对齐只补空位:本地任务不被清单顶掉,陌生 uid 与野 spec 一概不认', async () => {

@@ -228,15 +228,16 @@ class GameEngine {
       } else if (this.heartAccum >= HEARTBEAT_SEC && !this.heartInFlight) {
         void this.sendAdvance()
       }
-      // 顿悟与洞府巡游是玩家在场时的 UI 弹窗流:留在客户端触发(奖励走签发漏斗,
-      // 与未登录同一条本地链),服务端推进不代跑(见 advanceResolve 头注)
-      mayTriggerEnlightenment()
+      /*
+       * 顿悟与洞府巡游改由服务端掷(1.79.0):事件本体在 player 分片里,
+       * 掷签那一步在 resolveAdvanceFromSlices 里跟着生产一起跑,补丁把开着的窗带回来。
+       * 客户端在这里再掷一次会与那条补丁互相覆盖,所以登录态不再本地触发。
+       */
       this.periodicAccum += dt
       if (this.periodicAccum >= PERIODIC_CHECK_SEC) {
         this.periodicAccum = 0
         rolloverDailyIfNeeded()
         checkStateAchievements()
-        mayTriggerCaveEvent()
       }
     } else if (dt > OFFLINE_MIN_SECONDS) {
       // 长时间停摆(休眠/后台冻结)走离线结算;先翻日再结算,同 start。死亡判定在其后串行

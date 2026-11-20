@@ -12,7 +12,7 @@
  * updated_at 随每次落档推进:它是 advance 重启后的时间锚点兜底,停在旧值会重复结算一段。
  */
 import express, { type Request, type Response } from 'express'
-import { get, upsertByPk } from '../db.js'
+import { get, run, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { metricsOf, syncProfileFromData } from './save.js'
 import { loadClientModule } from '../clientVendor.js'
@@ -133,6 +133,19 @@ actionRouter.post('/action', requireAuth, (req: Request, res: Response) => {
     } catch {
       res.status(500).json({ error: '签发记账失败,请重试' })
       return
+    }
+
+    /*
+     * 差事收割的收尾(1.79.0):产出的账已在云档里结过,这里的在途表要把那一行删掉 ——
+     * 否则 `/apprentice/task/list` 会把它当成「服务端代派、本地还没收」的单再对齐回来,
+     * 同一趟差事就能反复收。删在落档之后、失败不影响已结的账(下一次 claim 会得到 gone)。
+     */
+    if (body.kind === 'apprentice_claim' && typeof body.id === 'string' && body.id !== '') {
+      try {
+        await run('DELETE FROM apprentice_tasks WHERE user_id = ? AND uid = ?', [userId, body.id.slice(0, 64)])
+      } catch {
+        // 表不在/锁冲突都不该让这次收割失败:产出已经在云档里了
+      }
     }
 
     if (Object.keys(patches).length > 0) {

@@ -30,14 +30,37 @@ import { useMarketStore } from '@/stores/market'
 import { useApprenticeStore } from '@/stores/apprentice'
 import { useAdventureStore } from '@/stores/adventure'
 import { SLICE_FACTORIES, diffSlices, hydrationNoise, isPlainObject, stateClone } from './sliceStores'
+import { checkAchievements, checkStateAchievements } from './progress'
 import { usePill, usePillBatch, craftPill, craftPillBatch } from './pillService'
 import { condenseDaoFruit, furnaceConvert, furnaceConvertStone, challengeTrial } from './endgameService'
 import { abandonRealm, enterSecretRealm, fightSecretLayer } from './secretRealm'
 import { decomposeBatch, decomposeEquipment } from './forge'
 import { resolveEventChoice } from './eventEngine'
 import { askDivination } from './divinationService'
+import { chooseEnlightenment, chooseCaveOption, dismissEnlightenment, dismissCaveEvent, getCurrentEnlightenment, getCurrentCaveEvent } from './earlyGameService'
+import {
+  prepareReincarnationLocal,
+  rerollReincarnationLinggenLocal,
+  confirmReincarnationLocal
+} from './reincarnation'
 import { refineEquipment, removeSoul, wearSoul, dissolveSoul } from './soulService'
 import { eventDef } from '@/data/events'
+import {
+  startWorldExpedition,
+  chooseRouteNode,
+  challengeGuardian,
+  autoAdvanceExpedition,
+  abandonExpedition,
+  challengeMutation,
+  rerollVoidWorld,
+  canAutoExpedition,
+  noteAutoExpedition
+} from './expedition'
+import { undertakeChallenge, verifyChallenge, type ChallengeDraft } from './challenge'
+import { todayChallenge, undertakeDaily } from './dailyChallenge'
+import { apprenticeSpoils, taskDone } from './apprenticeService'
+import { APPRENTICE_MAX_LEVEL } from '@/data/apprentices'
+import { gameNow } from './enginePause'
 import { FURNACE_RATES } from '@/data/endgame'
 import type { HerbGrade } from '@/data/herbGrades'
 
@@ -60,6 +83,14 @@ export interface ActionRequest {
   slot?: unknown
   /** 灵草品阶 */
   grade?: unknown
+  /** 远征契约 id(null 表示不立契) */
+  pact?: unknown
+  /** 远征界门 id */
+  gate?: unknown
+  /** 试炼题面(自建挑战) */
+  draft?: unknown
+  /** 坊市货架上货时刻(与云档里的 stockedAt 核对,过期即不成交) */
+  at?: unknown
 }
 
 export interface ActionResult {
@@ -89,6 +120,12 @@ function intOf(v: unknown, def: number, lo: number, hi: number): number {
   const n = Math.trunc(numOf(v))
   if (!Number.isFinite(n) || n === 0) return def
   return Math.min(Math.max(n, lo), hi)
+}
+
+/** 可空字符串参数:非串/空串一律 null */
+function strOrNull(v: unknown): string | null {
+  const s = strOf(v)
+  return s === '' ? null : s
 }
 
 function fail(reason: string): ActionResult {
@@ -136,12 +173,28 @@ async function runAction(req: ActionRequest): Promise<ActionResult> {
       return { ok: true, patches: {}, payload: out }
     }
 
-    /* ---------------- 早游戏事件 ---------------- */
-    /*
-     * 顿悟与洞府巡游不在这里:它们的事件本体存在 earlyGameService 的模块级变量里,
-     * 无头环境不存在,服务端调进来只会 no-op。这两条走「客户端生成 + 产出走专用端点」,
-     * 见 core/earlyGameService 的 reward 上报口(后续批次)。
-     */
+    /* ---------------- 早游戏事件(1.79.0 事件本体已进档) ---------------- */
+    case 'enlighten': {
+      const idx = intOf(req.index, 0, 0, 3)
+      // 无待选顿悟时 chooseEnlightenment 自己会 no-op:以「窗是否还开着」判成败
+      const had = getCurrentEnlightenment() !== null
+      chooseEnlightenment(idx)
+      return had ? { ok: true, patches: {} } : fail('此刻没有顿悟')
+    }
+    case 'enlighten_dismiss': {
+      dismissEnlightenment()
+      return { ok: true, patches: {} }
+    }
+    case 'cave_choice': {
+      const idx = intOf(req.index, 0, 0, 3)
+      const had = getCurrentCaveEvent() !== null
+      chooseCaveOption(idx)
+      return had ? { ok: true, patches: {} } : fail('此刻没有洞府际遇')
+    }
+    case 'cave_dismiss': {
+      dismissCaveEvent()
+      return { ok: true, patches: {} }
+    }
 
     /* ---------------- 道源 / 熔炉 / 试炼 ---------------- */
     case 'furnace': {
@@ -292,12 +345,140 @@ async function runAction(req: ActionRequest): Promise<ActionResult> {
       return { ok: true, patches: {} }
     }
 
+    /* ---------------- 坊市买入(1.79.0) ---------------- */
+    /*
+     * 买入原先由客户端自己「扣钱 + 入货」,服务端只记一笔 market_purchases 台账 ——
+     * 抛弃存档之后,客户端那份入货根本传不上来(钱却真扣了),于是这一格买完即蒸发。
+     * 现在整笔在云档上跑:扣灵石、入丹/草/铁、签发装备都在这一侧发生。
+     */
+    case 'market_buy': {
+      const at = Math.trunc(numOf(req.at))
+      const idx = Math.trunc(numOf(req.index))
+      if (!Number.isFinite(at) || at <= 0) return fail('货架已换新')
+      if (!Number.isFinite(idx) || idx < 0) return fail('没有这一格')
+      if (at !== Math.trunc(numOf(market.stockedAt))) return fail('货架已换新')
+      /*
+       * 「买不成」是正常反馈(灵石不够 / 已售出 / 行囊满),不是服务端事故 ——
+       * 所以照实把结果码放在 payload 里回来,ok 仍为 true:客户端没有本地预测要作废,
+       * 也就没必要为一次「灵石不足」拉整档重对齐。
+       */
+      const out = await market.buy(idx)
+      return { ok: true, patches: {}, payload: out }
+    }
+
     /* ---------------- 弟子 ---------------- */
+    /*
+     * 差事收割(1.79.0):产出原先由客户端 `applySpoils` 直接记账 ——
+     * 抛弃存档之后那笔账传不上去,等于白派一趟。现在在云档上重算:
+     * 道童、spec、等级、境界都取自档内,产出按同一份表复算。
+     */
+    case 'apprentice_claim': {
+      const appr = apprentice.apprentices.find(x => x.uid === id)
+      if (appr === undefined) return { ok: true, patches: {}, payload: { gone: true } }
+      if (appr.task === null) return { ok: true, patches: {}, payload: { gone: true } }
+      const now = gameNow()
+      if (!taskDone(appr, now)) {
+        return { ok: true, patches: {}, payload: { remainMs: Math.max(0, appr.task.finishAt - now) } }
+      }
+      const spoils = apprenticeSpoils(appr.archId, appr.task.spec, player.major, appr.level)
+      apprentice.applyTaskSpoils(spoils, player.major)
+      appr.level = Math.min(APPRENTICE_MAX_LEVEL, appr.level + 1)
+      appr.bond += 1
+      appr.task = null
+      return { ok: true, patches: {}, payload: { spoils } }
+    }
     case 'apprentice_recruit': {
       const out = apprentice.recruit(player.major)
       if (out === 'full') return fail('道童已满')
       if (out === 'poor') return fail('灵石不足')
       return { ok: true, patches: {} }
+    }
+
+    /* ---------------- 转世(1.79.0) ---------------- */
+    /*
+     * 交割单在服务端算、在服务端兑现:客户端只说「我要转世 / 我要改命 / 我确认了」。
+     * 先天之姿与命题池都由这一侧掷,确认时按同一份单子入账 —— 客户端凭空的单子
+     * 进不了云档,也就没得挑。
+     */
+    case 'rebirth_prepare': {
+      const view = prepareReincarnationLocal()
+      return { ok: true, patches: {}, payload: view }
+    }
+    case 'rebirth_reroll': {
+      if (player.rebirthOffer === null) return fail('还没有交割单')
+      rerollReincarnationLinggenLocal()
+      return { ok: true, patches: {}, payload: player.rebirthOffer }
+    }
+    case 'rebirth_confirm': {
+      if (player.rebirthOffer === null) return fail('还没有交割单')
+      const talentId = id === '' ? null : id
+      const themeId = strOf(req.id2) === '' ? null : strOf(req.id2)
+      const done = await confirmReincarnationLocal(talentId, themeId)
+      return done ? { ok: true, patches: {} } : fail('转世未成')
+    }
+
+    /* ---------------- 远征(1.79.0) ---------------- */
+    /*
+     * 远征一次就是一场战斗,而战斗的随机数只在服务端那一侧掷得作数。
+     * 客户端拿到的是 `payload` 里的战果(StepOutcome),照它出战报;本地那次不跑,
+     * 否则界面上会先演一遍「赢了」再被补丁改成「输了」。
+     */
+    case 'expedition_start': {
+      const out = startWorldExpedition(id, strOrNull(req.pact), strOrNull(req.gate))
+      return out === null ? fail('入不得此界') : { ok: true, patches: {}, payload: out }
+    }
+    case 'expedition_node': {
+      const choice = intOf(req.index, 0, 0, 1) === 1 ? 1 : 0
+      const out = chooseRouteNode(choice)
+      return out === null ? fail('此路不通') : { ok: true, patches: {}, payload: out }
+    }
+    case 'expedition_guardian': {
+      const out = challengeGuardian()
+      return out === null ? fail('不到决战之时') : { ok: true, patches: {}, payload: out }
+    }
+    case 'expedition_auto': {
+      /*
+       * 全自动的每日次数在这里判:非 VIP 每日 EXPEDITION_AUTO_DAILY_LIMIT 次。
+       * 客户端也判一次(界面上提前把按钮收掉),但那只是提示 —— 真正作数的是这一侧,
+       * 否则手搓一个请求就能把「代打」变成无限。
+       */
+      if (!canAutoExpedition()) return fail('今日全自动次数已尽')
+      const out = autoAdvanceExpedition()
+      if (out === null) return fail('没有可续的远征')
+      noteAutoExpedition()
+      return { ok: true, patches: {}, payload: out }
+    }
+    case 'expedition_abandon': {
+      abandonExpedition()
+      return { ok: true, patches: {} }
+    }
+    case 'void_reroll': {
+      const ok = await rerollVoidWorld()
+      return ok ? { ok: true, patches: {} } : fail('道源不足')
+    }
+
+    /* ---------------- 天道变数 / 试炼之题(1.79.0) ---------------- */
+    case 'mutation': {
+      const ids = Array.isArray(req.ids) ? req.ids.filter((x): x is string => typeof x === 'string') : []
+      const out = challengeMutation(ids)
+      return out === null ? fail('开不了这一局') : { ok: true, patches: {}, payload: out }
+    }
+    case 'challenge': {
+      const draft = req.draft
+      if (!isPlainObject(draft) || typeof draft.worldId !== 'string') return fail('题面不完整')
+      const shaped = draft as unknown as ChallengeDraft
+      // 裁判在服务端自己跑一遍:客户端报的判决不作数(它只用来在界面上先亮个绿灯)
+      const verdict = verifyChallenge(shaped)
+      if (verdict === null || !verdict.ok) return fail('此题无解')
+      const out = undertakeChallenge(shaped, verdict)
+      return out === null ? fail('应不了这一局') : { ok: true, patches: {}, payload: out }
+    }
+    case 'daily_challenge': {
+      // 只应「今天」这一题:日号由服务端按自己的钟取,客户端报的日子不采信
+      const daily = todayChallenge()
+      if (daily === null) return fail('今日无题')
+      const out = undertakeDaily(daily)
+      return out === null ? fail('今日已完成') : { ok: true, patches: {}, payload: out }
     }
 
     /* ---------------- 际遇选择 ---------------- */
@@ -350,6 +531,9 @@ export async function resolveActionFromSlices(
     const before = stateClone()
     const result = await runAction(req)
     if (!result.ok) return result
+    // 动作推开的状态也可能刚好凑够某个成就(1.79.0):赏在这里发,随补丁一起回去
+    checkAchievements()
+    checkStateAchievements()
     const after = stateClone()
     return { ...result, patches: diffSlices(before, after, noise) }
   } catch (e) {

@@ -205,7 +205,7 @@
             <span class="shrink-0 tabular text-[9px] leading-none text-ink-faint">×{{ nextGrowth.ceil.toFixed(1) }}</span>
           </div>
         </div>
-        <button class="btn-ghost mt-3 w-full" @click="rerollReincarnationLinggen">逆天改命</button>
+        <button class="btn-ghost mt-3 w-full" @click="onReroll">逆天改命</button>
         <p class="mt-2 text-center text-[11px] text-ink-faint">不限次数</p>
       </div>
       <p class="mt-3 font-kai text-[13px] tracking-widest text-ink">择一先天之姿</p>
@@ -330,7 +330,8 @@
     return null
   })
 
-  const view = computed(() => ui.reincarnation)
+  /** 交割单在档里(player.rebirthOffer):服务端算的,客户端只画(1.79.0) */
+  const view = computed(() => player.rebirthOffer)
 
   /** 来世灵根的倍率刻度:与建号页同一份(见 ui/growthGauge) */
   const nextGrowth = computed(() => growthGauge(view.value?.nextLinggen.growthMult ?? 1))
@@ -399,13 +400,27 @@
     detailId.value = null
   })
 
-  function beginRebirth(): void {
-    prepareReincarnation()
+  /**
+   * 兵解转世:交割单由服务端算(先天之姿、命题池都在那一侧掷),等它回来再开窗。
+   * 未登录时 prepareReincarnation 自己走本地实现,行为与从前一致。
+   */
+  async function beginRebirth(): Promise<void> {
+    const view = await prepareReincarnation()
+    if (view === null) ui.toast('此刻算不出交割单,稍后再试', 'warn')
+  }
+
+  /** 改命一次:登录态由服务端重掷(补丁带回新的先天之姿),这里只负责把 await 接住 */
+  async function onReroll(): Promise<void> {
+    await rerollReincarnationLinggen()
   }
 
   async function confirm(): Promise<void> {
     // 转世里要等凡界重新凝出来(分块异步);不等就跳转,落地时会看到「此世未成」
-    await confirmReincarnation(chosen.value, theme.value)
+    const ok = await confirmReincarnation(chosen.value, theme.value)
+    if (!ok) {
+      ui.toast('转世未成,稍后再试', 'warn')
+      return
+    }
     chosen.value = null
     theme.value = null
     engine.resetDeathFlag()

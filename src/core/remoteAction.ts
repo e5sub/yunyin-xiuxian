@@ -62,6 +62,59 @@ export interface ActionResultEcho {
   payload?: unknown
 }
 
+/**
+ * 等结果的动作(1.79.0):往返一次、拿回服务端算出来的那个值。
+ *
+ * 与 `reportAction` 的分工:
+ *   - `reportAction`:本地已经跑过、界面已经看到结果,上报只是让服务端记一笔(吃丹、开炉);
+ *   - `runActionAwait`:界面**要显示服务端算出来的东西**(远征战报、转世交割单、坊市买到的货),
+ *     本地那份预测会与界面上的数字打架,所以干脆等它回来再画。
+ *
+ * 三条口径:
+ *   1. 未登录 / 无窗口 → 走 `local`(单机与测试环境必须能玩);没给 `local` 就是「只能服务端做」。
+ *   2. 服务端**明确拒绝**(ok=false)→ 不跑 `local`(它会把一件服务端不认的事做出来),
+ *      拉一次整档重对齐后如实回报失败。
+ *   3. 网络不通 → 有 `local` 就跑(断网时保住玩法),没有就报失败。
+ *      本地这一份与云端会短暂分叉,恢复后由心跳/重对齐收口 —— 与其它预测路径同一代价。
+ */
+export async function runActionAwait<T = unknown>(
+  kind: string,
+  params: Record<string, unknown> = {},
+  local?: () => T | Promise<T>
+): Promise<{ ok: boolean; value: T | null; reason?: string }> {
+  /** 本地实现可能是 async(坊市买入要先签发装备),这里一律等它 */
+  const fallback = async (): Promise<{ ok: boolean; value: T | null; reason?: string }> => {
+    if (local === undefined) return { ok: false, value: null, reason: '此刻需要联网' }
+    try {
+      return { ok: true, value: await local() }
+    } catch (e) {
+      return { ok: false, value: null, reason: e instanceof Error ? e.message : '结算失败' }
+    }
+  }
+  if (typeof window === 'undefined') return await fallback()
+  let loggedIn = false
+  try {
+    loggedIn = useAuthStore().loggedIn
+  } catch {
+    loggedIn = false
+  }
+  if (!loggedIn) return await fallback()
+  try {
+    const res = await cloudApi.actionOp({ kind, ...params })
+    if (res.ok) {
+      if (res.slices !== undefined) applySlices(res.slices)
+      return { ok: true, value: (res.payload as T | null) ?? null }
+    }
+    void resyncFromCloud()
+    return { ok: false, value: null, reason: res.reason ?? '天道不许' }
+  } catch (e) {
+    if (e instanceof CloudError && e.status === 429) {
+      return { ok: false, value: null, reason: '稍候再试' }
+    }
+    return await fallback()
+  }
+}
+
 /** 上报结果回调:界面需要拿到「服务端说成了几枚/打到什么」时才用 */
 type Echo = (r: ActionResultEcho) => void
 

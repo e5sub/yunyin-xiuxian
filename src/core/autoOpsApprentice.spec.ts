@@ -6,14 +6,18 @@
  *   四 云不可达时静默跳过,下一轮再说(不弹错、不重试轰炸)。
  * 云接口与差事 store 的动作都走替身:托管只认「回什么」,不认界面怎么显示。
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { OwnedApprentice } from '@/core/apprenticeService'
 import { taskDef } from '@/data/apprentices'
 
 const cloud = vi.hoisted(() => ({
   apprenticeTaskClaim: vi.fn(),
-  apprenticeTaskStart: vi.fn()
+  apprenticeTaskStart: vi.fn(),
+  // 收割改走动作端(1.79.0):产出由 /api/action 在云档上算,回的是 payload
+  actionOp: vi.fn(),
+  actionResync: vi.fn(),
+  apprenticeTaskList: vi.fn()
 }))
 
 vi.mock('@/services/cloud', async importOriginal => ({
@@ -53,23 +57,34 @@ beforeEach(() => {
   setActivePinia(createPinia())
   // 模块级的计时/冷却随循环停启归零,否则上一用例的失败冷却会让这一轮的 tick 直接跳过
   stopAutoOps()
+  // runActionAwait 只在浏览器里发请求;判据要测的正是「发出去之后怎么处理回话」
+  vi.stubGlobal('window', {})
   cloud.apprenticeTaskClaim.mockReset()
   cloud.apprenticeTaskStart.mockReset()
+  cloud.actionOp.mockReset()
+  cloud.actionResync.mockReset()
+  cloud.actionResync.mockResolvedValue({ ok: true, slices: null })
+  cloud.apprenticeTaskList.mockReset()
+  cloud.apprenticeTaskList.mockResolvedValue({ tasks: [] })
   useSettingsStore().autoAdventure = true
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 describe('道童差事托管的边界', () => {
   it('未登录一概不动手', async () => {
     useGameStore().started = true
     await autoApprenticeTick()
-    expect(cloud.apprenticeTaskClaim).not.toHaveBeenCalled()
+    expect(cloud.actionOp).not.toHaveBeenCalled()
     expect(cloud.apprenticeTaskStart).not.toHaveBeenCalled()
   })
 
   it('非 VIP 不动手,托管开关一并自动关闭(到期全关,续费后重新打开)', async () => {
     signIn(false)
     await autoApprenticeTick()
-    expect(cloud.apprenticeTaskClaim).not.toHaveBeenCalled()
+    expect(cloud.actionOp).not.toHaveBeenCalled()
     expect(useSettingsStore().autoAdventure).toBe(false)
   })
 
@@ -77,7 +92,7 @@ describe('道童差事托管的边界', () => {
     signIn(true)
     useSettingsStore().autoAdventure = false
     await autoApprenticeTick()
-    expect(cloud.apprenticeTaskClaim).not.toHaveBeenCalled()
+    expect(cloud.actionOp).not.toHaveBeenCalled()
     expect(cloud.apprenticeTaskStart).not.toHaveBeenCalled()
   })
 
@@ -90,7 +105,7 @@ describe('道童差事托管的边界', () => {
         make('ap_kuangtou', null)
       ]
     })
-    cloud.apprenticeTaskClaim.mockResolvedValue({ ok: true, spoils: { stone: 120, herb: 9 } })
+    cloud.actionOp.mockResolvedValue({ ok: true, slices: {}, payload: { spoils: { stone: 120, herb: 9 } } })
     cloud.apprenticeTaskStart.mockResolvedValue({ ok: true })
 
     await autoApprenticeTick()
@@ -112,7 +127,7 @@ describe('道童差事托管的边界', () => {
     const a = useApprenticeStore()
     a.$patch({ apprentices: [make('ap_luanniao', { spec: 'herb', startAt: Date.now() - 1000, finishAt: Date.now() + 3600_000 })] })
     await autoApprenticeTick()
-    expect(cloud.apprenticeTaskClaim).not.toHaveBeenCalled()
+    expect(cloud.actionOp).not.toHaveBeenCalled()
     expect(cloud.apprenticeTaskStart).not.toHaveBeenCalled()
   })
 
@@ -120,7 +135,7 @@ describe('道童差事托管的边界', () => {
     signIn(true)
     const a = useApprenticeStore()
     a.$patch({ apprentices: [make('ap_luanniao', doneTask('herb'))] })
-    cloud.apprenticeTaskClaim.mockRejectedValue(new Error('网络异常'))
+    cloud.actionOp.mockRejectedValue(new Error('网络异常'))
     await autoApprenticeTick()
     // 差事保留(1.74.1 的卡死兜底在 store 内部,60 秒后作废,这里只验托管不炸)
     expect(a.apprentices[0]!.task).not.toBeNull()

@@ -15,8 +15,8 @@
  * (viteEnv 已函数化),且 Node 里登录态恒为未登录,签发自动走本地裁决核心(lootGrant)。
  * store 在无窗环境安全(与 core/breakthroughResolve 同一条纪律)。
  *
- * 顿悟与洞府巡游不在这里:它们是玩家在场时的 UI 弹窗流,由客户端引擎触发;
- * 它们的奖励结算收口列入后续清单(与事件选择同批)。
+ * 顿悟与洞府巡游的**掷签**也在这里(1.79.0):事件本体已搬进 player 分片,
+ * 服务端推进完生产顺带掷一签,补丁把「此刻开着哪扇窗」带回客户端;选项的兑现走 actionOps。
  */
 import { createPinia, setActivePinia } from 'pinia'
 import { add, gn, gnZero, gt, mulN } from '@/utils/gnum'
@@ -36,7 +36,8 @@ import { settleSuppressedRegions } from './suppress'
 import { studyTick } from './loreService'
 import { settleOfflineOnStores } from './offline'
 import type { OfflineSummary } from '@/types'
-import { rolloverDailyIfNeeded, checkStateAchievements } from './progress'
+import { rolloverDailyIfNeeded, checkStateAchievements, checkAchievements } from './progress'
+import { mayTriggerEnlightenment, mayTriggerCaveEvent } from './earlyGameService'
 import { snapshotFromActiveStores, type ProfileSnapshot } from './profileRecompute'
 import { SLICE_FACTORIES, diffSlices, isPlainObject, stateClone } from './sliceStores'
 
@@ -229,9 +230,24 @@ export async function resolveAdvanceFromSlices(
       summary = await settleOfflineOnStores(now)
     } else {
       await advanceOnStores(ctx.dtSec, now, { exploration: true, suppress: true })
+      /*
+       * 在场浮窗由服务端掷(1.79.0):顿悟与洞府巡游原先挂在客户端引擎的轮询上,
+       * 事件的产出(悟道点/修为/灵草/buff)也就只能由客户端自己发。
+       * 事件本体搬进 player 分片之后,掷签这一步挪到这里 ——
+       * 客户端收到的补丁里带着「现在开着哪一扇窗」,它只负责画与上报选项。
+       * 未登录路径仍由引擎自己掷(见 engine.tick)。
+       */
+      mayTriggerEnlightenment()
+      mayTriggerCaveEvent()
       useGameStore().stampActive(now)
     }
     rolloverDailyIfNeeded()
+    /*
+     * 成就补扫(1.79.0):`checkStateAchievements` 只管状态型那几项,境界/计数型的
+     * 一直由客户端在突破与战斗后自己扫 —— 服务端不扫的话,那些赏只能由客户端发,
+     * 而客户端发的东西进不了云档(抛弃存档之后)。扫在这里,赏随补丁回。
+     */
+    checkAchievements()
     checkStateAchievements()
     const patches = diffSlices(before, stateClone())
     const snapshot = snapshotFromActiveStores()

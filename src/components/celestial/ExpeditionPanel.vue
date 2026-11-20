@@ -361,6 +361,8 @@
   import SectionTitle from '@/components/common/SectionTitle.vue'
   import BaseModal from '@/components/common/BaseModal.vue'
   import type { ReportView } from '@/components/celestial/BattleReportDialog.vue'
+  import { runActionAwait } from '@/core/remoteAction'
+  import { useUiStore } from '@/stores/ui'
 
   /**
    * 远征册:在途行程 / 特殊规则世界 / 虚界之门 + 准备弹窗;确认态归本册,宿主不代管。
@@ -386,7 +388,9 @@
     if (rerolling.value || isVoidRerolling()) return
     rerolling.value = true
     try {
-      await rerollVoidWorld()
+      // 重掷要扣道源,且世界是随机的:由服务端掷、由补丁带回(1.79.0)
+      const r = await runActionAwait('void_reroll', {}, () => rerollVoidWorld())
+      if (!r.ok) useUiStore().toast(r.reason ?? '窥探未成', 'warn')
     } finally {
       rerolling.value = false
     }
@@ -470,28 +474,54 @@
     })
   }
 
-  function depart(): void {
-    if (!prepWorld.value) return
-    const title = prepWorld.value.name
-    const outcome = startWorldExpedition(prepWorld.value.id, prepPact.value, prepGate.value)
+  /**
+   * 出发(1.79.0 起由服务端裁决)。
+   *
+   * 战斗里全是随机数,本地算出来那一份与云端的必然不同 —— 若先本地演一遍再被补丁改掉,
+   * 玩家会看到「赢了」变「输了」。所以这里不等本地结果,直接把这一趟交给服务端,
+   * 拿 `payload` 里那份战果出战报。未登录/断网时 runActionAwait 会退回本地实现。
+   */
+  async function depart(): Promise<void> {
+    const world = prepWorld.value
+    if (!world) return
+    const title = world.name
+    const r = await runActionAwait<StepOutcome | null>(
+      'expedition_start',
+      { id: world.id, pact: prepPact.value ?? '', gate: prepGate.value ?? '' },
+      () => startWorldExpedition(world.id, prepPact.value, prepGate.value)
+    )
+    if (!r.ok) {
+      useUiStore().toast(r.reason ?? '入不得此界', 'warn')
+      return
+    }
+    const outcome = r.value
     if (outcome) prepWorldId.value = null
     /*
      * 全自动:出发后一路打到终局(自动择径 + 自动决战界主),不再逐层手点。
-     * 非 VIP 每日 EXPEDITION_AUTO_DAILY_LIMIT 次、VIP 不限 —— 额度用尽走原来的逐层手点,
-     * 只是不再代点,收费(道源入界)与战果口径分毫不差。
+     * 非 VIP 每日 EXPEDITION_AUTO_DAILY_LIMIT 次、VIP 不限 —— 额度由服务端判(见 actionOps)。
      */
     if (outcome?.type === 'advance' && canAutoExpedition()) {
       noteAutoExpedition()
-      handleOutcome(autoAdvanceExpedition(), title)
+      const auto = await runActionAwait<StepOutcome | null>('expedition_auto', {}, () => autoAdvanceExpedition())
+      if (!auto.ok) {
+        useUiStore().toast(auto.reason ?? '全自动未成', 'warn')
+        return
+      }
+      handleOutcome(auto.value, title)
       return
     }
     handleOutcome(outcome, title)
   }
 
   /** 在途续行:归来接着走时一键全自动到终局(额度同出发;不重复计数 —— 这趟已在出发时记过) */
-  function autoContinue(): void {
+  async function autoContinue(): Promise<void> {
     if (!canAutoExpedition()) return
-    handleOutcome(autoAdvanceExpedition(), titleOfRun())
+    const r = await runActionAwait<StepOutcome | null>('expedition_auto', {}, () => autoAdvanceExpedition())
+    if (!r.ok) {
+      useUiStore().toast(r.reason ?? '全自动未成', 'warn')
+      return
+    }
+    handleOutcome(r.value, titleOfRun())
   }
 
   /** 战报标题须在开战前取:被逐/出界会把 worldRun 清成 null */
@@ -499,20 +529,31 @@
     return runWorld.value?.name ?? '远征'
   }
 
-  function pickNode(i: 0 | 1): void {
+  async function pickNode(i: 0 | 1): Promise<void> {
     const title = titleOfRun()
-    handleOutcome(chooseRouteNode(i), title)
+    const r = await runActionAwait<StepOutcome | null>('expedition_node', { index: i }, () => chooseRouteNode(i))
+    if (!r.ok) {
+      useUiStore().toast(r.reason ?? '此路不通', 'warn')
+      return
+    }
+    handleOutcome(r.value, title)
   }
 
-  function fightBoss(): void {
+  async function fightBoss(): Promise<void> {
     const title = titleOfRun()
-    handleOutcome(challengeGuardian(), title)
+    const r = await runActionAwait<StepOutcome | null>('expedition_guardian', {}, () => challengeGuardian())
+    if (!r.ok) {
+      useUiStore().toast(r.reason ?? '不到决战之时', 'warn')
+      return
+    }
+    handleOutcome(r.value, title)
   }
 
   /** 中道而返二步确认:沿途道源与推进全失,留一记殁痕 */
   const abandonConfirm = ref(false)
-  function abandonRun(): void {
+  async function abandonRun(): Promise<void> {
     abandonConfirm.value = false
-    abandonExpedition()
+    const r = await runActionAwait('expedition_abandon', {}, () => abandonExpedition())
+    if (!r.ok) useUiStore().toast(r.reason ?? '退不出来', 'warn')
   }
 </script>

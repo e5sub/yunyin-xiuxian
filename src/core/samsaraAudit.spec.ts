@@ -25,7 +25,7 @@ import { useApprenticeStore } from '@/stores/apprentice'
 import { useBountyStore } from '@/stores/bounty'
 import { usePacingTelemetry } from '@/stores/pacingTelemetry'
 import { PERSISTED_STORES } from '@/utils/storage'
-import { prepareReincarnation, confirmReincarnation } from './reincarnation'
+import { prepareReincarnationLocal, confirmReincarnationLocal } from './reincarnation'
 import { gn, toNum } from '@/utils/gnum'
 import { daoFruitGain } from './formulas'
 import { MAX_MAJOR, REBIRTH_REFERENCE_MAJOR, WORLD_BREAK_MAJOR } from '@/data/realms'
@@ -229,6 +229,8 @@ describe('轮回审计 · 继承清单最小完备', () => {
     breakthroughPrep: ['breakthroughPrep'],
     dead: ['realm'],
     divination: ['divination'],
+    earlyEvents: ['earlyEvents'],
+    rebirthOffer: ['rebirthOffer'],
     enlightenmentAt: ['enlightenmentAt'],
     fateFocus: ['fateFocus'],
     eventChains: ['fortuneMemory'],
@@ -486,8 +488,8 @@ describe('轮回审计 · 跨店持久化分片最小完备', () => {
     endgame.souls = [{ uid: 's1' }] as never
     lore.materialLore = { m_lingzhi: 2 }
 
-    prepareReincarnation()
-    await confirmReincarnation(null)
+    prepareReincarnationLocal()
+    await confirmReincarnationLocal(null)
 
     // reset 判据 → 初始/空;灵石/悟道与 flow spec 同裁(a_re1 会补发一小笔)
     expect(toNum(res.spiritStone), '存量灵石应清,只剩新世开局馈赠').toBeLessThan(1000)

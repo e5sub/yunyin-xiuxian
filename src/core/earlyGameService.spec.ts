@@ -6,8 +6,7 @@ import { useCultivationStore } from '@/stores/cultivation'
 import { useAdventureStore } from '@/stores/adventure'
 import { gn, gnZero, toNum } from '@/utils/gnum'
 import { todayLocalNum } from '@/utils/time'
-import { useUiStore } from '@/stores/ui'
-import { prepareReincarnation, confirmReincarnation } from './reincarnation'
+import { prepareReincarnationLocal, confirmReincarnationLocal } from './reincarnation'
 import {
   dismissCaveEvent,
   dismissEnlightenment,
@@ -697,16 +696,15 @@ describe('转世 · 本世的浮窗事件不许跨世', () => {
 
   it('掷出洞府巡游后转世:巡游窗不再残留', async () => {
     const player = usePlayerStore()
-    const ui = useUiStore()
     player.major = 2
     vi.spyOn(Math, 'random').mockReturnValue(0)
     expect(mayTriggerCaveEvent(), '夹具没掷出巡游').not.toBeNull()
     vi.restoreAllMocks()
     expect(getCurrentCaveEvent(), '转世前该能看到').not.toBeNull()
 
-    // 走真实入口:先备交割单,再确认转世 —— resetEarlyGameEvents 挂在 confirmReincarnation 里
-    ui.reincarnation = prepareReincarnation()
-    await confirmReincarnation(null)
+    // 走真实入口:先备交割单,再确认转世 —— resetEarlyGameEvents 挂在 confirmReincarnationLocal 里
+    prepareReincarnationLocal()
+    await confirmReincarnationLocal(null)
     expect(getCurrentCaveEvent(), '上一世的巡游窗跟着转世留下来了').toBeNull()
     expect(getCurrentEnlightenment(), '上一世的顿悟窗也跟着留下来了').toBeNull()
   })

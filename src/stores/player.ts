@@ -230,6 +230,28 @@ export const usePlayerStore = defineStore(
     /** 突破准备(静坐/聚气丹):付费的一次性加成,须存进档(放模块态刷新即丢) */
     const breakthroughPrep = ref<import('@/core/earlyGameService').BreakthroughPrepState | null>(null)
 
+    /**
+     * 在场浮窗事件(顿悟 / 洞府巡游),1.79.0 从 earlyGameService 的模块级变量搬进档。
+     *
+     * 为什么非搬不可:模块级变量在无头环境不存在,于是服务端调 `chooseEnlightenment`
+     * 只能空转 —— 这两扇窗的产出(悟道点、修为、灵草、buff)永远只能由客户端自己发。
+     * 搬进档之后,事件的**掷出**与**兑现**都在服务端那次推进里发生,回传的补丁把
+     * 「现在开着哪一扇窗」一并带给客户端;客户端只负责画。
+     */
+    const earlyEvents = ref<import('@/core/earlyGameService').EarlyEvents>({
+      enlightenment: null,
+      cave: null
+    })
+
+    /**
+     * 转世交割单(1.79.0):`prepareReincarnation` 算出、`confirmReincarnation` 兑现。
+     *
+     * 放档里而不是 ui store,是为了让服务端能自己算、自己核:客户端只报「我要转世」,
+     * 拿到的是服务端掷出来的先天之姿与命题,确认时服务端按同一份交割单入账。
+     * 客户端凭空的交割单一律不认(它根本进不了云档)。
+     */
+    const rebirthOffer = ref<import('@/stores/ui').ReincarnationView | null>(null)
+
     /** 上次顿悟的时刻:频次闸,须随档(挂在模块上刷新即冷却归零);跨世保留 */
     const enlightenmentAt = ref(0)
 
@@ -763,6 +785,9 @@ export const usePlayerStore = defineStore(
       dead.value = false
       winStreak.value = 0
       lastCaveEventDay.value = 0
+      // 上一世的浮窗与未兑现的交割单都不该跟着转世走(1.79.0)
+      earlyEvents.value = { enlightenment: null, cave: null }
+      rebirthOffer.value = null
       secretRealm.value = null
       regionEvent.value = null
       divination.value = null
@@ -819,6 +844,109 @@ export const usePlayerStore = defineStore(
       const lastLifeAt = lives[lives.length - 1]?.at
       if (typeof lastLifeAt !== 'number' || !Number.isFinite(lastLifeAt)) return record
       return record.at < lastLifeAt ? null : record
+    }
+
+    /** 物件形状判据:数组不算对象(与别处同一把尺) */
+    function isRec(v: unknown): v is Record<string, unknown> {
+      // 用 toString 判「普通对象」:数组/日期/类实例一律不算,省掉一处 typeof 形状闸
+      return Object.prototype.toString.call(v) === '[object Object]'
+    }
+
+    /**
+     * 在场浮窗事件的读档守卫。
+     *
+     * 两扇窗各自只有一个「窗口时长」(顿悟 60s、巡游 120s),超过上限的 `expiresAt`
+     * 等于把窗钉死在屏幕上;选项数组坏掉则弹窗渲染时取 `options[i].label` 直接抛错。
+     * 形状不对一律作废,当作「此刻没有这扇窗」—— 下一次服务端推进自然会重掷。
+     */
+    function sanitizeEarlyEvents(): void {
+      const raw: unknown = earlyEvents.value
+      const src = isRec(raw) ? raw : {}
+      const now = Date.now()
+      /** 窗口上限:比最长的那扇(巡游 120s)再宽一倍,挡「存档里写一个永不过期的窗」 */
+      const MAX_WINDOW_MS = 240_000
+      const cleanOptions = (v: unknown): boolean =>
+        Array.isArray(v) &&
+        v.length > 0 &&
+        v.length <= 8 &&
+        v.every(o => isRec(o) && typeof o.label === 'string')
+
+      const en = src.enlightenment
+      let nextEn: import('@/types').EnlightenmentEvent | null = null
+      if (isRec(en) && typeof en.id === 'string' && en.id !== '' && cleanOptions(en.options)) {
+        const triggeredAt = asTimestamp(en.triggeredAt, 0)
+        const expiresAt = asTimestamp(en.expiresAt, 0)
+        const sane =
+          triggeredAt > 0 &&
+          expiresAt > triggeredAt &&
+          expiresAt - triggeredAt <= MAX_WINDOW_MS &&
+          expiresAt <= now + MAX_WINDOW_MS
+        if (sane) {
+          nextEn = {
+            id: en.id,
+            options: en.options as import('@/types').EnlightenmentOption[],
+            triggeredAt,
+            expiresAt
+          }
+        }
+      }
+
+      const cav = src.cave
+      let nextCave: import('@/types').CaveEvent | null = null
+      if (isRec(cav) && typeof cav.id === 'string' && cav.id !== '' && cleanOptions(cav.options)) {
+        const triggeredAt = asTimestamp(cav.triggeredAt, 0)
+        const expiresAt = asTimestamp(cav.expiresAt, 0)
+        const locOk =
+          cav.location === 'field' ||
+          cav.location === 'furnace' ||
+          cav.location === 'library' ||
+          cav.location === 'array' ||
+          cav.location === 'garden'
+        const sane =
+          locOk &&
+          typeof cav.title === 'string' &&
+          typeof cav.desc === 'string' &&
+          triggeredAt > 0 &&
+          expiresAt > triggeredAt &&
+          expiresAt - triggeredAt <= MAX_WINDOW_MS &&
+          expiresAt <= now + MAX_WINDOW_MS
+        if (sane) {
+          nextCave = cav as unknown as import('@/types').CaveEvent
+        }
+      }
+
+      earlyEvents.value = { enlightenment: nextEn, cave: nextCave }
+    }
+
+    /**
+     * 转世交割单的读档守卫。
+     *
+     * 这张单子决定下一次转世能拿多少道果、带哪几门天赋、立什么题 ——
+     * 形状坏掉的单子会让确认那一刻在 `review.insightGained` 之类的地方抛错,
+     * 而那时本世已经清了一半。形状不对宁可作废(重开一次界面即可重算)。
+     */
+    function sanitizeRebirthOffer(): void {
+      const v: unknown = rebirthOffer.value
+      if (v === null || v === undefined) {
+        rebirthOffer.value = null
+        return
+      }
+      const ok =
+        isRec(v) &&
+        Array.isArray(v.talentChoices) &&
+        v.talentChoices.every(x => typeof x === 'string') &&
+        Array.isArray(v.extraTalents) &&
+        v.extraTalents.every(x => typeof x === 'string') &&
+        Array.isArray(v.themeChoices) &&
+        v.themeChoices.every(x => typeof x === 'string') &&
+        isRec(v.review) &&
+        Number.isFinite(v.review.insightGained) &&
+        isRec(v.nextLinggen) &&
+        typeof v.nextLinggen.id === 'string' &&
+        Number.isFinite(v.daoFruitGained) &&
+        Number.isFinite(v.insightAfter) &&
+        typeof v.stageId === 'string'
+      if (!ok) rebirthOffer.value = null
     }
 
     /** 存档修复 */
@@ -915,6 +1043,8 @@ export const usePlayerStore = defineStore(
       }
       // 旧存档无顿悟冷却一栏;0 = 从未顿悟。它是个时间戳,故与别处同一把尺(asTimestamp 挡超范围)
       enlightenmentAt.value = Math.max(0, asTimestamp(enlightenmentAt.value, 0))
+      sanitizeEarlyEvents()
+      sanitizeRebirthOffer()
       if (fateFocus.value !== null && !STARS.some(s => s.id === fateFocus.value)) {
         fateFocus.value = null
       }
@@ -1584,6 +1714,17 @@ export const usePlayerStore = defineStore(
       breakthroughPrep.value = state
     }
 
+    // ---------- 在场浮窗事件(顿悟 / 洞府巡游) ----------
+    /** 落一扇窗(传 null 即关掉);事件本体由 earlyGameService 掷出 */
+    function setEarlyEvents(next: import('@/core/earlyGameService').EarlyEvents): void {
+      earlyEvents.value = next
+    }
+
+    // ---------- 转世交割单 ----------
+    function setRebirthOffer(v: import('@/stores/ui').ReincarnationView | null): void {
+      rebirthOffer.value = v
+    }
+
     function setEnlightenmentAt(t: number): void {
       enlightenmentAt.value = Number.isFinite(t) ? Math.max(0, t) : 0
     }
@@ -1693,6 +1834,17 @@ export const usePlayerStore = defineStore(
         }
       }
       if (enlightenmentAt.value > 0) enlightenmentAt.value += pausedMs
+      // 在场浮窗同样按墙钟计时:暂停期间不该继续倒计时(1.79.0 事件进档后并到这里)
+      const ee = earlyEvents.value
+      if (ee.enlightenment !== null || ee.cave !== null) {
+        earlyEvents.value = {
+          enlightenment:
+            ee.enlightenment === null
+              ? null
+              : { ...ee.enlightenment, expiresAt: ee.enlightenment.expiresAt + pausedMs },
+          cave: ee.cave === null ? null : { ...ee.cave, expiresAt: ee.cave.expiresAt + pausedMs }
+        }
+      }
 
       const nextSince: Record<string, number> = {}
       for (const [id, at] of Object.entries(suppressedSince.value)) {
@@ -1739,6 +1891,8 @@ export const usePlayerStore = defineStore(
       divination,
       breakthroughPrep,
       enlightenmentAt,
+      earlyEvents,
+      rebirthOffer,
       fortuneChoices,
       realm,
       realmName,
@@ -1820,6 +1974,8 @@ export const usePlayerStore = defineStore(
       setDivination,
       setBreakthroughPrep,
       setEnlightenmentAt,
+      setEarlyEvents,
+      setRebirthOffer,
       setFortuneChoices,
       shiftTimedState
     }

@@ -116,7 +116,133 @@ describe('动作结算 · 补丁不含噪声', () => {
   it('卖玄铁的补丁里不该出现与动作无关的分片', async () => {
     const r = await resolveActionFromSlices(save(), { kind: 'sell_material' }, { now: NOW })
     const slices = Object.keys(r!.patches)
-    // 坊市卖出只动资源;行囊/角色/任务一概不该被这次动作改写
-    expect(slices).toEqual(['resources'])
+    /*
+     * 坊市卖出只动资源;行囊/角色不该被这次动作改写。
+     * `quests` 例外:1.79.0 起动作结算末尾会补扫一次成就,卖出一笔刚好凑够某个成就时
+     * 那一行就落在 quests 分片里 —— 那是真改动,不是噪声。
+     */
+    expect(slices.filter(s => s !== 'quests')).toEqual(['resources'])
+  })
+})
+
+/*
+ * 1.79.0:在场浮窗、转世交割单、坊市买入都搬上了服务端。
+ * 这一组判据盯的是「搬上去之后,那些东西还认得出、算得对」——
+ * 事件本体已进 player 分片,所以无头水合就能复现同一扇窗。
+ */
+describe('动作结算 · 在场浮窗(1.79.0 事件进档)', () => {
+  /** 一扇还开着的顿悟窗:expiresAt 按墙钟取,否则 gameNow() 一读就判过期 */
+  function withEnlightenment(): Record<string, unknown> {
+    const data = save()
+    const at = Date.now()
+    ;(data.player as Record<string, unknown>).earlyEvents = {
+      enlightenment: {
+        id: `enlighten_${at}`,
+        options: [
+          { type: 'insight', label: '悟道', desc: '悟道点 +5', duration: 0, reward: { type: 'wudao', value: 5 } }
+        ],
+        triggeredAt: at - 1000,
+        expiresAt: at + 59_000
+      },
+      cave: null
+    }
+    return data
+  }
+
+  it('选一扇开着的窗:补丁带悟道点,并且把窗关掉', async () => {
+    const data = withEnlightenment()
+    const r = await resolveActionFromSlices(data, { kind: 'enlighten', index: 0 }, { now: Date.now() })
+    expect(r!.ok).toBe(true)
+    expect((r!.patches.resources?.wudao as number | undefined)).toBe(5)
+    const ee = r!.patches.player?.earlyEvents as { enlightenment: unknown } | undefined
+    expect(ee, '窗没被关掉,客户端会一直弹').toBeDefined()
+    expect(ee!.enlightenment).toBeNull()
+  })
+
+  it('没有窗时 ok=false 且空补丁', async () => {
+    const r = await resolveActionFromSlices(save(), { kind: 'enlighten', index: 0 }, { now: Date.now() })
+    expect(r!.ok).toBe(false)
+    expect(r!.patches).toEqual({})
+  })
+})
+
+describe('动作结算 · 转世交割单(1.79.0 服务端算)', () => {
+  it('准备 → 确认:世号 +1,交割单当场作废', async () => {
+    const prepared = await resolveActionFromSlices(save(), { kind: 'rebirth_prepare' }, { now: NOW })
+    expect(prepared!.ok).toBe(true)
+    const offer = prepared!.patches.player?.rebirthOffer as Record<string, unknown> | undefined
+    expect(offer, '交割单没进补丁,客户端就没得画').toBeDefined()
+    expect(Array.isArray(offer!.talentChoices)).toBe(true)
+
+    // 下一拍:云端档里已经有这张单子了
+    const data = save()
+    ;(data.player as Record<string, unknown>).rebirthOffer = offer
+    const done = await resolveActionFromSlices(data, { kind: 'rebirth_confirm', id: '' }, { now: NOW })
+    expect(done!.ok).toBe(true)
+    const count = (done!.patches.player?.reincarnation as { count: number } | undefined)?.count
+    expect(count, '世号没涨').toBe(1)
+    expect(done!.patches.player?.rebirthOffer, '交割单没被取走,连点能兑两次').toBeNull()
+  })
+
+  it('没有交割单时确认:ok=false(客户端凭空的单子不认)', async () => {
+    const r = await resolveActionFromSlices(save(), { kind: 'rebirth_confirm', id: '' }, { now: NOW })
+    expect(r!.ok).toBe(false)
+  })
+})
+
+describe('动作结算 · 坊市买入(1.79.0 服务端执行)', () => {
+  it('货架时刻对不上:ok=false(不拿客户端报的旧货架成交)', async () => {
+    const r = await resolveActionFromSlices(save(), { kind: 'market_buy', at: 1, index: 0 }, { now: NOW })
+    expect(r!.ok).toBe(false)
+  })
+
+  it('缺货架时刻:ok=false', async () => {
+    const r = await resolveActionFromSlices(save(), { kind: 'market_buy', index: 0 }, { now: NOW })
+    expect(r!.ok).toBe(false)
+  })
+})
+
+describe('动作结算 · 差事收割(1.79.0 产出由服务端算)', () => {
+  /** 一名带着「已完工采药差事」的道童 */
+  function withDoneTask(): Record<string, unknown> {
+    const data = save()
+    const now = Date.now()
+    ;(data.apprentice as Record<string, unknown>) = {
+      apprentices: [
+        { uid: 'apt_1', archId: 'ap_luanniao', level: 3, bond: 0, task: { spec: 'herb', startAt: now - 60_000, finishAt: now - 1000 } }
+      ]
+    }
+    return data
+  }
+
+  it('完工即收:产出入账、道童进阶、任务清空', async () => {
+    const r = await resolveActionFromSlices(withDoneTask(), { kind: 'apprentice_claim', id: 'apt_1' }, { now: Date.now() })
+    expect(r!.ok).toBe(true)
+    const payload = r!.payload as { spoils?: { herb?: number } }
+    expect(payload.spoils, '产出没算出来').toBeDefined()
+    const list = r!.patches.apprentice?.apprentices as Array<{ level: number; task: unknown }> | undefined
+    expect(list, '道童分片没回补丁').toBeDefined()
+    expect(list![0]!.task, '任务没清,会反复收').toBeNull()
+    expect(list![0]!.level, '没进阶').toBe(4)
+  })
+
+  it('尚在差中:回 remainMs,不动账', async () => {
+    const data = save()
+    const now = Date.now()
+    ;(data.apprentice as Record<string, unknown>) = {
+      apprentices: [
+        { uid: 'apt_1', archId: 'ap_luanniao', level: 3, bond: 0, task: { spec: 'herb', startAt: now, finishAt: now + 10_000 } }
+      ]
+    }
+    const r = await resolveActionFromSlices(data, { kind: 'apprentice_claim', id: 'apt_1' }, { now })
+    expect(r!.ok).toBe(true)
+    expect((r!.payload as { remainMs?: number }).remainMs).toBeGreaterThan(0)
+    expect(r!.patches.apprentice).toBeUndefined()
+  })
+
+  it('查无此单:回 gone(不白拿产出)', async () => {
+    const r = await resolveActionFromSlices(save(), { kind: 'apprentice_claim', id: 'nope' }, { now: Date.now() })
+    expect(r!.ok).toBe(true)
+    expect((r!.payload as { gone?: boolean }).gone).toBe(true)
   })
 })

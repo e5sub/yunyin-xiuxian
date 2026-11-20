@@ -91,7 +91,10 @@ export const useUiStore = defineStore('ui', () => {
     buffDetailId.value = null
   }
   const deathDialog = ref(false)
-  const reincarnation = ref<ReincarnationView | null>(null)
+  /*
+   * 转世交割单不在这里:1.79.0 起它落在 player.rebirthOffer(要能被服务端算与核),
+   * ui store 只留下面这些「这一屏怎么画」的状态。类型仍从这里导出,免得调用方到处改 import。
+   */
   /**
    * PWA 新版本就绪:Service Worker 装上更新后置 true,由 UpdatePrompt 渲染横幅;applyPwaUpdate 或关闭时清回 false。
    * 重载动作由 main.ts 注册 SW 后经 setPwaApplyReload 注入。
@@ -192,7 +195,6 @@ export const useUiStore = defineStore('ui', () => {
     gongfaDetailId,
     buffDetailId,
     deathDialog,
-    reincarnation,
     pwaUpdatePending,
     requestPwaUpdate,
     dismissPwaUpdate,

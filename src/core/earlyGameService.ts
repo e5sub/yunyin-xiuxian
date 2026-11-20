@@ -28,13 +28,32 @@ import { streakRewardText } from '@/ui/streakText'
 import { todayLocalNum } from '@/utils/time'
 import { gameNow } from './enginePause'
 import { cutGNum } from './spendRate'
+import { reportAction } from './remoteAction'
 
 function telemetry(): ReturnType<typeof usePacingTelemetry> {
   return usePacingTelemetry()
 }
 
-let enlightenmentEvent: EnlightenmentEvent | null = null
-let caveEvent: CaveEvent | null = null
+/**
+ * 在场浮窗事件的存档形状(1.79.0)。
+ *
+ * 这两扇窗原先存在本模块的模块级变量里 —— 无头环境(服务端经 vendor 加载 core)没有
+ * 「模块生命周期」这回事,于是服务端调进来只能空转,产出只能由客户端自己发。
+ * 搬进 player store 之后,掷出与兑现都发生在服务端那次推进里,客户端只负责画。
+ */
+export interface EarlyEvents {
+  enlightenment: EnlightenmentEvent | null
+  cave: CaveEvent | null
+}
+
+function readEarly(): EarlyEvents {
+  const v: EarlyEvents | undefined = usePlayerStore().earlyEvents
+  return v ?? { enlightenment: null, cave: null }
+}
+
+function writeEarly(next: EarlyEvents): void {
+  usePlayerStore().setEarlyEvents(next)
+}
 
 /** 巡游落点 → 洞府建筑;只落在已盖的建筑处,一处未盖回落灵田 */
 const CAVE_LOCATION_BUILDING: Record<keyof typeof CAVE_EVENT_POOL, BuildingId> = {
@@ -47,13 +66,14 @@ const CAVE_LOCATION_BUILDING: Record<keyof typeof CAVE_EVENT_POOL, BuildingId> =
 
 /** 获取当前悟道顿悟事件(60秒窗口) */
 export function getCurrentEnlightenment(): EnlightenmentEvent | null {
-  if (!enlightenmentEvent) return null
+  const ev = readEarly().enlightenment
+  if (!ev) return null
   const now = gameNow()
-  if (now > enlightenmentEvent.expiresAt) {
-    enlightenmentEvent = null
+  if (now > ev.expiresAt) {
+    writeEarly({ ...readEarly(), enlightenment: null })
     return null
   }
-  return enlightenmentEvent
+  return ev
 }
 
 /**
@@ -82,25 +102,24 @@ export function mayTriggerEnlightenment(): void {
     pool.splice(idx, 1)
   }
 
-  enlightenmentEvent = {
-    id: `enlighten_${now}`,
-    options,
-    triggeredAt: now,
-    expiresAt: now + 60000
-  }
+  writeEarly({
+    ...readEarly(),
+    enlightenment: {
+      id: `enlighten_${now}`,
+      options,
+      triggeredAt: now,
+      expiresAt: now + 60000
+    }
+  })
   player.setEnlightenmentAt(now)
   telemetry().record('enlightenment', 'modal', '悟道顿悟浮现')
 }
 
 /** 选择悟道顿悟选项 */
 export function chooseEnlightenment(optionIndex: number): void {
-  if (
-    !enlightenmentEvent ||
-    !Number.isInteger(optionIndex) ||
-    optionIndex < 0 ||
-    optionIndex >= enlightenmentEvent.options.length
-  ) return
-  const opt = enlightenmentEvent.options[optionIndex]!
+  const ev = readEarly().enlightenment
+  if (!ev || !Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= ev.options.length) return
+  const opt = ev.options[optionIndex]!
   const cult = useCultivationStore()
   const ui = useUiStore()
   const now = gameNow()
@@ -115,13 +134,16 @@ export function chooseEnlightenment(optionIndex: number): void {
   }
 
   telemetry().record('enlightenment_choose', 'modal', `悟道:${opt.label}`)
-  enlightenmentEvent = null
+  writeEarly({ ...readEarly(), enlightenment: null })
+  // 1.79.0:兑现由服务端在云档上重跑一次(本地这次只是显示预测,补丁会覆盖它)
+  reportAction('enlighten', { index: optionIndex })
 }
 
 /** 忽略本次顿悟:须清模块级事件,否则 1s 轮询的 getCurrentEnlightenment 会把它弹回来 */
 export function dismissEnlightenment(): void {
-  if (enlightenmentEvent) telemetry().record('enlightenment_ignore', 'modal', '悟道顿悟忽略')
-  enlightenmentEvent = null
+  if (readEarly().enlightenment) telemetry().record('enlightenment_ignore', 'modal', '悟道顿悟忽略')
+  writeEarly({ ...readEarly(), enlightenment: null })
+  reportAction('enlighten_dismiss')
 }
 
 /**
@@ -141,8 +163,7 @@ export function dismissEnlightenment(): void {
  * 只在转世这条路上调;读档不调 —— 读档本就该恢复「离开时正开着的那个弹窗」。
  */
 export function resetEarlyGameEvents(): void {
-  enlightenmentEvent = null
-  caveEvent = null
+  writeEarly({ enlightenment: null, cave: null })
 }
 
 /**
@@ -313,7 +334,8 @@ export function recordWinStreakBatch(wins: number, losses: number): StreakBatchR
 
 /** 触发洞府巡游(每日一次) */
 export function mayTriggerCaveEvent(): CaveEvent | null {
-  if (caveEvent) return caveEvent
+  const open = readEarly().cave
+  if (open) return open
 
   const player = usePlayerStore()
   const today = todayLocalNum()
@@ -346,50 +368,51 @@ export function mayTriggerCaveEvent(): CaveEvent | null {
   const event = pool[Math.floor(Math.random() * pool.length)]!
   const now = gameNow()
 
-  caveEvent = {
+  const next: CaveEvent = {
     ...event,
     location,
     triggeredAt: now,
     expiresAt: now + 120000 // 2分钟窗口
   }
+  writeEarly({ ...readEarly(), cave: next })
   telemetry().record('cave_event', 'modal', `洞府:${event.title}`)
 
-  return caveEvent
+  return next
 }
 
 /** 获取当前洞府巡游事件 */
 export function getCurrentCaveEvent(): CaveEvent | null {
-  if (!caveEvent) return null
+  const ev = readEarly().cave
+  if (!ev) return null
   const now = gameNow()
-  if (now > caveEvent.expiresAt) {
-    caveEvent = null
+  if (now > ev.expiresAt) {
+    writeEarly({ ...readEarly(), cave: null })
     // 过期也记今日,否则 30s 轮询会反复重掷(与掷签失败同规)
     usePlayerStore().markCaveEventToday(todayLocalNum())
     return null
   }
-  return caveEvent
+  return ev
 }
 
 /** 暂停恢复:机缘 / 巡游窗口的到期时刻顺延暂停时长;与 `enginePause.gameNow()` 的冻结语义配套 */
 export function shiftEarlyGameWindows(pausedMs: number): void {
   if (pausedMs <= 0) return
-  if (enlightenmentEvent) {
-    enlightenmentEvent = { ...enlightenmentEvent, expiresAt: enlightenmentEvent.expiresAt + pausedMs }
-  }
-  if (caveEvent) {
-    caveEvent = { ...caveEvent, expiresAt: caveEvent.expiresAt + pausedMs }
-  }
+  const ee = readEarly()
+  if (ee.enlightenment === null && ee.cave === null) return
+  writeEarly({
+    enlightenment:
+      ee.enlightenment === null
+        ? null
+        : { ...ee.enlightenment, expiresAt: ee.enlightenment.expiresAt + pausedMs },
+    cave: ee.cave === null ? null : { ...ee.cave, expiresAt: ee.cave.expiresAt + pausedMs }
+  })
 }
 
 /** 选择洞府巡游选项 */
 export function chooseCaveOption(optionIndex: number): void {
-  if (
-    !caveEvent ||
-    !Number.isInteger(optionIndex) ||
-    optionIndex < 0 ||
-    optionIndex >= caveEvent.options.length
-  ) return
-  const opt = caveEvent.options[optionIndex]!
+  const ev = readEarly().cave
+  if (!ev || !Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= ev.options.length) return
+  const opt = ev.options[optionIndex]!
   const player = usePlayerStore()
   const resources = useResourcesStore()
   const cult = useCultivationStore()
@@ -403,10 +426,11 @@ export function chooseCaveOption(optionIndex: number): void {
         )
         break
       case 'stone':
-        // 经济 op(1.77.0):按事件 id+选项查固定池,服务端复算奖励记进项账
-        void cloudApi
-          .economyOp('cave_tour', { eventId: caveEvent.id, optionIdx: optionIndex })
-          .catch(() => {})
+        /*
+         * 灵石这一笔现在由动作结算直接落档(1.79.0)。
+         * 原先单发 economyOp('cave_tour') 记进项账,是「客户端改档、服务端事后放行」
+         * 那一套的补丁;如今整条动作都在服务端跑,再记一遍只会让窗口额度虚增。
+         */
         resources.addStone(gn(opt.reward.value as number))
         break
       case 'herb':
@@ -430,7 +454,8 @@ export function chooseCaveOption(optionIndex: number): void {
   player.markCaveEventToday(today)
   useUiStore().toast(`洞府巡游·${caveOptionText(opt)}`, 'success')
   telemetry().record('cave_choose', 'modal', `洞府选择:${opt.label}`)
-  caveEvent = null
+  writeEarly({ ...readEarly(), cave: null })
+  reportAction('cave_choice', { index: optionIndex })
 }
 
 /**
@@ -438,11 +463,12 @@ export function chooseCaveOption(optionIndex: number): void {
  * 只清模块级事件不够:mayTriggerCaveEvent 每 30s 轮询会重掷一个新事件弹回来。
  */
 export function dismissCaveEvent(): void {
-  if (!caveEvent) return
+  if (!readEarly().cave) return
   telemetry().record('cave_ignore', 'modal', '洞府巡游离开')
   const today = todayLocalNum()
   usePlayerStore().markCaveEventToday(today)
-  caveEvent = null
+  writeEarly({ ...readEarly(), cave: null })
+  reportAction('cave_dismiss')
 }
 
 function applyCaveBuff(buffId: string, cult: ReturnType<typeof useCultivationStore>, now: number) {

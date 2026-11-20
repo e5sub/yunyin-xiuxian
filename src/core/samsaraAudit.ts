@@ -351,6 +351,26 @@ export const HERITAGE: HeritageRow[] = [
     compressesGrowth: false
   },
   {
+    id: 'earlyEvents',
+    name: '在场浮窗(顿悟 / 洞府巡游)',
+    mode: 'reset',
+    detail: 'rebirth() 置 earlyEvents 两扇窗为 null —— 上一世开着的那扇不能跟到新世继续弹',
+    brief: '清除',
+    kind: 'state',
+    power: 'low',
+    compressesGrowth: false
+  },
+  {
+    id: 'rebirthOffer',
+    name: '转世交割单',
+    mode: 'reset',
+    detail: '确认时与 rebirth() 各清一次 —— 一张单子只能兑一次,更不能留到下一世再兑',
+    brief: '确认即作废',
+    kind: 'state',
+    power: 'none',
+    compressesGrowth: false
+  },
+  {
     id: 'wudaoExchange',
     name: '悟道兑换',
     mode: 'full',

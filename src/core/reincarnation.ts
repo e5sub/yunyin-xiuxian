@@ -30,6 +30,7 @@ import { useEndgameStore } from '@/stores/endgame'
 import { useGameStore } from '@/stores/game'
 import { useUiStore } from '@/stores/ui'
 import type { LifeReview, ReincarnationView } from '@/stores/ui'
+import { runActionAwait } from './remoteAction'
 import type { GNum } from '@/types'
 import { recordMilestone } from './identity'
 import { gnZero } from '@/utils/gnum'
@@ -74,10 +75,13 @@ function reviewLastLife(): LifeReview {
 }
 
 /**
- * 准备转世界面数据。只算不改:宿慧、履历、认知等到 confirmReincarnation 才落账
+ * 准备转世界面数据(本地实现)。只算不改:宿慧、履历、认知等到 confirmReincarnation 才落账
  * (玩家可能在这一步刷新后再点一次,在此发放会记两遍)。
+ *
+ * 交割单落到 `player.rebirthOffer` 而不是 ui store(1.79.0):它要能被服务端算出来、
+ * 也要能被服务端在确认时按同一份核对 —— 放 ui store 就只活在这一屏内存里。
  */
-export function prepareReincarnation(): ReincarnationView {
+export function prepareReincarnationLocal(): ReincarnationView {
   const player = usePlayerStore()
   const owned = new Set(player.reincarnation.talents)
   const draws = 1 + Math.floor(player.major / TALENT_DRAW_DIV)
@@ -120,15 +124,34 @@ export function prepareReincarnation(): ReincarnationView {
     themeChoices: (fresh.length > 0 ? fresh : pool).map(x => x.id),
     themeFree: stageAfter.themeFreeChoice
   }
-  useUiStore().reincarnation = view
+  player.setRebirthOffer(view)
   return view
 }
 
-/** 与首次建角一样不限次改命,不重抽天赋、不提前发放转生所得。 */
-export function rerollReincarnationLinggen(): void {
-  const view = useUiStore().reincarnation
+/**
+ * 准备转世(客户端入口)。
+ *
+ * 登录态由服务端算这张单子:先天之姿、命题池、宿慧都在那一侧掷,客户端只是收到的补丁的
+ * 渲染者。未登录(单机/断网)才退回本地实现 —— 与全仓其它动作同一条规矩。
+ */
+export async function prepareReincarnation(): Promise<ReincarnationView | null> {
+  const r = await runActionAwait<ReincarnationView>('rebirth_prepare', {}, prepareReincarnationLocal)
+  return r.ok ? r.value : null
+}
+
+/** 与首次建角一样不限次改命,不重抽天赋、不提前发放转生所得(本地实现)。 */
+export function rerollReincarnationLinggenLocal(): void {
+  const view = usePlayerStore().rebirthOffer
   if (!view) return
-  view.nextLinggen = rollLinggen(rng, view.linggenAptitudeFloor)
+  usePlayerStore().setRebirthOffer({
+    ...view,
+    nextLinggen: rollLinggen(rng, view.linggenAptitudeFloor)
+  })
+}
+
+/** 改命一次(客户端入口):登录态由服务端重掷,补丁带回新的先天之姿 */
+export async function rerollReincarnationLinggen(): Promise<void> {
+  await runActionAwait('rebirth_reroll', {}, () => rerollReincarnationLinggenLocal())
 }
 
 /**
@@ -159,15 +182,18 @@ export function carryGongfa(
  * @param chosenTalentId 三选一的先天之姿
  * @param chosenThemeId 这一世立下的题(null 为不立题)
  */
-export async function confirmReincarnation(chosenTalentId: string | null, chosenThemeId: string | null = null): Promise<void> {
+export async function confirmReincarnationLocal(
+  chosenTalentId: string | null,
+  chosenThemeId: string | null = null
+): Promise<boolean> {
   const player = usePlayerStore()
   const resources = useResourcesStore()
   const inventory = useInventoryStore()
   const cultivation = useCultivationStore()
   const adventure = useAdventureStore()
   const ui = useUiStore()
-  const view = ui.reincarnation
-  if (!view) return
+  const view = player.rebirthOffer
+  if (!view) return false
   /*
    * 立刻取走交割单,不能等到函数末尾再清。
    *
@@ -179,7 +205,7 @@ export async function confirmReincarnation(chosenTalentId: string | null, chosen
    *
    * 清在这里的语义正好:交割单一旦被取走就不该被第二个人取走第二次。
    */
-  ui.reincarnation = null
+  player.setRebirthOffer(null)
 
   // 永久收获
   player.addDaoFruit(view.daoFruitGained)
@@ -284,7 +310,6 @@ export async function confirmReincarnation(chosenTalentId: string | null, chosen
   beginLife(view.themeChoices.includes(chosenThemeId ?? '') ? chosenThemeId : null)
   recordMilestone('first_rebirth')
   track('reincarnations')
-  ui.reincarnation = null
   ui.deathDialog = false
   /*
    * 这两个是「那一瞬」的一次性弹窗,也须随本世一起清掉。
@@ -312,4 +337,20 @@ export async function confirmReincarnation(chosenTalentId: string | null, chosen
   ui.toast(`已转世 · 道号「${player.name}」`, 'rare')
   if (view.stageAdvanced) ui.toast(`境地已迁「${view.stageName}」`, 'rare')
   if (recognized > 0) ui.toast(`新认得 ${recognized} 味灵材`, 'info')
+  return true
+}
+
+/**
+ * 确认转世(客户端入口)。
+ *
+ * **不给本地兜底**:这是唯一一次「一笔勾销整个本世」的操作,半个身位落地都会让档
+ * 变得自相矛盾(本世已清、道果却已入账之类)。所以断网时直接告诉玩家没成,
+ * 让他恢复网络再点 —— 宁可等一下,不要半次转世。
+ */
+export async function confirmReincarnation(
+  chosenTalentId: string | null,
+  chosenThemeId: string | null = null
+): Promise<boolean> {
+  const r = await runActionAwait('rebirth_confirm', { id: chosenTalentId ?? '', id2: chosenThemeId ?? '' })
+  return r.ok
 }

@@ -299,13 +299,14 @@ const showCurve = computed(() => fruitInfo.value.total >= 4)
   }
   const canRebirth = computed(() => player.major >= MANUAL_REBIRTH_MIN_MAJOR)
 
-  function rebirth(): void {
+  async function rebirth(): Promise<void> {
     if (!canRebirth.value) {
       // 与按钮置灰文案同源,不手抄境名
       ui.toast(`兵解需${REALMS[MANUAL_REBIRTH_MIN_MAJOR]?.name ?? ''}境`, 'warn')
       return
     }
     emit('close')
-    prepareReincarnation()
+    // 交割单由服务端算(1.79.0),等它回来;算不出就留在原地,别开一张空窗
+    if ((await prepareReincarnation()) === null) ui.toast('此刻算不出交割单,稍后再试', 'warn')
   }
 </script>

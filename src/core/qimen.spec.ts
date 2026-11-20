@@ -142,7 +142,7 @@ describe('择门 · 接线', () => {
     expect(src, '择门应画九宫盘').toContain('palaceBoard()')
     expect(src, '九宫盘上的门要能点选').toContain('prepGate = cell.gate.id')
     expect(src).toContain('forecastExpedition(prepWorldId.value, prepPact.value, prepGate.value)')
-    expect(src).toContain('startWorldExpedition(prepWorld.value.id, prepPact.value, prepGate.value)')
+    expect(src).toContain('startWorldExpedition(world.id, prepPact.value, prepGate.value)')
   })
 
   it('界域志把九宫八门摊开了', () => {

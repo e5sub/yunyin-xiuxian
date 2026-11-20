@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useGameStore } from '@/stores/game'
 import { usePlayerStore } from '@/stores/player'
 import { rollLinggen } from '@/core/linggenGen'
-import { confirmReincarnation, prepareReincarnation } from '@/core/reincarnation'
+import { confirmReincarnationLocal, prepareReincarnationLocal } from '@/core/reincarnation'
 import { RandomService, mulberry32 } from '@/utils/random'
 import { CREATE_REROLL_QUOTA } from '@/data/constants'
 
@@ -68,8 +68,8 @@ describe('建号「逆天改命」不限次', () => {
     enterCreateView(rng)
     game.setCreateProfile(rollLinggen(rng))
 
-    prepareReincarnation()
-    await confirmReincarnation(null)
+    prepareReincarnationLocal()
+    await confirmReincarnationLocal(null)
 
     expect(game.createRerolls, '转世后额度形态变了').toBe(CREATE_REROLL_QUOTA)
     expect(game.createProfile, '上一世的建号草稿没有作废').toBeNull()

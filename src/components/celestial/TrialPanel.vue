@@ -274,6 +274,7 @@
   import { themeBreakdown, themeMark } from '@/ui/mutatorTheme'
   import { RECOVERY_LABEL, tierPosition, tierSpan, trialMark } from '@/ui/trialMark'
   import { todayChallengeAsync, undertakeDaily } from '@/core/dailyChallenge'
+  import { runActionAwait } from '@/core/remoteAction'
   import type { DailyChallenge } from '@/core/dailyChallenge'
   import { useWallNow } from '@/composables/useWallClock'
   import { localDayNum } from '@/utils/time'
@@ -282,9 +283,10 @@
     MUTATION_BASE_REWARD,
     MUTATION_ENTRY_COST,
     MUTATION_FIGHTS,
-    rollMutators
+    rollMutators,
+    type MutationResult
   } from '@/core/expedition'
-  import { challengeTrial } from '@/core/endgameService'
+  import { challengeTrial, type ExpeditionResult } from '@/core/endgameService'
   import {
     CHALLENGE_ENTRY_COST,
     CHALLENGE_MAX_MUTATORS,
@@ -397,7 +399,17 @@
       // 现取当日题,不用 daily.value 缓存:驻足跨午夜时它可能仍是昨天那题
       const current = await todayChallengeAsync()
       if (!current) return
-      const result = undertakeDaily(current)
+      /*
+       * 应战由服务端裁决(1.79.0):同一题在那一侧按服务端的日号重算一遍再打,
+       * 客户端报的日号与判决都不作数。未登录时退回本地实现。
+       */
+      const r = await runActionAwait<ExpeditionResult | null>(
+        'daily_challenge',
+        {},
+        () => undertakeDaily(current)
+      )
+      if (!r.ok) return
+      const result = r.value
       if (result) {
         emit('report', {
           title: result.title,
@@ -416,9 +428,12 @@
   const mutationDraw = ref<string[]>([])
   const mutationRows = computed(() => mutationDraw.value.map(id => mutatorDef(id)).filter(m => m !== undefined))
 
-  function goMutation(): void {
-    const result = challengeMutation(mutationDraw.value)
-    if (!result) return
+  async function goMutation(): Promise<void> {
+    const ids = [...mutationDraw.value]
+    // 变数一局也是战斗:随机数只在服务端那一侧作数(1.79.0)
+    const r = await runActionAwait<MutationResult | null>('mutation', { ids }, () => challengeMutation(ids))
+    if (!r.ok || !r.value) return
+    const result = r.value
     mutationDraw.value = []
     emit('report', {
       title: '天道变数',
@@ -500,10 +515,16 @@
     challengeVerdict.value = verifyChallenge(draft.value)
   }
 
-  function doUndertake(): void {
+  async function doUndertake(): Promise<void> {
     if (!challengeVerdict.value?.ok) return
-    const result = undertakeChallenge(draft.value, challengeVerdict.value)
+    const shaped = { ...draft.value }
+    // 判决在服务端重跑(客户端那次只为先亮个绿灯),战果以回传的 payload 为准
+    const r = await runActionAwait<ExpeditionResult | null>('challenge', { draft: shaped }, () =>
+      undertakeChallenge(shaped, verifyChallenge(shaped) ?? { ok: false } as ChallengeVerdict)
+    )
     challengeVerdict.value = null
+    if (!r.ok) return
+    const result = r.value
     if (result) {
       emit('report', {
         title: result.title,

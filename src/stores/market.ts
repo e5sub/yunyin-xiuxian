@@ -12,6 +12,7 @@ import { useResourcesStore } from '@/stores/resources'
 import { useInventoryStore } from '@/stores/inventory'
 import { useLoreStore } from '@/stores/lore'
 import { collect } from '@/core/progress'
+import { runActionAwait } from '@/core/remoteAction'
 import { pillDef } from '@/data/pills'
 import { MAX_EQUIP_TIER, equipmentTemplate } from '@/data/equipment'
 import { qualityDef } from '@/data/qualities'
@@ -257,12 +258,25 @@ export const useMarketStore = defineStore(
       }
     }
 
-    /** 买下第 idx 格;装备先签发再扣灵石(签发失败不扣钱,反序会花钱不得货),行囊满否先验 */
+    /**
+     * 买下第 idx 格。
+     *
+     * 登录态整笔交给服务端(1.79.0):扣灵石、入丹/草/铁、签发装备都在云档上做,
+     * 结果码放在 payload 里回来。此前是本地扣钱入货 + 服务端只记购买台账 ——
+     * 抛弃存档之后,本地那份入货传不上去,钱却真扣了,买完即蒸发。
+     *
+     * 未登录 / 断网时退回本地实现(单机与测试走这条),行为与从前一致。
+     */
     async function buy(idx: number): Promise<MarketBuyResult> {
       if (buying) return 'busy'
       buying = true
       try {
-        return await buyInner(idx)
+        const r = await runActionAwait<MarketBuyResult>(
+          'market_buy',
+          { at: stockedAt.value, index: idx },
+          () => buyInner(idx)
+        )
+        return r.ok ? (r.value ?? 'expired') : 'expired'
       } finally {
         buying = false
       }
