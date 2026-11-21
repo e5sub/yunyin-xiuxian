@@ -236,6 +236,26 @@ describe('动作结算 · 坊市买入(1.79.0 服务端执行)', () => {
     const patchedStock = (r!.patches.market as Record<string, unknown>).stock as Array<{ sold?: boolean }> | undefined
     expect(patchedStock?.some(s => s.sold === true)).toBe(true)
   })
+
+  it('同一架连买两格:前一格的已售标记不被后一单冲掉(1.79.6)', async () => {
+    const now = Date.now()
+    const at = now - 1000
+    const d = save()
+    // 云档已有这一架货,第 0 格已售 —— hydrate 会把它带进临时 store
+    const cloudStock: Array<Record<string, unknown>> = [
+      { kind: 'pill', idx: 0, pillId: 'p_jvqidan', count: 1, price: { m: 1, e: 3 }, sold: true },
+      { kind: 'pill', idx: 1, pillId: 'p_jvqidan', count: 1, price: { m: 1, e: 3 }, sold: false }
+    ]
+    ;(d.market as Record<string, unknown>) = { stockedAt: at, stock: cloudStock, consign: [] }
+    // 买第 1 格:上报的 at 与云档起钟相同(同一架)
+    const r = await resolveActionFromSlices(d, { kind: 'market_buy', at, index: 1 }, { now })
+    expect(r!.ok).toBe(true)
+    const patchedStock = (r!.patches.market as Record<string, unknown>).stock as Array<{ idx: number; sold?: boolean }> | undefined
+    // 第 1 格新售出
+    expect(patchedStock?.find(s => s.idx === 1)?.sold).toBe(true)
+    // 第 0 格先前已售,不能被整架重置冲回「可买」
+    expect(patchedStock?.find(s => s.idx === 0)?.sold).toBe(true)
+  })
 })
 
 describe('动作结算 · 差事收割(1.79.0 产出由服务端算)', () => {

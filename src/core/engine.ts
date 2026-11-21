@@ -43,6 +43,12 @@ const PERIODIC_CHECK_SEC = 30
 
 /** 登录态心跳间隔(秒):服务端权威推进的对账节奏;服务端限速 2 秒,5 秒不撞 */
 const HEARTBEAT_SEC = 5
+/**
+ * 战斗到点催拍的最小间隔(秒):贴着服务端 2 秒闸门,别被 429 顶回来。
+ * 战斗节拍 12 秒与心跳 5 秒不同步,倒计时归零常落在两拍之间 —— 登录态本地又不打,
+ * 干等下一拍心跳会晚最多 5 秒才开打(1.79.6)。到点即催,把延迟压到一拍网络往返。
+ */
+const BATTLE_DUE_GAP_SEC = 2.2
 
 /** 回传分片 → store:与 core/advanceResolve 的 SLICE_FACTORIES 同一张清单(ui 不持久化,不在内) */
 const SLICE_STORES: Record<string, () => unknown> = {
@@ -227,6 +233,14 @@ class GameEngine {
         void this.sendAdvance()
       } else if (this.heartAccum >= HEARTBEAT_SEC && !this.heartInFlight) {
         void this.sendAdvance()
+      } else if (
+        this.battleDueNow(now) &&
+        this.heartAccum >= BATTLE_DUE_GAP_SEC &&
+        !this.heartInFlight
+      ) {
+        // 战斗倒计时到点:不等 5 秒节拍,贴着服务端闸门催一拍(1.79.6)。
+        // sendAdvance 会把 heartAccum 归零,自然形成 2.2 秒节流,不会连拍。
+        void this.sendAdvance()
       }
       /*
        * 顿悟与洞府巡游改由服务端掷(1.79.0):事件本体在 player 分片里,
@@ -254,6 +268,25 @@ class GameEngine {
       game.stampActive(now)
       this.lastStampAt = now
     }
+  }
+
+  /**
+   * 历练战斗是否到点、需要催服务端打一拍(1.79.6)。
+   *
+   * 登录态本地不跑战斗(战斗/签发全在服务端裁决),只靠心跳驱动。战斗节拍 12 秒
+   * 与心跳 5 秒互质,nextBattleAt 归零往往卡在两拍之间:玩家盯着「下一场 0 秒」
+   * 却要干等最多 5 秒。这里到点即催,把等待压到一拍网络往返。
+   *
+   * 三个条件都必要:会话在程(否则无仗可打)、倒计时确已归零(未到点不催)、
+   * 无待处理事件(事件阻塞战斗,催了服务端也让路,等事件超时自动结算那拍即可)。
+   */
+  private battleDueNow(now: number): boolean {
+    const adv = useAdventureStore()
+    const s = adv.session
+    if (!s || usePlayerStore().dead) return false
+    if (adv.pendingEventId !== null) return false
+    if (!Number.isFinite(s.nextBattleAt) || !Number.isFinite(s.endsAt)) return false
+    return now >= s.nextBattleAt && now < s.endsAt
   }
 
   /**

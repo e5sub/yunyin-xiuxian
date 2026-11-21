@@ -378,7 +378,14 @@ async function runAction(req: ActionRequest): Promise<ActionResult> {
       const refreshMs = MARKET_REFRESH_SECONDS * 1000
       const now = gameNow()
       if (at > now + 60_000 || at < now - refreshMs - 60_000) return fail('货架已换新')
-      market.restockAt(at)
+      /*
+       * 1.79.6:别无脑 restockAt —— 它会整架重生,把云档里先前已售的格子冲回「可买」。
+       * hydrate 已把云档 market(含每格 sold)带进临时 store,上报 at 与云档起钟相同
+       * 说明客户端看的就是这一架,直接在云档货架上成交,sold 标记原样保留。
+       * 只有「云档还没这一架」(空架/起钟不同,即 1.79.4 的跨刷新窗口换架)才按 at 重上 ——
+       * 新架本就该全是未售,与保留旧架的已售并不矛盾。
+       */
+      if (market.stock.length === 0 || market.stockedAt !== at) market.restockAt(at)
       /*
        * 「买不成」是正常反馈(灵石不够 / 已售出 / 行囊满),不是服务端事故 ——
        * 所以照实把结果码放在 payload 里回来,ok 仍为 true:客户端没有本地预测要作废,

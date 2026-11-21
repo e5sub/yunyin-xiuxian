@@ -12,6 +12,8 @@ import { usePlayerStore } from '@/stores/player'
 import { useCultivationStore } from '@/stores/cultivation'
 import { useAdventureStore } from '@/stores/adventure'
 import { useUiStore } from '@/stores/ui'
+import { useAuthStore } from '@/stores/auth'
+import { cloudApi } from '@/services/cloud'
 import { TICK_MS, OFFLINE_MIN_SECONDS, ACTIVE_STAMP_MS } from '@/data/constants'
 
 vi.mock('./offline', async importOriginal => {
@@ -356,5 +358,119 @@ describe('引擎启动 · 先翻日再结算离线', () => {
       rollIdx,
       '启动顺序反了:离线收益会先记进昨天再被翻日清掉,跨午夜挂机一夜等于白挂'
     ).toBeLessThan(settleIdx)
+  })
+})
+
+/**
+ * 战斗到点催拍(1.79.6):登录态本地不打架,倒计时归零必须立刻催服务端一拍,
+ * 不能干等 5 秒心跳 —— 否则玩家盯着「下一场 0 秒」却迟迟不开打。
+ * 用 advanceGame 的调用时机做判据(不必让服务端真回分片)。
+ */
+describe('引擎 · 战斗到点催拍(1.79.6)', () => {
+  let capturedTick: (() => void) | null
+  let advanceSpy: MockInstance
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
+    vi.stubGlobal('document', {
+      addEventListener: vi.fn(() => {}),
+      removeEventListener: vi.fn(() => {}),
+      visibilityState: 'visible'
+    })
+    // node 环境 window 是桩:捕获引擎注册的 tick,手动驱动
+    vi.stubGlobal('window', {
+      addEventListener: vi.fn(() => {}),
+      removeEventListener: vi.fn(() => {}),
+      setInterval: (cb: () => void) => {
+        capturedTick = cb
+        return 1 as never
+      },
+      clearInterval: vi.fn()
+    })
+    // stop 也要走 window(removeEventListener),必须在 stub 之后
+    engine.stop()
+    capturedTick = null
+    useAuthStore().$patch({ token: 't', userId: 1 })
+    useGameStore().started = true
+    // 心跳打点:返回空分片,落账链走空。resolve 立即完成,不卡在途标记。
+    advanceSpy = vi.spyOn(cloudApi, 'advanceGame').mockResolvedValue({ ok: true, slices: {}, offline: null })
+  })
+
+  afterEach(() => {
+    engine.stop()
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  function startWithSession(nextBattleAtOffset: number, endsAtOffset: number): number {
+    // engine 是单例,heartAccum/heartInFlight 跨用例残留会让常规心跳乱点 —— 每例归零
+    ;(engine as unknown as { heartAccum: number }).heartAccum = 0
+    ;(engine as unknown as { heartInFlight: boolean }).heartInFlight = false
+    const t0 = Date.now()
+    useAdventureStore().session = {
+      regionId: 'qingyun',
+      mode: 'normal',
+      startedAt: t0 - 10_000,
+      endsAt: t0 + endsAtOffset,
+      nextBattleAt: t0 + nextBattleAtOffset,
+      wins: 0,
+      losses: 0,
+      events: 0,
+      itemGain: 0,
+      stoneGain: { m: 0, e: 0 },
+      expGain: { m: 0, e: 0 }
+    }
+    engine.start()
+    // start() 自身会打一拍心跳(离线对齐);计数从这之后
+    advanceSpy.mockClear()
+    return t0
+  }
+
+  it('倒计时已归零:不到 5 秒就催拍(贴着 2.2 秒闸门)', () => {
+    startWithSession(-1000, 600_000)
+    // 推进 3 秒:heartAccum≈3 ≥ 2.2 且 < 5,常规心跳还没到点
+    vi.setSystemTime(Date.now() + 3000)
+    capturedTick!()
+    expect(advanceSpy, '战斗到点应催一拍,不该干等 5 秒心跳').toHaveBeenCalled()
+  })
+
+  it('倒计时未到点:不催拍', () => {
+    startWithSession(60_000, 600_000)
+    vi.setSystemTime(Date.now() + 3000)
+    capturedTick!()
+    expect(advanceSpy, '未到点不该催').not.toHaveBeenCalled()
+  })
+
+  it('有阻塞事件:战斗到点也不催(服务端会让路给事件)', () => {
+    startWithSession(-1000, 600_000)
+    useAdventureStore().setPendingEvent('ev_jade_slip', Date.now())
+    expect(useAdventureStore().pendingEventId).toBe('ev_jade_slip')
+    vi.setSystemTime(Date.now() + 3000)
+    capturedTick!()
+    expect(advanceSpy, '待处理事件阻塞战斗,催了也白催').not.toHaveBeenCalled()
+  })
+
+  it('会话已结束:不催拍', () => {
+    startWithSession(-1000, -500)
+    vi.setSystemTime(Date.now() + 3000)
+    capturedTick!()
+    expect(advanceSpy, '会话已散不该催').not.toHaveBeenCalled()
+  })
+
+  it('在途时不重复催拍(heartInFlight 防重入)', async () => {
+    startWithSession(-1000, 600_000)
+    // 挂起心跳,制造「在途」;首拍催成功后 inFlight 卡住
+    let resolveFirst!: () => void
+    advanceSpy.mockReturnValueOnce(new Promise(r => { resolveFirst = () => r({ ok: true, slices: {}, offline: null }) }))
+    vi.setSystemTime(Date.now() + 3000)
+    capturedTick!()
+    expect(advanceSpy).toHaveBeenCalledTimes(1)
+    // 再推 3 秒,在途未回,不该再催
+    vi.setSystemTime(Date.now() + 3000)
+    capturedTick!()
+    expect(advanceSpy, '在途时不得重入').toHaveBeenCalledTimes(1)
+    resolveFirst()
   })
 })
