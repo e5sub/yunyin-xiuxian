@@ -44,7 +44,7 @@ import { gnZero, mulN } from '@/utils/gnum'
 import type { GNum } from '@/types'
 
 /** `expired` = 点下去的这一瞬正好跨过换货窗口:货架已整架换新,`idx` 指的是另一格货;宁可不成交 */
-export type MarketBuyResult = 'ok' | 'sold' | 'poor' | 'bagfull' | 'missing' | 'expired' | 'busy'
+export type MarketBuyResult = 'ok' | 'sold' | 'poor' | 'bagfull' | 'missing' | 'expired' | 'busy' | 'netfail'
 
 export const useMarketStore = defineStore(
   'market',
@@ -280,6 +280,9 @@ export const useMarketStore = defineStore(
      * 结果码放在 payload 里回来。此前是本地扣钱入货 + 服务端只记购买台账 ——
      * 抛弃存档之后,本地那份入货传不上去,钱却真扣了,买完即蒸发。
      *
+     * 1.79.8:登录态开 strict —— 服务端 5xx/断网时**不再退回本地买入**。本地跑成的
+     * 这一笔传不回云档(上传不带进度),玩家刷新即蒸发,货架又回到「可买」,
+     * 等于同一格反复成交;服务端 500 一多就成了「买了刷新又能买」的表象根源。
      * 未登录 / 断网时退回本地实现(单机与测试走这条),行为与从前一致。
      */
     async function buy(idx: number): Promise<MarketBuyResult> {
@@ -289,7 +292,8 @@ export const useMarketStore = defineStore(
         const r = await runActionAwait<MarketBuyResult>(
           'market_buy',
           { at: stockedAt.value, index: idx },
-          () => buyInner(idx)
+          () => buyInner(idx),
+          { strict: true }
         )
         /*
          * 1.79.5:服务端说买成了,本地却没收到 sold 补丁时不能装作没事 ——
@@ -298,7 +302,11 @@ export const useMarketStore = defineStore(
         if (r.ok && r.value === 'ok' && stock.value.find(s => s.idx === idx)?.sold !== true) {
           void resyncFromCloud()
         }
-        return r.ok ? (r.value ?? 'expired') : 'expired'
+        if (!r.ok) {
+          // 服务端明确拒绝「货架已换新」照旧回 expired;其余(429/5xx/断网)如实报网络不畅
+          return r.reason === '货架已换新' ? 'expired' : 'netfail'
+        }
+        return r.value ?? 'expired'
       } finally {
         buying = false
       }

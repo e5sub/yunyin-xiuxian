@@ -109,6 +109,8 @@ actionRouter.post('/action', requireAuth, (req: Request, res: Response) => {
     const mod = await clientResolve()
     const resolved = await mod.resolveActionFromSlices(data, body, { now })
     if (resolved === null) {
+      // 存档形状不合法才会走到这:不留痕的话生产端只会看到裸 500,没法定位是哪个号、哪个动作
+      console.error('[action] 结算返回 null:user=%d kind=%s started=%s player=%s', userId, body.kind, String(metricsOf(row.data).started), typeof data.player)
       res.status(500).json({ error: '动作结算失败' })
       return
     }
@@ -132,7 +134,9 @@ actionRouter.post('/action', requireAuth, (req: Request, res: Response) => {
       await syncNewLoot(userId, data, beforeKeys, `action:${body.kind}`)
       // 离手的件同步清账,免得「按账补册」把已卖/已分解的旧件复活(1.79.5)
       await reconcileHeldLoot(userId, data)
-    } catch {
+    } catch (err) {
+      // 记账失败是 500 的常见来源:不打日志的话,生产端只有一条裸 500 无从下手
+      console.error('[action] 记账失败:user=%d kind=%s', userId, body.kind, err)
       res.status(500).json({ error: '签发记账失败,请重试' })
       return
     }
@@ -168,7 +172,9 @@ actionRouter.post('/action', requireAuth, (req: Request, res: Response) => {
     }
 
     res.json({ ok: true, slices: patches, payload: resolved.payload ?? null })
-  }).catch(() => {
+  }).catch((err: unknown) => {
+    // 锁内未捕获异常(落库失败/vendor 加载等):必须留栈,否则生产端只有裸 500
+    console.error('[action] 未捕获异常:user=%d kind=%s', req.user?.id, typeof req.body === 'object' && req.body !== null ? (req.body as { kind?: unknown }).kind : '?', err)
     res.status(500).json({ error: '服务器异常' })
   })
 })

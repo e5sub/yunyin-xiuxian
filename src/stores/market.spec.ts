@@ -917,3 +917,58 @@ describe('寄卖 · 品名长度上界', () => {
     expect(m.consign[1]?.name, '正常品名被误伤').toBe('青锋剑')
   })
 })
+
+/**
+ * 登录态买入严格模式(1.79.8):服务端 5xx/断网时不得退回本地买入。
+ * 本地跑成的这一笔传不回云档(上传不带进度),刷新即蒸发、货架回到「可买」,
+ * 生产端 /api/action 5xx 一多就成了「买了刷新又能买」的重复成交。
+ */
+describe('坊市 · 登录态买入严格模式', () => {
+  it('服务端 5xx:返回 netfail,不扣钱、不标已售、不签发', async () => {
+    vi.stubGlobal('window', {})
+    const market = useMarketStore()
+    const resources = useResourcesStore()
+    const inventory = useInventoryStore()
+    const auth = useAuthStore()
+    auth.token = 'strict-probe'
+    auth.userId = 1
+    seedStock([pillSlot(0)])
+    resources.spiritStone = gn(100)
+    const errSpy = vi.spyOn(cloudApi, 'actionOp').mockRejectedValue(new Error('500 Internal Server Error'))
+    const resyncSpy = vi.spyOn(cloudApi, 'actionResync').mockResolvedValue({ ok: true, slices: null })
+    try {
+      expect(await market.buy(0)).toBe('netfail')
+      expect(toNum(resources.spiritStone), '服务端没应答就不该扣钱').toBe(100)
+      expect(market.stock[0]!.sold, '不该在本地标已售(云档根本不知道这一笔)').toBe(false)
+      expect(inventory.pills['p_jvqisan'] ?? 0, '不该在本地入货').toBe(0)
+    } finally {
+      errSpy.mockRestore()
+      resyncSpy.mockRestore()
+      auth.token = ''
+      auth.userId = 0
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('服务端明确拒绝「货架已换新」:仍回 expired(与网络故障区分)', async () => {
+    vi.stubGlobal('window', {})
+    const market = useMarketStore()
+    const auth = useAuthStore()
+    auth.token = 'strict-probe'
+    auth.userId = 1
+    seedStock([pillSlot(0)])
+    const errSpy = vi
+      .spyOn(cloudApi, 'actionOp')
+      .mockResolvedValue({ ok: false, reason: '货架已换新', slices: {} })
+    const resyncSpy = vi.spyOn(cloudApi, 'actionResync').mockResolvedValue({ ok: true, slices: null })
+    try {
+      expect(await market.buy(0)).toBe('expired')
+    } finally {
+      errSpy.mockRestore()
+      resyncSpy.mockRestore()
+      auth.token = ''
+      auth.userId = 0
+      vi.unstubAllGlobals()
+    }
+  })
+})

@@ -292,6 +292,7 @@
     }
     else if (result === 'bagfull') ui.toast('行囊已满', 'warn')
     else if (result === 'expired') ui.toast('货架已刷新', 'warn')
+    else if (result === 'netfail') ui.toast('服务器暂时没应答,稍候再试', 'warn')
   }
 
   /**

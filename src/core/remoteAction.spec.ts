@@ -22,7 +22,7 @@ vi.mock('@/services/cloud', async importOriginal => {
   }
 })
 
-import { reportAction, resyncFromCloud } from './remoteAction'
+import { reportAction, resyncFromCloud, runActionAwait } from './remoteAction'
 import { useAuthStore } from '@/stores/auth'
 import { useInventoryStore } from '@/stores/inventory'
 import { useResourcesStore } from '@/stores/resources'
@@ -60,6 +60,36 @@ describe('动作上报 · 什么时候不发', () => {
     login(false)
     expect(reportAction('pill_use', { id: 'p_jvqidan' })).toBe(false)
     expect(actionOp).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * 登录态严格模式(1.79.8):钱货两讫的动作(坊市买入)在服务端 5xx/断网时
+ * 不得退回 local —— 本地跑成的那一笔传不回云档,刷新即蒸发、货架还能再买。
+ */
+describe('等结果动作 · strict 登录态禁本地兜底', () => {
+  beforeEach(() => {
+    withWindow()
+    setActivePinia(createPinia())
+    actionOp.mockReset()
+    actionResync.mockReset()
+  })
+
+  it('strict + 服务端 5xx:local 不跑,如实报失败', async () => {
+    login(true)
+    actionOp.mockRejectedValue(new Error('500 Internal Server Error'))
+    const local = vi.fn(async () => 'ok' as const)
+    const r = await runActionAwait('market_buy', { at: 1, index: 0 }, local, { strict: true })
+    expect(r.ok).toBe(false)
+    expect(local, '本地兜底会把幽灵成交做出来,严格模式下必须不跑').not.toHaveBeenCalled()
+  })
+
+  it('非 strict(默认)维持原口径:5xx 照旧走 local 保单机玩法', async () => {
+    login(true)
+    actionOp.mockRejectedValue(new Error('500 Internal Server Error'))
+    const r = await runActionAwait('pill_use', {}, async () => 'local-done')
+    expect(r.ok).toBe(true)
+    expect(r.value).toBe('local-done')
   })
 })
 

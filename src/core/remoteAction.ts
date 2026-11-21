@@ -76,11 +76,15 @@ export interface ActionResultEcho {
  *      拉一次整档重对齐后如实回报失败。
  *   3. 网络不通 → 有 `local` 就跑(断网时保住玩法),没有就报失败。
  *      本地这一份与云端会短暂分叉,恢复后由心跳/重对齐收口 —— 与其它预测路径同一代价。
+ *      但**登录态 + `strict`** 例外:纯网游下「钱货两讫」的动作(坊市买入)本地跑成功
+ *      也不会传回云档(上传不带进度),玩家刷新即蒸发、货架还能再买 —— 幽灵成交。
+ *      这类宁可让玩家稍后再点,也不在本地做出来(1.79.8)。
  */
 export async function runActionAwait<T = unknown>(
   kind: string,
   params: Record<string, unknown> = {},
-  local?: () => T | Promise<T>
+  local?: () => T | Promise<T>,
+  opts?: { strict?: boolean }
 ): Promise<{ ok: boolean; value: T | null; reason?: string }> {
   /** 本地实现可能是 async(坊市买入要先签发装备),这里一律等它 */
   const fallback = async (): Promise<{ ok: boolean; value: T | null; reason?: string }> => {
@@ -110,6 +114,10 @@ export async function runActionAwait<T = unknown>(
   } catch (e) {
     if (e instanceof CloudError && e.status === 429) {
       return { ok: false, value: null, reason: '稍候再试' }
+    }
+    // 严格模式(登录态钱货两讫的动作):服务端没应答就不在本地做,防幽灵成交(1.79.8)
+    if (opts?.strict === true) {
+      return { ok: false, value: null, reason: '网络不畅,稍候再试' }
     }
     return await fallback()
   }
