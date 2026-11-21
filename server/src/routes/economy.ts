@@ -13,7 +13,7 @@ import { get, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { loadClientModule } from '../clientVendor.js'
 import { withKeyLock } from '../mutex.js'
-import { recordStoneCredit } from '../stoneLedger.js'
+import { recordStoneCredit, pruneStoneCredits } from '../stoneLedger.js'
 import { claimedMap, recordClaim, settleClaims } from '../economyLedger.js'
 import { takeLootBudget } from '../lootLedger.js'
 import { gnumAdd } from '../gnumOps.js'
@@ -254,6 +254,17 @@ economyRouter.post('/economy/:op', requireAuth, (req: Request, res: Response) =>
           await settleClaims(userId)
         } catch {
           /* 清行失败只多挡一轮,不影响结算 */
+        }
+        /*
+         * 进项台账行也当场清(1.79.13):进项已随档落库、构成下一次裁决的 prev 基线,
+         * 台账行再留在 creditStone 窗口里就是双算。此前的清理只在首传分支(save.ts),
+         * 1.76.0 后存量玩家永远走偏好推送提前 return —— sumStoneCreditsSince(userId, 0)
+         * 变成全历史累计,窗口随历史进项无限膨胀(改包客户端可报到 现值+burst+全历史进项)。
+         */
+        try {
+          await pruneStoneCredits(userId, Date.now())
+        } catch {
+          /* 清行失败只多放一轮额度,进项本身无损 */
         }
       }
       res.json({ ok: true, recorded: true, stone: result.stone })

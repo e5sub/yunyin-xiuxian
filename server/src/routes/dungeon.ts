@@ -39,6 +39,7 @@ import {
 } from '../dungeonCore.js'
 import { geAdd, geMulN, geNorm, geSub, geText, randRange, randomIntRange, type GE } from '../gnum.js'
 import { activeEvent, addEventProgress } from '../eventCore.js'
+import { creditEventReward } from '../saveCredit.js'
 
 export const dungeonRouter = express.Router()
 
@@ -690,6 +691,15 @@ dungeonRouter.post('/run', requireAuth, (req: Request, res: Response) => {
     // 胜利才算「通杀」:在场成员各自的周期击杀数 +1(下一场凶险按各自的成长档走)
     if (sim.win) {
       for (const f of fighters) await bumpGrowth(f.userId, dungeon)
+    }
+    /*
+     * 战获落档(1.79.13):此前只回包让开拔者本地入账(注释还写着「随下次云同步落档」——
+     * 抛弃存档之后本地那份传不上去,心跳资源补丁以云档为基线,一拍就顶回)。
+     * 现按云档境界折算后直接写进云档,与妖王赏/闲趣赏格同一把尺;
+     * 客户端本地那次 addStone 退化为乐观显示(折算尺同源,心跳自然对齐,不双份)。
+     */
+    if (sim.stone > 0 || sim.herb > 0) {
+      await creditEventReward(req.user!.id, { stone: sim.stone, herb: sim.herb }).catch(() => undefined)
     }
     for (const f of fighters) {
       if (f.userId !== req.user!.id) {
