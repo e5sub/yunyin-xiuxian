@@ -719,7 +719,9 @@ CREATE TABLE IF NOT EXISTS save_flags (
 CREATE TABLE IF NOT EXISTS loot_ledger (
   user_id BIGINT NOT NULL,
   uid VARCHAR(64) NOT NULL,
-  src VARCHAR(16) NOT NULL DEFAULT '',
+  -- 1.79.9:src 放宽到 48 —— 'action:' + 动作名(如 market_buy,17 字符)超旧 VARCHAR(16)
+  -- 在 MySQL 严格模式直接 ER_DATA_TOO_LONG,整次动作结算 500(SQLite 是 TEXT 无此限)
+  src VARCHAR(48) NOT NULL DEFAULT '',
   created_at BIGINT NOT NULL,
   kind VARCHAR(16) NOT NULL DEFAULT 'equip',
   PRIMARY KEY (user_id, uid),
@@ -749,7 +751,8 @@ CREATE TABLE IF NOT EXISTS soul_burns (
 -- 掉落件数账(1.74.1):见 SQLite 侧同名表注释
 CREATE TABLE IF NOT EXISTS loot_budgets (
   user_id BIGINT NOT NULL,
-  src VARCHAR(16) NOT NULL,
+  -- 1.79.9 同 loot_ledger.src:放宽到 48,'op:' + 经济操作名未来可能超 16
+  src VARCHAR(48) NOT NULL,
   updated_at BIGINT NOT NULL,
   PRIMARY KEY (user_id, src),
   CONSTRAINT fk_loot_budgets_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -1128,6 +1131,9 @@ CREATE TABLE IF NOT EXISTS autoops_state (
     'ALTER TABLE profiles ADD COLUMN def_e INT NOT NULL DEFAULT 0',
     'ALTER TABLE profiles ADD COLUMN rebirths INT NOT NULL DEFAULT 0',
     "ALTER TABLE loot_ledger ADD COLUMN kind VARCHAR(16) NOT NULL DEFAULT 'equip'",
+    // 1.79.9:老库 src 列放宽(幂等,改宽是元数据级秒改;'action:market_buy' 17 字符超 16 致 500)
+    'ALTER TABLE loot_ledger MODIFY COLUMN src VARCHAR(48) NOT NULL DEFAULT \'\'',
+    'ALTER TABLE loot_budgets MODIFY COLUMN src VARCHAR(48) NOT NULL',
     'ALTER TABLE boss_state ADD COLUMN kill_count INT NOT NULL DEFAULT 0',
     'ALTER TABLE boss_state ADD COLUMN period_start BIGINT NOT NULL DEFAULT 0',
     "ALTER TABLE dungeon_teams ADD COLUMN difficulty VARCHAR(16) NOT NULL DEFAULT 'normal'",
