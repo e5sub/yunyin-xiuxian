@@ -5,8 +5,8 @@
  *
  * 一、**状态只住服务端**(sects + sect_members + sect_apply,见 sectState.ts)。贡献是签发货币,
  *     技能与建筑给永久属性,放进存档就等于「本地可写」。上传存档时服务端不读客户端对门派的声明。
- * 二、**捐献必须真付**。动作前先读云档快照里的余额,减掉「上次上传后尚未兑现的捐献」再判够不够;
- *     不够就拒。记账(sect_spend)仍留一份 —— 下一次上传时 core/saveAuthority 按它扣资源可增长量。
+ * 二、**捐献必须真付**。动作前先读云档快照里的余额判够不够,不够就拒;成交当场把
+ *     实物扣进云档 resources(1.79.11 起即时落档,不再靠 sect_spend 悬账等上传兑现)。
  * 三、**计时只认服务端时钟**。工期由 core/sectRules 按目标等级算,startAt/finishAt 都写服务端时间。
  * 四、**门人是真成员**(1.69.0)。名额在山门(`memberCap = 10 + 山门等级`),只在审批那一刻卡;
  *     身份(掌门/门人)决定能不能审批、逐人、解散 —— 全都按成员表判,不信客户端自称。
@@ -15,12 +15,14 @@
  * 同时花掉)。两把锁次序固定为 save → sect,不会互相等。
  */
 import express, { type Request, type Response } from 'express'
-import { get, run } from '../db.js'
+import { get, run, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { loadClientModule } from '../clientVendor.js'
 import { withKeyLock } from '../mutex.js'
 import { dayKeyOf } from '../eventCore.js'
 import { VIP_SPEND_RATE, vipActive } from '../vip.js'
+import { backupBeforeOverwrite } from './save.js'
+import { gnumSub } from '../gnumOps.js'
 import {
   NO_SECT_SPEND,
   addApply,
@@ -37,7 +39,6 @@ import {
   listSects,
   nameTaken,
   patchMember,
-  pendingSectSpend,
   readApply,
   readBody,
   readMember,
@@ -135,33 +136,86 @@ function gnNum(v: unknown): number {
   return Number.isFinite(n) ? n : Number.MAX_VALUE
 }
 
-/** 云档快照:没有档/坏档 → null(建派与捐献都要求云档在场) */
-async function readSave(userId: number): Promise<Record<string, unknown> | null> {
-  const row = await get<{ data: string; started: number }>('SELECT data, started FROM saves WHERE user_id = ?', [userId])
+/** 云档整行(带 version/updated_at/started):扣款落档要用它原位写回 */
+interface SaveSnapshot {
+  version: number
+  data: Record<string, unknown>
+  updated_at: number
+  started: number
+}
+
+async function readSaveRow(userId: number): Promise<SaveSnapshot | null> {
+  const row = await get<{ version: number; data: string; updated_at: number; started: number }>(
+    'SELECT version, data, updated_at, started FROM saves WHERE user_id = ?',
+    [userId]
+  )
   if (row === undefined || row.started !== 1) return null
   try {
     const parsed = JSON.parse(row.data) as unknown
-    return isPlainObject(parsed) ? parsed : null
+    if (!isPlainObject(parsed)) return null
+    return { version: row.version, data: parsed, updated_at: row.updated_at, started: row.started }
   } catch {
     return null
   }
 }
 
-/** 云档里的资源余额(已扣掉尚未兑现的捐献) */
-async function affordable(
-  userId: number,
-  data: Record<string, unknown>
-): Promise<{ stone: number; ore: number; wudao: number; herbOf: (grade: number) => number }> {
+/**
+ * 捐献/建派的实物扣款落档(1.79.11):从云档 resources 现值里减掉,随整档写回落库。
+ *
+ * 为什么:此前扣款只发生在客户端本地(纯预测)与 sect_spend 台账,云档 resources
+ * 从不动 —— 下一拍心跳的资源补丁以云档为基线,刚扣的钱会被它原样顶回(与炼器
+ * 「0 消耗」同源:1.76.0 抛弃存档后,「上传时按台账扣回」的老链路断了头)。
+ * 扣款自此即时落档,affordable 也改读云档现值,不再有「尚未兑现」的悬账。
+ */
+function deductSpendFromSave(data: Record<string, unknown>, spend: SectSpend): void {
+  const res = isPlainObject(data.resources) ? data.resources : null
+  if (res === null) return
+  if (spend.stone.m > 0) res.spiritStone = gnumSub(res.spiritStone, spend.stone)
+  if (spend.ore > 0) res.ore = Math.max(0, (finiteNum(res.ore) ?? 0) - spend.ore)
+  if (spend.wudao > 0) res.wudao = Math.max(0, (finiteNum(res.wudao) ?? 0) - spend.wudao)
+  if (spend.herb > 0) {
+    const herbs = isPlainObject(res.herbByGrade) ? { ...res.herbByGrade } : {}
+    const key = String(spend.herbGrade)
+    herbs[key] = Math.max(0, (finiteNum(herbs[key]) ?? 0) - spend.herb)
+    res.herbByGrade = herbs
+  }
+}
+
+/** 扣款后的整档写回(留档先行,updated_at 不动 —— 与炼器结算同规) */
+async function writeSaveWithDeduction(userId: number, snapshot: SaveSnapshot, spend: SectSpend): Promise<void> {
+  deductSpendFromSave(snapshot.data, spend)
+  try {
+    await backupBeforeOverwrite(userId, {
+      version: snapshot.version,
+      data: JSON.stringify(snapshot.data),
+      updated_at: snapshot.updated_at
+    })
+  } catch {
+    // 留档失败不拦扣款
+  }
+  await upsertByPk('saves', {
+    user_id: userId,
+    version: snapshot.version,
+    data: JSON.stringify(snapshot.data),
+    started: snapshot.started,
+    updated_at: snapshot.updated_at
+  })
+}
+
+/** 云档里的资源余额(1.79.11 起扣款即时落档,直接读现值,不再减悬账) */
+function affordable(data: Record<string, unknown>): {
+  stone: number
+  ore: number
+  wudao: number
+  herbOf: (grade: number) => number
+} {
   const res = isPlainObject(data.resources) ? data.resources : {}
-  const pending = await pendingSectSpend(userId)
-  const pendingStone = gnNum(pending.stone)
   const herbs = isPlainObject(res.herbByGrade) ? res.herbByGrade : {}
   return {
-    stone: Math.max(0, gnNum(res.spiritStone) - pendingStone),
-    ore: Math.max(0, (finiteNum(res.ore) ?? 0) - pending.ore),
-    wudao: Math.max(0, (finiteNum(res.wudao) ?? 0) - pending.wudao),
-    herbOf: (grade: number) =>
-      Math.max(0, (finiteNum(herbs[String(grade)]) ?? 0) - (pending.herbByGrade[String(grade)] ?? 0))
+    stone: Math.max(0, gnNum(res.spiritStone)),
+    ore: Math.max(0, finiteNum(res.ore) ?? 0),
+    wudao: Math.max(0, finiteNum(res.wudao) ?? 0),
+    herbOf: (grade: number) => Math.max(0, finiteNum(herbs[String(grade)]) ?? 0)
   }
 }
 
@@ -348,15 +402,16 @@ sectRouter.post(
     if (!rules.sectNameOk(name)) return { ok: false, reason: 'badname' }
     if (!rules.canFound(await realmMajorOf(userId))) return { ok: false, reason: 'realm' }
     if (await nameTaken(name)) return { ok: false, reason: 'nameused' }
-    const data = await readSave(userId)
-    if (data === null) return { ok: false, reason: 'nosave' }
+    const snap = await readSaveRow(userId)
+    if (snap === null) return { ok: false, reason: 'nosave' }
     const cost = rules.foundCost(vipRate(vip))
-    const avail = await affordable(userId, data)
+    const avail = affordable(snap.data)
     if (avail.stone < cost.stone || avail.ore < cost.ore || avail.wudao < cost.wudao) {
       return { ok: false, reason: 'insufficient' }
     }
     const spend: SectSpend = { ...NO_SECT_SPEND, stone: gnOf(cost.stone), ore: cost.ore, wudao: cost.wudao }
     await recordSectSpend(userId, spend)
+    await writeSaveWithDeduction(userId, snap, spend)
     /*
      * 建派**不送**山门等级:门人上限(初始十人)与其余建筑的余地都得自己营建出来 ——
      * 开派即十一人会让「初始十人」这句话在第一次进面板时就不成立。
@@ -506,9 +561,9 @@ async function donateOnce(
   const day = dayKeyOf(now)
   const today = member.day === day ? member.donations_today : 0
   if (today >= rules.donationQuota(vip)) return { ok: false, reason: 'daily' }
-  const data = await readSave(userId)
-  if (data === null) return { ok: false, reason: 'nosave' }
-  const avail = await affordable(userId, data)
+  const snap = await readSaveRow(userId)
+  if (snap === null) return { ok: false, reason: 'nosave' }
+  const avail = affordable(snap.data)
   const major = await realmMajorOf(userId)
   const grade = rules.donationHerbGrade(major)
   const enough =
@@ -526,6 +581,7 @@ async function donateOnce(
         ? { ...NO_SECT_SPEND, ore: def.amount }
         : { ...NO_SECT_SPEND, herbGrade: grade, herb: def.amount }
   await recordSectSpend(userId, spend)
+  await writeSaveWithDeduction(userId, snap, spend)
   await patchMember(userId, {
     personal: member.personal + split.personal,
     day,

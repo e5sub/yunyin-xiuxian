@@ -20,6 +20,7 @@ import { lootProvenance } from '../lootLedger.js'
 import { recordForgeSpend } from '../forgeLedger.js'
 import { withKeyLock } from '../mutex.js'
 import { vipActive } from '../vip.js'
+import { gnumSub } from '../gnumOps.js'
 
 const SOURCE_MODULE = '../../../src/core/forgeResolve'
 const VENDOR_FILE = 'forgeResolve'
@@ -105,6 +106,29 @@ function patchItems(data: Record<string, unknown>, changed: readonly Record<stri
     if (at !== undefined) items[at] = one
   }
   inv.items = items
+}
+
+/**
+ * 料耗落档(1.79.11):石/尘的扣款从**云档现值**里减掉,随本次整档写回落库。
+ *
+ * 为什么:料耗原先只发生在两处 —— 客户端本地(chargeRemoteSpend,纯预测)与
+ * 服务端的临时水合 store(结算完即弃),云档 resources 从不动;而下一拍心跳
+ * /game/advance 的资源补丁以云档为基线,本机刚扣的钱会被它原样顶回来 ——
+ * 这就是「强化/重铸/词条转移 0 消耗」的真身(1.76.0 抛弃存档后上传不再携带资源,
+ * 老的 forge_spend 台账扣回链路随之断头)。修为不经此路:它随心跳上报、
+ * 按「存量 + 本窗口可信产出」采信,合法的降低照单全收。
+ *
+ * 从云档现值扣而不是从上报余额扣:上报值可被改包抬高(灵石无持有上限),
+ * 付得起照旧按上报判,但真扣的是云档的钱 —— 写回的绝不会比云档原有还多。
+ */
+function deductSpendFromSave(data: Record<string, unknown>, spend: ForgeResultDto['spend']): void {
+  const res = isPlainObject(data.resources) ? data.resources : null
+  if (res === null) return
+  res.spiritStone = gnumSub(res.spiritStone, spend.stone)
+  if (spend.dust > 0) {
+    const dust = typeof res.dust === 'number' && Number.isFinite(res.dust) ? res.dust : 0
+    res.dust = Math.max(0, dust - spend.dust)
+  }
 }
 
 /**
@@ -243,6 +267,7 @@ forgeRouter.post('/forge/op', requireAuth, (req: Request, res: Response) => {
     }
 
     patchItems(data, result.items)
+    deductSpendFromSave(data, result.spend)
     try {
       await backupBeforeOverwrite(userId, { version: row.version, data: row.data, updated_at: row.updated_at })
     } catch {

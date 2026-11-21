@@ -27,6 +27,7 @@ import { currentDaoRules } from './endgameService'
 import { afterWin } from './loot'
 import { srvNow } from './srvClock'
 import { autoResolveEvent, pickEventFor } from './eventEngine'
+import type { EventResolution } from './eventEngine'
 import { eventTierDef, eventTierOf } from './eventTier'
 import { capChance, modOf } from './statsCalc'
 import { track } from './progress'
@@ -479,6 +480,17 @@ export function exploreEventChance(regionId: string, mods: StatMods): number {
 }
 
 /**
+ * 勿扰/托管/超时自动结清后的提示。
+ *
+ * 有所得报所得;两手空空(际遇本体无文案、无掉落)也必须报一声「已结清」——
+ * 否则玩家只看到倒计时静默重开,看起来像「归零后概率性不战斗」。
+ */
+function toastEventAutoResolve(res: EventResolution | null): void {
+  const text = res && res.lines.length ? res.lines.join('、') : res?.outcomeText
+  useUiStore().toast(text || '际遇已按默认选项结清,稍后再战', 'info')
+}
+
+/**
  * 每 Tick 推进历练(由引擎调用)。
  *
  * 战斗签发是异步的:返回 runBattle 的 promise 供测试/调用方需要时 await,引擎循环照旧不等待。
@@ -524,9 +536,9 @@ export function tickExploration(now: number): void | Promise<void> {
       const cur = adventure.session
       if (cur) adventure.setSession({ ...cur, events: cur.events + 1, nextBattleAt: nextBattleTime(now) })
       void autoResolveEvent(eventId, region?.tier ?? 1).then(res => {
-        // 自动结算的所得须 toast,不得无声入账
-        if (res && res.lines.length) useUiStore().toast(res.lines.join('、'), 'info')
-        else if (res?.outcomeText) useUiStore().toast(res.outcomeText, 'info')
+        // 自动结算的所得须 toast,不得无声入账;皆空也要兜底报一声,
+        // 否则玩家只看到倒计时静默重开(「归零后概率性不战斗」的投诉即源于此)
+        toastEventAutoResolve(res)
       })
     }
     return
@@ -546,8 +558,8 @@ export function tickExploration(now: number): void | Promise<void> {
         const cur = adventure.session
         if (cur) adventure.setSession({ ...cur, events: cur.events + 1, nextBattleAt: nextBattleTime(now) })
         void autoResolveEvent(ev.id, region.tier).then(res => {
-          if (res && res.lines.length) useUiStore().toast(res.lines.join('、'), 'info')
-          else if (res?.outcomeText) useUiStore().toast(res.outcomeText, 'info')
+          // 同上:皆空也要兜底报一声,不许静默重开倒计时
+          toastEventAutoResolve(res)
         })
         return
       }
