@@ -119,6 +119,46 @@ export async function runActionAwait<T = unknown>(
 type Echo = (r: ActionResultEcho) => void
 
 /**
+ * 穿戴/卸下的服务端对账(1.79.7)。
+ *
+ * 为什么上报**整张** equipped 而不是「这一个槽位」:
+ *   一键换装连穿数件 → 数个上报撞服务端 250ms 限速,被 429 丢的就不止一件;
+ *   只报单槽时云档便停在半换状态,下一次权威回传会把本地盖回旧件 —— 正是
+ *   「点一键分解,穿戴却被换掉」的根源(云档 equipped 陈旧 → 分解被拒 → 整档重对齐)。
+ *   整张快照则相反:每一发都带齐全部槽位,任一发生效即为完整同步,不挑到达顺序。
+ *
+ * 为什么不套 reportAction:那会把回包的 equipped 补丁 $patch 回本地。批量换装回包
+ * 乱序时,后到的旧快照反而会把刚换好的槽位盖回旧件。穿戴即时反馈的纯预测,服务端
+ * 只需记下最终映射,不必回写;失败也不回滚(下一拍心跳/分解上报由云档收口)。
+ *
+ * 无头水合时 `typeof window === 'undefined'` 必然成立:服务端 actionOps 自己跑装配
+ * 分支经过 store 的 equip() 时这里直接跳过,避免服务端对自己发 HTTP。
+ *
+ * 防抖时戳:略大于服务端 250ms 动作闸门,连换只发最后一发完整快照。
+ */
+let equipSyncTimer: ReturnType<typeof setTimeout> | undefined
+const EQUIP_SYNC_DELAY_MS = 300
+
+export function reportEquipChange(): void {
+  if (typeof window === 'undefined') return
+  if (equipSyncTimer !== undefined) clearTimeout(equipSyncTimer)
+  equipSyncTimer = setTimeout(() => {
+    equipSyncTimer = undefined
+    try {
+      if (!useAuthStore().loggedIn) return
+      const inv = sliceStoreOf('inventory')
+      if (inv === undefined) return
+      const equipped = (inv.$state as { equipped?: unknown }).equipped
+      void cloudApi.actionOp({ kind: 'equip_set', equipped: equipped ?? {} }).catch(() => {
+        // 旁路:网络问题不打断穿戴,下一拍心跳/动作由云档收口
+      })
+    } catch {
+      // 取 auth / store 抛错也不该影响本地穿戴本身
+    }
+  }, EQUIP_SYNC_DELAY_MS)
+}
+
+/**
  * 上报一个动作。返回是否**已发出**(未登录/无窗口时恒 false,调用方据此决定要不要等)。
  * 不返回 Promise:动作是「已经做完的事」,界面不该为此挂 loading。
  */

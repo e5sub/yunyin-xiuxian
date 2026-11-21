@@ -161,6 +161,24 @@ function walkBase(root: unknown, segs: readonly string[]): unknown {
 }
 
 let pushing = false
+
+/*
+ * 写档 429 的源头治理(1.79.7):
+ * 服务端 PUT /save 有 2s 写档限速(WRITE_MIN_GAP_MS),命中即 429。而客户端有六处触发
+ * (20s 定时器 / 启动 / 开局 watch / visibilitychange / pagehide / 失败重试),切窗、弹
+ * 控制台、开关标签页都能在 2s 内扎堆。纯网游化后偏好上传是幂等、可丢、内容常年不变的
+ * 三片数据(settings/diag/pacing),完全没必要每次触发都发请求。两道闸:
+ *   1. 指纹跳过 —— 偏好内容与上次成功上传一致则一个字节都不发(消灭绝大多数触发);
+ *   2. 节流闸门 —— 距上次真实 PUT 不足 PUSH_MIN_GAP_MS 一律跳过(比服务端 2s 留 500ms
+ *      余量覆盖网络抖动),兜住「内容确实在变 + 高频触发」的残余竞态。
+ * 两者都只作用于已对齐后的偏好推送;首传建档(base=0)与手动上传永不被跳过。
+ */
+/** 客户端写档最小间隔:服务端 2s 限速 + 500ms 余量,对齐的是「真实发出 PUT」的时刻 */
+const PUSH_MIN_GAP_MS = 2_500
+let lastPutAt = 0
+/** 上次成功上传的偏好指纹(JSON.stringify);内存态,重载后为空→启动时正常推一次 */
+let lastPrefFingerprint: string | null = null
+
 /**
  * 失败后的补推定时器:弱网抖一下不该整整断一个周期(默认 20 秒)。
  * 单飞 —— 有在途的就等它,不堆一串。
@@ -186,7 +204,17 @@ function clearRetry(): void {
  * 推送结果:ok=已上传;skipped-* = 静默跳过(此前一律谎报成功,设置页「立即上传」会弹出
  * 「已上传到云端」的假象,玩家转头恢复却报「云端还没有存档」);conflict/failed = 失败。
  */
-export type PushOutcome = 'ok' | 'skipped-login' | 'skipped-not-started' | 'skipped-busy' | 'conflict' | 'failed'
+export type PushOutcome =
+  | 'ok'
+  | 'skipped-login'
+  | 'skipped-not-started'
+  | 'skipped-busy'
+  /** 偏好内容与上次成功上传一致,一个字节都不发(1.79.7) */
+  | 'skipped-unchanged'
+  /** 距上次真实 PUT 不足 2.5s,节流跳过(1.79.7) */
+  | 'skipped-throttled'
+  | 'conflict'
+  | 'failed'
 
 /**
  * 推送当前存档到云端;未登录 / 未开局 / 推送中按 skipped-* 返回,不再谎报成功。
@@ -224,7 +252,18 @@ export async function pushCloudSave(manual = false): Promise<PushOutcome> {
      */
     const firstBuild = readBase() === 0
     const payload = firstBuild ? buildExportPayload() : { data: buildPreferencePayload() }
+    /*
+     * 两道 429 闸(仅作用于偏好推送;首传建档与手动上传永不跳过):
+     * 指纹一致 → 内容没变,不发;间隔不足 → 节流,不发。
+     * 注意 lastPutAt 记的是「真实发出 PUT」的时刻,与服务端 2s 限速同口径。
+     */
+    if (!firstBuild && !manual) {
+      const fingerprint = JSON.stringify(payload.data)
+      if (fingerprint === lastPrefFingerprint) return 'skipped-unchanged'
+      if (Date.now() - lastPutAt < PUSH_MIN_GAP_MS) return 'skipped-throttled'
+    }
     const profile = buildProfileSnapshot()
+    lastPutAt = Date.now()
     const res = await cloudApi.putSave({
       version: SAVE_VERSION,
       data: payload.data,
@@ -237,6 +276,8 @@ export async function pushCloudSave(manual = false): Promise<PushOutcome> {
     })
     // 老后端不返回 updatedAt:保持原锚点,别把已对齐状态清零
     if (typeof res.updatedAt === 'number') writeBase(res.updatedAt)
+    // 成功落库才记指纹:失败的推送不记,下次触发会重发(指纹只作「已落库偏好」的快照)
+    if (!firstBuild && !manual) lastPrefFingerprint = JSON.stringify(payload.data)
     // 服务端压回了字段:立刻以服务端值覆盖本地,别让本地继续按作弊值渲染
     if (Array.isArray(res.corrections) && res.corrections.length > 0) {
       applyAuthorityCorrections(res.corrections)

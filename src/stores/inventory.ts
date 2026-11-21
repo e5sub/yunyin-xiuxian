@@ -6,6 +6,7 @@ import { add, cmp, gn, gnZero } from '@/utils/gnum'
 import { persistConfig } from '@/utils/storage'
 import { resolveEquipStats } from '@/core/equipGen'
 import { mergeMods } from '@/core/statsCalc'
+import { reportEquipChange } from '@/core/remoteAction'
 import { useLoreStore } from '@/stores/lore'
 import { usePlayerStore } from '@/stores/player'
 import { ARTIFACT_MAX_LEVEL, ARTIFACT_MAX_SLOTS, artifactDef, artifactValue } from '@/data/artifacts'
@@ -390,6 +391,8 @@ export const useInventoryStore = defineStore(
     function equip(uid: string, slot: EquipSlot): boolean {
       if (!canEquip(uid)) return false
       equipped.value = { ...equipped.value, [slot]: uid }
+      // 云档 equipped 必须跟着走:否则分解等动作被服务端拒后整档重对齐,会把这一件盖回旧件(1.79.7)
+      reportEquipChange()
       // 记「亲手用过」:图鉴收录深度的一档(见 ui/codex)
       const inst = findItem(uid)
       if (inst) useLoreStore().noteEquipUsed(inst.templateId)
@@ -400,6 +403,27 @@ export const useInventoryStore = defineStore(
       const next = { ...equipped.value }
       delete next[slot]
       equipped.value = next
+      reportEquipChange()
+    }
+
+    /**
+     * 整张装配映射落位(1.79.7):一键换装连换数件时逐槽位校验门槛后一次性应用。
+     * 非法槽/未持有/境界不足的条目一律丢弃(与单件 equip 同判据),返回实际落位数。
+     * 只动真正穿戴的槽 —— 服务端在云档上跑它,是装配同步的权威裁决点。
+     */
+    function equipSet(map: Record<string, string>): number {
+      const next: Partial<Record<EquipSlot, string>> = {}
+      const used = new Set<string>()
+      for (const slot of EQUIP_SLOTS) {
+        const uid = map[slot]
+        if (typeof uid !== 'string' || uid === '') continue
+        if (used.has(uid)) continue
+        if (!canEquip(uid)) continue
+        next[slot] = uid
+        used.add(uid)
+      }
+      equipped.value = next
+      return Object.keys(next).length
     }
 
     function addPill(id: string, n: number): void {
@@ -492,6 +516,7 @@ export const useInventoryStore = defineStore(
       canEquip,
       canEquipTemplate,
       unequip,
+      equipSet,
       addPill,
       spendPill,
       addArtifact,

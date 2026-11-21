@@ -8,6 +8,8 @@
  *     刷新后世号/道果/天赋/道侣履历全清(1.62.0 修复的毁档口);
  *  3. 底座已被毁成标量时不雪上加霜:先 sanitize 自愈,绝不把坏结构再往深里写。
  */
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { SAVE_SANITIZE_STEPS } from './saveSanitize'
@@ -109,5 +111,46 @@ describe('corrections 应用 · 防御', () => {
         ])
       ).not.toThrow()
     })
+  })
+})
+
+/**
+ * 写档 429 源头治理(1.79.7):服务端 PUT /save 限速 2s,而客户端有六处触发
+ * (定时器/启动/开局 watch/visibilitychange/pagehide/失败重试),切窗时 2s 内扎堆
+ * 就撞限速刷红 429。纯网游下偏好三片幂等可丢,故用「指纹跳过 + 节流闸门」两道闸。
+ * 这些闸依赖模块内的可变状态与 localStorage,难在单测里跑完整 push 流程;
+ * 这里以源码 Walking 判据钉住两道闸的**顺序与守卫条件**,防被无意删改/调换。
+ */
+describe('写档 429 治理 · 两道跳过闸(1.79.7)', () => {
+  const src = readFileSync(resolve(__dirname, './cloudSave.ts'), 'utf-8')
+
+  it('节流间隔 > 服务端 2s 限速,留抖动余量', () => {
+    const m = /const PUSH_MIN_GAP_MS = ([\d_]+)/.exec(src)
+    expect(m, '找不到 PUSH_MIN_GAP_MS').not.toBeNull()
+    const ms = Number(m![1]!.replace(/_/g, ''))
+    expect(ms, '节流必须宽于服务端 WRITE_MIN_GAP_MS=2000,否则仍会撞 429').toBeGreaterThan(2000)
+    expect(ms, '留太多余量会让真实偏好变更久久传不上去').toBeLessThanOrEqual(5000)
+  })
+
+  it('指纹跳过与节流都在「非首传且非手动」的守卫内', () => {
+    expect(src, '偏好指纹跳过必须在').toMatch(/if \(!firstBuild && !manual\) \{[\s\S]{0,300}fingerprint === lastPrefFingerprint[\s\S]{0,120}skipped-unchanged/)
+    expect(src, '节流闸门与指纹跳过同一守卫,首传建档不受影响').toMatch(
+      /fingerprint === lastPrefFingerprint\)\s*return 'skipped-unchanged'[\s\S]{0,120}Date\.now\(\) - lastPutAt < PUSH_MIN_GAP_MS\)\s*return 'skipped-throttled'/
+    )
+  })
+
+  it('指纹只在成功落库后记录,失败不记(下次触发会重发)', () => {
+    const okIdx = src.indexOf("if (!firstBuild && !manual) lastPrefFingerprint = JSON.stringify(payload.data)")
+    const putIdx = src.indexOf('await cloudApi.putSave(')
+    expect(okIdx, '找不到成功后的指纹记录').toBeGreaterThan(0)
+    expect(putIdx, '找不到 putSave 调用').toBeGreaterThan(0)
+    expect(okIdx, '指纹记录必须在 PUT 之后:失败不记,下一次触发会重发').toBeGreaterThan(putIdx)
+  })
+
+  it('lastPutAt 记在发出 PUT 之前,与服务端「无论成败都计时」同口径', () => {
+    const stampIdx = src.indexOf('lastPutAt = Date.now()')
+    const putIdx = src.indexOf('await cloudApi.putSave(')
+    expect(stampIdx, '找不到 lastPutAt 落戳').toBeGreaterThan(0)
+    expect(stampIdx, '落戳须在 PUT 之前,否则两次请求都看旧戳会连发').toBeLessThan(putIdx)
   })
 })

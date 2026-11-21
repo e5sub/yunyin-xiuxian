@@ -934,3 +934,55 @@ describe('法宝库 · 越界重数整条丢', () => {
     expect(byId[ids[2]!], '满重 9 被改').toBe(9)
   })
 })
+
+/**
+ * 整张装配映射落位(1.79.7):服务端在云档上据客户端上报的 equipped 全图裁决,
+ * 逐槽位过 canEquip,非法项(未持有/境界不足/非槽位)一律丢弃 —— 与单件 equip 同判据。
+ */
+describe('行囊 · equipSet 整图装配裁决', () => {
+  it('合法映射整图落位,一次装配多个槽位', () => {
+    const inv = useInventoryStore()
+    inv.items = [mk('a', []), mk('b', []), mk('c', [])]
+    const n = inv.equipSet({ weapon: 'a', head: 'b', body: 'c' })
+    expect(n).toBe(3)
+    expect(inv.equipped).toMatchObject({ weapon: 'a', head: 'b', body: 'c' })
+    expect(inv.equippedItems.map(i => i.uid).sort()).toEqual(['a', 'b', 'c'])
+  })
+
+  it('未持有/野 uid 被丢,不进装配', () => {
+    const inv = useInventoryStore()
+    inv.items = [mk('a', [])]
+    const n = inv.equipSet({ weapon: 'a', head: 'ghost' })
+    expect(n).toBe(1)
+    expect(inv.equipped.head).toBeUndefined()
+  })
+
+  it('重复 uid 只占一个槽:先到先得,不会一件穿两处', () => {
+    const inv = useInventoryStore()
+    inv.items = [mk('a', [])]
+    const n = inv.equipSet({ weapon: 'a', head: 'a' })
+    expect(n).toBe(1)
+    const used = Object.values(inv.equipped).filter(Boolean)
+    expect(used).toEqual(['a'])
+  })
+
+  it('整体替换旧图:equipSet 按上报全图落位,未上报的槽位即卸下', () => {
+    const inv = useInventoryStore()
+    inv.items = [mk('a', []), mk('b', [])]
+    inv.equip('a', 'weapon')
+    inv.equipSet({ head: 'b' })
+    expect(inv.equipped.weapon).toBeUndefined()
+    expect(inv.equipped.head).toBe('b')
+  })
+
+  it('境界不足的件不落位(门槛与 equip 同源)', () => {
+    const inv = useInventoryStore()
+    // 顶阶模板需高境界;人间界(major=0)报告上去应被 canEquip 挡回
+    const high = { uid: 'hi', templateId: 'w_hunyuan', quality: 'fine', tier: 40, level: 0, affixes: [] } as never
+    inv.items = [high]
+    expect(equipmentTemplate('w_hunyuan')?.minRealm ?? 0).toBeGreaterThan(0)
+    const n = inv.equipSet({ weapon: 'hi' })
+    expect(n).toBe(0)
+    expect(inv.equipped.weapon).toBeUndefined()
+  })
+})

@@ -302,3 +302,41 @@ describe('动作结算 · 差事收割(1.79.0 产出由服务端算)', () => {
     expect((r!.payload as { gone?: boolean }).gone).toBe(true)
   })
 })
+
+describe('动作结算 · 装配同步(equip_set · 1.79.7)', () => {
+  it('整图装配:合法件落位,补丁带上 inventory.equipped', async () => {
+    const data = save()
+    ;(data.inventory as Record<string, unknown>).items = [
+      { uid: 'w1', templateId: 'b_qingyun', quality: 'mortal', tier: 3, level: 0, affixes: [] },
+      { uid: 'h1', templateId: 'b_qingyun', quality: 'mortal', tier: 3, level: 0, affixes: [] }
+    ]
+    const r = await resolveActionFromSlices(
+      data,
+      { kind: 'equip_set', equipped: { weapon: 'w1', head: 'h1' } },
+      { now: NOW }
+    )
+    expect(r!.ok).toBe(true)
+    const equipped = r!.patches.inventory?.equipped as Record<string, string> | undefined
+    expect(equipped, '补丁要带整张装配映射').toBeDefined()
+    expect(equipped!.weapon).toBe('w1')
+    expect(equipped!.head).toBe('h1')
+  })
+
+  it('非法件(未持有/境界不够)被丢,不污染云档装配', async () => {
+    const data = save()
+    ;(data.inventory as Record<string, unknown>).items = [
+      { uid: 'w1', templateId: 'b_qingyun', quality: 'mortal', tier: 3, level: 0, affixes: [] },
+      { uid: 'hi', templateId: 'w_hunyuan', quality: 'fine', tier: 40, level: 0, affixes: [] }
+    ]
+    const r = await resolveActionFromSlices(
+      data,
+      { kind: 'equip_set', equipped: { weapon: 'w1', head: 'ghost', body: 'hi' } },
+      { now: NOW }
+    )
+    expect(r!.ok).toBe(true)
+    const equipped = r!.patches.inventory?.equipped as Record<string, string> | undefined
+    expect(equipped!.weapon).toBe('w1')
+    expect(equipped!.head).toBeUndefined()
+    expect(equipped!.body, '境界不够的顶阶件不该落位').toBeUndefined()
+  })
+})

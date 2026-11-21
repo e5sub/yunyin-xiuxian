@@ -116,16 +116,17 @@ Traefik / Nginx Proxy Manager / Caddy 同理：整站转发 + 支持 WebSocket U
 
 > **自建镜像请确认前端指向自己**：生产构建未设 `VITE_API_BASE` 时，前端兜底连官方服务器 `https://yy.071717.xyz`（页面里所有请求都发到那儿，包括注册登录）。用官方镜像自建、且前后端同域时，构建时加 `VITE_API_BASE=`（留空＝同域相对路径）或直接填自己的域名；验证方法：登录页 DevTools → Network 看 `/api/auth/config` 的 Host 是不是你自己的站。
 
-**关于 CSP（`Content-Security-Policy`）**：人机验证（Turnstile）要从 `challenges.cloudflare.com` 拉脚本、内嵌它的 iframe，两者都得放行。
+**关于 CSP（`Content-Security-Policy`）**：有两处必须放行——人机验证（Turnstile）要从 `challenges.cloudflare.com` 拉脚本、内嵌它的 iframe；音效库（tone）要用 `blob:` 建 Worker 计时与 AudioWorklet 合成。
 
-- **用官方镜像（`STATIC_DIR` 托管前端）**：这段头是**后端进程自己发的**，镜像内已放行，无需改 nginx。浏览器会同时收到后端与反代两条 CSP（各自独立生效、取交集），所以只要反代那层也配了 CSP，仍须在那边补同样的两域。
-- 症状：登录页报「人机验证被站点安全策略拦下」，控制台 `Loading the script '…/turnstile/v0/api.js' violates … "script-src 'self' 'unsafe-inline' data:"`。
+- **用官方镜像（`STATIC_DIR` 托管前端）**：这段头是**后端进程自己发的**，镜像内已放行，无需改 nginx。浏览器会同时收到后端与反代两条 CSP（各自独立生效、取交集），所以只要反代那层也配了 CSP，仍须在那边补同样的项。
+- 症状一：登录页报「人机验证被站点安全策略拦下」，控制台 `Loading the script '…/turnstile/v0/api.js' violates … "script-src 'self' 'unsafe-inline' data:"`。
+- 症状二：控制台刷 `Creating a worker from 'blob:…' violates … "script-src …"`——`worker-src` 没设时浏览器回退到 `script-src`，而它不含 `blob:`。
 
 ```nginx
-add_header Content-Security-Policy "script-src 'self' 'unsafe-inline' data: https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com" always;
+add_header Content-Security-Policy "script-src 'self' 'unsafe-inline' data: blob: https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; worker-src 'self' blob:" always;
 ```
 
-即：原 `script-src` 末尾追加 `https://challenges.cloudflare.com`，并**新增** `frame-src https://challenges.cloudflare.com`（原有 `connect-src` 的话也追加该域）。别用 `script-src *` 图省事——那等于把 CSP 关了。
+即：原 `script-src` 追加 `blob:` 与 `https://challenges.cloudflare.com`，**新增** `frame-src https://challenges.cloudflare.com` 和 `worker-src 'self' blob:`（原有 `connect-src` 的话也追加 Turnstile 域）。别用 `script-src *` 图省事——那等于把 CSP 关了。
 
 ## 故障排查
 

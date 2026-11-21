@@ -184,9 +184,13 @@ async function main(): Promise<void> {
     // (头是同步写的,读库是异步的;且开关随时会掰,留白反而会再撞一次)。
     const cspTurnstile = 'https://challenges.cloudflare.com'
     const spaCsp =
-      `default-src 'self'; script-src 'self' 'unsafe-inline' data: ${cspTurnstile}; ` +
+      // blob: 放行给 tone 音频库:它用 blob URL 建 Worker(精确计时)与 AudioWorklet(音效合成)。
+      // 不显式设 worker-src 时浏览器回退到 script-src(本不含 blob),控制台报
+      // "Creating a worker from 'blob:...' violates ... script-src"。两者同源生成、无外域脚本。
+      `default-src 'self'; script-src 'self' 'unsafe-inline' data: blob: ${cspTurnstile}; ` +
       `style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; ` +
       `media-src 'self' data: blob:; connect-src ${cspConnect} ${cspTurnstile}; object-src 'none'; ` +
+      `worker-src 'self' blob:; ` +
       `base-uri 'self'; frame-ancestors 'self'; frame-src ${cspTurnstile}`
     app.use((_req, res, next) => {
       res.setHeader('Content-Security-Policy', spaCsp)

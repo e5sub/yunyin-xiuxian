@@ -103,6 +103,82 @@ describe('动作上报 · 成功与被拒', () => {
   })
 })
 
+describe('穿戴同步 · equip_set(1.79.7)', () => {
+  beforeEach(() => {
+    withWindow()
+    setActivePinia(createPinia())
+    actionOp.mockReset()
+    actionResync.mockReset()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('穿戴后延迟上报整张 equipped 映射(带齐所有槽位)', async () => {
+    login(true)
+    const inv = useInventoryStore()
+    inv.items = [
+      { uid: 'w1', templateId: 'b_qingyun', quality: 'mortal', tier: 3, level: 0, affixes: [] },
+      { uid: 'h1', templateId: 'b_qingyun', quality: 'mortal', tier: 3, level: 0, affixes: [] }
+    ]
+    inv.equip('w1', 'weapon')
+    inv.equip('h1', 'head')
+    // 未到期不发
+    vi.advanceTimersByTime(200)
+    expect(actionOp).not.toHaveBeenCalled()
+    // 到期发一发,带齐全槽位快照
+    vi.advanceTimersByTime(150)
+    expect(actionOp).toHaveBeenCalledTimes(1)
+    expect(actionOp.mock.calls[0]![0]).toMatchObject({ kind: 'equip_set' })
+    const equipped = actionOp.mock.calls[0]![0].equipped
+    expect(equipped.weapon).toBe('w1')
+    expect(equipped.head).toBe('h1')
+  })
+
+  it('连换多件合并为一发:不撞服务端 250ms 闸门', () => {
+    login(true)
+    const inv = useInventoryStore()
+    inv.items = ['w1', 'w2', 'h1'].map(uid => ({ uid, templateId: 'b_qingyun', quality: 'mortal', tier: 3, level: 0, affixes: [] }))
+    // 连换三次(模拟一键换装),每次都会重置防抖时戳
+    inv.equip('w1', 'weapon')
+    vi.advanceTimersByTime(100)
+    inv.equip('w2', 'weapon')
+    vi.advanceTimersByTime(100)
+    inv.equip('h1', 'head')
+    vi.advanceTimersByTime(400)
+    // 只发一发,且带的是最终快照(w2 而非被覆盖的 w1)
+    expect(actionOp).toHaveBeenCalledTimes(1)
+    const equipped = actionOp.mock.calls[0]![0].equipped
+    expect(equipped.weapon).toBe('w2')
+    expect(equipped.head).toBe('h1')
+  })
+
+  it('无窗口(服务端无头):不发任何请求', () => {
+    vi.stubGlobal('window', undefined)
+    login(true)
+    const inv = useInventoryStore()
+    inv.items = [{ uid: 'w1', templateId: 'b_qingyun', quality: 'mortal', tier: 3, level: 0, affixes: [] }]
+    inv.equip('w1', 'weapon')
+    vi.advanceTimersByTime(500)
+    expect(actionOp).not.toHaveBeenCalled()
+  })
+
+  it('卸下也触发整张映射上报(该槽位消失)', () => {
+    login(true)
+    const inv = useInventoryStore()
+    inv.items = [{ uid: 'w1', templateId: 'b_qingyun', quality: 'mortal', tier: 3, level: 0, affixes: [] }]
+    inv.equip('w1', 'weapon')
+    vi.advanceTimersByTime(400)
+    actionOp.mockClear()
+    inv.unequip('weapon')
+    vi.advanceTimersByTime(400)
+    expect(actionOp).toHaveBeenCalledTimes(1)
+    expect(actionOp.mock.calls[0]![0].equipped.weapon).toBeUndefined()
+  })
+})
+
 describe('重对齐 · 单飞', () => {
   beforeEach(() => {
     withWindow()

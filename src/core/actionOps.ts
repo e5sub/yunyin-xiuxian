@@ -82,6 +82,8 @@ export interface ActionRequest {
   rate?: unknown
   /** 装备槽 */
   slot?: unknown
+  /** 整张装配映射(equip_set:一键换装连换数件时带齐全部槽位) */
+  equipped?: unknown
   /** 灵草品阶 */
   grade?: unknown
   /** 远征契约 id(null 表示不立契) */
@@ -299,6 +301,20 @@ async function runAction(req: ActionRequest): Promise<ActionResult> {
       const slot = strOf(req.slot)
       if (slot === '') return fail('缺少槽位')
       inventory.unequip(slot as Parameters<typeof inventory.unequip>[0])
+      return { ok: true, patches: {} }
+    }
+    case 'equip_set': {
+      /*
+       * 整张装配映射:客户端一键换装/穿脱后带齐全部槽位上报。逐槽位过 canEquip
+       * (门槛/持有判定与单件 equip 同源),服务端在云档上裁决,非法项一律丢弃。
+       * 不采信「只报一槽」——那样撞 250ms 限速丢一发就停在半换状态。
+       */
+      const raw = isPlainObject(req.equipped) ? req.equipped : {}
+      const map: Record<string, string> = {}
+      for (const [slot, uid] of Object.entries(raw)) {
+        if (typeof uid === 'string') map[slot] = uid
+      }
+      inventory.equipSet(map)
       return { ok: true, patches: {} }
     }
     case 'artifact_toggle': {

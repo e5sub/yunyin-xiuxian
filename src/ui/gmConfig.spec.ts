@@ -143,5 +143,9 @@ describe('人机验证 · 开关 ≠ 生效', () => {
     expect(csp, 'script-src 缺 Turnstile 域:脚本直接被拦').toMatch(/script-src [^`]*\$\{cspTurnstile\}/)
     expect(csp, 'frame-src 缺 Turnstile 域:脚本能下来,验证框仍被拦').toMatch(/frame-src \$\{cspTurnstile\}/)
     expect(csp, 'connect-src 一并放行,免得探活请求被拦成加载失败').toMatch(/connect-src [^`]*\$\{cspTurnstile\}/)
+    expect(csp, 'worker-src 缺 blob: tone 音频库的 blob Worker 被拦,控制台刷 CSP 违规').toMatch(
+      /worker-src 'self' blob:/
+    )
+    expect(csp, 'script-src 缺 blob: AudioWorklet 从 blob 加载模块被拦').toMatch(/script-src [^`]*blob:/)
   })
 })
