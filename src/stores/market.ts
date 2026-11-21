@@ -243,6 +243,21 @@ export const useMarketStore = defineStore(
     }
 
     /**
+     * 按指定起钟重上一架货(1.79.4,服务端买入用)。
+     *
+     * 云档的 market 分片只在买入/首传时落库,心跳不推进它 —— 起钟会停在首传那一刻。
+     * 玩家本地跨过刷新窗口后 sync 换新架,报上来的 at 与云档起钟对不上;若服务端拿
+     * 云档起钟硬校验,就会判「货架已换新」→ 客户端 resync → 定时器再 sync → 买一次刷一次。
+     * 货架内容由 (major, at) 确定性再生,at 只是「买哪一批货」的种子(价格仍由服务端复算),
+     * 所以服务端采信 at、先按它重上同一架货再成交,预览与实得就同源了。
+     */
+    function restockAt(at: number): void {
+      const gen = generateMarketStock(usePlayerStore().major, at)
+      stock.value = gen.goods
+      stockedAt.value = gen.stockedAt
+    }
+
+    /**
      * 成交记账漏斗(1.58.1):登录玩家下单前先让服务端按货架复算价并记一笔账。
      * 扣款写在客户端,不记账就等于白拿;记不上就不成交(与掉落签发「宁可不掉」同一口径)。
      * 未登录的单机玩家直接放行 —— 他们没有云档,服务端也无从记账。
@@ -468,6 +483,7 @@ export const useMarketStore = defineStore(
       consign,
       sanitize,
       sync,
+      restockAt,
       buy,
       consignEquip,
       collectConsign,

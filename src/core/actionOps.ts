@@ -62,7 +62,8 @@ import { apprenticeSpoils, taskDone } from './apprenticeService'
 import { APPRENTICE_MAX_LEVEL } from '@/data/apprentices'
 import { gameNow } from './enginePause'
 import { FURNACE_RATES } from '@/data/endgame'
-import type { HerbGrade } from '@/data/herbGrades'
+import { MARKET_REFRESH_SECONDS, MARKET_SLOTS } from '@/data/market'
+import { isHerbGrade } from '@/data/herbGrades'
 
 /** 动作请求:kind 决定走哪条结算,其余字段是该动作的参数(形状由分支自己验) */
 export interface ActionRequest {
@@ -259,12 +260,19 @@ async function runAction(req: ActionRequest): Promise<ActionResult> {
       return market.sellMaterial(player.major) ? { ok: true, patches: {} } : fail('玄铁不足')
     }
     case 'sell_herb': {
-      const grade = strOf(req.grade) as unknown as HerbGrade
-      return market.sellHerb(grade) ? { ok: true, patches: {} } : fail('灵草不足')
+      /*
+       * 灵草品阶是数字 1..5(HerbGrade),客户端 reportAction('sell_herb',{grade:1}) 传的就是数字。
+       * 曾误用 strOf 取值:数字 1 被转成 '' → sellHerb('') 永远卖不出 → ok=false → 客户端
+       * resync 整档覆盖,本地已扣的货/加的钱被打回,表现为「卖不出去」(1.79.4)。
+       */
+      const g = numOf(req.grade)
+      if (!isHerbGrade(g)) return fail('灵草不足')
+      return market.sellHerb(g) ? { ok: true, patches: {} } : fail('灵草不足')
     }
     case 'sell_all_herb': {
-      const grade = strOf(req.grade) as unknown as HerbGrade
-      const n = market.sellHerbAll(grade)
+      const g = numOf(req.grade)
+      if (!isHerbGrade(g)) return fail('灵草不足')
+      const n = market.sellHerbAll(g)
       return n > 0 ? { ok: true, patches: {}, payload: { count: n } } : fail('灵草不足')
     }
     case 'sell_all_ore': {
@@ -355,8 +363,22 @@ async function runAction(req: ActionRequest): Promise<ActionResult> {
       const at = Math.trunc(numOf(req.at))
       const idx = Math.trunc(numOf(req.index))
       if (!Number.isFinite(at) || at <= 0) return fail('货架已换新')
-      if (!Number.isFinite(idx) || idx < 0) return fail('没有这一格')
-      if (at !== Math.trunc(numOf(market.stockedAt))) return fail('货架已换新')
+      if (!Number.isFinite(idx) || idx < 0 || idx >= MARKET_SLOTS) return fail('没有这一格')
+      /*
+       * 1.79.4:云档的 market 分片只在首传/买入时落库,心跳不推进它 —— 起钟会停在
+       * 首传那一刻。玩家本地跨过刷新窗口后 sync 换新架、报来新的 at,与云档起钟必然
+       * 不等。旧版在此硬校验 at === market.stockedAt → 判「货架已换新」→ 客户端
+       * resync 整档打回 → 定时器再 sync 换新 → 「买一次刷一次架」,且永远买不成。
+       *
+       * 货架内容由 (major, at) 确定性再生,at 只是「买哪一批货」的种子,价格/货品
+       * 仍由服务端按同一把种子复算,采信它不改变任何数值。只需把 at 关在合理窗口:
+       * 不早于一个刷新周期(防挑久远的种子刷特定货),不晚于服务端当前时刻(防未来钟)。
+       * 随后按 at 重上同一架货再成交,云档起钟也随补丁追上,不再与本地分叉。
+       */
+      const refreshMs = MARKET_REFRESH_SECONDS * 1000
+      const now = gameNow()
+      if (at > now + 60_000 || at < now - refreshMs - 60_000) return fail('货架已换新')
+      market.restockAt(at)
       /*
        * 「买不成」是正常反馈(灵石不够 / 已售出 / 行囊满),不是服务端事故 ——
        * 所以照实把结果码放在 payload 里回来,ok 仍为 true:客户端没有本地预测要作废,

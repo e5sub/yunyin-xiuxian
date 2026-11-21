@@ -110,6 +110,20 @@ describe('动作结算 · 坊市与资源', () => {
     expect(r!.ok).toBe(false)
     expect(r!.patches).toEqual({})
   })
+
+  it('卖灵草:品阶是数字,服务端须按数字取档(1.79.4 卖不出去)', async () => {
+    // 客户端 reportAction('sell_herb',{grade:1}) 传的是数字 1,不是字符串 '1'
+    const r = await resolveActionFromSlices(save(), { kind: 'sell_herb', grade: 1 }, { now: NOW })
+    expect(r!.ok).toBe(true)
+    const herb = r!.patches.resources?.herbByGrade as Record<number, number> | undefined
+    expect(herb?.[1], '一阶灵草要被扣').toBeLessThan(100)
+    expect(toNum(r!.patches.resources!.spiritStone as { m: number; e: number })).toBeGreaterThan(1e4)
+  })
+
+  it('卖灵草品阶非法(字符串/越界):ok=false', async () => {
+    expect((await resolveActionFromSlices(save(), { kind: 'sell_herb', grade: '1' }, { now: NOW }))!.ok).toBe(false)
+    expect((await resolveActionFromSlices(save(), { kind: 'sell_herb', grade: 9 }, { now: NOW }))!.ok).toBe(false)
+  })
 })
 
 describe('动作结算 · 补丁不含噪声', () => {
@@ -191,14 +205,33 @@ describe('动作结算 · 转世交割单(1.79.0 服务端算)', () => {
 })
 
 describe('动作结算 · 坊市买入(1.79.0 服务端执行)', () => {
-  it('货架时刻对不上:ok=false(不拿客户端报的旧货架成交)', async () => {
-    const r = await resolveActionFromSlices(save(), { kind: 'market_buy', at: 1, index: 0 }, { now: NOW })
-    expect(r!.ok).toBe(false)
+  it('过旧/未来的货架时刻:ok=false(防挑种子/未来钟)', async () => {
+    // 时间窗判据用真实时钟,故这里也用真实 Date.now() 构造越界值
+    const now = Date.now()
+    expect((await resolveActionFromSlices(save(), { kind: 'market_buy', at: 1, index: 0 }, { now }))!.ok).toBe(false)
+    expect(
+      (await resolveActionFromSlices(save(), { kind: 'market_buy', at: now + 5 * 60_000, index: 0 }, { now }))!.ok
+    ).toBe(false)
   })
 
-  it('缺货架时刻:ok=false', async () => {
-    const r = await resolveActionFromSlices(save(), { kind: 'market_buy', index: 0 }, { now: NOW })
-    expect(r!.ok).toBe(false)
+  it('缺货架时刻或越界格号:ok=false', async () => {
+    const now = Date.now()
+    expect((await resolveActionFromSlices(save(), { kind: 'market_buy', index: 0 }, { now }))!.ok).toBe(false)
+    expect((await resolveActionFromSlices(save(), { kind: 'market_buy', at: now, index: 99 }, { now }))!.ok).toBe(
+      false
+    )
+  })
+
+  it('云档起钟远旧于本地:按本地 at 重上货架成交,起钟追平(1.79.4 买一次刷一次)', async () => {
+    const now = Date.now()
+    const at = now - 1000
+    const d = save()
+    // 云档起钟停在首传那一刻(10 小时前),且无货 —— 1.78 后心跳不推进 market 分片
+    ;(d.market as Record<string, unknown>) = { stockedAt: now - 10 * 3_600_000, stock: [], consign: [] }
+    const r = await resolveActionFromSlices(d, { kind: 'market_buy', at, index: 0 }, { now })
+    expect(r!.ok).toBe(true)
+    // 补丁把云档起钟追平到本地 at,不再与本地分叉(否则 resync 打回→定时器再 sync→循环刷架)
+    expect((r!.patches.market as Record<string, unknown>).stockedAt).toBe(at)
   })
 })
 
