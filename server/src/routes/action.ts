@@ -17,7 +17,7 @@ import { requireAuth } from '../auth.js'
 import { metricsOf, syncProfileFromData } from './save.js'
 import { loadClientModule } from '../clientVendor.js'
 import { withKeyLock } from '../mutex.js'
-import { heldKeys, syncNewLoot } from '../lootSync.js'
+import { heldKeys, reconcileHeldLoot, syncNewLoot } from '../lootSync.js'
 
 const SOURCE_MODULE = '../../../src/core/actionOps'
 const VENDOR_FILE = 'actionOps'
@@ -130,6 +130,8 @@ actionRouter.post('/action', requireAuth, (req: Request, res: Response) => {
      */
     try {
       await syncNewLoot(userId, data, beforeKeys, `action:${body.kind}`)
+      // 离手的件同步清账,免得「按账补册」把已卖/已分解的旧件复活(1.79.5)
+      await reconcileHeldLoot(userId, data)
     } catch {
       res.status(500).json({ error: '签发记账失败,请重试' })
       return

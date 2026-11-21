@@ -276,6 +276,8 @@ describe('死导出审计', () => {
     enforceSaveAuthority: '服务端数值权威化入口:server/src/saveAuthority.ts 动态加载本模块,PUT /save 落库前裁决(1.56.0),消费方在 src 之外,审计扫不到;saveAuthority.spec 守其口径',
     resolveForgeFromSlices:
       '服务端炼器裁决入口:server/src/routes/forge.ts 动态加载本模块,从云档分片无头水合后跑同一份纯账层(1.58.3),消费方在 src 之外,审计扫不到;forgeResolve.spec 守其口径',
+    rebuildEquipFromLedgerState:
+      '服务端按账补册入口:server/src/routes/forge.ts 经 vendor(forgeResolve)动态加载,遇 gone 时用 loot_ledger + equip_state 重建旧件(1.79.5),消费方在 src 之外,审计扫不到;forgeResolve.spec 守其口径',
     resolveLevelFromSlices:
       '服务端升级裁决入口:server/src/routes/progress.ts 动态加载本模块,功法进修/建筑升级从云档分片无头水合后跑同一份纯账层(1.59.0),消费方在 src 之外,审计扫不到;levelResolve.spec 守其口径',
     formatStamp:

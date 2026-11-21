@@ -8,12 +8,12 @@ export function upgradeCapToast(): string {
 /**
  * 云端还没有这一件(与「已至上限」是两件事)。
  *
- * 新捡到的装备先落在本地,存档二十秒一推;这期间点强化,服务端那份云档里查无此件,
- * 原先与满级共用一个 'cap',于是新件一按就被告知「强化已至上限」——
- * 玩家看到的等级与你说的上限对不上,还以为强化坏了。
+ * 服务端会先用 loot_ledger + equip_state 自行补册(1.79.5);补不回来说明签发账
+ * 已不在(已分解/已出售),不能再骗玩家说「已补传存档」—— 1.78.0 之后上传
+ * 根本不带行囊,那句话从实现到结果都是假的。
  */
 export function upgradeMissingToast(): string {
-  return '此器尚未入册,已补传存档,请再点一次'
+  return '此器不在云端档案中,请刷新重新登录后再试'
 }
 
 /** 补传自身没推出去(断网/冲突/上一发还在推):如实说没同步,别谎报「已补传」(1.74.1) */
@@ -39,19 +39,19 @@ export function upgradeShortToast(
   return resourceShortText(short, gap)
 }
 
-/** 强化失手:掉了级 */
+/** 强化失手:掉了级,当场退回八成材料 */
 export function upgradeFailToast(name: string, level: number, dropped: number): string {
-  return `「${name}」强化失手,回落 ${dropped} 级至 +${level}`
+  return `「${name}」强化失手,回落 ${dropped} 级至 +${level},退还八成材料`
 }
 
-/** 强化失手但踩在保级点上:不掉级 */
+/** 强化失手但踩在保级点上:不掉级,一样退八成 */
 export function upgradeSafeToast(name: string, level: number): string {
-  return `「${name}」强化失手,保级于 +${level}`
+  return `「${name}」强化失手,保级于 +${level},退还八成材料`
 }
 
 /** 连升中途失手 */
 export function upgradeBatchBrokenToast(name: string, tries: number, up: number, level: number): string {
-  return `「${name}」第 ${tries} 次失手 · 成 ${up} 级 · 现 +${level}`
+  return `「${name}」第 ${tries} 次失手 · 成 ${up} 级 · 现 +${level} · 失手退还八成材料`
 }
 
 export function upgradeDoneToast(name: string, level: number): string {

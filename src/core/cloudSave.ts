@@ -9,8 +9,7 @@
  * 3. 云端存档应用失败时不进空档流程(否则开局 20 秒后空档会把云端原档推平)。
  */
 import { ref } from 'vue'
-import { accountStorageKey, buildExportPayload, readSliceRaw, SAVE_VERSION } from '@/utils/storage'
-import { readSaveText } from '@/utils/crypto'
+import { accountStorageKey, buildExportPayload, SAVE_VERSION } from '@/utils/storage'
 import { applySavePayload, reloadGame } from '@/core/save'
 import { snapshotFromActiveStores, type ProfileSnapshot } from '@/core/profileRecompute'
 import { SAVE_SANITIZE_STEPS } from '@/core/saveSanitize'
@@ -208,22 +207,15 @@ export async function pushCloudSave(manual = false): Promise<PushOutcome> {
       const cloud = await cloudApi.getSave()
       if (cloud.save !== null) {
         /*
-         * 本机锚点为 0 而云端已有档:两种可能 —— 本机是残留的新手档,或开机拉档失败后
-         * 一直在玩的长驻页。用「本机上次关页盖章」与「云端最后写入」比新旧:
-         * 本机盖章更早,说明云端那份是后来在别的设备上推进的,不能拿本机旧快照顶掉它。
-         * (这里原先写的是 `if (!game.started)`,而函数开头已因未开局提前返回,那段保护是死代码。)
+         * 1.78.0 起「云端档比本机新」不再是可判定的事,这条旧护栏必须拆掉:
+         *   - 服务端 updated_at 已改作「内部推进锚点」,每次心跳/动作都推高(game.ts/action.ts),
+         *     而本机 base 只在偏好上传(20s)时写回且写的是服务端当时不变的值 —— 两者口径错位,
+         *     云端 updatedAt > base 几乎恒成立,旧比较必然误报「云端存档比本机新」并永久停传。
+         *   - 纯网游下本机没有权威进度(只有偏好三片会上行,首传才带整档建档),既无从「顶掉云端」,
+         *     也无需用关页盖章判新旧。这里只做一件事:接续云端锚点,恢复自动上传。
          */
-        if (bootPersistedLastActive > 0 && bootPersistedLastActive + CLOCK_SKEW_MS < cloud.save.updatedAt) {
-          blocked = true
-          report('conflict', '云端存档比本机新,已暂停自动上传')
-          return 'conflict'
-        }
-        // 本机已开局但从未对齐(锚点机制上线前的老客户端 / 开机时拉档失败的长驻页):
-        // 单设备登录下本机就是该账号的唯一在线设备,视为同一份进度延续,接续云端锚点恢复自动上传。
-        // 不再永久停传(否则 GM 后台看到的「存档更新」时间会一直不动)。
         base = cloud.save.updatedAt
         writeBase(base)
-        syncNotice.value = { text: '已接续云端进度,恢复自动上传', at: Date.now() }
       }
     }
     /*
@@ -327,88 +319,6 @@ export async function restoreFromCloud(): Promise<boolean> {
       return false
     }
     writeBase(res.save.updatedAt)
-    reloadGame()
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
- * 启动探针:本机已对齐过,但云端时间戳比本机锚点新 —— 说明别的设备写过。
- * 不自动覆盖(本机可能有未上传的进度),只返回信息供界面提示。
- */
-export async function probeCloudNewer(): Promise<number | null> {
-  const auth = useAuthStore()
-  if (!auth.loggedIn) return null
-  try {
-    const res = await cloudApi.getSave()
-    if (res.save === null) return null
-    const base = readBase()
-    return base > 0 && res.save.updatedAt > base ? res.save.updatedAt : null
-  } catch {
-    return null
-  }
-}
-
-/** 客户端与服务端时钟的容差:关页盖章(客户端钟)对锚点(服务端钟)比较时吸收偏差 */
-const CLOCK_SKEW_MS = 120_000
-
-/**
- * 读磁盘里上一会话的关页盖章:引擎 start 会立刻在内存里重盖 lastActiveAt,
- * 但 5 秒刷盘窗口内磁盘仍是旧值;此刻读取(早于任何 store 水合写回)拿到的是关页时刻。
- */
-function readPersistedLastActive(): number {
-  // 1.76.0 起 game 分片在会话缓存(sessionStorage)里,经 readSliceRaw 按当前分层直读
-  const raw = readSliceRaw('game')
-  if (raw === null) return 0
-  // 盘上是密文,须经 readSaveText 解码(明文旧档/待刷队列同样兼容)
-  try {
-    const obj = JSON.parse(readSaveText(raw)) as { lastActiveAt?: unknown }
-    return typeof obj.lastActiveAt === 'number' && Number.isFinite(obj.lastActiveAt) ? obj.lastActiveAt : 0
-  } catch {
-    return 0
-  }
-}
-
-let bootPersistedLastActive = 0
-
-/**
- * 启动时读一次上一会话的关页盖章。
- * 必须在 initAccountScope() 之后调用:键名带账号段,模块加载期作用域还是 0,
- * 读到的是已迁移走的旧全局键,登录用户的护栏会恒失效(1.63.0)。
- */
-export function captureBootLastActive(): void {
-  bootPersistedLastActive = readPersistedLastActive()
-}
-
-/**
- * 开局自动接管:本机已开局且对齐过,但云端档更新(别的设备/上一会话的最后一推)。
- * 仅当本机自上次对齐后没有新进度(关页盖章不晚于锚点+钟差)才自动覆盖,
- * 否则回落到 probeCloudNewer 的人工提示,绝不悄悄冲掉本机进度。
- * 返回是否已应用并即将重载。
- */
-export async function autoRestoreIfNewer(): Promise<boolean> {
-  const auth = useAuthStore()
-  const game = useGameStore()
-  if (!auth.loggedIn || !game.started || !cloudAligned()) return false
-  if (bootPersistedLastActive > readBase() + CLOCK_SKEW_MS) return false
-  try {
-    const res = await cloudApi.getSave()
-    if (res.save === null) return false
-    if (res.save.updatedAt <= readBase()) return false
-    const err = applySavePayload({
-      game: 'yunyin-xiuxian',
-      version: res.save.version,
-      exportedAt: res.save.updatedAt,
-      data: res.save.data
-    })
-    if (err !== null) {
-      report('error', `云端存档应用失败:${err}`)
-      return false
-    }
-    writeBase(res.save.updatedAt)
-    blocked = false
     reloadGame()
     return true
   } catch {

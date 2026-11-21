@@ -12,7 +12,7 @@ import { useResourcesStore } from '@/stores/resources'
 import { useInventoryStore } from '@/stores/inventory'
 import { useLoreStore } from '@/stores/lore'
 import { collect } from '@/core/progress'
-import { reportAction, runActionAwait } from '@/core/remoteAction'
+import { reportAction, resyncFromCloud, runActionAwait } from '@/core/remoteAction'
 import { pillDef } from '@/data/pills'
 import { MAX_EQUIP_TIER, equipmentTemplate } from '@/data/equipment'
 import { qualityDef } from '@/data/qualities'
@@ -291,6 +291,13 @@ export const useMarketStore = defineStore(
           { at: stockedAt.value, index: idx },
           () => buyInner(idx)
         )
+        /*
+         * 1.79.5:服务端说买成了,本地却没收到 sold 补丁时不能装作没事 ——
+         * 那就去拉一次整档重对齐,免得刷新后又看到「买下」,同一格被反复成交。
+         */
+        if (r.ok && r.value === 'ok' && stock.value.find(s => s.idx === idx)?.sold !== true) {
+          void resyncFromCloud()
+        }
         return r.ok ? (r.value ?? 'expired') : 'expired'
       } finally {
         buying = false

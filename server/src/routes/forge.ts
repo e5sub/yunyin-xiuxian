@@ -15,7 +15,8 @@ import { get, run, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { metricsOf, backupBeforeOverwrite, syncProfileFromData } from './save.js'
 import { loadClientModule } from '../clientVendor.js'
-import { recordEquipStatesFromItems } from '../equipLedger.js'
+import { equipHoldings, recordEquipStatesFromItems } from '../equipLedger.js'
+import { lootProvenance } from '../lootLedger.js'
 import { recordForgeSpend } from '../forgeLedger.js'
 import { withKeyLock } from '../mutex.js'
 import { vipActive } from '../vip.js'
@@ -38,6 +39,13 @@ interface ForgeResultDto {
   detail: Record<string, unknown>
 }
 
+/** 补册只关心申请表里的 uid;其余形状交给 core/parseForgeOp 去收口 */
+type ForgeOpDto =
+  | { op: 'upgrade' | 'reforge' | 'autoReforge'; uid: string }
+  | { op: 'transfer'; req: { sourceUid: string; targetUid: string } }
+  | { op: 'sweep' }
+  | null
+
 interface ClientForgeModule {
   resolveForgeFromSlices: (
     data: unknown,
@@ -45,6 +53,16 @@ interface ClientForgeModule {
     claims: unknown,
     vip?: boolean
   ) => ForgeResultDto | null
+  /** 1.79.5 新增;旧 vendor 缺这两个方法时只放弃补册,不影响正常炼器 */
+  parseForgeOp?: (raw: unknown) => ForgeOpDto
+  rebuildEquipFromLedgerState?: (uid: unknown, state: unknown) => Record<string, unknown> | null
+}
+
+function opUids(op: ForgeOpDto): string[] {
+  if (op === null) return []
+  if (op.op === 'sweep') return []
+  if (op.op === 'transfer') return [op.req.sourceUid, op.req.targetUid]
+  return [op.uid]
 }
 
 let cached: Promise<ClientForgeModule> | null = null
@@ -87,6 +105,75 @@ function patchItems(data: Record<string, unknown>, changed: readonly Record<stri
     if (at !== undefined) items[at] = one
   }
   inv.items = items
+}
+
+/**
+ * 服务端补册(1.79.5):gone 表示云档里没有这件,而客户端又不再上传行囊。
+ * 只有「loot_ledger 已签发 + equip_state 有完整强度」时才把它放回云档 ——
+ * 两本账都是服务端写的,客户端上报的 templateId/affixes/level 一概不采信。
+ * 已分解/出售的件会被动作结算从两本账清掉,所以不会借这条路径借尸还魂。
+ */
+async function recoverGoneEquip(
+  userId: number,
+  data: Record<string, unknown>,
+  rawOp: unknown,
+  mod: ClientForgeModule
+): Promise<boolean> {
+  if (mod.parseForgeOp === undefined || mod.rebuildEquipFromLedgerState === undefined) return false
+  const op = mod.parseForgeOp(rawOp)
+  const uids = [...new Set(opUids(op))].filter(uid => uid !== '' && uid.length <= 64)
+  if (uids.length === 0) return false
+  const inv = isPlainObject(data.inventory) ? data.inventory : null
+  if (inv === null || !Array.isArray(inv.items)) return false
+
+  const held = new Set<string>()
+  for (const item of inv.items) {
+    if (isPlainObject(item) && typeof item.uid === 'string') held.add(item.uid)
+  }
+  const missing = uids.filter(uid => !held.has(uid))
+  if (missing.length === 0) return false
+
+  const provenance = await lootProvenance(userId)
+  if (!provenance.seeded) return false
+  const holdings = await equipHoldings(userId)
+  const restored: Record<string, unknown>[] = []
+  for (const uid of missing) {
+    if (!provenance.known.equip.has(uid)) continue
+    const row = holdings.byUid.get(uid)
+    if (row === undefined) continue
+    const state: Record<string, unknown> = { ...row.state }
+    if (state.level === undefined) state.level = row.level
+    const item = mod.rebuildEquipFromLedgerState(uid, state)
+    if (item !== null) restored.push(item)
+  }
+  if (restored.length === 0) return false
+  inv.items = [...inv.items, ...restored]
+  return true
+}
+
+/** 补册本身也是一次落档:即便随后因缺料被拒,这件合法的旧物也该留在云端 */
+async function saveRestored(
+  userId: number,
+  snapshot: { version: number; data: string; updated_at: number },
+  data: Record<string, unknown>
+): Promise<void> {
+  try {
+    await backupBeforeOverwrite(userId, snapshot)
+  } catch {
+    // 留档失败不拦补册
+  }
+  await upsertByPk('saves', {
+    user_id: userId,
+    version: snapshot.version,
+    data: JSON.stringify(data),
+    started: 1,
+    updated_at: snapshot.updated_at
+  })
+  try {
+    await syncProfileFromData(userId, data, Date.now())
+  } catch {
+    // 战力快照下一次结算会重算,不拦补册
+  }
 }
 
 export const forgeRouter = express.Router()
@@ -135,18 +222,22 @@ forgeRouter.post('/forge/op', requireAuth, (req: Request, res: Response) => {
     // VIP 有效期内修行开销九折:强化/重铸/转移的价目只由服务端算,客户端那侧是预览
     const vip = await vipActive(req.user!.id)
     // 无头结算:水合 → 采信上报余额(1.73.0 起以上报为准,不拿云档垫付) → 同一套纯账层掷点
-    const result = mod.resolveForgeFromSlices(
-      data,
-      body.op,
-      { exp: body.exp, dust: body.dust, stone: body.stone },
-      vip
-    )
+    const claims = { exp: body.exp, dust: body.dust, stone: body.stone }
+    let result = mod.resolveForgeFromSlices(data, body.op, claims, vip)
+    let restored = false
+    if (result?.reason === 'gone') {
+      restored = await recoverGoneEquip(userId, data, body.op, mod)
+      if (restored) result = mod.resolveForgeFromSlices(data, body.op, claims, vip)
+    }
     if (result === null) {
+      if (restored) await saveRestored(userId, row, data)
       res.status(400).json({ error: '炼器申请无效' })
       return
     }
-    // 被拒(满级/缺料/落位不合):一件未动、一笔未扣,只把原因回给客户端出提示
+    // 被拒(满级/缺料/落位不合):一件未动、一笔未扣,只把原因回给客户端出提示。
+    // 例外:刚刚补册回来的件要落库,否则下一发又报 gone(1.79.5)
     if (!result.ok) {
+      if (restored) await saveRestored(userId, row, data)
       res.json({ ok: false, reason: result.reason, detail: result.detail })
       return
     }

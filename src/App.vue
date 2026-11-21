@@ -64,7 +64,7 @@
   import { startAutoOps, stopAutoOps, prepOfflineAutoOps, collectOfflineBossLedger } from '@/core/autoOps'
   import { setVipResolver } from '@/core/spendRate'
   import { connectCloudWs, disconnectCloudWs, onSessionEnd } from '@/services/cloud'
-  import { autoRestoreIfNewer, probeCloudNewer, pushCloudSave, restoreFromCloud, startCloudSync, stopCloudSync, syncNotice } from '@/core/cloudSave'
+  import { pushCloudSave, restoreFromCloud, startCloudSync, stopCloudSync, syncNotice } from '@/core/cloudSave'
   import { applyTheme, initTheme } from '@/core/theme'
   import { resetModalStack } from '@/composables/useModalStack'
   import { configureAudio, disposeAudio, playSfx, unlockAudio } from '@/core/audio'
@@ -141,12 +141,12 @@
     void auth.refreshVip().catch(() => undefined)
     const restored = await restoreFromCloud()
     if (restored) return // 云端档已应用并重载
-    // 本机已开局但对齐过且本机无未同步进度时,云端更新(别的设备/上一会话末推)即自动接管;
-    // 本机可能有未上传进度则回落为提示,绝不悄悄覆盖
-    const auto = await autoRestoreIfNewer()
-    if (auto) return
-    const newerAt = await probeCloudNewer()
-    if (newerAt !== null) ui.toast('云端进度比本机新,已暂停上传以免覆盖', 'warn')
+    /*
+     * 1.78.0 起不再有「云端档比本机新」的启动对账:服务端是唯一权威,心跳每 5s 把云档
+     * 分片 patch 回本机,本地只是渲染缓存。旧的 autoRestoreIfNewer / probeCloudNewer
+     * 拿 updated_at(已被服务端改作内部推进锚点)和本机锚点比新旧,恒判「云端更新」→
+     * 要么误触发整档 reload、要么误弹「云端进度比本机新」——纯网游下这个比较没有意义。
+     */
     startCloudSync()
     // 门派不进存档分片,须单独拉一次;失败不拦启动(门派页会再试)
     void sect.load()

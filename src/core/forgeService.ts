@@ -23,7 +23,6 @@ import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useUiStore } from '@/stores/ui'
 import { cloudApi, type ForgeOpResponse, type LevelOpResponse } from '@/services/cloud'
-import { pushCloudSave } from './cloudSave'
 import { playSfx } from './audio'
 import {
   artifactBatchPlan,
@@ -164,31 +163,11 @@ async function askInner(op: ForgeOp): Promise<ForgeOpResponse | null> {
   try {
     const res = await send()
     /*
-     * 「查无此件」几乎只有一个来源:这一件刚捡到/刚换到手,存档还压在本地(二十秒一推)。
-     * 服务端只认自己那份云档,于是回 gone —— 原先客户端把它当「已满级」报出去,
-     * 玩家看着 +0 的件被告知「已至上限」。这里补推一次存档再掷一次:
-     * 存档到位后同一件就在云端了,玩家不必自己猜「为什么点不动」。
-     * 只重试一次:仍查无此件说明另有原因(比如已被分解),交给提示如实说。
+     * 1.79.5:gone 不再由客户端补传解决。1.78.0 之后 PUT /save 只带偏好分片,
+     * 旧逻辑「补传存档再点一次」根本不可能把行囊送上去,只会骗玩家白点。
+     * 服务端现在会拿 loot_ledger + equip_state 自行补册并当场重试;仍回 gone
+     * 说明这件的签发账已经不在(已分解/已出售),如实报出去即可。
      */
-    if (res.ok === false && res.reason === 'gone') {
-      /*
-       * 补传也可能推不出去(1.74.1):自动上传正在途时 pushCloudSave 直接回
-       * 'skipped-busy' 不推,断网回 'failed',冲突回 'conflict' —— 原先一概
-       * 无视,然后照旧掷第二发,结果还是 gone,玩家看到「已补传存档,请再点
-       * 一次」却怎么点都一样。现正忙就等一拍再补传一次;推送确实没成的,
-       * 把机读原因改成 'unsynced',文案如实说「存档尚未同步」,不再谎报「已补传」。
-       */
-      let outcome = await pushCloudSave(true)
-      if (outcome === 'skipped-busy') {
-        await new Promise(resolve => setTimeout(resolve, 600))
-        outcome = await pushCloudSave(true)
-      }
-      const retry = await send()
-      if (retry.ok === false && retry.reason === 'gone' && outcome !== 'ok') {
-        return { ...retry, reason: 'unsynced' }
-      }
-      return retry
-    }
     return res
   } catch {
     return null

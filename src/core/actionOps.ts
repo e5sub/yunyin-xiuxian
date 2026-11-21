@@ -385,6 +385,15 @@ async function runAction(req: ActionRequest): Promise<ActionResult> {
        * 也就没必要为一次「灵石不足」拉整档重对齐。
        */
       const out = await market.buy(idx)
+      /*
+       * 成交后这一格必须留在「已售」态并随补丁回云档。正常 buy() 自己会置位,
+       * 这里再钉一道:若中途换了货架种子/本地预测把格号挪走,补丁里缺了 sold,
+       * 玩家一刷新就又看到「买下」,钱货两空还以为没买成(1.79.5)。
+       */
+      if (out === 'ok') {
+        const slot = market.stock.find(s => s.idx === idx)
+        if (slot !== undefined) slot.sold = true
+      }
       return { ok: true, patches: {}, payload: out }
     }
 

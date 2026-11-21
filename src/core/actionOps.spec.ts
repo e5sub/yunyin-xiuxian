@@ -232,6 +232,9 @@ describe('动作结算 · 坊市买入(1.79.0 服务端执行)', () => {
     expect(r!.ok).toBe(true)
     // 补丁把云档起钟追平到本地 at,不再与本地分叉(否则 resync 打回→定时器再 sync→循环刷架)
     expect((r!.patches.market as Record<string, unknown>).stockedAt).toBe(at)
+    // 成交格必须带上 sold 回补丁:否则刷新后货架仍是「可买」,同一单会被反复成交
+    const patchedStock = (r!.patches.market as Record<string, unknown>).stock as Array<{ sold?: boolean }> | undefined
+    expect(patchedStock?.some(s => s.sold === true)).toBe(true)
   })
 })
 

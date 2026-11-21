@@ -21,11 +21,13 @@
  * 不得 import 浏览器专属链路(audio / services/cloud / DOM 组件);store 在无窗环境安全。
  */
 import { createPinia, setActivePinia } from 'pinia'
-import type { EquipmentInstance, GNum } from '@/types'
+import type { AffixRoll, EquipmentInstance, GNum, QualityId } from '@/types'
 import { add, gn, gnZero, gt } from '@/utils/gnum'
 import { MAX_MAJOR } from '@/data/realms'
 import { SUB_LEVELS } from '@/data/constants'
 import { affixDef } from '@/data/affixes'
+import { equipmentTemplate } from '@/data/equipment'
+import { QUALITIES } from '@/data/qualities'
 import { getVipResolver, setVipResolver } from './spendRate'
 import { upgradeOnce, upgradeShort, equipUpgradeQuote, equipSweepPlan, type UpgradeOutcome } from './forge'
 import { autoReforge, autoReforgeBudget, reforgeOnce, type AutoReforgeOutcome, type ReforgeTarget } from './reforge'
@@ -174,6 +176,72 @@ export function parseForgeOp(raw: unknown): ForgeOp | null {
     default:
       return null
   }
+}
+
+/**
+ * 由服务端账表重建一件合法装备(1.79.5)。
+ *
+ * 纯网游化之后客户端不再上传行囊,历史上少数「本地有、云端没有」的件无法靠补传救回。
+ * 服务端自己的 loot_ledger 证明签发、equip_state 证明当前强度,两本账都在就能原样重建;
+ * 身份字段(templateId/quality/tier)缺失或词条烂掉时宁可重建失败,也不造一件新装备。
+ *
+ * 本函数是纯函数:只认账表字段,不读客户端上报的任何强度值。
+ */
+export function rebuildEquipFromLedgerState(uid: unknown, rawState: unknown): EquipmentInstance | null {
+  if (typeof uid !== 'string' || uid === '' || uid.length > 64 || !isPlainObject(rawState)) return null
+  const templateId = strOr(rawState.templateId)
+  const quality = strOr(rawState.quality)
+  const tier = numOr(rawState.tier, 0)
+  const level = numOr(rawState.level, 0)
+  if (equipmentTemplate(templateId) === undefined) return null
+  const q = QUALITIES.find(one => one.id === quality)
+  if (q === undefined) return null
+  if (!Number.isInteger(tier) || tier <= 0 || !Number.isInteger(level) || level < 0) return null
+
+  if (!Array.isArray(rawState.affixes) || rawState.affixes.length > q.affixes[1]) return null
+  const affixes: AffixRoll[] = []
+  for (const raw of rawState.affixes) {
+    if (!isPlainObject(raw)) return null
+    const id = strOr(raw.id)
+    const roll = numOr(raw.roll, Number.NaN)
+    if (affixDef(id) === undefined || !Number.isFinite(roll) || roll < 0 || roll > 1) return null
+    affixes.push({ id, roll })
+  }
+
+  const out: EquipmentInstance = {
+    uid,
+    templateId,
+    quality: quality as QualityId,
+    tier,
+    level,
+    affixes
+  }
+  if (Array.isArray(rawState.sealedAffixIds)) {
+    const sealed = [
+      ...new Set(
+        rawState.sealedAffixIds.filter(
+          (id): id is string => typeof id === 'string' && affixes.some(a => a.id === id)
+        )
+      )
+    ]
+    if (sealed.length > 0) out.sealedAffixIds = sealed
+  }
+  const reforgeCount = numOr(rawState.reforgeCount, 0)
+  if (Number.isInteger(reforgeCount) && reforgeCount > 0) out.reforgeCount = reforgeCount
+  const transferCount = numOr(rawState.transferCount, 0)
+  if (Number.isInteger(transferCount) && transferCount > 0) out.transferCount = transferCount
+
+  const invested = rawState.invested
+  if (isPlainObject(invested)) {
+    const dust = numOr(invested.dust, Number.NaN)
+    const stone = isPlainObject(invested.stone) ? invested.stone : null
+    const m = stone === null ? Number.NaN : numOr(stone.m, Number.NaN)
+    const e = stone === null ? Number.NaN : numOr(stone.e, Number.NaN)
+    if ([dust, m, e].every(Number.isFinite) && dust >= 0 && m >= 0 && e >= 0) {
+      out.invested = { dust: Math.floor(dust), stone: { m: Math.floor(m), e: Math.floor(e) } }
+    }
+  }
+  return out
 }
 
 /* ---------------- 在「当前已激活的 store」上结算 ---------------- */

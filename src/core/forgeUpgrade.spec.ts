@@ -12,8 +12,8 @@ import { useQuestsStore } from '@/stores/quests'
 import { useUiStore } from '@/stores/ui'
 import { ACHIEVEMENTS } from '@/data/achievements'
 import { MAIN_QUESTS } from '@/data/quests'
-import { UPGRADE_SAFE_STEP, UPGRADE_SUCCESS_FLOOR } from '@/data/constants'
-import { add, gn, gnZero, sub, toNum } from '@/utils/gnum'
+import { UPGRADE_FAIL_REFUND_RATE, UPGRADE_SAFE_STEP, UPGRADE_SUCCESS_FLOOR } from '@/data/constants'
+import { add, gn, gnZero, mulN, sub, subClamp, toNum } from '@/utils/gnum'
 import { upgradeCost, upgradeFailLevel, upgradeSuccessRate } from './formulas'
 import {
   equipLevelCap,
@@ -265,7 +265,7 @@ describe('炼器 · 单步强化(upgradeEquipment)边界', () => {
     expect(toNum(item.invested?.stone ?? gnZero())).toBeCloseTo(toNum(cost.stone), 6)
   })
 
-  it('失手:level 掉一级,但尘石修为照扣(先付后掷)', () => {
+  it('失手:level 掉一级,尘石修为当场退还八成,净扣两成', () => {
     seat(mk('h', 6))
     const r = useResourcesStore()
     r.dust = 1_000_000
@@ -273,21 +273,33 @@ describe('炼器 · 单步强化(upgradeEquipment)边界', () => {
     usePlayerStore().exp = gn(1_000_000)
     const cost = equipUpgradeQuote('h')!
     const d0 = r.dust
+    const s0 = { ...r.spiritStone }
+    const e0 = { ...usePlayerStore().exp }
     roll('fail')
     expect(upgradeEquipment('h')).toBe('fail')
     expect(useInventoryStore().findItem('h')!.level).toBe(5)
-    expect(r.dust).toBe(d0 - cost.dust)
-    expect(useUiStore().toasts.at(-1)?.text).toContain('回落')
+    const refundDust = Math.floor(cost.dust * UPGRADE_FAIL_REFUND_RATE)
+    expect(r.dust).toBe(d0 - (cost.dust - refundDust))
+    expect(toNum(sub(s0, r.spiritStone))).toBeCloseTo(toNum(subClamp(cost.stone, mulN(cost.stone, UPGRADE_FAIL_REFUND_RATE))), 6)
+    expect(toNum(sub(e0, usePlayerStore().exp))).toBeCloseTo(toNum(subClamp(cost.exp, mulN(cost.exp, UPGRADE_FAIL_REFUND_RATE))), 6)
+    // invested 也只记净投入,免得分解时把退掉的那八成又返还一次
+    const inst = useInventoryStore().findItem('h')!
+    expect(inst.invested?.dust).toBe(cost.dust - refundDust)
+    const toast = useUiStore().toasts.at(-1)?.text ?? ''
+    expect(toast).toContain('回落')
+    expect(toast).toContain('退还八成材料')
   })
 
-  it('失手踩在保级点:level 不动,仍照扣', () => {
+  it('失手踩在保级点:level 不动,一样退八成', () => {
     seat(mk('h2', UPGRADE_SAFE_STEP))
     rich()
     const cost = equipUpgradeQuote('h2')!
     expect(cost.safe).toBe(true)
+    const d0 = useResourcesStore().dust
     roll('fail')
     expect(upgradeEquipment('h2')).toBe('fail')
     expect(useInventoryStore().findItem('h2')!.level).toBe(UPGRADE_SAFE_STEP)
+    expect(useResourcesStore().dust).toBe(d0 - (cost.dust - Math.floor(cost.dust * UPGRADE_FAIL_REFUND_RATE)))
     expect(useUiStore().toasts.at(-1)?.text).toContain('保级')
   })
 

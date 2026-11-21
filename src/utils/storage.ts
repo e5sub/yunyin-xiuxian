@@ -202,11 +202,6 @@ export function sliceDisk(storeId: string): DiskLike {
   return isSessionSlice(storeId) ? sessionDisk() : LS_DISK
 }
 
-/** 直读某分片当前盘上的原始密文(绕过 pinia 与待落盘队列;给启动探针用) */
-export function readSliceRaw(storeId: string): string | null {
-  return sliceDisk(storeId).getItem(storageKey(storeId))
-}
-
 /** 从落盘键反查分片 id;非分片键(心跳/主题/非存档键)返回 null */
 function sliceIdOfKey(key: string): string | null {
   if (!key.startsWith(SAVE_PREFIX)) return null

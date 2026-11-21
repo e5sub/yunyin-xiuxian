@@ -287,6 +287,8 @@ export const UPGRADE_SUCCESS_STEP = 0.035
 export const UPGRADE_SUCCESS_FLOOR = 0.25
 /** 每 10 级一个保级点:失败最低跌到 floor(level/10)*10 */
 export const UPGRADE_SAFE_STEP = 10
+/** 强化失败退还八成实付成本(尘/石/修为同率),净损两成;成功不退 */
+export const UPGRADE_FAIL_REFUND_RATE = 0.8
 /** 强化修为成本:按层级折算的基准(与灵石同量纲,约为同阶灵石的两三倍) */
 export const UPGRADE_EXP_TIER_BASE = 40
 

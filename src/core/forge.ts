@@ -3,11 +3,11 @@ import type { EquipmentInstance, EquipSlot, GNum } from '@/types'
 import { qualityDef } from '@/data/qualities'
 import { EQUIP_SLOTS, equipmentTemplate } from '@/data/equipment'
 import { artifactDef, ARTIFACT_MAX_LEVEL } from '@/data/artifacts'
-import { UPGRADE_SAFE_STEP } from '@/data/constants'
+import { UPGRADE_FAIL_REFUND_RATE, UPGRADE_SAFE_STEP } from '@/data/constants'
 import { equipLevelCapOf } from '@/data/realms'
 import { upgradeCost, upgradeFailLevel, upgradeSuccessRate } from './formulas'
 import { artifactUpCostAt } from './artifactCost'
-import { add, gnZero, isZero, subClamp } from '@/utils/gnum'
+import { add, gnZero, isZero, mulN, subClamp } from '@/utils/gnum'
 import { formatGN, formatGap } from '@/utils/format'
 import {
   artifactBatchDoneToast,
@@ -71,6 +71,15 @@ function vipCutCost(c: { dust: number; stone: GNum; exp: GNum }): { dust: number
   return { dust: cutCount(c.dust), stone: cutGNum(c.stone), exp: cutGNum(c.exp) }
 }
 
+/** 失手时退还的八成按「实付」算(VIP 已折过的 quote),整数材料向下取整 */
+function failRefundOf(cost: { dust: number; stone: GNum; exp: GNum }): { dust: number; stone: GNum; exp: GNum } {
+  return {
+    dust: Math.floor(cost.dust * UPGRADE_FAIL_REFUND_RATE),
+    stone: mulN(cost.stone, UPGRADE_FAIL_REFUND_RATE),
+    exp: mulN(cost.exp, UPGRADE_FAIL_REFUND_RATE)
+  }
+}
+
 /** 本件下一级的强化报价;已满级或查无此件返回 null */
 export function equipUpgradeQuote(uid: string): UpgradeQuote | null {
   const inventory = useInventoryStore()
@@ -118,7 +127,7 @@ export interface UpgradeRun {
 }
 
 /**
- * 纯账层:扣尘 / 石 / 修为 → 掷成败 → 改件。成则 +1 级,败则跌到本档保级点。
+ * 纯账层:扣尘 / 石 / 修为 → 掷成败 → 改件。成则 +1 级,败则跌到本档保级点并当场退还八成实付。
  *
  * 只做账:不碰提示、音效、图鉴与技艺簿记 —— 那些是展示层的事(见 noteUpgrade)。
  * 服务端(POST /api/forge/op)无头水合云档后跑的就是这一层,与客户端本地逐字段一致;
@@ -135,15 +144,31 @@ export function upgradeOnce(uid: string): UpgradeRun {
   const short = upgradeShort(quote)
   if (short !== null) return { outcome: 'blocked', after: null, spent: null, block: short, levelBefore: inst.level }
 
-  // 先付:成败都要付,这是强化的规矩
+  // 先付再掷;失手当场退回八成实付,净损两成(1.79.5 起,不再是「成败全付」)
   resources.spendSmall('dust', quote.dust)
   resources.spendStone(quote.stone)
   player.spendExp(quote.exp)
-  // 记账实付强化成本(折扣按当时),分解返还按此账
-  const invested = inst.invested ?? { dust: 0, stone: gnZero() }
-  const paid = { dust: invested.dust + quote.dust, stone: add(invested.stone, quote.stone) }
-
   const success = Math.random() < quote.rate
+  const refund = success ? null : failRefundOf(quote)
+  if (refund !== null) {
+    resources.addSmall('dust', refund.dust)
+    resources.addStone(refund.stone)
+    player.gainExp(refund.exp)
+  }
+  // 对外报的是净耗:服务端记 pendingSpend、客户端 chargeRemoteSpend 都按这个数落账,
+  // 否则「退还八成」只在临时 store 里发生,下一发又被客户端按全额扣回去。
+  const net: { dust: number; stone: GNum; exp: GNum } =
+    refund === null
+      ? { dust: quote.dust, stone: quote.stone, exp: quote.exp }
+      : {
+          dust: quote.dust - refund.dust,
+          stone: subClamp(quote.stone, refund.stone),
+          exp: subClamp(quote.exp, refund.exp)
+        }
+  // invested 只记净投入:分解本来按八成返还,若这里记全额就会把失手退的那份再返一遍
+  const invested = inst.invested ?? { dust: 0, stone: gnZero() }
+  const paid = { dust: invested.dust + net.dust, stone: add(invested.stone, net.stone) }
+
   const after: EquipmentInstance = success
     ? { ...inst, level: inst.level + 1, invested: paid }
     : { ...inst, level: quote.failLevel, invested: paid }
@@ -151,7 +176,7 @@ export function upgradeOnce(uid: string): UpgradeRun {
   return {
     outcome: success ? 'up' : 'fail',
     after,
-    spent: { dust: quote.dust, stone: quote.stone, exp: quote.exp },
+    spent: net,
     levelBefore: inst.level
   }
 }
@@ -167,7 +192,7 @@ export function noteUpgrade(after: EquipmentInstance, outcome: UpgradeOutcome): 
 function upgradeToastOf(uid: string, run: UpgradeRun): { text: string; tone: 'success' | 'warn' } | null {
   const name = equipmentTemplate(useInventoryStore().findItem(uid)?.templateId ?? '')?.name ?? '此器'
   if (run.outcome === 'blocked') {
-    // 云端查无此件 ≠ 满级:前者补传后重按即可,后者才是真的到头了
+    // 云端查无此件 ≠ 满级:服务端补册仍失败时只提示重新登录核对,后者才是真的到头了
     if (run.block === 'gone') return { text: upgradeMissingToast(), tone: 'warn' }
     // 补传自身没推出去(断网/冲突/正忙):如实说同步没到,别谎称「已补传」
     if (run.block === 'unsynced') return { text: upgradeUnsyncedToast(), tone: 'warn' }

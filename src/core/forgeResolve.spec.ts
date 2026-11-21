@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { EquipmentInstance } from '@/types'
 import { toNum } from '@/utils/gnum'
-import { parseForgeOp, resolveForgeFromSlices, FORGE_TIMES_MAX } from './forgeResolve'
+import { parseForgeOp, rebuildEquipFromLedgerState, resolveForgeFromSlices, FORGE_TIMES_MAX } from './forgeResolve'
 import { expHoldCap, holdCapOf } from './saveAuthority'
 
 /** 天品武器:词条池最宽,重铸与转移都能跑 */
@@ -116,13 +116,18 @@ describe('炼器裁决 · 强化', () => {
     expect(toNum(res.spend.exp)).toBeGreaterThan(0)
   })
 
-  it('掷空:跌回保级点,但料照扣(强化的规矩:成败都要付)', () => {
+  it('掷空:跌回保级点,回包只报两成净耗(八成当场退还,不重复扣客户端)', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const full = resolveForgeFromSlices(saveWith([mk('e1', 5)]), { op: 'upgrade', uid: 'e1' })!
     vi.spyOn(Math, 'random').mockReturnValue(0.999999)
     const res = resolveForgeFromSlices(saveWith([mk('e1', 5)]), { op: 'upgrade', uid: 'e1' })!
     expect(res.ok).toBe(true)
     expect(res.detail.kind === 'upgrade' && res.detail.outcome).toBe('fail')
     expect(res.items[0]!.level).toBeLessThanOrEqual(5)
     expect(res.spend.dust).toBeGreaterThan(0)
+    expect(res.spend.dust).toBeLessThan(full.spend.dust)
+    expect(toNum(res.spend.stone)).toBeLessThan(toNum(full.spend.stone))
+    expect(toNum(res.spend.exp)).toBeLessThan(toNum(full.spend.exp))
   })
 
   it('连掷 N 次:一次请求掷到位,全成时正好 N 级', () => {
@@ -280,6 +285,59 @@ describe('炼器裁决 · 词条转移', () => {
     })!
     expect(res.ok).toBe(false)
     expect(res.items).toEqual([])
+  })
+})
+
+describe('炼器裁决 · 按服务端账表补册(1.79.5)', () => {
+  const ledgerState = {
+    templateId: W,
+    quality: 'heaven',
+    tier: 20,
+    level: 3,
+    affixes: [
+      { id: 'atk3', roll: 0.7 },
+      { id: 'hp1', roll: 0.2 }
+    ],
+    sealedAffixIds: ['hp1', '不存在'],
+    reforgeCount: 2,
+    transferCount: 1,
+    invested: { dust: 12, stone: { m: 3, e: 4 } }
+  }
+
+  it('签发账 + 状态账都在:按账原样重建整件,不采信客户端强度', () => {
+    expect(rebuildEquipFromLedgerState('e1', ledgerState)).toEqual({
+      uid: 'e1',
+      templateId: W,
+      quality: 'heaven',
+      tier: 20,
+      level: 3,
+      affixes: [
+        { id: 'atk3', roll: 0.7 },
+        { id: 'hp1', roll: 0.2 }
+      ],
+      sealedAffixIds: ['hp1'],
+      reforgeCount: 2,
+      transferCount: 1,
+      invested: { dust: 12, stone: { m: 3, e: 4 } }
+    })
+  })
+
+  it('身份或词条缺一项:宁可重建失败,也不造一件新装备', () => {
+    expect(rebuildEquipFromLedgerState('', ledgerState)).toBeNull()
+    expect(rebuildEquipFromLedgerState('e1', { ...ledgerState, templateId: '不存在' })).toBeNull()
+    expect(rebuildEquipFromLedgerState('e1', { ...ledgerState, quality: '不存在' })).toBeNull()
+    expect(rebuildEquipFromLedgerState('e1', { ...ledgerState, tier: 0 })).toBeNull()
+    expect(rebuildEquipFromLedgerState('e1', { ...ledgerState, affixes: [{ id: '不存在', roll: 0.5 }] })).toBeNull()
+    expect(rebuildEquipFromLedgerState('e1', { ...ledgerState, affixes: [{ id: 'atk3', roll: 2 }] })).toBeNull()
+  })
+
+  it('重建后立刻能进裁决链:不再报 gone,等级按账上的 +3 继续涨', () => {
+    const rebuilt = rebuildEquipFromLedgerState('e1', ledgerState)!
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const res = resolveForgeFromSlices(saveWith([rebuilt]), { op: 'upgrade', uid: 'e1' })!
+    expect(res.ok).toBe(true)
+    expect(res.reason).not.toBe('gone')
+    expect(res.items[0]!.level).toBe(4)
   })
 })
 
