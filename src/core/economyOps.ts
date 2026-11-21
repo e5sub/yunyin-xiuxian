@@ -73,6 +73,32 @@ export interface EconomyOpResult {
   stone?: GNum
   /** 记账时要一并落下的消费/领取(1.77.1);permanent = 一次性奖励,永不随上传清理 */
   consume?: { key: string; qty: number; permanent?: boolean }
+  /**
+   * 应从云档扣掉的货物(1.79.12):卖出/悬赏交货的「扣货」此前全靠 claims 临时行挡
+   * 重复,而云档行囊从未少掉 —— 已卖的货重登复活,悬赏装备件复活后可反复交或二次分解。
+   * 现由路由按这份清单直接改云档,claims 只剩「同拍防重放」一层安全网。
+   */
+  deduct?: EconomyDeduct[]
+  /**
+   * 应随本笔落进云档的非灵石进项(1.79.12):秘境逐层的灵草与通关悟道点此前只进
+   * 本地 store,心跳一拍就被云档值顶回(秒级蒸发)。
+   */
+  gains?: { herb?: number; wudao?: number }
+}
+
+/** 扣货指令(1.79.12):kind 决定路由改云档哪个位置;形状非法的整条忽略 */
+export interface EconomyDeduct {
+  kind: 'pill' | 'ore' | 'herb' | 'item' | 'consign' | 'bounty_mark'
+  /** pill/ore 用:丹药 id */
+  id?: string
+  /** herb 用:品阶(数据层 HerbGrade 是数字档位) */
+  grade?: HerbGrade
+  /** item 用:装备 uid */
+  uid?: string
+  /** consign/bounty_mark 用:格子下标 */
+  idx?: number
+  /** 扣多少(ore/herb/pill);item/consign/bounty_mark 恒整件/整格 */
+  qty?: number
 }
 
 function numOf(v: unknown): number {
@@ -93,6 +119,11 @@ function ok(stone: GNum): EconomyOpResult {
 /** 复算通过且要记一笔消费/领取:金额与被消耗的量一起回给路由落账 */
 function okConsume(stone: GNum, key: string, qty: number, permanent = false): EconomyOpResult {
   return { ok: true, stone, consume: { key, qty, permanent } }
+}
+
+/** okConsume 之上再带扣货清单(1.79.12):路由据此把货物从云档扣掉 */
+function okConsumeDeduct(stone: GNum, key: string, qty: number, deduct: EconomyDeduct[]): EconomyOpResult {
+  return { ok: true, stone, consume: { key, qty }, deduct }
 }
 
 /** 日键(UTC+8):与 server/src/dungeonCore 的 dayKey 同口径,日课/连胜/巡游按它分天 */
@@ -132,16 +163,20 @@ export function resolveEconomyOp(req: EconomyOpRequest, ctx: EconomyOpCtx): Econ
       const count = Math.min(Math.max(1, Math.trunc(numOf(req.count) || 1)), 999)
       const held = numOf((ctx.inventory?.pills as Record<string, unknown> | undefined)?.[pillId])
       const key = `sell:pill:${pillId}`
-      // 档里的丹要到上传才少:先减掉本窗口已记过的量,同一批卖第二次就露馅
+      // 档里的丹以云档现值为准(1.79.12 起卖出当场扣档,claims 只是同拍防重放的安全网)
       if (held - claimedOf(ctx, key) < count) return bad('没有这么多丹')
-      return okConsume(mulN(pillSellPrice(pillId), count), key, count)
+      return okConsumeDeduct(mulN(pillSellPrice(pillId), count), key, count, [
+        { kind: 'pill', id: pillId, qty: count }
+      ])
     }
     case 'market_sell_material': {
       const count = Math.min(Math.max(1, Math.trunc(numOf(req.count) || 1)), 999)
       const ore = Math.floor(numOf(ctx.resources?.ore))
       const need = MARKET_MAT_COUNT * count
       if (ore - claimedOf(ctx, 'sell:ore') < need) return bad('玄铁不足')
-      return okConsume(mulN(materialSellPrice(major), count), 'sell:ore', need)
+      return okConsumeDeduct(mulN(materialSellPrice(major), count), 'sell:ore', need, [
+        { kind: 'ore', qty: need }
+      ])
     }
     case 'market_sell_herb': {
       const grade = herbGrade(req.grade, major)
@@ -150,7 +185,9 @@ export function resolveEconomyOp(req: EconomyOpRequest, ctx: EconomyOpCtx): Econ
       const need = MARKET_MAT_COUNT * count
       const key = `sell:herb:${grade}`
       if (herbCount(ctx.resources, grade) - claimedOf(ctx, key) < need) return bad('灵草不足')
-      return okConsume(mulN(herbSellBatch(grade, major), count), key, need)
+      return okConsumeDeduct(mulN(herbSellBatch(grade, major), count), key, need, [
+        { kind: 'herb', grade, qty: need }
+      ])
     }
     case 'market_sell_consign': {
       const idx = Math.trunc(numOf(req.consignIdx))
@@ -159,13 +196,13 @@ export function resolveEconomyOp(req: EconomyOpRequest, ctx: EconomyOpCtx): Econ
       const slot = consign[idx] as Record<string, unknown>
       const finishAt = numOf(slot.finishAt)
       if (finishAt <= 0 || finishAt > ctx.now) return bad('寄卖未到期')
-      // 同一格在本次上传前只能收一次:收取后客户端删格,云端档里它还躺着
+      // 同一格收一次:收取后由路由把云档里的这一格删掉(1.79.12),不再靠 claims 挡
       const key = `sell:consign:${idx}:${Math.trunc(finishAt)}`
       if (claimedOf(ctx, key) > 0) return bad('这格已收过')
       // 价不认客户端存的 price,按 tier+品质现算;tier/品质先钳进合法区间
       const tier = Math.min(Math.max(Math.trunc(numOf(slot.tier)), 0), marketTier(major))
       const rank = Math.min(Math.max(Math.trunc(numOf(slot.qualityRank)), 0), 4)
-      return okConsume(consignPrice(tier, rank), key, 1)
+      return okConsumeDeduct(consignPrice(tier, rank), key, 1, [{ kind: 'consign', idx }])
     }
     // ---------- 悬赏交货 ----------
     case 'bounty_claim': {
@@ -188,19 +225,29 @@ export function resolveEconomyOp(req: EconomyOpRequest, ctx: EconomyOpCtx): Econ
       if (!real || real.kind !== slot.kind) return bad('这一单对不上版')
       if (real.kind === 'ore') {
         if (Math.floor(numOf(ctx.resources?.ore)) < real.target) return bad('玄铁不够')
-        return okConsume(real.reward, claimKey, 1)
+        // 扣货 + 云档标记已领(1.79.12):不然重登后这单还能再交
+        return okConsumeDeduct(real.reward, claimKey, 1, [
+          { kind: 'ore', qty: real.target },
+          { kind: 'bounty_mark', idx }
+        ])
       }
       if (real.kind === 'herb') {
         const grade = herbGrade(req.grade, major)
         if (grade === null) return bad('品阶不合法')
         if (herbCount(ctx.resources, grade) < real.target) return bad('灵草不够')
-        return okConsume(herbBountyReward(grade, major, real.target), claimKey, 1)
+        return okConsumeDeduct(herbBountyReward(grade, major, real.target), claimKey, 1, [
+          { kind: 'herb', grade, qty: real.target },
+          { kind: 'bounty_mark', idx }
+        ])
       }
       if (real.kind === 'pill') {
         const pillId = typeof real.kindId === 'string' ? real.kindId : ''
         const held = numOf((ctx.inventory?.pills as Record<string, unknown> | undefined)?.[pillId])
         if (held < real.target) return bad('丹不够')
-        return okConsume(real.reward, claimKey, 1)
+        return okConsumeDeduct(real.reward, claimKey, 1, [
+          { kind: 'pill', id: pillId, qty: real.target },
+          { kind: 'bounty_mark', idx }
+        ])
       }
       // equip:按所交之品(档里现存的件)现算,不认客户端报的数值
       const uid = typeof req.bountyUid === 'string' ? req.bountyUid : ''
@@ -215,7 +262,11 @@ export function resolveEconomyOp(req: EconomyOpRequest, ctx: EconomyOpCtx): Econ
       const eqQuality = typeof eq.quality === 'string' ? (eq.quality as unknown as Parameters<typeof qualityDef>[0]) : null
       if (eqQuality === null) return bad('品质不合法')
       const rank = Math.min(Math.max(Math.trunc(numOf(qualityDef(eqQuality).rank)), 0), 4)
-      return okConsume(equipBountyReward(tier, rank).stone, claimKey, 1)
+      // 交出的整件从云档行囊移除(1.79.12):否则件复活,换一版悬赏再交同一件就是白拿赏金
+      return okConsumeDeduct(equipBountyReward(tier, rank).stone, claimKey, 1, [
+        { kind: 'item', uid },
+        { kind: 'bounty_mark', idx }
+      ])
     }
     // ---------- 洞府巡游 ----------
     case 'cave_tour': {
@@ -267,7 +318,12 @@ export function resolveEconomyOp(req: EconomyOpRequest, ctx: EconomyOpCtx): Econ
       const def = secretRealmDef(realmId)
       if (!def) return bad('没有这座秘境')
       if (layer < 1 || layer > SECRET_LAYERS) return bad('层数不合法')
-      return ok(secretLayerReward(tierOfMajor(major), layer, def.rewardMult).stone)
+      // 灵草(每层)与通关悟道点(终层 +3)一并回传落档(1.79.12):此前只进本地 store,
+      // 心跳一拍就被云档值顶回。灵石照旧走 stone。
+      const reward = secretLayerReward(tierOfMajor(major), layer, def.rewardMult)
+      const gains: { herb?: number; wudao?: number } = { herb: reward.material }
+      if (layer >= SECRET_LAYERS) gains.wudao = 3
+      return { ok: true, stone: reward.stone, gains }
     }
     default:
       return bad('op 类别不合法')

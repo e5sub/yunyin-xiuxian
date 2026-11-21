@@ -484,18 +484,26 @@ export function exploreEventChance(regionId: string, mods: StatMods): number {
  *
  * 有所得报所得;两手空空(际遇本体无文案、无掉落)也必须报一声「已结清」——
  * 否则玩家只看到倒计时静默重开,看起来像「归零后概率性不战斗」。
+ *
+ * notices 通道(1.79.12):登录态的 tickExploration 只在服务端跑(客户端 exploration:false),
+ * 本地 toast 根本到不了玩家 —— 服务端结算时把文案收进 notices,随心跳回包带回客户端弹。
+ * 未登录单机路径不传 notices,照旧直接 toast。
  */
-function toastEventAutoResolve(res: EventResolution | null): void {
+function toastEventAutoResolve(res: EventResolution | null, notices?: string[]): void {
   const text = res && res.lines.length ? res.lines.join('、') : res?.outcomeText
-  useUiStore().toast(text || '际遇已按默认选项结清,稍后再战', 'info')
+  const line = text || '际遇已按默认选项结清,稍后再战'
+  if (notices !== undefined) notices.push(line)
+  else useUiStore().toast(line, 'info')
 }
 
 /**
  * 每 Tick 推进历练(由引擎调用)。
  *
  * 战斗签发是异步的:返回 runBattle 的 promise 供测试/调用方需要时 await,引擎循环照旧不等待。
+ * notices(1.79.12,可选):服务端无头结算时传一份收集器,自动结清的际遇文案收进去
+ * 随心跳回包带回客户端;未传(客户端未登录/测试)照旧直接 toast。
  */
-export function tickExploration(now: number): void | Promise<void> {
+export function tickExploration(now: number, notices?: string[]): void | Promise<void> {
   const adventure = useAdventureStore()
   const player = usePlayerStore()
   const s = adventure.session
@@ -536,9 +544,9 @@ export function tickExploration(now: number): void | Promise<void> {
       const cur = adventure.session
       if (cur) adventure.setSession({ ...cur, events: cur.events + 1, nextBattleAt: nextBattleTime(now) })
       void autoResolveEvent(eventId, region?.tier ?? 1).then(res => {
-        // 自动结算的所得须 toast,不得无声入账;皆空也要兜底报一声,
+        // 自动结算的所得须提示,不得无声入账;皆空也要兜底报一声,
         // 否则玩家只看到倒计时静默重开(「归零后概率性不战斗」的投诉即源于此)
-        toastEventAutoResolve(res)
+        toastEventAutoResolve(res, notices)
       })
     }
     return
@@ -559,7 +567,7 @@ export function tickExploration(now: number): void | Promise<void> {
         if (cur) adventure.setSession({ ...cur, events: cur.events + 1, nextBattleAt: nextBattleTime(now) })
         void autoResolveEvent(ev.id, region.tier).then(res => {
           // 同上:皆空也要兜底报一声,不许静默重开倒计时
-          toastEventAutoResolve(res)
+          toastEventAutoResolve(res, notices)
         })
         return
       }

@@ -1,9 +1,12 @@
 /**
  * 闲趣三则路由:观星、垂钓、猜谜。
  * 结果与次数全在服务端,客户端只负责呈现与把赏入账。
+ * 赏格落档(1.79.12):抽签/收篓/答对的那一刻由服务端把赏写进云档 ——
+ * 此前「回传数值、客户端本地入账」在抛弃存档后全是蒸发(台账不记、云档不动)。
  */
 import express, { type Request, type Response } from 'express'
 import { requireAuth } from '../auth.js'
+import { creditEventReward } from '../saveCredit.js'
 import {
   answerRiddle,
   castLine,
@@ -28,7 +31,9 @@ leisureRouter.post('/star', requireAuth, (req: Request, res: Response) => {
       res.status(404).json({ error: '闲趣暂闭' })
       return
     }
-    res.json(await drawStar(req.user!.id))
+    const r = await drawStar(req.user!.id)
+    if (!r.already) await creditEventReward(req.user!.id, r.reward).catch(() => undefined)
+    res.json(r)
   })().catch(() => res.status(500).json({ error: '今夜无星' }))
 })
 
@@ -61,6 +66,7 @@ leisureRouter.post('/fish/claim', requireAuth, (req: Request, res: Response) => 
       res.status(400).json({ error: '篓已收过' })
       return
     }
+    await creditEventReward(req.user!.id, reward).catch(() => undefined)
     res.json({ reward })
   })().catch(() => res.status(500).json({ error: '收篓失败' }))
 })
@@ -78,6 +84,8 @@ leisureRouter.post('/riddle', requireAuth, (req: Request, res: Response) => {
       res.status(400).json({ error: '选项不对' })
       return
     }
+    // 答错的赏为零,creditGains 对全零直接跳过
+    await creditEventReward(req.user!.id, r.reward).catch(() => undefined)
     res.json(r)
   })().catch(() => res.status(500).json({ error: '答谜失败' }))
 })

@@ -322,6 +322,11 @@ class GameEngine {
         applySlicesToStores(r.slices)
         this.afterAuthorityApply()
       }
+      // 际遇自动结清的文案(1.79.12):勿扰/托管/超时的结清发生在服务端,这里补弹,
+      // 不然玩家只看到倒计时静默重开
+      if (r.notices !== undefined) {
+        for (const line of r.notices) useUiStore().toast(line, 'info')
+      }
       // 归来卷轴:弹窗门槛与本地结算同一条(OFFLINE_MODAL_MIN_SECONDS),短结算只落账不打扰
       if (r.offline != null && r.offline.seconds >= OFFLINE_MODAL_MIN_SECONDS) {
         useUiStore().offlineSummary = r.offline

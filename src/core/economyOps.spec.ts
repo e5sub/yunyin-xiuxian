@@ -101,7 +101,11 @@ describe('经济 op 重放对账', () => {
     const held = ctx({ inventory: { pills: { p_huichun: 5 }, items: [] } })
     const first = resolveEconomyOp({ kind: 'market_sell_pill', pillId: 'p_huichun', count: 5 }, held)
     expect(first.ok).toBe(true)
-    expect(first.consume, '记账要连消费一起落下').toEqual({ key: sellKey, qty: 5, permanent: false })
+    // 1.79.12 起卖出的货由路由按 deduct 直接扣档,temp consume 不再带 permanent(落档后即清行)
+    expect(first.consume, '记账要连消费一起落下').toEqual({ key: sellKey, qty: 5 })
+    expect(first.deduct, '扣货清单随结算回传,路由据此改云档行囊').toEqual([
+      { kind: 'pill', id: 'p_huichun', qty: 5 }
+    ])
 
     const replay = resolveEconomyOp(
       { kind: 'market_sell_pill', pillId: 'p_huichun', count: 1 },

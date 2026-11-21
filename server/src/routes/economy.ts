@@ -14,7 +14,7 @@ import { requireAuth } from '../auth.js'
 import { loadClientModule } from '../clientVendor.js'
 import { withKeyLock } from '../mutex.js'
 import { recordStoneCredit } from '../stoneLedger.js'
-import { claimedMap, recordClaim } from '../economyLedger.js'
+import { claimedMap, recordClaim, settleClaims } from '../economyLedger.js'
 import { takeLootBudget } from '../lootLedger.js'
 import { gnumAdd } from '../gnumOps.js'
 import { backupBeforeOverwrite } from './save.js'
@@ -36,11 +36,27 @@ const OP_BUDGETS: Record<string, { ratePerHour: number; cap: number }> = {
   secret_layer: { ratePerHour: 12, cap: 30 }
 }
 
+interface EconomyDeductRaw {
+  kind?: unknown
+  id?: unknown
+  grade?: unknown
+  uid?: unknown
+  idx?: unknown
+  qty?: unknown
+}
+
 type ResolveOp = (req: unknown, ctx: unknown) => {
   ok: boolean
   reason?: string
   stone?: { m: number; e: number }
   consume?: { key: string; qty: number; permanent?: boolean }
+  deduct?: EconomyDeductRaw[]
+  gains?: { herb?: number; wudao?: number }
+}
+
+/** vendor 回传的扣货清单校验:vendor 打包版本落后时缺字段,逐条放行前先验形状 */
+function isDeduct(d: unknown): d is EconomyDeductRaw & { kind: string } {
+  return typeof d === 'object' && d !== null && typeof (d as EconomyDeductRaw).kind === 'string'
 }
 
 /** 云档里捞出 op 需要的切片(不整档解析也要 major;其余按 op 缺省) */
@@ -141,10 +157,77 @@ economyRouter.post('/economy/:op', requireAuth, (req: Request, res: Response) =>
        * 此前进项只进 stone_ledger,云档从不动 —— 心跳的资源补丁以云档为基线,
        * 本机刚记的进项会被它原样顶掉(与炼器「0 消耗」同一断头链:上传不再携带
        * 资源之后,台账只剩首传一条路可兑现)。写进档后心跳补丁与本地余额同源,不再互顶。
+       *
+       * 扣货与非灵石进项一并落档(1.79.12):卖出/悬赏交货的「扣货」此前全靠 claims
+       * 临时行挡重复,云档行囊从未少掉 —— 已卖的货重登复活,悬赏装备件复活后可反复交
+       * 或二次分解;秘境逐层的灵草与通关悟道点只进本地 store,心跳一拍就被顶回。
        */
       const res0 = isPlainObject(data.resources) ? data.resources : null
+      const inv0 = isPlainObject(data.inventory) ? data.inventory : null
+      const mkt0 = isPlainObject(data.market) ? data.market : null
+      const bty0 = isPlainObject(data.bounty) ? data.bounty : null
+      let touched = false
       if (res0 !== null && result.stone.m > 0) {
         res0.spiritStone = gnumAdd(res0.spiritStone, result.stone)
+        touched = true
+      }
+      // 非灵石进项(秘境层灵草/悟道):小资源整数直加
+      if (res0 !== null && result.gains !== undefined) {
+        if (typeof result.gains.herb === 'number' && Number.isFinite(result.gains.herb) && result.gains.herb > 0) {
+          res0.herb = Math.max(0, Math.floor(typeof res0.herb === 'number' && Number.isFinite(res0.herb) ? res0.herb : 0)) + Math.floor(result.gains.herb)
+          touched = true
+        }
+        if (typeof result.gains.wudao === 'number' && Number.isFinite(result.gains.wudao) && result.gains.wudao > 0) {
+          res0.wudao = Math.max(0, Math.floor(typeof res0.wudao === 'number' && Number.isFinite(res0.wudao) ? res0.wudao : 0)) + Math.floor(result.gains.wudao)
+          touched = true
+        }
+      }
+      // 扣货(1.79.12):按 economyOps 回传的清单改云档;形状对不上的整条忽略(宁多挡不少扣)
+      for (const d of result.deduct ?? []) {
+        if (!isDeduct(d)) continue
+        const qty = typeof d.qty === 'number' && Number.isFinite(d.qty) ? Math.floor(d.qty) : 0
+        if (d.kind === 'pill' && inv0 !== null && typeof d.id === 'string' && qty > 0) {
+          const pills = isPlainObject(inv0.pills) ? (inv0.pills as Record<string, unknown>) : null
+          if (pills !== null) {
+            const held = typeof pills[d.id] === 'number' && Number.isFinite(pills[d.id]) ? Math.floor(Number(pills[d.id])) : 0
+            pills[d.id] = Math.max(0, held - qty)
+            touched = true
+          }
+        } else if (d.kind === 'ore' && res0 !== null && qty > 0) {
+          res0.ore = Math.max(0, Math.floor(typeof res0.ore === 'number' && Number.isFinite(res0.ore) ? res0.ore : 0) - qty)
+          touched = true
+        } else if (d.kind === 'herb' && res0 !== null && typeof d.grade === 'number' && Number.isFinite(d.grade) && qty > 0) {
+          const herbs = isPlainObject(res0.herbByGrade) ? (res0.herbByGrade as Record<string, unknown>) : null
+          if (herbs !== null) {
+            const gkey = String(Math.trunc(d.grade))
+            const held = typeof herbs[gkey] === 'number' && Number.isFinite(herbs[gkey]) ? Math.floor(Number(herbs[gkey])) : 0
+            herbs[gkey] = Math.max(0, held - qty)
+            touched = true
+          }
+        } else if (d.kind === 'item' && inv0 !== null && typeof d.uid === 'string' && Array.isArray(inv0.items)) {
+          const items0 = inv0.items as unknown[]
+          const before = items0.length
+          inv0.items = items0.filter(
+            it => !(typeof it === 'object' && it !== null && (it as Record<string, unknown>).uid === d.uid)
+          )
+          if ((inv0.items as unknown[]).length !== before) touched = true
+        } else if (d.kind === 'consign' && mkt0 !== null && typeof d.idx === 'number' && Array.isArray(mkt0.consign)) {
+          const list = mkt0.consign as unknown[]
+          if (d.idx >= 0 && d.idx < list.length) {
+            list.splice(d.idx, 1)
+            touched = true
+          }
+        } else if (d.kind === 'bounty_mark' && bty0 !== null && typeof d.idx === 'number' && Array.isArray(bty0.orders)) {
+          const slot = (bty0.orders as unknown[]).find(
+            s => typeof s === 'object' && s !== null && Math.trunc(Number((s as Record<string, unknown>).idx)) === d.idx
+          )
+          if (typeof slot === 'object' && slot !== null) {
+            ;(slot as Record<string, unknown>).claimed = true
+            touched = true
+          }
+        }
+      }
+      if (touched) {
         try {
           await backupBeforeOverwrite(userId, {
             version: row.version,
@@ -161,6 +244,17 @@ economyRouter.post('/economy/:op', requireAuth, (req: Request, res: Response) =>
           started: row.started,
           updated_at: row.updated_at
         })
+        /*
+         * 落档成功后清掉临时消费行(1.79.12):货物已真扣,claims 里 permanent=0 的行
+         * 只剩「同拍防重放」意义 —— 落档后的下一拍重放会被云档现值(已扣)拦住。
+         * 此前这些行只在首传清理(1.76.0 后存量玩家永远走偏好分支提前 return),
+         * 永不清理等于表无限膨胀、卖过的种类被永久占用一份额度。
+         */
+        try {
+          await settleClaims(userId)
+        } catch {
+          /* 清行失败只多挡一轮,不影响结算 */
+        }
       }
       res.json({ ok: true, recorded: true, stone: result.stone })
     })

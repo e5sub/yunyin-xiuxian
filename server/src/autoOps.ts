@@ -18,6 +18,7 @@ import { arenaRun } from './routes/event.js'
 import { activeEvent, addEventProgress, claimEvent, eventProgress, leaderboardRank, todayEvent, type EventReward } from './eventCore.js'
 import { castLine, claimBasket, drawStar, leisureEnabled } from './leisureCore.js'
 import { dispatchTargets, isApprenticeArch } from './apprenticeCore.js'
+import { creditEventReward } from './saveCredit.js'
 
 export const autoOpsRouter = express.Router()
 
@@ -210,6 +211,24 @@ autoOpsRouter.post('/collect', requireAuth, (req: Request, res: Response) => {
     const events = eventLedgerOf(r)
     const skip = skipOf(r)
     if (r !== undefined && (r.ledger_strikes > 0 || events.stone > 0 || events.herb > 0 || events.ore > 0 || events.wudao > 0 || events.dust > 0 || events.page > 0)) {
+      /*
+       * ev 台账落档(1.79.12):离线代办的每日活动赏在清零前直接写进云档 resources,
+       * 灵石按**授予时**的层级折(ev_tier)。此前只回数值让客户端本地加 —— 抛弃存档
+       * 之后被心跳补丁一拍顶回,赏格蒸发而台账已清零,连重领都没有。
+       */
+      const tier = Math.max(0, Math.trunc(events.tier))
+      await creditEventReward(
+        req.user!.id,
+        {
+          stone: events.stone > 0 ? events.stone : undefined,
+          herb: events.herb > 0 ? events.herb : undefined,
+          ore: events.ore > 0 ? events.ore : undefined,
+          wudao: events.wudao > 0 ? events.wudao : undefined,
+          dust: events.dust > 0 ? events.dust : undefined,
+          page: events.page > 0 ? events.page : undefined
+        },
+        tier
+      ).catch(() => undefined)
       await run(
         'UPDATE autoops_state SET ledger_stone_m = 0, ledger_stone_e = 0, ledger_herb = 0, ledger_strikes = 0, ledger_tier = 0, ev_stone = 0, ev_herb = 0, ev_ore = 0, ev_wudao = 0, ev_dust = 0, ev_page = 0, ev_tier = 0 WHERE user_id = ?',
         [req.user!.id]

@@ -6,6 +6,7 @@ import express, { type Request, type Response } from 'express'
 import { requireAuth } from '../auth.js'
 import { get } from '../db.js'
 import { simulateDuel, type DuelSide } from '../pvp.js'
+import { creditEventReward } from '../saveCredit.js'
 import {
   EVENTS,
   activeEvent,
@@ -180,6 +181,9 @@ eventRouter.post('/claim', requireAuth, (req: Request, res: Response) => {
       res.status(400).json({ error: mine.claimed ? '今日已领' : '尚未达成' })
       return
     }
+    // 赏格落档(1.79.12):层级级数值按云档境界折成最终值写进云档 resources;
+    // 客户端本地那次入账退化为乐观显示,心跳一拍对齐。此前只回数值 —— 抛弃存档后蒸发。
+    await creditEventReward(req.user!.id, reward).catch(() => undefined)
     res.json({ reward, day, eventId: event.id })
   })().catch(() => res.status(500).json({ error: '领取失败' }))
 })

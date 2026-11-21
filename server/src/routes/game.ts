@@ -33,6 +33,8 @@ interface AdvanceResult {
   patches: Record<string, Record<string, unknown>>
   summary: Record<string, unknown> | null
   snapshot: Record<string, unknown> | null
+  /** 本拍历练自动结清的际遇文案(1.79.12),随回包带回客户端弹 */
+  notices?: string[]
 }
 
 type ResolveFn = (
@@ -181,7 +183,15 @@ gameRouter.post('/game/advance', requireAuth, (req: Request, res: Response) => {
       console.warn('[advance] 慢拍:user=%d %dms patches=%d offline=%s', userId, durMs, Object.keys(patches).length, String(offline))
     }
     // now 随回包走(1.79.10):客户端校钟差用,取组包时刻(而非锁入口时刻,水合可能耗秒级)
-    res.json({ ok: true, slices: patches, offline: summary, now: Date.now() })
+    res.json({
+      ok: true,
+      slices: patches,
+      offline: summary,
+      // 历练自动结清的际遇文案(1.79.12):勿扰/托管/超时的结清发生在服务端,
+      // 文案随回包带回客户端弹 —— 不带就是「倒计时静默重开」
+      notices: (resolved.notices ?? []).length > 0 ? resolved.notices : undefined,
+      now: Date.now()
+    })
   }).catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })

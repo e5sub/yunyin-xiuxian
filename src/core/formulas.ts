@@ -2,6 +2,9 @@
 import type { GNum, PillDef } from '@/types'
 import { gn, gnMin, gnZero, mulN, powN, mul, add } from '@/utils/gnum'
 import { maxTierForMajor } from '@/data/regions'
+
+// 服务端落档按层级折灵石时也要取同一把层级尺(1.79.12):与数据层同源,不另抄一份
+export { maxTierForMajor } from '@/data/regions'
 import {
   COMBAT_ATK_BASE,
   COMBAT_DEF_BASE,

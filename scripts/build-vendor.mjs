@@ -23,7 +23,9 @@ const ENTRY_POINTS = [
   'src/core/salvage.ts',
   'src/core/daoCredit.ts',
   'src/core/economyOps.ts',
-  'src/core/actionOps.ts'
+  'src/core/actionOps.ts',
+  // 赏格落档的层级尺(1.79.12):妖王击杀赏/七会赏/闲趣三则/ev 台账按它折灵石,与客户端同源
+  'src/core/formulas.ts'
 ]
 
 await build({
@@ -52,6 +54,8 @@ const EXPECTED = {
   'daoCredit.mjs': ['daoMarkCeil'],
   // 经济 op 复算(1.77.0):坊市卖出/悬赏/巡游/成就任务/连胜/秘境的灵石进项按表复算
   'economyOps.mjs': ['resolveEconomyOp'],
+  // 赏格落档层级尺(1.79.12):boss/event/leisure/autoops 落档时按 major/tier 折灵石
+  'formulas.mjs': ['stoneByTier', 'maxTierForMajor'],
   // 动作结算(1.78.0):吃丹/炼丹/际遇/秘境/熔炉/分解/卖出/兑换/装配的服务端执行入口
   'actionOps.mjs': ['resolveActionFromSlices'],
   'saveSanitize.mjs': ['sanitizeSaveSlices'],

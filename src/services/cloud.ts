@@ -731,6 +731,8 @@ export const cloudApi = {
     offline?: OfflineSummary | null
     /** 服务端组包时刻(epoch 毫秒):客户端据它校钟差(srvClock),节拍戳比较不吃本机钟差 */
     now?: number
+    /** 历练自动结清的际遇文案(1.79.12):服务端结算发生在无头环境,文案随回包带回弹 */
+    notices?: string[]
   }> => request('POST', '/game/advance', payload),
   saveHistory: (limit = 30): Promise<{ history: SaveHistoryRow[] }> =>
     request('GET', `/save/history?limit=${limit}`),

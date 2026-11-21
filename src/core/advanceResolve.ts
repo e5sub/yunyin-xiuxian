@@ -62,6 +62,11 @@ export interface AdvanceOpts {
   exploration?: boolean
   /** 结算镇压产出;同上,预测不跑(登录态本地跑会与服务端各发一份) */
   suppress?: boolean
+  /**
+   * 服务端回传提示的收集器(1.79.12):历练际遇的自动结清(勿扰/托管/超时)发生在
+   * 服务端,文案若不随回包带回,玩家只看到倒计时静默重开。客户端预测不传。
+   */
+  notices?: string[]
 }
 
 /**
@@ -92,7 +97,7 @@ export async function advanceOnStores(dtSec: number, now: number, opts: AdvanceO
     resources.setQi(resources.qi + player.qiRegenPerSec * stepSec, player.qiCapValue)
     dongfu.produce(stepSec)
     cultivation.pruneBuffs(at)
-    if (opts.exploration === true) await advanceExplorationStep(at)
+    if (opts.exploration === true) await advanceExplorationStep(at, opts.notices)
     if (opts.suppress === true) await settleSuppressedRegions(stepSec, rng, at)
     studyTick(stepSec)
     player.addAge((stepSec / 3600) * AGE_YEARS_PER_HOUR)
@@ -100,11 +105,11 @@ export async function advanceOnStores(dtSec: number, now: number, opts: AdvanceO
 }
 
 /** 一拍到点才推进:到期判定/待处理事件/战斗节拍全在 tickExploration 里,这里只做闸门 */
-async function advanceExplorationStep(at: number): Promise<void> {
+async function advanceExplorationStep(at: number, notices?: string[]): Promise<void> {
   const s = useAdventureStore().session
   if (!s) return
   if (at < s.endsAt && at < s.nextBattleAt) return
-  await tickExploration(at)
+  await tickExploration(at, notices)
 }
 
 /* ---------------- 服务端入口:从云档分片无头推进 ---------------- */
@@ -132,6 +137,8 @@ export interface AdvanceResolveResult {
   summary: OfflineSummary | null
   /** 推进后的档案快照(给 profiles 落账用) */
   snapshot: ProfileSnapshot | null
+  /** 本拍历练自动结清的际遇文案(1.79.12):随心跳回包带回客户端弹,无则空数组 */
+  notices: string[]
 }
 
 /** 历练会话声明的时间窗边界:前后各放宽一小时(坏档/偏钟在此收口;1.77.0 从 ±1 天收紧) */
@@ -235,13 +242,14 @@ export async function resolveAdvanceFromSlices(
 
     const before = stateClone()
     let summary: OfflineSummary | null = null
+    const notices: string[] = []
     const now = Date.now()
     if (ctx.offline) {
       // 服务端时间锚点落进 lastActiveAt,离线结算按它起算(settle 尾部会再盖回 now)
       useGameStore().lastActiveAt = now - Math.round(ctx.dtSec * 1000)
       summary = await settleOfflineOnStores(now)
     } else {
-      await advanceOnStores(ctx.dtSec, now, { exploration: true, suppress: true })
+      await advanceOnStores(ctx.dtSec, now, { exploration: true, suppress: true, notices })
       /*
        * 在场浮窗由服务端掷(1.79.0):顿悟与洞府巡游原先挂在客户端引擎的轮询上,
        * 事件的产出(悟道点/修为/灵草/buff)也就只能由客户端自己发。
@@ -263,7 +271,7 @@ export async function resolveAdvanceFromSlices(
     checkStateAchievements()
     const patches = diffSlices(before, stateClone())
     const snapshot = snapshotFromActiveStores()
-    return { patches, summary, snapshot }
+    return { patches, summary, snapshot, notices }
   } catch {
     return null
   } finally {

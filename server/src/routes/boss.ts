@@ -9,6 +9,7 @@ import { dayKey, attemptsUsed, consumeDaily, refundDaily, type DungeonDifficulty
 import { addEventProgress, bossAttemptBonus, todayEvent } from '../eventCore.js'
 import { geNorm, geAdd, geSub, geMulN, geMin, geText, randRange, type GE } from '../gnum.js'
 import { withKeyLock } from '../mutex.js'
+import { creditEventReward, tierOfSave } from '../saveCredit.js'
 
 export const bossRouter = express.Router()
 
@@ -668,12 +669,25 @@ bossRouter.post('/strike', requireAuth, (req, res) => {
  * 领取击杀赏(围妖页加载/托管巡检时领):返回并清零。
  * 「读台账 → 删台账」之间必须串行:两个请求同时进来会各读到同一份赏,
  * 客户端按返回入账 → 全服击杀赏双发。进程内按 uid 串行(见 mutex.ts)。
+ *
+ * 赏格直接落档(1.79.12):灵石按自身境界折算、灵草照给,写进云档 resources 后
+ * 客户端本地那次入账只是乐观显示。此前只回数值让客户端自己加 —— 抛弃存档之后
+ * 那份加法被心跳补丁一拍顶回,击杀赏整体蒸发,而台账已清零,连重领都没有。
  */
 bossRouter.post('/claim', requireAuth, (req, res) => {
   void withKeyLock(`boss_loot:${req.user!.id}`, async () => {
     const loot = await lootOf(req.user!.id)
     if (loot !== undefined) await run('DELETE FROM boss_loot WHERE user_id = ?', [req.user!.id])
-    return { stone: loot?.stone_m ?? 0, herb: loot?.herb ?? 0, equip: (loot?.equip ?? 0) === 1 }
+    const pending = { stone: loot?.stone_m ?? 0, herb: loot?.herb ?? 0, equip: (loot?.equip ?? 0) === 1 }
+    if (pending.stone > 0 || pending.herb > 0) {
+      // 折算层级与客户端同源:major 取云档,stoneByTier 走 vendor 公式层
+      await creditEventReward(
+        req.user!.id,
+        { stone: pending.stone > 0 ? pending.stone : undefined, herb: pending.herb > 0 ? pending.herb : undefined },
+        await tierOfSave(req.user!.id)
+      ).catch(() => undefined)
+    }
+    return pending
   })
     .then(pending => {
       res.json({ pending })

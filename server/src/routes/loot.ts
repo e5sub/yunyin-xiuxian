@@ -7,7 +7,7 @@
  * console 里 push 一件「合法上限内神装」从此进不了档。
  */
 import express, { type Request, type Response } from 'express'
-import { get } from '../db.js'
+import { get, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { lootEnv } from '../recompute.js'
 import { grantLoot, verifyExtraGains, expectedSoulGradeOf, lootCountCaps } from '../lootGrant.js'
@@ -15,6 +15,7 @@ import { recordLoot, burnedSoulUids, recordSoulBurns, takeLootBudget } from '../
 import { recordEquipStatesFromItems } from '../equipLedger.js'
 import { readSectState } from '../sectState.js'
 import { withKeyLock } from '../mutex.js'
+import { backupBeforeOverwrite } from './save.js'
 
 export const lootRouter = express.Router()
 
@@ -49,6 +50,13 @@ lootRouter.post('/loot/claim', requireAuth, (req: Request, res: Response) => {
     }
     lastClaimAt.set(userId, now)
 
+    /*
+     * 签发与落档同一把 save 锁(1.79.12):签发件此前只记台账(loot_ledger/equip_states)、
+     * 回传给客户端入**本地**行囊 —— 抛弃存档之后那份入包传不上去,重登即蒸发
+     * (妖王击杀赏装备是主要的活路径)。现在签发即写进云档行囊,本地入包退化为
+     * 乐观显示。整段读档-签发-写档与心跳/炼器并发共用同一把锁,互不顶档。
+     */
+    await withKeyLock(`save:${userId}`, async () => {
     const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
     const rawClaims = Array.isArray(body.claims) ? body.claims : []
     if (rawClaims.length === 0) {
@@ -61,7 +69,10 @@ lootRouter.post('/loot/claim', requireAuth, (req: Request, res: Response) => {
     }
 
     // 环境属性从云档复算:客户端自报的 dropRate/luck/境界不作数
-    const row = await get<{ data: string }>('SELECT data FROM saves WHERE user_id = ?', [userId])
+    const row = await get<{ version: number; data: string; updated_at: number; started: number }>(
+      'SELECT version, data, updated_at, started FROM saves WHERE user_id = ?',
+      [userId]
+    )
     if (row === undefined) {
       res.json({ equips: [] })
       return
@@ -194,7 +205,39 @@ lootRouter.post('/loot/claim', requireAuth, (req: Request, res: Response) => {
         /* 状态入账失败时回退到旧行为:首次上传补登 */
       }
     }
+    /*
+     * 签发件写进云档行囊(1.79.12):台账只保「这件存在」,云档行囊才是玩家下次登录
+     * 看得见的那一份 —— 不写就是签发即蒸发。写失败不拦回包:台账仍在,重登后客户端
+     * 行囊缺件时按签发行补齐的旧链路(残页)仍在;宁少显示,不发双份。
+     */
+    if (equips.length > 0 && isPlainObject(data) && isPlainObject((data as Record<string, unknown>).inventory)) {
+      try {
+        const saveData = data as Record<string, unknown>
+        const inv = saveData.inventory as Record<string, unknown>
+        const items = Array.isArray(inv.items) ? (inv.items as unknown[]) : []
+        inv.items = [...items, ...equips]
+        try {
+          await backupBeforeOverwrite(userId, {
+            version: row.version,
+            data: JSON.stringify(saveData),
+            updated_at: row.updated_at
+          })
+        } catch {
+          // 留档失败不拦签发
+        }
+        await upsertByPk('saves', {
+          user_id: userId,
+          version: row.version,
+          data: JSON.stringify(saveData),
+          started: row.started,
+          updated_at: row.updated_at
+        })
+      } catch {
+        /* 行囊写不进只是这件白签,下次结算同样口径再签 */
+      }
+    }
     res.json({ equips })
+    })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })
