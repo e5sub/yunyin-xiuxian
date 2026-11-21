@@ -390,7 +390,10 @@ describe('文案数值对账 · 视图不手抄数字', () => {
     const buff = src('../components/cultivation/BuffDialog.vue')
     expect(buff, 'Buff 详情倒计时读 now.value').toContain('(inst.value.endsAt - now.value) / 1000')
     const combat = src('../components/adventure/CombatPanel.vue')
-    expect(combat, '历练倒计时读 now.value').toContain('(session.value.endsAt - now.value) / 1000')
+    // 1.79.10:节拍戳与服务端互认,倒计时按服务端钟域比较(本机读数 + 估计钟差)
+    expect(combat, '历练倒计时读 now.value + 服务端钟差').toContain(
+      '(session.value.endsAt - (now.value + srvOffsetMs())) / 1000'
+    )
   })
 
   /**

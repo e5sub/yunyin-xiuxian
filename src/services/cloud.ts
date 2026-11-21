@@ -729,6 +729,8 @@ export const cloudApi = {
     ok: boolean
     slices?: Record<string, Record<string, unknown>>
     offline?: OfflineSummary | null
+    /** 服务端组包时刻(epoch 毫秒):客户端据它校钟差(srvClock),节拍戳比较不吃本机钟差 */
+    now?: number
   }> => request('POST', '/game/advance', payload),
   saveHistory: (limit = 30): Promise<{ history: SaveHistoryRow[] }> =>
     request('GET', `/save/history?limit=${limit}`),

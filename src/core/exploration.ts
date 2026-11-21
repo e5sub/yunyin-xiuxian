@@ -25,6 +25,7 @@ import { lifeTrialRules } from './lifeTrialService'
 import { buildPlayerSnap } from './playerSnap'
 import { currentDaoRules } from './endgameService'
 import { afterWin } from './loot'
+import { srvNow } from './srvClock'
 import { autoResolveEvent, pickEventFor } from './eventEngine'
 import { eventTierDef, eventTierOf } from './eventTier'
 import { capChance, modOf } from './statsCalc'
@@ -99,7 +100,12 @@ export function startExploration(regionId: string, mode: ExploreMode, opts?: { q
     return false
   }
   offerBondEvent('enterPlace')
-  const now = Date.now()
+  /*
+   * 会话节拍戳统一盖服务端钟域(1.79.10):开局戳若用本机钟,本机比服务器快 S 秒时
+   * 服务端每场都要多等 S 秒才认到点(倒计时已归零、催拍空转)。
+   * srvNow() 在未登录(offset 恒 0)与 Date.now() 同值,单机口径不变。
+   */
+  const now = srvNow()
   const modeDef = EXPLORE_MODES[mode]
   const durationSec = exploreDurationSec(mode, player.petId)
   const session: AdventureSession = {

@@ -38,6 +38,7 @@ import { studyTick, seedLoreIfNeeded } from './loreService'
 import { flushSaveWrites } from '@/utils/storage'
 import { enginePaused, pauseElapsedMs, setEnginePaused } from './enginePause'
 import { shiftEarlyGameWindows } from './earlyGameService'
+import { noteSrvClock, srvNow } from './srvClock'
 
 const PERIODIC_CHECK_SEC = 30
 
@@ -280,13 +281,20 @@ class GameEngine {
    * 三个条件都必要:会话在程(否则无仗可打)、倒计时确已归零(未到点不催)、
    * 无待处理事件(事件阻塞战斗,催了服务端也让路,等事件超时自动结算那拍即可)。
    */
-  private battleDueNow(now: number): boolean {
+  private battleDueNow(_now: number): boolean {
     const adv = useAdventureStore()
     const s = adv.session
     if (!s || usePlayerStore().dead) return false
     if (adv.pendingEventId !== null) return false
     if (!Number.isFinite(s.nextBattleAt) || !Number.isFinite(s.endsAt)) return false
-    return now >= s.nextBattleAt && now < s.endsAt
+    /*
+     * 节拍戳与服务端互认,比较须用服务端钟域(1.79.10):nextBattleAt 开局由本机盖、
+     * 开打后由服务端补丁改写,而服务端按它自己的钟判到点 —— 本机钟快 S 秒时,
+     * 本机钟比较会提前 S 秒「催」,催了服务端也不开打,2.2 秒一拍空转到钟差耗尽
+     * (催两三拍 ≈ 5 秒,即「归零后干等」的体感)。`now` 参数留作签名兼容,比较走 srvNow()。
+     */
+    const at = srvNow()
+    return at >= s.nextBattleAt && at < s.endsAt
   }
 
   /**
@@ -301,11 +309,15 @@ class GameEngine {
       const player = usePlayerStore()
       const resources = useResourcesStore()
       const adventure = useAdventureStore()
+      const sentAt = Date.now()
       const r = await cloudApi.advanceGame({
         exp: { ...player.exp },
         qi: resources.qi,
         session: adventure.session
       })
+      // 每拍校钟(1.79.10):回包带服务端组包时刻,叠加半程 RTT 修出钟差,
+      // 催拍判定与倒计时都按服务端钟域比较,不再吃本机钟差
+      noteSrvClock(r.now, Date.now() - sentAt)
       if (r.ok && r.slices !== undefined) {
         applySlicesToStores(r.slices)
         this.afterAuthorityApply()

@@ -15,6 +15,7 @@ import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
 import { cloudApi } from '@/services/cloud'
 import { TICK_MS, OFFLINE_MIN_SECONDS, ACTIVE_STAMP_MS } from '@/data/constants'
+import { noteSrvClock, resetSrvClock } from './srvClock'
 
 vi.mock('./offline', async importOriginal => {
   const actual = await importOriginal<typeof OfflineMod>()
@@ -472,5 +473,59 @@ describe('引擎 · 战斗到点催拍(1.79.6)', () => {
     capturedTick!()
     expect(advanceSpy, '在途时不得重入').toHaveBeenCalledTimes(1)
     resolveFirst()
+  })
+
+  /**
+   * 钟差催拍(1.79.10):节拍戳两端各写一半(开局本机钟 / 开打后服务端钟),
+   * 服务端按它自己的钟判开打。校钟后 battleDueNow 必须按服务端钟域(srvNow)比较 ——
+   * 本机钟快 3 秒时,本机钟判「已到点」而服务端未到点,催了也白催(2.2 秒一拍空转 ≈ 5 秒体感)。
+   */
+  describe('催拍按服务端钟域判到点', () => {
+    afterEach(() => {
+      // 模块级钟差会跨 spec 文件泄漏(isolate:false 共享模块单例),用例走完必归零
+      resetSrvClock()
+    })
+
+    /** 会话戳为绝对时刻(测试自己按钟差方向摆),形状与 startWithSession 一致 */
+    function startWithAbsSession(nextBattleAt: number, endsAt: number): void {
+      ;(engine as unknown as { heartAccum: number }).heartAccum = 0
+      ;(engine as unknown as { heartInFlight: boolean }).heartInFlight = false
+      useAdventureStore().session = {
+        regionId: 'qingyun',
+        mode: 'normal',
+        startedAt: Date.now() - 10_000,
+        endsAt,
+        nextBattleAt,
+        wins: 0,
+        losses: 0,
+        events: 0,
+        itemGain: 0,
+        stoneGain: { m: 0, e: 0 },
+        expGain: { m: 0, e: 0 }
+      }
+      engine.start()
+      advanceSpy.mockClear()
+    }
+
+    it('服务端钟已到点而本机钟未到点:照催(服务端快 3 秒)', () => {
+      resetSrvClock()
+      noteSrvClock(Date.now() + 3000, 0)
+      // 3 秒后:本机钟 t0+3000,服务端钟 t0+6000;节拍戳 t0+5000 在服务端钟域已过点,
+      // 本机钟视角还有 2 秒 —— 旧口径(本机钟比较)此刻不催,白等服务端追上
+      startWithAbsSession(Date.now() + 5000, Date.now() + 600_000)
+      vi.setSystemTime(Date.now() + 3000)
+      capturedTick!()
+      expect(advanceSpy, '按服务端钟域到点即催,不吃本机钟差').toHaveBeenCalled()
+    })
+
+    it('本机钟快于服务端:本机钟「到点」而服务端未到点,不空催', () => {
+      resetSrvClock()
+      noteSrvClock(Date.now() - 3000, 0)
+      // 3 秒后:本机钟 t0+3000(≥ 节拍戳 t0+500,旧口径判到点而空催),服务端钟 t0 —— 未到点
+      startWithAbsSession(Date.now() + 500, Date.now() + 600_000)
+      vi.setSystemTime(Date.now() + 3000)
+      capturedTick!()
+      expect(advanceSpy, '服务端未到点不催,催了也不开打').not.toHaveBeenCalled()
+    })
   })
 })

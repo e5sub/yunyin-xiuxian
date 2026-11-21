@@ -295,7 +295,9 @@ describe('死导出审计', () => {
     roleCap:
       '任职名额表:server/src/routes/sect.ts 的 /sect/role 按副掌门一位/长老四位拒超编(1.71.0);客户端不预判名额(门册分页,数不全门),消费方在 src 之外;sectRules.spec 守口径',
     dispatchTargetsFromStocks:
-      '离线派工口径(1.74.5):server/src/autoOps 的 tickAutoApprentice 经 vendor(apprenticeCore.dispatchTargets)动态加载,为离线 VIP 的闲置道童按「各尽其长」择门;消费方在 src 之外,审计扫不到;apprenticeService.spec 守口径'
+      '离线派工口径(1.74.5):server/src/autoOps 的 tickAutoApprentice 经 vendor(apprenticeCore.dispatchTargets)动态加载,为离线 VIP 的闲置道童按「各尽其长」择门;消费方在 src 之外,审计扫不到;apprenticeService.spec 守口径',
+    resetSrvClock:
+      '钟差归零口(1.79.10):生产路径钟差随心跳回包持续自校、旧值无害(两端同域自洽),无须运行时重置;srvClock.spec 用它隔离用例'
   }
 
   it('运行时模块里的导出,不能只被 spec 用到 —— 那是骨架空转的样子', () => {

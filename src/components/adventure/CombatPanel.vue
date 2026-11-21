@@ -187,6 +187,7 @@
   import { enemyDef } from '@/data/enemies'
   import { enemyLoreView } from '@/ui/enemyLore'
   import { sessionRecordText } from '@/ui/adventureText'
+  import { srvOffsetMs } from '@/core/srvClock'
   import { COMBAT_LOG_TONE } from '@/ui/combatLogText'
   import type { CombatLogEntry } from '@/types'
   import ProgressBar from '@/components/common/ProgressBar.vue'
@@ -216,8 +217,8 @@
   const session = computed(() => adventure.session)
   const region = computed(() => adventure.currentRegion)
   const battle = computed(() => adventure.lastBattle)
-  const timeLeft = computed(() => (session.value ? Math.max(0, (session.value.endsAt - now.value) / 1000) : 0))
-  const huntIn = computed(() => (session.value ? Math.max(0, (session.value.nextBattleAt - now.value) / 1000) : 0))
+  const timeLeft = computed(() => (session.value ? Math.max(0, (session.value.endsAt - (now.value + srvOffsetMs())) / 1000) : 0))
+  const huntIn = computed(() => (session.value ? Math.max(0, (session.value.nextBattleAt - (now.value + srvOffsetMs())) / 1000) : 0))
   const modeName = computed(() => (session.value ? EXPLORE_MODES[session.value.mode].name : ''))
 
   /** 本次历练已得:会话里累计的实际入账,非期望值 */

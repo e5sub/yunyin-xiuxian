@@ -110,7 +110,7 @@ gameRouter.post('/game/advance', requireAuth, (req: Request, res: Response) => {
     const dtSec = Math.min(DT_MAX_SEC, Math.max(0, (now - anchor) / 1000))
     if (!(dtSec > 0)) {
       lastAdvanceAt.set(userId, now)
-      res.json({ ok: true, slices: {}, offline: null })
+      res.json({ ok: true, slices: {}, offline: null, now })
       return
     }
     const offline = dtSec > OFFLINE_GATE_SEC
@@ -174,7 +174,14 @@ gameRouter.post('/game/advance', requireAuth, (req: Request, res: Response) => {
         // 留痕失败不影响推进
       }
     }
-    res.json({ ok: true, slices: patches, offline: summary })
+    // 留痕:慢拍打点(1.79.10)。水合 17 片 + 整档写回在弱容器上可达数秒,
+    // 它直接叠进「历练倒计时归零到开打」的体感;超过 1.5 秒留一行,便于从 docker logs 定位瓶颈
+    const durMs = Date.now() - gateAt
+    if (durMs > 1500) {
+      console.warn('[advance] 慢拍:user=%d %dms patches=%d offline=%s', userId, durMs, Object.keys(patches).length, String(offline))
+    }
+    // now 随回包走(1.79.10):客户端校钟差用,取组包时刻(而非锁入口时刻,水合可能耗秒级)
+    res.json({ ok: true, slices: patches, offline: summary, now: Date.now() })
   }).catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })
