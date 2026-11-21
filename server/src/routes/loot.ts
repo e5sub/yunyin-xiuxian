@@ -101,10 +101,15 @@ lootRouter.post('/loot/claim', requireAuth, (req: Request, res: Response) => {
       /*
        * 客户端在场签发同样入件数账(1.77.0):battle/boss/secret/event/dungeon 此前
        * 「每请求必发 1 件」,改包每 300ms 白嫖一件顶阶装(仅受小时 600 件封顶)。
-       * 现按玩法期望产速推上限 —— 历练战斗与离线同速(65/时),妖王/秘境/事件/副本
+       * 现按玩法期望产速推上限 —— 历练战斗另按 12 秒一战定下限(见下),妖王/秘境/事件/副本
        * 按稀有度收紧;没有历史行的首次采信一次(与 suppress/offline 同语义)。
        */
-      battle: { ratePerHour: 65, cap: 48 },
+      /*
+       * 战斗间隔 12 秒(探索加速还会更短),每场翻倍至多 2 件。这里的时率只管
+       * 「两拍之间不能连发」,真正的总量闸是下面 underHourlyCap 的 600 件/时 ——
+       * 时率若照离线写 65/时,即使件数账修好也会把正常历练掐掉大半(飞升后尤其显眼)。
+       */
+      battle: { ratePerHour: 3600, cap: 48 },
       boss: { ratePerHour: 4, cap: 8 },
       secret: { ratePerHour: 6, cap: 12 },
       event: { ratePerHour: 12, cap: 24 },
@@ -112,13 +117,35 @@ lootRouter.post('/loot/claim', requireAuth, (req: Request, res: Response) => {
     } as const
     type BudgetSrc = keyof typeof BUDGET_LIMITS
     const ctxs = rawClaims.filter(isPlainObject)
-    const clampCount = (ctx: Record<string, unknown>, cap: number): number =>
-      Math.min(Math.max(Math.trunc(typeof ctx.count === 'number' && Number.isFinite(ctx.count) ? ctx.count : 0), 0), cap)
+    /**
+     * 件数账的申请量。
+     *
+     * suppress/offline 由调用方按真实时长算好 count;而 battle/boss/secret/event/dungeon
+     * 的件数由裁决核心自己掷(客户端根本报不出准确 count)。1.77.0 把这几类收进件数账时
+     * 沿用了 `ctx.count ?? 0`,于是它们**每一单都被算成 0 件、整类跳过** —— 登录玩家
+     * 历练赢了也一件不掉,境界越高越显眼(前期还有开局馈赠/坊市旧货撑着)。
+     * 这里按「一次申请最多能出几件」在服务端补齐:翻倍战斗至多 2 件,其余各 1 件。
+     * 真实件数仍由 grantEquips 掷,预算只是上限;客户端自报的 count 一概不采信。
+     */
+    const BUDGET_DEFAULT_WANT: Partial<Record<BudgetSrc, number>> = {
+      battle: 2,
+      boss: 1,
+      secret: 1,
+      event: 1,
+      dungeon: 1
+    }
+    const wantOf = (src: BudgetSrc, ctx: Record<string, unknown>): number => {
+      const cap = BUDGET_LIMITS[src].cap
+      // 在场五类件数由服务端自计;只有镇守/离线的 count 由调用方按真实时长带来
+      const fixed = BUDGET_DEFAULT_WANT[src]
+      const raw = fixed ?? (typeof ctx.count === 'number' && Number.isFinite(ctx.count) ? ctx.count : 0)
+      return Math.min(Math.max(Math.trunc(raw), 0), cap)
+    }
     const remaining = new Map<BudgetSrc, number>()
     for (const src of Object.keys(BUDGET_LIMITS) as BudgetSrc[]) {
       const total = ctxs
         .filter(c => c.src === src)
-        .reduce((a, c) => a + clampCount(c, BUDGET_LIMITS[src].cap), 0)
+        .reduce((a, c) => a + wantOf(src, c), 0)
       if (total > 0) {
         remaining.set(src, await takeLootBudget(userId, src, total, now, BUDGET_LIMITS[src]))
       }
@@ -126,7 +153,7 @@ lootRouter.post('/loot/claim', requireAuth, (req: Request, res: Response) => {
     for (const ctx of ctxs) {
       const srcKey = typeof ctx.src === 'string' && ctx.src in BUDGET_LIMITS ? (ctx.src as BudgetSrc) : null
       if (srcKey !== null) {
-        const req = clampCount(ctx, BUDGET_LIMITS[srcKey].cap)
+        const req = wantOf(srcKey, ctx)
         const allow = remaining.get(srcKey) ?? 0
         const grant = Math.min(req, allow)
         remaining.set(srcKey, allow - grant)

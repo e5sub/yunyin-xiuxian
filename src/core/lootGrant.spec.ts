@@ -31,6 +31,31 @@ describe('掉落签发 · 数量与品质的边界', () => {
     expect(lucky.equips.length, '掉率与翻倍都封顶内,至多两件').toBe(2)
   })
 
+  it('件数账批几件就发几件:翻倍掷中也被预算压住,0 件直接不发', () => {
+    const env = { ...ENV, dropRate: 3, doubleDropRate: 3 }
+    const one = grantEquips({ src: 'battle', tier: 1, rewardMult: 4, count: 1 }, env, new RandomService(() => 0))
+    expect(one.equips, '账上 1 件时翻倍不得越过预算').toHaveLength(1)
+    const none = grantEquips({ src: 'battle', tier: 1, rewardMult: 4, count: 0 }, env, new RandomService(() => 0))
+    expect(none.equips, '账上 0 件时不发').toHaveLength(0)
+    const boss = grantEquips({ src: 'boss', tier: 1, count: 0 }, env, new RandomService(() => 0))
+    expect(boss.equips, '首领赏同受件数账约束').toHaveLength(0)
+  })
+
+  it('界外各境照样出装备:21~40 阶按对应境界复算,件件落在本界层级', () => {
+    for (let tier = 21; tier <= 40; tier += 1) {
+      const major = Array.from({ length: 29 }, (_, m) => m).find(m => maxTierForMajor(m) >= tier)!
+      const out = grantEquips(
+        { src: 'battle', tier },
+        { ...ENV, major, dropRate: 3 }, // 抬掉率只为让每次必出,判据是层级不是概率
+        new RandomService(() => 0)
+      )
+      expect(out.equips.length, `第 ${tier} 阶应有签发件`).toBeGreaterThan(0)
+      for (const inst of out.equips) {
+        expect(inst.tier, `第 ${tier} 阶不该被钳到 ${maxTierForMajor(major - 1)} 阶`).toBe(tier)
+      }
+    }
+  })
+
   it('层级按境界钳:客户端报天上去的 tier,打不出境界外的层', () => {
     const cap = maxTierForMajor(0)
     const out = grantEquips({ src: 'battle', tier: 999 }, ENV, new RandomService(() => 0))

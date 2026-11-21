@@ -51,7 +51,8 @@ export interface LootClaimCtx {
   /** offline:该场次的胜场数 */
   wins?: number
   /** suppress/offline:件数由调用方按各自的期望公式算好带来(镇守 0.4/时,离线 ≤6/场);
-   *  服务端只按上限钳制再生成 —— 数量账本就在客户端侧,签发侧管的是「件件合法」 */
+   *  battle/boss/secret/event/dungeon:服务端件数账批给的上限(战斗至多 2 件,其余 1 件);
+   *  缺省时按各自的历史行为(战斗 2、其余 1)处理 —— 未登录单机路径不经过件数账 */
   count?: number
   /** suppress:开始镇守的时刻(运气随天数,服务端按 SUPPRESS_EQUIP_LUCK_CAP 封顶,坏值夹 0) */
   since?: number
@@ -112,8 +113,10 @@ export function grantEquips(
       const rewardMult = Math.min(Math.max(ctx.rewardMult ?? 1, 0.5), 4)
       const isBoss = Boolean(ctx.isBoss)
       const doubled = service.chance(capChance(env.doubleDropRate)) ? 2 : 1
+      // 件数账批了几件就至多出几件(缺省 2 = 翻倍上界);批 0 的申请路由侧已跳过,这里也兜住
+      const budget = Math.max(0, Math.trunc(ctx.count ?? 2))
       const chance = Math.min(EQUIP_DROP_CHANCE_CAP, EQUIP_DROP_CHANCE * rewardMult * (1 + env.dropRate) * (isBoss ? 2.5 : 1))
-      for (let i = 0; i < doubled; i += 1) {
+      for (let i = 0; i < Math.min(doubled, budget); i += 1) {
         if (service.chance(chance) || (isBoss && i === 0)) {
           // 普通战不传品质下限:传了(哪怕是 0)即「显式下限」,品质窗口失效,在线会比离线/审计多掉低阶高品。首领例外
           equips.push(generateEquipment(tier, service, isBoss ? { luck, minQualityRank: 1 } : { luck }))
@@ -122,18 +125,23 @@ export function grantEquips(
       break
     }
     case 'boss':
+      // 件数账批 0 时不发(缺省按 1 件,未登录单机路径不经过件数账)
+      if ((ctx.count ?? 1) <= 0) break
       // 精品起步(minQualityRank 1 会让品质窗口失效,与历练首领同规):高级装备要有高级的样子
       equips.push(generateEquipment(tier, service, { minQualityRank: 1 }))
       break
     case 'secret':
+      if ((ctx.count ?? 1) <= 0) break
       equips.push(generateEquipment(tier, service, { minQualityRank: 2 }))
       break
     case 'event': {
+      if ((ctx.count ?? 1) <= 0) break
       const floor = clampFloor(ctx.minQualityRank)
       equips.push(generateEquipment(Math.max(tier, 1), service, floor > 0 ? { luck, minQualityRank: floor } : { luck }))
       break
     }
     case 'dungeon': {
+      if ((ctx.count ?? 1) <= 0) break
       const floor = clampFloor(ctx.minQualityRank)
       equips.push(generateEquipment(tier, service, floor > 0 ? { minQualityRank: floor } : {}))
       break
