@@ -388,11 +388,7 @@ export const useMarketStore = defineStore(
       // 索引取收割前的档内序号,服务端从云档同序数组校验
       const finished = consign.value.filter(p => p.finishAt <= now)
       for (const p of finished) {
-        void cloudApi
-          .economyOp('market_sell_consign', {
-            consignIdx: consign.value.indexOf(p)
-          })
-          .catch(() => {})
+        void cloudApi.economyOpRetry('market_sell_consign', { consignIdx: consign.value.indexOf(p) })
         resources.addStone(p.price)
         if (p.name) credits.push(p.name)
       }

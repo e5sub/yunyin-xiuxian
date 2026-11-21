@@ -71,9 +71,9 @@ export function grantReward(
   const inventory = useInventoryStore()
   const ui = useUiStore()
   if (bundle.stoneTier) {
-    // 测试替身可能只 stub 部分 cloudApi 方法:缺 economyOp 就不上报,只损失这笔额度
-    if (source && typeof cloudApi.economyOp === 'function')
-      void cloudApi.economyOp('reward_claim', { rewardKind: source.kind, rewardId: source.id }).catch(() => {})
+    // 测试替身可能只 stub 部分 cloudApi 方法:缺 economyOpRetry 就不上报,只损失这笔额度
+    if (source && typeof cloudApi.economyOpRetry === 'function')
+      void cloudApi.economyOpRetry('reward_claim', { rewardKind: source.kind, rewardId: source.id })
     resources.addStone(stoneByTier(playerTier(), bundle.stoneTier))
   }
   if (bundle.wudao) resources.addSmall('wudao', bundle.wudao)

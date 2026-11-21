@@ -8,9 +8,13 @@
 import type { EquipmentInstance } from '@/types'
 import { rng } from '@/utils/random'
 import { useAuthStore } from '@/stores/auth'
-import { cloudApi } from '@/services/cloud'
+import { CloudError, cloudApi } from '@/services/cloud'
 import { grantEquips, type LootClaimCtx } from './lootGrant'
 import { lootEnvFromActiveStores } from './profileRecompute'
+
+/** 429 退避参数(1.79.14):/loot/claim 与 economy 同一档 300ms 限速,连点场景必撞 */
+const CLAIM_RETRY_TRIES = 4
+const CLAIM_RETRY_GAP_MS = 400
 
 /** 批量签发:ctxs 按序裁决,返回的实例按申请顺序拼接(调用方按序入包) */
 export async function mintDrops(ctxs: readonly LootClaimCtx[]): Promise<EquipmentInstance[]> {
@@ -26,7 +30,23 @@ export async function mintDrops(ctxs: readonly LootClaimCtx[]): Promise<Equipmen
   try {
     const { equips } = await cloudApi.claimLoot({ claims: ctxs })
     return equips
-  } catch {
+  } catch (e) {
+    /*
+     * 429 = 限速闸在签发与记账之前拦下(确定没发、台账没记),退避重试不构成双份 ——
+     * 秘境终层/副本掉落这类连点场景会撞 /loot/claim 的 300ms 限速,不重试装备就白丢。
+     * 其余失败(断网/超时)维持原口径:宁可这一件不掉,也不本地补签。
+     */
+    if (e instanceof CloudError && e.status === 429) {
+      for (let i = 0; i < CLAIM_RETRY_TRIES; i++) {
+        await new Promise(resolve => setTimeout(resolve, CLAIM_RETRY_GAP_MS))
+        try {
+          const { equips } = await cloudApi.claimLoot({ claims: ctxs })
+          return equips
+        } catch (err) {
+          if (!(err instanceof CloudError && err.status === 429)) return []
+        }
+      }
+    }
     return []
   }
 }

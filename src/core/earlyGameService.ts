@@ -278,8 +278,8 @@ export function recordWin(): void {
   const reward = WIN_STREAK_REWARDS.find(r => r.streak === streak)
   if (reward) {
     const resources = useResourcesStore()
-    // 经济 op(1.77.0):赏格按固定表由服务端复算记账
-    void cloudApi.economyOp('streak', { streak }).catch(() => {})
+    // 经济 op(1.77.0):赏格按固定表由服务端复算记账;429 退避重试(1.79.14),连点连胜不再蒸发
+    void cloudApi.economyOpRetry('streak', { streak })
     resources.addStone(gn(reward.stone))
     resources.addSmall('wudao', reward.wudao)
     useUiStore().toast(streakRewardText(streak, reward.stone, reward.wudao), 'success')

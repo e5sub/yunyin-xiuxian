@@ -117,7 +117,7 @@ const STATEFUL_CORE = new Set<string>([
  *   17 处引用从 advanceResolve 搬到这里 —— 处数不变只换了文件;净增来自
  *   core/actionOps 的动作层要直接读写 player/inventory/cultivation/market/apprentice/adventure。
  */
-const CORE_STORE_SITES = 293;
+const CORE_STORE_SITES = 294;
 /**
  * core 用例里需要 Pinia 的文件数基线(只许减)。
  * 上游 121 + 本仓 autoOpsDaily/gongfaSeats 等新增,合并后以实跑数为准,见本文件底部对账。

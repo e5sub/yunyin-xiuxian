@@ -37,9 +37,7 @@ function isKind(v: unknown): v is BountyKind {
 /** 交一柄兵刃入账:按所交之品现算灵石与器尘 */
 function deliverEquip(eq: { uid: string; tier: number; quality: QualityId }, bountyIdx: number): void {
   // 经济 op(1.77.0):按档内现存这件的 tier+品质,服务端复算赏格记进项账
-  void cloudApi
-    .economyOp('bounty_claim', { bountyIdx, bountyUid: eq.uid })
-    .catch(() => {})
+  void cloudApi.economyOpRetry('bounty_claim', { bountyIdx, bountyUid: eq.uid })
   const r = equipBountyReward(eq.tier, qualityDef(eq.quality).rank)
   useInventoryStore().removeEquipment(eq.uid)
   const resources = useResourcesStore()
@@ -134,22 +132,20 @@ export const useBountyStore = defineStore(
         if (slot.kind === 'ore') {
           if (!resources.hasSmall('ore', slot.target)) return 'insufficient'
           // 经济 op(1.77.0):服务端按确定性再生订单复算赏格,记进项账
-          void cloudApi.economyOp('bounty_claim', { bountyIdx: idx }).catch(() => {})
+          void cloudApi.economyOpRetry('bounty_claim', { bountyIdx: idx })
           resources.spendSmall('ore', slot.target)
           resources.addStone(slot.reward)
         } else {
           const grade = pickHerbDeliverGrade(resources, slot.target)
           if (!grade) return 'insufficient'
-          void cloudApi
-            .economyOp('bounty_claim', { bountyIdx: idx, grade })
-            .catch(() => {})
+          void cloudApi.economyOpRetry('bounty_claim', { bountyIdx: idx, grade })
           resources.spendHerb(grade, slot.target)
           const priceMajor = bountyMajor.value ?? usePlayerStore().major
           resources.addStone(herbBountyReward(grade, priceMajor, slot.target))
         }
       } else if (slot.kind === 'pill') {
         if ((inventory.pills[slot.kindId] ?? 0) < slot.target) return 'insufficient'
-        void cloudApi.economyOp('bounty_claim', { bountyIdx: idx }).catch(() => {})
+        void cloudApi.economyOpRetry('bounty_claim', { bountyIdx: idx })
         inventory.spendPill(slot.kindId, slot.target)
         resources.addStone(slot.reward)
         if (slot.extra > 0) resources.addSmall('wudao', slot.extra)

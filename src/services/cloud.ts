@@ -798,6 +798,25 @@ export const cloudApi = {
   ): Promise<{ ok: boolean; reason?: string; stone?: { m: number; e: number } }> =>
     request('POST', `/economy/${encodeURIComponent(op)}`, payload),
   /**
+   * 经济 op 的限速安全版(1.79.14):429 是限速闸在**一切落账之前**拦下 —— 服务端确定
+   * 没入账、台账没记、云档没动,退避重试不构成双份;其余失败(断网/超时/业务拒)如实
+   * 返回 false,上层按「宁可少显示」处理。连点场景(秘境逐层/连胜/批量寄卖收割)会
+   * 撞 economy 300ms 限速,裸调 economyOp 被拒的那笔就永久蒸发,此处兜住。
+   */
+  economyOpRetry: async (op: string, payload: Record<string, unknown>, tries = 5, gapMs = 400): Promise<boolean> => {
+    for (let i = 0; i < tries; i++) {
+      try {
+        const r = await request<{ ok: boolean }>('POST', `/economy/${encodeURIComponent(op)}`, payload)
+        return r.ok
+      } catch (e) {
+        if (!(e instanceof CloudError && e.status === 429)) return false
+        if (i === tries - 1) return false
+        await new Promise(resolve => setTimeout(resolve, gapMs))
+      }
+    }
+    return false
+  },
+  /**
    * 动作结算(1.78.0):吃丹/炼丹/际遇/秘境/熔炉/分解/卖出/兑换/装配的服务端执行入口。
    * 服务端在云档上跑客户端同一份结算代码,回传改动分片(键级);ok=false 时本地那次预测须整体作废。
    */

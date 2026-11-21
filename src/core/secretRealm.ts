@@ -23,6 +23,7 @@ import { mintDrops } from './lootClaim'
 import { acquireEquipment } from './loot'
 import { harvestMaterials } from './loreService'
 import { cloudApi } from '@/services/cloud'
+import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
 import { useResourcesStore } from '@/stores/resources'
 import { useUiStore } from '@/stores/ui'
@@ -281,14 +282,25 @@ export async function fightSecretLayer(): Promise<SecretLayerResult | null> {
 
   if (result.win) {
     const { stone, material: mat } = secretLayerReward(tier, state.layer, def.rewardMult)
-    // 经济 op(1.77.0):层奖励按 (realmId, layer) 服务端复算记进项账
-    void cloudApi
-      .economyOp('secret_layer', { realmId: state.realmId, layer: state.layer })
-      .catch(() => {})
-    resources.addStone(stone)
-    resources.addSmall('herb', mat)
-    harvestMaterials(tier, 'herb', mat)
-    lines.push(`胜 ${snap.name} · 灵石 +${formatGN(stone)} · ${HERB_GRADE_SHORT[herbGradeOfMajor(player.major)]}灵草 +${mat}`)
+    /*
+     * 层赏结算(1.79.14):先等经济 op 服务端落档确认,再本地入账。此前是 fire-and-forget:
+     * 连点「下一层」撞上 economy 300ms 限速被 429 拒掉的层,服务端从没落档,
+     * 心跳一拍就把本地刚加的灵石/灵草顶回 —— 打完秘境「奖励还原」的真因。
+     * 429 重试收在 economyOpRetry 里(限速闸在一切落账之前拦,重试不构成双份);
+     * 其余失败(断网/超时)按「宁可少显示」不入账。未登录(单机)没有 op 可报,行为不变。
+     */
+    const settled = useAuthStore().loggedIn
+      ? await cloudApi.economyOpRetry('secret_layer', { realmId: state.realmId, layer: state.layer })
+      : true
+    if (settled) {
+      resources.addStone(stone)
+      resources.addSmall('herb', mat)
+      harvestMaterials(tier, 'herb', mat)
+      lines.push(`胜 ${snap.name} · 灵石 +${formatGN(stone)} · ${HERB_GRADE_SHORT[herbGradeOfMajor(player.major)]}灵草 +${mat}`)
+    } else {
+      // 服务端没入成账,本地也不入:报一句「未入账」,不谎报战利
+      lines.push(`胜 ${snap.name} · 层赏结算未达,此层未入账`)
+    }
     const nextLayer = state.layer + 1
     if (nextLayer > SECRET_LAYERS) {
       // 先清境再签发:签发是一次网络往返,期间 secretRealm 还在的话,连点「再入一层」
@@ -297,8 +309,11 @@ export async function fightSecretLayer(): Promise<SecretLayerResult | null> {
       // 通关:最终宝藏(品质下限收进签发侧,服务端夹进合法区间)
       const insts = await mintDrops([{ src: 'secret', tier }])
       if (insts.length > 0) lines.push(`获得 ${acquireEquipment(insts[0]!).line}`)
-      resources.addSmall('wudao', 3)
-      lines.push('悟道点 +3')
+      // 悟道点随 economyOp 的服务端 gains 落档(secret_layer 终层带 wudao):没结算成就不入本地
+      if (settled) {
+        resources.addSmall('wudao', 3)
+        lines.push('悟道点 +3')
+      }
       ui.toast(`${def.name}已探尽`, 'rare')
       return { win: true, finished: true, cleared: true, lines }
     }

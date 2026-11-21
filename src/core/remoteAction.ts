@@ -157,9 +157,24 @@ export function reportEquipChange(): void {
       const inv = sliceStoreOf('inventory')
       if (inv === undefined) return
       const equipped = (inv.$state as { equipped?: unknown }).equipped
-      void cloudApi.actionOp({ kind: 'equip_set', equipped: equipped ?? {} }).catch(() => {
-        // 旁路:网络问题不打断穿戴,下一拍心跳/动作由云档收口
-      })
+      /*
+       * equip_set 是绝对状态同步(整份 equipped 覆盖,非增量),429 重试不构成双份 ——
+       * 此前 429 时云档没记穿戴,心跳一拍把本地穿戴顶回,表现为「装备还原了」。
+       * 连穿几件(每件一次防抖上报)会撞 /action 的 250ms 限速,这里退避兜住。
+       * 其余失败维持旁路口径:下一拍心跳/动作由云档收口。
+       */
+      void (async (): Promise<void> => {
+        for (let i = 0; i < 4; i++) {
+          try {
+            await cloudApi.actionOp({ kind: 'equip_set', equipped: equipped ?? {} })
+            return
+          } catch (e) {
+            if (!(e instanceof CloudError && e.status === 429)) return
+            if (i === 3) return
+            await new Promise(resolve => setTimeout(resolve, 350))
+          }
+        }
+      })()
     } catch {
       // 取 auth / store 抛错也不该影响本地穿戴本身
     }

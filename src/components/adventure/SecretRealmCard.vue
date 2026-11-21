@@ -45,8 +45,27 @@
       <p v-if="state.spoils.length" class="mt-1 max-h-24 overflow-y-auto text-[10px] leading-relaxed text-ink-faint">
         <span v-for="(s, i) in state.spoils" :key="i" class="block">· {{ s }}</span>
       </p>
+      <!--
+        战报(1.79.14):逐行揭示本层战况,播完才放开「再入一层」——
+        连点不再跳战,层赏的经济 op 也借这段等待自然错开 300ms 限速。
+      -->
+      <div
+        v-if="reportTotal > 0"
+        class="mt-1.5 rounded-md bg-paper-deep/50 px-2.5 py-1.5"
+        :class="reportWin ? 'text-jade' : 'text-cinnabar'"
+        aria-live="polite"
+      >
+        <p v-for="(l, i) in reportShownLines" :key="i" class="block text-[10px] leading-relaxed">{{ l }}</p>
+      </div>
       <div class="mt-2 grid grid-cols-2 gap-2">
-        <button class="btn-seal w-full !py-1.5 !text-[12px]" :disabled="fighting" :title="fighting ? '交手中' : undefined" @click="fight">再 入 一 层</button>
+        <button
+          class="btn-seal w-full !py-1.5 !text-[12px]"
+          :disabled="fighting || reporting"
+          :title="fighting ? '交手中' : reporting ? '战报未完' : undefined"
+          @click="fight"
+        >
+          再 入 一 层
+        </button>
         <button class="btn-ghost w-full !py-1.5 !text-[12px]" @click="abandonRealm()">出 秘 境</button>
       </div>
     </template>
@@ -113,7 +132,7 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, ref } from 'vue'
+  import { computed, onUnmounted, ref } from 'vue'
   import { usePlayerStore } from '@/stores/player'
   import { useEndgameStore } from '@/stores/endgame'
   import { useUiStore } from '@/stores/ui'
@@ -166,6 +185,43 @@
   /** 交手中:终层签发要一次网络往返,期间连点会重复结算 */
   const fighting = ref(false)
 
+  /*
+   * 战报逐行揭示(1.79.14):fightSecretLayer 的 lines 在卡面逐行亮出,
+   * 播完(reporting=false)才允许点下一层 —— 用户口径「战报结束后才允许点进入下一层」。
+   * 定时器随组件卸载清掉,不留悬挂回调。
+   */
+  const REPORT_LINE_MS = 650
+  const reportLines = ref<readonly string[]>([])
+  const reportWin = ref(true)
+  const reportShownCount = ref(0)
+  let reportTimer: ReturnType<typeof setTimeout> | null = null
+  const reportTotal = computed(() => reportLines.value.length)
+  const reportShownLines = computed(() => reportLines.value.slice(0, reportShownCount.value))
+  const reporting = computed(() => reportShownCount.value < reportTotal.value)
+
+  function clearReportTimer(): void {
+    if (reportTimer !== null) {
+      clearTimeout(reportTimer)
+      reportTimer = null
+    }
+  }
+
+  function showReport(lines: readonly string[], win: boolean): void {
+    clearReportTimer()
+    reportLines.value = lines
+    reportWin.value = win
+    reportShownCount.value = 0
+    if (lines.length === 0) return
+    const step = (): void => {
+      reportShownCount.value++
+      if (reportShownCount.value < reportLines.value.length) reportTimer = setTimeout(step, REPORT_LINE_MS)
+      else reportTimer = null
+    }
+    reportTimer = setTimeout(step, REPORT_LINE_MS)
+  }
+
+  onUnmounted(clearReportTimer)
+
   /**
    * 一处秘境的一整行事实,一次算齐。
    *
@@ -209,11 +265,12 @@
   }
 
   async function fight(): Promise<void> {
-    if (fighting.value) return
+    if (fighting.value || reporting.value) return
     fighting.value = true
     try {
       const r = await fightSecretLayer()
       if (!r) return
+      showReport(r.lines, r.win)
       // 合并为单条多行 toast:逐条 push 会被 toast 上限 5 挤掉前面的行
       // 胜归 success(与全库「有得有获」同级),败归 warn
       if (r.lines.length) ui.toast(r.lines.join('\n'), r.win ? 'success' : 'warn')
