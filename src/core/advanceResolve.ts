@@ -136,6 +136,17 @@ export interface AdvanceResolveResult {
 
 /** 历练会话声明的时间窗边界:前后各放宽一小时(坏档/偏钟在此收口;1.77.0 从 ±1 天收紧) */
 const SESSION_CLAIM_WINDOW_MS = 3_600_000
+/**
+ * 会话起止时间允许落在的范围:最长一程(远涉星野 16h)× 1.5(灵兽行程加成上界 1.1 + 余量)。
+ *
+ * 1.77.0 把整个会话的时间戳都用 ±1h 卡,但 endsAt 是**结束**时刻 —— 长程模式本就
+ * 落在 2~16 小时后,开练第一拍起就被整条判非法丢掉,服务端云档里没有会话,
+ * `advanceExplorationStep` 见 `!s` 直接 return,战斗永不开打(登录态本地 exploration:false
+ * 又不兜底) —— 玩家看到的就是「历练进度/战报完全不动」。这里让起止按「一程的长度」校验,
+ * 节拍锚 nextBattleAt 仍卡 ±1h(它必须在当下附近,否则战斗节拍失效)。
+ */
+const SESSION_DURATION_MAX_MS =
+  Math.max(...Object.values(EXPLORE_MODES).map(m => m.durationSec)) * 1000 * 1.5
 
 /**
  * 历练会话声明:非法形状/越界时间返回 undefined(整条忽略,null 表示明确清空会话)。
@@ -150,14 +161,15 @@ function sanitizeSessionClaim(v: unknown, now: number): AdventureSession | null 
   if (typeof mode !== 'string' || !(mode in EXPLORE_MODES)) return undefined
   const lo = now - SESSION_CLAIM_WINDOW_MS
   const hi = now + SESSION_CLAIM_WINDOW_MS
-  const stamps: readonly number[] = [
-    numOf(v.startedAt),
-    numOf(v.endsAt),
-    numOf(v.nextBattleAt)
-  ]
-  for (const val of stamps) {
-    if (val < lo || val > hi) return undefined
-  }
+  const startedAt = numOf(v.startedAt)
+  const endsAt = numOf(v.endsAt)
+  const nextBattleAt = numOf(v.nextBattleAt)
+  // 节拍锚必须在当下附近(坏档把下一战拨到几天外会让战斗永不动);起止按最长一程放宽
+  if (nextBattleAt < lo || nextBattleAt > hi) return undefined
+  if (startedAt < now - SESSION_DURATION_MAX_MS || startedAt > hi) return undefined
+  if (endsAt < lo || endsAt > now + SESSION_DURATION_MAX_MS) return undefined
+  // 结束不得早于开始(否则会话当场算完,白开一程)
+  if (endsAt <= startedAt) return undefined
   const counter = (key: string): number => Math.max(0, Math.trunc(numOf(v[key])))
   const stone = gnumOf(v.stoneGain)
   const exp = gnumOf(v.expGain)

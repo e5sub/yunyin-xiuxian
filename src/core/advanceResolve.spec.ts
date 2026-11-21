@@ -146,6 +146,37 @@ describe('推进无头结算 · 会话声明', () => {
     expect(adv, '战报入档(recordBattle 随分片持久化)').toHaveProperty('lastBattle')
   })
 
+  it('长程模式(涉险/长线/彻夜/远涉):endsAt 在数小时外也照采信、照开打(1.79.3)', async () => {
+    mockRand = 0.99
+    const now = Date.now()
+    const regionId = REGIONS[0]!.id
+    // 四种模式的时长,endsAt 全部越过旧的 ±1h 窗;下一战已到期
+    for (const [mode, durMs] of [
+      ['risky', 7_200_000],
+      ['prolonged', 14_400_000],
+      ['marathon', 28_800_000],
+      ['deepExpedition', 57_600_000]
+    ] as const) {
+      const session = {
+        regionId,
+        mode,
+        startedAt: now,
+        endsAt: now + durMs,
+        nextBattleAt: now - 1_000,
+        wins: 0,
+        losses: 0,
+        events: 0,
+        stoneGain: { m: 0, e: 0 },
+        expGain: { m: 0, e: 0 },
+        itemGain: 0
+      }
+      const resolved = await resolveAdvanceFromSlices(save(), { session }, { dtSec: 10, offline: false })
+      expect(resolved, `${mode} 不该被判越界`).not.toBeNull()
+      const adv = resolved!.patches.adventure as Record<string, unknown> | undefined
+      expect(adv, `${mode} 会话应被采信并开打`).toHaveProperty('lastBattle')
+    }
+  })
+
   it('形状合法但时间越界(endsAt 在一周之外):整条忽略', async () => {
     const now = Date.now()
     const resolved = await resolveAdvanceFromSlices(

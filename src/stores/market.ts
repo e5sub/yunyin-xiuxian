@@ -12,7 +12,7 @@ import { useResourcesStore } from '@/stores/resources'
 import { useInventoryStore } from '@/stores/inventory'
 import { useLoreStore } from '@/stores/lore'
 import { collect } from '@/core/progress'
-import { runActionAwait } from '@/core/remoteAction'
+import { reportAction, runActionAwait } from '@/core/remoteAction'
 import { pillDef } from '@/data/pills'
 import { MAX_EQUIP_TIER, equipmentTemplate } from '@/data/equipment'
 import { qualityDef } from '@/data/qualities'
@@ -374,17 +374,25 @@ export const useMarketStore = defineStore(
       return credits
     }
 
+    /*
+     * 坊市卖出(1.79.2):曾经走 economyOp —— 那条路只在 stone_ledger 记一笔进项,
+     * 扣货与入账都留在本地。1.78.0 之后云档不再吃整档上传,服务端那份 resources
+     * 永远不知道货已卖、钱已入,心跳回补丁时本地这一笔就被打回 —— 玩家看到的就是
+     * 「点了售出、货也没了、钱又没了」。改走 reportAction('sell_*'):服务端在云档上
+     * 跑同一份 sellXxx,键级 diff 回传后货与钱一起落库(与已修好的 buy 同一条链)。
+     * economy_claims / stone_ledger 的消费侧对账不再经过这里,但别的 op 仍在用,账表不动。
+     */
     /** 即时售一枚丹药(仅限可炼丹;无丹方的事件丹无价) */
     function sellPill(pillId: string): boolean {
       return sellPillOnce(pillId, true)
     }
 
-    /** 单枚卖出;fireOp=false 供批量走同一笔 op(1.77.0) */
+    /** 单枚卖出;fireOp=false 供批量走同一笔动作 */
     function sellPillOnce(pillId: string, fireOp: boolean): boolean {
       const def = pillDef(pillId)
       const inventory = useInventoryStore()
       if (!def?.recipe?.stoneBase || (inventory.pills[pillId] ?? 0) < 1) return false
-      if (fireOp) void cloudApi.economyOp('market_sell_pill', { pillId, count: 1 }).catch(() => {})
+      if (fireOp) reportAction('sell_pill', { id: pillId })
       inventory.spendPill(pillId, 1)
       useResourcesStore().addStone(pillSellPrice(pillId))
       return true
@@ -398,7 +406,7 @@ export const useMarketStore = defineStore(
     function sellMaterialOnce(major: number, fireOp: boolean): boolean {
       const resources = useResourcesStore()
       if (resources.ore < MARKET_MAT_COUNT) return false
-      if (fireOp) void cloudApi.economyOp('market_sell_material', { count: 1 }).catch(() => {})
+      if (fireOp) reportAction('sell_material')
       resources.spendSmall('ore', MARKET_MAT_COUNT)
       resources.addStone(materialSellPrice(major))
       return true
@@ -412,7 +420,7 @@ export const useMarketStore = defineStore(
     function sellHerbOnce(grade: HerbGrade, fireOp: boolean): boolean {
       const resources = useResourcesStore()
       if (resources.herbOf(grade) < MARKET_MAT_COUNT) return false
-      if (fireOp) void cloudApi.economyOp('market_sell_herb', { grade, count: 1 }).catch(() => {})
+      if (fireOp) reportAction('sell_herb', { grade })
       resources.spendHerb(grade, MARKET_MAT_COUNT)
       resources.addStone(herbSellBatch(grade, usePlayerStore().major))
       return true
@@ -428,7 +436,7 @@ export const useMarketStore = defineStore(
       const before = inventory.pills[pillId] ?? 0
       let n = 0
       while (n < before && sellPillOnce(pillId, false)) n += 1
-      if (n > 0) void cloudApi.economyOp('market_sell_pill', { pillId, count: n }).catch(() => {})
+      if (n > 0) reportAction('sell_pill', { id: pillId, count: n })
       return { count: n, stone: n > 0 ? mulN(pillSellPrice(pillId), n) : gnZero() }
     }
 
@@ -441,7 +449,7 @@ export const useMarketStore = defineStore(
       const lots = Math.floor(resources.herbOf(grade) / MARKET_MAT_COUNT)
       let n = 0
       while (n < lots && sellHerbOnce(grade, false)) n += 1
-      if (n > 0) void cloudApi.economyOp('market_sell_herb', { grade, count: n }).catch(() => {})
+      if (n > 0) reportAction('sell_all_herb', { grade, count: n })
       return n
     }
 
@@ -450,7 +458,7 @@ export const useMarketStore = defineStore(
       const lots = Math.floor(resources.ore / MARKET_MAT_COUNT)
       let n = 0
       while (n < lots && sellMaterialOnce(major, false)) n += 1
-      if (n > 0) void cloudApi.economyOp('market_sell_material', { count: n }).catch(() => {})
+      if (n > 0) reportAction('sell_all_ore', { count: n })
       return n
     }
 

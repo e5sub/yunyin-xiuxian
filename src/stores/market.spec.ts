@@ -1,5 +1,7 @@
 /** 坊市 store —— 购买路径与坏档韧性 */
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { cloudApi } from '@/services/cloud'
+import { useAuthStore } from '@/stores/auth'
 import { createPinia, setActivePinia } from 'pinia'
 import { MARKET_MAT_COUNT, MARKET_CONSIGN_SLOTS, MARKET_REFRESH_SECONDS, type MarketSlot } from '@/data/market'
 import { pillSellPrice } from '@/core/marketService'
@@ -698,6 +700,38 @@ describe('即时售材/售草结算精额守恒', () => {
     expect(market.sellMaterial(0)).toBe(true)
     expect(res.ore).toBe(MARKET_MAT_COUNT)
     expect(toNum(res.spiritStone)).toBeCloseTo(toNum(materialSellPrice(0)), 6)
+  })
+
+  it('卖出走服务端动作上报,不再只记进项台账(1.79.2)', () => {
+    const market = useMarketStore()
+    const res = useResourcesStore()
+    const auth = useAuthStore()
+    // 让 reportAction 以为在浏览器里且已登录:它只在此时才真的发出上报
+    vi.stubGlobal('window', {})
+    auth.token = 'sell-probe'
+    auth.userId = 1
+    const econSpy = vi.spyOn(cloudApi, 'economyOp').mockResolvedValue({ ok: true })
+    const actionSpy = vi.spyOn(cloudApi, 'actionOp').mockResolvedValue({ ok: true, slices: {} })
+    try {
+      res.ore = MARKET_MAT_COUNT * 3
+      res.herbByGrade[1] = MARKET_MAT_COUNT * 2
+      res.spiritStone = gn(0)
+
+      expect(market.sellMaterial(0)).toBe(true)
+      expect(market.sellHerb(1)).toBe(true)
+      expect(market.sellOreAll(0)).toBe(2)
+
+      expect(actionSpy).toHaveBeenCalledWith(expect.objectContaining({ kind: 'sell_material' }))
+      expect(actionSpy).toHaveBeenCalledWith(expect.objectContaining({ kind: 'sell_herb', grade: 1 }))
+      expect(actionSpy).toHaveBeenCalledWith(expect.objectContaining({ kind: 'sell_all_ore', count: 2 }))
+      expect(econSpy, '旧路只记 stone_ledger,云档不知货已卖,1.78 后必然回滚').not.toHaveBeenCalled()
+    } finally {
+      econSpy.mockRestore()
+      actionSpy.mockRestore()
+      auth.token = ''
+      auth.userId = 0
+      vi.unstubAllGlobals()
+    }
   })
 
   /** 议题 #130:「去坊市续草」指方子要的那一品,不是有草就行 */
