@@ -677,15 +677,20 @@ bossRouter.post('/strike', requireAuth, (req, res) => {
 bossRouter.post('/claim', requireAuth, (req, res) => {
   void withKeyLock(`boss_loot:${req.user!.id}`, async () => {
     const loot = await lootOf(req.user!.id)
-    if (loot !== undefined) await run('DELETE FROM boss_loot WHERE user_id = ?', [req.user!.id])
     const pending = { stone: loot?.stone_m ?? 0, herb: loot?.herb ?? 0, equip: (loot?.equip ?? 0) === 1 }
     if (pending.stone > 0 || pending.herb > 0) {
       // 折算层级与客户端同源:major 取云档,stoneByTier 走 vendor 公式层
-      await creditEventReward(
+      const credited = await creditEventReward(
         req.user!.id,
         { stone: pending.stone > 0 ? pending.stone : undefined, herb: pending.herb > 0 ? pending.herb : undefined },
         await tierOfSave(req.user!.id)
-      ).catch(() => undefined)
+      ).catch(() => false)
+      // 落档成功才清台账(1.79.15):此前先删后发,creditGains 失败(档偶发不可读/写库抖动)
+      // 那笔就永久蒸发;落档失败保留台账,下次领取重试 —— 客户端本地乐观加的那份会被
+      // 心跳顶回,云档没进账前不会固化,不构成双份。
+      if (credited && loot !== undefined) await run('DELETE FROM boss_loot WHERE user_id = ?', [req.user!.id])
+    } else if (loot !== undefined) {
+      await run('DELETE FROM boss_loot WHERE user_id = ?', [req.user!.id])
     }
     return pending
   })

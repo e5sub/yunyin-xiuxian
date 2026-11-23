@@ -19,6 +19,7 @@ import { activeEvent, addEventProgress, claimEvent, eventProgress, leaderboardRa
 import { castLine, claimBasket, drawStar, leisureEnabled } from './leisureCore.js'
 import { dispatchTargets, isApprenticeArch } from './apprenticeCore.js'
 import { creditEventReward } from './saveCredit.js'
+import { withKeyLock } from './mutex.js'
 
 export const autoOpsRouter = express.Router()
 
@@ -205,7 +206,13 @@ autoOpsRouter.put('/', requireAuth, (req: Request, res: Response) => {
  * 之所以还回这三列:老客户端会读,给个 0 比给 undefined 安全。
  */
 autoOpsRouter.post('/collect', requireAuth, (req: Request, res: Response) => {
-  void (async () => {
+  /*
+   * 领取须串行(1.79.15):「读台账 → 落档 → 清零」三步之间有 await,两个并发请求
+   * (连点领取/双标签页)会各读到同一份 ev 台账、各落一次档 —— 1.79.12 前这不是钱
+   * (客户端本地加的那份会被心跳顶回),现在落档即真金。锁序 autoops:<uid> → save:<uid>
+   * 单向(creditEventReward 内部拿 save 锁),与 boss /claim 的 boss_loot:<uid> 同款。
+   */
+  void withKeyLock(`autoops:${req.user!.id}`, async () => {
     const r = await rowOf(req.user!.id)
     const pending = ledgerOf(r)
     const events = eventLedgerOf(r)
@@ -235,7 +242,11 @@ autoOpsRouter.post('/collect', requireAuth, (req: Request, res: Response) => {
       )
     }
     res.json({ collected: { ...pending, events }, skip })
-  })().catch(() => res.status(500).json({ error: '服务器异常' }))
+  })
+    .then(collected => {
+      res.json(collected)
+    })
+    .catch(() => res.status(500).json({ error: '服务器异常' }))
 })
 
 /* ---------------- 离线托管任务 ---------------- */
