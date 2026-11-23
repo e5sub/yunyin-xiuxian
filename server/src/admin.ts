@@ -10,7 +10,7 @@ import { setConfig } from './config.js'
 import { requireAdmin, verifyPassword } from './auth.js'
 import { onlineCount } from './ws.js'
 import { bodyStr, rateLimit } from './rateLimit.js'
-import { syncProfileFromData } from './routes/save.js'
+import { syncProfileFromData, backupBeforeOverwrite } from './routes/save.js'
 import { resetEquipStatesFromData } from './equipLedger.js'
 import { reseedLootFromData } from './lootLedger.js'
 import { resetLevelStatesFromData } from './levelLedger.js'
@@ -826,6 +826,142 @@ gmRouter.get('/orders', requireAdmin, (req: Request, res: Response) => {
         createdAt: r.created_at,
         paidAt: r.paid_at ?? 0
       }))
+    })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})
+
+/* ---------------- 灵石审计与削减(1.79.15) ----------------
+ *
+ * 背景:1.79.11→1.79.12 窗口期悬赏装备复活可反复交割白拿赏金(真印钞链),
+ * 刷出的灵石已固化进云档;stone_ledger 落档即清页,发放无审计痕迹,无法精确追回。
+ * 故给 GM 两件工具:先审计分布(只读),再按「阈值 + 超出部分保留比例」收回。
+ * 削减走 backupBeforeOverwrite(save_history 自动留档),误操作可单玩家回档。
+ */
+
+/** GNum {m,e}=m×10^e → 数值;e 异常大时按 Infinity 兜,调用方钳 */
+function stoneValueOf(g: unknown): number {
+  if (typeof g !== 'object' || g === null) return 0
+  const r = g as Record<string, unknown>
+  const m = typeof r.m === 'number' && Number.isFinite(r.m) ? r.m : 0
+  const e = typeof r.e === 'number' && Number.isFinite(r.e) ? Math.max(0, Math.min(Math.trunc(r.e), 300)) : 0
+  return m * Math.pow(10, e)
+}
+
+/** 数值 → 规范 GNum(m∈[1,10));非正数按 {m:0,e:0} */
+function stoneToGNum(v: number): { m: number; e: number } {
+  if (!Number.isFinite(v) || v <= 0) return { m: 0, e: 0 }
+  const e = Math.floor(Math.log10(v))
+  const m = v / Math.pow(10, e)
+  return { m: Number(m.toFixed(6)), e }
+}
+
+/** 灵石分布审计(只读):总量 / TOP / 分位。SQL 侧 json_extract,不整档入内存 */
+gmRouter.get('/economy/stone-audit', requireAdmin, (_req: Request, res: Response) => {
+  void (async () => {
+    const rows = await all<{ user_id: number; username: string; m: number | null; e: number | null }>(
+      `SELECT s.user_id, u.username,
+              json_extract(s.data, '$.resources.spiritStone.m') AS m,
+              json_extract(s.data, '$.resources.spiritStone.e') AS e
+       FROM saves s JOIN users u ON u.id = s.user_id`
+    )
+    const stones = rows
+      .map(r => ({ userId: r.user_id, username: r.username, stone: stoneValueOf({ m: r.m, e: r.e }) }))
+      .sort((a, b) => b.stone - a.stone)
+    const total = stones.reduce((s, x) => s + x.stone, 0)
+    const q = (p: number): number => (stones.length === 0 ? 0 : stones[Math.min(stones.length - 1, Math.floor(p * stones.length))]!.stone)
+    res.json({
+      players: stones.length,
+      totalStone: stoneToGNum(total),
+      top: stones.slice(0, 20),
+      quantiles: {
+        p50: stoneToGNum(q(0.5)),
+        p90: stoneToGNum(q(0.9)),
+        p99: stoneToGNum(q(0.99))
+      }
+    })
+  })().catch(() => {
+    res.status(500).json({ error: '服务器异常' })
+  })
+})
+
+/**
+ * 灵石削减:dryRun 预览受影响名单与收回量;apply 逐人「备份 → 改 → 写回」。
+ * 规则:超出阈值(above)的部分只保留 ratio,阈值以下不动 —— 刷得越狠收得越多,正常攒的不伤。
+ */
+gmRouter.post('/economy/stone-shrink', requireAdmin, (req: Request, res: Response) => {
+  void (async () => {
+    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
+    // above 用科学计数或普通数字(灵石已是百万亿量级,JSON 数字足够)
+    const above = Number(body.above)
+    const ratio = Number(body.ratio)
+    const dryRun = body.dryRun !== false
+    if (!Number.isFinite(above) || above <= 0) {
+      res.status(400).json({ error: 'above 须为正数(灵石阈值)' })
+      return
+    }
+    if (!Number.isFinite(ratio) || ratio < 0 || ratio >= 1) {
+      res.status(400).json({ error: 'ratio 须在 [0,1)(超出部分保留比例)' })
+      return
+    }
+    const rows = await all<{ user_id: number; username: string; m: number | null; e: number | null }>(
+      `SELECT s.user_id, u.username,
+              json_extract(s.data, '$.resources.spiritStone.m') AS m,
+              json_extract(s.data, '$.resources.spiritStone.e') AS e
+       FROM saves s JOIN users u ON u.id = s.user_id`
+    )
+    const affected = rows
+      .map(r => {
+        const cur = stoneValueOf({ m: r.m, e: r.e })
+        const next = Math.min(above, cur) + Math.max(0, cur - above) * ratio
+        return { userId: r.user_id, username: r.username, cur, next, recover: cur - next }
+      })
+      .filter(x => x.recover > 0)
+      .sort((a, b) => b.recover - a.recover)
+    if (dryRun) {
+      res.json({
+        dryRun: true,
+        affectedCount: affected.length,
+        recovered: stoneToGNum(affected.reduce((s, x) => s + x.recover, 0)),
+        sample: affected.slice(0, 20).map(x => ({ userId: x.userId, username: x.username, from: stoneToGNum(x.cur), to: stoneToGNum(x.next) }))
+      })
+      return
+    }
+    let done = 0
+    for (const x of affected) {
+      await withKeyLock(`save:${x.userId}`, async () => {
+        const row = await get<{ version: number; data: string; updated_at: number; started: number }>(
+          'SELECT version, data, updated_at, started FROM saves WHERE user_id = ?',
+          [x.userId]
+        )
+        if (row === undefined) return
+        let data: Record<string, unknown>
+        try {
+          data = JSON.parse(row.data) as Record<string, unknown>
+        } catch {
+          return
+        }
+        const resources = typeof data.resources === 'object' && data.resources !== null ? (data.resources as Record<string, unknown>) : null
+        if (resources === null) return
+        resources.spiritStone = stoneToGNum(x.next)
+        await backupBeforeOverwrite(x.userId, { version: row.version, data: row.data, updated_at: row.updated_at })
+        await upsertByPk('saves', {
+          user_id: x.userId,
+          version: row.version,
+          data: JSON.stringify(data),
+          started: row.started,
+          updated_at: row.updated_at
+        })
+        done += 1
+      })
+    }
+    res.json({
+      dryRun: false,
+      affectedCount: affected.length,
+      done,
+      recovered: stoneToGNum(affected.reduce((s, x) => s + x.recover, 0)),
+      note: '每人原档已留 save_history,误操作可在存档管理里单玩家回档'
     })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
