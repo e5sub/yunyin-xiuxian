@@ -33,6 +33,17 @@ import { mkdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { lateSlices, seedSave } from './lib/saveFixture.mjs'
+import { requireDist } from './lib/requireDist.mjs'
+
+/**
+ * 产物过期就别往下跑。
+ *
+ * 这份脚本读的是 `dist/` 的构建产物;改了 `src/` 却没重新 build 时,
+ * 它量到的是旧代码,而读数看起来完全正常 —— 那比报错更糟。
+ * 与 aria-check / focus-check / multitab-check 同一道闸。
+ */
+if (!requireDist('二步确认几何')) process.exit(1)
+
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const INDEX = `file://${join(ROOT, 'dist/index.html')}`
@@ -1088,13 +1099,25 @@ async function runRecruitFull() {
   }
 }
 
-await runBuild(375, 1000)
-await runBuild(320, 1000)
-await runBuild(390, 1000)
-await runTouchTargets()
-await runCorruptNotice()
-await runRecruitFull()
-await browser.close()
+/*
+ * 整段包 try/catch/finally —— 与 edge-states / modal-patrol / 法球那几份同一理由:
+ * 这一轮要跑七档宽度 + 后期档十页 + 两处异常路径,几分钟起步;
+ * 任何一处 evaluate 超时都会让异常冒到顶层,而汇总打在 `browser.close()` 之后,
+ * `failures` 里已攒下的读数一条也出不来。崩溃本身记成一条失败,不吞掉。
+ */
+try {
+  await runBuild(375, 1000)
+  await runBuild(320, 1000)
+  await runBuild(390, 1000)
+  await runTouchTargets()
+  await runCorruptNotice()
+  await runRecruitFull()
+} catch (err) {
+  // 中途崩了:记成一条失败与其余一起报 —— 不吞掉它,也不让它盖掉已经查出来的
+  failures.push(`二步确认几何中途中断:${err instanceof Error ? err.message.split('\n')[0] : String(err)}`)
+} finally {
+  await browser.close().catch(() => {})
+}
 
 if (failures.length) {
   console.error('\n装备详情页脚几何:以下地方不对')

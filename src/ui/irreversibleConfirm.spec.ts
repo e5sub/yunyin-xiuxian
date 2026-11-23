@@ -70,7 +70,9 @@ describe('不可逆确认的两次点击各写什么', () => {
   it('开炉的「炼满」先摆总账,第二步才真开炉', () => {
     const src = read('components/inventory/BrewingDialog.vue')
     expect(src, '第一步只立起确认态').toContain('@click="pillFullId = r.def.id"')
-    expect(src, '第二步才走 runCraftFull').toContain('runCraftFull(r.def.id, r.plan.rounds)')
+    // 第二步开的是 plan.batch(封顶 CRAFT_BATCH_MAX),不是 plan.rounds ——
+    // rounds 是「材料够多少炉」,坏档能给到 2.5e11,照它开一次要跑几十分钟
+    expect(src, '第二步才走 runCraftFull').toContain('runCraftFull(r.def.id, r.plan.batch)')
     expect(src, '取消词与同族一致').toContain('再想想')
   })
 
@@ -155,10 +157,40 @@ describe('不可逆确认的两次点击各写什么', () => {
     ['components/equipment/UpgradePanel.vue', '连 强'],
     ['components/dongfu/VeinInvestCard.vue', '连 投'],
     ['components/inventory/ArtifactPanel.vue', '连 炼'],
+    /*
+     * 开炉这一步现在分两种写法(见下面那条):料在封顶内是「确认炼满」,
+     * 超了是「接连开炉 ×N」—— 后者不写「炼满」,因为那一下并没有把料炼完。
+     * 这里只钉「复述动作」这一族的存在,具体分叉由下一条管。
+     */
     ['components/inventory/BrewingDialog.vue', '开 炉 ×'],
     ['components/inventory/DismantleDialog.vue', '清理化尘'],
     ['views/SoulsView.vue', '清理散置']
   ]
+
+  /**
+   * 开炉那一步的动作词按实情分叉 —— 判据钉住这个分叉本身。
+   *
+   * 「炼 满」承诺的是「把料炼完」。加了 CRAFT_BATCH_MAX 之后,料超过 500 炉时那一下
+   * 只开 500 炉,而上一行正写着「可炼 25000 炉」—— 名不副实。故:
+   *   · 料在封顶内 → 「炼 满 ×N」/「确认炼满」(确实炼完)
+   *   · 料超封顶   → 「一 炉 ×N」/「接连开炉 ×N」(只复述这一下做多少)
+   * 故障注入:把两处三元去掉、恒写「炼 满」,本条红。
+   */
+  it('开炉的动作词按「这一下能否炼完」分叉,不写名不副实的「炼满」', () => {
+    const src = read('components/inventory/BrewingDialog.vue')
+    expect(src, '第一步的动作词该按 batch < rounds 分叉').toContain('r.plan.batch < r.plan.rounds')
+    expect(src, '料够炼完时仍要写「炼 满」').toContain('`炼 满 ×${r.plan.batch}`')
+    /*
+     * 料炼不完时用规范里的复述动作「开 炉 ×N」(AGENTS.md 不可逆操作那族),
+     * 不自造同义词 —— 评审指出过,我先前写的「一 炉」「接连开炉」不在规范内。
+     */
+    expect(src, '料炼不完时该用规范动作「开 炉 ×N」').toContain('`开 炉 ×${r.plan.batch}`')
+    // 只查按钮正文:注释里提到旧写法是说明来历,不算违规
+    const buttons = [...src.matchAll(/>([^<>]*)<\/button>/g)].map(m => m[1]!).join('\n')
+    expect(buttons, '不许自造同义动作词').not.toContain('一 炉')
+    expect(buttons, '不许自造同义动作词').not.toContain('接连开炉')
+    expect(src, '确认态同样按分叉写').toContain("'确认炼满'")
+  })
 
   it('复述动作族的六个落点都用复述写法,且与「再想想」成对', () => {
     for (const [rel, word] of BATCH_FAMILY) {

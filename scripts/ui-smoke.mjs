@@ -12,11 +12,22 @@
  *
  * --late 一轮约十分钟:终局按钮会真跑模拟(突破推演 / 远征预估 / 挑战书定价)。
  */
-import { classifySmoke, namePattern, SMOKE_ALLOWLIST } from './smoke-classify.ts'
+import { classifySmoke, isSelectedTabState, namePattern, SMOKE_ALLOWLIST } from './smoke-classify.ts'
 import { chromium } from 'playwright'
 import { lateSlices, seedSave } from './lib/saveFixture.mjs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { requireDist } from './lib/requireDist.mjs'
+
+/**
+ * 产物过期就别往下跑。
+ *
+ * 这份脚本读的是 `dist/` 的构建产物;改了 `src/` 却没重新 build 时,
+ * 它量到的是旧代码,而读数看起来完全正常 —— 那比报错更糟。
+ * 与 aria-check / focus-check / multitab-check 同一道闸。
+ */
+if (!requireDist('界面冒烟')) process.exit(1)
+
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const INDEX = `file://${join(ROOT, 'dist/index.html')}`
@@ -100,9 +111,83 @@ const dead = []
 async function cleanRetry(route, label) {
   await page.goto(INDEX + '#' + route, { waitUntil: 'load' })
   await page.waitForTimeout(700)
-  const b = page.getByRole('button', { name: namePattern(label) }).first()
-  if (!(await b.count())) return null
-  if (!(await b.isVisible().catch(() => false))) return null
+  /*
+   * 定位按钮时**也要认 role="tab"**。
+   *
+   * 原先只 `getByRole('button', …)`,而页签在 DOM 上是 `<button role="tab">` ——
+   * `getByRole('button')` 按 ARIA 角色匹配,认不到它们。于是「界域」「名号」「成就」
+   * 这三个页签每次都被判成「干净态无法单独复现」,读数照打、一条也不判失败,
+   * 而它们其实从未被单独验证过 —— 那三条读数是假的。
+   *
+   * 这里改用「按名找所有 button,再按文本筛」,与 ARIA 角色无关:
+   * 页签、普通钮、图标钮一视同仁。
+   */
+  /*
+   * 正则要去掉首尾锚点。
+   *
+   * `namePattern` 返回的是 `^界域$` 这种**整串锚定**的式子 —— 那是给
+   * `getByRole({ name })` 用的(它按可访问名整串匹配)。而 `hasText` 是
+   * **子串**语义:内部拿元素的规范化文本去 `RegExp.test`,按钮文本常带空格
+   * 或内嵌图标,`^…$` 于是恒不匹配(实测 `^界\s*域$` 对「界域」页签 count 为 0,
+   * 去掉锚点后为 1)。
+   *
+   * 故这里只取 namePattern 的骨架(数字段松开、字间空格容错),锚点交给外围。
+   */
+  /*
+   * 用 `namePattern` 的**整串**式子,但去掉 `^`/`$` 之后交给一个自定义筛选:
+   * `hasText` 是子串语义,会命中「…界域名号…」这种更长的按钮;
+   * `label` 本身取自按钮的 innerText,是完整正文,故要求整串吻合才对得上号。
+   *
+   * 做法:`matches` 先按名称骨架粗筛(快),再逐个比对 innerText 是否整串吻合
+   * (准)。数字段与字间空格仍按 `namePattern` 的规则容错。
+   */
+  const whole = namePattern(label)
+  const re = new RegExp(whole.source.replace(/^\^|\$$/g, ''))
+  /*
+   * **先筛出可见项,再取第一个** —— 顺序不能反。
+   *
+   * 原先直接 `.filter({ hasText: re }).first()`:页面上常有同名但隐藏的按钮
+   * (折叠区、未激活的分页、aria-hidden 的装饰层),`.first()` 可能拿到隐藏那个,
+   * 于是要么在 `isVisible()` 处判成「无法复现」、要么更糟 ——
+   * 拿到一个隐藏的**已选中期签**,被当成幂等报出去,而真正该点的那个可见控件
+   * 一次都没验过(评审指出)。
+   *
+   * 可见性判据与后面那句 `isVisible()` 同源,不另立一套。
+   */
+  const matches = page.locator('button').filter({ hasText: re })
+  const total = await matches.count()
+  if (!total) return null
+  let b = null
+  for (let i = 0; i < total; i += 1) {
+    const cand = matches.nth(i)
+    /*
+     * 两个条件都要:可见、且正文**整串**吻合。
+     *
+     * 只按子串筛会命中更长的按钮(「界域」也会命中「界域名号」那类),
+     * `.first()` 于是可能点到另一个控件,把结论记到请求的那个标签名下 ——
+     * 报表看起来一切正常,而请求的那个控件其实没被点过。
+     */
+    const text = ((await cand.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim()
+    if (!whole.test(text)) continue
+    if (!(await cand.isVisible().catch(() => false))) continue
+    b = cand
+    break
+  }
+  // 一个可见的都没有 —— 判不了,不判失败
+  if (!b) return null
+  /*
+   * 点的是当前已选中的页签 —— 幂等,不判失败。
+   *
+   * 页签点自己不会有任何变化(它本来就是选中态)。原先这类只能进白名单,
+   * 而白名单是按「路径 + 标签」写死的:`/codex` 的「界域」与 `/collection` 的
+   * 「成就」都是各自页面的默认页签、一次都没进白名单,于是每次都被判死按钮。
+   * 按 aria-selected 认状态,路径一改也不会漏。
+   */
+  const tabState = await b
+    .evaluate(el => ({ role: el.getAttribute('role'), selected: el.getAttribute('aria-selected') }))
+    .catch(() => null)
+  // 判据本身在 smoke-classify.ts 里(可单测);这里只把两个属性取出来传进去
+  if (tabState && isSelectedTabState(tabState.role, tabState.selected)) return 'selected-tab'
   const before = await fingerprint()
   /**
    * 拒因型按钮(如「出发」在闭关中/远征在途时)点下去只会弹一条 toast、页面别处不动。
@@ -128,17 +213,222 @@ async function cleanRetry(route, label) {
   if (sawToast) return true
   return (await fingerprint()) !== before
 }
+/**
+ * 弹窗内控件的干净重试:重新导航 → 重放「点开那扇窗」那一步 → 在窗内找目标按钮。
+ *
+ * 原先弹窗内控件直接记成「干净态无法单独复现」——那是**没法重试**被写成了
+ * **重试失败**。其实重放是可行的:打开这扇窗的入口就是主循环刚点过的那颗按钮,
+ * 它的正文(labels 里那串)已经拿到了。把 opener 传下来即可。
+ *
+ * 仍需返回 `'modal-unreachable'` 的情形:
+ *   · 没有 opener(入口未知,比如弹窗是引擎自己弹的)
+ *   · 重放时那个入口按钮找不到了(前面点的按钮改过页面状态)
+ *   · 重放后没有弹窗出现
+ * 这三种是**真的没法重试**,如实标注,不冒充「找不到目标按钮」。
+ *
+ * @returns true 窗内点它有变化 / false 窗内点它也无变化 / 'modal-unreachable' 重放不成
+ */
+async function modalRetry(route, opener, label) {
+  if (!opener) return 'modal-unreachable'
+  await page.goto(INDEX + '#' + route, { waitUntil: 'load' })
+  await page
+    .waitForFunction(() => !!document.querySelector('main h1, main h2'), null, { timeout: 4000 })
+    .catch(() => {})
+  await page.waitForTimeout(600)
+  const entryRe = new RegExp(namePattern(opener).source.replace(/^\^|\$$/g, ''))
+  const entries = page.locator('main button').filter({ hasText: entryRe })
+  let opened = false
+  for (let i = 0; i < (await entries.count()); i += 1) {
+    const cand = entries.nth(i)
+    const text = ((await cand.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim()
+    if (!namePattern(opener).test(text)) continue
+    if (!(await cand.isVisible().catch(() => false))) continue
+    const ok = await cand
+      .click({ timeout: 800 })
+      .then(() => true)
+      .catch(() => false)
+    if (!ok) continue
+    // 等面板真的挂上(与 modal-patrol 同一口径:不靠固定睡眠)
+    opened = await page
+      .waitForFunction(() => !!document.querySelector('.modal-panel'), null, { timeout: 4000 })
+      .then(() => true)
+      .catch(() => false)
+    if (opened) break
+  }
+  if (!opened) return 'modal-unreachable'
+
+  // 窗内找目标按钮:同样要求整串吻合 + 可见
+  const whole = namePattern(label)
+  const re = new RegExp(whole.source.replace(/^\^|\$$/g, ''))
+  const matches = page.locator('.modal-panel button').filter({ hasText: re })
+  const total = await matches.count()
+  let b = null
+  for (let i = 0; i < total; i += 1) {
+    const cand = matches.nth(i)
+    const text = ((await cand.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim()
+    if (!whole.test(text)) continue
+    if (!(await cand.isVisible().catch(() => false))) continue
+    b = cand
+    break
+  }
+  // 重放成了、窗内却没有这个按钮 —— 那是真问题,交给分类器判(返回 false → dead)
+  if (!b) return false
+  // 窗内的页签同理:点已选中的那个本无变化
+  const tabState = await b
+    .evaluate(el => ({ role: el.getAttribute('role'), selected: el.getAttribute('aria-selected') }))
+    .catch(() => null)
+  if (tabState && isSelectedTabState(tabState.role, tabState.selected)) return 'selected-tab'
+  if (await b.isDisabled().catch(() => false)) return false
+  /*
+   * 重放时页面可能已处在「点了也没用」的状态 —— 那不是死按钮。
+   *
+   * 实测:主循环点「深入探寻」真的出发了,存档里 `adventure.session` 从此为真;
+   * `modalRetry` 重放那一步时 `startExploration` 走「历练在途」分支(return false,
+   * 带 toast 拒因),弹窗不关、界面不变 —— 六档历练模式全被记成死按钮。
+   * 那不是缺陷:按钮在**可出发的状态下**是好的,重放时状态已经变了。
+   * 先把这三个互斥状态读出来,处在其中就如实归因为 `'state-dependent'`。
+   */
+  const before = await fingerprint()
+  const ok = await b
+    .click({ timeout: 800 })
+    .then(() => true)
+    .catch(() => false)
+  if (!ok) return false
+  /*
+   * 轮询放宽到 2 秒(原 720ms)。
+   *
+   * `startExploration` 的拒因 toast 在「历练在途」分支同步弹,但重放后页面刚挂载、
+   * 引擎心跳还在跑,实测 720ms 有时采不到 —— 采不到就落到指纹比较,
+   * 而那时界面确实没变,于是又被记成死按钮。
+   * 拒因是这个分支唯一可靠的证据,值得多等一会儿。
+   */
+  let sawToast = false
+  const toastDeadline = Date.now() + 2000
+  while (Date.now() < toastDeadline && !sawToast) {
+    sawToast = await page.evaluate(() => document.querySelectorAll('[class*=toast]').length > 0)
+    if (!sawToast) await page.waitForTimeout(80)
+  }
+  await settle()
+  if (sawToast) {
+    /*
+     * 有 toast 也要分清是哪一种回执:
+     *   · 拒因(闭关中/远征在途/身在秘境/历练在途)→ 状态门控,归读数
+     *   · 别的 toast(获得了什么、提示了什么)→ 控件确实有反应,也算通过
+     * 前者不是「功能正常」,而是「这一刻不允许」——归因要分开。
+     */
+    const toastText = await page
+      .evaluate(() => [...document.querySelectorAll('[class*=toast]')].map(t => t.textContent || '').join(' '))
+      .catch(() => '')
+    if (BUSY_WORDS.some(w => toastText.includes(w))) return 'state-dependent'
+    return true
+  }
+  if ((await fingerprint()) !== before) return true
+  const busy = await readBusyState()
+  /*
+   * 点了、没 toast、界面也没变 —— 分两种:
+   *
+   *   · 页面此刻正处在「互斥在途」状态,而控件**自己**就是那类入口
+   *     → `'state-dependent'`(按钮在可出发时是好的)
+   *   · 其余(页面不忙,或控件跟这些状态无关)
+   *     → `false`,真死控件
+   *
+   * 判「控件是否与在途状态有关」不能只看页面是否忙 —— 那会把**无关**的死控件
+   * 一并放过(评审指出)。故再加一条:控件所在的这扇窗里出现了「出发/远征/秘境」
+   * 这类动作词,才算与在途互斥相关。
+   */
+  /*
+   * 判「这一扇窗是不是在途类的动作窗」—— 用**控件自己的正文**判,不读面板全文。
+   *
+   * 实测面板的 innerText 在这一刻取不到(点击后可能已开始离场),
+   * 读面板会让门控恒失效。控件正文是现成的,也是更贴切的判据:
+   * 它在「出发/历练/远征/秘境/闭关」这类动作名下,才与在途互斥相关。
+   */
+  if (!busy || busy.kind === 'none') return false
+  const gateWords = ['出发', '历练', '远征', '秘境', '闭关', '探寻', '游历', '涉险', '云游', '问道', '星野']
+  const flat = label.replace(/\s+/g, '')
+  if (!gateWords.some(w => flat.includes(w))) return false
+  /*
+   * 返回**具体**是哪个状态,不只一个笼统的 'state-dependent'。
+   *
+   * 四种状态本来分得清(`readBusyState` 读的是四个不同字段),报表却说同一句
+   * 「已在途/闭关」—— 玩家身在秘境时,读的人会照着去查「在途」而查不到。
+   */
+  return `state-dependent-${busy.kind}`
+}
+
+/**
+ * 四种「这一刻不允许」的拒因 —— 取自 `core/endgameActivity.BUSY_REASON`,与游戏同源。
+ *
+ * 弹窗内控件点了没变化,可能有两种原因,必须分开:
+ *   · 真没反应(死控件)→ 判失败
+ *   · 被互斥状态拒了,但**游戏自己也没静默**(它弹了这条 toast)→ 归读数
+ * 后者的证据就是这四种文案出现在 toast 里。读点前快照不可靠:
+ * 闭关存在 buffs 里、远征存在 endgame.worldRun 里,漏读一个就把该状态下的
+ * 控件全记成死按钮;而无关的死控件又会被那一网打尽、把真缺陷藏起来。
+ */
+const BUSY_WORDS = ['闭关中', '远征在途', '身在秘境', '历练在途']
+
+/**
+ * 读一次「此刻页面处于哪种互斥在途状态」。
+ *
+ * 与 `core/endgameActivity.endgameBusy` 同一组:远征 / 秘境 / 历练在途;
+ * 闭关不在那组里(它由 `earlyGameService.isRetreating` 看 buffs 里的 'retreat')。
+ * 四种全部取齐 —— 少取一个,那个状态下的控件就会被误判成死按钮。
+ *
+ * 读的是**点击之后**的状态:主循环先点了一次,状态可能已经变了
+ * (实测点「深入探寻」就真的出发了),点前拍快照会读到一个已经过时的值。
+ */
+async function readBusyState() {
+  return page
+    .evaluate(() => {
+      const get = n => {
+        const gp = document.querySelector('#app')?.__vue_app__?.config?.globalProperties
+        return (gp?._p ?? gp?.$pinia)?._s?.get(n)
+      }
+      const adv = get('adventure')
+      const cult = get('cultivation')
+      const player = get('player')
+      const endgame = get('endgame')
+      const retreatBuff = (cult?.buffs ?? []).find(b => b?.defId === 'retreat')
+      const kinds = []
+      if (endgame?.worldRun) kinds.push('expedition')
+      if (player?.secretRealm) kinds.push('secretRealm')
+      if (adv?.session) kinds.push('exploration')
+      if (retreatBuff && (retreatBuff.endsAt ?? 0) > Date.now()) kinds.push('retreat')
+      return { kinds, kind: kinds[0] ?? 'none' }
+    })
+    .catch(() => null)
+}
+
 /** 归桶与报告行由共享分类器 classifySmoke 给出,不在此另写 */
 function pushSmokeDecision(dec) {
   if (dec.bucket === 'dead') dead.push(dec.line)
   else silent.push(dec.line)
 }
-async function classifySilent(route, kind, label) {
+async function classifySilent(route, kind, label, opener) {
   const verb = kind === 'modal' ? '弹窗内点' : '点'
   const entry = `${route} ${verb}「${label}」`
   // 白名单项不做干净重试(分类器另核)
-  const clean = SMOKE_ALLOWLIST.includes(entry) ? null : await cleanRetry(route, label)
-  pushSmokeDecision(classifySmoke(route, kind, label, clean, SMOKE_ALLOWLIST))
+  /*
+   * 弹窗内控件走**自己的**重试:`modalRetry` 会重放「点开那扇窗」那一步。
+   *
+   * 页面级的 `cleanRetry` 只做「导航到路由 → 找按钮 → 点 → 比指纹」,
+   * 而弹窗内控件要先点开某一扇触发的窗 —— 那条路永远找不到它,
+   * 于是每个弹窗内控件都被记成「干净态无法单独复现」:
+   * 看起来像「试过了但复现不了」,实际是**根本没试**。
+   *
+   * 重放需要知道是哪扇窗、点哪个入口 —— 那份信息由主循环传进来(`opener`)。
+   * 拿不到 opener(如引擎自己弹的窗)、或重放时入口已不可点,才如实退回
+   * `'modal-unreachable'`;那才是真的没法重试。
+   */
+  const clean = SMOKE_ALLOWLIST.includes(entry)
+    ? null
+    : kind === 'modal'
+      ? await modalRetry(route, opener, label)
+      : await cleanRetry(route, label)
+  pushSmokeDecision(
+    classifySmoke(route, kind, label, kind === 'modal' && clean === null ? 'modal-unreachable' : clean, SMOKE_ALLOWLIST)
+  )
 }
 /** 已成功导航的 href:全站只点一次;失败/被挡的不计入,留给后续路由重试 */
 const navClicked = new Set()
@@ -210,6 +500,28 @@ async function settle() {
 }
 page.on('pageerror', e => errors.push({ where: 'boot', msg: String(e).slice(0, 300) }))
 
+/*
+ * 整段包 try/catch/finally —— 与其余实测脚本同一理由。
+ *
+ * 这份的汇总全部写在 `browser.close()` 之后(点击统计、死按钮清单、运行时异常、
+ * 点击量下限):任何一处 evaluate 超时都会让异常冒到顶层,那四类读数一条也出不来。
+ * 崩溃本身记进 errors,与其余失败并列报出。
+ */
+/*
+ * 计数放在 try 之前:汇总打印在块外,块内声明的 `let` 在块外看不见
+ * (实测包进 try 后立刻 `ReferenceError: clicked is not defined`)。
+ */
+let clicked = 0
+/**
+ * 每页各自点到了几次 —— 只打印进摘要,不设下限。
+ *
+ * 不设下限是有原因的:这条脚本会真的点各种按钮,前序页面的点击会改变后续页的状态。
+ * 实测 /souls 与 /celestial 跑到时已经显示「需真仙境」的锁定形态(main 里只剩 13 个字、
+ * 一个按钮都没有)——那是**脚本自己改出来的状态**,不是页面缺陷,给它们设下限只会误报。
+ * 留着这份读数是为了排查:某页长期 0 次时,人一眼能看出冒烟在那里是空跑的。
+ */
+const clickedPerRoute = new Map()
+try {
 await page.goto(INDEX, { waitUntil: 'load' })
 if (!LATE) {
   await page.getByRole('button', { name: /开\s*始\s*游\s*戏/ }).first().click()
@@ -240,11 +552,30 @@ if (LATE) {
     ['已装备的头冠', '桃木簪'],
     ['轮回世数', '2 世'],
   ]
+  /*
+   * 两页各自**等到该出现的那几项真的出现**,不固定睡 1200ms。
+   *
+   * 原先固定等:实测 `--late` 连跑两次,一次「雾隐长枪没出现」、一次全过 ——
+   * 而单独打开行囊页时三样都在(1200ms 就够)。差别只在于这条脚本此前已经跑过
+   * 一段建号/夹具流程,页面忙闲不同。固定睡眠量「加载中的一瞬」,结果就是看运气:
+   * 它会报一个并不存在的夹具缺陷,而真正的夹具坏了时又可能被同样的运气掩盖。
+   */
+  const waitForAny = async (needles, timeout = 8000) => {
+    try {
+      await page.waitForFunction(
+        ns => ns.some(n => (document.body?.innerText || '').includes(n)),
+        needles,
+        { timeout }
+      )
+    } catch {
+      // 等不到就照实报,由下面的逐项判据点出缺了哪几样
+    }
+  }
   await page.goto(INDEX + '#' + '/', { waitUntil: 'load' })
-  await page.waitForTimeout(1200)
+  await waitForAny(['9.038兆', '2 世'])
   const homeText = await page.evaluate(() => document.body.innerText)
   await page.goto(INDEX + '#' + '/inventory', { waitUntil: 'load' })
-  await page.waitForTimeout(1200)
+  await waitForAny(['雾隐长枪', '桃木簪', '器灵尘 500'])
   const invText = await page.evaluate(() => document.body.innerText)
   const all = homeText + '\n' + invText
   for (const [what, needle] of expectSeen) {
@@ -252,21 +583,11 @@ if (LATE) {
   }
 }
 
-let clicked = 0
-/**
- * 每页各自点到了几次 —— 只打印进摘要,不设下限。
- *
- * 不设下限是有原因的:这条脚本会真的点各种按钮,前序页面的点击会改变后续页的状态。
- * 实测 /souls 与 /celestial 跑到时已经显示「需真仙境」的锁定形态(main 里只剩 13 个字、
- * 一个按钮都没有)——那是**脚本自己改出来的状态**,不是页面缺陷,给它们设下限只会误报。
- * 留着这份读数是为了排查:某页长期 0 次时,人一眼能看出冒烟在那里是空跑的。
- */
-const clickedPerRoute = new Map()
 /**
  * 只点最上层弹窗:每轮重取 z 最高的可见弹窗,走完再 Esc 回下层;按钮打一次性标记,重排/替换不重复点。
  * 固定取第一扇会点到被详情盖住的底层按钮,误报死按钮。
  */
-async function clickInsideModal(route) {
+async function clickInsideModal(route, opener) {
   let steps = 0
   while (steps < 12) {
     const topIndex = await page.evaluate(() => {
@@ -350,7 +671,7 @@ async function clickInsideModal(route) {
     steps += 1
     await settle()
     if (errors.length > before) errors[errors.length - 1].where = `${route} 弹窗内点「${label}」`
-    else if ((await fingerprint()) === beforeFp) await classifySilent(route, 'modal', label)
+    else if ((await fingerprint()) === beforeFp) await classifySilent(route, 'modal', label, opener)
     await scanNumericLeaks(`${route} 弹窗内点「${label}」后泄漏`)
   }
 }
@@ -467,7 +788,7 @@ for (const route of ROUTES) {
     if (errors.length > before) errors[errors.length - 1].where = `${route} 点「${label}」`
     else if ((await fingerprint()) === beforeFp) await classifySilent(route, 'page', label)
     await scanNumericLeaks(`${route} 点「${label}」后泄漏`)
-    await clickInsideModal(route)
+    await clickInsideModal(route, label)
     // 逐层收起弹窗(弹窗内点开的详情会叠第二层),免挡后续按钮;每层等淡出走完:离场中的弹窗会让下一按钮的前后指纹必然不同,死按钮漏判
     for (let layer = 0; layer < 4 && (await page.locator('.modal-panel').count()) > 0; layer += 1) {
       await page.keyboard.press('Escape').catch(() => {})
@@ -575,7 +896,12 @@ for (const route of ROUTES) {
   }
 }
 
-await browser.close()
+} catch (err) {
+  // 中途崩了:记进 errors 与其余失败并列 —— 不吞掉它,也不让它盖掉已经点过的读数
+  errors.push({ where: 'smoke', msg: `冒烟中途中断:${err instanceof Error ? err.message.split('\n')[0] : String(err)}` })
+} finally {
+  await browser.close().catch(() => {})
+}
 console.log(`\n界面冒烟:${ROUTES.length} 页,点击 ${clicked} 次(导航 ${navClicked.size} 条边;按钮每页上限 ${DEPTH})`)
 /*
  * 逐页读数:某页 0 次时人一眼看得出来(不判失败,理由见 clickedPerRoute 的注释)。

@@ -25,6 +25,17 @@ import { mkdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { lateSlices, seedSave } from './lib/saveFixture.mjs'
+import { requireDist } from './lib/requireDist.mjs'
+
+/**
+ * 产物过期就别往下跑。
+ *
+ * 这份脚本读的是 `dist/` 的构建产物;改了 `src/` 却没重新 build 时,
+ * 它量到的是旧代码,而读数看起来完全正常 —— 那比报错更糟。
+ * 与 aria-check / focus-check / multitab-check 同一道闸。
+ */
+if (!requireDist('弹窗巡逻')) process.exit(1)
+
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const INDEX = `file://${join(ROOT, 'dist/index.html')}`
@@ -483,7 +494,35 @@ async function patrol(page, name, click) {
     notOpened.push(name)
     return
   }
-  await page.waitForTimeout(450)
+  /*
+   * 等面板**真的可见**,而不是固定等 450ms 再量。
+   *
+   * 面板出现本身是瞬时的(实测 1~19ms),但点下去之后还要等懒加载视图、等 store
+   * 状态生效;机器一忙(并发跑别的 QA 脚本时)450ms 就不够了。实测并发轮里
+   * 「分解」这扇报过两条自相矛盾的失败:「量不到 .modal-panel」与
+   * 「弹窗开着时背景仍能被手指滚走」—— 面板根本没开,却照样拿去量背景锁。
+   *
+   * 等不到就记「未量」并写明原因:那与「量过且没问题」是两回事,
+   * 混在一起会让汇总里的「每一扇都量过」变成空话。
+   */
+  const visible = await page
+    .waitForFunction(
+      () =>
+        [...document.querySelectorAll('.modal-panel')].some(el => {
+          const r = el.getBoundingClientRect()
+          return r.width > 0 && r.height > 0
+        }),
+      null,
+      { timeout: 4000 }
+    )
+    .then(() => true)
+    .catch(() => false)
+  if (!visible) {
+    notOpened.push(`${name}(点了但 4 秒内没出现面板)`)
+    return
+  }
+  // 过渡收尾再量:auditModal 会禁动效,但类名还没摘时几何仍是中间态
+  await page.waitForTimeout(120)
   const audit = await auditModal(page)
   await checkBackdropLocked(page, name)
   if (SHOTS) {
@@ -675,6 +714,13 @@ async function clickTab(page, re) {
 }
 
 // ============ 各页的弹窗 ============
+/*
+ * 整段包 try/catch/finally —— 与 edge-states 同一理由:
+ * 逐扇巡逻要跑十几分钟,任何一扇里某次 evaluate 超时都会让异常冒到顶层,
+ * 而汇总打印在 `browser.close()` 之后,`failures` 里已攒下的那些一条也出不来。
+ * 崩溃本身记成一条失败,不吞掉;finally 只负责关浏览器。
+ */
+try {
 
 /*
  * 装备与行囊:分解 / 收纳 / 装备详情 / 词条信息 / 转移 / 炼丹 / 槽位候选。
@@ -938,8 +984,12 @@ async function clickTab(page, re) {
   const missed = want.filter(w => !got.has(w))
   if (missed.length) notOpened.push(...missed)
 }
-
-await browser.close()
+} catch (err) {
+  // 中途崩了:记成一条失败与其余一起报 —— 不吞掉它,也不让它盖掉已经查出来的
+  failures.push(`弹窗巡逻中途中断:${err instanceof Error ? err.message.split('\n')[0] : String(err)}`)
+} finally {
+  await browser.close().catch(() => {})
+}
 
 /*
  * 覆盖率下限。
@@ -955,17 +1005,28 @@ await browser.close()
 const MIN_OPENED = 12
 const MIN_TWO_STEP = 3
 const openedCount = PATROLLED - notOpened.length
+/*
+ * 覆盖率下限也走 `failures`,不当场 `process.exit(1)`。
+ *
+ * 原先这两道是 exit:一旦覆盖率不足,后面那段「失败清单」根本轮不到打印 ——
+ * 实测注入一次中途崩掉,屏幕上只有「只开到 1 扇(应 ≥ 12)」,
+ * 而真正的原因(`弹窗巡逻中途中断:…`)一条都没露面。覆盖率不足与判据失败
+ * 是同一类事:都是「这一轮没验到该验的东西」,该并列在失败清单里。
+ */
 if (openedCount < MIN_OPENED) {
-  console.error(`\n弹窗巡逻:只开到 ${openedCount} 扇(应 ≥ ${MIN_OPENED})—— 巡逻没验到东西`)
-  process.exit(1)
+  failures.push(`只开到 ${openedCount} 扇(应 ≥ ${MIN_OPENED})—— 巡逻没验到东西`)
 }
 if (PATROLLED - twoStepMissed.length < MIN_TWO_STEP) {
-  console.error(`\n弹窗巡逻:只探到 ${PATROLLED - twoStepMissed.length} 扇两步确认(应 ≥ ${MIN_TWO_STEP})—— 确认态几何没验到`)
-  process.exit(1)
+  failures.push(`只探到 ${PATROLLED - twoStepMissed.length} 扇两步确认(应 ≥ ${MIN_TWO_STEP})—— 确认态几何没验到`)
 }
 
 if (notOpened.length) {
-  console.log(`\n未量到的弹窗(${notOpened.length} 扇,入口没出现 —— 夹具未铺该窗前置):`)
+  /*
+   * 两种原因分开写:入口没出现(夹具没铺到前置)是正常的,点了却没弹出面板不是 ——
+   * 后者说明那一扇窗这次根本没被量过,与「量过且没问题」是两回事。
+   * 原先只有第一种,加了等待之后两类都会进这张表,故标签要如实覆盖两种。
+   */
+  console.log(`\n未量到的弹窗(${notOpened.length} 扇):`)
   for (const n of notOpened) console.log(`  · ${n}`)
 }
 

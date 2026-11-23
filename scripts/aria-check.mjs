@@ -11,11 +11,20 @@ import { seedSave, lateSlices, midSlices } from './lib/saveFixture.mjs'
 import { requireDist } from './lib/requireDist.mjs'
 
 const PORT = 4235
+if (!requireDist('读屏属性自检')) process.exit(1)
 const server = await preview({ preview: { port: PORT, strictPort: true } })
 const BASE = `http://localhost:${PORT}/`
-if (!requireDist('读屏属性自检')) process.exit(1)
 
 const failures = []
+/**
+ * 最近一次导航失败的分段读数,失败汇总时一并打印(见 gotoRoute)。
+ *
+ * 声明必须在**顶层代码之前**:本脚本是 top-level await 的写法,
+ * `gotoRoute` 在顶层循环里就会被调用。原先它写在文件末尾的辅助函数区,
+ * 于是「正常跑不碰、一失败就 `Cannot access before initialization`」——
+ * 报错路径自己先炸了,真正的失败原因永远打印不出来(实测并发那一轮踩到)。
+ */
+let lastNavFailure = null
 let browser
 
 try {
@@ -78,9 +87,9 @@ try {
      * 这两页由 edge-check 的无存档场景覆盖。
      */
   ]
-  for (const r of ROUTES) {
-    if (!(await gotoRoute(page, r))) {
-      failures.push(`${r} 导航没落到目标页(hash 或过渡超时),本页标题判据未生效`)
+  for (const [i, r] of ROUTES.entries()) {
+    if (!(await gotoRoute(page, r, { first: i === 0 }))) {
+      failures.push(`${r} 导航没落到目标页(${navDetail()}),本页标题判据未生效`)
       console.log(`  ✗ ${r.padEnd(14)} 导航未落地`)
       continue
     }
@@ -108,9 +117,9 @@ try {
    * (layout-check 另有 190 个页面×视口的全量扫描,那条线更宽;此处是读屏脚本里的快速档。)
    */
   const TOUCH_ROUTES = ROUTES
-  for (const r of TOUCH_ROUTES) {
-    if (!(await gotoRoute(page, r))) {
-      failures.push(`${r} 导航没落到目标页(hash 或过渡超时),本页触控判据未生效`)
+  for (const [i, r] of TOUCH_ROUTES.entries()) {
+    if (!(await gotoRoute(page, r, { first: i === 0 }))) {
+      failures.push(`${r} 导航没落到目标页(${navDetail()}),本页触控判据未生效`)
       console.log(`  ✗ ${r.padEnd(14)} 导航未落地`)
       continue
     }
@@ -307,9 +316,20 @@ try {
   await zeroCtx.close()
   if (denyBad.length > 0) failures.push(`禁用钮没给拒因(资源归零档):${denyBad.join('; ')}`)
   console.log(`  ${denyBad.length === 0 ? '✓' : '✗'} 禁用钮有拒因(资源归零 · ${denyChecked} 页)`)
+} catch (err) {
+  // 中途崩了:记成一条失败与其余一起报 —— 不吞掉它,也不让它盖掉已经查出来的
+  failures.push(`读屏属性自检中途中断:${err instanceof Error ? err.message.split('\n')[0] : String(err)}`)
 } finally {
-  await browser?.close()
-  await server.httpServer.close()
+  /*
+   * 两道收尾**各自兜住自己的失败**,不许一个把另一个挡住。
+   *
+   * 评审指出:原先两句裸 await,浏览器关失败就直接跳出 finally,
+   * 服务器根本不关;而清理期的异常还会在汇总之前逸出,调用方看到的是一段堆栈、
+   * 已经查出来的失败一条也没有。
+   * 清理失败本身也记成一条失败 —— 那是真实的状态问题(端口/进程残留)。
+   */
+  await browser?.close().catch((e) => failures.push(`关闭浏览器失败:${e instanceof Error ? e.message : String(e)}`))
+  await server.httpServer.close((e) => e && failures.push(`关闭自检服务器失败:${e instanceof Error ? e.message : String(e)}`))
 }
 
 if (failures.length > 0) {
@@ -326,22 +346,56 @@ if (failures.length > 0) {
  * 或过渡还没走完时,量到的是上一页(常常是首页),而结果看起来完全正常:
  * 首页有标题、首页的控件也够大。它把「没量过」写成了「查过了」。
  * 这里等到 hash 对上、并且 FADING 过渡类消失,才认为落地;落不了直接算失败。
+ *
+ * 第一跳(trial 0)要另眼看待:此时首页**首屏刚挂上**,`page-fade` 与里面的
+ * `stagger-in` 一起在走。`waitForFunction` 的 3 秒预算被这两段共用,而机器一忙
+ * (并行跑别的 QA 脚本时)首屏那段能吃掉两秒多 —— 实测四次试验里第一次过渡耗 2465ms,
+ * 其余三次各 1~2ms。于是「同一页跳同一页」被报成「导航没落到目标页」。
+ * 那不是导航坏了,是等待预算不够。故首跳给足预算(过渡本身是 180ms 级,
+ * 慢只慢在首屏挂载),后续跳仍用 3 秒 —— 真导航坏了照样报得出来。
  */
-async function gotoRoute(page, r) {
+async function gotoRoute(page, r, { first = false } = {}) {
+  const budget = first ? 8000 : 3000
+  const t0 = Date.now()
   await page.evaluate(h => { location.hash = '#' + h }, r)
+  /*
+   * 两段等待各自记名。
+   *
+   * 原先两段共用一个 catch,失败时只报「hash 或过渡超时」—— 看不出是哪一段、
+   * 等了多久,而这两段的含义完全不同:hash 对不上是路由没走,过渡不消失是动画卡住。
+   * 实测那种含糊说法会把人引去查导航,而真凶是首屏过场还没走完。
+   */
+  const stage = { at: 'hash', ms: 0 }
   try {
-    await page.waitForFunction(h => location.hash === '#' + h, r, { timeout: 3000 })
+    await page.waitForFunction(h => location.hash === '#' + h, r, { timeout: budget })
+    stage.at = 'fade'
     // 视图是懒加载的:hash 变了之后还要等 chunk 到位、过渡走完
     await page.waitForTimeout(250)
     await page.waitForFunction(
       () => document.querySelector('.page-fade-enter-active, .page-fade-leave-active') === null,
       null,
-      { timeout: 3000 }
+      { timeout: budget }
     )
   } catch {
+    lastNavFailure = {
+      route: r,
+      stage: stage.at === 'hash' ? 'hash 未对上' : 'page-fade 过渡未消失',
+      budget,
+      ms: Date.now() - t0,
+      hash: await page.evaluate(() => location.hash),
+      fading: await page
+        .evaluate(() => [...document.querySelectorAll('.page-fade-enter-active, .page-fade-leave-active')].map(e => e.className))
+        .catch(() => [])
+    }
     return false
   }
   return (await page.evaluate(h => location.hash === '#' + h, r)) === true
+}
+/** 失败信息带上「卡在哪一段、等了多久、此刻 hash 与过渡类」 */
+function navDetail() {
+  if (!lastNavFailure) return 'hash 或过渡超时,无分段读数'
+  const f = lastNavFailure
+  return `${f.stage},${f.ms}ms(预算 ${f.budget}ms)后 hash=${f.hash},过渡类 ${f.fading.length} 个`
 }
 
 

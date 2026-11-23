@@ -96,3 +96,64 @@ describe('aria-check · 四档存档各司其职', () => {
     }
   })
 })
+
+/*
+ * 导航落地判据的两处形状(第 3 轮修「导航未落地」误报时加的)。
+ *
+ * 这两点都属于「工具误报」那一类 —— 仓库文档里记过:判据自己写歪时,
+ * 会把人引去查一个并不存在的缺陷。实测两次并发跑 `aria-check` 与
+ * `focus-check`,首条路由 `/` 各报过一次「导航未落地」,而单独跑全绿。
+ */
+describe('aria-check · 导航落地判据', () => {
+  it('首跳给足预算:首屏过场与后续跳转不是同一档等待', () => {
+    const at = CODE.indexOf('async function gotoRoute')
+    expect(at, '找不到 gotoRoute —— 判据要跟着改名').toBeGreaterThan(-1)
+    const block = CODE.slice(at, at + 1600)
+    // 首屏刚挂上时 page-fade 与 stagger-in 一起走,3 秒预算会被它吃掉(实测 2465ms)
+    const m = /budget\s*=\s*first\s*\?\s*(\d+)\s*:\s*(\d+)/.exec(block)
+    expect(m, '首跳没有「first ? 首跳预算 : 后续预算」这样的显式分档').not.toBeNull()
+    /*
+     * 光看「有没有分档」不够 —— 评审指出:把两个数都改成极小值,分档照样存在、
+     * 源码照样含 `first ?`,而并发时又会误报。故**把两个数真的取出来比**。
+     *   首跳 8000:实测首屏过场 2465ms,留三倍余量
+     *   后续 3000:页面都已挂载,只剩懒加载 chunk + 180ms 过渡
+     */
+    const firstBudget = Number(m![1])
+    const laterBudget = Number(m![2])
+    expect(firstBudget, `首跳预算 ${firstBudget}ms 太小 —— 实测首屏过场就要 2465ms`).toBeGreaterThanOrEqual(5000)
+    expect(laterBudget, `后续跳转预算 ${laterBudget}ms 太小 —— 懒加载 chunk 还没到位就判失败`).toBeGreaterThanOrEqual(2000)
+    expect(firstBudget, '首跳预算该明显大于后续,否则分档没有意义').toBeGreaterThan(laterBudget)
+  })
+
+  it('失败分两段记名:hash 未对上 ≠ 过渡未消失', () => {
+    const at = CODE.indexOf('async function gotoRoute')
+    const block = CODE.slice(at, at + 2400)
+    expect(block, '两段等待没分开记名,失败时看不出卡在哪一段').toContain('hash 未对上')
+    expect(block, '两段等待没分开记名,失败时看不出卡在哪一段').toContain('page-fade 过渡未消失')
+  })
+
+  it('失败信息走 navDetail,带上等了多久与此刻的状态', () => {
+    expect(CODE, '导航失败仍写死「hash 或过渡超时」—— 看不出是哪一段').not.toContain('(hash 或过渡超时)')
+    expect(CODE, '导航失败没带分段读数').toContain('navDetail()')
+  })
+})
+
+/*
+ * 失败路径自己的顺序问题(第 12 轮踩到)。
+ *
+ * `lastNavFailure` 原写在文件末尾的辅助函数区,而本脚本是 top-level await 写法,
+ * `gotoRoute` 在顶层循环里就被调用。正常跑不碰它,一旦导航真失败就进
+ * `Cannot access before initialization` —— 报错路径自己先炸,真正的失败原因
+ * 永远打印不出来。实测并发那一轮复现过一次。
+ *
+ * 这类缺陷只在「本来就要报错」时才现形,平时的绿跑永远看不见,故从源码钉顺序。
+ */
+describe('aria-check · 失败路径的变量先于使用声明', () => {
+  it('lastNavFailure 声明在第一次赋值之前', () => {
+    const decl = CODE.indexOf('let lastNavFailure')
+    const use = CODE.indexOf('lastNavFailure = {')
+    expect(decl, '找不到 lastNavFailure 的声明').toBeGreaterThan(-1)
+    expect(use, '找不到 lastNavFailure 的赋值点').toBeGreaterThan(-1)
+    expect(decl, '声明在使用之后 —— TDZ 会让失败路径自己先炸').toBeLessThan(use)
+  })
+})

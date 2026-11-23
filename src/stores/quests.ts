@@ -1,18 +1,11 @@
 /** 任务 / 成就 / 称号 / 图鉴 / 计数器 */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import type { CounterKey } from '@/types'
+import { COUNTER_KEYS, type CounterKey } from '@/types'
 import { persistConfig } from '@/utils/storage'
 import { DAILY_TASKS, MAIN_QUESTS } from '@/data/quests'
 import { ACHIEVEMENTS, titleIdsFromAchieved } from '@/data/achievements'
-import { equipmentTemplate } from '@/data/equipment'
-import { gongfaDef } from '@/data/gongfa'
-import { pillDef } from '@/data/pills'
-import { artifactDef } from '@/data/artifacts'
-import { petDef } from '@/data/pets'
-import { eventDef } from '@/data/events'
-import { talentDef } from '@/data/talents'
-import { daoluDef } from '@/data/daolu'
+import { CODEX_IDS } from '@/data/codexIds'
 import { asFiniteNumber, asNumberRecord, asObjectOrNull, asRecord, asStringArray, truncateCodePoints } from '@/utils/saveShape'
 
 /**
@@ -66,8 +59,21 @@ export const useQuestsStore = defineStore(
        * (同理见 `inventory` 的 `investedDust`;与「夹到边界」那种修法区分开:
        * 夹的值本身可信、只是越界,归零的是值本身不可信。)
        */
+      /*
+       * 表外的键整条丢掉。
+       *
+       * 写入侧只有 `inc()`,它的 key 是编译期联合类型;而 `CounterKey` 运行时一个字都不剩,
+       * 读档时无从判断一个键认不认得。于是坏档能塞任意多键:实测十万个野键 →
+       * `$state` 3.18MB、`sanitize` 自己跑 398ms,而这一步在启动路径上。
+       * 野键既不参与 `evalCond`(`counter(key)` 只按已知键查)也不显示,唯一作用是撑大存档。
+       *
+       * 认得哪些键由 `data/counterKeys` 给出 —— 那份表从**数据表与源码里的 track 调用**
+       * 两路推导,不手写;覆盖是否完整有 `counterKeysCoverage.spec` 从源码核。
+       */
       counters.value = Object.fromEntries(
-        Object.entries(asNumberRecord(counters.value, 0)).map(([k, v]) => [k, v > COUNTER_MAX ? 0 : v])
+        Object.entries(asNumberRecord(counters.value, 0))
+          .filter(([k]) => (COUNTER_KEYS as readonly string[]).includes(k))
+          .map(([k, v]) => [k, v > COUNTER_MAX ? 0 : v])
       )
       // 成就是集合语义:与 unlockAchievement 同口径去重;只留认得的 id(野 id 画不出来却照样计数)
       const achievementIds = new Set(ACHIEVEMENTS.map(a => a.id))
@@ -76,7 +82,16 @@ export const useQuestsStore = defineStore(
       const maxIdx = Math.max(0, MAIN_QUESTS.length - 1)
       mainIdx.value = Math.min(Math.floor(asFiniteNumber(mainIdx.value, 0, 0)), maxIdx)
       const d = asObjectOrNull<{ date?: unknown; base?: unknown; done?: unknown }>(daily.value)
-      const base = asNumberRecord(d?.base, 0)
+      /*
+       * 日课基线也按计数键表过滤。
+       *
+       * 评审指出:`asNumberRecord` 收任意键,而 `hasBase` 只看「有没有键」——
+       * 坏档在同一天塞进一大批**值合法**的野键,`hasBase` 仍为真、那批键原样留下,
+       * 主计数器表过滤了、这里没过滤,存档照样被撑大。
+       */
+      const base = Object.fromEntries(
+        Object.entries(asNumberRecord(d?.base, 0)).filter(([k]) => (COUNTER_KEYS as readonly string[]).includes(k))
+      )
       /*
        * 日课基线缺失时的兜底:把当前累计当作基线。
        *
@@ -112,42 +127,55 @@ export const useQuestsStore = defineStore(
       const titleIds = titleIdsFromAchieved(achievedSet)
       titlesOwned.value = [...new Set(asStringArray(titlesOwned.value))].filter(id => titleIds.has(id))
       const cats = asRecord<string[]>(collections.value)
-      // 图鉴各类同为集合语义(collect 只在没有时追加):重复 id 让「已收 N」多报、灵兽册出重复 v-for key。
-      // 1.59.1 起再收一道:只留认得的 def id —— 收录集从未发过奖励,但灌野 id / 灌没见过面的 id
-      // 会虚抬「已收 N/总数」与图鉴完成度,白嫖收集型成就的判定素材。
-      const knownFns = {
-        equip: (id: string) => equipmentTemplate(id) !== undefined,
-        gongfa: (id: string) => gongfaDef(id) !== undefined,
-        pill: (id: string) => pillDef(id) !== undefined,
-        artifact: (id: string) => artifactDef(id) !== undefined,
-        pet: (id: string) => petDef(id) !== undefined,
-        event: (id: string) => eventDef(id) !== undefined,
-        talent: (id: string) => talentDef(id) !== undefined,
-        daolu: (id: string) => daoluDef(id) !== undefined
-      } satisfies Record<CollectionCategory, (id: string) => boolean>
+      /*
+       * 图鉴各类同为集合语义(collect 只在没有时追加):重复 id 让「已收 N」多报、
+       * 灵兽册出重复 v-for key。
+       *
+       * 还须**滤掉表外的 id**。写入侧 `collect` 的 id 全来自数据表,表外只可能来自坏档;
+       * 而收藏册每一处展示都是拿表逐条比对(`codexOwnedCount`、CollectionView 的 entries),
+       * 表外 id 既不显示也不计数 —— 唯一作用是把存档撑大:实测十万条野 id 让存档涨到 1.29MB,
+       * 那一页却一个字都不会多出来。
+       */
+      const dedupe = (cat: CollectionCategory): string[] =>
+        [...new Set(asStringArray(cats[cat]))].filter(id => CODEX_IDS[cat].has(id))
       collections.value = {
-        equip: [...new Set(asStringArray(cats.equip))].filter(knownFns.equip),
-        gongfa: [...new Set(asStringArray(cats.gongfa))].filter(knownFns.gongfa),
-        pill: [...new Set(asStringArray(cats.pill))].filter(knownFns.pill),
-        artifact: [...new Set(asStringArray(cats.artifact))].filter(knownFns.artifact),
-        pet: [...new Set(asStringArray(cats.pet))].filter(knownFns.pet),
-        event: [...new Set(asStringArray(cats.event))].filter(knownFns.event),
-        talent: [...new Set(asStringArray(cats.talent))].filter(knownFns.talent),
+        equip: dedupe('equip'),
+        gongfa: dedupe('gongfa'),
+        pill: dedupe('pill'),
+        artifact: dedupe('artifact'),
+        pet: dedupe('pet'),
+        event: dedupe('event'),
+        talent: dedupe('talent'),
         // 旧档没有这一栏:asStringArray(undefined) 得空数组,自动补上
-        daolu: [...new Set(asStringArray(cats.daolu))].filter(knownFns.daolu)
+        daolu: dedupe('daolu')
       }
-      // 时间戳表跟着集合瘦身:收录/达成已被洗掉的条目,时刻留着只会让页面渲染出幽灵条目
-      const collectedKeys = new Set(
+      /*
+       * 两张时间戳表也要按**还留着的键**清 —— 它们是上面两张集合的配套索引。
+       *
+       * 上一轮把图鉴里的表外 id 与成就里的野 id 清掉了,却漏了这两张表:
+       * `asNumberRecord` 只挡非有限值与负数,不管键,两张表各自的键数也没有上界。
+       * 实测各灌十万个野键:sanitize 之后 state 仍是 6.38MB,而这两张表**只用来显示
+       * 「收录时间」「达成于」** —— 键不在集合里,那一行永远不会被画出来。
+       *
+       * 键必须由上一步的结果推出来,不能各自独立算:收录键的形是 `${category}:${id}`,
+       * 而 `achievedAt` 的键就是成就 id。这样「集合里有的才有时间戳」成为一条不变式,
+       * 也顺带挡掉了 `equip:xxx` 这种把类别写错的键。
+       */
+      const collectionKeys = new Set(
         (Object.keys(collections.value) as CollectionCategory[]).flatMap(cat =>
           collections.value[cat].map(id => `${cat}:${id}`)
         )
       )
-      collectedAt.value = Object.fromEntries(
-        Object.entries(asNumberRecord(collectedAt.value, 0)).filter(([k]) => collectedKeys.has(k))
-      )
-      achievedAt.value = Object.fromEntries(
-        Object.entries(asNumberRecord(achievedAt.value, 0)).filter(([k]) => achievedSet.has(k))
-      )
+      const achievementKeys = new Set(achieved.value)
+      const keepOnly = (raw: unknown, allowed: Set<string>): Record<string, number> => {
+        const out: Record<string, number> = {}
+        for (const [k, v] of Object.entries(asNumberRecord(raw, 0))) {
+          if (allowed.has(k)) out[k] = v
+        }
+        return out
+      }
+      collectedAt.value = keepOnly(collectedAt.value, collectionKeys)
+      achievedAt.value = keepOnly(achievedAt.value, achievementKeys)
     }
 
     const currentMainQuest = computed(() => MAIN_QUESTS[mainIdx.value])

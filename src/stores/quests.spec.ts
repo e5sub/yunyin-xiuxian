@@ -126,21 +126,16 @@ describe('sanitize:重复条目不再把计数撑破', () => {
       achieved: ['a_r0', 'a_r0'],
       daily: { date: '2026-10-20', base: {}, done: ['d_kill', 'd_kill'] },
       titlesOwned: ['ti_churu', 'ti_churu'],
-      collections: {
-        equip: ['w_zhuqing', 'w_zhuqing'],
-        gongfa: [],
-        pill: [],
-        artifact: [],
-        pet: ['pet_qingyu', 'pet_qingyu'],
-        event: [],
-        talent: []
-      }
+      // 夹具 id 必须是数据表里真有的:`sanitize` 与 achieved / titlesOwned 同口径滤掉表外 id
+      // (见下面「图鉴的野 id」那条),写 e1 / p1 会被正确清掉
+      collections: { equip: ['w_zhuqing', 'w_zhuqing'], gongfa: ['m_taixuan', 'm_taixuan'], pill: [], artifact: [], pet: ['pet_qingyu', 'pet_qingyu'], event: [], talent: [] }
     } as never)
     quests.sanitize()
     expect(quests.achieved, '成就同一条只留一次').toEqual(['a_r0'])
     expect(quests.daily.done, '日课同一条只留一次').toEqual(['d_kill'])
     expect(quests.titlesOwned, '名号同一条只留一次').toEqual(['ti_churu'])
     expect(quests.collections.equip, '装备图鉴去重').toEqual(['w_zhuqing'])
+    expect(quests.collections.gongfa, '功法图鉴去重').toEqual(['m_taixuan'])
     expect(quests.collections.pet, '灵兽册去重后不会画两行同 key').toEqual(['pet_qingyu'])
   })
 
@@ -421,5 +416,172 @@ describe('日课 · 日期串长度', () => {
     q.daily = { date: '2026-11-15', base: {}, done: [] } as never
     q.sanitize()
     expect(q.daily.date, '正常日期被误伤').toBe('2026-11-15')
+  })
+})
+
+/**
+ * 图鉴的野 id 也按目录过滤 —— 与日课 done、名号、成就同口径。
+ *
+ * 写入侧 `collect(category, id)` 的 id 全来自数据表,表外只可能来自坏档;
+ * 而收藏册每一处展示都是「拿表逐条比对」(codexOwnedCount、CollectionView 的 entries),
+ * 表外 id 既不显示也不计入「已收 N」—— 唯一作用是把存档撑大:
+ * 实测十万条野 id 让存档涨到 1.29MB,而那一页一个字都不会多出来。
+ *
+ * 同函数里 achieved / titlesOwned / daily.done 早就按各自目录滤过(见上面那两条),
+ * 只有图鉴漏着 —— 这条补的就是那处遗漏。
+ *
+ * 故障注入:把 dedupe 的 `.filter(...)` 去掉,第一条红。
+ */
+describe('收藏册 · 表外 id 读档时清掉', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('十万条野 id 全清,存档不被撑大', () => {
+    const quests = useQuestsStore()
+    const wild = Array.from({ length: 100000 }, (_, i) => `wild_${i}`)
+    quests.$patch({ collections: { equip: wild, gongfa: [], pill: [], artifact: [], pet: [], event: [], talent: [], daolu: [] } } as never)
+    quests.sanitize()
+    expect(quests.collections.equip.length, '表外 id 既不显示也不计数,没有理由留在存档里').toBe(0)
+    expect(JSON.stringify(quests.$state).length, '坏档把 state 撑爆了').toBeLessThan(5000)
+  })
+
+  it('同一张表里的真 id 照留,不误伤', () => {
+    const quests = useQuestsStore()
+    quests.$patch({
+      collections: {
+        equip: ['w_zhuqing', 'wild_x', 'muzan_ghost'],
+        gongfa: ['m_taixuan'],
+        pill: ['p_jvqisan', 'no_such_pill'],
+        artifact: [], pet: [], event: [], talent: [], daolu: []
+      }
+    } as never)
+    quests.sanitize()
+    expect(quests.collections.equip, '只留装备表里真有的那一个').toEqual(['w_zhuqing'])
+    expect(quests.collections.gongfa).toEqual(['m_taixuan'])
+    expect(quests.collections.pill, '丹方同理').toEqual(['p_jvqisan'])
+  })
+})
+
+/**
+ * 两张时间戳表按「还留着的键」清 —— 它们是图鉴与成就的配套索引。
+ *
+ * 上一轮把图鉴里的表外 id 与成就里的野 id 清掉了,却漏了 `collectedAt` / `achievedAt`:
+ * `asNumberRecord` 只挡非有限值与负数,不管键,键数也没有上界。
+ * 实测各灌十万个野键,sanitize 之后 state 仍是 6.38MB ——
+ * 而这两张表只用来显示「收录时间」「达成于」,键不在集合里就永远画不出来。
+ *
+ * 故障注入:把两行 keepOnly 换回 `asNumberRecord(...)`,第一条红。
+ */
+describe('收藏册 · 时间戳表按留下的键清', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('十万个野键全清,state 不再被撑大', () => {
+    const quests = useQuestsStore()
+    const collected = Object.fromEntries(Array.from({ length: 100_000 }, (_, i) => [`equip:wild_${i}`, Date.now()]))
+    const achieved = Object.fromEntries(Array.from({ length: 100_000 }, (_, i) => [`wild_ach_${i}`, Date.now()]))
+    quests.$patch({ collectedAt: collected, achievedAt: achieved } as never)
+    quests.sanitize()
+    expect(Object.keys(quests.collectedAt).length, '键不在图鉴里,这一行永远画不出来').toBe(0)
+    expect(Object.keys(quests.achievedAt).length, '键不是成就 id,永远画不出来').toBe(0)
+    expect(JSON.stringify(quests.$state).length, '坏档把 state 撑爆了').toBeLessThan(5000)
+  })
+
+  it('留得下的条目,时间戳照留;类别写错的键清掉', () => {
+    const quests = useQuestsStore()
+    const now = Date.now()
+    quests.$patch({
+      collections: { equip: ['w_zhuqing'], gongfa: [], pill: [], artifact: [], pet: [], event: [], talent: [], daolu: [] },
+      achieved: ['a_r0'],
+      collectedAt: {
+        'equip:w_zhuqing': now,
+        'pill:w_zhuqing': now, // 类别写错:装备 id 挂在丹方下
+        'equip:wild_x': now
+      },
+      achievedAt: { a_r0: now, wild_ach: now }
+    } as never)
+    quests.sanitize()
+    expect(Object.keys(quests.collectedAt), '只该留下「这一类 + 这个 id」都对得上的那条').toEqual(['equip:w_zhuqing'])
+    expect(Object.keys(quests.achievedAt)).toEqual(['a_r0'])
+  })
+
+  it('时间戳本身仍按数值钳:负数归零,不是删键', () => {
+    const quests = useQuestsStore()
+    quests.$patch({
+      collections: { equip: ['w_zhuqing'], gongfa: [], pill: [], artifact: [], pet: [], event: [], talent: [], daolu: [] },
+      collectedAt: { 'equip:w_zhuqing': -5 }
+    } as never)
+    quests.sanitize()
+    // asNumberRecord 的既有语义:非有限值与负数归零 —— 键留着,值可信
+    expect(quests.collectedAt['equip:w_zhuqing']).toBe(0)
+  })
+})
+
+/**
+ * 计数器表里的野键读档时清掉。
+ *
+ * `inc()` 的 key 是编译期联合类型 `CounterKey`,而**运行时一个字都不剩** ——
+ * 读档时原本无从判断一个键认不认得,于是坏档能塞任意多键:
+ * 实测十万个野键 → `$state` 3.18MB、`sanitize` 自己跑 398ms,而这一步在启动路径上。
+ * 野键既不参与 `evalCond`(`counter(key)` 只按已知键查)也不显示,唯一作用是撑大存档。
+ *
+ * 认得哪些键由 `data/counterKeys` 给出(从数据表 + 源码里的 track 调用两路推导)。
+ * 故障注入:去掉 `.filter(([k]) => COUNTER_KEYS.has(...))`,第一条红。
+ */
+describe('计数器 · 野键读档时清掉', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('十万个野键全清,state 不再被撑大', () => {
+    const quests = useQuestsStore()
+    const ghost = Object.fromEntries(Array.from({ length: 100_000 }, (_, i) => [`ghost_${i}`, 1]))
+    quests.$patch({ counters: ghost } as never)
+    quests.sanitize()
+    const left = Object.keys((quests.$state as { counters: Record<string, number> }).counters)
+    expect(left.filter(k => k.startsWith('ghost_')), '野键一个都不许留').toEqual([])
+    expect(JSON.stringify(quests.$state).length, '坏档把 state 撑爆了').toBeLessThan(2000)
+  })
+
+  it('真计数器照留 —— 含那些只记账、没有成就读它的键', () => {
+    const quests = useQuestsStore()
+    /*
+     * `battles` 与 `pillsFailed` 被 `track()` 写着,却不在任何成就/主线/日课的条件里 ——
+     * 它们的键只能从源码的 track 调用扫出来。若表只读数据表,这两个会被当野键清掉。
+     */
+    quests.$patch({ counters: { kills: 42, battles: 7, pillsFailed: 3, ghost_x: 99 } } as never)
+    quests.sanitize()
+    const c = (quests.$state as { counters: Record<string, number> }).counters
+    expect(c.kills, '有成就读它的键照留').toBe(42)
+    expect(c.battles, '只记账、无成就读的键也要留 —— 它由源码 track 调用扫出').toBe(7)
+    expect(c.pillsFailed, '同上').toBe(3)
+    expect(c.ghost_x, '野键该没了').toBeUndefined()
+  })
+
+  it('越界仍归零(既有语义不变)', () => {
+    const quests = useQuestsStore()
+    quests.$patch({ counters: { kills: 1e300 } } as never)
+    quests.sanitize()
+    const c = (quests.$state as { counters: Record<string, number> }).counters
+    expect(c.kills, '越界仍归零,不是夹到上界').toBe(0)
+  })
+})
+
+/**
+ * 日课基线与誓约基线也要按键表过滤 —— 评审指出(PR #632)。
+ *
+ * `asNumberRecord` 收任意键,而 `hasBase` 只看「有没有键」:坏档在同一天塞进
+ * 一大批**值合法**的野键,`hasBase` 仍为真、那批键原样留下 ——
+ * 主计数器表过滤了、这两处没过滤,存档照样被撑大。
+ *
+ * 故障注入:把 daily.base 那层 filter 去掉,第一条红。
+ */
+describe('基线表 · 野键同样要清', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('daily.base 的野键被清,真计数键照留', () => {
+    const quests = useQuestsStore()
+    const ghost = Object.fromEntries(Array.from({ length: 5000 }, (_, i) => [`ghost_${i}`, 1]))
+    quests.$patch({ daily: { date: '2026-11-22', base: { ...ghost, kills: 5 }, done: [] } } as never)
+    quests.sanitize()
+    const base = (quests.daily as { base: Record<string, number> }).base
+    expect(Object.keys(base).filter(k => k.startsWith('ghost_')), '野键一个都不许留').toEqual([])
+    expect(base.kills, '真计数键照留').toBe(5)
   })
 })

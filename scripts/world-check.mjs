@@ -17,6 +17,17 @@ import { chromium } from 'playwright'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { lateSlices, seedSave } from './lib/saveFixture.mjs'
+import { requireDist } from './lib/requireDist.mjs'
+
+/**
+ * 产物过期就别往下跑。
+ *
+ * 这份脚本读的是 `dist/` 的构建产物;改了 `src/` 却没重新 build 时,
+ * 它量到的是旧代码,而读数看起来完全正常 —— 那比报错更糟。
+ * 与 aria-check / focus-check / multitab-check 同一道闸。
+ */
+if (!requireDist('界域印实测')) process.exit(1)
+
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const INDEX = `file://${join(ROOT, 'dist/index.html')}`
@@ -47,6 +58,14 @@ async function open(route) {
 }
 
 // ============ 一、界域谱上的四枚印 ============
+/*
+ * 整段包 try/catch/finally —— 与 edge-states / modal-patrol 同一条理由:
+ * 逐页实测要跑几分钟,任何一处 evaluate 超时都会让异常冒到顶层,
+ * 而汇总打印在 `browser.close()` 之后,`failures` 里已攒下的那些一条也出不来。
+ * 崩溃本身记成一条失败,不吞掉;finally 只负责关浏览器。
+ */
+try {
+
 
 {
   const { page, context } = await open('/codex')
@@ -206,7 +225,12 @@ async function open(route) {
   await context.close()
 }
 
-await browser.close()
+} catch (err) {
+  // 中途崩了:记成一条失败与其余一起报 —— 不吞掉它,也不让它盖掉已经查出来的
+  failures.push(`界域印实测中途中断:${err instanceof Error ? err.message.split('\n')[0] : String(err)}`)
+} finally {
+  await browser.close().catch(() => {})
+}
 
 if (failures.length) {
   console.error('\n界域印记实测:以下地方不对')

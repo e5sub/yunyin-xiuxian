@@ -38,6 +38,18 @@ function newestMtime(dir, skip = []) {
   return newest
 }
 
+/** 递归列出目录下的文件(只看 mtime,不读内容) */
+function walkFiles(dir) {
+  if (!existsSync(dir)) return []
+  const out = []
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name)
+    if (statSync(p).isDirectory()) out.push(...walkFiles(p))
+    else out.push(p)
+  }
+  return out
+}
+
 /**
  * 断言 dist/ 存在;比源码旧则打印警告。
  *
@@ -52,14 +64,44 @@ export function requireDist(label) {
   }
 
   const distAt = newestMtime(join(ROOT, 'dist'))
-  // src 与 index.html 之外的东西改了不影响产物;只看真正会进包的
-  const srcAt = Math.max(newestMtime(join(ROOT, 'src')), statSync(join(ROOT, 'index.html')).mtimeMs)
+  /*
+   * 构建输入不止 `src/` 与根 `index.html`。
+   *
+   * 评审指出:原先只看这两处,`public/sw.js`、`vite.config.ts`、`package.json`
+   * 这些也进产物 —— 改了它们却没重建时,`--strict-dist` 照样放行,
+   * 而量到的仍是旧产物。
+   * 这里把会进包的那几处一并算进来。样式与静态资源在 `public/`,
+   * 构建配置与依赖在根目录那三个文件。
+   */
+  const INPUTS = [
+    ...walkFiles(join(ROOT, 'src')),
+    ...walkFiles(join(ROOT, 'public')),
+    join(ROOT, 'index.html'),
+    join(ROOT, 'vite.config.ts'),
+    join(ROOT, 'package.json'),
+    join(ROOT, 'tailwind.config.js'),
+    join(ROOT, 'tsconfig.json')
+  ].filter(p => existsSync(p))
+  const srcAt = INPUTS.reduce((max, p) => Math.max(max, statSync(p).mtimeMs), 0)
   if (srcAt > distAt) {
     const mins = Math.round((srcAt - distAt) / 60000)
-    console.warn(
+    const msg =
       `\n⚠ ${label}:dist 比源码旧约 ${mins} 分钟 —— 量到的是上一次构建的代码。` +
-        `\n  要验当前源码请先 \`bun run build\`。\n`
-    )
+      `\n  要验当前源码请先 \`bun run build\`。\n`
+    /*
+     * 过期默认只警告,不拦 —— 有意验旧产物(复现历史问题)时仍要能跑。
+     *
+     * 但警告会被忽略。实测过:同一个 session 里,我改了源码没重建就去判定,
+     * 屏幕上确实印着这几行,我照样拿旧产物的读数下了结论,一整个小时的排查方向是错的。
+     *
+     * `--strict-dist` 把它升级成拦截:CI 外的人工验证常用这种口径 ——
+     * 想验当前源码,就不该让旧产物蒙混过关。
+     */
+    if (process.argv.includes('--strict-dist')) {
+      console.error(msg + '  (--strict-dist:按失败处理)')
+      return false
+    }
+    console.warn(msg)
   }
   return true
 }

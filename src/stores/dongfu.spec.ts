@@ -594,3 +594,78 @@ describe('灵脉总量 · 坏档压回容量', () => {
   })
 })
 })
+
+/**
+ * 洞府等级表里的表外建筑读档时清掉。
+ *
+ * 写入侧只有 `upgrade()` 一条路,它的 id 恒来自 `BUILDINGS` —— 表外键只可能来自坏档,
+ * 且在界面上一个都不会显示(`buildingLevel()` 按 def.id 查)。
+ *
+ * 原先 sanitize 是「展开后逐个修正」:修正只针对表内的键,表外的原样留着。
+ * 实测灌十万个野键:state 仍是 1.69MB,sanitize 本身要跑 166ms ——
+ * 而这一步在启动路径上(点开游戏到看见首页之间)。
+ *
+ * 与前几轮 quests 的图鉴、收藏时间戳表同一类:写入侧有上界,读档侧却没有。
+ * 故障注入:把 `const nextLevels = {} as Record<…>` 改回 `{ ...levels.value }`,第一条红。
+ */
+describe('洞府等级 · 表外建筑读档时清掉', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('十万个野键全清,剩下的每一个都是建筑表的 id', () => {
+    const dongfu = useDongfuStore()
+    const ghost = Object.fromEntries(Array.from({ length: 100_000 }, (_, i) => [`ghost_${i}`, 99]))
+    dongfu.$patch({ levels: ghost } as never)
+    dongfu.sanitize()
+    /*
+     * 只数「键数恰好等于 BUILDINGS.length」不够 ——
+     * 评审指出:清理逻辑若留下同样数量的**野键**、却把真建筑 id 删了,那条照样过。
+     * 故逐个核对剩下的键是不是建筑 id,并断言野键一个不剩。
+     */
+    const ids = new Set(BUILDINGS.map(b => b.id as string))
+    const left = Object.keys(dongfu.levels)
+    expect(left.filter(k => !ids.has(k)), '还剩表外键').toEqual([])
+    expect(left.filter(k => k.startsWith('ghost_')), '野键一个都不许留').toEqual([])
+    expect(new Set(left), '真实建筑一个都不许少').toEqual(ids)
+    expect(JSON.stringify(dongfu.$state).length, '坏档把 state 撑爆了').toBeLessThan(1000)
+  })
+
+  it('表内的真等级照留,越界的仍钳制', () => {
+    const dongfu = useDongfuStore()
+    // 取两座 maxLevel 够大的建筑来验「真等级照留」,不然写什么都可能被合法的上限钳掉
+    const mansionDef = BUILDINGS.find(b => b.id === 'mansion')!
+    const fieldDef = BUILDINGS.find(b => b.id === 'field')!
+    const keepMansion = Math.min(2, mansionDef.maxLevel)
+    const keepField = Math.min(3, fieldDef.maxLevel)
+    dongfu.$patch({
+      levels: { mansion: keepMansion, field: keepField, alchemy: 9999, ghost_b: 7 }
+    } as never)
+    dongfu.sanitize()
+    const lv = dongfu.levels as Record<string, number | undefined>
+    expect(lv.mansion, '真等级不许被清').toBe(keepMansion)
+    expect(lv.field).toBe(keepField)
+    expect(lv.ghost_b, '表外键该没了').toBeUndefined()
+    // 越界仍按 def.maxLevel 钳
+    const alchemyDef = BUILDINGS.find(b => b.id === 'alchemy')!
+    expect(lv.alchemy, '越界仍要钳到该建筑的上限').toBe(alchemyDef.maxLevel)
+  })
+
+  it('缺键补 0(旧档没有这一栏)', () => {
+    const dongfu = useDongfuStore()
+    dongfu.$patch({ levels: { mansion: 2 } } as never)
+    /*
+     * `$patch` 是深合并 —— 传 `{ levels: {} }` 一个键都删不掉,新 store 的 levels
+     * 本来就带着全部 0,那样这条用例等于什么都没测(评审指出,实测确认:
+     * 传入空对象后 keys 仍是 7)。
+     * 故用 `$state` 直接替换成真的不完整对象,再 sanitize。
+     */
+    ;(dongfu as unknown as { levels: Record<string, number> }).levels = { mansion: 2 }
+    expect(Object.keys(dongfu.levels).length, '前置:这一步必须先真的只剩一个键').toBe(1)
+    dongfu.sanitize()
+    const ids = new Set(BUILDINGS.map(b => b.id as string))
+    expect(Object.keys(dongfu.levels).sort(), '补齐后该恰好是建筑表那几座').toEqual([...ids].sort())
+    expect((dongfu.levels as Record<string, number>).mansion, '已有的键不许被抹成 0').toBe(2)
+    for (const def of BUILDINGS) {
+      expect(Number.isFinite((dongfu.levels as Record<string, number>)[def.id]), `缺 ${def.id} 该补一个合法值`).toBe(true)
+    }
+  })
+})

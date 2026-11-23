@@ -20,6 +20,17 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { lateSlices, seedSave } from './lib/saveFixture.mjs'
+import { requireDist } from './lib/requireDist.mjs'
+
+/**
+ * 产物过期就别往下跑。
+ *
+ * 这份脚本读的是 `dist/` 的构建产物;改了 `src/` 却没重新 build 时,
+ * 它量到的是旧代码,而读数看起来完全正常 —— 那比报错更糟。
+ * 与 aria-check / focus-check / multitab-check 同一道闸。
+ */
+if (!requireDist('异常路径自检')) process.exit(1)
+
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const INDEX = `file://${join(ROOT, 'dist/index.html')}`
@@ -604,7 +615,18 @@ const SCENES = [
   }
 ]
 
-for (const scene of SCENES) {
+/*
+ * 逐档跑,并在**异常时也把已收集的失败打出来**。
+ *
+ * 原先汇总写在 `await browser.close()` 之后:任一路由里某次 `evaluate` 超时,
+ * 异常直接冒到顶层,`failures` 里已经攒下的那些一条也打印不出来 ——
+ * 跑了十分钟的巡查,最后只看到一行堆栈,分不清是「只有这一处出问题」还是「前面全坏了」。
+ * 实测用一个中途抛错的最小脚本复现过:两条已收集的失败确实一条没印。
+ *
+ * 异常本身记成一条失败,不吞掉:退出码照旧非零,只是让「已查出来的」先亮出来。
+ */
+try {
+  for (const scene of SCENES) {
   const context = await browser.newContext({ viewport: { width: 375, height: 900 } })
   await context.route('**/*', r => {
     const url = r.request().url()
@@ -648,8 +670,12 @@ for (const scene of SCENES) {
   }
   await context.close()
 }
-
-await browser.close()
+} catch (err) {
+  // 中途崩了:记成一条失败与其余一起报 —— 不吞掉它,也不让它盖掉已经查出来的
+  failures.push(`巡查中途中断:${err instanceof Error ? err.message.split('\n')[0] : String(err)}`)
+} finally {
+  await browser.close().catch(() => {})
+}
 
 if (failures.length) {
   console.error('\n异常路径:以下地方不对')

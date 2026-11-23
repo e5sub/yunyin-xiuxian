@@ -13,9 +13,9 @@ import { requireDist } from './lib/requireDist.mjs'
 
 const PORT = 4277
 const WARN = '存档已在另一页打开'
+if (!requireDist('多标签自检')) process.exit(1)
 const server = await preview({ preview: { port: PORT, strictPort: true } })
 const BASE = `http://localhost:${PORT}/`
-if (!requireDist('多标签自检')) process.exit(1)
 
 const failures = []
 let browser
@@ -214,9 +214,20 @@ try {
     })
     await first.waitForTimeout(300)
   }
+} catch (err) {
+  // 中途崩了:记成一条失败与其余一起报 —— 不吞掉它,也不让它盖掉已经查出来的
+  failures.push(`两页同开自检中途中断:${err instanceof Error ? err.message.split('\n')[0] : String(err)}`)
 } finally {
-  await browser?.close()
-  await server.httpServer.close()
+  /*
+   * 两道收尾**各自兜住自己的失败**,不许一个把另一个挡住。
+   *
+   * 评审指出:原先两句裸 await,浏览器关失败就直接跳出 finally,
+   * 服务器根本不关;而清理期的异常还会在汇总之前逸出,调用方看到的是一段堆栈、
+   * 已经查出来的失败一条也没有。
+   * 清理失败本身也记成一条失败 —— 那是真实的状态问题(端口/进程残留)。
+   */
+  await browser?.close().catch((e) => failures.push(`关闭浏览器失败:${e instanceof Error ? e.message : String(e)}`))
+  await server.httpServer.close((e) => e && failures.push(`关闭自检服务器失败:${e instanceof Error ? e.message : String(e)}`))
 }
 
 if (failures.length > 0) {

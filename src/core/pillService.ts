@@ -3,11 +3,11 @@ import { gnZero, mulN, ratio, subClamp } from '@/utils/gnum'
 import { rng } from '@/utils/random'
 import { pillDef } from '@/data/pills'
 import { herbGradeOfMajor, type HerbGrade } from '@/data/herbGrades'
-import { INSTANT_EXP_LAYER_CAP } from '@/data/constants'
+import { CRAFT_BATCH_MAX, INSTANT_EXP_LAYER_CAP } from '@/data/constants'
 import { formatGN, formatGap } from '@/utils/format'
 import { recipeCraft, type SkillId } from '@/data/crafting'
 import { expFromSecs, pillStoneCost } from './formulas'
-import { collect, track } from './progress'
+import { collect, settleProgress, track, trackQuiet } from './progress'
 import { buffOverflowOf } from './buffCap'
 import { gameNow } from './enginePause'
 import { craftability, knownRecipes } from './craftability'
@@ -27,7 +27,13 @@ import type { GNum } from '@/types'
 import { cutCount, cutGNum } from './spendRate'
 import { reportAction } from './remoteAction'
 
-/** 服用一枚丹药。quiet=true 供批量服丹:逐枚结算照旧,提示与音效由批量层合为一条。 */
+/**
+ * 服用一枚丹药。quiet=true 供批量服丹:逐枚结算照旧,提示与音效由批量层合为一条。
+ *
+ * quiet 时**不做成就判定**(`trackQuiet` 只记账),由批量层在整批末尾调一次
+ * `settleProgress()` —— 判据读的是计数器与境界,批量末尾判一次与逐次判同值,
+ * 而一次判定要扫 62 条成就(实测 1e4 次 4.1 秒)。
+ */
 export function usePill(id: string, quiet = false): boolean {
   const player = usePlayerStore()
   const resources = useResourcesStore()
@@ -75,7 +81,8 @@ export function usePill(id: string, quiet = false): boolean {
     cultivation.addBuff(def.buffId, now)
     lines.push(overflow === 'full' ? '药力已顶满,白费' : overflow === 'partial' ? '药力只延续到顶' : '药力化开')
   }
-  track('pillsUsed')
+  if (quiet) trackQuiet('pillsUsed')
+  else track('pillsUsed')
   // 「不假外物」之誓当场落空
   noteTaboo('pill')
   collect('pill', id)
@@ -98,22 +105,69 @@ export function usePillBatch(id: string, count: number): number {
   if (!def) return 0
   // 增益丹退化为单服:药力一顶后面全白费(buffOverflowOf),单服提示才报得出「只延续到顶 / 白费」
   if (def.buffId) return usePill(id) ? 1 : 0
-  if (count === 1) return usePill(id) ? 1 : 0
-  let eaten = 0
-  for (let i = 0; i < count; i += 1) {
-    if (!usePill(id, true)) break
-    eaten += 1
+  const inventory = useInventoryStore()
+  /*
+   * 入口先挡非有限数。
+   *
+   * `Math.floor(NaN)` 仍是 NaN,而 `NaN <= 0` 为 **false** —— 下面那道
+   * `eaten <= 0` 守卫根本拦不住它,NaN 会一路走到 `spendPill`。
+   * 现在 `spendPill` 自己也有守卫(返回 false),所以坏值不会真把库存写坏;
+   * 但那是**碰巧**,不是这条路径的性质:换个不做校验的扣减就会写成 NaN。
+   * AGENTS.md 记过这一类(`Math.max`/`Math.min` 挡不住 NaN),入口判更省事。
+   */
+  if (!Number.isFinite(count) || count < 1) return 0
+  const eaten = Math.min(Math.floor(inventory.pills[id] ?? 0), Math.floor(count))
+  if (eaten <= 0) {
+    useUiStore().toast(pillGoneToast(), 'warn')
+    return 0
   }
-  const name = def.name
-  const ui = useUiStore()
-  if (eaten > 0) {
-    playSfx('success')
-    ui.toast(`连服 ${eaten} 枚「${name}」`, 'success')
-    // 批量只报一次:服务端按 count 复算并连服同样枚数,回传的补丁覆盖本地预测
-    reportAction('pill_use', { id, count: eaten })
-  } else {
-    ui.toast(pillGoneToast(), 'warn')
+  /*
+   * 整批一次结算,不再逐枚调 usePill。
+   *
+   * 等价性有据可查:即时丹每一种只带**一个**效果键(expSecs / expFixed / qiPct /
+   * lifespanYears / wudao,data/pills 里实测没有多键组合),而药力的三个入参
+   * ——`expReq`、`cultPerSec`、`qiCapValue`——只随境界与属性变,吃丹不会改它们
+   * (修为可积余,不吃丹也不升级;突破要玩家自己点)。故 N 枚的药力都是同一个乘数,
+   * 总账 = 单枚 × N,与逐枚相加同值(GNum 加法在指数差 15 以内才累加尾数,N 枚同量级相加
+   * 与一次乘法在显示精度上一致)。
+   *
+   * 为什么必须换掉:存量没有真实上界 —— 读档自愈只夹到一亿,而坏档正落在那个数上。
+   * 逐枚那条实测 20 万枚 8.3 秒、一亿枚要跑几十分钟,点一下「连服」主线程全被占住,
+   * 心跳与存档写入一起停摆(与坊市「售尽」、炼丹「炼满」同一类)。
+   */
+  if (!inventory.spendPill(id, eaten)) return 0
+  const player = usePlayerStore()
+  const resources = useResourcesStore()
+  const instant = def.instant
+  if (instant) {
+    if (instant.expSecs) {
+      const gain = expFromSecs(player.expReq, instant.expSecs, player.cultPerSec, INSTANT_EXP_LAYER_CAP)
+      player.gainExp(mulN(gain, eaten))
+    }
+    if (instant.expFixed) {
+      const gain = expFromSecs(player.expReq, instant.expFixed, 1, INSTANT_EXP_LAYER_CAP)
+      player.gainExp(mulN(gain, eaten))
+    }
+    /*
+     * 灵气按**容量**封顶(QI_BANK_MULT 倍),故 N 枚一次加与逐枚加同值:
+     * 逐枚那版每枚都是 `setQi(当前 + cap × pct, cap)`,连加 N 次的结果就是
+     * `min(cap × 10, 当前 + cap × pct × N)` —— 一次算完。
+     */
+    if (instant.qiPct) {
+      resources.setQi(resources.qi + player.qiCapValue * instant.qiPct * eaten, player.qiCapValue)
+    }
+    if (instant.lifespanYears) player.addLifespan(instant.lifespanYears * eaten)
+    if (instant.wudao) resources.addSmall('wudao', instant.wudao * eaten)
   }
+  trackQuiet('pillsUsed', eaten)
+  // 「不假外物」之誓当场落空 —— 一次调用即够,它是幂等的
+  noteTaboo('pill')
+  collect('pill', id)
+  settleProgress()
+  playSfx('success')
+  useUiStore().toast(`连服 ${eaten} 枚「${def.name}」`, 'success')
+  // 批量只报一次:服务端按 count 复算并连服同样枚数,回传的补丁覆盖本地预测
+  reportAction('pill_use', { id, count: eaten })
   return eaten
 }
 
@@ -144,6 +198,14 @@ export type CraftBlockReason = 'unknown' | 'mastery' | 'herb' | 'stone' | 'both'
 export interface CraftBatchPlan {
   /** 按当前料保底可开的最大炉数(炉炉皆成也够);0 = 炼不动 */
   rounds: number
+  /**
+   * 这一次「炼满」实际会开的炉数:`min(rounds, CRAFT_BATCH_MAX)`。
+   *
+   * 与 `rounds` 分开是因为两者回答的问题不同 —— `rounds` 是「材料够开多少炉」,
+   * 界面上那句「可炼 N 炉」说的是它;`batch` 是「这一下能开多少炉」,
+   * 按钮正文与执行都读它。材料够 2.5e11 炉时把后者也写上去,点一下就要跑几十分钟。
+   */
+  batch: number
   /** 开 rounds 炉的灵草总量 */
   herb: number
   /** 开 rounds 炉的灵石总量 */
@@ -178,6 +240,7 @@ export function craftBatchPlan(id: string): CraftBatchPlan {
   const able = craftability(id)
   const blocked = (msg: string, reason: CraftBlockReason, shortHerb?: number, shortStone?: GNum): CraftBatchPlan => ({
     rounds: 0,
+    batch: 0,
     herb: 0,
     stone: gnZero(),
     blocked: msg,
@@ -205,7 +268,13 @@ export function craftBatchPlan(id: string): CraftBatchPlan {
     if (stoneShort) return blocked(craftShortToast({ stone: formatGap(gap.stone) }), 'stone', undefined, gap.stone)
     return blocked(craftShortToast({ herb: gap.herb }), 'herb', gap.herb)
   }
-  return { rounds, herb: rounds * cost.herb, stone: mulN(cost.stone, rounds) }
+  /*
+   * rounds 是「材料够多少」,batch 是「这一下开多少」。
+   * 后者封顶 CRAFT_BATCH_MAX:材料没有真实上界(坏档能到 1e12 株),
+   * 而逐炉开炉是有代价的 —— 25000 炉实测 5.7 秒,点一下主线程就全被占住。
+   */
+  const batch = Math.min(rounds, CRAFT_BATCH_MAX)
+  return { rounds, batch, herb: rounds * cost.herb, stone: mulN(cost.stone, rounds) }
 }
 
 /** 失手时按技艺保下的残料比例;core/pillValue.ts 折算炼制代价共用此处,不另抄 */
@@ -232,7 +301,13 @@ export interface CraftOutcome {
 
 /**
  * 开炉炼丹。失手料照赔(按技艺保下一部分),技艺照长,对灵材印象更深(见 noteMaterialUsed)。
- * quiet=true 供批量炼丹:逐炉结算照旧,提示与音效由批量层合并。
+ *
+ * `quiet=true` 供批量炼丹:逐炉结算照旧,提示与音效由批量层合并。
+ *
+ * **契约**:quiet 时不判成就/主线,调用方**必须在批量末尾调 `settleProgress()`**。
+ * 当前唯一的生产调用方是下面的 `craftPillBatch`,它在循环后调了。
+ * 若将来有人写「逐炉 quiet 循环却不收尾」,成就与主线会推迟到引擎下一拍才补上
+ * (结果不丢,但界面晚一拍);`pillBatch.spec` 里有一条钉住批量的收尾。
  */
 export function craftPill(id: string, quiet = false): CraftOutcome {
   const resources = useResourcesStore()
@@ -282,7 +357,9 @@ export function craftPill(id: string, quiet = false): CraftOutcome {
 
   if (!succeeded) {
     useLoreStore().addRecipeMastery(id, 0.02)
-    track('pillsFailed')
+    // 批量路径(quiet)只记账,成就由 craftPillBatch 末尾判一次
+    if (quiet) trackQuiet('pillsFailed')
+    else track('pillsFailed')
     if (!quiet) {
       playSfx('fail')
       ui.toast('炸炉', 'warn')
@@ -295,7 +372,8 @@ export function craftPill(id: string, quiet = false): CraftOutcome {
   // 双丹概率读 craftability(含 alchemyYield、已按 PILL_SECOND_CAP 封顶),与展示同源,不自算
   const extra = rng.chance(able.bonusChanceWithYield) ? 1 : 0
   inventory.addPill(id, 1 + extra)
-  track('pillsCrafted', 1 + extra)
+  if (quiet) trackQuiet('pillsCrafted', 1 + extra)
+  else track('pillsCrafted', 1 + extra)
   collect('pill', id)
   useLoreStore().addRecipeMastery(id, 0.01)
   if (!quiet) {
@@ -315,7 +393,25 @@ export function craftPill(id: string, quiet = false): CraftOutcome {
  */
 export function craftPillBatch(id: string, count: number): { rounds: number; made: number; failed: number } {
   if (count < 1) return { rounds: 0, made: 0, failed: 0 }
-  if (count === 1) {
+  /*
+   * 上界在这里也挡一道,不只靠 `CraftBatchPlan.batch`。
+   *
+   * plan 那条是**界面**的路径,而这是个导出函数 —— 任何新调用点(或将来某个
+   * 「按材料全开」的入口)直接传 material 数就会绕开它:坏档 1e12 株灵草 = 2.5e11 炉,
+   * 一次调用跑几十分钟。上界落在函数自己身上,才有「无论谁传什么都跑得完」这个性质。
+   * 界面走的仍是 plan.batch(两者同值),提示里报的炉数也就是实开的炉数。
+   */
+  /*
+   * 入口先挡非有限数 —— 这里漏了会**真开一炉**。
+   *
+   * `Math.floor(NaN)` 得 NaN,`NaN < 1` 为 false,于是跳过这道守卫;
+   * 循环一次不执行、`rounds` 停在 0,随后 `rounds === 0` 的回退分支调 `craftPill(id)`
+   * 非静默开炉 —— 一个非法请求照样扣料出丹(实测草 400 → 396、丹 0 → 2)。
+   */
+  if (!Number.isFinite(count) || count < 1) return { rounds: 0, made: 0, failed: 0 }
+  const roundsWanted = Math.min(Math.floor(count), CRAFT_BATCH_MAX)
+  if (roundsWanted < 1) return { rounds: 0, made: 0, failed: 0 }
+  if (roundsWanted === 1) {
     const first = craftPill(id)
     // 未开炉不计为炸炉,与 count≥2 的循环同口径
     if (first.aborted) return { rounds: 0, made: 0, failed: 0 }
@@ -324,13 +420,15 @@ export function craftPillBatch(id: string, count: number): { rounds: number; mad
   let made = 0
   let failed = 0
   let rounds = 0
-  for (let i = 0; i < count; i += 1) {
+  for (let i = 0; i < roundsWanted; i += 1) {
     const out = craftPill(id, true)
     if (out.aborted) break
     rounds += 1
     if (out.ok) made += out.count
     else failed += 1
   }
+  // 整批只判一次成就(逐炉那条已在 craftPill 的 quiet 分支里跳过)
+  if (rounds > 0) settleProgress()
   const name = pillDef(id)?.name ?? id
   const ui = useUiStore()
   if (rounds === 0) {
