@@ -121,7 +121,14 @@ economyRouter.post('/economy/:op', requireAuth, (req: Request, res: Response) =>
       const mod = (await loadClientModule(SOURCE_MODULE, VENDOR_FILE)) as { resolveEconomyOp: ResolveOp }
       // 本窗口已记过的消费/领取:档里的货要到上传才少,校验必须减掉这份量(1.77.1)
       const claimed = await claimedMap(userId)
-      const result = mod.resolveEconomyOp(body, {
+      /*
+       * kind 只认 URL 上的 op(1.79.17):客户端 economyOp 的 payload 只带业务字段
+       * (realmId/layer、consignIdx……),而 resolveEconomyOp 按 req.kind 分支 ——
+       * 此前把 body 原样透传,每个 op 都进 default「op 类别不合法」,秘境层赏
+       * 永远回「层赏结算未达,此层未入账」,坊市/悬赏的进项台账也一笔没记。
+       * 同时绝不读 body.kind,否则改包客户端能拿廉价 op 的价目走高档账。
+       */
+      const result = mod.resolveEconomyOp({ ...body, kind: op }, {
         now,
         major,
         claimed,

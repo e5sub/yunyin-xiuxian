@@ -2,8 +2,12 @@
  * 经济 op 复算口径(1.77.0):客户端自算灵石收入的每条路径,服务端只认数据表 ——
  * 这里钉住 resolveEconomyOp 的判据:金额全部由表复算,客户端报的数值一律不作数。
  */
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { resolveEconomyOp, type EconomyOpCtx } from './economyOps'
+
+const ROOT = resolve(import.meta.dirname, '../..')
 
 function ctx(over: Partial<EconomyOpCtx> = {}): EconomyOpCtx {
   return {
@@ -87,6 +91,29 @@ describe('经济 op 复算', () => {
     expect(ghostStreak.ok).toBe(false)
     const badLayer = resolveEconomyOp({ kind: 'secret_layer', realmId: 'nope', layer: 1 }, ctx())
     expect(badLayer.ok).toBe(false)
+  })
+})
+
+/**
+ * 路由注入判据(1.79.17):客户端 payload 只有业务字段,kind 由 URL 上的 op 填。
+ * 原样透传 body 时 resolveEconomyOp 永远走 default「op 类别不合法」——
+ * 秘境层赏回「结算未达」,坊市/悬赏进项一笔不记。改包客户端自报 kind 也不认。
+ */
+describe('经济 op 路由的 kind 注入', () => {
+  const route = readFileSync(resolve(ROOT, 'server/src/routes/economy.ts'), 'utf-8')
+
+  it('路由把 URL op 覆盖进 payload,不读 body 自报的 kind', () => {
+    expect(route).toMatch(/resolveEconomyOp\(\s*\{\s*\.\.\.body,\s*kind:\s*op\s*\}/)
+    expect(route).not.toMatch(/kind:\s*body\.kind/)
+  })
+
+  it('只有 realmId/layer 的 payload 注入 kind 后才能过账', () => {
+    const payload = { realmId: 'sr_kurong', layer: 1 }
+    // 不注入时按无 kind 复算,必落 default
+    expect(resolveEconomyOp(payload as unknown as Parameters<typeof resolveEconomyOp>[0], ctx()).ok).toBe(false)
+    const ok = resolveEconomyOp({ ...payload, kind: 'secret_layer' }, ctx())
+    expect(ok.ok).toBe(true)
+    expect(ok.stone && ok.stone.m > 0).toBe(true)
   })
 })
 

@@ -46,16 +46,31 @@
         <span v-for="(s, i) in state.spoils" :key="i" class="block">· {{ s }}</span>
       </p>
       <!--
-        战报(1.79.14):逐行揭示本层战况,播完才放开「再入一层」——
+        战报(1.79.17):逐回合战斗过程 + 层赏摘要按序揭示,播完才放开「再入一层」——
         连点不再跳战,层赏的经济 op 也借这段等待自然错开 300ms 限速。
       -->
-      <div
-        v-if="reportTotal > 0"
-        class="mt-1.5 rounded-md bg-paper-deep/50 px-2.5 py-1.5"
-        :class="reportWin ? 'text-jade' : 'text-cinnabar'"
-        aria-live="polite"
-      >
-        <p v-for="(l, i) in reportShownLines" :key="i" class="block text-[10px] leading-relaxed">{{ l }}</p>
+      <div v-if="reportRows.length > 0" class="mt-1.5 rounded-md bg-paper-deep/50 px-2.5 py-1.5">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-[10px] tracking-widest text-ink-faint">本层战报</span>
+          <button
+            v-if="reporting"
+            class="-m-1 rounded p-1 text-[10px] text-ink-faint active:text-ink"
+            @click="skipReport"
+          >
+            跳过播放 »
+          </button>
+        </div>
+        <div ref="reportBox" class="mt-1 max-h-40 space-y-0.5 overflow-y-auto" aria-live="polite">
+          <p
+            v-for="row in shownRows"
+            :key="row.id"
+            data-secret-battle-log
+            class="block text-[10px] leading-relaxed"
+            :class="row.tone"
+          >
+            {{ row.text }}
+          </p>
+        </div>
       </div>
       <div class="mt-2 grid grid-cols-2 gap-2">
         <button
@@ -132,14 +147,18 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, onUnmounted, ref } from 'vue'
+  import { computed, nextTick, onUnmounted, ref } from 'vue'
   import { usePlayerStore } from '@/stores/player'
   import { useEndgameStore } from '@/stores/endgame'
+  import { useSettingsStore } from '@/stores/settings'
   import { useUiStore } from '@/stores/ui'
   import { secretRealmDef, type SecretRealmDef } from '@/data/secretRealms'
   import { isTopGain, realmEntryLabel, realmMark } from '@/ui/realmMark'
   import { realmLayerPips, realmLifePips, realmProgress, SECRET_MAX_LOSSES } from '@/ui/realmProgress'
   import { cnNumber } from '@/utils/format'
+  import { COMBAT_PLAYBACK_BASE_MS, COMBAT_PLAYBACK_MIN_MS } from '@/data/constants'
+  import { secretReportRows, type SecretReportRow } from '@/ui/secretReport'
+  import type { CombatLogEntry } from '@/types'
   import {
     SECRET_LAYERS,
     abandonRealm,
@@ -159,6 +178,7 @@
 
   const player = usePlayerStore()
   const endgame = useEndgameStore()
+  const settings = useSettingsStore()
   const ui = useUiStore()
 
   const props = withDefaults(defineProps<{ gate?: 'mortal' | 'celestial' }>(), { gate: 'mortal' })
@@ -186,18 +206,17 @@
   const fighting = ref(false)
 
   /*
-   * 战报逐行揭示(1.79.14):fightSecretLayer 的 lines 在卡面逐行亮出,
-   * 播完(reporting=false)才允许点下一层 —— 用户口径「战报结束后才允许点进入下一层」。
+   * 战报逐行揭示(1.79.17):逐回合过程 + 层赏摘要按序在卡面亮出,
+   * 播完(reporting=false)才允许点下一层 —— 用户口径「看完过程之后才能点进入下一层」。
+   * 步调与主战场 CombatPanel 同尺(settings.battleSpeed / reduceMotion),
    * 定时器随组件卸载清掉,不留悬挂回调。
    */
-  const REPORT_LINE_MS = 650
-  const reportLines = ref<readonly string[]>([])
-  const reportWin = ref(true)
+  const reportRows = ref<readonly SecretReportRow[]>([])
   const reportShownCount = ref(0)
+  const reportBox = ref<HTMLElement | null>(null)
   let reportTimer: ReturnType<typeof setTimeout> | null = null
-  const reportTotal = computed(() => reportLines.value.length)
-  const reportShownLines = computed(() => reportLines.value.slice(0, reportShownCount.value))
-  const reporting = computed(() => reportShownCount.value < reportTotal.value)
+  const reporting = computed(() => reportShownCount.value < reportRows.value.length)
+  const shownRows = computed(() => reportRows.value.slice(0, reportShownCount.value))
 
   function clearReportTimer(): void {
     if (reportTimer !== null) {
@@ -206,18 +225,32 @@
     }
   }
 
-  function showReport(lines: readonly string[], win: boolean): void {
+  function skipReport(): void {
     clearReportTimer()
-    reportLines.value = lines
-    reportWin.value = win
+    reportShownCount.value = reportRows.value.length
+  }
+
+  function showReport(log: readonly CombatLogEntry[], lines: readonly string[], win: boolean): void {
+    clearReportTimer()
+    const rows = secretReportRows(log, lines, win)
+    reportRows.value = rows
     reportShownCount.value = 0
-    if (lines.length === 0) return
+    if (rows.length === 0) return
+    // 减动效直出结果,与 CombatPanel 一致;此时 reporting 立刻为 false
+    if (settings.reduceMotion) {
+      reportShownCount.value = rows.length
+      return
+    }
+    const interval = Math.max(COMBAT_PLAYBACK_MIN_MS, COMBAT_PLAYBACK_BASE_MS / settings.battleSpeed)
     const step = (): void => {
       reportShownCount.value++
-      if (reportShownCount.value < reportLines.value.length) reportTimer = setTimeout(step, REPORT_LINE_MS)
+      void nextTick(() => {
+        reportBox.value?.scrollTo({ top: reportBox.value.scrollHeight })
+      })
+      if (reportShownCount.value < reportRows.value.length) reportTimer = setTimeout(step, interval)
       else reportTimer = null
     }
-    reportTimer = setTimeout(step, REPORT_LINE_MS)
+    reportTimer = setTimeout(step, interval)
   }
 
   onUnmounted(clearReportTimer)
@@ -270,7 +303,7 @@
     try {
       const r = await fightSecretLayer()
       if (!r) return
-      showReport(r.lines, r.win)
+      showReport(r.combatLog, r.lines, r.win)
       // 合并为单条多行 toast:逐条 push 会被 toast 上限 5 挤掉前面的行
       // 胜归 success(与全库「有得有获」同级),败归 warn
       if (r.lines.length) ui.toast(r.lines.join('\n'), r.win ? 'success' : 'warn')

@@ -2,7 +2,7 @@
  * 短期秘境服务:进入(付入口代价)→ 随机规则 1~2 条 → 三层 → 最终宝藏。
  * 复用 resolveCombat / stoneByTier / generateEquipment,不建新数值体系。
  */
-import type { CombatantSnap, CombatRules, GNum } from '@/types'
+import type { CombatLogEntry, CombatantSnap, CombatRules, GNum } from '@/types'
 import type { WorldFoeShape } from '@/types'
 import { cnNumber, formatGN, formatGap } from '@/utils/format'
 import { gnZero, subClamp } from '@/utils/gnum'
@@ -217,6 +217,11 @@ export interface SecretLayerResult {
   cleared: boolean
   /** 本层战利/结果描述 */
   lines: string[]
+  /**
+   * 逐回合战斗过程(1.79.17):此前只把 lines 给界面,「打了一场」看不到怎么打的。
+   * 与 resolveCombat 主战场同源,由秘境卡逐行回放,播毕才放开下一层。
+   */
+  combatLog: CombatLogEntry[]
 }
 
 /**
@@ -315,7 +320,7 @@ export async function fightSecretLayer(): Promise<SecretLayerResult | null> {
         lines.push('悟道点 +3')
       }
       ui.toast(`${def.name}已探尽`, 'rare')
-      return { win: true, finished: true, cleared: true, lines }
+      return { win: true, finished: true, cleared: true, lines, combatLog: result.log }
     }
     const carried = carriedHpAfter(result.playerHpPct, def.healBetweenPct)
     player.setSecretRealm({
@@ -325,7 +330,7 @@ export async function fightSecretLayer(): Promise<SecretLayerResult | null> {
       spoils: [...state.spoils, ...lines],
       carriedHpPct: carried
     })
-    return { win: true, finished: false, cleared: false, lines }
+    return { win: true, finished: false, cleared: false, lines, combatLog: result.log }
   }
 
   const losses = state.losses + 1
@@ -335,7 +340,7 @@ export async function fightSecretLayer(): Promise<SecretLayerResult | null> {
     // 「两场」从 SECRET_MAX_LOSSES 现算,文案跟门槛走
     lines.push(`已败${cnNumber(SECRET_MAX_LOSSES)}场`)
     ui.toast('被逐出秘境', 'warn')
-    return { win: false, finished: true, cleared: false, lines }
+    return { win: false, finished: true, cleared: false, lines, combatLog: result.log }
   }
   player.setSecretRealm({
     ...state,
@@ -343,7 +348,7 @@ export async function fightSecretLayer(): Promise<SecretLayerResult | null> {
     spoils: [...state.spoils, ...lines],
     carriedHpPct: carriedHpAfter(result.playerHpPct, def.healBetweenPct)
   })
-  return { win: false, finished: false, cleared: false, lines }
+  return { win: false, finished: false, cleared: false, lines, combatLog: result.log }
 }
 
 /** 离开秘境(结束/放弃);已得战利不退 */
