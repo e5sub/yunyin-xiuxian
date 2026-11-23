@@ -85,6 +85,19 @@ export interface RewardGains {
   page?: number
 }
 
+/**
+ * 赏格(层级级)是否全零(1.79.18):零赏无须落档,creditEventReward 对全零按 false 返回 ——
+ * 发放路据此区分「没东西可发」与「落档失败」,后者才须回滚已领标记。
+ */
+export function rewardIsEmpty(
+  reward: { stone?: number; herb?: number; ore?: number; wudao?: number; dust?: number; page?: number }
+): boolean {
+  return (
+    !(typeof reward.stone === 'number' && reward.stone > 0) &&
+    SMALL_FIELDS.every(k => !(typeof reward[k] === 'number' && (reward[k] as number) > 0))
+  )
+}
+
 const SMALL_FIELDS = ['herb', 'ore', 'wudao', 'dust', 'page'] as const
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {

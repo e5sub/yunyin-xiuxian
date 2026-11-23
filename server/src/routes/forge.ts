@@ -266,6 +266,18 @@ forgeRouter.post('/forge/op', requireAuth, (req: Request, res: Response) => {
       return
     }
 
+    /*
+     * 云档现值必须真够付(1.79.18):holdCapOf('stone') 恒 0 后上报余额没有天花板,
+     * 结算按上报值判「付得起」,扣款却从云档现值 gnumSub 保底 0 —— 云档没钱时
+     * 扣成 0 但强化照做,等于白嫖。正常玩家上报值与云档一致,行为不变。
+     */
+    const resNow = isPlainObject(data.resources) ? data.resources : null
+    if (resNow === null || gnumSub(result.spend.stone, resNow.spiritStone).m > 0) {
+      if (restored) await saveRestored(userId, row, data)
+      res.json({ ok: false, reason: '灵石不足,请稍候同步后再试', detail: result.detail })
+      return
+    }
+
     patchItems(data, result.items)
     deductSpendFromSave(data, result.spend)
     try {

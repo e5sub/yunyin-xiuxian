@@ -54,10 +54,17 @@ export function gnumSub(a: unknown, b: unknown): GNumDto {
   const y = isDto(b) ? b : { m: 0, e: 0 }
   if (x.m <= 0) return { m: 0, e: 0 }
   if (y.m <= 0) return { ...x }
-  const hi = x.e >= y.e ? x : y
-  const lo = hi === x ? y : x
-  const diff = hi.e - lo.e
-  if (diff > NEGLIGIBLE_EXP_DIFF) return { ...x }
-  const m = x.e >= y.e ? x.m - y.m * Math.pow(10, -diff) : y.m * Math.pow(10, -diff) - x.m
-  return normalize(m, hi.e)
+  /*
+   * 1.79.18:先比较实际大小再相减。旧实现按「指数大者为主项」推公式,
+   * 被减数指数小于减数时走 x.e < y.e 分支,hi/lo 位置颠倒 ——
+   * y.m×10^(-diff) − x.m 在特定取值下会算出正数,「保底 0」失效。
+   * 当前归一化不变量(m∈[1,10))恰好挡住它,但靠外部不变量兜底的减法不该存在。
+   */
+  const xVal = x.m * Math.pow(10, x.e - Math.max(x.e, y.e))
+  const yVal = y.m * Math.pow(10, y.e - Math.max(x.e, y.e))
+  const diffE = Math.max(x.e, y.e)
+  if (x.e - y.e > NEGLIGIBLE_EXP_DIFF) return { ...x }
+  if (y.e - x.e > NEGLIGIBLE_EXP_DIFF) return { m: 0, e: 0 }
+  if (yVal >= xVal) return { m: 0, e: 0 }
+  return normalize(xVal - yVal, diffE)
 }

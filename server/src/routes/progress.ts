@@ -22,6 +22,7 @@ import { recordLevelStates, clearLevelKind } from '../levelLedger.js'
 import { lootProvenance } from '../lootLedger.js'
 import { withKeyLock } from '../mutex.js'
 import { vipActive } from '../vip.js'
+import { gnumSub } from '../gnumOps.js'
 
 const SOURCE_MODULE = '../../../src/core/levelResolve'
 const VENDOR_FILE = 'levelResolve'
@@ -76,6 +77,20 @@ function patchSlices(data: Record<string, unknown>, slices: Record<string, Recor
     if (cur === null) continue
     data[name] = { ...cur, ...slice }
   }
+}
+
+function numOr(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0
+}
+
+/** 云档现值够不够付灵石:cost − have > 0 即缺口;坏值按 0 */
+function stoneShort(have: unknown, cost: { m: number; e: number }): boolean {
+  return gnumSub(cost, have).m > 0
+}
+
+/** 小资源(整数)云档现值够不够付 */
+function smallShort(have: unknown, cost: number): boolean {
+  return cost > 0 && numOr(have) < cost
 }
 
 export const progressRouter = express.Router()
@@ -154,7 +169,35 @@ progressRouter.post('/progress/op', requireAuth, (req: Request, res: Response) =
       return
     }
 
+    /*
+     * 余额落档一律从云档现值扣(1.79.18):上报余额(holdCapOf('stone') 恒 0 后没有天花板)
+     * 只用来排计划,绝不能随 slices 原样写回云档 —— 否则改包报 {m:1,e:30} 就把任意数字
+     * 注进云档,此后服务端算价全以被污染的余额为准。与炼器 deductSpendFromSave 同一范式。
+     * 云档现值不够付:整单拒绝 —— 正常玩家上报值与云档一致,行为不变。
+     */
+    const resBefore = isPlainObject(data.resources) ? (data.resources as Record<string, unknown>) : null
+    if (resBefore === null) {
+      res.status(400).json({ error: '云端存档缺资源分片' })
+      return
+    }
+    if (
+      stoneShort(resBefore.spiritStone, result.spend.stone) ||
+      smallShort(resBefore.wudao, result.spend.wudao) ||
+      smallShort(resBefore.page, result.spend.page) ||
+      smallShort(resBefore.ore, result.spend.ore)
+    ) {
+      res.json({ ok: false, reason: '余额不足,请稍候同步后再试', op: result.op })
+      return
+    }
+
     patchSlices(data, result.slices)
+    const resAfter = isPlainObject(data.resources) ? (data.resources as Record<string, unknown>) : null
+    if (resAfter !== null) {
+      resAfter.spiritStone = gnumSub(resBefore.spiritStone, result.spend.stone)
+      resAfter.wudao = Math.max(0, numOr(resBefore.wudao) - result.spend.wudao)
+      resAfter.page = Math.max(0, numOr(resBefore.page) - result.spend.page)
+      resAfter.ore = Math.max(0, numOr(resBefore.ore) - result.spend.ore)
+    }
     try {
       await backupBeforeOverwrite(userId, { version: row.version, data: row.data, updated_at: row.updated_at })
     } catch {

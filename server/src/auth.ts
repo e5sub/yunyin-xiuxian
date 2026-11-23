@@ -197,12 +197,13 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
   })()
 }
 
-/** ws 连接用:从 token 解会话(uid + 会话序号),无效返回 null */
-export function verifyToken(token: string): { uid: number; seq: number } | null {
+/** ws 连接用:从 token 解会话(uid + 会话序号 + 签发时刻),无效返回 null */
+export function verifyToken(token: string): { uid: number; seq: number; iat: number } | null {
   try {
     const payload = jwt.verify(token, jwtSecret(), { algorithms: [...JWT_ALGS] })
     if (typeof payload === 'object' && payload !== null && typeof (payload as { uid?: unknown }).uid === 'number') {
-      return { uid: (payload as { uid: number }).uid, seq: tokenSeq(payload) }
+      const iat = typeof (payload as { iat?: unknown }).iat === 'number' ? (payload as { iat: number }).iat : 0
+      return { uid: (payload as { uid: number }).uid, seq: tokenSeq(payload), iat }
     }
     return null
   } catch {

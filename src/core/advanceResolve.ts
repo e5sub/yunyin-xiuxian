@@ -178,6 +178,17 @@ function sanitizeSessionClaim(v: unknown, now: number): AdventureSession | null 
   // 结束不得早于开始(否则会话当场算完,白开一程)
   if (endsAt <= startedAt) return undefined
   const counter = (key: string): number => Math.max(0, Math.trunc(numOf(v[key])))
+  /*
+   * 1.79.18:wins/losses/events 不只是展示账 —— winsUntilRegionBoss 拿 wins 判首领,
+   * 计数清零即出首领、清区解锁下一区域。此前 counter 无上限,改包报 wins:100000
+   * 就能秒出首领反复拿首领赏。上限按「一程时长 ÷ 最短战斗间隔(2s)」封顶:
+   * 正常玩家远跑不满,伪造大数的路堵死。itemGain 随遭遇数封顶。
+   */
+  const encounterCap = Math.ceil(((EXPLORE_MODES[mode as keyof typeof EXPLORE_MODES]?.durationSec ?? 0) * 1.5) / 2) + 2
+  const wins = Math.min(counter('wins'), encounterCap)
+  const losses = Math.min(counter('losses'), encounterCap)
+  const events = Math.min(counter('events'), encounterCap)
+  const itemGain = Math.min(counter('itemGain'), (wins + losses) * 4 + 2)
   const stone = gnumOf(v.stoneGain)
   const exp = gnumOf(v.expGain)
   return {
@@ -186,12 +197,12 @@ function sanitizeSessionClaim(v: unknown, now: number): AdventureSession | null 
     startedAt: numOf(v.startedAt),
     endsAt: numOf(v.endsAt),
     nextBattleAt: numOf(v.nextBattleAt),
-    wins: counter('wins'),
-    losses: counter('losses'),
-    events: counter('events'),
+    wins,
+    losses,
+    events,
     stoneGain: stone ?? gnZero(),
     expGain: exp ?? gnZero(),
-    itemGain: counter('itemGain')
+    itemGain
   }
 }
 

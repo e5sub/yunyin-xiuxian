@@ -12,6 +12,9 @@ export interface SecretReportRow {
   id: number
   text: string
   tone: string
+  /** 该行打完后的敌我血量百分比(仅战斗行有;摘要行沿用上一条战斗行) */
+  php?: number
+  ehp?: number
 }
 
 /**
@@ -27,7 +30,9 @@ export function secretReportRows(
   const rows: SecretReportRow[] = log.map((e, i) => ({
     id: i,
     text: e.dmg === undefined || e.dmg === '' ? e.text : `${e.text} ${e.dmg}`,
-    tone: COMBAT_LOG_TONE[e.t]
+    tone: COMBAT_LOG_TONE[e.t],
+    php: e.php,
+    ehp: e.ehp
   }))
   const tone = win ? 'text-gold-ink' : 'text-cinnabar'
   for (let i = 0; i < lines.length; i++) {

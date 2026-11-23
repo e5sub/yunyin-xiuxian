@@ -744,6 +744,13 @@ saveRouter.delete('/save', requireAuth, (req: Request, res: Response) => {
     await clearClaims(req.user!.id)
     await clearForgeSpend(req.user!.id)
     await clearProgressSpend(req.user!.id)
+    /*
+     * 灵石进项台账一并清(1.79.18):sumStoneCreditsSince(userId, 0) 是全历史累计,
+     * 残留行会在删档重修后的首传裁决里被全额计入放行额度 —— 改包上报
+     * spiritStone = 历史进项累计可越过窗口钳。与 purchases/claims 同语义随号不随档
+     * 的装备/等级台账不在其列:那两本对新档只有钳制作用。
+     */
+    await run('DELETE FROM stone_ledger WHERE user_id = ?', [req.user!.id])
     // 门派随档一起散:删档是「重来」,建派花掉的资源不该留成一份永久属性
     await clearSect(req.user!.id)
     /*

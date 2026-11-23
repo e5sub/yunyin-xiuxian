@@ -88,12 +88,18 @@ export function initWsServer(wss: WebSocketServer): void {
       }
       const uid = session.uid
       // 道号一律取库里的账号名:客户端传什么都不能改身份(否则可冒充他人/GM)
-      const row = await get<{ username: string; status: string; login_seq: number }>(
-        'SELECT username, status, login_seq FROM users WHERE id = ?',
+      const row = await get<{ username: string; status: string; login_seq: number; pass_changed_at: number }>(
+        'SELECT username, status, login_seq, pass_changed_at FROM users WHERE id = ?',
         [uid]
       )
       if (row === undefined || row.status !== 'active') {
         ws.close(4001, '账号不可用')
+        return
+      }
+      // 改密/重置口令后旧 token 不再可连 WS(1.79.18):判据与 requireAuth 同款,
+      // 此前握手只比对 seq,被盗 token 在受害者改密「踢下线」后仍能收发聊天/好友推送
+      if (row.pass_changed_at > 0 && session.iat * 1000 < row.pass_changed_at - 1000) {
+        ws.close(4001, '登录已失效,请重新登录')
         return
       }
       // 单设备登录:会话序号对不上(旧会话)的连接直接拒掉;存档上报的宽限逻辑在 requireAuth 里

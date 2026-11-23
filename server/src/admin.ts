@@ -345,11 +345,11 @@ gmRouter.delete('/users/:id', requireAdmin, (req: Request, res: Response) => {
   })
 })
 
-/** 游戏关键参数:读全部 */
+/** 游戏关键参数:读全部(密钥类脱敏为「配置了没有」,明文只在服务端运行链路读取) */
 gmRouter.get('/config', requireAdmin, (_req: Request, res: Response) => {
   void (async () => {
-    const { allConfig } = await import('./config.js')
-    res.json({ config: await allConfig() })
+    const { redactedConfig } = await import('./config.js')
+    res.json({ config: await redactedConfig() })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })
@@ -430,6 +430,14 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
     ]
     if (!allowed.includes(key)) {
       res.status(400).json({ error: '不支持的参数' })
+      return
+    }
+    /*
+     * 脱敏占位不落库(1.79.18):读接口把密钥类回成 '****',GM 前端原样提交时若照写,
+     * 真实密钥就被 **** 覆盖、支付/邮件全部哑火。占位一律视为「未改动」,保留原值。
+     */
+    if (value === '****') {
+      res.json({ ok: true, kept: true })
       return
     }
     const nKeys = [

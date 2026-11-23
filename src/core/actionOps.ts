@@ -34,6 +34,7 @@ import { checkAchievements, checkStateAchievements } from './progress'
 import { usePill, usePillBatch, craftPill, craftPillBatch } from './pillService'
 import { condenseDaoFruit, furnaceConvert, furnaceConvertStone, challengeTrial } from './endgameService'
 import { abandonRealm, enterSecretRealm, fightSecretLayer } from './secretRealm'
+import { gongfaDef } from '@/data/gongfa'
 import { decomposeBatch, decomposeEquipment } from './forge'
 import { resolveEventChoice } from './eventEngine'
 import { askDivination } from './divinationService'
@@ -328,6 +329,22 @@ async function runAction(req: ActionRequest): Promise<ActionResult> {
     case 'gongfa_toggle_sub': {
       const maxSlots = Math.max(0, Math.trunc(numOf(req.count)))
       return cultivation.toggleSub(id, maxSlots) ? { ok: true, patches: {} } : fail('副席已满')
+    }
+    case 'gongfa_set_subs': {
+      // 副席整份同步(1.79.18):构筑一键还原把整张 subGongfa 换掉,逐个 toggle 会撞 250ms 动作闸。
+      // 校验与 toggleSub 同门:须已习得、非主修门类、不与主修同席,席面按门类各算各的。
+      const rawIds = Array.isArray(req.ids) ? req.ids : []
+      const ids: string[] = []
+      for (const raw of rawIds) {
+        const gid = strOf(raw)
+        if (gid === '' || ids.includes(gid)) continue
+        if (cultivation.learned[gid] === undefined) continue
+        const gdef = gongfaDef(gid)
+        if (!gdef || gdef.type === 'main' || gid === cultivation.mainGongfa) continue
+        ids.push(gid)
+      }
+      cultivation.subGongfa = ids
+      return { ok: true, patches: {} }
     }
     case 'gongfa_branch': {
       const branch = strOf(req.id2)

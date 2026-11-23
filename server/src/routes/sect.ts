@@ -350,6 +350,11 @@ function act(label: string, handler: (ctx: ActCtx) => Promise<ActResult>) {
         }
         await finish()
       })
+    }).catch((err: unknown) => {
+      // 1.79.18:锁内抛错(DB 抖动/vendor 加载失败)必须有接手 —— void 链无人接,
+      // unhandledRejection 在 Node 15+ 默认退出进程,一个门派动作就能带崩全服
+      console.error('[sect] 未捕获异常:user=%d label=%s', userId, label, err)
+      if (!res.headersSent) res.status(500).json({ error: '服务器异常' })
     })
   }
 }

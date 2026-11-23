@@ -20,6 +20,7 @@ import {
 } from '@/ui/inventoryText'
 import { detectBuild } from './buildDetect'
 import { effectiveSubs } from './gongfaSeats'
+import { reportAction } from './remoteAction'
 
 /** 保存当前构筑为快照 */
 export function captureLoadout(name: string): Loadout | null {
@@ -91,6 +92,8 @@ export function applyLoadout(id: string): boolean {
     gongfaDef(loadout.mainGongfa)?.type === 'main'
   ) {
     cultivation.equipMain(loadout.mainGongfa)
+    // 落云档(1.79.18):与功法弹窗同一上报口径,整档重对齐不再把还原的功法盖回去
+    reportAction('gongfa_equip_main', { id: loadout.mainGongfa })
   } else if (loadout.mainGongfa) {
     missing += 1
     missingNames.push(gongfaDef(loadout.mainGongfa)?.name ?? '主修功法')
@@ -112,6 +115,8 @@ export function applyLoadout(id: string): boolean {
   missing += unownedSubs.length + overflowSubs.length
   for (const g of [...unownedSubs, ...overflowSubs]) missingNames.push(gongfaDef(g)?.name ?? g)
   cultivation.subGongfa = validSubs
+  // 副席整份同步(1.79.18):构筑还原是整张换席,逐个 toggle 会撞动作限速,服务端按同一门类闸复核
+  reportAction('gongfa_set_subs', { ids: validSubs })
   const artifactCap = artifactSlotsFor(player.major)
   const owned = new Set(inventory.artifacts.map(a => a.defId))
   const snapshotArts = [...new Set(loadout.artifactIds)]

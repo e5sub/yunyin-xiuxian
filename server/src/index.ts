@@ -71,8 +71,13 @@ async function main(): Promise<void> {
 
   const app = express()
   app.disable('x-powered-by')
-  // 反代场景取真实客户端 IP(限速按 IP 分桶);默认信任回环(同机 nginx),可用 TRUST_PROXY 覆盖
-  app.set('trust proxy', process.env.TRUST_PROXY?.trim() || 'loopback')
+  /*
+   * 反代场景取真实客户端 IP(限速按 IP 分桶)。默认信任**一跳**(1.79.18):此前
+   * 'loopback' 会沿 XFF 链一路采信到客户端自带的伪造头,配合反代追加式配置,
+   * 登录/注册/发码等全部按 IP 的限速都能被换头绕过。单层 nginx 固定一跳即取真实 IP;
+   * 多层反代的部署用 TRUST_PROXY 显式覆盖。
+   */
+  app.set('trust proxy', process.env.TRUST_PROXY?.trim() || '1')
 
   // 跨域白名单:同域与 Capacitor WebView 默认放行,其余来源须在 CORS_ORIGINS(逗号分隔)里显式列出
   const extraOrigins = new Set(

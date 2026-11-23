@@ -222,9 +222,11 @@ autoOpsRouter.post('/collect', requireAuth, (req: Request, res: Response) => {
        * ev 台账落档(1.79.12):离线代办的每日活动赏在清零前直接写进云档 resources,
        * 灵石按**授予时**的层级折(ev_tier)。此前只回数值让客户端本地加 —— 抛弃存档
        * 之后被心跳补丁一拍顶回,赏格蒸发而台账已清零,连重领都没有。
+       * 1.79.18:落档成功才清账(与 boss /claim 同一范式) —— 此前 .catch(() => undefined)
+       * 把落档失败吞掉后仍无条件清零,抖动一次这笔赏就永久蒸发且无重领入口。
        */
       const tier = Math.max(0, Math.trunc(events.tier))
-      await creditEventReward(
+      const credited = await creditEventReward(
         req.user!.id,
         {
           stone: events.stone > 0 ? events.stone : undefined,
@@ -235,13 +237,15 @@ autoOpsRouter.post('/collect', requireAuth, (req: Request, res: Response) => {
           page: events.page > 0 ? events.page : undefined
         },
         tier
-      ).catch(() => undefined)
-      await run(
-        'UPDATE autoops_state SET ledger_stone_m = 0, ledger_stone_e = 0, ledger_herb = 0, ledger_strikes = 0, ledger_tier = 0, ev_stone = 0, ev_herb = 0, ev_ore = 0, ev_wudao = 0, ev_dust = 0, ev_page = 0, ev_tier = 0 WHERE user_id = ?',
-        [req.user!.id]
-      )
+      ).catch(() => false)
+      if (credited) {
+        await run(
+          'UPDATE autoops_state SET ledger_stone_m = 0, ledger_stone_e = 0, ledger_herb = 0, ledger_strikes = 0, ledger_tier = 0, ev_stone = 0, ev_herb = 0, ev_ore = 0, ev_wudao = 0, ev_dust = 0, ev_page = 0, ev_tier = 0 WHERE user_id = ?',
+          [req.user!.id]
+        )
+      }
     }
-    res.json({ collected: { ...pending, events }, skip })
+    return { collected: { ...pending, events }, skip }
   })
     .then(collected => {
       res.json(collected)

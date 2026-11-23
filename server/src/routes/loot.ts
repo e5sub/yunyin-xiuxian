@@ -30,12 +30,26 @@ const lastClaimAt = new Map<number, number>()
 /** 每账号本小时已签发件数(内存即可:重启清零只放宽一次) */
 const hourlyGranted = new Map<number, { hour: number; count: number }>()
 
-function underHourlyCap(userId: number, want: number): boolean {
+function hourlyBase(userId: number): number {
   const hour = Math.floor(Date.now() / 3_600_000)
   const cur = hourlyGranted.get(userId)
-  const base = cur && cur.hour === hour ? cur.count : 0
-  if (base + want > HOURLY_GRANT_CAP) return false
-  hourlyGranted.set(userId, { hour, count: base + want })
+  return cur && cur.hour === hour ? cur.count : 0
+}
+
+/** 查而不记:预算扣取前先看封顶放不放行(1.79.18) */
+function hourlyCapOpen(userId: number, want: number): boolean {
+  return hourlyBase(userId) + want <= HOURLY_GRANT_CAP
+}
+
+/** 实际签发数落账(与 underHourlyCap 原语义一致) */
+function commitHourlyCap(userId: number, want: number): void {
+  const hour = Math.floor(Date.now() / 3_600_000)
+  hourlyGranted.set(userId, { hour, count: hourlyBase(userId) + want })
+}
+
+function underHourlyCap(userId: number, want: number): boolean {
+  if (!hourlyCapOpen(userId, want)) return false
+  commitHourlyCap(userId, want)
   return true
 }
 
@@ -152,14 +166,26 @@ lootRouter.post('/loot/claim', requireAuth, (req: Request, res: Response) => {
       const raw = fixed ?? (typeof ctx.count === 'number' && Number.isFinite(ctx.count) ? ctx.count : 0)
       return Math.min(Math.max(Math.trunc(raw), 0), cap)
     }
-    const remaining = new Map<BudgetSrc, number>()
+    /*
+     * 小时封顶先查再扣预算(1.79.18):此前 takeLootBudget 已扣账推 updated_at,
+     * 循环后 underHourlyCap 超限 429 整单不发 —— 这份预算白丢,玩家明明没领到
+     * 下次却被限额。先按各 src 需求上界查封顶,过了才扣预算、签发按实际数落账。
+     */
+    const totals = new Map<BudgetSrc, number>()
     for (const src of Object.keys(BUDGET_LIMITS) as BudgetSrc[]) {
       const total = ctxs
         .filter(c => c.src === src)
         .reduce((a, c) => a + wantOf(src, c), 0)
-      if (total > 0) {
-        remaining.set(src, await takeLootBudget(userId, src, total, now, BUDGET_LIMITS[src]))
-      }
+      if (total > 0) totals.set(src, total)
+    }
+    const totalsSum = [...totals.values()].reduce((a, b) => a + b, 0)
+    if (totalsSum > 0 && !hourlyCapOpen(userId, totalsSum)) {
+      res.status(429).json({ error: '签发过于频繁,稍候再试' })
+      return
+    }
+    const remaining = new Map<BudgetSrc, number>()
+    for (const [src, total] of totals) {
+      remaining.set(src, await takeLootBudget(userId, src, total, now, BUDGET_LIMITS[src]))
     }
     for (const ctx of ctxs) {
       const srcKey = typeof ctx.src === 'string' && ctx.src in BUDGET_LIMITS ? (ctx.src as BudgetSrc) : null
@@ -182,11 +208,7 @@ lootRouter.post('/loot/claim', requireAuth, (req: Request, res: Response) => {
         want += batch.length
       }
     }
-    // 小时封顶先查再记账:超限的签发不入台账(无账之件上传时本就会被移除,不给玩家错觉)
-    if (want > 0 && !underHourlyCap(userId, want)) {
-      res.status(429).json({ error: '签发过于频繁,稍候再试' })
-      return
-    }
+    if (want > 0) commitHourlyCap(userId, want)
     const equips: Array<Record<string, unknown>> = []
     for (const { src, batch } of grantedBatches) {
       await recordLoot(userId, batch.map(e => String(e.uid)), src)

@@ -195,6 +195,7 @@ import { branchDirectionMark } from '@/ui/branchDirection'
   import { STAT_NAMES, modsText, statValueText } from '@/data/statNames'
   import { gongfaSkillLine } from '@/ui/itemText'
   import { gongfaMainToast, gongfaPeakLabel, gongfaSubFullToast, gongfaSubToast, gongfaUpShortToast } from '@/ui/gongfaText'
+  import { reportAction } from '@/core/remoteAction'
   import type { AnyStatKey, StatMods } from '@/types'
   import BaseModal from '@/components/common/BaseModal.vue'
   import QualityTag from '@/components/common/QualityTag.vue'
@@ -316,6 +317,13 @@ import { branchDirectionMark } from '@/ui/branchDirection'
     if (!def.value) return
     if (cultivation.chooseBranch(def.value.id, branchId)) {
       ui.toast(`已悟道「${gongfaBranchDef(branchId)?.name ?? ''}」`, 'rare')
+      /*
+       * 落云档(1.79.18):功法设置此前只改本地 store、从不上报 ——
+       * 云档的 cultivation 分片永远是旧值,整档重对齐/重登就把刚设的功法盖回去
+       * (「设置后自动变回上一次」)。服务端 actionOps 的分支一直都在,补上上报即闭环;
+       * 上报失败(429/断网)下次动作或心跳收口,不阻塞本地操作。
+       */
+      reportAction('gongfa_branch', { id: def.value.id, id2: branchId })
     }
   }
 
@@ -334,7 +342,10 @@ import { branchDirectionMark } from '@/ui/branchDirection'
     const d = def.value
     if (!d) return
     // 主修决定功法加成与神通,换与没换必须出声:面板上那片属性就靠这一句对上
-    if (cultivation.equipMain(d.id)) ui.toast(gongfaMainToast(d.name), 'info')
+    if (cultivation.equipMain(d.id)) {
+      ui.toast(gongfaMainToast(d.name), 'info')
+      reportAction('gongfa_equip_main', { id: d.id })
+    }
   }
 
   function toggleSub(): void {
@@ -343,6 +354,10 @@ import { branchDirectionMark } from '@/ui/branchDirection'
     const wasOn = cultivation.subGongfa.includes(d.id)
     const ok = cultivation.toggleSub(d.id, dongfu.subGongfaSlots)
     if (!ok) ui.toast(gongfaSubFullToast(seatCap.value, seatKind.value === 'secret' ? '秘术' : '辅修'), 'warn')
-    else ui.toast(gongfaSubToast(d.name, !wasOn), 'info')
+    else {
+      ui.toast(gongfaSubToast(d.name, !wasOn), 'info')
+      // maxSlots 与服务端同一判断源(dongfu.subGongfaSlots),见 actionOps gongfa_toggle_sub
+      reportAction('gongfa_toggle_sub', { id: d.id, count: dongfu.subGongfaSlots })
+    }
   }
 </script>

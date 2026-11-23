@@ -103,7 +103,10 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # 必须覆盖而不是追加($proxy_add_x_forwarded_for):否则客户端可自带 XFF 头,
+        # Express trust proxy 取到的「客户端 IP」就是伪造值,登录/注册/发码等全部
+        # 基于 IP 的限速都能被换头绕过(1.79.18)
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;

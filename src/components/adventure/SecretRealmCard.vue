@@ -60,6 +60,23 @@
             跳过播放 »
           </button>
         </div>
+        <!--
+          敌我血条(1.79.18):日志每条本就带 php/ehp,此前只拼了文字、血量全丢 ——
+          玩家看不到「还剩几成」。随播放进度取当前行读数(未开打先满血),与主战场同一套
+          ProgressBar + hpPercent,敌朱我翠,不另起一套口径。
+        -->
+        <div class="mt-1 space-y-1">
+          <div class="flex items-center gap-2">
+            <span class="w-16 shrink-0 truncate text-[10px] text-cinnabar" :title="reportFoeName">{{ reportFoeName }}</span>
+            <ProgressBar :value="reportEhp" color="var(--color-cinnabar)" :height="5" class="min-w-0 flex-1" />
+            <span class="w-8 shrink-0 text-right tabular text-[10px] text-cinnabar">{{ hpPercent(reportEhp) }}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-16 shrink-0 truncate text-[10px] text-jade">{{ player.name }}</span>
+            <ProgressBar :value="reportPhp" color="var(--color-jade)" :height="5" class="min-w-0 flex-1" />
+            <span class="w-8 shrink-0 text-right tabular text-[10px] text-jade">{{ hpPercent(reportPhp) }}</span>
+          </div>
+        </div>
         <div ref="reportBox" class="mt-1 max-h-40 space-y-0.5 overflow-y-auto" aria-live="polite">
           <p
             v-for="row in shownRows"
@@ -156,8 +173,10 @@
   import { isTopGain, realmEntryLabel, realmMark } from '@/ui/realmMark'
   import { realmLayerPips, realmLifePips, realmProgress, SECRET_MAX_LOSSES } from '@/ui/realmProgress'
   import { cnNumber } from '@/utils/format'
+  import { hpPercent } from '@/ui/hpReadout'
   import { COMBAT_PLAYBACK_BASE_MS, COMBAT_PLAYBACK_MIN_MS } from '@/data/constants'
   import { secretReportRows, type SecretReportRow } from '@/ui/secretReport'
+  import ProgressBar from '@/components/common/ProgressBar.vue'
   import type { CombatLogEntry } from '@/types'
   import {
     SECRET_LAYERS,
@@ -214,9 +233,25 @@
   const reportRows = ref<readonly SecretReportRow[]>([])
   const reportShownCount = ref(0)
   const reportBox = ref<HTMLElement | null>(null)
+  const reportFoeName = ref('对手')
   let reportTimer: ReturnType<typeof setTimeout> | null = null
   const reporting = computed(() => reportShownCount.value < reportRows.value.length)
   const shownRows = computed(() => reportRows.value.slice(0, reportShownCount.value))
+  /**
+   * 血条读数取「已揭示的行里最后一条带血量的战斗行」:播放到第几行就亮到第几行的血量;
+   * 摘要行不带血量,不会把条挪走。未开打(还没揭示到战斗行)先按满血显示。
+   */
+  const reportHp = computed(() => {
+    let php = 1
+    let ehp = 1
+    for (const row of shownRows.value) {
+      if (row.php !== undefined) php = row.php
+      if (row.ehp !== undefined) ehp = row.ehp
+    }
+    return { php, ehp }
+  })
+  const reportPhp = computed(() => reportHp.value.php)
+  const reportEhp = computed(() => reportHp.value.ehp)
 
   function clearReportTimer(): void {
     if (reportTimer !== null) {
@@ -230,8 +265,9 @@
     reportShownCount.value = reportRows.value.length
   }
 
-  function showReport(log: readonly CombatLogEntry[], lines: readonly string[], win: boolean): void {
+  function showReport(log: readonly CombatLogEntry[], lines: readonly string[], win: boolean, foeName: string): void {
     clearReportTimer()
+    reportFoeName.value = foeName
     const rows = secretReportRows(log, lines, win)
     reportRows.value = rows
     reportShownCount.value = 0
@@ -303,7 +339,7 @@
     try {
       const r = await fightSecretLayer()
       if (!r) return
-      showReport(r.combatLog, r.lines, r.win)
+      showReport(r.combatLog, r.lines, r.win, r.foeName)
       // 合并为单条多行 toast:逐条 push 会被 toast 上限 5 挤掉前面的行
       // 胜归 success(与全库「有得有获」同级),败归 warn
       if (r.lines.length) ui.toast(r.lines.join('\n'), r.win ? 'success' : 'warn')

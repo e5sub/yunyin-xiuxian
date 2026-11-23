@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest'
 import type { CombatLogEntry } from '@/types'
 import { secretReportRows } from './secretReport'
 
-function log(t: CombatLogEntry['t'], text: string, dmg?: string): CombatLogEntry {
-  return { t, side: 'p', text, dmg, php: 1, ehp: 0.8 }
+function log(t: CombatLogEntry['t'], text: string, dmg?: string, php = 1, ehp = 0.8): CombatLogEntry {
+  return { t, side: 'p', text, dmg, php, ehp }
 }
 
 describe('秘境本层战报', () => {
@@ -33,5 +33,20 @@ describe('秘境本层战报', () => {
     const rows = secretReportRows([], ['不敌 妖兽 · 气血余 20%'], false)
     expect(rows).toHaveLength(1)
     expect(rows[0]!.tone).toBe('text-cinnabar')
+  })
+
+  it('战斗行携带每回合敌我血量,摘要行不带(血条沿用最后一条战斗行读数)', () => {
+    const rows = secretReportRows(
+      [log('atk', '你挥剑', '-120', 0.9, 0.7), log('crit', '会心', '-360', 0.85, 0.2)],
+      ['胜 妖兽 · 灵石 +1万'],
+      true
+    )
+    expect(rows[0]!.php).toBe(0.9)
+    expect(rows[0]!.ehp).toBe(0.7)
+    expect(rows[1]!.php).toBe(0.85)
+    expect(rows[1]!.ehp).toBe(0.2)
+    // 摘要行没有血量字段,界面据此沿用最后一条战斗行,不被摘要把血条挪走
+    expect(rows[2]!.php).toBeUndefined()
+    expect(rows[2]!.ehp).toBeUndefined()
   })
 })

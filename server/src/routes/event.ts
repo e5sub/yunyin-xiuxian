@@ -4,9 +4,9 @@
  */
 import express, { type Request, type Response } from 'express'
 import { requireAuth } from '../auth.js'
-import { get } from '../db.js'
+import { get, run } from '../db.js'
 import { simulateDuel, type DuelSide } from '../pvp.js'
-import { creditEventReward } from '../saveCredit.js'
+import { creditEventReward, rewardIsEmpty } from '../saveCredit.js'
 import {
   EVENTS,
   activeEvent,
@@ -181,9 +181,24 @@ eventRouter.post('/claim', requireAuth, (req: Request, res: Response) => {
       res.status(400).json({ error: mine.claimed ? '今日已领' : '尚未达成' })
       return
     }
-    // 赏格落档(1.79.12):层级级数值按云档境界折成最终值写进云档 resources;
-    // 客户端本地那次入账退化为乐观显示,心跳一拍对齐。此前只回数值 —— 抛弃存档后蒸发。
-    await creditEventReward(req.user!.id, reward).catch(() => undefined)
+    /*
+     * 赏格落档(1.79.12):层级级数值按云档境界折成最终值写进云档 resources;
+     * 客户端本地那次入账退化为乐观显示,心跳一拍对齐。此前只回数值 —— 抛弃存档后蒸发。
+     * 1.79.18:落档失败须回滚已领标记 —— claimEvent 已原子置 claimed=1,吞掉失败
+     * 这笔赏就永久蒸发且「今日已领」再无重领入口。零赏(理论不出现)不判失败。
+     */
+    if (!rewardIsEmpty(reward)) {
+      const credited = await creditEventReward(req.user!.id, reward).catch(() => false)
+      if (!credited) {
+        await run('UPDATE event_progress SET claimed = 0 WHERE user_id = ? AND day = ? AND event_id = ?', [
+          req.user!.id,
+          day,
+          event.id
+        ])
+        res.status(500).json({ error: '落档失败,请重试' })
+        return
+      }
+    }
     res.json({ reward, day, eventId: event.id })
   })().catch(() => res.status(500).json({ error: '领取失败' }))
 })

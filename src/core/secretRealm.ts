@@ -222,6 +222,8 @@ export interface SecretLayerResult {
    * 与 resolveCombat 主战场同源,由秘境卡逐行回放,播毕才放开下一层。
    */
   combatLog: CombatLogEntry[]
+  /** 本层对手名字(1.79.17):战报血条要标注敌我,从开打快照带出,不靠解析日志文本 */
+  foeName: string
 }
 
 /**
@@ -320,7 +322,7 @@ export async function fightSecretLayer(): Promise<SecretLayerResult | null> {
         lines.push('悟道点 +3')
       }
       ui.toast(`${def.name}已探尽`, 'rare')
-      return { win: true, finished: true, cleared: true, lines, combatLog: result.log }
+      return { win: true, finished: true, cleared: true, lines, combatLog: result.log, foeName: snap.name }
     }
     const carried = carriedHpAfter(result.playerHpPct, def.healBetweenPct)
     player.setSecretRealm({
@@ -330,7 +332,7 @@ export async function fightSecretLayer(): Promise<SecretLayerResult | null> {
       spoils: [...state.spoils, ...lines],
       carriedHpPct: carried
     })
-    return { win: true, finished: false, cleared: false, lines, combatLog: result.log }
+    return { win: true, finished: false, cleared: false, lines, combatLog: result.log, foeName: snap.name }
   }
 
   const losses = state.losses + 1
@@ -340,7 +342,7 @@ export async function fightSecretLayer(): Promise<SecretLayerResult | null> {
     // 「两场」从 SECRET_MAX_LOSSES 现算,文案跟门槛走
     lines.push(`已败${cnNumber(SECRET_MAX_LOSSES)}场`)
     ui.toast('被逐出秘境', 'warn')
-    return { win: false, finished: true, cleared: false, lines, combatLog: result.log }
+    return { win: false, finished: true, cleared: false, lines, combatLog: result.log, foeName: snap.name }
   }
   player.setSecretRealm({
     ...state,
@@ -348,7 +350,7 @@ export async function fightSecretLayer(): Promise<SecretLayerResult | null> {
     spoils: [...state.spoils, ...lines],
     carriedHpPct: carriedHpAfter(result.playerHpPct, def.healBetweenPct)
   })
-  return { win: false, finished: false, cleared: false, lines, combatLog: result.log }
+  return { win: false, finished: false, cleared: false, lines, combatLog: result.log, foeName: snap.name }
 }
 
 /** 离开秘境(结束/放弃);已得战利不退 */
