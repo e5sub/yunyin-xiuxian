@@ -30,6 +30,7 @@ import { useResourcesStore } from '@/stores/resources'
 import { useCultivationStore } from '@/stores/cultivation'
 import { useDongfuStore } from '@/stores/dongfu'
 import { useAdventureStore } from '@/stores/adventure'
+import { useSectStore } from '@/stores/sect'
 import { expAccrualBudget } from './saveAuthority'
 import { tickExploration } from './exploration'
 import { settleSuppressedRegions } from './suppress'
@@ -214,7 +215,8 @@ function sanitizeSessionClaim(v: unknown, now: number): AdventureSession | null 
 export async function resolveAdvanceFromSlices(
   data: unknown,
   claims: AdvanceClaims,
-  ctx: AdvanceResolveCtx
+  ctx: AdvanceResolveCtx,
+  sect?: unknown
 ): Promise<AdvanceResolveResult | null> {
   if (typeof data !== 'object' || data === null) return null
   const raw = data as Record<string, unknown>
@@ -231,6 +233,14 @@ export async function resolveAdvanceFromSlices(
       const slice = raw[id]
       if (isPlainObject(slice)) factory().$patch(slice)
     }
+    /*
+     * 门派是第 18 片「不在分片里的片」:整份状态只住服务端表(sectState.ts),存档 JSON 里没有。
+     * 不注进来,服务端复算的 finalStats 就缺门派技能/建筑/武学的全部加成 —— cultPerSec /
+     * qiRegenPerSec / qiCapValue / 战力全比玩家面板低一截,心跳补丁每拍把客户端涨好的
+     * 修为与灵气拽回去,表现为「修为和灵气怎么都攒不满」。与 profileRecompute 同一条口子:
+     * 调用方读表后递进来,两边同一份 normalizeSectState。
+     */
+    if (sect !== undefined && sect !== null) useSectStore().hydrate(sect)
     const player = usePlayerStore()
     const resources = useResourcesStore()
     const adventure = useAdventureStore()
@@ -246,9 +256,11 @@ export async function resolveAdvanceFromSlices(
       const ceiling = add(stored, expAccrualBudget(player.major, player.sub, ctx.dtSec))
       player.exp = gt(claimExp, ceiling) ? stored : claimExp
     }
-    // 灵气:瞬间资源,超出积余容量的部分不采信(与突破同一条取舍)
+    // 灵气:瞬间资源,超出积余容量的部分不采信(与突破同一条取舍)。
+    // 「积余容量」是标称容量 × QI_BANK_MULT(setQi 的同一道顶),不是标称容量本身 ——
+    // 此前钳在标称容量上,玩家攒到容量以上的合法积余每拍都被砍回,积余段永远蓄不满。
     if (Number.isFinite(claims.qi)) {
-      resources.qi = Math.min(Math.max(Math.trunc(numOf(claims.qi)), 0), Math.max(0, Math.floor(player.qiCapValue)))
+      resources.qi = Math.min(Math.max(Math.trunc(numOf(claims.qi)), 0), Math.max(0, Math.floor(player.qiBankCapValue)))
     }
 
     const before = stateClone()

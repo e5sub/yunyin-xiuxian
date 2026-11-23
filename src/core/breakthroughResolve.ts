@@ -45,6 +45,7 @@ import { reliefFelt } from './linggenAffinity'
 import { gameNow } from './enginePause'
 import { breakthroughPrepState, consumeBreakthroughPrep, type BreakthroughPrepView } from './earlyGameService'
 import { usePlayerStore } from '@/stores/player'
+import { useSectStore } from '@/stores/sect'
 import { useResourcesStore } from '@/stores/resources'
 import { useCultivationStore } from '@/stores/cultivation'
 import { useInventoryStore } from '@/stores/inventory'
@@ -363,7 +364,8 @@ export interface BreakthroughResolveCtx {
 export function resolveBreakthroughFromSlices(
   data: unknown,
   claims: BreakthroughClaims,
-  ctx: BreakthroughResolveCtx
+  ctx: BreakthroughResolveCtx,
+  sect?: unknown
 ): BreakthroughResolveResult | null {
   if (typeof data !== 'object' || data === null) return null
   const raw = data as Record<string, unknown>
@@ -385,6 +387,9 @@ export function resolveBreakthroughFromSlices(
       const slice = raw[id]
       if (isPlainObject(slice)) (store as unknown as { $patch: (p: unknown) => void }).$patch(slice)
     }
+    // 门派不在存档分片里(与 advanceResolve 同一条口子):不注入,渡劫推演的
+    // 攻防血与突破成功率就比玩家面板低一截 —— 渡劫该过的也过不了
+    if (sect !== undefined && sect !== null) useSectStore().hydrate(sect)
     const player = usePlayerStore()
     const resources = useResourcesStore()
 
@@ -395,9 +400,10 @@ export function resolveBreakthroughFromSlices(
       const ceiling = add(stored, expAccrualBudget(player.major, player.sub, ctx.elapsedSec))
       player.exp = gt(claimExp, ceiling) ? stored : claimExp
     }
-    // 灵气:瞬间资源,超出积余容量的部分不采信(等几秒也能攒回来,不值得为它拒结算)
+    // 灵气:瞬间资源,超出积余容量的部分不采信(等几秒也能攒回来,不值得为它拒结算)。
+    // 积余容量 = 标称容量 × QI_BANK_MULT,与 setQi / advanceResolve 同一把尺
     if (Number.isFinite(claims.qi)) {
-      resources.qi = Math.min(Math.max(Math.trunc(numOf(claims.qi)), 0), Math.max(0, Math.floor(player.qiCapValue)))
+      resources.qi = Math.min(Math.max(Math.trunc(numOf(claims.qi)), 0), Math.max(0, Math.floor(player.qiBankCapValue)))
     }
 
     const before = stateClone()

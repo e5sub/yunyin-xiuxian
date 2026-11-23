@@ -15,6 +15,7 @@ import express, { type Request, type Response } from 'express'
 import { get, run, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { metricsOf, syncProfileFromData } from './save.js'
+import { readSectState } from '../sectState.js'
 import { loadClientModule } from '../clientVendor.js'
 import { withKeyLock } from '../mutex.js'
 import { heldKeys, reconcileHeldLoot, syncNewLoot } from '../lootSync.js'
@@ -32,7 +33,8 @@ interface ActionResultShape {
 type ResolveFn = (
   data: unknown,
   req: Record<string, unknown>,
-  ctx: { now: number }
+  ctx: { now: number },
+  sect?: unknown
 ) => Promise<ActionResultShape | null>
 
 let cached: Promise<{ resolveActionFromSlices: ResolveFn }> | null = null
@@ -107,7 +109,9 @@ actionRouter.post('/action', requireAuth, (req: Request, res: Response) => {
     }
 
     const mod = await clientResolve()
-    const resolved = await mod.resolveActionFromSlices(data, body, { now })
+    // 门派不进存档分片:服丹产速、战斗类动作的攻防血都吃门派加成,不递就比面板低一截
+    const sect = await readSectState(userId, now)
+    const resolved = await mod.resolveActionFromSlices(data, body, { now }, sect)
     if (resolved === null) {
       // 存档形状不合法才会走到这:不留痕的话生产端只会看到裸 500,没法定位是哪个号、哪个动作
       console.error('[action] 结算返回 null:user=%d kind=%s started=%s player=%s', userId, body.kind, String(metricsOf(row.data).started), typeof data.player)

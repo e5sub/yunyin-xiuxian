@@ -17,6 +17,7 @@ vi.mock('@/utils/random', async importOriginal => {
 import { resolveBreakthroughFromSlices } from './breakthroughResolve'
 import { toNum } from '@/utils/gnum'
 import { BT_FAIL_EXP_LOSS } from '@/data/constants'
+import { usePlayerStore } from '@/stores/player'
 
 /** 一份「炼气·四层,修为圆满,灵气拉满」的可结算档(与 breakthroughFlow.spec 同一门槛口径) */
 function readySave(): Record<string, unknown> {
@@ -122,6 +123,40 @@ describe('突破无头结算 · 上报值收口', () => {
     const qi = resolved.patches.resources?.qi as number | undefined
     expect(qi).toBeDefined()
     expect(qi!).toBeLessThanOrEqual(1e12)
+  })
+
+  it('容量以上的合法积余照采:灵气声明按积余容量收口,不再被砍回标称容量', () => {
+    /*
+     * 1.79.19 前收口钳在 qiCapValue(标称容量)上,玩家攒出的合法积余(setQi 顶 =
+     * 标称 × QI_BANK_MULT)每拍心跳被砍回 —— 与 advanceResolve 同一处修。判据:
+     * 报 5 倍标称容量的灵气要被采信,突破扣完(门槛 = 标称 × BT_QI_COST_RATIO)仍远高于标称容量。
+     */
+    const cap = usePlayerStore().qiCapValue
+    const resolved = resolveBreakthroughFromSlices(readySave(), { qi: cap * 5 }, CTX)!
+    expect(resolved.outcome.ok).toBe(true)
+    const qi = resolved.patches.resources?.qi as number | undefined
+    expect(qi, '5 倍容量的合法积余必须被采信(旧版会被砍回 1 倍容量)').toBeGreaterThan(cap)
+  })
+
+  it('门派状态随 sect 入参进结算:渡劫推演的攻防血吃门派加成', () => {
+    /*
+     * 门派不进存档分片(整份状态只住服务端表)。1.79.19 前突破水合漏了它:渡劫推演的
+     * 防御/血量比玩家面板低一截。判据:同一份档,带门派(铁壁类防技)的渡劫波伤更小 ——
+     * 这里用最直接的形状判:注入不炸链路,且 snapshots 之外的 patches 结构不变。
+     */
+    const plain = resolveBreakthroughFromSlices(readySave(), {}, CTX)!
+    const sected = resolveBreakthroughFromSlices(readySave(), {}, CTX, {
+      name: '万象门',
+      role: 'leader',
+      personal: 0,
+      pool: 0,
+      skills: {},
+      arts: {},
+      buildings: { hall: 1 }
+    })!
+    expect(sected.outcome.ok).toBe(true)
+    expect(sected.outcome.success).toBe(plain.outcome.success)
+    expect(Object.keys(sected.patches).every(k => ['player', 'resources', 'cultivation'].includes(k))).toBe(true)
   })
 
   it('上报修为低于存量(合法消耗):照采', () => {

@@ -10,6 +10,7 @@ import express, { type Request, type Response } from 'express'
 import { get, run, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { metricsOf, backupBeforeOverwrite, syncProfileFromData } from './save.js'
+import { readSectState } from '../sectState.js'
 import { loadClientModule } from '../clientVendor.js'
 import { withKeyLock } from '../mutex.js'
 
@@ -37,7 +38,8 @@ interface ResolveResult {
 type ResolveFn = (
   data: unknown,
   claims: { exp?: unknown; qi?: unknown },
-  ctx: { elapsedSec: number }
+  ctx: { elapsedSec: number },
+  sect?: unknown
 ) => ResolveResult | null
 
 let cached: Promise<{ resolveBreakthroughFromSlices: ResolveFn }> | null = null
@@ -102,12 +104,15 @@ cultivationRouter.post('/cultivation/breakthrough', requireAuth, (req: Request, 
       return
     }
 
-    // 无头结算:水合 → 收口上报修为/灵气 → 同一套裁决代码掷点 → 顶层键级 diff
+    // 无头结算:水合 → 收口上报修为/灵气 → 同一套裁决代码掷点 → 顶层键级 diff。
+    // 门派状态一并递进去(不进分片):渡劫推演的攻防血吃门派加成,漏了就比面板弱
     const mod = await clientResolve()
+    const sect = await readSectState(userId, now)
     const resolved = mod.resolveBreakthroughFromSlices(
       data,
       { exp: body.exp, qi: body.qi },
-      { elapsedSec: Math.max(0, now - row.updated_at) / 1000 }
+      { elapsedSec: Math.max(0, now - row.updated_at) / 1000 },
+      sect
     )
     if (resolved === null) {
       res.status(500).json({ error: '突破结算失败' })

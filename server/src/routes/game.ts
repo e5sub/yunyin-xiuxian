@@ -17,6 +17,7 @@ import express, { type Request, type Response } from 'express'
 import { get, run, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { metricsOf, syncProfileFromData } from './save.js'
+import { readSectState } from '../sectState.js'
 import { loadClientModule } from '../clientVendor.js'
 import { withKeyLock } from '../mutex.js'
 import { heldKeys, syncNewLoot } from '../lootSync.js'
@@ -40,7 +41,8 @@ interface AdvanceResult {
 type ResolveFn = (
   data: unknown,
   claims: { exp?: unknown; qi?: unknown; session?: unknown },
-  ctx: { dtSec: number; offline: boolean }
+  ctx: { dtSec: number; offline: boolean },
+  sect?: unknown
 ) => Promise<AdvanceResult | null>
 
 let cached: Promise<{ resolveAdvanceFromSlices: ResolveFn }> | null = null
@@ -118,7 +120,10 @@ gameRouter.post('/game/advance', requireAuth, (req: Request, res: Response) => {
     const offline = dtSec > OFFLINE_GATE_SEC
 
     const mod = await clientResolve()
-    const resolved = await mod.resolveAdvanceFromSlices(data, body, { dtSec, offline })
+    // 门派不进存档分片:状态在 sect_state 表里。不递进去,服务端复算的产速/战力就缺
+    // 门派技能/建筑/武学的加成,心跳补丁每拍把客户端的修为与灵气拽回去(「存不满」)
+    const sect = await readSectState(userId, now)
+    const resolved = await mod.resolveAdvanceFromSlices(data, body, { dtSec, offline }, sect)
     if (resolved === null) {
       res.status(500).json({ error: '推进结算失败' })
       return

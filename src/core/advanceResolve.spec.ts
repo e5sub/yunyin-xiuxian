@@ -18,8 +18,9 @@ vi.mock('@/utils/random', async importOriginal => {
 
 import { resolveAdvanceFromSlices } from './advanceResolve'
 import { toNum } from '@/utils/gnum'
-import { OFFLINE_MIN_SECONDS } from '@/data/constants'
+import { OFFLINE_MIN_SECONDS, QI_BANK_MULT } from '@/data/constants'
 import { REGIONS } from '@/data/regions'
+import { usePlayerStore } from '@/stores/player'
 
 /** 一份「炼气一层,开局 10 秒」的最小档:缺的分片按 store 默认值水合 */
 function save(): Record<string, unknown> {
@@ -75,10 +76,60 @@ describe('推进无头结算 · 在线生产', () => {
   })
 
   it('上报天文灵气:按积余容量收口', async () => {
+    // resolve 内部会换/清 active pinia:cap 要在调用前取好
+    const cap = usePlayerStore().qiCapValue
     const resolved = await resolveAdvanceFromSlices(save(), { qi: 1e15 }, { dtSec: 10, offline: false })
     const qi = resolved!.patches.resources?.qi as number | undefined
-    expect(qi).toBeDefined()
-    expect(qi!).toBeLessThanOrEqual(1e12)
+    /*
+     * 采信值恰被钳到积余容量、推进又顶在同一道闸(setQi 顶 = 标称 × QI_BANK_MULT)上:
+     * 快照前后同值,补丁可能为空 —— 无论如何都不能超出货余容量。
+     */
+    if (qi !== undefined) expect(qi, '天文灵气必须被压回积余容量之内').toBeLessThanOrEqual(cap * QI_BANK_MULT)
+  })
+
+  it('容量以上的合法积余照采:灵气声明按积余容量收口,不再被砍回标称容量', async () => {
+    /*
+     * 1.79.19 前的收口钳在 qiCapValue(标称容量)上:玩家经 setQi(顶 = 标称 × QI_BANK_MULT)
+     * 攒出来的合法积余,每拍心跳都被砍回标称容量,「积余蓄满」永远走不完 —— 修为/灵气
+     * 存不满的灵气半边。判据:报 5 倍标称容量(远超标称、仍在积余容量内)要被采信,
+     * 补丁落在 5 倍附近;天文数字才被压回积余容量。
+     */
+    const cap = usePlayerStore().qiCapValue
+    const resolved = await resolveAdvanceFromSlices(save(), { qi: cap * 5 }, { dtSec: 10, offline: false })
+    const qi = resolved!.patches.resources?.qi as number | undefined
+    expect(qi, '5 倍容量的合法积余必须被采信(旧版会被砍回 1 倍容量)').toBeGreaterThan(cap * 1.5)
+    expect(qi!).toBeLessThanOrEqual(cap * QI_BANK_MULT)
+  })
+
+  it('门派状态随 sect 入参进推进:注入后产速比无门派高', async () => {
+    /*
+     * 门派不进存档分片(整份状态只住服务端表)。1.79.19 前推进水合漏了它:
+     * 服务端复算的 cultPerSec 缺门派技能/建筑/武学的加成,心跳补丁每拍把客户端
+     * 涨好的修为拽回去 —— 修为存不满的另一半。判据:同一份档,带门派(引气归元 5 重
+     * = 修炼 +10%、回气 +20%)的推进,修为补丁必须比无门派的大。
+     */
+    const baseline = await resolveAdvanceFromSlices(save(), {}, { dtSec: 10, offline: false })
+    const withSect = await resolveAdvanceFromSlices(save(), {}, { dtSec: 10, offline: false }, {
+      name: '丹霞门',
+      role: 'leader',
+      personal: 0,
+      pool: 0,
+      skills: { danxia_qi: 5 },
+      arts: {},
+      buildings: { hall: 1 }
+    })
+    const plain = toNum(baseline!.patches.player?.exp as { m: number; e: number })
+    const sected = toNum(withSect!.patches.player?.exp as { m: number; e: number })
+    expect(sected, '门派修炼加成必须进服务端推进(旧版漏注,产速比面板低)').toBeGreaterThan(plain)
+    /*
+     * 差值判据,不用比值:推进里还有与产速无关的固定进项(洞府产出/藏经阁钻研),
+     * 它们会把「+10% 产速」的比值稀释到 1.0x,绝对差才是门派加成的那一份
+     * (本夹具 10 秒窗 = base × 10% × 10 ≈ 1.5)。qiRegen 同源:带门派的灵气补丁也要更大。
+     */
+    expect(sected - plain, '引气归元 5 重 + 山门 1 级的修炼加成要落在绝对差上').toBeGreaterThan(1)
+    const plainQi = baseline!.patches.resources?.qi as number | undefined
+    const sectQi = withSect!.patches.resources?.qi as number | undefined
+    expect(sectQi, '门派回气加成也要进灵气补丁').toBeGreaterThan(plainQi!)
   })
 })
 

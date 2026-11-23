@@ -29,6 +29,7 @@ import { useCultivationStore } from '@/stores/cultivation'
 import { useMarketStore } from '@/stores/market'
 import { useApprenticeStore } from '@/stores/apprentice'
 import { useAdventureStore } from '@/stores/adventure'
+import { useSectStore } from '@/stores/sect'
 import { SLICE_FACTORIES, diffSlices, hydrationNoise, isPlainObject, stateClone } from './sliceStores'
 import { checkAchievements, checkStateAchievements } from './progress'
 import { usePill, usePillBatch, craftPill, craftPillBatch } from './pillService'
@@ -579,7 +580,8 @@ async function runAction(req: ActionRequest): Promise<ActionResult> {
 export async function resolveActionFromSlices(
   data: unknown,
   req: ActionRequest,
-  ctx: ActionCtx
+  ctx: ActionCtx,
+  sect?: unknown
 ): Promise<ActionResult | null> {
   if (!isPlainObject(data)) return null
   const raw = data as Record<string, unknown>
@@ -594,6 +596,9 @@ export async function resolveActionFromSlices(
   setActivePinia(pinia)
   try {
     hydrate(raw)
+    // 门派不在存档分片里(与 advanceResolve 同一条口子):服丹的产速、战斗类动作的
+    // 攻防血都吃门派加成,不注入就比玩家面板低一截
+    if (sect !== undefined && sect !== null) useSectStore().hydrate(sect)
     /*
      * 水合噪声:store 的 sanitize / 默认值填充会在「什么都没做」时也改动若干键。
      * 空跑取两次快照把它们挑出来,diff 时排除 —— 否则每个动作都会回传一堆无关字段。

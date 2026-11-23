@@ -116,8 +116,13 @@ const STATEFUL_CORE = new Set<string>([
  * 1.78.0:280 → 293。分片清单抽成 core/sliceStores 单点(actionOps 与 advanceResolve 共用),
  *   17 处引用从 advanceResolve 搬到这里 —— 处数不变只换了文件;净增来自
  *   core/actionOps 的动作层要直接读写 player/inventory/cultivation/market/apprentice/adventure。
+ * 1.79.19(+3,294 → 297)。修「修为和灵气一直存不满」:三条服务端权威链(推进/动作/突破)
+ *   的无头水合此前都漏了门派状态(门派不进存档分片、整份只住服务端表),服务端复算的
+ *   cultPerSec / qiRegenPerSec / qiCapValue / 战力比玩家面板低一截,心跳补丁每拍把客户端
+ *   涨好的值拽回去。现与 profileRecompute 同一条口子:useSectStore().hydrate(sect) 注进来,
+ *   advanceResolve / actionOps / breakthroughResolve 各 +1 处引用。
  */
-const CORE_STORE_SITES = 294;
+const CORE_STORE_SITES = 297;
 /**
  * core 用例里需要 Pinia 的文件数基线(只许减)。
  * 上游 121 + 本仓 autoOpsDaily/gongfaSeats 等新增,合并后以实跑数为准,见本文件底部对账。
