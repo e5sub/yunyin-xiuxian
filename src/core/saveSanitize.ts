@@ -185,6 +185,39 @@ function tightenEquipped(): void {
 }
 
 /**
+ * 服务端水合点共用的修形:sanitizeSaveSlices 的「活体版」。
+ *
+ * 为什么要有它:sanitizeSaveSlices(整档归一化)只在 PUT /save **首传**跑 —— 1.78.0 起
+ * 存量玩家不再上传进度,归一化从此对他们永不执行;而心跳/动作的无头水合
+ * (resolveAdvanceFromSlices / resolveActionFromSlices)此前只 $patch 不修形,
+ * 云档里任何历史坏值会**直接驱动权威结算** —— 1.74.0~1.77.0 灵石无钳窗口固化进档的
+ * e225 级余额即一例:换设备登录(拉云档)就看见「灵石爆满」,且坏值一直在被结算放大。
+ * 这里对「已 $patch 的分片」按 SAVE_SANITIZE_STEPS 顺序跑同一套 sanitize,再按玩法链
+ * 判据收口(tightenEquipped / tightenVitals)。调用点:
+ *  - advanceResolve:水合后、快照基线**之后**调 —— 修正值须落在基线之外才进补丁,
+ *    云档才被治好(基线先截,修正随 diff 回写);
+ *  - actionOps:hydrate 末尾调 —— 动作结算不得吃坏值(修正随心跳补丁落云)。
+ *
+ * 单店抛错只跳过该店:加固环节不能把整拍结算打成 500(与 save.ts「不能拒收」同取舍)。
+ */
+export function sanitizeHydratedStores(present: ReadonlySet<string>): void {
+  for (const step of SAVE_SANITIZE_STEPS) {
+    if (!present.has(step.slice)) continue
+    try {
+      ;(step.use() as unknown as StoreLike).sanitize()
+    } catch (err) {
+      console.warn('[saveSanitize] 水合修形抛错,跳过该分片:', step.slice, err instanceof Error ? err.message : err)
+    }
+  }
+  try {
+    if (present.has('inventory')) tightenEquipped()
+    if (present.has('player') || present.has('resources')) tightenVitals()
+  } catch (err) {
+    console.warn('[saveSanitize] 数值收口抛错,跳过:', err instanceof Error ? err.message : err)
+  }
+}
+
+/**
  * 归一化一份存档的 data 段。
  *
  * @returns 归一化结果与改动摘要;`data` 不是对象时返回 null(调用方按原样拒绝或跳过)。

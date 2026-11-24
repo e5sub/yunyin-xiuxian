@@ -948,8 +948,13 @@ export const usePlayerStore = defineStore(
         v.themeChoices.every(x => typeof x === 'string') &&
         isRec(v.review) &&
         Number.isFinite(v.review.insightGained) &&
-        isRec(v.nextLinggen) &&
-        typeof v.nextLinggen.id === 'string' &&
+        /*
+         * nextLinggen 是 LinggenProfile(roots/gradeName/growthMult),**没有 id 字段** ——
+         * 原先写 `typeof v.nextLinggen.id === 'string'`,任何一份合法交割单都过不了这条,
+         * sanitize 一跑交割单必被作废(1.79.20 服务端水合修形上线后,prepare → confirm
+         * 中间隔一次水合,转世确认会永远「还没有交割单」)。改用与灵根状态同一把尺。
+         */
+        sanitizeLinggen(v.nextLinggen) !== null &&
         Number.isFinite(v.daoFruitGained) &&
         Number.isFinite(v.insightAfter) &&
         typeof v.stageId === 'string'

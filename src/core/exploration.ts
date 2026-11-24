@@ -442,6 +442,10 @@ export function exploreDurationSec(mode: ExploreMode, petId: string | null): num
   return Math.round(EXPLORE_MODES[mode].durationSec * personalityEffects(petId).exploreDurMult)
 }
 
+/** 遇敌间隔的加速上界:正常满配约 2 倍出头(词条/灵兽/功法/神行叠加),留到 4 只作坏值护栏 ——
+ *  离线遭遇数 = simSec / gap,速度一旦天文,遭遇数与灵石跟着天文,须在公式本身封顶 */
+const EXPLORE_SPEED_MAX = 4
+
 /** 两场遭遇的间隔(秒);explorationSpeed 只收紧这一截,不缩短整程 */
 export function exploreBattleGapSec(explorationSpeed: number): number {
   /*
@@ -458,7 +462,8 @@ export function exploreBattleGapSec(explorationSpeed: number): number {
    * 拿不到数时按「没有加速」处理,与 `capChance` 同一条取舍。
    */
   const raw = Number.isFinite(explorationSpeed) ? explorationSpeed : 0
-  const speed = 1 + Math.max(0, raw)
+  // 上界与下界同一道闸:NaN 挡不住 Math.max/max,先取有限值再夹
+  const speed = Math.min(EXPLORE_SPEED_MAX, 1 + Math.max(0, raw))
   return (EXPLORE_BATTLE_INTERVAL * 1000) / speed / 1000
 }
 

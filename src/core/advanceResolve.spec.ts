@@ -154,6 +154,22 @@ describe('推进无头结算 · 离线结算', () => {
     const game = resolved!.patches.game as Record<string, unknown> | undefined
     expect(game?.lastActiveAt).toBeGreaterThan(Date.now() - 60_000)
   })
+
+  it('云档里的天文灵石(格式合法的 e225)首拍即被治好:补丁压回收口上界(1.79.20)', async () => {
+    /*
+     * 1.78.0 起进度不再上传,整档归一化(sanitizeSaveSlices 的 tightenVitals)对存量玩家
+     * 永不执行;水合此前只 $patch 不修形,坏值一边驱动结算一边随补丁固化。
+     * 判据:基线截在修形之前,修形修正值随键级 diff 进补丁 —— 第一拍就把云档压回
+     * SPIRIT_STONE_EXP_MAX 之内,且当拍离线收益结在收口后的基线上(不是坏值之上)。
+     */
+    const bad = save()
+    ;(bad.resources as Record<string, unknown>).spiritStone = { m: 2.9, e: 225 }
+    const resolved = await resolveAdvanceFromSlices(bad, {}, { dtSec: 3600, offline: true })
+    expect(resolved).not.toBeNull()
+    const stone = resolved!.patches.resources?.spiritStone as { m: number; e: number } | undefined
+    expect(stone, '天文灵石必须出现在补丁里(否则云档永远治不好)').toBeDefined()
+    expect(stone!.e, '补丁值须压回收口上界(e150)之内').toBeLessThanOrEqual(150)
+  })
 })
 
 describe('推进无头结算 · 会话声明', () => {

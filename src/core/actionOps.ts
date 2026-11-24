@@ -31,6 +31,7 @@ import { useApprenticeStore } from '@/stores/apprentice'
 import { useAdventureStore } from '@/stores/adventure'
 import { useSectStore } from '@/stores/sect'
 import { SLICE_FACTORIES, diffSlices, hydrationNoise, isPlainObject, stateClone } from './sliceStores'
+import { sanitizeHydratedStores } from './saveSanitize'
 import { checkAchievements, checkStateAchievements } from './progress'
 import { usePill, usePillBatch, craftPill, craftPillBatch } from './pillService'
 import { condenseDaoFruit, furnaceConvert, furnaceConvertStone, challengeTrial } from './endgameService'
@@ -140,12 +141,21 @@ function fail(reason: string): ActionResult {
 /**
  * 水合云档分片到临时 pinia。调用方负责 setActivePinia(见 resolveActionFromSlices)。
  * 只 patch 有形状的分片:缺片按 store 默认值,与客户端首次读档后的状态一致。
+ *
+ * 水合完当场修形(saveSanitize.sanitizeHydratedStores):1.78.0 起进度不再上传,
+ * 整档归一化对存量玩家永不执行,云档历史坏值若不在此处拦下就会直接驱动动作结算
+ * (伪价买入、按坏词条折赏)。修正值不必进本拍补丁 —— 心跳每拍都会把修正落进云档。
  */
 function hydrate(data: Record<string, unknown>): void {
+  const present = new Set<string>()
   for (const [id, factory] of SLICE_FACTORIES) {
     const slice = data[id]
-    if (isPlainObject(slice)) factory().$patch(slice)
+    if (isPlainObject(slice)) {
+      factory().$patch(slice)
+      present.add(id)
+    }
   }
+  sanitizeHydratedStores(present)
 }
 
 /** 动作分支:返回 ok=false 即整体作废(不回补丁);payload 原样回给客户端 */

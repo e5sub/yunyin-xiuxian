@@ -1025,6 +1025,27 @@ describe('历练 · 遇敌间隔不接受非有限修速', () => {
 })
 
 /**
+ * `explorationSpeed` 天文大时,遇敌间隔必须被公式本身封顶。
+ *
+ * 链路:离线遭遇数 = `simSec / exploreBattleGapSec(...)` —— 速度一旦天文(坏档/坏值
+ * 混进 mods),gap 趋零、遭遇数与离线灵石跟着天文。服务端水合修形(saveSanitize)挡住
+ * 存档来源,这里是最后一道护栏:任何来源的巨大修速最多把遇敌间隔压到 1/4 程。
+ *
+ * 故障注入:把 `Math.min(EXPLORE_SPEED_MAX, 1 + Math.max(0, raw))` 改回
+ * `1 + Math.max(0, raw)` → 本条红。
+ */
+describe('历练 · 遇敌间隔不接受天文修速', () => {
+  it('explorationSpeed 为 1e9 时,gap 不低于无加速档的四分之一', () => {
+    expect(exploreBattleGapSec(1e9)).toBe(EXPLORE_BATTLE_INTERVAL / 4)
+    expect(exploreBattleGapSec(1e9), '不得为 0 或负(否则遭遇数 = Infinity)').toBeGreaterThan(0)
+  })
+  it('正常修速(≤3)不受封顶影响', () => {
+    expect(exploreBattleGapSec(0)).toBe(EXPLORE_BATTLE_INTERVAL)
+    expect(exploreBattleGapSec(1)).toBeCloseTo(EXPLORE_BATTLE_INTERVAL / 2, 10)
+  })
+})
+
+/**
  * 会话到期后必须结束,**哪怕还挂着一个待处理事件**。
  *
  * 事件分支末尾是无条件 `return`(它阻塞战斗),而到期判定原先排在它后面 ——

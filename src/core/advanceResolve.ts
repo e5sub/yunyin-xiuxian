@@ -37,6 +37,7 @@ import { settleSuppressedRegions } from './suppress'
 import { studyTick } from './loreService'
 import { settleOfflineOnStores } from './offline'
 import type { OfflineSummary } from '@/types'
+import { sanitizeHydratedStores } from './saveSanitize'
 import { rolloverDailyIfNeeded, checkStateAchievements, checkAchievements } from './progress'
 import { mayTriggerEnlightenment, mayTriggerCaveEvent } from './earlyGameService'
 import { snapshotFromActiveStores, type ProfileSnapshot } from './profileRecompute'
@@ -229,9 +230,13 @@ export async function resolveAdvanceFromSlices(
   const pinia = createPinia()
   setActivePinia(pinia)
   try {
+    const present = new Set<string>()
     for (const [id, factory] of SLICE_FACTORIES) {
       const slice = raw[id]
-      if (isPlainObject(slice)) factory().$patch(slice)
+      if (isPlainObject(slice)) {
+        factory().$patch(slice)
+        present.add(id)
+      }
     }
     /*
      * 门派是第 18 片「不在分片里的片」:整份状态只住服务端表(sectState.ts),存档 JSON 里没有。
@@ -244,6 +249,15 @@ export async function resolveAdvanceFromSlices(
     const player = usePlayerStore()
     const resources = useResourcesStore()
     const adventure = useAdventureStore()
+
+    /*
+     * 快照基线先于修形截:水合进来的云档可能带着历史坏值(1.78.0 起进度不再上传,
+     * 首传归一化对存量玩家永不执行,1.74.0~1.77.0 灵石无钳窗口固化进档的天文余额即一例)。
+     * 基线截在 sanitize 之前,修形修正值落在基线之外 —— 随下面的键级 diff 进补丁,
+     * 第一拍就把云档治好;若基线截在修形之后,修正值会被当成「本来如此」永远写不回云档。
+     */
+    const before = stateClone()
+    sanitizeHydratedStores(present)
 
     // 会话声明先落:本窗战斗按它起拍(非法形状已被 sanitize 丢掉)
     const claimedSession = sanitizeSessionClaim(claims.session, Date.now())
@@ -263,10 +277,9 @@ export async function resolveAdvanceFromSlices(
       resources.qi = Math.min(Math.max(Math.trunc(numOf(claims.qi)), 0), Math.max(0, Math.floor(player.qiBankCapValue)))
     }
 
-    const before = stateClone()
+    const now = Date.now()
     let summary: OfflineSummary | null = null
     const notices: string[] = []
-    const now = Date.now()
     if (ctx.offline) {
       // 服务端时间锚点落进 lastActiveAt,离线结算按它起算(settle 尾部会再盖回 now)
       useGameStore().lastActiveAt = now - Math.round(ctx.dtSec * 1000)
