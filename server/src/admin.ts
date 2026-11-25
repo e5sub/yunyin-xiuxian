@@ -10,7 +10,6 @@ import { setConfig } from './config.js'
 import { requireAdmin, verifyPassword } from './auth.js'
 import { onlineCount } from './ws.js'
 import { bodyStr, rateLimit } from './rateLimit.js'
-import { syncProfileFromData } from './routes/save.js'
 import { withKeyLock } from './mutex.js'
 import { CODE_TYPE_DAYS, generateCode, grantVipDays, isCodeType } from './vip.js'
 
