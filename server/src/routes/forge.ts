@@ -13,7 +13,7 @@
 import express, { type Request, type Response } from 'express'
 import { get, run, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
-import { metricsOf, backupBeforeOverwrite, syncProfileFromData } from './save.js'
+import { metricsOf, syncProfileFromData } from './save.js'
 import { loadClientModule } from '../clientVendor.js'
 import { equipHoldings, recordEquipStatesFromItems } from '../equipLedger.js'
 import { lootProvenance } from '../lootLedger.js'
@@ -181,11 +181,6 @@ async function saveRestored(
   snapshot: { version: number; data: string; updated_at: number },
   data: Record<string, unknown>
 ): Promise<void> {
-  try {
-    await backupBeforeOverwrite(userId, snapshot)
-  } catch {
-    // 留档失败不拦补册
-  }
   await upsertByPk('saves', {
     user_id: userId,
     version: snapshot.version,
@@ -280,11 +275,6 @@ forgeRouter.post('/forge/op', requireAuth, (req: Request, res: Response) => {
 
     patchItems(data, result.items)
     deductSpendFromSave(data, result.spend)
-    try {
-      await backupBeforeOverwrite(userId, { version: row.version, data: row.data, updated_at: row.updated_at })
-    } catch {
-      // 留档失败不拦结算
-    }
     // updated_at 不动:客户端锚点与冲突判定不受影响(与突破结算同规)
     await upsertByPk('saves', {
       user_id: userId,

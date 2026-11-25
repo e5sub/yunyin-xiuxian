@@ -172,17 +172,6 @@ CREATE TABLE IF NOT EXISTS saves (
   started INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL
 );
--- 存档历史:每次覆盖前留一份旧档,换设备/误覆盖后可回滚
-CREATE TABLE IF NOT EXISTS save_history (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  version INTEGER NOT NULL,
-  data TEXT NOT NULL,
-  realm_index INTEGER NOT NULL DEFAULT 0,
-  size INTEGER NOT NULL DEFAULT 0,
-  updated_at INTEGER NOT NULL,
-  created_at INTEGER NOT NULL
-);
 CREATE TABLE IF NOT EXISTS profiles (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
@@ -304,7 +293,7 @@ CREATE TABLE IF NOT EXISTS salvage_credit (
 -- 道源进项账(1.74.1):道源(界外货币)的进项全在客户端结算,服务端只看到「道源多了」——
 -- 道源上限按熔炉产出估,一次破界的几百道源必然越过 5% 的窗口线,超出被当改包压回。
 -- 现按「上次档里没有、这次多出来的通关道痕」记额度(每条按该世界/试炼的结算公式上界),
--- 上传时全额放进可增长量;每条痕只计一次(回档/档来回倒都能让同一条痕重新出现)。
+-- 上传时全额放进可增长量;每条痕只计一次(档来回倒能让同一条痕重新出现)。
 CREATE TABLE IF NOT EXISTS dao_credit (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   mark_key TEXT NOT NULL,
@@ -607,7 +596,6 @@ CREATE TABLE IF NOT EXISTS autoops_state (
 );
 CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(id DESC);
 CREATE INDEX IF NOT EXISTS idx_profile_rank ON profiles(realm_index DESC, power_e DESC, power_m DESC);
-CREATE INDEX IF NOT EXISTS idx_save_history_user ON save_history(user_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_save_flags_user ON save_flags(user_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_loot_ledger_seed ON loot_ledger(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_equip_state_user ON equip_state(user_id, updated_at DESC);
@@ -653,6 +641,13 @@ CREATE INDEX IF NOT EXISTS idx_progress_spend_user ON progress_spend(user_id, se
         /* 列已存在 */
       }
     }
+    // 1.79.21:不再保存多份存档 —— 老库若还留着 save_history,整表连同历史档删除;
+    // 现行档只读 saves,任何写入都直接落这一份,没有可回滚的第二份副本。
+    try {
+      d.exec('DROP TABLE IF EXISTS save_history')
+    } catch {
+      /* 老库无此表 */
+    }
     // 老库补列之后才能建邮箱索引
     d.exec('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email_lower)')
     // 老库 saves.started 回填(JSON.stringify 无空格,按子串判定)
@@ -692,18 +687,6 @@ CREATE TABLE IF NOT EXISTS saves (
   started TINYINT NOT NULL DEFAULT 0,
   updated_at BIGINT NOT NULL,
   CONSTRAINT fk_saves_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-CREATE TABLE IF NOT EXISTS save_history (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  user_id BIGINT NOT NULL,
-  version INT NOT NULL,
-  data MEDIUMTEXT NOT NULL,
-  realm_index INT NOT NULL DEFAULT 0,
-  size INT NOT NULL DEFAULT 0,
-  updated_at BIGINT NOT NULL,
-  created_at BIGINT NOT NULL,
-  CONSTRAINT fk_save_history_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  INDEX idx_save_history_user (user_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS save_flags (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -1174,6 +1157,12 @@ CREATE TABLE IF NOT EXISTS autoops_state (
       /* 索引已存在 */
     }
   }
+  // 1.79.21:不再保存多份存档 —— 老库若还留着 save_history,整表连同历史档删除
+  try {
+    await d.query('DROP TABLE IF EXISTS save_history')
+  } catch {
+    /* 老库无此表 */
+  }
   // 老库 saves.started 回填(同 SQLite 判定)
   try {
     await d.query(`UPDATE saves SET started = 1 WHERE started = 0 AND data LIKE '%"started":true%'`)
@@ -1198,8 +1187,6 @@ async function seedConfig(): Promise<void> {
     ['chat_retention_days', '7'],
     // 云存档自动上传间隔(秒);客户端登录时取一次
     ['save_push_interval_sec', '5'],
-    // 云存档留档份数上限(每玩家;现行档之外的历史备份,钳 1~96)
-    ['save_history_keep', '3'],
     // Turnstile 人机验证(注册/找回口令/发验证码);站点密钥公开给前端,私钥保密,二者齐全才生效
     ['turnstile_enabled', 'false'],
     ['turnstile_site_key', ''],

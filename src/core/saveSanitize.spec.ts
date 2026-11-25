@@ -165,14 +165,24 @@ describe('存档归一化 · 越界项按玩法链钳回', () => {
     expect(result.touched).toContain('player')
   })
 
-  it('灵石指数与灵草数量按量级护栏收口', () => {
+  it('灵石坏档整笔清零,灵草数量按量级护栏收口', () => {
     const seed = seedSave()
     const resources = seed.resources as Record<string, unknown>
     resources.spiritStone = { m: 9.9, e: 500 }
     resources.herbByGrade = { 1: 5e9, 2: 0, 3: 0, 4: 0, 5: 0 }
     const result = sanitizeSaveSlices(seed)!
     const fixed = result.data.resources as Record<string, unknown>
-    expect(fixed.spiritStone).toEqual({ m: 9.99, e: 150 })
+    expect(fixed.spiritStone, 'e≥20 的坏档不保留任何留值,按实际重新打').toEqual({ m: 0, e: 0 })
     expect((fixed.herbByGrade as Record<string, number>)['1']).toBe(1e9)
+  })
+
+  it('灵石合法量级(最高境界满产 e17 之内)一字不动', () => {
+    const seed = seedSave()
+    const resources = seed.resources as Record<string, unknown>
+    // 全游戏最高境界满产 720h 实测 ≈1.4e17;e19 是坏档线之下的极限合法档
+    resources.spiritStone = { m: 1.4, e: 17 }
+    const result = sanitizeSaveSlices(seed)!
+    expect((result.data.resources as Record<string, unknown>).spiritStone).toEqual({ m: 1.4, e: 17 })
+    expect(result.touched).not.toContain('resources')
   })
 })

@@ -127,12 +127,24 @@ function changed(before: unknown, after: unknown): boolean {
  *
  * 判据都取「玩法链自身算得出来的量」再放大若干倍:
  *  - 修为 ≤ 本境界突破所需 × EXP_HOARD_LIMIT(正常玩家不会囤到 100 倍于突破门槛);
- *  - 灵石指数 ≤ 150(真仙终局实测 ≈e80,与 profiles 快照同一把尺);
+ *  - 灵石指数 ≥ 20 判坏档、整笔清零(见 SPIRIT_STONE_CORRUPT_EXP 的推导);
  *  - 灵草每品 / 杂项资源 ≤ 1e9(掉落以个位、十位计,十亿株要千万次历练)。
  */
 const EXP_HOARD_LIMIT = 100
 const SMALL_RESOURCE_MAX = 1e9
-const SPIRIT_STONE_EXP_MAX = 150
+/**
+ * 灵石坏档线(1.79.21):指数到 20 即整笔清零,不设「压到某个上限」的留值。
+ *
+ * 为什么是 20:实测 economySim 最高境界(major 28 / tier 40)满产 720 小时 ≈1.4e17,
+ * 全游戏任何合法档都到不了 e18;e20 留了三个数量级余量,只会咬住坏档。这是**绝对量级**
+ * 护栏,不读境界产速 —— 1.79.20 那条「按境界猜一个上限压回 e150」既留下了 e150 这个
+ * 天文读数(e > 中文单位表 e72,界面印 `×10¹⁵⁰`),又违背「钱按实际打出来」的口径。
+ *
+ * 为什么清零而不是留一笔:坏档余额没有对应的真实收支流水,任何「留值」都是白送的假钱。
+ * 清零后不占位 —— 调用方(advanceResolve)的修形排在结算之前,当拍起历练/离线按当前
+ * 在途会话的真实胜场从 0 补回;没有在途历练就不补(没有战斗就没有进项,这才是按实际)。
+ */
+const SPIRIT_STONE_CORRUPT_EXP = 20
 
 function tightenVitals(): void {
   const player = usePlayerStore()
@@ -140,8 +152,8 @@ function tightenVitals(): void {
     player.exp = mulN(expRequirement(player.major, player.sub), EXP_HOARD_LIMIT)
   }
   const resources = useResourcesStore()
-  if (resources.spiritStone.e > SPIRIT_STONE_EXP_MAX) {
-    resources.spiritStone = { m: 9.99, e: SPIRIT_STONE_EXP_MAX }
+  if (resources.spiritStone.e >= SPIRIT_STONE_CORRUPT_EXP) {
+    resources.spiritStone = { m: 0, e: 0 }
   }
   for (const key of ['qi', 'wudao', 'ore', 'page', 'dust'] as const) {
     if (resources[key] > SMALL_RESOURCE_MAX) resources[key] = SMALL_RESOURCE_MAX

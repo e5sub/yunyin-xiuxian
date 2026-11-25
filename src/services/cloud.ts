@@ -66,16 +66,6 @@ export interface CloudSaveInfo {
   updatedAt: number
 }
 
-/** 存档历史条目(不含档体) */
-export interface SaveHistoryRow {
-  id: number
-  version: number
-  realm_index: number
-  size: number
-  updated_at: number
-  created_at: number
-}
-
 export interface FriendEntry {
   id: number
   name: string
@@ -734,10 +724,6 @@ export const cloudApi = {
     /** 历练自动结清的际遇文案(1.79.12):服务端结算发生在无头环境,文案随回包带回弹 */
     notices?: string[]
   }> => request('POST', '/game/advance', payload),
-  saveHistory: (limit = 30): Promise<{ history: SaveHistoryRow[] }> =>
-    request('GET', `/save/history?limit=${limit}`),
-  restoreSave: (historyId: number): Promise<{ ok: boolean; updatedAt: number }> =>
-    request('POST', '/save/restore', { historyId }),
   friends: (): Promise<FriendsData> => request('GET', '/friends'),
   presence: (): Promise<{ online: Array<{ id: number; name: string }>; count: number }> =>
     request('GET', '/presence'),

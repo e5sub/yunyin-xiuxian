@@ -9,7 +9,7 @@
 import express, { type Request, type Response } from 'express'
 import { get, run, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
-import { metricsOf, backupBeforeOverwrite, syncProfileFromData } from './save.js'
+import { metricsOf, syncProfileFromData } from './save.js'
 import { readSectState } from '../sectState.js'
 import { loadClientModule } from '../clientVendor.js'
 import { withKeyLock } from '../mutex.js'
@@ -129,11 +129,6 @@ cultivationRouter.post('/cultivation/breakthrough', requireAuth, (req: Request, 
     for (const [slice, fields] of Object.entries(patches)) {
       const cur = typeof data[slice] === 'object' && data[slice] !== null ? (data[slice] as Record<string, unknown>) : {}
       data[slice] = { ...cur, ...fields }
-    }
-    try {
-      await backupBeforeOverwrite(userId, { version: row.version, data: row.data, updated_at: row.updated_at })
-    } catch {
-      // 留档失败不拦结算
     }
     await upsertByPk('saves', {
       user_id: userId,

@@ -15,7 +15,7 @@
 import express, { type Request, type Response } from 'express'
 import { get, run, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
-import { metricsOf, backupBeforeOverwrite, syncProfileFromData } from './save.js'
+import { metricsOf, syncProfileFromData } from './save.js'
 import { loadClientModule } from '../clientVendor.js'
 import { recordProgressSpend } from '../progressLedger.js'
 import { recordLevelStates, clearLevelKind } from '../levelLedger.js'
@@ -197,11 +197,6 @@ progressRouter.post('/progress/op', requireAuth, (req: Request, res: Response) =
       resAfter.wudao = Math.max(0, numOr(resBefore.wudao) - result.spend.wudao)
       resAfter.page = Math.max(0, numOr(resBefore.page) - result.spend.page)
       resAfter.ore = Math.max(0, numOr(resBefore.ore) - result.spend.ore)
-    }
-    try {
-      await backupBeforeOverwrite(userId, { version: row.version, data: row.data, updated_at: row.updated_at })
-    } catch {
-      // 留档失败不拦结算
     }
     // updated_at 不动:客户端锚点与冲突判定不受影响(与突破/炼器结算同规)
     await upsertByPk('saves', {

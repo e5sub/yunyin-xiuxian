@@ -10,10 +10,7 @@ import { setConfig } from './config.js'
 import { requireAdmin, verifyPassword } from './auth.js'
 import { onlineCount } from './ws.js'
 import { bodyStr, rateLimit } from './rateLimit.js'
-import { syncProfileFromData, backupBeforeOverwrite } from './routes/save.js'
-import { resetEquipStatesFromData } from './equipLedger.js'
-import { reseedLootFromData } from './lootLedger.js'
-import { resetLevelStatesFromData } from './levelLedger.js'
+import { syncProfileFromData } from './routes/save.js'
 import { withKeyLock } from './mutex.js'
 import { CODE_TYPE_DAYS, generateCode, grantVipDays, isCodeType } from './vip.js'
 
@@ -308,7 +305,6 @@ gmRouter.delete('/users/:id', requireAdmin, (req: Request, res: Response) => {
     // 台账类必须一起清:boss_damage 留着会让已删号继续出现在贡献榜、并参与击杀装备加权(1.63.0)
     for (const table of [
       'saves',
-      'save_history',
       'save_flags',
       'profiles',
       'loot_ledger',
@@ -369,7 +365,6 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'chat_history_size',
       'chat_retention_days',
       'save_push_interval_sec',
-      'save_history_keep',
       'event_enabled',
       'leisure_enabled',
       // 注意:人机验证是三个键 —— 开关漏登记会让「掰了开关点保存」只回一句「不支持的参数」
@@ -447,7 +442,6 @@ gmRouter.put('/config/:key', requireAdmin, (req: Request, res: Response) => {
       'chat_history_size',
       'chat_retention_days',
       'save_push_interval_sec',
-      'save_history_keep',
       // 只收真数值键。站点密钥/私钥是文本(「0x4AAA…」),误列进来会被当数值校验,存什么都是「数值参数无效」
       'boss_daily_attempts',
       'boss_hp_atk_mult',
@@ -576,7 +570,7 @@ gmRouter.post('/broadcast', requireAdmin, (req: Request, res: Response) => {
   })
 })
 
-/* ---------------- 云存档管理:查档 / 历史 / 回滚 ---------------- */
+/* ---------------- 云存档管理:查现行档 / 审计留痕(无历史副本、无回档) ---------------- */
 
 /** 存档列表:按更新时间倒序;q 命中道号或角色名 */
 gmRouter.get('/saves', requireAdmin, (req: Request, res: Response) => {
@@ -647,73 +641,6 @@ gmRouter.get('/saves/:userId/flags', requireAdmin, (req: Request, res: Response)
       }))
     })
   })().catch(() => {
-    res.status(500).json({ error: '服务器异常' })
-  })
-})
-
-/** 某人的存档历史(只列元信息,不传档体) */
-gmRouter.get('/saves/:userId/history', requireAdmin, (req: Request, res: Response) => {  void (async () => {
-    const userId = Number(req.params.userId)
-    if (!Number.isInteger(userId) || userId <= 0) {
-      res.status(400).json({ error: '参数无效' })
-      return
-    }
-    const rows = await all<Record<string, unknown>>(
-      'SELECT id, version, realm_index, size, updated_at, created_at FROM save_history WHERE user_id = ? ORDER BY id DESC LIMIT 100',
-      [userId]
-    )
-    res.json({ history: rows })
-  })().catch(() => {
-    res.status(500).json({ error: '服务器异常' })
-  })
-})
-
-/** 回滚某人的存档到指定历史版本(当前档先入历史,可再回滚回来) */
-gmRouter.post('/saves/:userId/restore', requireAdmin, (req: Request, res: Response) => {
-  // 与玩家的写档 / 删档 / 回档共用同一把键:回档是整档覆盖,不能被同时进行的上传顶掉
-  void withKeyLock(`save:${Number(req.params.userId)}`, async () => {
-    const userId = Number(req.params.userId)
-    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
-    const historyId = typeof body.historyId === 'number' && Number.isFinite(body.historyId) ? Math.trunc(body.historyId) : 0
-    if (!Number.isInteger(userId) || userId <= 0 || historyId <= 0) {
-      res.status(400).json({ error: '参数无效' })
-      return
-    }
-    const row = await get<{ version: number; data: string; updated_at: number }>(
-      'SELECT version, data, updated_at FROM save_history WHERE id = ? AND user_id = ?',
-      [historyId, userId]
-    )
-    if (row === undefined) {
-      res.status(404).json({ error: '历史版本不存在' })
-      return
-    }
-    const current = await get<{ version: number; data: string; updated_at: number }>(
-      'SELECT version, data, updated_at FROM saves WHERE user_id = ?',
-      [userId]
-    )
-    const now = Date.now()
-    if (current !== undefined) {
-      await run(
-        'INSERT INTO save_history (user_id, version, data, realm_index, size, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [userId, current.version, current.data, 0, current.data.length, current.updated_at, now]
-      )
-    }
-    const started = row.data.includes('"started":true') ? 1 : 0
-    await upsertByPk('saves', { user_id: userId, version: row.version, data: row.data, started, updated_at: now })
-    // 境界基线跟着回档走:不同步的话,权威化会把客户端境界压回回档前的旧值,回档等于没回
-    // 等级与装备台账同理 —— 不跟着降,下一次上传就按台账把强化与等级顶回回档前
-    try {
-      const restored = JSON.parse(row.data) as unknown
-      await syncProfileFromData(userId, restored, now)
-      await resetLevelStatesFromData(userId, restored)
-      await resetEquipStatesFromData(userId, restored)
-      // 签发行随「件离手」被清过,回档把件带回来时须把账补齐(1.66.3,与玩家回档同规)
-      await reseedLootFromData(userId, restored)
-    } catch {
-      // 快照复算失败时 profiles 与台账不动:下一次上传仍会按存档内容重算
-    }
-    res.json({ ok: true, updatedAt: now, fromHistoryId: historyId })
-  }).catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })
 })
@@ -845,7 +772,7 @@ gmRouter.get('/orders', requireAdmin, (req: Request, res: Response) => {
  * 背景:1.79.11→1.79.12 窗口期悬赏装备复活可反复交割白拿赏金(真印钞链),
  * 刷出的灵石已固化进云档;stone_ledger 落档即清页,发放无审计痕迹,无法精确追回。
  * 故给 GM 两件工具:先审计分布(只读),再按「阈值 + 超出部分保留比例」收回。
- * 削减走 backupBeforeOverwrite(save_history 自动留档),误操作可单玩家回档。
+ * 削减直接改现行档并写回,不另存副本;操作前先用 dryRun 预览名单与收回量。
  */
 
 /** GNum {m,e}=m×10^e → 数值;e 异常大时按 Infinity 兜,调用方钳 */
@@ -895,7 +822,7 @@ gmRouter.get('/economy/stone-audit', requireAdmin, (_req: Request, res: Response
 })
 
 /**
- * 灵石削减:dryRun 预览受影响名单与收回量;apply 逐人「备份 → 改 → 写回」。
+ * 灵石削减:dryRun 预览受影响名单与收回量;apply 逐人「改 → 直接写回现行档」。
  * 规则:超出阈值(above)的部分只保留 ratio,阈值以下不动 —— 刷得越狠收得越多,正常攒的不伤。
  */
 gmRouter.post('/economy/stone-shrink', requireAdmin, (req: Request, res: Response) => {
@@ -953,7 +880,6 @@ gmRouter.post('/economy/stone-shrink', requireAdmin, (req: Request, res: Respons
         const resources = typeof data.resources === 'object' && data.resources !== null ? (data.resources as Record<string, unknown>) : null
         if (resources === null) return
         resources.spiritStone = stoneToGNum(x.next)
-        await backupBeforeOverwrite(x.userId, { version: row.version, data: row.data, updated_at: row.updated_at })
         await upsertByPk('saves', {
           user_id: x.userId,
           version: row.version,
@@ -969,7 +895,7 @@ gmRouter.post('/economy/stone-shrink', requireAdmin, (req: Request, res: Respons
       affectedCount: affected.length,
       done,
       recovered: stoneToGNum(affected.reduce((s, x) => s + x.recover, 0)),
-      note: '每人原档已留 save_history,误操作可在存档管理里单玩家回档'
+      note: '已直接写入各玩家现行档(不再保留历史副本),请先用 dryRun 确认名单'
     })
   })().catch(() => {
     res.status(500).json({ error: '服务器异常' })

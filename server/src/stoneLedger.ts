@@ -74,7 +74,7 @@ export async function sumStoneCreditsSince(userId: number, sinceMs: number): Pro
     }
     count += 1
   }
-  // 与 gnum 的归一化同向:尾数超 1e6 就进一位;指数封顶 200(sanitize 上界 e150 的宽裕余量)
+  // 与 gnum 的归一化同向:尾数超 1e6 就进一位;指数封顶 200(sanitize 坏档清零线 e20 的宽裕余量)
   while (m >= 1e6) {
     m /= 1000
     e += 3

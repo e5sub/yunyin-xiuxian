@@ -1,13 +1,12 @@
-/** 云存档 + 玩家档案快照 + 存档历史(防丢/可回滚) */
+/** 云存档 + 玩家档案快照(单份现行档,写入直接落库,不留历史副本) */
 import express, { type Request, type Response } from 'express'
-import { all, get, run, upsertByPk } from '../db.js'
+import { get, run, upsertByPk } from '../db.js'
 import { requireAuth } from '../auth.js'
-import { getConfigNumber } from '../config.js'
 import { recomputeProfile } from '../recompute.js'
 import { normalizeSaveSlices } from '../saveNormalize.js'
 import { enforceAuthority } from '../saveAuthority.js'
-import { enforceLootProvenance, reseedLootFromData, pruneSoulBurns } from '../lootLedger.js'
-import { enforceEquipStates, pruneEquipStates, resetEquipStatesFromData } from '../equipLedger.js'
+import { enforceLootProvenance, pruneSoulBurns } from '../lootLedger.js'
+import { enforceEquipStates, pruneEquipStates } from '../equipLedger.js'
 import { clearPurchases, pendingSpend, settlePurchases } from '../marketLedger.js'
 import { clearForgeSpend, pendingForgeSpend, settleForgeSpend } from '../forgeLedger.js'
 import { clearProgressSpend, pendingProgressSpend, settleProgressSpend } from '../progressLedger.js'
@@ -33,20 +32,8 @@ export interface ProfileSnapshot {
   defE: number
 }
 
-/** 每用户保留的历史份数上限(钳制用;实际份数走 GM 后台 save_history_keep,默认 3) */
-const HISTORY_KEEP_MAX = 96
-/** 两次留存的最小间隔:客户端 20 秒推一次,不抽稀会一天灌满几千份 */
-const HISTORY_MIN_GAP_MS = 10 * 60_000
-/** 历史留存上限(天) */
-const HISTORY_TTL_MS = 7 * 24 * 3_600_000
 /** 同一账号两次写档的最小间隔:客户端自动上传最快 3 秒一推,限速防改包刷写档接口 */
 const WRITE_MIN_GAP_MS = 2_000
-
-/** 留档份数上限:GM 后台 save_history_keep 可调,钳 1~96(云存档空间按人头封顶) */
-async function historyKeep(): Promise<number> {
-  const n = await getConfigNumber('save_history_keep', 3)
-  return Math.min(Math.max(Math.trunc(n), 1), HISTORY_KEEP_MAX)
-}
 
 /** 每账号审计留痕默认只保留最近 10 条(写入后即修剪,见 auditSave 末尾)与抽稀间隔:自动上传最快 3 秒一推,不留抽稀会把表刷爆 */
 const FLAG_KEEP = 10
@@ -259,8 +246,8 @@ function snapshotComplete(s: Record<string, unknown> | null): s is ProfileSnapsh
 
 /**
  * 按存档内容同步档案快照(复算优先,失败不动 profiles)。
- * 供存档被服务端单方面改写的地方共用:突破结算、回档 —— 这些场景 profiles 必须跟着存档走,
- * 否则权威化会把客户端境界压回旧值,回档等于没回、突破等于白突。
+ * 供存档被服务端单方面改写的地方共用:突破结算等 —— 这些场景 profiles 必须跟着存档走,
+ * 否则权威化会把客户端境界压回旧值,突破等于白突。
  */
 export async function syncProfileFromData(userId: number, data: unknown, now: number): Promise<void> {
   // 门派不进分片:复算要算它的加成,只能在这里把表里的状态一并递进去(读表,不加锁)
@@ -304,36 +291,6 @@ function rebirthsIn(data: unknown): number {
     ? (player.reincarnation as Record<string, unknown>)
     : {}
   return finite(reinc.count) ? Math.max(0, Math.trunc(reinc.count)) : 0
-}
-
-/** 覆盖前留一份旧档:同份不重存、按间隔抽稀、突破(境界提升)必存,并顺手清理超量/超期 */
-export async function backupBeforeOverwrite(userId: number, old: { version: number; data: string; updated_at: number }): Promise<void> {
-  const now = Date.now()
-  const oldMetrics = metricsOf(old.data)
-  const last = await get<{ id: number; updated_at: number; realm_index: number; created_at: number }>(
-    'SELECT id, updated_at, realm_index, created_at FROM save_history WHERE user_id = ? ORDER BY id DESC LIMIT 1',
-    [userId]
-  )
-  const sameAsLast = last !== undefined && last.updated_at === old.updated_at
-  const reachedBreakthrough = last !== undefined && oldMetrics.realmIndex > last.realm_index
-  const dueByGap = last === undefined || now - last.created_at >= HISTORY_MIN_GAP_MS
-  if (!sameAsLast && (reachedBreakthrough || dueByGap)) {
-    await run(
-      'INSERT INTO save_history (user_id, version, data, realm_index, size, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [userId, old.version, old.data, oldMetrics.realmIndex, old.data.length, old.updated_at, now]
-    )
-  }
-  // 超量清理:留最近 N 份(GM 后台 save_history_keep,默认 3)
-  const keep = await historyKeep()
-  const count = await get<{ c: number }>('SELECT COUNT(*) AS c FROM save_history WHERE user_id = ?', [userId])
-  if (count !== undefined && count.c > keep) {
-    await run(
-      'DELETE FROM save_history WHERE user_id = ? AND id NOT IN (SELECT id FROM (SELECT id FROM save_history WHERE user_id = ? ORDER BY id DESC LIMIT ?) t)',
-      [userId, userId, keep]
-    )
-  }
-  // 超期清理
-  await run('DELETE FROM save_history WHERE user_id = ? AND created_at < ?', [userId, now - HISTORY_TTL_MS])
 }
 
 export const saveRouter = express.Router()
@@ -588,7 +545,7 @@ saveRouter.put('/save', requireAuth, (req: Request, res: Response) => {
      * 转世时台账随档下降(1.74.1)。
      * 「只升不降」是防直注,可转世是客户端自己把灵脉点数清空、法宝重数清零、功法层数压回一层:
      * 台账不跟着降,改包只要把上一世的数值写回档里,服务端就一路放行 —— 这一世的修行等于免单。
-     * 按新档原值重写台账(与回档同一条路),此后缺行/超行一律按新档压回。
+     * 按新档原值重写台账(仅转世这一条合法降级路径),此后缺行/超行一律按新档压回。
      * 边界:同一次上传里「转世 + 把等级注满」仍会被采信一次(要堵它得让服务端复算 carry 规则);
      * 但下一次上传起,台账就钉在注满后的值上,不会再有反复利用的窗口。
      */
@@ -762,71 +719,6 @@ saveRouter.delete('/save', requireAuth, (req: Request, res: Response) => {
      * 等级台账只升不降,对新档只有钳制作用,没有放水作用。
      */
     res.json({ ok: true })
-  }).catch(() => {
-    res.status(500).json({ error: '服务器异常' })
-  })
-})
-
-/** 自己的存档历史(不含 data,列表页够用) */
-saveRouter.get('/save/history', requireAuth, (req: Request, res: Response) => {
-  void (async () => {
-    const limit = Math.min(Math.max(Number(req.query.limit ?? 30) || 30, 1), 96)
-    const rows = await all<{ id: number; version: number; realm_index: number; size: number; updated_at: number; created_at: number }>(
-      'SELECT id, version, realm_index, size, updated_at, created_at FROM save_history WHERE user_id = ? ORDER BY id DESC LIMIT ?',
-      [req.user!.id, limit]
-    )
-    res.json({ history: rows })
-  })().catch(() => {
-    res.status(500).json({ error: '服务器异常' })
-  })
-})
-
-/** 回滚到某个历史版本:当前档先存进历史,再写回 */
-saveRouter.post('/save/restore', requireAuth, (req: Request, res: Response) => {
-  // 回档也是「读当前档 → 备份 → 覆盖」,与上传同一把键,避免回档被同时进行的上传顶掉
-  void withKeyLock(`save:${req.user!.id}`, async () => {
-    const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
-    const historyId = finite(body.historyId) ? Math.trunc(body.historyId) : 0
-    if (historyId <= 0) {
-      res.status(400).json({ error: '缺少历史版本编号' })
-      return
-    }
-    const row = await get<{ version: number; data: string; updated_at: number }>(
-      'SELECT version, data, updated_at FROM save_history WHERE id = ? AND user_id = ?',
-      [historyId, req.user!.id]
-    )
-    if (row === undefined) {
-      res.status(404).json({ error: '历史版本不存在' })
-      return
-    }
-    const current = await get<{ version: number; data: string; updated_at: number }>(
-      'SELECT version, data, updated_at FROM saves WHERE user_id = ?',
-      [req.user!.id]
-    )
-    if (current !== undefined) await backupBeforeOverwrite(req.user!.id, current)
-    const now = Date.now()
-    await upsertByPk('saves', {
-      user_id: req.user!.id,
-      version: row.version,
-      data: row.data,
-      started: metricsOf(row.data).started ? 1 : 0,
-      updated_at: now
-    })
-    // 境界基线跟着回档走:不同步的话,权威化会把客户端境界压回回档前的旧值,回档等于没回
-    try {
-      const restored = JSON.parse(row.data) as unknown
-      await syncProfileFromData(req.user!.id, restored, now)
-      // 等级与装备台账同理:只同步 profiles 的话,下一次上传仍会按台账把功法/建筑等级与
-      // 强化词条顶回回档前(台账「只升不降」是防直注,回档是服务端自己换档,必须跟着降)
-      await resetLevelStatesFromData(req.user!.id, restored)
-      await resetEquipStatesFromData(req.user!.id, restored)
-      // 签发行随「件离手」被清过(分解/出售),回档把件带回来时须把账补齐,
-      // 否则下一次上传验源把回档带回来的件整批移除(1.66.3)
-      await reseedLootFromData(req.user!.id, restored)
-    } catch {
-      // 快照复算失败时 profiles 与台账不动:下一次上传仍会按存档内容重算
-    }
-    res.json({ ok: true, updatedAt: now })
   }).catch(() => {
     res.status(500).json({ error: '服务器异常' })
   })

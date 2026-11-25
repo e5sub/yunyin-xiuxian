@@ -323,7 +323,7 @@ export function enforceSaveAuthority(input: AuthorityInput): AuthorityReport | n
 
     if (input.realmAuthoritative === true && !rebirth) {
       // 境界唯一写入口是突破 API(服务端掷点后落 profiles):上传里的 major/sub 只当提议,
-      // 无论高低一律压回基线。抬境界是老路子的作弊入口;压境界只可能是改包或回档残影。
+      // 无论高低一律压回基线。抬境界是老路子的作弊入口;压境界只可能是改包或旧档残影。
       const claimed = { major: nextMajor, sub: nextSub }
       if (claimed.major !== prevRealm.major || claimed.sub !== prevRealm.sub) {
         notes.push(`境界以服务端为准:${prevRealm.major}-${prevRealm.sub}(上报 ${claimed.major}-${claimed.sub})`)

@@ -362,7 +362,7 @@ export async function readSettledSectState(
   if (member === null) return { state: await emptyState(), done: [], exists: false, member: null, sectRow: 0 }
   const body = await readBody(member.sect_row)
   if (body === null) {
-    // 门派行没了(手工删库/回档):关系一并清掉,别让玩家挂着一家不存在的门派
+    // 门派行没了(手工删库):关系一并清掉,别让玩家挂着一家不存在的门派
     await removeMember(userId)
     return { state: await emptyState(), done: [], exists: false, member: null, sectRow: 0 }
   }

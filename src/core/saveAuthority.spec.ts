@@ -350,7 +350,7 @@ describe('数值权威化 · 境界只认服务端(1.57.0+ 客户端)', () => {
     expect(report.corrections.some(c => c.path === 'player.major')).toBe(true)
   })
 
-  it('上报压境(改包/回档残影):同样压回基线', () => {
+  it('上报压境(改包/旧档残影):同样压回基线', () => {
     const next = baseSave()
     ;(next.player as Record<string, unknown>).major = 0
     ;(next.player as Record<string, unknown>).sub = 0

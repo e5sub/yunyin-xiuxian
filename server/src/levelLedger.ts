@@ -99,11 +99,12 @@ export async function markLevelsSeeded(userId: number): Promise<void> {
  */
 
 /**
- * 回档专用:按档内等级**原值**重写台账(允许下调),但保留播种标记。
+ * 转世专用:按新档的等级**原值**重写台账(允许下调),但保留播种标记。
  *
- * enforceLevelStates 的「只升不降」是防直注,可回档是服务端自己把档换回旧版本:
- * 台账不跟着降,下一次上传就按台账把旧档的等级顶回回档前,回档等于没回。
+ * enforceLevelStates 的「只升不降」是防直注,可转世是玩家按规则把自己的等级清回起点:
+ * 台账不跟着降,下一次上传就会按台账把新世的等级顶回前一世,转世等于没转。
  * 这里也不删 seed 标记 —— 删了就会走「首传采信客户端」,反而给改档留窗口。
+ * (旧实现同时服务回档;回档机制已移除,现在只剩转世这一条合法降级路径。)
  */
 export async function resetLevelStatesFromData(userId: number, data: unknown): Promise<void> {
   const root = typeof data === 'object' && data !== null && !Array.isArray(data) ? (data as Record<string, unknown>) : null

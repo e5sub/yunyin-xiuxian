@@ -15,7 +15,6 @@ import { recordLoot, burnedSoulUids, recordSoulBurns, takeLootBudget } from '../
 import { recordEquipStatesFromItems } from '../equipLedger.js'
 import { readSectState } from '../sectState.js'
 import { withKeyLock } from '../mutex.js'
-import { backupBeforeOverwrite } from './save.js'
 
 export const lootRouter = express.Router()
 
@@ -238,15 +237,6 @@ lootRouter.post('/loot/claim', requireAuth, (req: Request, res: Response) => {
         const inv = saveData.inventory as Record<string, unknown>
         const items = Array.isArray(inv.items) ? (inv.items as unknown[]) : []
         inv.items = [...items, ...equips]
-        try {
-          await backupBeforeOverwrite(userId, {
-            version: row.version,
-            data: JSON.stringify(saveData),
-            updated_at: row.updated_at
-          })
-        } catch {
-          // 留档失败不拦签发
-        }
         await upsertByPk('saves', {
           user_id: userId,
           version: row.version,

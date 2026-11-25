@@ -17,7 +17,6 @@ import { recordStoneCredit, pruneStoneCredits } from '../stoneLedger.js'
 import { claimedMap, recordClaim, settleClaims } from '../economyLedger.js'
 import { takeLootBudget } from '../lootLedger.js'
 import { gnumAdd } from '../gnumOps.js'
-import { backupBeforeOverwrite } from './save.js'
 
 const economyRouter = express.Router()
 
@@ -235,15 +234,6 @@ economyRouter.post('/economy/:op', requireAuth, (req: Request, res: Response) =>
         }
       }
       if (touched) {
-        try {
-          await backupBeforeOverwrite(userId, {
-            version: row.version,
-            data: JSON.stringify(data),
-            updated_at: row.updated_at
-          })
-        } catch {
-          // 留档失败不拦进项
-        }
         await upsertByPk('saves', {
           user_id: userId,
           version: row.version,

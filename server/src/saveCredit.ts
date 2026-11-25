@@ -12,7 +12,6 @@
  */
 import { get, upsertByPk } from './db.js'
 import { withKeyLock } from './mutex.js'
-import { backupBeforeOverwrite } from './routes/save.js'
 import { gnumAdd } from './gnumOps.js'
 import { loadClientModule } from './clientVendor.js'
 
@@ -137,15 +136,6 @@ export async function creditGains(userId: number, gains: RewardGains): Promise<b
       const v = gains[f] as number
       const cur = typeof res[f] === 'number' && Number.isFinite(res[f]) ? Math.floor(res[f]) : 0
       res[f] = cur + Math.floor(v)
-    }
-    try {
-      await backupBeforeOverwrite(userId, {
-        version: row.version,
-        data: JSON.stringify(data),
-        updated_at: row.updated_at
-      })
-    } catch {
-      // 留档失败不拦赏格
     }
     await upsertByPk('saves', {
       user_id: userId,

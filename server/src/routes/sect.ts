@@ -21,7 +21,6 @@ import { loadClientModule } from '../clientVendor.js'
 import { withKeyLock } from '../mutex.js'
 import { dayKeyOf } from '../eventCore.js'
 import { VIP_SPEND_RATE, vipActive } from '../vip.js'
-import { backupBeforeOverwrite } from './save.js'
 import { gnumSub } from '../gnumOps.js'
 import {
   NO_SECT_SPEND,
@@ -181,18 +180,9 @@ function deductSpendFromSave(data: Record<string, unknown>, spend: SectSpend): v
   }
 }
 
-/** 扣款后的整档写回(留档先行,updated_at 不动 —— 与炼器结算同规) */
+/** 扣款后的整档写回(直接落现行档,updated_at 不动 —— 与炼器结算同规) */
 async function writeSaveWithDeduction(userId: number, snapshot: SaveSnapshot, spend: SectSpend): Promise<void> {
   deductSpendFromSave(snapshot.data, spend)
-  try {
-    await backupBeforeOverwrite(userId, {
-      version: snapshot.version,
-      data: JSON.stringify(snapshot.data),
-      updated_at: snapshot.updated_at
-    })
-  } catch {
-    // 留档失败不拦扣款
-  }
   await upsertByPk('saves', {
     user_id: userId,
     version: snapshot.version,
